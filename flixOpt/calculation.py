@@ -283,7 +283,7 @@ class AggregatedCalculation(FullCalculation):
 class SegmentedCalculation(Calculation):
     def __init__(
         self,
-        name,
+        name: str,
         flow_system: FlowSystem,
         timesteps_per_segment: int,
         overlap_timesteps: int,

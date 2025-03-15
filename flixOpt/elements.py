@@ -25,7 +25,11 @@ logger = logging.getLogger('flixOpt')
 @register_class_for_io
 class Component(Element):
     """
-    basic component class for all components
+    A Component contains incoming and outgoing [`Flows`][flixOpt.elements.Flow]. It defines how these Flows interact with each other.
+    The On or Off state of the Component is defined by all its Flows. Its on, if any of its FLows is On.
+    It's mathematically advisable to define the On/Off state in a FLow rather than a Component if possible,
+    as this introduces less binary variables to the Model
+    Constraints to the On/Off state are defined by the [`on_off_parameters`][flixOpt.interface.OnOffParameters].
     """
 
     def __init__(
@@ -76,7 +80,7 @@ class Component(Element):
 @register_class_for_io
 class Bus(Element):
     r"""
-    A Bus represents a nodal balance between the flow rates of its incoming and outgoing **Flows**
+    A Bus represents a nodal balance between the flow rates of its incoming and outgoing [Flows][flixOpt.elements.Flow]
     ($\mathcal{F}_\text{in}$ and $\mathcal{F}_\text{out}$),
     which must hold for every time step $\text{t}_i \in \mathcal{T}$.
 
@@ -85,7 +89,7 @@ class Bus(Element):
         \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
     $$
 
-    To handle ifeasabilities gently, 2 variables $\phi_\text{in}(\text{t}_i)\geq0$ and
+    To handle ifeasiblities gently, 2 variables $\phi_\text{in}(\text{t}_i)\geq0$ and
     $\phi_\text{out}(\text{t}_i)\geq0$ might be introduced.
     These represent the missing or excess flow_rate in Bus. E certain amount of penalty occurs for each missing or
     excess flow_rate in the balance (`excess_penalty_per_flow_hour`), so they usually dont affect the Optimization.
@@ -154,8 +158,37 @@ class Connection:
 
 @register_class_for_io
 class Flow(Element):
-    """
-    flows are inputs and outputs of components
+    r"""
+    Flows are the inputs and outputs of [Component][flixOpt.elements.Component]
+     and connect them to [Busses][flixOpt.elements.Bus].
+    A **Flow** moves energy (or material) between a [Bus][flixOpt.elements.Bus] and a [Component][flixOpt.elements.Component] in a predefined direction.
+    The flow-rate $p(\text{t}_{i})$ is the main optimization variable of the **Flow**.
+    The size $\text P$ of the **Flow** combined with a relative upper bound $\text p_{\text{rel}}^{\text{U}}(\text{t}_{i})$
+    and lower bound $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i})$ limits the flow-rate per time step $p(\text{t}_{i})$.
+
+    $$
+        \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i})
+        \leq p(\text{t}_{i}) \leq
+        \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i}) \tag{1}
+    $$
+
+    With $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) = 0$ and $\text p^{\text{U}}_{\text{rel}}(\text{t}_{i}) = 1$,
+    equation (1) simplifies to
+
+    $$
+        0 \leq p(\text{t}_{i}) \leq \text P
+    $$
+
+    With $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) = \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$,
+    the flow-rate $p(\text{t}_{i})$ is fixed.
+
+    $$
+        p(\text{t}_{i}) = \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \cdot \text P
+    $$
+
+    This mathematical Formulation can be extended or changed when using [`OnOffParameters`][flixOpt.interface.OnOffParameters]
+    to define the On/Off state of the Flow, or [`InvestParameters`][flixOpt.interface.InvestParameters],
+    which changes the size of the Flow to be optimized.
     """
 
     def __init__(
