@@ -214,7 +214,12 @@ class Interface:
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'Interface':
-        """Create an instance from a dictionary representation."""
+        """
+        Create an instance from a dictionary representation.
+
+        Args:
+            data: Dictionary containing the data for the object.
+        """
         return cls._deserialize_dict(data)
 
     def __repr__(self):

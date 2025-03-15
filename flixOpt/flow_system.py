@@ -82,6 +82,12 @@ class FlowSystem:
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'FlowSystem':
+        """
+        Load a FlowSystem from a dictionary.
+
+        Args:
+            data: Dictionary containing the FlowSystem data.
+        """
         timesteps_extra = pd.DatetimeIndex(data['timesteps_extra'], name='time')
         hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
 
