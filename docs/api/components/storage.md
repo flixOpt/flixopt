@@ -1,4 +1,6 @@
-# Mathematical Formulation
+::: flixOpt.components.Storage
+
+## Mathematical Formulation
 
 **Storages** have one incoming and one outgoing **Flow** - $f_\text{in}$ and $f_\text{out}$ -
 each with an efficiency $\eta_\text{in}$ and $\eta_\text{out}$.
@@ -48,8 +50,6 @@ Where:
 - $\eta_\text{in}(\text{t}_i)$ is the charging efficiency at time $\text{t}_i$
 - $p_{f_\text{out}}(\text{t}_i)$ is the output flow rate at time $\text{t}_i$
 - $\eta_\text{out}(\text{t}_i)$ is the discharging efficiency at time $\text{t}_i$
-
-::: flixOpt.components.Storage
 
 
 ## Creating a Storage
