@@ -139,8 +139,7 @@ plugins:
            separate_signature: true  # Displays signatures separate from descriptions for cleaner layout
 
            extra:
-             # Uses Python type hints to supplement docstring information
-             infer_type_annotations: true
+             infer_type_annotations: true  # Uses Python type hints to supplement docstring information
 
 extra_javascript:
   - javascripts/mathjax.js  # Custom MathJax 3 CDN Configuration
