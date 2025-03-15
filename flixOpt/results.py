@@ -27,15 +27,6 @@ class CalculationResults:
     This class is used to collect the results of a Calculation.
     It is used to analyze the results and to visualize the results.
 
-    Parameters
-    ----------
-    model: linopy.Model
-        The linopy model that was used to solve the calculation.
-    infos: Dict
-        Information about the calculation,
-    results_structure: Dict[str, Dict[str, Dict]]
-        The structure of the flow_system that was used to solve the calculation.
-
     Attributes
     ----------
     model: linopy.Model
@@ -51,13 +42,11 @@ class CalculationResults:
     hours_per_timestep: xr.DataArray
         The duration of each timestep in hours.
 
-    Class Methods
-    -------
-    from_file(folder: Union[str, pathlib.Path], name: str)
-        Create CalculationResults directly from file.
-    from_calculation(calculation: Calculation)
-        Create CalculationResults directly from a Calculation.
-
+    Class Methods:
+        from_file(folder: Union[str, pathlib.Path], name: str)
+            Create CalculationResults directly from file.
+        from_calculation(calculation: Calculation)
+            Create CalculationResults directly from a Calculation.
     """
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):

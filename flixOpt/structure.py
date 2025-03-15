@@ -312,12 +312,9 @@ class Model:
         """
         Add a variable, constraint or sub-model to the model
 
-        Parameters
-        ----------
-        item: linopy.Variable, linopy.Constraint, InterfaceModel
-            The variable, constraint or sub-model to add to the model
-        short_name: str, optional
-            The short name of the variable, constraint or sub-model. If not provided, the full name is used.
+        Args:
+            item: The variable, constraint or sub-model to add to the model
+            short_name: The short name of the variable, constraint or sub-model. If not provided, the full name is used.
         """
         # TODO: Check uniquenes of short names
         if isinstance(item, linopy.Variable):
@@ -445,43 +442,33 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
     - Custom `Element` objects can be represented either by their `label` or their initialization parameters as a dictionary.
     - Timestamps (`datetime`) are converted to ISO 8601 strings.
 
-    Parameters
-    ----------
-    data: Any
-        The input data to process, which may be deeply nested and contain a mix of types.
-    use_numpy: bool, optional
-        If `True`, numeric numpy arrays (`np.ndarray`) are preserved as-is. If `False`, they are converted to lists.
-        Default is `True`.
-    use_element_label: bool, optional
-        If `True`, `Element` objects are represented by their `label`. If `False`, they are converted into a dictionary
-        based on their initialization parameters. Default is `False`.
+    Args:
+        data: The input data to process, which may be deeply nested and contain a mix of types.
+        use_numpy: If `True`, numeric numpy arrays (`np.ndarray`) are preserved as-is. If `False`, they are converted to lists.
+            Default is `True`.
+        use_element_label: If `True`, `Element` objects are represented by their `label`. If `False`, they are converted into a dictionary
+            based on their initialization parameters. Default is `False`.
 
-    Returns
-    -------
-    Any
+    Returns:
         A transformed version of the input data, containing only JSON-compatible types:
         - `int`, `float`, `str`, `bool`, `None`
         - `list`, `dict`
         - `np.ndarray` (if `use_numpy=True`. This is NOT JSON-compatible)
 
-    Raises
-    ------
-    TypeError
-        If the data cannot be converted to the specified types.
+    Raises:
+        TypeError: If the data cannot be converted to the specified types.
 
-    Examples
-    --------
-    >>> copy_and_convert_datatypes({'a': np.array([1, 2, 3]), 'b': Element(label='example')})
-    {'a': array([1, 2, 3]), 'b': {'class': 'Element', 'label': 'example'}}
+    Examples:
+        >>> copy_and_convert_datatypes({'a': np.array([1, 2, 3]), 'b': Element(label='example')})
+        {'a': array([1, 2, 3]), 'b': {'class': 'Element', 'label': 'example'}}
 
-    >>> copy_and_convert_datatypes({'a': np.array([1, 2, 3]), 'b': Element(label='example')}, use_numpy=False)
-    {'a': [1, 2, 3], 'b': {'class': 'Element', 'label': 'example'}}
+        >>> copy_and_convert_datatypes({'a': np.array([1, 2, 3]), 'b': Element(label='example')}, use_numpy=False)
+        {'a': [1, 2, 3], 'b': {'class': 'Element', 'label': 'example'}}
 
-    Notes
-    -----
-    - The function gracefully handles unexpected types by issuing a warning and returning a deep copy of the data.
-    - Empty collections (lists, dictionaries) and default parameter values in `Element` objects are omitted from the output.
-    - Numpy arrays with non-numeric data types are automatically converted to lists.
+    Notes:
+        - The function gracefully handles unexpected types by issuing a warning and returning a deep copy of the data.
+        - Empty collections (lists, dictionaries) and default parameter values in `Element` objects are omitted from the output.
+        - Numpy arrays with non-numeric data types are automatically converted to lists.
     """
     if isinstance(data, np.integer):  # This must be checked before checking for regular int and float!
         return int(data)

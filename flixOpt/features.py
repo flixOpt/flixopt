@@ -193,22 +193,14 @@ class OnOffModel(Model):
         """
         Constructor for OnOffModel
 
-        Parameters
-        ----------
-        model: SystemModel
-            Reference to the SystemModel
-        on_off_parameters: OnOffParameters
-            Parameters for the OnOffModel
-        label_of_element:
-            Label of the Parent
-        defining_variables:
-            List of Variables that are used to define the OnOffModel
-        defining_bounds:
-            List of Tuples, defining the absolute bounds of each defining variable
-        previous_values:
-            List of previous values of the defining variables
-        label:
-            Label of the OnOffModel
+        Args:
+            model: Reference to the SystemModel
+            on_off_parameters: Parameters for the OnOffModel
+            label_of_element: Label of the Parent
+            defining_variables: List of Variables that are used to define the OnOffModel
+            defining_bounds: List of Tuples, defining the absolute bounds of each defining variable
+            previous_values: List of previous values of the defining variables
+            label: Label of the OnOffModel
         """
         super().__init__(model, label_of_element, label)
         assert len(defining_variables) == len(defining_bounds), 'Every defining Variable needs bounds to Model OnOff'
@@ -628,16 +620,11 @@ class OnOffModel(Model):
         hours_per_timestep is handled in a way, that maximizes compatability.
         Its length must only be as long as the last consecutive duration in binary_values.
 
-        Parameters
-        ----------
-        binary_values: int, np.ndarray
-            An int or 1D binary array containing only `0`s and `1`s.
-        hours_per_timestep: int, float, np.ndarray
-            The duration of each timestep in hours.
+        Args:
+            binary_values: An int or 1D binary array containing only `0`s and `1`s.
+            hours_per_timestep: The duration of each timestep in hours.
 
-        Returns
-        -------
-        np.ndarray
+        Returns:
             The duration of the binary variable in hours.
 
         Raises
@@ -735,19 +722,15 @@ class MultipleSegmentsModel(Model):
         label: str = 'MultipleSegments',
     ):
         """
-        Parameters
-        ----------
-        model: linopy.Model
-            Model to which the segmented variable belongs.
-        label_of_element: str
-            Name of the parent variable.
-        sample_points: dict[str, list[tuple[float, float]]]
-            Dictionary mapping variables (names) to their sample points for each segment.
-            The sample points are tuples of the form (start, end).
-        can_be_outside_segments: bool or linopy.Variable, optional
-            Whether the variable can be outside the segments. If True, a variable is created.
-            If False or None, no variable is created. If a Variable is passed, it is used.
-        as_time_series: bool, optional
+        Args:
+            model: Model to which the segmented variable belongs.
+            label_of_element: Name of the parent variable.
+            sample_points: Dictionary mapping variables (names) to their sample points for each segment.
+                The sample points are tuples of the form (start, end).
+            can_be_outside_segments: Whether the variable can be outside the segments. If True, a variable is created.
+                If False or None, no variable is created. If a Variable is passed, it is used.
+            as_time_series: Whether to create a scalar or time series variable.
+            label: Name of the Model.
         """
         super().__init__(model, label_of_element, label)
         self.outside_segments: Optional[linopy.Variable] = None
@@ -889,14 +872,9 @@ class ShareAllocationModel(Model):
         The variable representing the total share is on the left hand side (lhs) of the constraint.
         var_total = sum(expressions)
 
-        Parameters
-        ----------
-        system_model: SystemModel
-            The system model.
-        name: str
-            The name of the share.
-        expression: linopy.LinearExpression
-            The expression of the share. Added to the right hand side of the constraint.
+        Args:
+            name: The name of the share.
+            expression: The expression of the share. Added to the right hand side of the constraint.
         """
         if name in self.shares:
             self.share_constraints[name].lhs -= expression

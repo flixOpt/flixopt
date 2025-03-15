@@ -298,26 +298,16 @@ class HeatPumpWithSource(LinearConverter):
 
 def check_bounds(
     value: NumericDataTS, parameter_label: str, element_label: str, lower_bound: NumericDataTS, upper_bound: NumericDataTS
-):
+) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.
     If not, log a warning.
-    Parameters
-    ----------
-    value: NumericDataTS
-        The value to check.
-    parameter_label: str
-        The label of the value.
-    element_label: str
-        The label of the element.
-    lower_bound: NumericDataTS
-        The lower bound.
-    upper_bound: NumericDataTS
-        The upper bound.
-
-    Returns
-    -------
-
+    Args:
+        value: The value to check.
+        parameter_label: The label of the value.
+        element_label: The label of the element.
+        lower_bound: The lower bound.
+        upper_bound: The upper bound.
     """
     if isinstance(value, TimeSeriesData):
         value = value.data

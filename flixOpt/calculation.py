@@ -168,13 +168,10 @@ class FullCalculation(Calculation):
         The calculation infos are saved as a .yaml file.
         Optionally, the flow_system is saved as a .nc file.
 
-        Parameters
-        ----------
-        save_flow_system: bool, optional
-            Whether to save the flow_system, by default False
-        compression: int, optional
-            Compression level for the netCDF file, by default 0 wich leads to no compression.
-            Currently, only the Flow System file can be compressed.
+        Args:
+            save_flow_system: Whether to save the flow_system, by default False
+            compression: Compression level for the netCDF file, by default 0 wich leads to no compression.
+                Currently, only the Flow System file can be compressed.
         """
         with open(self.folder / f'{self.name}_infos.yaml', 'w', encoding='utf-8') as f:
             yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4)

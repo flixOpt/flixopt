@@ -525,18 +525,13 @@ class TimeSeriesCollection:
         """
         Creates a TimeSeries from the given data and adds it to the collection.
 
-        Parameters
-        ----------
-        data: Union[int, float, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
+        Args:
+            data: The data to create the TimeSeries from.
+            name: The name of the TimeSeries.
+            needs_extra_timestep: Whether to create an additional timestep at the end of the timesteps.
             The data to create the TimeSeries from.
-        name: str
-            The name of the TimeSeries.
-        needs_extra_timestep: bool, optional
-            Whether to create an additional timestep at the end of the timesteps.
 
-        Returns
-        -------
-        TimeSeries
+        Returns:
             The created TimeSeries.
 
         """
@@ -587,11 +582,10 @@ class TimeSeriesCollection:
         Update active timesteps for the collection and all time series.
         If no arguments are provided, the active timesteps are reset.
 
-        Parameters
-        ----------
-        active_timesteps: Optional[pd.DatetimeIndex]
-            The active timesteps of the model.
-            If None, the all timesteps of the TimeSeriesCollection are taken."""
+        Args:
+            active_timesteps: The active timesteps of the model.
+                If None, the all timesteps of the TimeSeriesCollection are taken.
+        """
         if active_timesteps is None:
             return self.reset()
 
@@ -633,12 +627,9 @@ class TimeSeriesCollection:
         """
         Update time series with new data from a DataFrame.
 
-        Parameters
-        ----------
-        data: pd.DataFrame
-            DataFrame containing new data with timestamps as index
-        include_extra_timestep: bool, optional
-            Whether the provided data already includes the extra timestep, by default False
+        Args:
+            data: DataFrame containing new data with timestamps as index
+            include_extra_timestep: Whether the provided data already includes the extra timestep, by default False
         """
         if not isinstance(data, pd.DataFrame):
             raise TypeError(f"data must be a pandas DataFrame, got {type(data).__name__}")
@@ -681,16 +672,11 @@ class TimeSeriesCollection:
         """
         Convert collection to DataFrame with optional filtering and timestep control.
 
-        Parameters
-        ----------
-        filtered: Literal['all', 'constant', 'non_constant'], optional
-            Filter time series by variability, by default 'non_constant'
-        include_extra_timestep: bool, optional
-            Whether to include the extra timestep in the result, by default True
+        Args:
+            filtered: Filter time series by variability, by default 'non_constant'
+            include_extra_timestep: Whether to include the extra timestep in the result, by default True
 
-        Returns
-        -------
-        pd.DataFrame
+        Returns:
             DataFrame representation of the collection
         """
         include_constants = filtered != 'non_constant'
@@ -715,14 +701,10 @@ class TimeSeriesCollection:
         """
         Combine all time series into a single Dataset with all timesteps.
 
-        Parameters
-        ----------
-        include_constants: bool, optional
-            Whether to include time series with constant values, by default True
+        Args:
+            include_constants: Whether to include time series with constant values, by default True
 
-        Returns
-        -------
-        xr.Dataset
+        Returns:
             Dataset containing all selected time series with all timesteps
         """
         # Determine which series to include

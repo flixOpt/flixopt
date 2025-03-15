@@ -124,13 +124,11 @@ class FlowSystem:
 
     def add_elements(self, *elements: Element) -> None:
         """
-        add all modeling elements, like storages, boilers, heatpumps, buses, ...
+        Add Components(Storages, Boilers, Heatpumps, ...), Buses or Effects to the FlowSystem
 
-        Parameters
-        ----------
-        *elements: childs of  Element like Boiler, HeatPump, Bus,...
-            modeling Elements
-
+        Args:
+            *elements: childs of  Element like Boiler, HeatPump, Bus,...
+                modeling Elements
         """
         if self._connected:
             warnings.warn(
@@ -333,10 +331,8 @@ class FlowSystem:
         """
         checks if element or label of element already exists in list
 
-        Parameters
-        ----------
-        element: Element
-            new element to check
+        Args:
+            element: new element to check
         """
         if element in self.all_elements.values():
             raise Exception(f'Element {element.label} already added to FlowSystem!')
