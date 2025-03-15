@@ -1,3 +1,7 @@
+# Options:
+# https://mkdocstrings.github.io/python/usage/configuration/docstrings/
+# https://squidfunk.github.io/mkdocs-material/setup/
+
 site_name: flixOpt
 site_description: Energy and Material Flow Optimization Framework
 site_url: https://flixopt.github.io/flixopt/
@@ -44,16 +48,16 @@ theme:
     # Light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo  # Try different colors like: deep purple, blue, teal
-      accent: purple
+      primary: teal
+      accent: blue
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     # Dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo  # Can be different from light mode
-      accent: purple
+      primary: teal  # Can be different from light mode
+      accent: blue
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -112,58 +116,27 @@ plugins:
      handlers:
        python:  # Configuration for Python code documentation
          options:
-           # Controls which members to include or exclude from documentation
-           # "!^_[^_]" excludes private members (single underscore)
-           # "^__init__" explicitly includes constructor methods
-           filters: ["!^_[^_]", "^__init__"]
+           docstring_style: google  # Sets google as the docstring style
+           modernize_annotations: true  # Improves type annotations
+           merge_init_into_class: true  # Promotes constructor parameters to class-level documentation
+           docstring_section_style: table  # Renders parameter sections as a table (also: list, spacy)
 
-           # Sets google as the docstring style
-           docstring_style: google
+           members_order: source  # Orders members as they appear in the source code
+           inherited_members: true  # Include members inherited from parent classes
+           show_if_no_docstring: false  # Documents objects even if they don't have docstrings
 
-           # whether the documented object's name should be displayed as a heading at the beginning of its documentation
-           show_root_heading: true
-
-           # Improves type annotations
-           modernize_annotations: true
-
-           # Renders parameter sections as tables instead of lists for better readability
-           docstring_section_style: table
-
-           # Hides the source code implementation from documentation
-           show_source: false
-
-           # Displays simple class names instead of full import paths
-           show_object_full_path: false
-
-           # Shows class attributes in the documentation
-           show_docstring_attributes: true
-
-           # Documents objects even if they don't have docstrings
-           show_if_no_docstring: true
-
-           # Displays category headings (Methods, Attributes, etc.) for organization
-           show_category_heading: true
-
-           # Shows method signatures with parameters
-           show_signature: true
-
-           # Includes type annotations in the signatures when available
-           show_signature_annotations: true
-
-           # Displays signatures separate from descriptions for cleaner layout
-           separate_signature: true
-
-           # Promotes constructor parameters to class-level documentation
-           merge_init_into_class: true
-
-           # Sets the base heading level for documented objects (h2)
-           heading_level: 1
-
-           # Orders members as they appear in the source code
-           members_order: source
-
-           # Include members inherited from parent classes
-           inherited_members: true
+           group_by_category: true
+           heading_level: 1  # Sets the base heading level for documented objects
+           line_length: 80
+           filters: ["!^_", "^__init__$"]
+           show_root_heading: true  # whether the documented object's name should be displayed as a heading at the beginning of its documentation
+           show_source: false  # Shows the source code implementation from documentation
+           show_object_full_path: false  # Displays simple class names instead of full import paths
+           show_docstring_attributes: true  # Shows class attributes in the documentation
+           show_category_heading: true  # Displays category headings (Methods, Attributes, etc.) for organization
+           show_signature: true  # Shows method signatures with parameters
+           show_signature_annotations: true  # Includes type annotations in the signatures when available
+           separate_signature: true  # Displays signatures separate from descriptions for cleaner layout
 
            extra:
              # Uses Python type hints to supplement docstring information
