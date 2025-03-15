@@ -17,6 +17,7 @@ nav:
       - Flow: api/flow.md
       - Bus: api/bus.md
       - Components:
+        - Component: api/components/component.md
         - Storage: api/components/storage.md
         - LinearConverter: api/components/linear-converter.md
         - Transmission: api/components/transmission.md
