@@ -75,9 +75,34 @@ class Component(Element):
 
 @register_class_for_io
 class Bus(Element):
-    """
-    realizing balance of all linked flows
-    (penalty flow is excess can be activated)
+    r"""
+    A Bus represents a nodal balance between the flow rates of its incoming and outgoing **Flows**
+    ($\mathcal{F}_\text{in}$ and $\mathcal{F}_\text{out}$),
+    which must hold for every time step $\text{t}_i \in \mathcal{T}$.
+
+    $$
+        \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_\text{in}}(\text{t}_i) =
+        \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
+    $$
+
+    To handle ifeasabilities gently, 2 variables $\phi_\text{in}(\text{t}_i)\geq0$ and
+    $\phi_\text{out}(\text{t}_i)\geq0$ might be introduced.
+    These represent the missing or excess flow_rate in Bus. E certain amount of penalty occurs for each missing or
+    excess flow_rate in the balance (`excess_penalty_per_flow_hour`), so they usually dont affect the Optimization.
+    The penalty term is defined as
+
+    $$
+        s_{b \rightarrow \Phi}(\text{t}_i) =
+            \text a_{b \rightarrow \Phi}(\text{t}_i) \cdot \Delta \text{t}_i
+            \cdot [ \phi_\text{in}(\text{t}_i) + \phi_\text{out}(\text{t}_i) ]
+    $$
+
+    Which changes the balance to
+
+    $$
+        \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_ \text{in}}(\text{t}_i) + \phi_\text{in}(\text{t}_i) =
+        \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i) + \phi_\text{out}(\text{t}_i)
+    $$
     """
 
     def __init__(
