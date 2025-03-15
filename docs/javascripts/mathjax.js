@@ -3,7 +3,7 @@ window.MathJax = {
     inlineMath: [['$', '$'], ['\\(', '\\)']],
     displayMath: [['$$', '$$'], ['\\[', '\\]']],
     processEscapes: true,
-    tags: 'ams'
+    tags: 'all'
   },
   options: {
     skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
