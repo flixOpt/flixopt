@@ -98,18 +98,15 @@ class Interface:
         Excludes default values and empty dictionaries and lists.
         Converts data to be compatible with JSON.
 
-        Parameters:
-        -----------
-        use_numpy bool:
-            Whether to convert NumPy arrays to lists. Defaults to True.
-            If True, numeric numpy arrays (`np.ndarray`) are preserved as-is.
-            If False, they are converted to lists.
-        use_element_label bool:
-            Whether to use the element label instead of the infos of the element. Defaults to False.
-            Note that Elements used as keys in dictionaries are always converted to their labels.
+        Args:
+            use_numpy: Whether to convert NumPy arrays to lists. Defaults to True.
+                If True, numeric numpy arrays (`np.ndarray`) are preserved as-is.
+                If False, they are converted to lists.
+            use_element_label: Whether to use the element label instead of the infos of the element. Defaults to False.
+                Note that Elements used as keys in dictionaries are always converted to their labels.
 
         Returns:
-            Dict: A dictionary representation of the object's constructor arguments.
+            A dictionary representation of the object's constructor arguments.
 
         """
         # Get the constructor arguments and their default values
@@ -134,10 +131,8 @@ class Interface:
         Saves the element to a json file.
         This not meant to be reloaded and recreate the object, but rather used to document or compare the object.
 
-        Parameters:
-        -----------
-        path: Union[str, pathlib.Path]
-            The path to the json file.
+        Args:
+            path: The path to the json file.
         """
         data = get_compact_representation(self.infos(use_numpy=True, use_element_label=True))
         with open(path, 'w', encoding='utf-8') as f:

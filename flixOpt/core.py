@@ -152,7 +152,7 @@ class TimeSeries:
         """
         Initialize the TimeSeries from multiple data sources.
 
-        Parameters:
+        Args:
             data: The time series data
             name: The name of the TimeSeries
             timesteps: The timesteps of the TimeSeries
@@ -176,7 +176,7 @@ class TimeSeries:
         """
         Load a TimeSeries from a dictionary or json file.
 
-        Parameters:
+        Args:
             data: Dictionary containing TimeSeries data
             path: Path to a JSON file containing TimeSeries data
 
@@ -258,7 +258,7 @@ class TimeSeries:
         """
         Save the TimeSeries to a dictionary or JSON file.
 
-        Parameters:
+        Args:
             path: Optional path to save JSON file
 
         Returns:
@@ -316,7 +316,7 @@ class TimeSeries:
         """
         Set active_timesteps and refresh active_data.
 
-        Parameters:
+        Args:
             timesteps: New timesteps to activate, or None to use all stored timesteps
 
         Raises:
@@ -346,7 +346,7 @@ class TimeSeries:
         """
         Update stored_data and refresh active_data.
 
-        Parameters:
+        Args:
             value: New data to store
         """
         new_data = DataConverter.as_dataarray(value, timesteps=self.active_timesteps)
@@ -409,7 +409,7 @@ class TimeSeries:
         """
         Compare if this TimeSeries is greater than another.
 
-        Parameters:
+        Args:
             other: Another TimeSeries to compare with
 
         Returns:

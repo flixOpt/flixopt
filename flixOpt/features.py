@@ -388,20 +388,16 @@ class OnOffModel(Model):
         The minimum duration in the last time step is not restricted.
         Previous values before t=0 are not recognised!
 
-        Parameters:
-            variable_label (str):
-                Label for the duration variable to be created.
-            binary_variable (linopy.Variable):
-                Time-series binary variable (e.g., [0, 0, 1, 1, 1, 0, ...]) representing activity states.
-            minimum_duration (Optional[TimeSeries]):
-                Minimum duration the activity must remain active once started.
+        Args:
+            variable_name: Label for the duration variable to be created.
+            binary_variable: Time-series binary variable (e.g., [0, 0, 1, 1, 1, 0, ...]) representing activity states.
+            minimum_duration: Minimum duration the activity must remain active once started.
                 If None, no minimum duration constraint is applied.
-            maximum_duration (Optional[TimeSeries]):
-                Maximum duration the activity can remain active.
+            maximum_duration: Maximum duration the activity can remain active.
                 If None, the maximum duration is set to the total available time.
 
         Returns:
-            linopy.Variable: The created duration variable representing consecutive active durations.
+            The created duration variable representing consecutive active durations.
 
         Example:
             binary_variable: [0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, ...]
@@ -603,16 +599,11 @@ class OnOffModel(Model):
         """
         Computes the previous 'on' states {0, 1} of defining variables as a binary array from their previous values.
 
-        Parameters:
-        ----------
-        previous_values: List[NumericData]
-            List of previous values of the defining variables. In Range [0, inf] or None (ignored)
-        epsilon: float, optional
-            Tolerance for equality to determine "off" state, default is 1e-5.
+        Args:
+            previous_values: List of previous values of the defining variables. In Range [0, inf] or None (ignored)
+            epsilon: Tolerance for equality to determine "off" state, default is 1e-5.
 
         Returns:
-        -------
-        np.ndarray
             A binary array (0 and 1) indicating the previous on/off states of the variables.
             Returns `array([0])` if no previous values are available.
         """

@@ -154,10 +154,8 @@ class FlowSystem:
         This not meant to be reloaded and recreate the object,
         but rather used to document or compare the flow_system to others.
 
-        Parameters:
-        -----------
-        path: Union[str, pathlib.Path]
-            The path to the json file.
+        Args:
+            path: The path to the json file.
         """
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(self.as_dict('stats'), f, indent=4, ensure_ascii=False)

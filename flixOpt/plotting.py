@@ -620,27 +620,17 @@ def plot_network(
     """
     Visualizes the network structure of a FlowSystem using PyVis, using info-dictionaries.
 
-    Parameters:
-    - path (Union[bool, str, pathlib.Path], default='results/network.html'):
-      Path to save the HTML visualization.
-        - `False`: Visualization is created but not saved.
-        - `str` or `Path`: Specifies file path (default: 'results/network.html').
-
-    - controls (Union[bool, List[str]], default=True):
-      UI controls to add to the visualization.
-        - `True`: Enables all available controls.
-        - `List`: Specify controls, e.g., ['nodes', 'layout'].
-        - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
-        You can play with these and generate a Dictionary from it that can be applied to the network returned by this function.
-        network.set_options()
-        https://pyvis.readthedocs.io/en/latest/tutorial.html
-
-    - show (bool, default=True):
-      Whether to open the visualization in the web browser.
-      The calculation must be saved to show it. If no path is given, it defaults to 'network.html'.
-
+    Args:
+        path: Path to save the HTML visualization. `False`: Visualization is created but not saved. `str` or `Path`: Specifies file path (default: 'results/network.html').
+        controls: UI controls to add to the visualization. `True`: Enables all available controls. `List`: Specify controls, e.g., ['nodes', 'layout'].
+            Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
+            You can play with these and generate a Dictionary from it that can be applied to the network returned by this function.
+            network.set_options()
+            https://pyvis.readthedocs.io/en/latest/tutorial.html
+        show: Whether to open the visualization in the web browser.
+            The calculation must be saved to show it. If no path is given, it defaults to 'network.html'.
     Returns:
-    - Optional[pyvis.network.Network]: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
+        The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
 
     Usage:
     - Visualize and open the network with default options:
