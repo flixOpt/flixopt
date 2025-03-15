@@ -41,8 +41,6 @@ Every feature or bugfix should be merged into one of the 3 [release branches](#b
 At some point, `next/minor` or `next/major` will get merged into `main` using a regular **Merge**  (not squash).
 *This ensures that Features are kept separate, and the `next/...`branches stay in synch with ``main`.*
 
-**Remember to update the version in `pyproject.toml`**
-
 ## Releases
 As stated, we follow **Semantic Versioning**.
 Right after one of the 3 [release branches](#Branches) is merged into main, a **Tag** should be added to the merge commit and pushed to the main branch. The tag has the form `v1.2.3`.
