@@ -503,6 +503,11 @@ class StorageModel(ComponentModel):
             name = f'{self.label_full}|{name_short}'
 
             if utils.is_number(self.element.initial_charge_state):
+                if self.element.initial_charge_state > self.charge_state.upper.isel(time=0).values:
+                    raise Exception(f'{self.label_full}: initial_charge_state {self.element.initial_charge_state} is above allowed maximum charge_state {self.charge_state.upper.isel(time=0).values}')
+                if self.element.initial_charge_state < self.charge_state.lower.isel(time=0).values:
+                    raise Exception(f'{self.label_full}: initial_charge_state {self.element.initial_charge_state} is below allowed minimum charge_state {self.charge_state.lower.isel(time=0).values}')
+
                 self.add(self._model.add_constraints(
                     self.charge_state.isel(time=0) == self.element.initial_charge_state,
                     name=name),
