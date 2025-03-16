@@ -47,7 +47,9 @@ for path in sorted(src.rglob("*.py")):
 # Create an index file for the API reference
 with mkdocs_gen_files.open(f"{api_dir}/index.md", "w") as index_file:
     index_file.write("# API Reference\n\n")
-    index_file.write("This section contains the documentation for all modules and classes in flixOpt.\n")
+    index_file.write(
+        f"This section contains the documentation for all modules and classes in flixOpt.\n"
+        f"For more information on how to use the classes and functions, see the [Concepts & Math](../concepts-and-math/index.md) section.\n")
 
 with mkdocs_gen_files.open(f"{api_dir}/SUMMARY.md", "w") as nav_file:
     nav_file.writelines(nav.build_literate_nav())

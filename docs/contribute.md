@@ -34,7 +34,7 @@ Following the **Semantic Versioning** guidelines, we introduced:
 - `next/minor`: This is where all pull requests for the next minor release (1.x.0) go.  
 - `next/major`: This is where all pull requests for the next major release (x.0.0) go.
 
-- Everything else remains in `feature/...`-branches.
+Everything else remains in `feature/...`-branches.
 
 ## Pull requests
 Every feature or bugfix should be merged into one of the 3 [release branches](#branches), using **Squash and merge** or a regular **single commit**.
