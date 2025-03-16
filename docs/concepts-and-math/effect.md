@@ -1,1 +1,0 @@
-::: flixOpt.effects.Effect

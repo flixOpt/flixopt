@@ -1,1 +1,0 @@
-::: flixOpt.interface.OnOffParameters
