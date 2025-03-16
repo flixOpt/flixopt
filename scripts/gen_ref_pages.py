@@ -12,7 +12,7 @@ sys.path.insert(0, str(root))
 nav = mkdocs_gen_files.Nav()
 
 src = root / "flixOpt"
-api_dir = "auto_api"
+api_dir = "api-reference"
 
 for path in sorted(src.rglob("*.py")):
     module_path = path.relative_to(src).with_suffix("")
