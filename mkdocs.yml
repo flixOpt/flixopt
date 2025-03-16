@@ -94,7 +94,7 @@ plugins:
            docstring_section_style: table  # Renders parameter sections as a table (also: list, spacy)
 
            members_order: source  # Orders members as they appear in the source code
-           inherited_members: true  # Include members inherited from parent classes
+           inherited_members: false  # Include members inherited from parent classes
            show_if_no_docstring: false  # Documents objects even if they don't have docstrings
 
            group_by_category: true

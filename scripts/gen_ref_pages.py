@@ -38,7 +38,9 @@ for path in sorted(src.rglob("*.py")):
         with mkdocs_gen_files.open(full_doc_path, "w") as fd:
             # Use 'flixOpt.' prefix for all module references
             module_id = "flixOpt." + ".".join(parts)
-            fd.write(f"::: {module_id}")
+            fd.write(f"::: {module_id}\n"
+                     f"    options:\n"
+                     f"       inherited_members: true\n")
 
         mkdocs_gen_files.set_edit_path(full_doc_path, path.relative_to(root))
 
