@@ -75,11 +75,14 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.snippets:
+      base_path: ..
 
 
 plugins:
   - search  # Enables the search functionality in the documentation
   - table-reader  # Allows including tables from external files
+  - include-markdown
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py

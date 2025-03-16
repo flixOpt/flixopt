@@ -65,6 +65,7 @@ docs = [
     "mkdocs-section-index",
     "mkdocs-table-reader-plugin",
     "mkdocs-gen-files",
+    "mkdocs-include-markdown-plugin"
 ]
 
 [project.urls]
