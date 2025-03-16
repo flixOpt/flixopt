@@ -37,6 +37,8 @@ nav:
 
 
     - Calculation: api/calculation.md
+    - Results: api/results.md
+    - Plotting: api/plotting.md
     - Datatypes: api/datatypes.md
   - Display Math example: latex-example.md
   - Contribute: contribute.md

@@ -201,7 +201,7 @@ class AggregatedCalculation(FullCalculation):
         folder: Optional[pathlib.Path] = None
     ):
         """
-        Class for Optimizing the FLowSystem including:
+        Class for Optimizing the `FlowSystem` including:
             1. Aggregating TimeSeriesData via typical periods using tsam.
             2. Equalizing variables of typical periods.
         Args:

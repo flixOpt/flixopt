@@ -27,26 +27,19 @@ class CalculationResults:
     This class is used to collect the results of a Calculation.
     It is used to analyze the results and to visualize the results.
 
-    Attributes
-    ----------
-    model: linopy.Model
-        The linopy model that was used to solve the calculation.
-    components: Dict[str, ComponentResults]
-        A dictionary of ComponentResults for each component in the flow_system.
-    buses: Dict[str, BusResults]
-        A dictionary of BusResults for each bus in the flow_system.
-    effects: Dict[str, EffectResults]
-        A dictionary of EffectResults for each effect in the flow_system.
-    timesteps_extra: pd.DatetimeIndex
-        The extra timesteps of the flow_system.
-    hours_per_timestep: xr.DataArray
-        The duration of each timestep in hours.
-
-    Class Methods:
-        from_file(folder: Union[str, pathlib.Path], name: str)
-            Create CalculationResults directly from file.
-        from_calculation(calculation: Calculation)
-            Create CalculationResults directly from a Calculation.
+    Attributes:
+        model: linopy.Model
+            The linopy model that was used to solve the calculation.
+        components: Dict[str, ComponentResults]
+            A dictionary of ComponentResults for each component in the flow_system.
+        buses: Dict[str, BusResults]
+            A dictionary of BusResults for each bus in the flow_system.
+        effects: Dict[str, EffectResults]
+            A dictionary of EffectResults for each effect in the flow_system.
+        timesteps_extra: pd.DatetimeIndex
+            The extra timesteps of the flow_system.
+        hours_per_timestep: xr.DataArray
+            The duration of each timestep in hours.
     """
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
