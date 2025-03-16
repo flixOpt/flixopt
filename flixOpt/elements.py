@@ -164,14 +164,14 @@ class Flow(Element):
     The size $\text P$ of the **Flow** combined with a relative upper bound $\text p_{\text{rel}}^{\text{U}}(\text{t}_{i})$
     and lower bound $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i})$ limits the flow-rate per time step $p(\text{t}_{i})$.
 
-    $$
+    $$ \label{eq:flow_rate}
         \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i})
         \leq p(\text{t}_{i}) \leq
         \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i}) \tag{1}
     $$
 
     With $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) = 0$ and $\text p^{\text{U}}_{\text{rel}}(\text{t}_{i}) = 1$,
-    equation (1) simplifies to
+    equation \eqref{eq:flow_rate} simplifies to
 
     $$
         0 \leq p(\text{t}_{i}) \leq \text P
