@@ -2,9 +2,9 @@
 
 This guide will help you install flixOpt, understand its basic concepts, and run your first optimization model.
 
-## Installation
+# Installation
 
-### Basic Installation
+## Basic Installation
 
 Install flixOpt directly into your environment using pip:
 

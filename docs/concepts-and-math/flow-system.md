@@ -1,7 +1,5 @@
 ## Overview
 
-::: flixOpt.flow_system.FlowSystem
-
 ## Usage Examples
 
 ```python
