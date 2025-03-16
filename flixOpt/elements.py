@@ -159,8 +159,6 @@ class Connection:
 @register_class_for_io
 class Flow(Element):
     r"""
-    Flows are the inputs and outputs of [Component][flixOpt.elements.Component]
-     and connect them to [Busses][flixOpt.elements.Bus].
     A **Flow** moves energy (or material) between a [Bus][flixOpt.elements.Bus] and a [Component][flixOpt.elements.Component] in a predefined direction.
     The flow-rate $p(\text{t}_{i})$ is the main optimization variable of the **Flow**.
     The size $\text P$ of the **Flow** combined with a relative upper bound $\text p_{\text{rel}}^{\text{U}}(\text{t}_{i})$

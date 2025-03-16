@@ -14,6 +14,16 @@ The [`FlowSystem`][flixOpt.flow_system.FlowSystem] is the central organizing uni
 
 Every flixOpt model starts with creating a FlowSystem.
 
+### Timesteps
+Time steps are defined as a sequence of discrete time steps $\text{t}_i \in \mathcal{T} \text{for} \quad i \in \{1, 2, \dots, \text{n}\}$ (left-aligned in its timespan).
+From this sequence, the corresponding time intervals $\Delta \text{t}_i \in \Delta \mathcal{T}$ are derived as 
+
+$$\Delta \text{t}_i = \text{t}_{i+1} - \text{t}_i \quad \text{for} \quad i \in \{1, 2, \dots, \text{n}-1\}$$
+
+Non-equidistant time steps are supported. 
+The final time interval $\Delta \text{t}_\text n$ defaults to $\Delta \text{t}_\text n = \Delta \text{t}_{\text n-1}$, but is of course customizable.
+
+
 ### Buses
 
 [`Bus`][flixOpt.elements.Bus] objects represent nodes or connection points in your system. They:
@@ -73,25 +83,23 @@ flixOpt offers different calculation approaches:
 5.The solver finds the optimal solution
 6.You analyze the results with built-in or external tools
 
-## Mathematical Foundation
-
-Behind the scenes, flixOpt converts your Flow System into a mixed-integer linear programming (MILP) problem:
-This is done using the [linopy package](https://github.com/PyPSA/linopy).
-
-- Variables represent flow rates, storage levels, on/off states, etc.
-- Constraints ensure physical validity (energy balance, etc.)
-- The objective function represents the effect to be minimized (usually cost)
-
-The mathematical formulation is flexible and can incorporates:
-
-- Time-dependent parameters
-- Investment decisions
-- Binary decision variables (on/off decisions, piecewise linear relationships, ...)
-- Runtime or downtime constraints
-- and many more...
+## Advanced Usage
+flixOpt uses [linopy](https://github.com/PyPSA/linopy) to model the mathematical optimization problem.
+Any model created with flixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
+This allows to adjust your model to very specific requirements without loosing the convenience of flixOpt.
 
 
-### Architechture (outdated)
+## Mathematical Notation & Naming Conventions
+
+flixOpt uses the following naming conventions:
+
+- All optimization variables are denoted by italic letters (e.g., $x$, $y$, $z$)
+- All parameters and constants are denoted by non italic small letters (e.g., $\text{a}$, $\text{b}$, $\text{c}$)
+- The letter $i$ is used to denote an index (e.g., $i=1,\dots,\text n$)
+- All time steps are denoted by the letter $\text{t}$ (e.g., $\text{t}_0$, $\text{t}_1$, $\text{t}_i$)
+
+
+## Architechture (outdated)
 ![Architecture](../images/architecture_flixOpt.png)
 
 
