@@ -43,7 +43,7 @@ At some point, `next/minor` or `next/major` will get merged into `main` using a 
 
 ## Releases
 As stated, we follow **Semantic Versioning**.
-Right after one of the 3 [release branches](#Branches) is merged into main, a **Tag** should be added to the merge commit and pushed to the main branch. The tag has the form `v1.2.3`.
+Right after one of the 3 [release branches](#branches) is merged into main, a **Tag** should be added to the merge commit and pushed to the main branch. The tag has the form `v1.2.3`.
 With this tag,  a release with **Release Notes** must be created. 
 
 *This is our current best practice*

@@ -82,13 +82,6 @@ system.add_components(heat_pump)
 
 flixOpt transforms your energy system model into a mathematical optimization problem, solves it using state-of-the-art solvers, and returns the optimal operation strategy and investment decisions.
 
-## 📚 Documentation
-
-- [Getting Started](getting-started.md) - Installation and first steps
-- [Concepts](concepts/overview.md) - Core concepts and architecture
-- [Examples](examples/basic.md) - Usage examples
-- [API Reference](api/flow-system.md) - Full API documentation
-
 ## 🛠️ Compatible Solvers
 
 flixOpt works with various solvers:

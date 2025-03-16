@@ -92,7 +92,7 @@ class Interface:
         """ Transforms the data of the interface to match the FlowSystem's dimensions"""
         raise NotImplementedError('Every Interface needs a transform_data() method')
 
-    def infos(self, use_numpy=True, use_element_label=False) -> Dict:
+    def infos(self, use_numpy: bool =True, use_element_label: bool = False) -> Dict:
         """
         Generate a dictionary representation of the object's constructor arguments.
         Excludes default values and empty dictionaries and lists.
