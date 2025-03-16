@@ -64,6 +64,7 @@ docs = [
     "mkdocstrings-python",
     "mkdocs-section-index",
     "mkdocs-table-reader-plugin",
+    "mkdocs-gen-files",
 ]
 
 [project.urls]

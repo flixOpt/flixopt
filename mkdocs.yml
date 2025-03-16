@@ -9,41 +9,6 @@ repo_url: https://github.com/flixOpt/flixopt
 repo_name: flixOpt/flixopt
 
 
-nav:
-  - Home: index.md
-  - Getting Started: getting-started.md
-  - Concepts: concepts/overview.md
-  - Examples: examples.md
-  - API Reference:
-    - FlowSystem: api/flow-system.md
-    - Elements:
-      - Effect: api/effect.md
-      - Flow: api/flow.md
-      - Bus: api/bus.md
-      - Components:
-        - Component: api/components/component.md
-        - Storage: api/components/storage.md
-        - LinearConverter: api/components/linear-converter.md
-        - Transmission: api/components/transmission.md
-        - Source: api/components/source.md
-        - Sink: api/components/sink.md
-        - SourceAndSink: api/components/source-and-sink.md
-        - LinearConverter: api/components/linear-converter.md
-        - Subclasses of LinearConverter: api/components/linear-converters.md
-      - Interfaces:
-        - OnOffParameters: api/interfaces/on_off_parameters.md
-        - InvestParameters: api/interfaces/invest_parameters.md
-        - AggregationParameters: api/interfaces/aggregation_parameters.md
-
-
-    - Calculation: api/calculation.md
-    - Results: api/results.md
-    - Plotting: api/plotting.md
-    - Datatypes: api/datatypes.md
-  - Display Math example: latex-example.md
-  - Contribute: contribute.md
-
-
 theme:
   name: material
   palette:
@@ -111,9 +76,14 @@ markdown_extensions:
 
 
 plugins:
- - search  # Enables the search functionality in the documentation
- - table-reader  # Allows including tables from external files
- - mkdocstrings:  # Handles automatic API documentation generation
+  - search  # Enables the search functionality in the documentation
+  - table-reader  # Allows including tables from external files
+  - gen-files:
+      scripts:
+      - scripts/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:  # Handles automatic API documentation generation
      default_handler: python  # Sets Python as the default language
      handlers:
        python:  # Configuration for Python code documentation
@@ -138,6 +108,7 @@ plugins:
            show_category_heading: true  # Displays category headings (Methods, Attributes, etc.) for organization
            show_signature: true  # Shows method signatures with parameters
            show_signature_annotations: true  # Includes type annotations in the signatures when available
+           show_root_toc_entry: false  # Whether to show a link to the root of the documentation in the sidebar
            separate_signature: true  # Displays signatures separate from descriptions for cleaner layout
 
            extra:
