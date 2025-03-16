@@ -503,10 +503,7 @@ class StorageModel(ComponentModel):
             name = f'{self.label_full}|{name_short}'
 
             if utils.is_number(self.element.initial_charge_state):
-                if self.element.initial_charge_state > self.charge_state.upper.isel(time=0).values:
-                    raise Exception(f'{self.label_full}: initial_charge_state {self.element.initial_charge_state} is above allowed maximum charge_state {self.charge_state.upper.isel(time=0).values}')
-                if self.element.initial_charge_state < self.charge_state.lower.isel(time=0).values:
-                    raise Exception(f'{self.label_full}: initial_charge_state {self.element.initial_charge_state} is below allowed minimum charge_state {self.charge_state.lower.isel(time=0).values}')
+                self._check_initial_charge_state(self.element.initial_charge_state)
 
                 self.add(self._model.add_constraints(
                     self.charge_state.isel(time=0) == self.element.initial_charge_state,
@@ -549,6 +546,27 @@ class StorageModel(ComponentModel):
                 relative_lower_bound * self.element.capacity_in_flow_hours.minimum_size,
                 relative_upper_bound * self.element.capacity_in_flow_hours.maximum_size,
             )
+
+    def _check_initial_charge_state(self, initial_charge_state: Scalar):
+        """
+        Error handling for initial_charge_state,
+        avoiding non-solvable models for the given capacity (or range of capacity-size)
+        """
+        relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
+        if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+            initial_charge_state_ub = self.charge_state.upper.isel(time=0).values
+            initial_charge_state_lb = self.charge_state.lower.isel(time=0).values
+        else:
+            # initial_charge_state shall be in allowed range of charge_state(time=0) for any allowed capacity!
+            initial_charge_state_ub = relative_upper_bound.isel(time=0).values * self.element.capacity_in_flow_hours.minimum_size
+            initial_charge_state_lb = relative_lower_bound.isel(time=0).values * self.element.capacity_in_flow_hours.maximum_size
+
+        if initial_charge_state > initial_charge_state_ub:
+            raise Exception(
+                f'{self.label_full}: initial_charge_state {self.element.initial_charge_state} is above allowed maximum charge_state {initial_charge_state_ub}')
+        if initial_charge_state < initial_charge_state_lb:
+            raise Exception(
+                f'{self.label_full}: initial_charge_state {self.element.initial_charge_state} is below allowed minimum charge_state {initial_charge_state_lb}')
 
     @property
     def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
