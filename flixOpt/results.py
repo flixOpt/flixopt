@@ -13,6 +13,7 @@ import xarray as xr
 from . import plotting
 from .core import TimeSeriesCollection
 from .io import _results_structure
+from .results_explorer import explore_results
 
 if TYPE_CHECKING:
     from .calculation import Calculation, SegmentedCalculation
@@ -41,6 +42,9 @@ class CalculationResults:
         hours_per_timestep: xr.DataArray
             The duration of each timestep in hours.
     """
+
+    explore_results = explore_results
+
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
         """ Create CalculationResults directly from file"""
