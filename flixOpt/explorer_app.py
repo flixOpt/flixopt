@@ -100,15 +100,25 @@ def display_variables(variables_dict, prefix=""):
                             xlabel=f'timeframe [{timeframes}]',
                             ylabel=f'timesteps [{timesteps}]'
                         )
+                        fig.update_layout(
+                            margin=dict(l=50, r=100, t=50, b=50),  # Extra space for colorbar
+                            coloraxis_colorbar=dict(
+                                lenmode='fraction',
+                                len=0.8,
+                                title='Scale',
+                                tickvals=[0, 5, 10],  # Force ticks at min, mid, max
+                                ticktext=['0 (Min)', '5', '10 (Max)'],  # Custom labels
+                            ),  # Make colorbar bigger
+                        )
 
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, theme=None, use_container_width=True)
                     except Exception as e:
                         st.error(f"Error creating heatmap: {e}")
                 else:
                     # Regular time series plot
                     fig = get_plotly_fig(plotting.with_plotly, data=var_solution.to_dataframe(), mode='area', title=f'Variable: {var_name}')
                     fig.update_layout(height=300)
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, theme='streamlit', use_container_width=True)
 
                 show_datatable = st.checkbox('Show data table', key=f'{prefix}_datatable_{var_name}', value=False)
                 if show_datatable:
@@ -180,11 +190,12 @@ def explore_results_app(results):
         connections_data = []
 
         for comp_name, comp in results.components.items():
-            for bus_name in comp.inputs + comp.outputs:
+            for flow_name in comp.inputs + comp.outputs:
                 connections_data.append({
                     "Component": comp_name,
-                    "Bus": bus_name,
-                    "Type": "Input" if bus_name in comp.inputs else "Output"
+                    "Flow": flow_name,
+                    "Direction": "from" if flow_name in comp.inputs else "to",
+                    "Bus": '?'  #TODO
                 })
 
         if connections_data:
@@ -230,7 +241,7 @@ def explore_results_app(results):
                     else:
                         fig = get_plotly_fig(component.plot_flow_rates)
 
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, theme='streamlit', use_container_width=True)
 
                     # Also show as dataframe if requested
                     if st.checkbox("Show Data Table"):
@@ -270,7 +281,7 @@ def explore_results_app(results):
 
                     # Use built-in plotting method
                     fig = get_plotly_fig(bus.plot_flow_rates)
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, theme=None, use_container_width=True)
 
                     # Also show as dataframe if requested
                     if st.checkbox("Show Data Table"):
