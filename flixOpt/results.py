@@ -173,7 +173,7 @@ class CalculationResults:
         if save_model:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
-            self.model.to_netcdf(self.model, model_path)
+            self.model.to_netcdf(model_path)
 
         logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
 
