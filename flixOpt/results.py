@@ -65,18 +65,20 @@ class CalculationResults:
         """ Create CalculationResults directly from file"""
         folder = pathlib.Path(folder)
 
-        model_file = folder / f'{name}_model.nc'
-        if model_file.exists():
-            logger.info(f'loading the linopy model "{name}" from file ("{model_file}")')
-            model = linopy.read_netcdf(model_file)
+        model_path, solution_path, _, json_path = cls._get_paths(
+            folder= folder, name=name)
+
+        if model_path.exists():
+            logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
+            model = linopy.read_netcdf(model_path)
         else:
             model = None
 
-        solution_file = folder / f'{name}_solution.nc'
-        solution = xr.load_dataset(solution_file)
-        with open(folder / f'{name}.json', 'r', encoding='utf-8') as f:
+        solution = xr.load_dataset(solution_path)
+        with open(json_path, 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
-        return cls(solution=solution,name=name, folder=folder, model=model, **meta_data)
+
+        return cls(solution=solution, name=name, folder=folder, model=model, **meta_data)
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
@@ -146,19 +148,15 @@ class CalculationResults:
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
-        name = self.name if name is None else name
-        path = folder / name
-
-        model_path = folder / f'{name}_model.nc'
-        solution_path = folder / f'{name}_solution.nc'
-        infos_path = folder / f'{name}_infos.yaml'
+        model_path, solution_path, infos_path, json_path = self._get_paths(
+            folder= folder, name= self.name if name is None else name)
 
         self.solution.to_netcdf(solution_path)
 
         with open(infos_path, 'w', encoding='utf-8') as f:
             yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4)
 
-        with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
+        with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(self._get_meta_data(), f, indent=4, ensure_ascii=False)
 
         if save_model:
@@ -166,7 +164,7 @@ class CalculationResults:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             self.model.to_netcdf(self.model, model_path)
 
-        logger.info(f'Saved calculation results "{name}" to {path}')
+        logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
 
     def _get_meta_data(self) -> Dict:
         return {
@@ -176,7 +174,7 @@ class CalculationResults:
         }
 
     def plot_heatmap(self,
-                     variable: str,
+                     variable_name: str,
                      heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
                      heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
                      color_map: str = 'portland',
@@ -184,8 +182,8 @@ class CalculationResults:
                      show: bool = True
                      ) -> plotly.graph_objs.Figure:
         return plot_heatmap(
-            dataarray=self.model.variables[variable].solution,
-            name=variable,
+            dataarray=self.solution[variable_name],
+            name=variable_name,
             folder=self.folder,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
@@ -193,17 +191,19 @@ class CalculationResults:
             save=save,
             show=show)
 
+    @staticmethod
+    def _get_paths(folder: pathlib.Path, name: str) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
+        model_path = folder / f'{name}_model.nc'
+        solution_path = folder / f'{name}_solution.nc'
+        infos_path = folder / f'{name}_infos.yaml'
+        json_path = folder/f'{name}_structure.json'
+        return model_path, solution_path, infos_path, json_path
+
     @property
     def storages(self) -> List['ComponentResults']:
         return [comp for comp in self.components.values() if comp.is_storage]
 
-    @property
-    def variables(self) -> linopy.Variables:
-        return self.model.variables
 
-    @property
-    def constraints(self) -> linopy.Constraints:
-        return self.model.constraints
 
 
 class _ElementResults:
@@ -224,13 +224,16 @@ class _ElementResults:
         self._variable_names = variables
         self._constraint_names = constraints
 
-        self.variables = self._calculation_results.model.variables[self._variable_names]
-        self.constraints = self._calculation_results.model.constraints[self._constraint_names]
+        self.solution = self._calculation_results.solution[self._variable_names]
 
-    @property
-    def variables_time(self):
-        return self.variables[[name for name in self._variable_names if 'time' in self.variables[name].dims]]
+        self._variable_names_time = [name for name in self._variable_names if 'time' in self.solution[name].dims]
 
+        if self._calculation_results.model is not None:
+            self.variables = self._calculation_results.model.variables[self._variable_names]
+            self.constraints = self._calculation_results.model.constraints[self._constraint_names]
+        else:
+            self.variables = None
+            self.constraints = None
 
 class _NodeResults(_ElementResults):
     @classmethod
@@ -271,9 +274,9 @@ class _NodeResults(_ElementResults):
                    negate_outputs: bool = False,
                    threshold: Optional[float] = 1e-5,
                    with_last_timestep: bool = False) -> xr.Dataset:
-        variables = [name for name in self.variables if name.endswith(('|flow_rate', '|excess_input', '|excess_output'))]
+        variable_names = [name for name in self._variable_names if name.endswith(('|flow_rate', '|excess_input', '|excess_output'))]
         return sanitize_dataset(
-            ds=self.variables[variables].solution,
+            ds=self.solution[variable_names],
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
             negate=(
@@ -293,17 +296,17 @@ class ComponentResults(_NodeResults):
 
     @property
     def is_storage(self) -> bool:
-        return self._charge_state in self.variables
+        return self._charge_state in self._variable_names
 
     @property
     def _charge_state(self) -> str:
         return f'{self.label}|charge_state'
 
     @property
-    def charge_state(self) -> linopy.Variable:
+    def charge_state(self) -> xr.DataArray:
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
-        return self.variables[self._charge_state]
+        return self.solution[self._charge_state]
 
     def plot_charge_state(self,
                           save: Union[bool, pathlib.Path] = False,
@@ -314,9 +317,9 @@ class ComponentResults(_NodeResults):
                                     mode='area',
                                     title=f'Operation Balance of {self.label}',
                                     show=False)
-        charge_state = self.charge_state.solution.to_dataframe()
+        charge_state = self.charge_state.to_dataframe()
         fig.add_trace(plotly.graph_objs.Scatter(
-            x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self.charge_state.name))
+            x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state))
 
         return plotly_save_and_show(
             fig,
@@ -331,9 +334,9 @@ class ComponentResults(_NodeResults):
                                     threshold: Optional[float] = 1e-5) -> xr.Dataset:
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
-        variables = self.inputs + self.outputs + [self._charge_state]
+        variable_names = self.inputs + self.outputs + [self._charge_state]
         return sanitize_dataset(
-            ds=self.variables[variables].solution,
+            ds=self.solution[variable_names],
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra,
             negate=(
@@ -349,7 +352,7 @@ class EffectResults(_ElementResults):
 
     def get_shares_from(self, element: str):
         """ Get the shares from an Element (without subelements) to the Effect"""
-        return self.variables[[name for name in self._variable_names if name.startswith(f'{element}->')]]
+        return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
 
 
 class SegmentedCalculationResults:
@@ -399,17 +402,17 @@ class SegmentedCalculationResults:
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
 
-    def solution_without_overlap(self, variable: str) -> xr.DataArray:
+    def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Returns the solution of a variable without overlap"""
-        dataarrays = [result.model.variables[variable].solution.isel(time=slice(None, self.timesteps_per_segment))
+        dataarrays = [result.solution[variable_name].isel(time=slice(None, self.timesteps_per_segment))
                       for result in self.segment_results[:-1]
-                      ] + [self.segment_results[-1].model.variables[variable].solution]
+                      ] + [self.segment_results[-1].solution[variable_name]]
         return xr.concat(dataarrays, dim='time')
 
 
     def plot_heatmap(
         self,
-        variable: str,
+        variable_name: str,
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
@@ -417,8 +420,8 @@ class SegmentedCalculationResults:
         show: bool = True
     ) -> plotly.graph_objs.Figure:
         return plot_heatmap(
-            dataarray=self.solution_without_overlap(variable),
-            name=variable,
+            dataarray=self.solution_without_overlap(variable_name),
+            name=variable_name,
             folder=self.folder,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
