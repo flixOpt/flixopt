@@ -39,8 +39,8 @@ def test_flow_system_file_io(flow_system, highs_solver):
                                 'objective of loaded flow_system doesnt match the original')
 
     assert_almost_equal_numeric(
-        calculation_0.results.model.variables['costs|total'].solution.values,
-        calculation_1.results.model.variables['costs|total'].solution.values,
+        calculation_0.results.solution['costs|total'].values,
+        calculation_1.results.solution['costs|total'].values,
         'costs doesnt match expected value',
     )
 

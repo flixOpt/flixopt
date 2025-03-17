@@ -214,7 +214,9 @@ class CalculationResults:
     def storages(self) -> List['ComponentResults']:
         return [comp for comp in self.components.values() if comp.is_storage]
 
-
+    @property
+    def objective(self) -> float:
+        return self.infos['Main Results']['Objective']
 
 
 class _ElementResults:
@@ -239,12 +241,15 @@ class _ElementResults:
 
         self._variable_names_time = [name for name in self._variable_names if 'time' in self.solution[name].dims]
 
+        self.solution_time = self._calculation_results.solution[self._variable_names_time]
+
         if self._calculation_results.model is not None:
             self.variables = self._calculation_results.model.variables[self._variable_names]
             self.constraints = self._calculation_results.model.constraints[self._constraint_names]
         else:
             self.variables = None
             self.constraints = None
+
 
 class _NodeResults(_ElementResults):
     @classmethod
@@ -440,7 +445,7 @@ class SegmentedCalculationResults:
             save=save,
             show=show)
 
-    def to_file(self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, *args, **kwargs):
+    def to_file(self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None):
         """Save the results to a file"""
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
