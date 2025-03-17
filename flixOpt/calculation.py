@@ -166,8 +166,8 @@ class FullCalculation(Calculation):
 
     def save_results(self,
                      save_flow_system: bool = True,
-                     save_model: bool = False,
-                     compression: int = 0):
+                     compression: int = 5,
+                     save_linopy_model: bool = False):
         """
         Saves the results of the calculation to a folder with the name of the calculation.
         The folder is created if it does not exist.
@@ -183,12 +183,12 @@ class FullCalculation(Calculation):
         compression : int, optional
             Compression level for the netCDF file, by default 0 wich leads to no compression.
             Currently, only the Flow System file can be compressed.
-        save_model:
+        save_linopy_model:
             Wether to save the model to file. If False, the model is not saved.
             The model file size is rougly 100 times larger than the solution file.
         """
         t_start = timeit.default_timer()
-        self.results.to_file(self.folder, self.name, save_model=save_model)
+        self.results.to_file(self.folder, self.name, save_linopy_model=save_linopy_model)
         if save_flow_system:
             self.flow_system.to_netcdf(self.folder / f'{self.name}_flowsystem.nc', compression)
         self.durations['saving'] = round(timeit.default_timer() - t_start, 2)

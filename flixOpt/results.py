@@ -133,14 +133,14 @@ class CalculationResults:
     def to_file(self,
                 folder: Optional[Union[str, pathlib.Path]] = None,
                 name: Optional[str] = None,
-                save_model: bool = False,
-                compression: int = 5):
+                compression: int = 5,
+                save_linopy_model: bool = False,):
         """
         Save the results to a file
         Args:
             folder: The folder where the results should be saved.
             name: The name of the results file.
-            save_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
+            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
                 The model file size is rougly 100 times larger than the solution file.
             compression: The compression level to use when saving the solution file.
         """
@@ -170,7 +170,7 @@ class CalculationResults:
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(self._get_meta_data(), f, indent=4, ensure_ascii=False)
 
-        if save_model:
+        if save_linopy_model:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             self.model.to_netcdf(model_path)
