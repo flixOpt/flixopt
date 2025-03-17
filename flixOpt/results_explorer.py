@@ -21,11 +21,6 @@ def explore_results(self, port=8501):
     Returns:
         subprocess.Popen: The running Streamlit process
     """
-    import subprocess
-    import sys
-    import webbrowser
-    import os
-    from pathlib import Path
 
     # Find explorer app path
     current_dir = os.path.dirname(os.path.abspath(__file__))
