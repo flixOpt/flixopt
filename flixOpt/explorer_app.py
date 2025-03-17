@@ -163,7 +163,7 @@ elif selected_page == "Components":
             st.info("This is a storage component")
 
         # Component tabs
-        tabs = st.tabs(["Node Balance", "Variables & Constraints"])
+        tabs = st.tabs(["Node Balance", "All Variables"])
 
         # Node Balance tab
         with tabs[0]:
@@ -186,29 +186,92 @@ elif selected_page == "Components":
                         flow_rates = component.flow_rates().to_dataframe()
                     st.dataframe(flow_rates)
             except Exception as e:
-                st.error(f"Error displaying the ndoe balance: {e}")
+                st.error(f"Error displaying the node balance: {e}")
 
         # Variables tab
         with tabs[1]:
-            st.subheader("Variables")
-            for var_name in component._variables:
-                with st.expander(f"Variable: {var_name}"):
-                    try:
-                        var = component.variables[var_name]
-                        var_solution = var.solution
+            st.title("Model Variables")
 
-                        # Check if this is a time-based variable
-                        if 'time' in var_solution.dims:
-                            # Plot time series
+            # Add a filter option
+            variable_filter = st.text_input("Filter variables by name:")
+
+            # Get all variables and apply filter
+            all_variables = list(component.variables)
+
+            if variable_filter:
+                filtered_variables = [v for v in all_variables if variable_filter.lower() in v.lower()]
+            else:
+                filtered_variables = all_variables
+
+            # Heatmap options in a single row
+            show_heatmap_col, heatmap_col1, heatmap_col2, heatmap_col3 = st.columns(4)
+            with show_heatmap_col:
+                show_heatmap = st.checkbox('Show as heatmap', value=False)
+            with heatmap_col1:
+                timeframes = st.selectbox(
+                    'Timeframes',
+                    ['YS', 'MS', 'W', 'D', 'h', '15min', 'min'],
+                    index=3,  # Default to "D"
+                )
+            with heatmap_col2:
+                timesteps = st.selectbox(
+                    'Timesteps',
+                    ['W', 'D', 'h', '15min', 'min'],
+                    index=2,  # Default to "h"
+                )
+            with heatmap_col3:
+                color_map = st.selectbox(
+                    'Colormap',
+                    ['portland', 'viridis', 'plasma', 'inferno', 'magma', 'cividis', 'RdBu', 'Blues', 'YlOrRd'],
+                    index=0,
+                )
+
+            st.write(f"Showing {len(filtered_variables)} of {len(all_variables)} variables")
+
+            # Display all filtered variables directly
+            for var_name in filtered_variables:
+                try:
+                    var = component.variables[var_name]
+                    var_solution = var.solution
+
+                    # Check if this is a time-based variable
+                    if 'time' in var_solution.dims:
+                        if show_heatmap:
+                            try:
+                                # Create heatmap using var_solution
+                                heatmap_data = plotting.heat_map_data_from_df(
+                                    var_solution.to_dataframe(var_name),
+                                    timeframes,
+                                    timesteps,
+                                    'ffill'
+                                )
+
+                                fig = plotting.heat_map_plotly(
+                                    heatmap_data,
+                                    title=var_name,
+                                    color_map=color_map,
+                                    xlabel=f'timeframe [{timeframes}]',
+                                    ylabel=f'timesteps [{timesteps}]'
+                                )
+
+                                st.plotly_chart(fig, use_container_width=True)
+                            except Exception as e:
+                                st.error(f"Error creating heatmap: {e}")
+                        else:
+                            # Regular time series plot
                             fig = get_plotly_fig(plotting.with_plotly, data=var_solution.to_dataframe(), mode='area', title=f'Variable: {var_name}')
                             fig.update_layout(height=300)
-
                             st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            # Show scalar value
-                            st.write(f"Value: {var_solution.values}")
-                    except Exception as e:
-                        st.error(f"Error displaying variable {var_name}: {e}")
+
+                        show_datatable = st.checkbox(f'Show data table', key=f'datatable_{var_name}', value=False)
+                        if show_datatable:
+                            st.dataframe(var_solution.to_dataframe())
+
+                    else:
+                        # Show scalar value
+                        st.write(f"{var_name}: {var_solution.values}")
+                except Exception as e:
+                    st.error(f"Error displaying variable {var_name}: {e}")
 
 # Buses page
 elif selected_page == "Buses":
@@ -279,25 +342,74 @@ elif selected_page == "Effects":
 
                         # Check if this is a time-based variable
                         if 'time' in var_solution.dims:
-                            # Plot time series
-                            df = var_solution.to_dataframe()
+                            # Plot as heatmap toggle
+                            show_heatmap = st.checkbox("Show as heatmap", key=f"heatmap_{var_name}", value=False)
 
-                            fig = go.Figure()
-                            fig.add_trace(go.Scatter(
-                                x=df.index,
-                                y=df[var_name],
-                                mode='lines',
-                                name=var_name
-                            ))
+                            if show_heatmap:
+                                # Heatmap options in a single row
+                                heatmap_col1, heatmap_col2, heatmap_col3 = st.columns(3)
+                                with heatmap_col1:
+                                    timeframes = st.selectbox(
+                                        "Timeframes",
+                                        ["YS", "MS", "W", "D", "h", "15min", "min"],
+                                        index=3,  # Default to "D"
+                                        key=f"timeframes_{var_name}"
+                                    )
+                                with heatmap_col2:
+                                    timesteps = st.selectbox(
+                                        "Timesteps",
+                                        ["W", "D", "h", "15min", "min"],
+                                        index=2,  # Default to "h"
+                                        key=f"timesteps_{var_name}"
+                                    )
+                                with heatmap_col3:
+                                    color_map = st.selectbox(
+                                        "Colormap",
+                                        ["portland", "viridis", "plasma", "inferno", "magma", "cividis", "RdBu", "Blues", "YlOrRd"],
+                                        index=0,
+                                        key=f"colormap_{var_name}"
+                                    )
 
-                            fig.update_layout(
-                                title=f"{var_name} Time Series",
-                                xaxis_title="Time",
-                                yaxis_title="Value",
-                                height=300
-                            )
+                                try:
+                                    # Create heatmap using var_solution
+                                    heatmap_data = plotting.heat_map_data_from_df(
+                                        var_solution.to_dataframe(var_name),
+                                        timeframes,
+                                        timesteps,
+                                        'ffill'
+                                    )
 
-                            st.plotly_chart(fig, use_container_width=True)
+                                    fig = plotting.heat_map_plotly(
+                                        heatmap_data,
+                                        title=var_name,
+                                        color_map=color_map,
+                                        xlabel=f'timeframe [{timeframes}]',
+                                        ylabel=f'timesteps [{timesteps}]'
+                                    )
+
+                                    st.plotly_chart(fig, use_container_width=True)
+                                except Exception as e:
+                                    st.error(f"Error creating heatmap: {e}")
+                            else:
+                                # Regular time series plot
+                                df = var_solution.to_dataframe()
+
+                                fig = go.Figure()
+                                fig.add_trace(go.Scatter(
+                                    x=df.index,
+                                    y=df[var_name],
+                                    mode='lines',
+                                    name=var_name
+                                ))
+
+                                fig.update_layout(
+                                    title=f"{var_name} Time Series",
+                                    xaxis_title="Time",
+                                    yaxis_title="Value",
+                                    height=300
+                                )
+
+                                st.plotly_chart(fig, use_container_width=True)
                         else:
                             # Show scalar value
                             st.write(f"Value: {var_solution.values}")
@@ -390,19 +502,58 @@ elif selected_page == "Variables":
 
             # Visualization based on dimensionality
             if 'time' in var_solution.dims:
-                st.subheader("Time Series")
-                try:
-                    fig = get_plotly_fig(
-                        plotting.with_plotly,
-                        data=var_solution.to_dataframe(),
-                        mode='area',
-                        title=f'Variable: {variable_name}',
-                    )
-                    fig.update_layout(height=300)
+                # Plot as heatmap toggle
+                show_heatmap = st.checkbox("Show as heatmap", value=False)
 
-                    st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    st.error(f'Error displaying variable {variable_name}: {e}')
+                if show_heatmap:
+                    # Heatmap options in a single row
+                    heatmap_cols = st.columns(3)
+                    with heatmap_cols[0]:
+                        timeframes = st.selectbox(
+                            "Timeframes",
+                            ["YS", "MS", "W", "D", "h", "15min", "min"],
+                            index=3  # Default to "D"
+                        )
+                    with heatmap_cols[1]:
+                        timesteps = st.selectbox(
+                            "Timesteps",
+                            ["W", "D", "h", "15min", "min"],
+                            index=2  # Default to "h"
+                        )
+                    with heatmap_cols[2]:
+                        color_map = st.selectbox(
+                            "Colormap",
+                            ["portland", "viridis", "plasma", "inferno", "magma", "cividis", "RdBu", "Blues", "YlOrRd"],
+                            index=0
+                        )
+
+                    try:
+                        # Create heatmap using results.plot_heatmap
+                        fig = get_plotly_fig(
+                            results.plot_heatmap,
+                            variable=variable_name,
+                            heatmap_timeframes=timeframes,
+                            heatmap_timesteps_per_frame=timesteps,
+                            color_map=color_map
+                        )
+
+                        st.plotly_chart(fig, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Error creating heatmap: {e}")
+                else:
+                    # Regular time series plot
+                    try:
+                        fig = get_plotly_fig(
+                            plotting.with_plotly,
+                            data=var_solution.to_dataframe(),
+                            mode='area',
+                            title=f'Variable: {variable_name}',
+                        )
+                        fig.update_layout(height=300)
+
+                        st.plotly_chart(fig, use_container_width=True)
+                    except Exception as e:
+                        st.error(f'Error displaying variable {variable_name}: {e}')
 
                 df = var_solution.to_dataframe()
 
@@ -433,26 +584,27 @@ elif selected_page == "Heatmaps":
     variable_name = st.selectbox("Select a variable:", time_vars)
 
     if variable_name:
-        # Configure heatmap settings
+        # Configure heatmap settings in one row
         st.subheader("Heatmap Settings")
 
-        col1, col2, col3 = st.columns(3)
+        # All options in a single row
+        cols = st.columns(3)
 
-        with col1:
+        with cols[0]:
             timeframes = st.selectbox(
                 "Timeframe grouping:",
                 ["YS", "MS", "W", "D", "h", "15min", "min"],
-                index=3  # Default to "W"
+                index=3  # Default to "D"
             )
 
-        with col2:
+        with cols[1]:
             timesteps = st.selectbox(
                 "Timesteps per frame:",
                 ["W", "D", "h", "15min", "min"],
                 index=2  # Default to "h"
             )
 
-        with col3:
+        with cols[2]:
             color_map = st.selectbox(
                 "Color map:",
                 ["portland", "viridis", "plasma", "inferno", "magma", "cividis", "RdBu", "Blues", "YlOrRd"],
