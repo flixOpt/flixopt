@@ -141,69 +141,6 @@ def display_variables(variables_dict, prefix=""):
         except Exception as e:
             st.error(f"Error displaying variable {var_name}: {e}")
 
-# Reusable function to display effect shares
-def display_effect_shares(effect):
-    """
-    Display shares for an effect
-
-    Args:
-        effect: The effect to display shares for
-    """
-    # List shares
-    connected_elements = set()
-    for var_name in effect._variables:
-        if '->' in var_name:
-            elem = var_name.split('->')[0]
-            connected_elements.add(elem)
-
-    if connected_elements:
-        st.subheader("Element Shares")
-
-        for elem in sorted(connected_elements):
-            st.markdown(f"### Shares from {elem}")
-            try:
-                shares = effect.get_shares_from(elem)
-
-                # Plot shares if time-based
-                time_shares = [s for s in shares if 'time' in shares[s].solution.dims]
-
-                if time_shares:
-                    df = pd.DataFrame()
-                    for share_name in time_shares:
-                        share_df = shares[share_name].solution.to_dataframe()
-                        df[share_name] = share_df[share_name]
-
-                    fig = go.Figure()
-                    for col in df.columns:
-                        fig.add_trace(go.Scatter(
-                            x=df.index,
-                            y=df[col],
-                            mode='lines',
-                            name=col
-                        ))
-
-                    fig.update_layout(
-                        title=f"Shares from {elem}",
-                        xaxis_title="Time",
-                        yaxis_title="Share",
-                        height=400
-                    )
-
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    # Display as simple table
-                    share_data = []
-                    for share_name in shares:
-                        share_data.append({
-                            "Share": share_name,
-                            "Value": float(shares[share_name].solution.values.flatten()[0])
-                        })
-
-                    if share_data:
-                        st.table(pd.DataFrame(share_data))
-            except Exception as e:
-                st.error(f"Error displaying shares from {elem}: {e}")
-
 # Cache the calculation loading
 @st.cache_resource
 def get_calculation_results(folder, name):
@@ -406,90 +343,9 @@ elif selected_page == "Effects":
 
     # Effect selector
     effect_names = list(results.effects.keys())
+    effect_name = st.selectbox("Select an effect:", sorted(effect_names), index=0)
+    effect = results.effects[effect_name]
 
-    if effect_names:
-        effect_name = st.selectbox("Select an effect:", sorted(effect_names))
+    st.header(f"Effect: {effect_name}")
 
-        if effect_name:
-            effect = results.effects[effect_name]
-
-            st.header(f"Effect: {effect_name}")
-
-            # Effect tabs
-            tabs = st.tabs(["Variables", "Element Shares"])
-
-            # Variables tab
-            with tabs[0]:
-                # Use the reusable function
-                display_variables(effect.variables, prefix=f"effect_{effect_name}")
-
-            # Shares tab
-            with tabs[1]:
-                # Use the reusable function
-                display_effect_shares(effect)
-    else:
-        st.info("No effects available in this calculation.")
-
-# Variables page
-elif selected_page == "Variables":
-    st.title("Model Variables")
-
-    # Use the reusable function for model variables
-    display_variables(results.model.variables, prefix="model")
-
-# Heatmaps page
-elif selected_page == "Heatmaps":
-    st.title("Heatmap Generator")
-
-    # Get time-based variables
-    time_vars = [var_name for var_name, var in results.model.variables.items()
-                 if 'time' in var.solution.dims]
-
-    # Variable selection
-    variable_name = st.selectbox("Select a variable:", time_vars)
-
-    if variable_name:
-        # Configure heatmap settings in one row
-        st.subheader("Heatmap Settings")
-
-        # All options in a single row
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            timeframes = st.selectbox(
-                "Timeframe grouping:",
-                ["YS", "MS", "W", "D", "h", "15min", "min"],
-                index=3  # Default to "D"
-            )
-
-        with col2:
-            timesteps = st.selectbox(
-                "Timesteps per frame:",
-                ["W", "D", "h", "15min", "min"],
-                index=2  # Default to "h"
-            )
-
-        with col3:
-            color_map = st.selectbox(
-                "Color map:",
-                ["portland", "viridis", "plasma", "inferno", "magma", "cividis", "RdBu", "Blues", "YlOrRd"],
-                index=0
-            )
-
-        # Generate button
-        if st.button("Generate Heatmap"):
-            try:
-                st.subheader(f"Heatmap for {variable_name}")
-
-                # Use the built-in heatmap function
-                fig = get_plotly_fig(
-                    results.plot_heatmap,
-                    variable=variable_name,
-                    heatmap_timeframes=timeframes,
-                    heatmap_timesteps_per_frame=timesteps,
-                    color_map=color_map
-                )
-
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.error(f"Error generating heatmap: {e}")
+    display_variables(effect.variables, prefix=f"effect_{effect_name}")
