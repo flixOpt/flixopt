@@ -1,4 +1,5 @@
 import datetime
+import importlib.util
 import json
 import logging
 import pathlib
@@ -132,7 +133,8 @@ class CalculationResults:
     def to_file(self,
                 folder: Optional[Union[str, pathlib.Path]] = None,
                 name: Optional[str] = None,
-                save_model: bool = False):
+                save_model: bool = False,
+                compression: int = 5):
         """
         Save the results to a file
         Args:
@@ -140,6 +142,7 @@ class CalculationResults:
             name: The name of the results file.
             save_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
                 The model file size is rougly 100 times larger than the solution file.
+            compression: The compression level to use when saving the solution file.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         if not folder.exists():
@@ -151,7 +154,14 @@ class CalculationResults:
         model_path, solution_path, infos_path, json_path = self._get_paths(
             folder= folder, name= self.name if name is None else name)
 
-        self.solution.to_netcdf(solution_path)
+        encoding = None
+        if compression:
+            if importlib.util.find_spec('netCDF4') is None:
+                logger.warning('Saved results without compression due to missing dependency "netcdf4". '
+                               'To use compression install with "pip install netcdf4"')
+            else:
+                encoding = {data_var: {"zlib": True, "complevel": 5} for data_var in self.solution.data_vars}
+        self.solution.to_netcdf(solution_path, encoding=encoding)
 
         with open(infos_path, 'w', encoding='utf-8') as f:
             yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4)
