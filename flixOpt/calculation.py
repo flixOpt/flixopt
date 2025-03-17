@@ -164,7 +164,10 @@ class FullCalculation(Calculation):
 
         self.results = CalculationResults.from_calculation(self)
 
-    def save_results(self, save_flow_system: bool = False, compression: int = 0):
+    def save_results(self,
+                     save_flow_system: bool = True,
+                     save_model: bool = False,
+                     compression: int = 0):
         """
         Saves the results of the calculation to a folder with the name of the calculation.
         The folder is created if it does not exist.
@@ -180,11 +183,12 @@ class FullCalculation(Calculation):
         compression : int, optional
             Compression level for the netCDF file, by default 0 wich leads to no compression.
             Currently, only the Flow System file can be compressed.
+        save_model:
+            Wether to save the model to file. If False, the model is not saved.
+            The model file size is rougly 100 times larger than the solution file.
         """
         t_start = timeit.default_timer()
-        with open(self.folder / f'{self.name}_infos.yaml', 'w', encoding='utf-8') as f:
-            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4)
-        self.results.to_file(self.folder, self.name)
+        self.results.to_file(self.folder, self.name, save_model=save_model)
         if save_flow_system:
             self.flow_system.to_netcdf(self.folder / f'{self.name}_flowsystem.nc', compression)
         self.durations['saving'] = round(timeit.default_timer() - t_start, 2)

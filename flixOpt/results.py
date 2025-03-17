@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import plotly
 import xarray as xr
+import yaml
 
 from . import plotting
 from .core import TimeSeriesCollection
@@ -63,36 +64,47 @@ class CalculationResults:
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
         """ Create CalculationResults directly from file"""
         folder = pathlib.Path(folder)
-        path = folder / name
-        nc_file = path.with_suffix('.nc')
-        logger.info(f'loading calculation "{name}" from file ("{nc_file}")')
-        model = linopy.read_netcdf(nc_file)
-        with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
+
+        model_file = folder / f'{name}_model.nc'
+        if model_file.exists():
+            logger.info(f'loading the linopy model "{name}" from file ("{model_file}")')
+            model = linopy.read_netcdf(model_file)
+        else:
+            model = None
+
+        solution_file = folder / f'{name}_solution.nc'
+        solution = xr.load_dataset(solution_file)
+        with open(folder / f'{name}.json', 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
-        return cls(model=model, name=name, folder= folder, **meta_data)
+        return cls(solution=solution,name=name, folder=folder, model=model, **meta_data)
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
         """Create CalculationResults directly from a Calculation"""
         return cls(model=calculation.model,
+                   solution=calculation.model.solution,
                    results_structure=_results_structure(calculation.flow_system),
                    infos=calculation.infos,
                    network_infos=calculation.flow_system.network_infos(),
                    name=calculation.name,
                    folder=calculation.folder)
 
-    def __init__(self,
-                 model: linopy.Model,
-                 results_structure: Dict[str, Dict[str, Dict]],
-                 name: str,
-                 infos: Dict,
-                 network_infos: Dict,
-                 folder: Optional[pathlib.Path] = None):
-        self.model = model
+    def __init__(
+        self,
+        solution: xr.Dataset,
+        results_structure: Dict[str, Dict[str, Dict]],
+        name: str,
+        infos: Dict,
+        network_infos: Dict,
+        folder: Optional[pathlib.Path] = None,
+        model: Optional[linopy.Model] = None,
+    ):
+        self.solution = solution
         self._results_structure = results_structure
         self.infos = infos
         self.network_infos = network_infos
         self.name = name
+        self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {label: ComponentResults.from_json(self, infos)
                            for label, infos in results_structure['Components'].items()}
@@ -115,20 +127,45 @@ class CalculationResults:
             return self.effects[key]
         raise KeyError(f'No element with label {key} found.')
 
-    def to_file(self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, *args, **kwargs):
-        """Save the results to a file"""
+    def to_file(self,
+                folder: Optional[Union[str, pathlib.Path]] = None,
+                name: Optional[str] = None,
+                save_model: bool = False):
+        """
+        Save the results to a file
+        Args:
+            folder: The folder where the results should be saved.
+            name: The name of the results file.
+            save_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
+                The model file size is rougly 100 times larger than the solution file.
+        """
         folder = self.folder if folder is None else pathlib.Path(folder)
-        name = self.name if name is None else name
-        path = folder / name
         if not folder.exists():
             try:
                 folder.mkdir(parents=False)
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
-        self.model.to_netcdf(path.with_suffix('.nc'), *args, **kwargs)
+        name = self.name if name is None else name
+        path = folder / name
+
+        model_path = folder / f'{name}_model.nc'
+        solution_path = folder / f'{name}_solution.nc'
+        infos_path = folder / f'{name}_infos.yaml'
+
+        self.solution.to_netcdf(solution_path)
+
+        with open(infos_path, 'w', encoding='utf-8') as f:
+            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4)
+
         with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(self._get_meta_data(), f, indent=4, ensure_ascii=False)
+
+        if save_model:
+            if self.model is None:
+                logger.critical('No model in the CalculationResults. Saving the model is not possible.')
+            self.model.to_netcdf(self.model, model_path)
+
         logger.info(f'Saved calculation results "{name}" to {path}')
 
     def _get_meta_data(self) -> Dict:
