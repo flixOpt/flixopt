@@ -43,7 +43,7 @@ class CalculationResults:
             The duration of each timestep in hours.
     """
 
-    explore_results = explore_results
+    launch_dashboard = explore_results
 
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):

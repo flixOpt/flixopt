@@ -52,6 +52,8 @@ def explore_results(self, port=8501):
         self.name,
     ]
 
+    self.to_file() # Save results to file. This is needed to be able to launch the app from the file. # TODO
+
     # Launch the Streamlit app
     process = subprocess.Popen(cmd)
 

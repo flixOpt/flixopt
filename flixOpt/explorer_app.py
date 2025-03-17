@@ -120,6 +120,7 @@ def display_variables(variables_dict, prefix=""):
         except Exception as e:
             st.error(f"Error displaying variable {var_name}: {e}")
 
+
 def explore_results_app(results):
     """
     Main function to explore calculation results
