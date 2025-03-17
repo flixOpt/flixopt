@@ -2,17 +2,6 @@
 
 flixOpt is built around a set of core concepts that work together to represent and optimize energy and material flow systems. This page provides a high-level overview of these concepts and how they interact.
 
-## Mathematical Notation & Naming Conventions
-
-flixOpt uses the following naming conventions:
-
-- All optimization variables are denoted by italic letters (e.g., $x$, $y$, $z$)
-- All parameters and constants are denoted by non italic small letters (e.g., $\text{a}$, $\text{b}$, $\text{c}$)
-- All Sets are denoted by greek capital letters (e.g., $\mathcal{F}$, $\mathcal{E}$)
-- All units of a set are denoted by greek small letters (e.g., $\mathcal{f}$, $\mathcal{e}$)
-- The letter $i$ is used to denote an index (e.g., $i=1,\dots,\text n$)
-- All time steps are denoted by the letter $\text{t}$ (e.g., $\text{t}_0$, $\text{t}_1$, $\text{t}_i$)
-
 ## Core Concepts
 
 ### FlowSystem
@@ -37,54 +26,18 @@ Non-equidistant time steps are also supported.
 
 [`Bus`][flixOpt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
 
-- Balance incoming and outgoing flows
+- Balance incoming and outgoing flows \eqref{eq:bus_balance}
 - Can represent physical networks like heat, electricity, or gas 
-- Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional)
-
-#### Mathematical Notation
-
-The balance equation for a bus is:
-
-$$ \label{eq:bus_balance}
-  \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_\text{in}}(\text{t}_i) =
-  \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
-$$
-
-Optionally, a Bus can have a `excess_penalty_per_flow_hour` parameter, which allows to penalize the balance for missing or excess flow-rates.
-This is usefull as it handles a possible ifeasiblity gently.
-
-This changes the balance to
-
-$$ \label{eq:bus_balance-excess}
-  \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_ \text{in}}(\text{t}_i) + \phi_\text{in}(\text{t}_i) =
-  \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i) + \phi_\text{out}(\text{t}_i)
-$$
-
-The penalty term is defined as
-
-$$ \label{eq:bus_penalty}
-  s_{b \rightarrow \Phi}(\text{t}_i) =
-      \text a_{b \rightarrow \Phi}(\text{t}_i) \cdot \Delta \text{t}_i
-      \cdot [ \phi_\text{in}(\text{t}_i) + \phi_\text{out}(\text{t}_i) ]
-$$
-
-With:
-
-- $\mathcal{F}_\text{in}$ and $\mathcal{F}_\text{out}$ being the set of all incoming and outgoing flows
-- $p_{f_\text{in}}(\text{t}_i)$ and $p_{f_\text{out}}(\text{t}_i)$ being the flow-rate at time $\text{t}_i$ for flow $f_\text{in}$ and $f_\text{out}$, respectively
-- $\phi_\text{in}(\text{t}_i)$ and $\phi_\text{out}(\text{t}_i)$ being the missing or excess flow-rate at time $\text{t}_i$, respectively
-- $\text{t}_i$ being the time step
-- $s_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty term
-- $\text a_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty coefficient (`excess_penalty_per_flow_hour`)
-
+- Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional) \eqref{eq:bus_balance-excess}
 
 ### Flows
 
-[`Flow`][flixOpt.elements.Flow] objects represent the movement of energy or material between components and buses. They:
+[`Flow`][flixOpt.elements.Flow] objects represent the movement of energy or material between a [Bus](#buses) and a [Component](#components) in a predefined direction.
 
-- Have a size (fixed or part of an investment decision)
+- Have a `flow_rate`, which is the main optimization variable of a Flow
+- Have a `size` which defines how much energy or material can be moved (fixed or part of an investment decision)
+- Have constraints to limit the flow-rate (min/max, total flow hours, on/off etc.)
 - Can have fixed profiles (for demands or renewable generation)
-- Can have constraints (min/max, total flow hours, etc.)
 - Can have [Effects](#effects) associated by their use (operation, investment, on/off, ...)
 
 ### Components
@@ -133,6 +86,7 @@ flixOpt offers different calculation approaches:
 flixOpt uses [linopy](https://github.com/PyPSA/linopy) to model the mathematical optimization problem.
 Any model created with flixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
 This allows to adjust your model to very specific requirements without loosing the convenience of flixOpt.
+
 
 
 ## Architechture (outdated)

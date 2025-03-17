@@ -160,33 +160,7 @@ class Connection:
 class Flow(Element):
     r"""
     A **Flow** moves energy (or material) between a [Bus][flixOpt.elements.Bus] and a [Component][flixOpt.elements.Component] in a predefined direction.
-    The flow-rate $p(\text{t}_{i})$ is the main optimization variable of the **Flow**.
-    The size $\text P$ of the **Flow** combined with a relative upper bound $\text p_{\text{rel}}^{\text{U}}(\text{t}_{i})$
-    and lower bound $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i})$ limits the flow-rate per time step $p(\text{t}_{i})$.
-
-    $$ \label{eq:flow_rate}
-        \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i})
-        \leq p(\text{t}_{i}) \leq
-        \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i}) \tag{1}
-    $$
-
-    With $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) = 0$ and $\text p^{\text{U}}_{\text{rel}}(\text{t}_{i}) = 1$,
-    equation \eqref{eq:flow_rate} simplifies to
-
-    $$
-        0 \leq p(\text{t}_{i}) \leq \text P
-    $$
-
-    With $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) = \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$,
-    the flow-rate $p(\text{t}_{i})$ is fixed.
-
-    $$
-        p(\text{t}_{i}) = \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \cdot \text P
-    $$
-
-    This mathematical Formulation can be extended or changed when using [`OnOffParameters`][flixOpt.interface.OnOffParameters]
-    to define the On/Off state of the Flow, or [`InvestParameters`][flixOpt.interface.InvestParameters],
-    which changes the size of the Flow to be optimized.
+    The flow-rate is the main optimization variable of the **Flow**.
     """
 
     def __init__(
