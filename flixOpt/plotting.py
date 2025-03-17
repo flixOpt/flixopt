@@ -389,7 +389,7 @@ def heat_map_plotly(
             zmin=color_bar_min,
             zmax=color_bar_max,
             colorbar=dict(
-                title=dict(text='Color Bar Label', side='right'),
+                title=dict(text='Scale', side='right'),
                 orientation='h',
                 xref='container',
                 yref='container',

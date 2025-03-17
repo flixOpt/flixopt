@@ -114,4 +114,6 @@ if __name__ == '__main__':
     # Convert the results for the storage component to a dataframe and display
     df = calculation.results['Storage'].charge_state_and_flow_rates()
     print(df)
-    calculation.save_results(save_flow_system=True)
+
+    # Launch a dashboard to explore the results
+    calculation.results.launch_dashboard()
