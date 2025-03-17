@@ -47,16 +47,11 @@ class Calculation:
         folder: Optional[pathlib.Path] = None,
     ):
         """
-        Parameters
-        ----------
-        name : str
-            name of calculation
-        flow_system : FlowSystem
-            flow_system which should be calculated
-        active_timesteps : List[int] or None
-            list with indices, which should be used for calculation. If None, then all timesteps are used.
-        folder : pathlib.Path or None
-            folder where results should be saved. If None, then the current working directory is used.
+        Args:
+            name: name of calculation
+            flow_system: flow_system which should be calculated
+            active_timesteps: list with indices, which should be used for calculation. If None, then all timesteps are used.
+            folder: folder where results should be saved. If None, then the current working directory is used.
         """
         self.name = name
         self.flow_system = flow_system
@@ -173,13 +168,10 @@ class FullCalculation(Calculation):
         The calculation infos are saved as a .yaml file.
         Optionally, the flow_system is saved as a .nc file.
 
-        Parameters
-        ----------
-        save_flow_system : bool, optional
-            Whether to save the flow_system, by default False
-        compression : int, optional
-            Compression level for the netCDF file, by default 0 wich leads to no compression.
-            Currently, only the Flow System file can be compressed.
+        Args:
+            save_flow_system: Whether to save the flow_system, by default False
+            compression: Compression level for the netCDF file, by default 0 wich leads to no compression.
+                Currently, only the Flow System file can be compressed.
         """
         t_start = timeit.default_timer()
         with open(self.folder / f'{self.name}_infos.yaml', 'w', encoding='utf-8') as f:
@@ -211,25 +203,19 @@ class AggregatedCalculation(FullCalculation):
         folder: Optional[pathlib.Path] = None
     ):
         """
-        Class for Optimizing the FLowSystem including:
+        Class for Optimizing the `FlowSystem` including:
             1. Aggregating TimeSeriesData via typical periods using tsam.
             2. Equalizing variables of typical periods.
-        Parameters
-        ----------
-        name : str
-            name of calculation
-        flow_system : FlowSystem
-            flow_system which should be calculated
-        aggregation_parameters : AggregationParameters
-            Parameters for aggregation. See documentation of AggregationParameters class.
-        components_to_clusterize: List[Component] or None
-            List of Components to perform aggregation on. If None, then all components are aggregated.
-            This means, teh variables in the components are equalized to each other, according to the typical periods
-            computed in the DataAggregation
-        active_timesteps : pd.DatetimeIndex or None
-            list with indices, which should be used for calculation. If None, then all timesteps are used.
-        folder : pathlib.Path or None
-            folder where results should be saved. If None, then the current working directory is used.
+        Args:
+            name: name of calculation
+            flow_system: flow_system which should be calculated
+            aggregation_parameters: Parameters for aggregation. See documentation of AggregationParameters class.
+            components_to_clusterize: List of Components to perform aggregation on. If None, then all components are aggregated.
+                This means, teh variables in the components are equalized to each other, according to the typical periods
+                computed in the DataAggregation
+            active_timesteps: pd.DatetimeIndex or None
+                list with indices, which should be used for calculation. If None, then all timesteps are used.
+            folder: folder where results should be saved. If None, then the current working directory is used.
         """
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
@@ -296,7 +282,7 @@ class AggregatedCalculation(FullCalculation):
 class SegmentedCalculation(Calculation):
     def __init__(
         self,
-        name,
+        name: str,
         flow_system: FlowSystem,
         timesteps_per_segment: int,
         overlap_timesteps: int,
@@ -314,19 +300,13 @@ class SegmentedCalculation(Calculation):
         don't really work in this Calculation. Lower bounds to such SUMS can lead to weird results.
         This is NOT yet explicitly checked for...
 
-        Parameters
-        ----------
-        name : str
-            name of calculation
-        flow_system : FlowSystem
-            flow_system which should be calculated
-        timesteps_per_segment : int
-            The number of time_steps per individual segment (without the overlap)
-        overlap_timesteps : int
-            The number of time_steps that are added to each individual model. Used for better
-            results of storages)
-        folder : pathlib.Path or None
-            folder where results should be saved. If None, then the current working directory is used.
+        Args:
+            name: name of calculation
+            flow_system: flow_system which should be calculated
+            timesteps_per_segment: The number of time_steps per individual segment (without the overlap)
+            overlap_timesteps: The number of time_steps that are added to each individual model. Used for better
+                results of storages)
+            folder: folder where results should be saved. If None, then the current working directory is used.
         """
         super().__init__(name, flow_system, folder=folder)
         self.timesteps_per_segment = timesteps_per_segment

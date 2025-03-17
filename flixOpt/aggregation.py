@@ -52,8 +52,16 @@ class Aggregation:
         time_series_for_high_peaks: List[str] = None,
         time_series_for_low_peaks: List[str] = None,
     ):
+
         """
-        Write a docstring please
+        Args:
+            original_data: The original data to aggregate
+            hours_per_time_step: The duration of each timestep in hours.
+            hours_per_period: The duration of each period in hours.
+            nr_of_periods: The number of typical periods to use in the aggregation.
+            weights: The weights for aggregation. If None, all time series are equally weighted.
+            time_series_for_high_peaks: List of time series to use for explicitly selecting periods with high values.
+            time_series_for_low_peaks: List of time series to use for explicitly selecting periods with low values.
         """
         if not TSAM_AVAILABLE:
             raise ImportError("The 'tsam' package is required for clustering functionality. "
@@ -225,29 +233,20 @@ class AggregationParameters:
         """
         Initializes aggregation parameters for time series data
 
-        Parameters
-        ----------
-        hours_per_period : float
-            Duration of each period in hours.
-        nr_of_periods : int
-            Number of typical periods to use in the aggregation.
-        fix_storage_flows : bool
-            Whether to aggregate storage flows (load/unload); if other flows
-            are fixed, fixing storage flows is usually not required.
-        aggregate_data_and_fix_non_binary_vars : bool
-            Whether to aggregate all time series data, which allows to fix all time series variables (like flow_rate),
-            or only fix binary variables. If False non time_series data is changed!! If True, the mathematical Problem
-            is simplified even further.
-        percentage_of_period_freedom : float, optional
-            Specifies the maximum percentage (0–100) of binary values within each period
-            that can deviate as "free variables", chosen by the solver (default is 0).
-            This allows binary variables to be 'partly equated' between aggregated periods.
-        penalty_of_period_freedom : float, optional
-            The penalty associated with each "free variable"; defaults to 0. Added to Penalty
-        time_series_for_high_peaks : list of TimeSeriesData
-            List of time series to use for explicitly selecting periods with high values.
-        time_series_for_low_peaks : list of TimeSeriesData
-            List of time series to use for explicitly selecting periods with low values.
+        Args:
+            hours_per_period: Duration of each period in hours.
+            nr_of_periods: Number of typical periods to use in the aggregation.
+            fix_storage_flows: Whether to aggregate storage flows (load/unload); if other flows
+                are fixed, fixing storage flows is usually not required.
+            aggregate_data_and_fix_non_binary_vars: Whether to aggregate all time series data, which allows to fix all time series variables (like flow_rate),
+                or only fix binary variables. If False non time_series data is changed!! If True, the mathematical Problem
+                is simplified even further.
+            percentage_of_period_freedom: Specifies the maximum percentage (0–100) of binary values within each period
+                that can deviate as "free variables", chosen by the solver (default is 0).
+                This allows binary variables to be 'partly equated' between aggregated periods.
+            penalty_of_period_freedom: The penalty associated with each "free variable"; defaults to 0. Added to Penalty
+            time_series_for_high_peaks: List of TimeSeriesData to use for explicitly selecting periods with high values.
+            time_series_for_low_peaks: List of TimeSeriesData to use for explicitly selecting periods with low values.
         """
         self.hours_per_period = hours_per_period
         self.nr_of_periods = nr_of_periods

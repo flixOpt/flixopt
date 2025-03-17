@@ -35,47 +35,28 @@ def with_plotly(
     """
     Plot a DataFrame with Plotly, using either stacked bars or stepped lines.
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        A DataFrame containing the data to plot, where the index represents
-        time (e.g., hours), and each column represents a separate data series.
-    mode : {'bar', 'line'}, default='bar'
-        The plotting mode. Use 'bar' for stacked bar charts or 'line' for
-        stepped lines.
-    colors : List[str], str, default='viridis'
-        A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for
-        coloring the data series.
-    title: str
-        The title of the plot.
-    ylabel: str
-        The label for the y-axis.
-    fig : go.Figure, optional
-        A Plotly figure object to plot on. If not provided, a new figure
-        will be created.
-    show: bool
-        Wether to show the figure after creation. (This includes saving the figure)
-    save: bool
-        Wether to save the figure after creation (without showing)
-    path: Union[str, pathlib.Path]
-        Path to save the figure.
+    Args:
+        data: A DataFrame containing the data to plot, where the index represents time (e.g., hours), and each column represents a separate data series.
+        mode: The plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
+        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for coloring the data series.
+        title: The title of the plot.
+        ylabel: The label for the y-axis.
+        fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
+        show: Wether to show the figure after creation. (This includes saving the figure)
+        save: Wether to save the figure after creation (without showing)
+        path: Path to save the figure.
 
-    Returns
-    -------
-    go.Figure
+    Returns:
         A Plotly figure object containing the generated plot.
 
-    Notes
-    -----
-    - If `mode` is 'bar', bars are stacked for each data series.
-    - If `mode` is 'line', a stepped line is drawn for each data series.
-    - The legend is positioned below the plot for a cleaner layout when many
-      data series are present.
+    Notes:
+        - If `mode` is 'bar', bars are stacked for each data series.
+        - If `mode` is 'line', a stepped line is drawn for each data series.
+        - The legend is positioned below the plot for a cleaner layout when many data series are present.
 
-    Examples
-    --------
-    >>> fig = with_plotly(data, mode='bar', colorscale='plasma')
-    >>> fig.show()
+    Examples:
+        >>> fig = with_plotly(data, mode='bar', colorscale='plasma')
+        >>> fig.show()
     """
     assert mode in ['bar', 'line', 'area'], f"'mode' must be one of {['bar', 'line', 'area']}"
     if data.empty:
@@ -208,45 +189,28 @@ def with_matplotlib(
     """
     Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        A DataFrame containing the data to plot. The index should represent
-        time (e.g., hours), and each column represents a separate data series.
-    mode : {'bar', 'line'}, default='bar'
-        Plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
-    colors : List[str], str, default='viridis'
-        A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for
-        coloring the data series.
-    figsize: Tuple[int, int], optional
-        Specify the size of the figure
-    fig : plt.Figure, optional
-        A Matplotlib figure object to plot on. If not provided, a new figure
-        will be created.
-    ax : plt.Axes, optional
-        A Matplotlib axes object to plot on. If not provided, a new axes
-        will be created.
-    show: bool
-        Wether to show the figure after creation.
-    path: Union[str, pathlib.Path]
-        Path to save the figure to.
+    Args:
+        data: A DataFrame containing the data to plot. The index should represent time (e.g., hours), and each column represents a separate data series.
+        mode: Plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
+        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for coloring the data series.
+        figsize: Specify the size of the figure
+        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
+        ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
+        show: Wether to show the figure after creation.
+        path: Path to save the figure to.
 
-    Returns
-    -------
-    Tuple[plt.Figure, plt.Axes]
+    Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
 
-    Notes
-    -----
-    - If `mode` is 'bar', bars are stacked for both positive and negative values.
-      Negative values are stacked separately without extra labels in the legend.
-    - If `mode` is 'line', stepped lines are drawn for each data series.
-    - The legend is placed below the plot to accommodate multiple data series.
+    Notes:
+        - If `mode` is 'bar', bars are stacked for both positive and negative values.
+          Negative values are stacked separately without extra labels in the legend.
+        - If `mode` is 'line', stepped lines are drawn for each data series.
+        - The legend is placed below the plot to accommodate multiple data series.
 
-    Examples
-    --------
-    >>> fig, ax = with_matplotlib(data, mode='bar', colorscale='plasma')
-    >>> plt.show()
+    Examples:
+        >>> fig, ax = with_matplotlib(data, mode='bar', colorscale='plasma')
+        >>> plt.show()
     """
     assert mode in ['bar', 'line'], f"'mode' must be one of {['bar', 'line']} for matplotlib"
 
@@ -325,32 +289,23 @@ def heat_map_matplotlib(
     Plots a DataFrame as a heatmap using Matplotlib. The columns of the DataFrame will be displayed on the x-axis,
     the index will be displayed on the y-axis, and the values will represent the 'heat' intensity in the plot.
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        A DataFrame containing the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
-        The values in the DataFrame will be represented as colors in the heatmap.
-    color_map : str, optional
-        The colormap to use for the heatmap. Default is 'viridis'. Matplotlib supports various colormaps like 'plasma', 'inferno', 'cividis', etc.
-    figsize : tuple of float, optional
-        The size of the figure to create. Default is (12, 6), which results in a width of 12 inches and a height of 6 inches.
-    show: bool
-        Wether to show the figure after creation.
-    path: Union[str, pathlib.Path]
-        Path to save the figure to.
+    Args:
+        data: A DataFrame containing the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
+            The values in the DataFrame will be represented as colors in the heatmap.
+        color_map: The colormap to use for the heatmap. Default is 'viridis'. Matplotlib supports various colormaps like 'plasma', 'inferno', 'cividis', etc.
+        figsize: The size of the figure to create. Default is (12, 6), which results in a width of 12 inches and a height of 6 inches.
+        show: Wether to show the figure after creation.
+        path: Path to save the figure to.
 
-    Returns
-    -------
-    tuple of (plt.Figure, plt.Axes)
+    Returns:
         A tuple containing the Matplotlib `Figure` and `Axes` objects. The `Figure` contains the overall plot, while the `Axes` is the area
         where the heatmap is drawn. These can be used for further customization or saving the plot to a file.
 
-    Notes
-    -----
-    - The y-axis is flipped so that the first row of the DataFrame is displayed at the top of the plot.
-    - The color scale is normalized based on the minimum and maximum values in the DataFrame.
-    - The x-axis labels (periods) are placed at the top of the plot.
-    - The colorbar is added horizontally at the bottom of the plot, with a label.
+    Notes:
+        - The y-axis is flipped so that the first row of the DataFrame is displayed at the top of the plot.
+        - The color scale is normalized based on the minimum and maximum values in the DataFrame.
+        - The x-axis labels (periods) are placed at the top of the plot.
+        - The colorbar is added horizontally at the bottom of the plot, with a label.
     """
 
     # Get the min and max values for color normalization
@@ -404,33 +359,23 @@ def heat_map_plotly(
     Plots a DataFrame as a heatmap using Plotly. The columns of the DataFrame will be mapped to the x-axis,
     and the index will be displayed on the y-axis. The values in the DataFrame will represent the 'heat' in the plot.
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        A DataFrame with the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
-        The values in the DataFrame will be represented as colors in the heatmap.
-    color_map : str, optional
-        The color scale to use for the heatmap. Default is 'viridis'. Plotly supports various color scales like 'Cividis', 'Inferno', etc.
-    categorical_labels : bool, optional
-        If True, the x and y axes are treated as categorical data (i.e., the index and columns will not be interpreted as continuous data).
-        Default is True. If False, the axes are treated as continuous, which may be useful for time series or numeric data.
-    show: bool
-        Wether to show the figure after creation. (This includes saving the figure)
-    save: bool
-        Wether to save the figure after creation (without showing)
-    path: Union[str, pathlib.Path]
-        Path to save the figure.
+    Args:
+        data: A DataFrame with the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
+            The values in the DataFrame will be represented as colors in the heatmap.
+        color_map: The color scale to use for the heatmap. Default is 'viridis'. Plotly supports various color scales like 'Cividis', 'Inferno', etc.
+        categorical_labels: If True, the x and y axes are treated as categorical data (i.e., the index and columns will not be interpreted as continuous data).
+            Default is True. If False, the axes are treated as continuous, which may be useful for time series or numeric data.
+        show: Wether to show the figure after creation. (This includes saving the figure)
+        save: Wether to save the figure after creation (without showing)
+        path: Path to save the figure.
 
-    Returns
-    -------
-    go.Figure
+    Returns:
         A Plotly figure object containing the heatmap. This can be further customized and saved
         or displayed using `fig.show()`.
 
-    Notes
-    -----
-    The color bar is automatically scaled to the minimum and maximum values in the data.
-    The y-axis is reversed to display the first row at the top.
+    Notes:
+        The color bar is automatically scaled to the minimum and maximum values in the data.
+        The y-axis is reversed to display the first row at the top.
     """
 
     color_bar_min, color_bar_max = data.min().min(), data.max().max()  # Min and max values for color scaling
@@ -479,18 +424,12 @@ def reshape_to_2d(data_1d: np.ndarray, nr_of_steps_per_column: int) -> np.ndarra
     The reshaped array will have the number of rows corresponding to the steps per column
     (e.g., 24 hours per day) and columns representing time periods (e.g., days or months).
 
-    Parameters
-    ----------
-    data_1d : np.ndarray
-        A 1D numpy array with the data to reshape.
+    Args:
+        data_1d: A 1D numpy array with the data to reshape.
+        nr_of_steps_per_column: The number of steps (rows) per column in the resulting 2D array. For example,
+            this could be 24 (for hours) or 31 (for days in a month).
 
-    nr_of_steps_per_column : int
-        The number of steps (rows) per column in the resulting 2D array. For example,
-        this could be 24 (for hours) or 31 (for days in a month).
-
-    Returns
-    -------
-    np.ndarray
+    Returns:
         The reshaped 2D array. Each internal array corresponds to one column, with the specified number of steps.
         Each column might represents a time period (e.g., day, month, etc.).
     """
@@ -533,22 +472,15 @@ def heat_map_data_from_df(
     based on a specified sample rate.
     If a non-valid combination of periods and steps per period is used, falls back to numerical indices
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        A DataFrame with a DateTime index containing the data to reshape.
-    periods : str
-        The time interval of each period (columns of the heatmap),
-        such as 'YS' (year start), 'W' (weekly), 'D' (daily), 'h' (hourly) etc.
-    steps_per_period : str
-        The time interval within each period (rows in the heatmap),
-        such as 'YS' (year start), 'W' (weekly), 'D' (daily), 'h' (hourly) etc.
-    fill : str, optional
-        Method to fill missing values: 'ffill' for forward fill or 'bfill' for backward fill.
+    Args:
+        df: A DataFrame with a DateTime index containing the data to reshape.
+        periods: The time interval of each period (columns of the heatmap),
+            such as 'YS' (year start), 'W' (weekly), 'D' (daily), 'h' (hourly) etc.
+        steps_per_period: The time interval within each period (rows in the heatmap),
+            such as 'YS' (year start), 'W' (weekly), 'D' (daily), 'h' (hourly) etc.
+        fill: Method to fill missing values: 'ffill' for forward fill or 'bfill' for backward fill.
 
-    Returns
-    -------
-    pd.DataFrame
+    Returns:
         A DataFrame suitable for heatmap plotting, with rows representing steps within each period
         and columns representing each period.
     """
@@ -620,27 +552,17 @@ def plot_network(
     """
     Visualizes the network structure of a FlowSystem using PyVis, using info-dictionaries.
 
-    Parameters:
-    - path (Union[bool, str, pathlib.Path], default='results/network.html'):
-      Path to save the HTML visualization.
-        - `False`: Visualization is created but not saved.
-        - `str` or `Path`: Specifies file path (default: 'results/network.html').
-
-    - controls (Union[bool, List[str]], default=True):
-      UI controls to add to the visualization.
-        - `True`: Enables all available controls.
-        - `List`: Specify controls, e.g., ['nodes', 'layout'].
-        - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
-        You can play with these and generate a Dictionary from it that can be applied to the network returned by this function.
-        network.set_options()
-        https://pyvis.readthedocs.io/en/latest/tutorial.html
-
-    - show (bool, default=True):
-      Whether to open the visualization in the web browser.
-      The calculation must be saved to show it. If no path is given, it defaults to 'network.html'.
-
+    Args:
+        path: Path to save the HTML visualization. `False`: Visualization is created but not saved. `str` or `Path`: Specifies file path (default: 'results/network.html').
+        controls: UI controls to add to the visualization. `True`: Enables all available controls. `List`: Specify controls, e.g., ['nodes', 'layout'].
+            Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
+            You can play with these and generate a Dictionary from it that can be applied to the network returned by this function.
+            network.set_options()
+            https://pyvis.readthedocs.io/en/latest/tutorial.html
+        show: Whether to open the visualization in the web browser.
+            The calculation must be saved to show it. If no path is given, it defaults to 'network.html'.
     Returns:
-    - Optional[pyvis.network.Network]: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
+        The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
 
     Usage:
     - Visualize and open the network with default options:

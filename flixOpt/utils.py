@@ -34,16 +34,19 @@ def convert_dataarray(data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray',
     """
     Convert a DataArray to a different format.
 
-    Parameters
-    ----------
-    data : xr.DataArray
-        The data to convert.
-    mode : Literal['py', 'numpy', 'xarray', 'structure']
-        Whether to return the dataaray to
-        - python native types (for json)
-        - numpy array
-        - xarray.DataArray
-        - strings (for structure, storing variable names)
+    Args:
+        data: The DataArray to convert.
+        mode: The mode to convert to.
+            - 'py': Convert to python native types (for json)
+            - 'numpy': Convert to numpy array
+            - 'xarray': Convert to xarray.DataArray
+            - 'structure': Convert to strings (for structure, storing variable names)
+
+    Returns:
+        The converted data.
+
+    Raises:
+        ValueError: If the mode is unknown.
     """
     if mode == 'numpy':
         return data.values

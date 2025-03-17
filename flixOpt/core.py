@@ -16,9 +16,14 @@ import xarray as xr
 
 logger = logging.getLogger('flixOpt')
 
-Scalar = Union[int, float]  # Datatype
+Scalar = Union[int, float]
+"""A type representing a single number, either integer or float."""
+
 NumericData = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
+"""Represents any form of numeric data, from simple scalars to complex data structures."""
+
 NumericDataTS = Union[NumericData, 'TimeSeriesData']
+"""Represents either standard numeric data or TimeSeriesData."""
 
 
 class ConversionError(Exception):
@@ -93,19 +98,13 @@ class TimeSeriesData:
             --> this 3 series of same type share one weight, i.e. internally assigned each weight = 1/3
             (instead of standard weight = 1)
 
-        Parameters
-        ----------
-        data : Union[int, float, np.ndarray]
-            The timeseries data, which can be a scalar, array, or numpy array.
-        agg_group : str, optional
-            The group this TimeSeriesData is a part of. agg_weight is split between members of a group. Default is None.
-        agg_weight : float, optional
-            The weight for calculation_type 'aggregated', should be between 0 and 1. Default is None.
+        Args:
+            data: The timeseries data, which can be a scalar, array, or numpy array.
+            agg_group: The group this TimeSeriesData is a part of. agg_weight is split between members of a group. Default is None.
+            agg_weight: The weight for calculation_type 'aggregated', should be between 0 and 1. Default is None.
 
-        Raises
-        ------
-        Exception
-            If both agg_group and agg_weight are set, an exception is raised.
+        Raises:
+            Exception: If both agg_group and agg_weight are set, an exception is raised.
         """
         self.data = data
         self.agg_group = agg_group
@@ -153,7 +152,7 @@ class TimeSeries:
         """
         Initialize the TimeSeries from multiple data sources.
 
-        Parameters:
+        Args:
             data: The time series data
             name: The name of the TimeSeries
             timesteps: The timesteps of the TimeSeries
@@ -177,7 +176,7 @@ class TimeSeries:
         """
         Load a TimeSeries from a dictionary or json file.
 
-        Parameters:
+        Args:
             data: Dictionary containing TimeSeries data
             path: Path to a JSON file containing TimeSeries data
 
@@ -215,7 +214,7 @@ class TimeSeries:
         """
         Initialize a TimeSeries with a DataArray.
 
-        Parameters:
+        Args:
             data: The DataArray containing time series data
             name: The name of the TimeSeries
             aggregation_weight: The weight in aggregation calculations
@@ -259,7 +258,7 @@ class TimeSeries:
         """
         Save the TimeSeries to a dictionary or JSON file.
 
-        Parameters:
+        Args:
             path: Optional path to save JSON file
 
         Returns:
@@ -317,7 +316,7 @@ class TimeSeries:
         """
         Set active_timesteps and refresh active_data.
 
-        Parameters:
+        Args:
             timesteps: New timesteps to activate, or None to use all stored timesteps
 
         Raises:
@@ -347,7 +346,7 @@ class TimeSeries:
         """
         Update stored_data and refresh active_data.
 
-        Parameters:
+        Args:
             value: New data to store
         """
         new_data = DataConverter.as_dataarray(value, timesteps=self.active_timesteps)
@@ -410,7 +409,7 @@ class TimeSeries:
         """
         Compare if this TimeSeries is greater than another.
 
-        Parameters:
+        Args:
             other: Another TimeSeries to compare with
 
         Returns:
@@ -472,7 +471,16 @@ class TimeSeriesCollection:
             hours_of_last_timestep: Optional[float] = None,
             hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None
     ):
-        """Initialize with timesteps and optional duration settings."""
+
+        """
+        Args:
+            timesteps: The timesteps of the Collection.
+            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
+            hours_of_previous_timesteps: The duration of previous timesteps.
+                If None, the first time increment of time_series is used.
+                This is needed to calculate previous durations (for example consecutive_on_hours).
+                If you use an array, take care that its long enough to cover all previous values!
+        """
         # Prepare and validate timesteps
         self._validate_timesteps(timesteps)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
@@ -517,18 +525,13 @@ class TimeSeriesCollection:
         """
         Creates a TimeSeries from the given data and adds it to the collection.
 
-        Parameters
-        ----------
-        data: Union[int, float, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
+        Args:
+            data: The data to create the TimeSeries from.
+            name: The name of the TimeSeries.
+            needs_extra_timestep: Whether to create an additional timestep at the end of the timesteps.
             The data to create the TimeSeries from.
-        name: str
-            The name of the TimeSeries.
-        needs_extra_timestep: bool, optional
-            Whether to create an additional timestep at the end of the timesteps.
 
-        Returns
-        -------
-        TimeSeries
+        Returns:
             The created TimeSeries.
 
         """
@@ -579,11 +582,10 @@ class TimeSeriesCollection:
         Update active timesteps for the collection and all time series.
         If no arguments are provided, the active timesteps are reset.
 
-        Parameters
-        ----------
-        active_timesteps : Optional[pd.DatetimeIndex]
-            The active timesteps of the model.
-            If None, the all timesteps of the TimeSeriesCollection are taken."""
+        Args:
+            active_timesteps: The active timesteps of the model.
+                If None, the all timesteps of the TimeSeriesCollection are taken.
+        """
         if active_timesteps is None:
             return self.reset()
 
@@ -625,12 +627,9 @@ class TimeSeriesCollection:
         """
         Update time series with new data from a DataFrame.
 
-        Parameters
-        ----------
-        data : pd.DataFrame
-            DataFrame containing new data with timestamps as index
-        include_extra_timestep : bool, optional
-            Whether the provided data already includes the extra timestep, by default False
+        Args:
+            data: DataFrame containing new data with timestamps as index
+            include_extra_timestep: Whether the provided data already includes the extra timestep, by default False
         """
         if not isinstance(data, pd.DataFrame):
             raise TypeError(f"data must be a pandas DataFrame, got {type(data).__name__}")
@@ -673,16 +672,11 @@ class TimeSeriesCollection:
         """
         Convert collection to DataFrame with optional filtering and timestep control.
 
-        Parameters
-        ----------
-        filtered : Literal['all', 'constant', 'non_constant'], optional
-            Filter time series by variability, by default 'non_constant'
-        include_extra_timestep : bool, optional
-            Whether to include the extra timestep in the result, by default True
+        Args:
+            filtered: Filter time series by variability, by default 'non_constant'
+            include_extra_timestep: Whether to include the extra timestep in the result, by default True
 
-        Returns
-        -------
-        pd.DataFrame
+        Returns:
             DataFrame representation of the collection
         """
         include_constants = filtered != 'non_constant'
@@ -707,14 +701,10 @@ class TimeSeriesCollection:
         """
         Combine all time series into a single Dataset with all timesteps.
 
-        Parameters
-        ----------
-        include_constants : bool, optional
-            Whether to include time series with constant values, by default True
+        Args:
+            include_constants: Whether to include time series with constant values, by default True
 
-        Returns
-        -------
-        xr.Dataset
+        Returns:
             Dataset containing all selected time series with all timesteps
         """
         # Determine which series to include

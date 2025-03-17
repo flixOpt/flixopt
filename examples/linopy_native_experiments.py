@@ -16,15 +16,11 @@ class SystemModel(linopy.Model):
             periods: Optional[List[int]] = None,
     ):
         """
-        Parameters
-        ----------
-        timesteps : pd.DatetimeIndex
-            The timesteps of the model.
-        hours_of_last_step : Optional[float], optional
-            The duration of the last time step. Uses the last time interval if not specified
-        periods : Optional[List[int]], optional
-            The periods of the model. Every period has the same timesteps.
-            Usually years are used as periods.
+        Args:
+            timesteps: The timesteps of the model.
+            hours_of_last_step: The duration of the last time step. Uses the last time interval if not specified
+            periods: The periods of the model. Every period has the same timesteps.
+                Usually years are used as periods.
         """
         super().__init__(force_dim_names=True)
         self.timesteps = timesteps

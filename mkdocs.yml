@@ -1,0 +1,129 @@
+# Options:
+# https://mkdocstrings.github.io/python/usage/configuration/docstrings/
+# https://squidfunk.github.io/mkdocs-material/setup/
+
+site_name: flixOpt
+site_description: Energy and Material Flow Optimization Framework
+site_url: https://flixopt.github.io/flixopt/
+repo_url: https://github.com/flixOpt/flixopt
+repo_name: flixOpt/flixopt
+
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal  # Can be different from light mode
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  logo: images/flixopt-icon.svg
+  favicon: images/flixopt-icon.svg
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.action.edit
+    - content.action.view
+    - content.code.copy
+    - content.code.annotate
+    - content.tooltips
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - markdown_include.include:
+      base_path: docs
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - attr_list
+  - abbr
+  - md_in_html
+  - footnotes
+  - tables
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.snippets:
+      base_path: ..
+
+
+plugins:
+  - search  # Enables the search functionality in the documentation
+  - table-reader  # Allows including tables from external files
+  - include-markdown
+  - gen-files:
+      scripts:
+      - scripts/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+      implicit_index: true  # This makes index.md the default landing page
+  - mkdocstrings:  # Handles automatic API documentation generation
+     default_handler: python  # Sets Python as the default language
+     handlers:
+       python:  # Configuration for Python code documentation
+         options:
+           docstring_style: google  # Sets google as the docstring style
+           modernize_annotations: true  # Improves type annotations
+           merge_init_into_class: true  # Promotes constructor parameters to class-level documentation
+           docstring_section_style: table  # Renders parameter sections as a table (also: list, spacy)
+
+           members_order: source  # Orders members as they appear in the source code
+           inherited_members: false  # Include members inherited from parent classes
+           show_if_no_docstring: false  # Documents objects even if they don't have docstrings
+
+           group_by_category: true
+           heading_level: 1  # Sets the base heading level for documented objects
+           line_length: 80
+           filters: ["!^_", "^__init__$"]
+           show_root_heading: true  # whether the documented object's name should be displayed as a heading at the beginning of its documentation
+           show_source: false  # Shows the source code implementation from documentation
+           show_object_full_path: false  # Displays simple class names instead of full import paths
+           show_docstring_attributes: true  # Shows class attributes in the documentation
+           show_category_heading: true  # Displays category headings (Methods, Attributes, etc.) for organization
+           show_signature: true  # Shows method signatures with parameters
+           show_signature_annotations: true  # Includes type annotations in the signatures when available
+           show_root_toc_entry: false  # Whether to show a link to the root of the documentation in the sidebar
+           separate_signature: true  # Displays signatures separate from descriptions for cleaner layout
+
+           extra:
+             infer_type_annotations: true  # Uses Python type hints to supplement docstring information
+
+extra_javascript:
+  - javascripts/mathjax.js  # Custom MathJax 3 CDN Configuration
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js  #MathJax 3 CDN
+  - https://polyfill.io/v3/polyfill.min.js?features=es6  #Support for older browsers
+
+watch:
+  - flixOpt
