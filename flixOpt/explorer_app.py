@@ -11,6 +11,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from flixOpt import plotting
+
 # Parse command line arguments
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='FlixOpt Results Explorer')
@@ -161,126 +163,52 @@ elif selected_page == "Components":
             st.info("This is a storage component")
 
         # Component tabs
-        tabs = st.tabs(["Flow Rates", "Charge State (if storage)", "Variables & Constraints"])
+        tabs = st.tabs(["Node Balance", "Variables & Constraints"])
 
-        # Flow Rates tab
+        # Node Balance tab
         with tabs[0]:
             try:
-                st.subheader("Flow Rates")
+                st.subheader("Node Balance")
 
                 # Use built-in plotting method
-                fig = get_plotly_fig(component.plot_flow_rates)
+                if component.is_storage:
+                    fig = get_plotly_fig(component.plot_charge_state)
+                else:
+                    fig = get_plotly_fig(component.plot_flow_rates)
+
                 st.plotly_chart(fig, use_container_width=True)
 
                 # Also show as dataframe if requested
-                if st.checkbox("Show flow rates as table"):
-                    flow_rates = component.flow_rates(with_last_timestep=True).to_dataframe()
+                if st.checkbox("Show Data Table"):
+                    if component.is_storage:
+                        flow_rates = component.charge_state_and_flow_rates().to_dataframe()
+                    else:
+                        flow_rates = component.flow_rates().to_dataframe()
                     st.dataframe(flow_rates)
             except Exception as e:
-                st.error(f"Error displaying flow rates: {e}")
-
-        # Charge State tab
-        with tabs[1]:
-            if component.is_storage:
-                try:
-                    st.subheader("Charge State")
-
-                    # Use built-in charge state plotting method
-                    fig = get_plotly_fig(component.plot_charge_state)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # Show statistics
-                    st.subheader("Charge State Statistics")
-                    charge_state = component.charge_state.solution.to_dataframe()
-                    charge_vals = charge_state.values.flatten()
-
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Minimum", f"{charge_vals.min():.2f}")
-                    col2.metric("Maximum", f"{charge_vals.max():.2f}")
-                    col3.metric("Average", f"{charge_vals.mean():.2f}")
-                    col4.metric("Final", f"{charge_vals[-1]:.2f}")
-
-                    # Also show as dataframe if requested
-                    if st.checkbox("Show charge state as table"):
-                        st.dataframe(charge_state)
-                except Exception as e:
-                    st.error(f"Error displaying charge state: {e}")
-            else:
-                st.info(f"Component {component_name} is not a storage component.")
+                st.error(f"Error displaying the ndoe balance: {e}")
 
         # Variables tab
-        with tabs[2]:
-            col1, col2 = st.columns(2)
+        with tabs[1]:
+            st.subheader("Variables")
+            for var_name in component._variables:
+                with st.expander(f"Variable: {var_name}"):
+                    try:
+                        var = component.variables[var_name]
+                        var_solution = var.solution
 
-            with col1:
-                st.subheader("Variables")
-                for var_name in component._variables:
-                    with st.expander(f"Variable: {var_name}"):
-                        try:
-                            var = component.variables[var_name]
-                            var_solution = var.solution
+                        # Check if this is a time-based variable
+                        if 'time' in var_solution.dims:
+                            # Plot time series
+                            fig = get_plotly_fig(plotting.with_plotly, data=var_solution.to_dataframe(), mode='area', title=f'Variable: {var_name}')
+                            fig.update_layout(height=300)
 
-                            # Check if this is a time-based variable
-                            if 'time' in var_solution.dims:
-                                # Plot time series
-                                df = var_solution.to_dataframe()
-
-                                fig = go.Figure()
-                                fig.add_trace(go.Scatter(
-                                    x=df.index,
-                                    y=df[var_name],
-                                    mode='lines',
-                                    name=var_name
-                                ))
-
-                                fig.update_layout(
-                                    title=f"{var_name} Time Series",
-                                    xaxis_title="Time",
-                                    yaxis_title="Value",
-                                    height=300
-                                )
-
-                                st.plotly_chart(fig, use_container_width=True)
-                            else:
-                                # Show scalar value
-                                st.write(f"Value: {var_solution.values}")
-                        except Exception as e:
-                            st.error(f"Error displaying variable {var_name}: {e}")
-
-            with col2:
-                st.subheader("Constraints")
-                for constraint_name in component._constraints:
-                    with st.expander(f"Constraint: {constraint_name}"):
-                        try:
-                            constraint = component.constraints[constraint_name]
-                            st.write(f"Constraint type: {constraint.sense}")
-
-                            # If constraint has a time dimension, try to plot it
-                            if hasattr(constraint, 'dual'):
-                                dual = constraint.dual
-                                if hasattr(dual, 'dims') and 'time' in dual.dims:
-                                    df = dual.to_dataframe()
-
-                                    fig = go.Figure()
-                                    fig.add_trace(go.Scatter(
-                                        x=df.index,
-                                        y=df[constraint_name],
-                                        mode='lines',
-                                        name='Dual Value'
-                                    ))
-
-                                    fig.update_layout(
-                                        title=f"Dual Values for {constraint_name}",
-                                        xaxis_title="Time",
-                                        yaxis_title="Value",
-                                        height=300
-                                    )
-
-                                    st.plotly_chart(fig, use_container_width=True)
-                                else:
-                                    st.write(f"Dual value: {dual}")
-                        except Exception as e:
-                            st.error(f"Error displaying constraint {constraint_name}: {e}")
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            # Show scalar value
+                            st.write(f"Value: {var_solution.values}")
+                    except Exception as e:
+                        st.error(f"Error displaying variable {var_name}: {e}")
 
 # Buses page
 elif selected_page == "Buses":
@@ -295,58 +223,20 @@ elif selected_page == "Buses":
 
         st.header(f"Bus: {bus_name}")
 
-        # Show flow rates
+        # Show Node Balance
         try:
-            st.subheader("Flow Rates")
+            st.subheader("Node Balance")
 
             # Use built-in plotting method
             fig = get_plotly_fig(bus.plot_flow_rates)
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Calculate and show balance
-            st.subheader("Flow Balance")
-
-            flow_rates = bus.flow_rates(with_last_timestep=True).to_dataframe()
-            inputs = [col for col in flow_rates.columns if col in bus.inputs]
-            outputs = [col for col in flow_rates.columns if col in bus.outputs]
-
-            balance_df = pd.DataFrame(index=flow_rates.index)
-
-            if inputs:
-                balance_df['Total Input'] = flow_rates[inputs].sum(axis=1)
-            else:
-                balance_df['Total Input'] = 0
-
-            if outputs:
-                balance_df['Total Output'] = flow_rates[outputs].sum(axis=1)
-            else:
-                balance_df['Total Output'] = 0
-
-            balance_df['Net Flow'] = balance_df['Total Input'] + balance_df['Total Output']
-
-            fig = go.Figure()
-            for column in balance_df.columns:
-                fig.add_trace(go.Scatter(
-                    x=balance_df.index,
-                    y=balance_df[column],
-                    mode='lines',
-                    name=column
-                ))
-
-            fig.update_layout(
-                title=f"Flow Balance for {bus_name}",
-                xaxis_title="Time",
-                yaxis_title="Flow Rate",
-                height=400
-            )
-
+            df = bus.flow_rates().to_dataframe()
             st.plotly_chart(fig, use_container_width=True)
 
             # Also show as dataframe if requested
-            if st.checkbox("Show flow data as table"):
-                st.dataframe(flow_rates)
+            if st.checkbox("Show Data Table"):
+                st.dataframe(df)
         except Exception as e:
-            st.error(f"Error displaying flow rates: {e}")
+            st.error(f"Error displaying the node balance: {e}")
 
         # Show inputs and outputs
         col1, col2 = st.columns(2)
@@ -498,100 +388,36 @@ elif selected_page == "Variables":
 
             st.header(f"Variable: {variable_name}")
 
-            # Basic info
-            st.subheader("Information")
-            st.write(f"**Dimensions:** {', '.join(var_solution.dims)}")
-            st.write(f"**Shape:** {var_solution.shape}")
-
             # Visualization based on dimensionality
             if 'time' in var_solution.dims:
                 st.subheader("Time Series")
+                try:
+                    fig = get_plotly_fig(
+                        plotting.with_plotly,
+                        data=var_solution.to_dataframe(),
+                        mode='area',
+                        title=f'Variable: {variable_name}',
+                    )
+                    fig.update_layout(height=300)
+
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.error(f'Error displaying variable {variable_name}: {e}')
 
                 df = var_solution.to_dataframe()
 
-                # Simple case: just time dimension
-                if len(df.columns) == 1:
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=df.index,
-                        y=df[variable_name],
-                        mode='lines',
-                        name=variable_name
-                    ))
-
-                    fig.update_layout(
-                        title=f"{variable_name} Time Series",
-                        xaxis_title="Time",
-                        yaxis_title="Value",
-                        height=500
-                    )
-
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # Also show as dataframe if requested
-                    if st.checkbox("Show data as table"):
-                        st.dataframe(df)
-                else:
-                    # Multi-dimensional
-                    st.write("This variable has multiple dimensions. Choose visualization type:")
-
-                    viz_type = st.radio(
-                        "Visualization type:",
-                        ["Line chart (all dimensions)", "Heatmap", "Raw data table"]
-                    )
-
-                    if viz_type == "Line chart (all dimensions)":
-                        fig = go.Figure()
-
-                        # Limited to first 20 dimensions to avoid overloading
-                        columns_to_plot = list(df.columns)[:20]
-
-                        if len(df.columns) > 20:
-                            st.warning(f"Variable has {len(df.columns)} dimensions. Showing only first 20.")
-
-                        for column in columns_to_plot:
-                            fig.add_trace(go.Scatter(
-                                x=df.index,
-                                y=df[column],
-                                mode='lines',
-                                name=str(column)
-                            ))
-
-                        fig.update_layout(
-                            title=f"{variable_name} Time Series (Multiple Dimensions)",
-                            xaxis_title="Time",
-                            yaxis_title="Value",
-                            height=600
-                        )
-
-                        st.plotly_chart(fig, use_container_width=True)
-
-                    elif viz_type == "Heatmap":
-                        # Use the built-in heatmap function
-                        try:
-                            fig = get_plotly_fig(results.plot_heatmap, variable=variable_name)
-                            st.plotly_chart(fig, use_container_width=True)
-                        except Exception as e:
-                            st.error(f"Error creating heatmap with built-in function: {e}")
-
-                            # Fallback to basic heatmap
-                            try:
-                                st.write("Using basic heatmap visualization instead:")
-                                fig = px.imshow(
-                                    df.pivot_table(columns='time').T,
-                                    color_continuous_scale="Blues",
-                                    title=f"Heatmap for {variable_name}"
-                                )
-                                st.plotly_chart(fig, use_container_width=True)
-                            except Exception as e2:
-                                st.error(f"Error creating basic heatmap: {e2}")
-
-                    elif viz_type == "Raw data table":
-                        st.dataframe(df)
+                if st.checkbox("Show data as table"):
+                    st.dataframe(df)
             else:
                 # Non-time series data
                 st.subheader("Values")
-                st.write(var_solution.values)
+                st.write(var_solution.values.item())
+
+            # Basic info
+            st.subheader("Stats")
+            st.write(f"**Dimensions:** {', '.join(var_solution.dims)}")
+            st.write(f"**Shape:** {var_solution.shape}")
+
         except Exception as e:
             st.error(f"Error displaying variable {variable_name}: {e}")
 
@@ -616,7 +442,7 @@ elif selected_page == "Heatmaps":
             timeframes = st.selectbox(
                 "Timeframe grouping:",
                 ["YS", "MS", "W", "D", "h", "15min", "min"],
-                index=2  # Default to "W"
+                index=3  # Default to "W"
             )
 
         with col2:
