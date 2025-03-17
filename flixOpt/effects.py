@@ -126,8 +126,13 @@ class Effect(Element):
         )
 
     def create_model(self, model: SystemModel) -> 'EffectModel':
+        self._plausibility_checks()
         self.model = EffectModel(model, self)
         return self.model
+
+    def _plausibility_checks(self) -> None:
+        # TODO: Check for plausibility
+        pass
 
 
 class EffectModel(ElementModel):
