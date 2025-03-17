@@ -155,12 +155,13 @@ class CalculationResults:
             folder= folder, name= self.name if name is None else name)
 
         encoding = None
-        if compression:
-            if importlib.util.find_spec('netCDF4') is None:
-                logger.warning('Saved results without compression due to missing dependency "netcdf4". '
-                               'To use compression install with "pip install netcdf4"')
-            else:
+        if compression != 0:
+            if importlib.util.find_spec('netCDF4') is not None:
                 encoding = {data_var: {"zlib": True, "complevel": 5} for data_var in self.solution.data_vars}
+            else:
+                logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
+                               'Install netcdf4 via `pip install netcdf4`.')
+
         self.solution.to_netcdf(solution_path, encoding=encoding)
 
         with open(infos_path, 'w', encoding='utf-8') as f:

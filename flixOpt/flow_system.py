@@ -190,11 +190,18 @@ class FlowSystem:
         return ds
 
     def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
-        if compression != 0 and importlib.util.find_spec('netCDF4') is None:
-            raise ModuleNotFoundError('Encoding is only supported with netCDF4. Install netcdf4 via pip install netcdf4.')
         ds = self.as_dataset()
         ds.attrs = {'flow_system': json.dumps(ds.attrs)}
-        ds.to_netcdf(path, encoding=None if compression == 0 else {k: dict(zlib=True, complevel=compression).copy() for k in ds.data_vars})
+
+        encoding = None
+        if compression != 0:
+            if importlib.util.find_spec('netCDF4') is not None:
+                encoding = {data_var: {"zlib": True, "complevel": 5} for data_var in ds.data_vars}
+            else:
+                logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
+                               'Install netcdf4 via `pip install netcdf4`.')
+
+        ds.to_netcdf(path, encoding=encoding)
         logger.info(f'Saved FlowSystem to {path}')
 
     def plot_network(
