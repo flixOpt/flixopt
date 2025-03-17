@@ -149,7 +149,7 @@ class Storage(Component):
         capacity_in_flow_hours: Union[Scalar, InvestParameters],
         relative_minimum_charge_state: NumericData = 0,
         relative_maximum_charge_state: NumericData = 1,
-        initial_charge_state: Optional[Union[Scalar, Literal['lastValueOfSim']]] = 0,
+        initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
         minimal_final_charge_state: Optional[Scalar] = None,
         maximal_final_charge_state: Optional[Scalar] = None,
         eta_charge: NumericData = 1,
@@ -220,6 +220,7 @@ class Storage(Component):
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
 
     def create_model(self, model: SystemModel) -> 'StorageModel':
+        self._plausibility_checks()
         self.model = StorageModel(model, self)
         return self.model
 
@@ -238,6 +239,34 @@ class Storage(Component):
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
             self.capacity_in_flow_hours.transform_data(flow_system)
+
+    def _plausibility_checks(self) -> None:
+        """
+        Check for infeasible or uncommon combinations of parameters
+        """
+        if utils.is_number(self.initial_charge_state):
+            if isinstance(self.capacity_in_flow_hours, InvestParameters):
+                if self.capacity_in_flow_hours.fixed_size is None:
+                    maximum_capacity = self.capacity_in_flow_hours.maximum_size
+                    minimum_capacity = self.capacity_in_flow_hours.minimum_size
+                else:
+                    maximum_capacity = self.capacity_in_flow_hours.fixed_size
+                    minimum_capacity = self.capacity_in_flow_hours.fixed_size
+            else:
+                maximum_capacity = self.capacity_in_flow_hours
+                minimum_capacity = self.capacity_in_flow_hours
+
+            minimum_inital_capacity = minimum_capacity * self.relative_minimum_charge_state.isel(time=1)
+            maximum_inital_capacity = maximum_capacity * self.relative_maximum_charge_state.isel(time=1)
+
+            if self.initial_charge_state > maximum_inital_capacity:
+                raise ValueError(f'{self.label_full}: {self.initial_charge_state=} '
+                                 f'is above allowed maximum charge_state {maximum_inital_capacity}')
+            if self.initial_charge_state < minimum_inital_capacity:
+                raise ValueError(f'{self.label_full}: {self.initial_charge_state=} '
+                                 f'is below allowed minimum charge_state {minimum_inital_capacity}')
+        elif self.initial_charge_state != 'lastValueOfSim':
+            raise ValueError(f'{self.label_full}: {self.initial_charge_state=} has an invalid value')
 
 
 @register_class_for_io
@@ -322,6 +351,7 @@ class Transmission(Component):
                 )
 
     def create_model(self, model) -> 'TransmissionModel':
+        self._plausibility_checks()
         self.model = TransmissionModel(model, self)
         return self.model
 
@@ -503,8 +533,6 @@ class StorageModel(ComponentModel):
             name = f'{self.label_full}|{name_short}'
 
             if utils.is_number(self.element.initial_charge_state):
-                self._check_initial_charge_state(self.element.initial_charge_state)
-
                 self.add(self._model.add_constraints(
                     self.charge_state.isel(time=0) == self.element.initial_charge_state,
                     name=name),
@@ -546,27 +574,6 @@ class StorageModel(ComponentModel):
                 relative_lower_bound * self.element.capacity_in_flow_hours.minimum_size,
                 relative_upper_bound * self.element.capacity_in_flow_hours.maximum_size,
             )
-
-    def _check_initial_charge_state(self, initial_charge_state: Scalar):
-        """
-        Error handling for initial_charge_state,
-        avoiding non-solvable models for the given capacity (or range of capacity-size)
-        """
-        relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
-        if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            initial_charge_state_ub = self.charge_state.upper.isel(time=0).values
-            initial_charge_state_lb = self.charge_state.lower.isel(time=0).values
-        else:
-            # initial_charge_state shall be in allowed range of charge_state(time=0) for any allowed capacity!
-            initial_charge_state_ub = relative_upper_bound.isel(time=0).values * self.element.capacity_in_flow_hours.minimum_size
-            initial_charge_state_lb = relative_lower_bound.isel(time=0).values * self.element.capacity_in_flow_hours.maximum_size
-
-        if initial_charge_state > initial_charge_state_ub:
-            raise Exception(
-                f'{self.label_full}: initial_charge_state {self.element.initial_charge_state} is above allowed maximum charge_state {initial_charge_state_ub}')
-        if initial_charge_state < initial_charge_state_lb:
-            raise Exception(
-                f'{self.label_full}: initial_charge_state {self.element.initial_charge_state} is below allowed minimum charge_state {initial_charge_state_lb}')
 
     @property
     def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:

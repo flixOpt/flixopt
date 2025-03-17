@@ -62,6 +62,7 @@ class Component(Element):
         self.flows: Dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
     def create_model(self, model: SystemModel) -> 'ComponentModel':
+        self._plausibility_checks()
         self.model = ComponentModel(model, self)
         return self.model
 
@@ -74,6 +75,10 @@ class Component(Element):
         infos['inputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.inputs]
         infos['outputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.outputs]
         return infos
+
+    def _plausibility_checks(self) -> None:
+        # TODO: Check for plausibility
+        pass
 
 
 @register_class_for_io
@@ -104,6 +109,7 @@ class Bus(Element):
         self.outputs: List[Flow] = []
 
     def create_model(self, model: SystemModel) -> 'BusModel':
+        self._plausibility_checks()
         self.model = BusModel(model, self)
         return self.model
 
