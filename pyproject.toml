@@ -56,6 +56,15 @@ full = [
     "tsam >= 2.3.1",  # Used for time series aggregation
 ]
 
+docs = [
+    "mkdocs-material==9.*",
+    "mkdocstrings-python",
+    "mkdocs-section-index",
+    "mkdocs-table-reader-plugin",
+    "mkdocs-gen-files",
+    "mkdocs-include-markdown-plugin"
+]
+
 [project.urls]
 homepage = "https://tu-dresden.de/ing/maschinenwesen/iet/gewv/forschung/forschungsprojekte/flixopt"
 repository = "https://github.com/flixOpt/flixopt"
