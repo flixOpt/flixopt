@@ -1,5 +1,5 @@
 """
-This module contains the core functionality of the flixopt framework.
+This module contains the core functionality of the flixOpt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
@@ -11,7 +11,7 @@ import numpy as np
 
 from . import utils
 
-logger = logging.getLogger('flixopt')
+logger = logging.getLogger('flixOpt')
 
 Skalar = Union[int, float]  # Datatype
 Numeric = Union[int, float, np.ndarray]  # Datatype

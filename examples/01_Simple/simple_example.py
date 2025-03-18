@@ -1,11 +1,11 @@
 """
-THis script shows how to use the flixopt framework to model a simple energy system.
+THis script shows how to use the flixOpt framework to model a simple energy system.
 """
 
 import numpy as np
 from rich.pretty import pprint  # Used for pretty printing
 
-import flixopt as fx
+import flixOpt as fx
 
 if __name__ == '__main__':
     # --- Create Time Series Data ---

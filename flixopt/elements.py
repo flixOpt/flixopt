@@ -1,5 +1,5 @@
 """
-This module contains the basic elements of the flixopt framework.
+This module contains the basic elements of the flixOpt framework.
 """
 
 import logging
@@ -23,7 +23,7 @@ from .structure import (
     create_variable,
 )
 
-logger = logging.getLogger('flixopt')
+logger = logging.getLogger('flixOpt')
 
 
 class Component(Element):

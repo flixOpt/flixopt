@@ -1,5 +1,5 @@
 """
-This module contains the features of the flixopt framework.
+This module contains the features of the flixOpt framework.
 Features extend the functionality of Elements.
 """
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .elements import Flow
 
 
-logger = logging.getLogger('flixopt')
+logger = logging.getLogger('flixOpt')
 
 
 class InvestmentModel(ElementModel):

@@ -1,5 +1,5 @@
 """
-This module contains the core structure of the flixopt framework.
+This module contains the core structure of the flixOpt framework.
 These classes are not directly used by the end user, but are used by other modules.
 """
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .elements import BusModel, ComponentModel
     from .flow_system import FlowSystem
 
-logger = logging.getLogger('flixopt')
+logger = logging.getLogger('flixOpt')
 
 
 class SystemModel(MathModel):
@@ -68,7 +68,7 @@ class SystemModel(MathModel):
         Parameters
         ----------
         solver : Solver
-            An Instance of the class Solver. Choose from flixopt.solvers
+            An Instance of the class Solver. Choose from flixOpt.solvers
         excess_threshold : float, positive!
             threshold for excess: If sum(Excess)>excess_threshold a warning is raised, that an excess occurs
         """
@@ -181,7 +181,7 @@ class SystemModel(MathModel):
 
         invest_decisions = {'invested': {}, 'not invested': {}}
         main_results['Invest-Decisions'] = invest_decisions
-        from flixopt.features import InvestmentModel
+        from flixOpt.features import InvestmentModel
 
         for sub_model in self.sub_models:
             if isinstance(sub_model, InvestmentModel):
@@ -330,7 +330,7 @@ class Interface:
 
 
 class Element(Interface):
-    """Basic Element of flixopt"""
+    """Basic Element of flixOpt"""
 
     def __init__(self, label: str, meta_data: Dict = None):
         """

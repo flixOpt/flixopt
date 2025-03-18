@@ -15,10 +15,10 @@ Although flixOpt is in its early stages, it is fully functional and ready for ex
 ## 📦 Installation
 
 Install flixOpt directly into your environment using pip. Thanks to [HiGHS](https://github.com/ERGO-Code/HiGHS?tab=readme-ov-file), flixOpt can be used without further setup.
-`pip install git+https://github.com/flixOpt/flixopt.git`
+`pip install git+https://github.com/flixOpt/flixOpt.git`
 
 We recommend installing flixOpt with all dependencies, which enables interactive network visualizations by [pyvis](https://github.com/WestHealth/pyvis) and time series aggregation by [tsam](https://github.com/FZJ-IEK3-VSA/tsam).
-`pip install "flixopt[full] @ git+https://github.com/flixOpt/flixopt.git"`
+`pip install "flixOpt[full] @ git+https://github.com/flixOpt/flixOpt.git"`
 
 ---
 
