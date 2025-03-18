@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import flixOpt as fx
+import flixOpt as fx  #
 
 np.random.seed(45)
 

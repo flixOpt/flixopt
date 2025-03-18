@@ -88,6 +88,8 @@ select = ["E", "F", "W", "I", "B", "N"]  # Enable linting rules by category (e.g
 ignore = [  # Ignore specific rules
     "E501",  # Ignore line-length checks (use Black for formatting)
     "F401",  # Allow unused imports in some cases (use __all__)
+    "N813",  # Allow importing of flixOpt as fx (lowercase)
+    "N999",  # Allow module Name flixOpt
 ]
 extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any rules specified by `fixable`.
 
