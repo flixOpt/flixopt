@@ -1,5 +1,7 @@
 import datetime
 import json
+import re
+import yaml
 import logging
 import pathlib
 from typing import Dict, Literal, Union
@@ -55,6 +57,7 @@ def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
     else:
         return obj
 
+
 def insert_dataarray(obj, ds: xr.Dataset):
     """Recursively inserts TimeSeries objects into a dataset."""
     if isinstance(obj, dict):
@@ -83,3 +86,82 @@ def remove_none_and_empty(obj):
 
     else:
         return obj
+
+
+def save_to_yaml(data, output_file='formatted_output.yaml'):
+    """
+    Save dictionary data to YAML with proper multi-line string formatting.
+    Handles complex string patterns including backticks, special characters,
+    and various newline formats.
+
+    Args:
+        data (dict): Dictionary containing string data
+        output_file (str): Path to output YAML file
+    """
+    # Process strings to normalize all newlines and handle special patterns
+    processed_data = process_complex_strings(data)
+
+    # Define a custom representer for strings
+    def represent_str(dumper, data):
+        # Use literal block style (|) for any string with newlines
+        if '\n' in data:
+            return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+
+        # Use quoted style for strings with special characters to ensure proper parsing
+        elif any(char in data for char in ':`{}[]#,&*!|>%@'):
+            return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='"')
+
+        # Use plain style for simple strings
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+    # Add the string representer to SafeDumper
+    yaml.add_representer(str, represent_str, Dumper=yaml.SafeDumper)
+
+    # Write to file with settings that ensure proper formatting
+    with open(output_file, 'w', encoding='utf-8') as file:
+        yaml.dump(
+            processed_data,
+            file,
+            Dumper=yaml.SafeDumper,
+            sort_keys=False,  # Preserve dictionary order
+            default_flow_style=False,  # Use block style for mappings
+            width=float('inf'),  # Don't wrap long lines
+            allow_unicode=True,  # Support Unicode characters
+        )
+
+    print(f'Data saved to {output_file}')
+
+def process_complex_strings(data):
+    """
+    Process dictionary data recursively with comprehensive string normalization.
+    Handles various types of strings and special formatting.
+
+    Args:
+        data: The data to process (dict, list, str, or other)
+
+    Returns:
+        Processed data with normalized strings
+    """
+    if isinstance(data, dict):
+        return {k: process_complex_strings(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [process_complex_strings(item) for item in data]
+    elif isinstance(data, str):
+        # Step 1: Normalize line endings to \n
+        normalized = data.replace('\r\n', '\n').replace('\r', '\n')
+
+        # Step 2: Handle escaped newlines with robust regex
+        normalized = re.sub(r'(?<!\\)\\n', '\n', normalized)
+
+        # Step 3: Handle unnecessary double backslashes
+        normalized = re.sub(r'\\\\(n)', r'\\\1', normalized)
+
+        # Step 4: Ensure proper formatting of "[time: N]:\n---------"
+        normalized = re.sub(r'(\[time: \d+\]):\s*\\?n', r'\1:\n', normalized)
+
+        # Step 5: Ensure "Constraint `...`" patterns are properly formatted
+        normalized = re.sub(r'Constraint `([^`]+)`\\?n', r'Constraint `\1`\n', normalized)
+
+        return normalized
+    else:
+        return data

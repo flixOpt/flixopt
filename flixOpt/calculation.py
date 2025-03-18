@@ -164,35 +164,6 @@ class FullCalculation(Calculation):
 
         self.results = CalculationResults.from_calculation(self)
 
-    def save_results(self,
-                     save_flow_system: bool = True,
-                     compression: int = 5,
-                     save_linopy_model: bool = False):
-        """
-        Saves the results of the calculation to a folder with the name of the calculation.
-        The folder is created if it does not exist.
-
-        The CalculationResults are saved as a .nc and a .json file.
-        The calculation infos are saved as a .yaml file.
-        Optionally, the flow_system is saved as a .nc file.
-
-        Parameters
-        ----------
-        save_flow_system : bool, optional
-            Whether to save the flow_system, by default False
-        compression : int, optional
-            Compression level for the netCDF file, by default 0 wich leads to no compression.
-            Currently, only the Flow System file can be compressed.
-        save_linopy_model:
-            Wether to save the model to file. If False, the model is not saved.
-            The model file size is rougly 100 times larger than the solution file.
-        """
-        t_start = timeit.default_timer()
-        self.results.to_file(self.folder, self.name, save_linopy_model=save_linopy_model)
-        if save_flow_system:
-            self.flow_system.to_netcdf(self.folder / f'{self.name}_flowsystem.nc', compression)
-        self.durations['saving'] = round(timeit.default_timer() - t_start, 2)
-
     def _activate_time_series(self):
         self.flow_system.transform_data()
         self.flow_system.time_series_collection.activate_timesteps(

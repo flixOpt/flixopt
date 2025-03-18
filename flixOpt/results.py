@@ -134,15 +134,18 @@ class CalculationResults:
                 folder: Optional[Union[str, pathlib.Path]] = None,
                 name: Optional[str] = None,
                 compression: int = 5,
-                save_linopy_model: bool = False,):
+                save_linopy_model: bool = False,
+                document_model: bool = True,
+                ):
         """
         Save the results to a file
         Args:
-            folder: The folder where the results should be saved.
-            name: The name of the results file.
+            folder: The folder where the results should be saved. Defaults to the folder of the calculation.
+            name: The name of the results file. If not provided, Defaults to the name of the calculation.
+            compression: The compression level to use when saving the solution file.
+            document_model: Wether to document the mathematical formulations in the model.
             save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
                 The model file size is rougly 100 times larger than the solution file.
-            compression: The compression level to use when saving the solution file.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         if not folder.exists():
@@ -165,7 +168,7 @@ class CalculationResults:
         self.solution.to_netcdf(solution_path, encoding=encoding)
 
         with open(infos_path, 'w', encoding='utf-8') as f:
-            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4)
+            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
 
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(self._get_meta_data(), f, indent=4, ensure_ascii=False)
@@ -174,6 +177,9 @@ class CalculationResults:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             self.model.to_netcdf(model_path)
+
+        if document_model:
+            self.model.document_model(path=model_path.parent / f'{name}_model_documentation.yaml')
 
         logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
 
