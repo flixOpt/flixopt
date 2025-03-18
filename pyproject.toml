@@ -58,7 +58,7 @@ full = [
 
 [project.urls]
 homepage = "https://tu-dresden.de/ing/maschinenwesen/iet/gewv/forschung/forschungsprojekte/flixopt"
-repository = "https://github.com/flixOpt/flixOpt"
+repository = "https://github.com/flixOpt/flixopt"
 
 [tool.setuptools.packages.find]
 where = ["."]
