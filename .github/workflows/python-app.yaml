@@ -1,21 +1,15 @@
-# This workflow will install Python dependencies, run tests with multiple python versions and lint it with Ruff
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
-name: flixOpt Test and Lint on Push
+name: Python Package CI/CD
 
 on:
   push:
+    branches: [main]  # Run on pushes to main (after PR is merged)
     tags:
-      - v*  # Triggers on version tags like v1.0.0
-    release:
-      types: [ created, published ]  # Runs when a release is created or published
-    branches:
-      - main
-      - next/*
+      - 'v*'  # Trigger on version tags
   pull_request:
-    branches:
-      - main
-      - next/*
+    branches: [main, next/*]  # Run when PRs are created or updated
+    types: [opened, synchronize, reopened]
+  release:
+    types: [created]  # Trigger when a release is created
 
 jobs:
   lint:
@@ -39,23 +33,94 @@ jobs:
 
   test:
     runs-on: ubuntu-22.04
+    needs: lint  # Run tests only after linting passes
     strategy:
+      fail-fast: false  # Continue testing other Python versions if one fails
       matrix:
-        python-version: ['3.10', '3.11', '3.12']  # Using strings, as 3.10. is mistaken to be 3.1 (bug)
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
-    - name: Check out code
-      uses: actions/checkout@v3
+      - name: Check out code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install .[dev]
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
 
-    - name: Run tests
-      run: pytest -v -p no:warnings
+      - name: Run tests
+        run: pytest -v -p no:warnings
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    runs-on: ubuntu-22.04
+    needs: [test]  # Only run after tests pass
+    if: github.event_name == 'release' && github.event.action == 'created'  # Only on release creation
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build setuptools wheel twine
+
+      - name: Build the distribution
+        run: |
+          python -m build
+
+      - name: Upload to TestPyPI
+        run: |
+          twine upload --repository testpypi dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          
+      - name: Test install from TestPyPI
+        run: |
+          # Create a temporary environment to test installation
+          python -m venv test_env
+          source test_env/bin/activate
+          # Get the package name from the built distribution
+          PACKAGE_NAME=$(ls dist/*.tar.gz | head -n 1 | sed 's/dist\///' | sed 's/-[0-9].*$//')
+          # Install from TestPyPI with retry (TestPyPI can be slow to index)
+          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME || \
+          (sleep 30 && pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME) || \
+          (sleep 60 && pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME)
+          # Basic import test
+          python -c "import $PACKAGE_NAME; print('Installation successful!')"
+
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-22.04
+    needs: [publish-testpypi]  # Only run after TestPyPI publish succeeds
+    if: github.event_name == 'release' && github.event.action == 'created'  # Only on release creation
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build setuptools wheel twine
+
+      - name: Build the distribution
+        run: |
+          python -m build
