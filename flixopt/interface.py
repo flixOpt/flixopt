@@ -191,7 +191,7 @@ class OnOffParameters(Interface):
         """Determines wether a Variable for SWITCH-ON is needed or not"""
         return (
             any(
-                param is not None
+                param not in (None, {})
                 for param in [
                     self.effects_per_switch_on,
                     self.switch_on_total_max,

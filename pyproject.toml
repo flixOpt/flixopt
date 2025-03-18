@@ -36,7 +36,6 @@ dependencies = [
     "PyYAML >= 6.0",
     "Pyomo >= 6.4.2",
     "rich >= 13.0.1",
-    "tsam >= 2.3.1",  # Used for time series aggregation
     "highspy >= 1.5.3",  # Default solver
     "pandas >= 2, < 3",  # Used in post-processing
     "matplotlib >= 3.5.2",  # Used in post-processing
@@ -47,11 +46,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "ruff"
+    "ruff",
+    "pyvis == 0.3.1",  # Used for visualizing the FLowSystem
+    "tsam >= 2.3.1",  # Used for time series aggregation
 ]
 
-visualization = [
+full = [
     "pyvis == 0.3.1",  # Used for visualizing the FLowSystem
+    "tsam >= 2.3.1",  # Used for time series aggregation
 ]
 
 [project.urls]
