@@ -58,29 +58,6 @@ class SystemModel(linopy.Model):
         for bus_model in bus_models:  # Buses after Components, because FlowModels are created in ComponentModels
             bus_model.do_modeling()
 
-    def document_model(self, path: pathlib.Path = None) -> Dict[str, str]:
-        """
-        Convert the model variables and constraints to a structured string representation.
-        This can take multiple seconds for large models.
-        The output can be saved to a yaml file with readable formating applied.
-
-        Args:
-            path (pathlib.Path, optional): Path to save the document. Defaults to None.
-        """
-        from .io import save_to_yaml
-        documentation = {
-            'variables': {variable_name: variable.__repr__() for variable_name, variable in self.variables.items()},
-            'constraints': {constraint_name: constraint.__repr__() for constraint_name, constraint in self.constraints.items()},
-            'objective': self.objective.__repr__(),
-        }
-
-        if path is not None:
-            if path.suffix not in ['.yaml', '.yml']:
-                raise ValueError(f'Invalid file extension for path {path}. Only .yaml and .yml are supported')
-            save_to_yaml(documentation, path)
-
-        return documentation
-
     @property
     def hours_per_step(self):
         return self.time_series_collection.hours_per_timestep

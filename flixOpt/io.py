@@ -4,12 +4,14 @@ import re
 import yaml
 import logging
 import pathlib
-from typing import Dict, Literal, Union
+from typing import Dict, Literal, Union, TYPE_CHECKING
 
 import xarray as xr
+import linopy
 
 from .core import TimeSeries
 from .flow_system import FlowSystem
+
 
 logger = logging.getLogger('flixOpt')
 
@@ -88,7 +90,7 @@ def remove_none_and_empty(obj):
         return obj
 
 
-def save_to_yaml(data, output_file='formatted_output.yaml'):
+def _save_to_yaml(data, output_file='formatted_output.yaml'):
     """
     Save dictionary data to YAML with proper multi-line string formatting.
     Handles complex string patterns including backticks, special characters,
@@ -99,7 +101,7 @@ def save_to_yaml(data, output_file='formatted_output.yaml'):
         output_file (str): Path to output YAML file
     """
     # Process strings to normalize all newlines and handle special patterns
-    processed_data = process_complex_strings(data)
+    processed_data = _process_complex_strings(data)
 
     # Define a custom representer for strings
     def represent_str(dumper, data):
@@ -131,7 +133,8 @@ def save_to_yaml(data, output_file='formatted_output.yaml'):
 
     print(f'Data saved to {output_file}')
 
-def process_complex_strings(data):
+
+def _process_complex_strings(data):
     """
     Process dictionary data recursively with comprehensive string normalization.
     Handles various types of strings and special formatting.
@@ -143,9 +146,9 @@ def process_complex_strings(data):
         Processed data with normalized strings
     """
     if isinstance(data, dict):
-        return {k: process_complex_strings(v) for k, v in data.items()}
+        return {k: _process_complex_strings(v) for k, v in data.items()}
     elif isinstance(data, list):
-        return [process_complex_strings(item) for item in data]
+        return [_process_complex_strings(item) for item in data]
     elif isinstance(data, str):
         # Step 1: Normalize line endings to \n
         normalized = data.replace('\r\n', '\n').replace('\r', '\n')
@@ -165,3 +168,26 @@ def process_complex_strings(data):
         return normalized
     else:
         return data
+
+
+def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dict[str, str]:
+    """
+    Convert all model variables and constraints to a structured string representation.
+    This can take multiple seconds for large models.
+    The output can be saved to a yaml file with readable formating applied.
+
+    Args:
+        path (pathlib.Path, optional): Path to save the document. Defaults to None.
+    """
+    documentation = {
+        'variables': {variable_name: variable.__repr__() for variable_name, variable in self.variables.items()},
+        'constraints': {constraint_name: constraint.__repr__() for constraint_name, constraint in self.constraints.items()},
+        'objective': model.objective.__repr__(),
+    }
+
+    if path is not None:
+        if path.suffix not in ['.yaml', '.yml']:
+            raise ValueError(f'Invalid file extension for path {path}. Only .yaml and .yml are supported')
+        _save_to_yaml(documentation, path)
+
+    return documentation

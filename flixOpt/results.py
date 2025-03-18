@@ -14,7 +14,7 @@ import yaml
 
 from . import plotting
 from .core import TimeSeriesCollection
-from .io import _results_structure
+from .io import _results_structure, document_linopy_model
 
 if TYPE_CHECKING:
     from .calculation import Calculation, SegmentedCalculation
@@ -66,8 +66,7 @@ class CalculationResults:
         """ Create CalculationResults directly from file"""
         folder = pathlib.Path(folder)
 
-        model_path, solution_path, _, json_path = cls._get_paths(
-            folder= folder, name=name)
+        model_path, solution_path, _, json_path, flow_system_path = cls._get_paths(folder= folder, name=name)
 
         if model_path.exists():
             logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
@@ -84,17 +83,21 @@ class CalculationResults:
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
         """Create CalculationResults directly from a Calculation"""
-        return cls(model=calculation.model,
-                   solution=calculation.model.solution,
-                   results_structure=_results_structure(calculation.flow_system),
-                   infos=calculation.infos,
-                   network_infos=calculation.flow_system.network_infos(),
-                   name=calculation.name,
-                   folder=calculation.folder)
+        return cls(
+            solution=calculation.model.solution,
+            flow_system=calculation.flow_system.as_dataset(),
+            results_structure=_results_structure(calculation.flow_system),
+            infos=calculation.infos,
+            network_infos=calculation.flow_system.network_infos(),
+            model=calculation.model,
+            name=calculation.name,
+            folder=calculation.folder,
+        )
 
     def __init__(
         self,
         solution: xr.Dataset,
+        flow_system: xr.Dataset,
         results_structure: Dict[str, Dict[str, Dict]],
         name: str,
         infos: Dict,
@@ -103,6 +106,7 @@ class CalculationResults:
         model: Optional[linopy.Model] = None,
     ):
         self.solution = solution
+        self.flow_system = flow_system
         self._results_structure = results_structure
         self.infos = infos
         self.network_infos = network_infos
@@ -130,13 +134,14 @@ class CalculationResults:
             return self.effects[key]
         raise KeyError(f'No element with label {key} found.')
 
-    def to_file(self,
-                folder: Optional[Union[str, pathlib.Path]] = None,
-                name: Optional[str] = None,
-                compression: int = 5,
-                save_linopy_model: bool = False,
-                document_model: bool = True,
-                ):
+    def to_file(
+        self,
+        folder: Optional[Union[str, pathlib.Path]] = None,
+        name: Optional[str] = None,
+        compression: int = 5,
+        document_model: bool = True,
+        save_linopy_model: bool = False,
+    ):
         """
         Save the results to a file
         Args:
@@ -154,18 +159,28 @@ class CalculationResults:
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
-        model_path, solution_path, infos_path, json_path = self._get_paths(
+        model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = self._get_paths(
             folder= folder, name= self.name if name is None else name)
 
-        encoding = None
+        ENCODE = False
         if compression != 0:
             if importlib.util.find_spec('netCDF4') is not None:
-                encoding = {data_var: {"zlib": True, "complevel": 5} for data_var in self.solution.data_vars}
+                ENCODE = True
             else:
                 logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
                                'Install netcdf4 via `pip install netcdf4`.')
 
-        self.solution.to_netcdf(solution_path, encoding=encoding)
+        self.solution.to_netcdf(
+            solution_path,
+            encoding=None if not ENCODE else {data_var: {"zlib": True, "complevel": 5}
+                                              for data_var in self.solution.data_vars}
+        )
+
+        self.flow_system.to_netcdf(
+            flow_system_path,
+            encoding=None if not ENCODE else {data_var: {"zlib": True, "complevel": 5}
+                                              for data_var in self.flow_system.data_vars}
+        )
 
         with open(infos_path, 'w', encoding='utf-8') as f:
             yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
@@ -176,10 +191,14 @@ class CalculationResults:
         if save_linopy_model:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
-            self.model.to_netcdf(model_path)
+            else:
+                self.model.to_netcdf(model_path)
 
         if document_model:
-            self.model.document_model(path=model_path.parent / f'{name}_model_documentation.yaml')
+            if self.model is None:
+                logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
+            else:
+                document_linopy_model(self.model, path=model_doc_path)
 
         logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
 
@@ -209,12 +228,17 @@ class CalculationResults:
             show=show)
 
     @staticmethod
-    def _get_paths(folder: pathlib.Path, name: str) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
+    def _get_paths(
+            folder: pathlib.Path,
+            name: str
+    ) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
         model_path = folder / f'{name}_model.nc'
         solution_path = folder / f'{name}_solution.nc'
         infos_path = folder / f'{name}_infos.yaml'
         json_path = folder/f'{name}_structure.json'
-        return model_path, solution_path, infos_path, json_path
+        flow_system_path = folder / f'{name}_flowsystem.nc'
+        model_documentation_path = folder / f'{name}_model_doc.yaml'
+        return model_path, solution_path, infos_path, json_path, flow_system_path, model_documentation_path
 
     @property
     def storages(self) -> List['ComponentResults']:
