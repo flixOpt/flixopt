@@ -68,6 +68,10 @@ class CalculationResults:
 
         model_path, solution_path, _, json_path, flow_system_path, _ = cls._get_paths(folder=folder, name=name)
 
+        solution = xr.load_dataset(solution_path)
+        flow_system = xr.load_dataset(flow_system_path)
+        flow_system.attrs = json.loads(flow_system.attrs['attrs'])
+
         if model_path.exists():
             logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
             model = linopy.read_netcdf(model_path)
@@ -77,8 +81,8 @@ class CalculationResults:
         with open(json_path, 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
 
-        return cls(solution=xr.load_dataset(solution_path),
-                   flow_system=xr.load_dataset(flow_system_path),
+        return cls(solution=solution,
+                   flow_system=flow_system,
                    name=name,
                    folder=folder,
                    model=model,
@@ -89,7 +93,7 @@ class CalculationResults:
         """Create CalculationResults directly from a Calculation"""
         return cls(
             solution=calculation.model.solution,
-            flow_system=calculation.flow_system.as_dataset(),
+            flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
             results_structure=_results_structure(calculation.flow_system),
             infos=calculation.infos,
             network_infos=calculation.flow_system.network_infos(),
@@ -180,7 +184,9 @@ class CalculationResults:
                                               for data_var in self.solution.data_vars}
         )
 
-        self.flow_system.to_netcdf(
+        flow_system_ds = self.flow_system.copy()
+        flow_system_ds.attrs = {'attrs': json.dumps(flow_system_ds.attrs)}
+        flow_system_ds.to_netcdf(
             flow_system_path,
             encoding=None if not ENCODE else {data_var: {"zlib": True, "complevel": 5}
                                               for data_var in self.flow_system.data_vars}
@@ -411,7 +417,7 @@ class SegmentedCalculationResults:
     """
     @classmethod
     def from_calculation(cls, calculation: 'SegmentedCalculation'):
-        return cls([CalculationResults.from_calculation(calc) for calc in calculation.sub_calculations],
+        return cls([calc.results for calc in calculation.sub_calculations],
                    all_timesteps=calculation.all_timesteps,
                    timesteps_per_segment=calculation.timesteps_per_segment,
                    overlap_timesteps=calculation.overlap_timesteps,
