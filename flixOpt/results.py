@@ -66,7 +66,7 @@ class CalculationResults:
         """ Create CalculationResults directly from file"""
         folder = pathlib.Path(folder)
 
-        model_path, solution_path, _, json_path, flow_system_path = cls._get_paths(folder= folder, name=name)
+        model_path, solution_path, _, json_path, flow_system_path, _ = cls._get_paths(folder=folder, name=name)
 
         if model_path.exists():
             logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
@@ -74,11 +74,15 @@ class CalculationResults:
         else:
             model = None
 
-        solution = xr.load_dataset(solution_path)
         with open(json_path, 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
 
-        return cls(solution=solution, name=name, folder=folder, model=model, **meta_data)
+        return cls(solution=xr.load_dataset(solution_path),
+                   flow_system=xr.load_dataset(flow_system_path),
+                   name=name,
+                   folder=folder,
+                   model=model,
+                   **meta_data)
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):

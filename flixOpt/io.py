@@ -180,8 +180,8 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
         path (pathlib.Path, optional): Path to save the document. Defaults to None.
     """
     documentation = {
-        'variables': {variable_name: variable.__repr__() for variable_name, variable in self.variables.items()},
-        'constraints': {constraint_name: constraint.__repr__() for constraint_name, constraint in self.constraints.items()},
+        'variables': {variable_name: variable.__repr__() for variable_name, variable in model.variables.items()},
+        'constraints': {constraint_name: constraint.__repr__() for constraint_name, constraint in model.constraints.items()},
         'objective': model.objective.__repr__(),
     }
 
