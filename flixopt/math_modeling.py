@@ -1,6 +1,6 @@
 """
-This module contains the mathematical core of the flixOpt framework.
-THe module is designed to be used by other modules than flixOpt itself.
+This module contains the mathematical core of the flixopt framework.
+THe module is designed to be used by other modules than flixopt itself.
 It holds all necessary classes and functions to create a mathematical model, consisting of Varaibles and constraints,
 and translate it into a ModelingLanguage like Pyomo, and the solve it through a solver.
 Multiple solvers are supported.
@@ -18,7 +18,7 @@ import pyomo.environ as pyo
 from . import utils
 from .core import Numeric
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class Variable:

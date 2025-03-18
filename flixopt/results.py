@@ -1,5 +1,5 @@
 """
-This module contains the Results functionality of the flixOpt framework.
+This module contains the Results functionality of the flixopt framework.
 It provides high level functions to analyze the results of a calculation.
 It leverages the plotting.py module to plot the results.
 The results can also be analyzed without this module, as the results are stored in a widely supported format.
@@ -17,14 +17,14 @@ import pandas as pd
 import plotly
 import yaml
 
-from flixOpt import plotting, utils
+from flixopt import plotting, utils
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
     import plotly.graph_objects as go
     import pyvis
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class ElementResults:
@@ -532,7 +532,7 @@ def flatten_dict(d, parent_key='', sep='__'):
 
 if __name__ == '__main__':
     results = CalculationResults(
-        'Sim1', '/Users/felix/Documents/Dokumente - eigene/Neuer Ordner/flixOpt-Fork/examples/Ex02_complex/results'
+        'Sim1', '/Users/felix/Documents/Dokumente - eigene/Neuer Ordner/flixopt-Fork/examples/Ex02_complex/results'
     )
 
     results.to_dataframe('Kessel')

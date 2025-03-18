@@ -12,7 +12,7 @@ from .core import Numeric_TS, TimeSeriesData
 from .elements import Flow
 from .interface import OnOffParameters
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class Boiler(LinearConverter):

@@ -1,5 +1,5 @@
 """
-This module contains the effects of the flixOpt framework.
+This module contains the effects of the flixopt framework.
 Furthermore, it contains the EffectCollection, which is used to collect all effects of a system.
 Different Datatypes are used to represent the effects with assigned values by the user,
 which are then transformed into the internal data structure.
@@ -15,7 +15,7 @@ from .features import ShareAllocationModel
 from .math_modeling import Equation, Variable
 from .structure import Element, ElementModel, SystemModel, _create_time_series
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class Effect(Element):

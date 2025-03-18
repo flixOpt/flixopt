@@ -1,5 +1,5 @@
 """
-This module contains several utility functions used throughout the flixOpt framework.
+This module contains several utility functions used throughout the flixopt framework.
 """
 
 import logging
@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 def as_vector(value: Union[int, float, np.ndarray, List], length: int) -> np.ndarray:

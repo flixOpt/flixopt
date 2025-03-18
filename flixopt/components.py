@@ -1,5 +1,5 @@
 """
-This module contains the basic components of the flixOpt framework.
+This module contains the basic components of the flixopt framework.
 """
 
 import logging
@@ -15,7 +15,7 @@ from .interface import InvestParameters, OnOffParameters
 from .math_modeling import Equation, VariableTS
 from .structure import SystemModel, create_equation, create_variable
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class LinearConverter(Component):

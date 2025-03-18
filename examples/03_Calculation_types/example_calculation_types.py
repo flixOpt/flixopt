@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from rich.pretty import pprint  # Used for pretty printing
 
-import flixOpt as fx
+import flixopt as fx
 
 if __name__ == '__main__':
     # Calculation Types

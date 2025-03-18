@@ -5,7 +5,7 @@ This script shows how load results of a prior calcualtion and how to analyze the
 import pandas as pd
 import plotly.offline
 
-import flixOpt as fx
+import flixopt as fx
 
 if __name__ == '__main__':
     # --- Load Results ---

@@ -1,8 +1,8 @@
 # Default configuration of flixOpt
-config_name: flixOpt  # Name of the config file. This has no effect on the configuration itself.
+config_name: flixopt  # Name of the config file. This has no effect on the configuration itself.
 logging:
   level: INFO
-  file: flixOpt.log
+  file: flixopt.log
   rich: false  # logging output is formatted using rich. This is only advisable when using a proper terminal
 modeling:
   BIG: 10000000  # 1e notation not possible in yaml

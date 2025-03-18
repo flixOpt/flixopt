@@ -13,7 +13,7 @@ from .structure import Element, Interface
 if TYPE_CHECKING:
     from .effects import Effect, EffectTimeSeries, EffectValues, EffectValuesInvest
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class InvestParameters(Interface):

@@ -1,5 +1,5 @@
 """
-This module contains the plotting functionality of the flixOpt framework.
+This module contains the plotting functionality of the flixopt framework.
 It provides high level functions to plot data with plotly and matplotlib.
 It's meant to be used in results.py, but is designed to be used by the end user as well.
 """
@@ -18,7 +18,7 @@ import plotly.offline
 if TYPE_CHECKING:
     import pyvis
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 def with_plotly(

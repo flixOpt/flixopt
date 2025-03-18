@@ -8,7 +8,7 @@ import yaml
 from rich.console import Console
 from rich.logging import RichHandler
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 def merge_configs(defaults: dict, overrides: dict) -> dict:
@@ -224,11 +224,11 @@ def _get_logging_handler(log_file: Optional[str] = None, use_rich_handler: bool 
 
 def setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
-    log_file: Optional[str] = 'flixOpt.log',
+    log_file: Optional[str] = 'flixopt.log',
     use_rich_handler: bool = False,
 ):
     """Setup logging configuration"""
-    logger = logging.getLogger('flixOpt')  # Use a specific logger name for your package
+    logger = logging.getLogger('flixopt')  # Use a specific logger name for your package
     logger.setLevel(get_logging_level_by_name(default_level))
     # Clear existing handlers
     if logger.hasHandlers():
@@ -251,7 +251,7 @@ def get_logging_level_by_name(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'E
 
 
 def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
-    logger = logging.getLogger('flixOpt')
+    logger = logging.getLogger('flixopt')
     logging_level = get_logging_level_by_name(level_name)
     logger.setLevel(logging_level)
     for handler in logger.handlers:

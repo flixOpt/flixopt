@@ -1,12 +1,12 @@
 """
-This script shows how to use the flixOpt framework to model a more complex energy system.
+This script shows how to use the flixopt framework to model a more complex energy system.
 """
 
 import numpy as np
 import pandas as pd
 from rich.pretty import pprint  # Used for pretty printing
 
-import flixOpt as fx
+import flixopt as fx
 
 if __name__ == '__main__':
     # --- Experiment Options ---
