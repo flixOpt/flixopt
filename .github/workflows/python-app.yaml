@@ -124,3 +124,24 @@ jobs:
       - name: Build the distribution
         run: |
           python -m build
+
+      - name: Upload to PyPI
+        run: |
+          twine upload dist/* --verbose
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Verify PyPI installation
+        run: |
+          # Create a temporary environment to test installation
+          python -m venv prod_test_env
+          source prod_test_env/bin/activate
+          # Get the package name from the built distribution
+          PACKAGE_NAME=$(ls dist/*.tar.gz | head -n 1 | sed 's/dist\///' | sed 's/-[0-9].*$//')
+          # Wait for PyPI to index the package
+          sleep 60
+          # Install from PyPI
+          pip install $PACKAGE_NAME
+          # Basic import test
+          python -c "import flixOpt; print('PyPI installation successful!')"
