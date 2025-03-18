@@ -186,8 +186,22 @@ class FlowSystem:
 
     def as_dataset(self, constants_in_dataset: bool = False) -> xr.Dataset:
         ds = self.time_series_collection.to_dataset(include_constants=constants_in_dataset)
-        ds.attrs = {'flow_system': json.dumps(self.as_dict(data_mode='name'))}
+        ds.attrs = self.as_dict(data_mode='name')
         return ds
+
+    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
+        ds = self.as_dataset()
+        ds.attrs = {'flow_system': json.dumps(ds.attrs)}
+
+        encoding = None
+        if compression != 0:
+            if importlib.util.find_spec('netCDF4') is not None:
+                encoding = {k: dict(zlib=True, complevel=compression) for k in ds.data_vars}
+            else:
+                logger.warning('FlowSystem was exported without compression due to missing dependency "netcdf4".'
+                               'Install netcdf4 via `pip install netcdf4`.')
+        ds.to_netcdf(path, encoding=encoding)
+        logger.info(f'Saved FlowSystem to {path}')
 
     def plot_network(
         self,
