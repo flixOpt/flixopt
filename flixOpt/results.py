@@ -144,10 +144,9 @@ class CalculationResults:
             variable_dims: The dimension of the variables to filter for.
             element: The element to filter for.
         """
-        if element is None:
-            return filter_dataset(self.solution, variable_dims)
-        else:
+        if element is not None:
             return filter_dataset(self[element].solution, variable_dims)
+        return filter_dataset(self.solution, variable_dims)
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
@@ -304,8 +303,7 @@ class _ElementResults:
 
     def filter_solution(self, variable_dims: Optional[Literal['scalar', 'numeric']] = None) -> xr.Dataset:
         """
-        Filter the solution to a specific dimension.
-        If no element is specified, all elements are included.
+        Filter the solution of the element by dimension.
 
         Args:
             variable_dims: The dimension of the variables to filter for.
@@ -626,6 +624,7 @@ def filter_dataset(
 ) -> xr.Dataset:
     """
     Filters a dataset by its dimensions.
+
     Args:
         ds: The dataset to filter.
         variable_dims: The dimension of the variables to filter for.
@@ -638,4 +637,4 @@ def filter_dataset(
     elif variable_dims == 'numeric':
         return ds[[name for name, da in ds.data_vars.items() if len(da.dims) >= 1]]
     else:
-        raise ValueError(f'Not allowed value for "filter_dataset": {variable_dims=}')
+        raise ValueError(f'Not allowed value for "filter_dataset()": {variable_dims=}')
