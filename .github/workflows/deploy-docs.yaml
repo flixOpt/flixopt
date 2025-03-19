@@ -25,7 +25,8 @@ jobs:
       - name: Install documentation dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[docs]
+          # Install all documentation dependencies directly instead of using -e .[docs]
+          pip install mkdocs-material mkdocstrings-python mkdocs-table-reader-plugin mkdocs-include-markdown-plugin mkdocs-gen-files mkdocs-literate-nav markdown-include pymdown-extensions pygments
 
       - name: Deploy documentation
         run: mkdocs gh-deploy --force
