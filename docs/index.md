@@ -30,29 +30,15 @@ Although flixOpt is in its early stages, it is fully functional and ready for ex
     - **Segmented Mode** - Speed up complex systems with variable time overlap
     - **Aggregated Mode** - Typical periods for large-scale simulations
 
-## 📦 Installation
+## 🛠️ Getting Started
 
-Install flixOpt directly using pip:
+See the [Getting Started Guide](getting-started.md) to start using flixOpt.
 
-```bash
-pip install git+https://github.com/flixOpt/flixOpt.git
-```
-
-For full functionality including visualization and time series aggregation:
-
-```bash
-pip install "flixOpt[full] @ git+https://github.com/flixOpt/flixOpt.git"
-```
-
-## 🖥️ Quick Example
-
-```python
-{! ../examples/00_Minmal/minimal_example.py !}
-```
+See the [Examples](examples/) section for detailed examples.
 
 ## ⚙️ How It Works
 
-flixOpt transforms your energy system model into a mathematical optimization problem, solves it using state-of-the-art solvers, and returns the optimal operation strategy and investment decisions.
+See our [Concepts & Math](concepts-and-math/index.md) to understand the core concepts of flixOpt.
 
 ## 🛠️ Compatible Solvers
 
