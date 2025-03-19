@@ -11,24 +11,24 @@ Although flixOpt is in its early stages, it is fully functional and ready for ex
 ## 🌟 Key Features
 
 - **High-level Interface** with low-level control
-  - User-friendly interface for defining energy systems
-  - Fine-grained control for advanced configurations
-  - Pre-defined components like CHP, Heat Pump, Cooling Tower, etc.
+    - User-friendly interface for defining energy systems
+    - Fine-grained control for advanced configurations
+    - Pre-defined components like CHP, Heat Pump, Cooling Tower, etc.
 
 - **Investment Optimization**
-  - Combined dispatch and investment optimization
-  - Size and discrete investment decisions
-  - Integration with On/Off variables and constraints
+    - Combined dispatch and investment optimization
+    - Size and discrete investment decisions
+    - Integration with On/Off variables and constraints
 
 - **Multiple Effects**
-  - Couple effects (e.g., specific CO2 costs)
-  - Set constraints (e.g., max CO2 emissions)
-  - Easily switch optimization targets (e.g., costs vs CO2)
+    - Couple effects (e.g., specific CO2 costs)
+    - Set constraints (e.g., max CO2 emissions)
+    - Easily switch optimization targets (e.g., costs vs CO2)
 
 - **Calculation Modes**
-  - **Full Mode** - Exact solutions with high computational requirements
-  - **Segmented Mode** - Speed up complex systems with variable time overlap
-  - **Aggregated Mode** - Typical periods for large-scale simulations
+    - **Full Mode** - Exact solutions with high computational requirements
+    - **Segmented Mode** - Speed up complex systems with variable time overlap
+    - **Aggregated Mode** - Typical periods for large-scale simulations
 
 ## 📦 Installation
 
