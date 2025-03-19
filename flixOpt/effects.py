@@ -142,7 +142,7 @@ class EffectModel(ElementModel):
         self.total: Optional[linopy.Variable] = None
         self.invest: ShareAllocationModel = self.add(
             ShareAllocationModel(
-                self._model,
+                self._sys_model,
                 False,
                 self.label_of_element,
                 'invest',
@@ -154,7 +154,7 @@ class EffectModel(ElementModel):
 
         self.operation: ShareAllocationModel = self.add(
             ShareAllocationModel(
-                self._model,
+                self._sys_model,
                 True,
                 self.label_of_element,
                 'operation',
@@ -175,7 +175,7 @@ class EffectModel(ElementModel):
             model.do_modeling()
 
         self.total = self.add(
-            self._model.add_variables(
+            self._sys_model.add_variables(
                 lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
                 upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
                 coords=None,
@@ -185,7 +185,7 @@ class EffectModel(ElementModel):
         )
 
         self.add(
-            self._model.add_constraints(
+            self._sys_model.add_constraints(
                 self.total == self.operation.total.sum() + self.invest.total.sum(),
                 name=f'{self.label_full}|total'
             ),
@@ -379,14 +379,14 @@ class EffectCollectionModel(Model):
 
     def do_modeling(self):
         for effect in self.effects:
-            effect.create_model(self._model)
-        self.penalty = self.add(ShareAllocationModel(self._model, shares_are_time_series=False, label_of_element='Penalty'))
+            effect.create_model(self._sys_model)
+        self.penalty = self.add(ShareAllocationModel(self._sys_model, shares_are_time_series=False, label_of_element='Penalty'))
         for model in [effect.model for effect in self.effects] + [self.penalty]:
             model.do_modeling()
 
         self._add_share_between_effects()
 
-        self._model.add_objective(
+        self._sys_model.add_objective(
             self.effects.objective_effect.model.total + self.penalty.total
         )
 

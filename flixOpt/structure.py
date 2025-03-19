@@ -285,7 +285,7 @@ class Model:
         label_full : str
             The full label of the model. Can overwrite the full label constructed from the other labels.
         """
-        self._model = model
+        self._sys_model = model
         self.label_of_element = label_of_element
         self._label = label
         self._label_full = label_full
@@ -368,11 +368,11 @@ class Model:
 
     @property
     def variables_direct(self) -> linopy.Variables:
-        return self._model.variables[self._variables_direct]
+        return self._sys_model.variables[self._variables_direct]
 
     @property
     def constraints_direct(self) -> linopy.Constraints:
-        return self._model.constraints[self._constraints_direct]
+        return self._sys_model.constraints[self._constraints_direct]
 
     @property
     def _variables(self) -> List[str]:
@@ -398,11 +398,11 @@ class Model:
 
     @property
     def variables(self) -> linopy.Variables:
-        return self._model.variables[self._variables]
+        return self._sys_model.variables[self._variables]
 
     @property
     def constraints(self) -> linopy.Constraints:
-        return self._model.constraints[self._constraints]
+        return self._sys_model.constraints[self._constraints]
 
     @property
     def all_sub_models(self) -> List['Model']:

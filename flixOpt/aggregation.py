@@ -305,8 +305,8 @@ class AggregationModel(Model):
 
         indices = self.aggregation_data.get_equation_indices(skip_first_index_of_period=True)
 
-        time_variables: Set[str] = {k for k, v in self._model.variables.data.items() if 'time' in v.indexes}
-        binary_variables: Set[str] = {k for k, v in self._model.variables.data.items() if k in self._model.binaries}
+        time_variables: Set[str] = {k for k, v in self._sys_model.variables.data.items() if 'time' in v.indexes}
+        binary_variables: Set[str] = {k for k, v in self._sys_model.variables.data.items() if k in self._sys_model.binaries}
         binary_time_variables: Set[str] = time_variables & binary_variables
 
         for component in components:
@@ -325,7 +325,7 @@ class AggregationModel(Model):
         penalty = self.aggregation_parameters.penalty_of_period_freedom
         if (self.aggregation_parameters.percentage_of_period_freedom > 0) and penalty != 0:
             for variable in self.variables_direct.values():
-                self._model.effects.add_share_to_penalty(
+                self._sys_model.effects.add_share_to_penalty(
                     'Aggregation',
                     variable * penalty
                 )
@@ -336,19 +336,19 @@ class AggregationModel(Model):
 
         # Gleichung:
         # eq1: x(p1,t) - x(p3,t) = 0 # wobei p1 und p3 im gleichen Cluster sind und t = 0..N_p
-        con = self.add(self._model.add_constraints(
+        con = self.add(self._sys_model.add_constraints(
             variable.isel(time=indices[0]) - variable.isel(time=indices[1]) == 0,
             name=f'{self.label_full}|equate_indices|{variable.name}'),
             f'equate_indices|{variable.name}')
 
         # Korrektur: (bisher nur für Binärvariablen:)
-        if variable.name in self._model.variables.binaries and self.aggregation_parameters.percentage_of_period_freedom > 0:
-            var_k1 = self.add(self._model.add_variables(
+        if variable.name in self._sys_model.variables.binaries and self.aggregation_parameters.percentage_of_period_freedom > 0:
+            var_k1 = self.add(self._sys_model.add_variables(
                 binary=True,
                 coords={'time': variable.isel(time=indices[0]).indexes['time']},
                 name=f'{self.label_full}|correction1|{variable.name}'), f'correction1|{variable.name}')
 
-            var_k0 = self.add(self._model.add_variables(
+            var_k0 = self.add(self._sys_model.add_variables(
                 binary=True,
                 coords={'time': variable.isel(time=indices[0]).indexes['time']},
                 name=f'{self.label_full}|correction0|{variable.name}'), f'correction0|{variable.name}')
@@ -363,7 +363,7 @@ class AggregationModel(Model):
 
             # interlock var_k1 and var_K2:
             # eq: var_k0(t)+var_k1(t) <= 1.1
-            self.add(self._model.add_constraints(
+            self.add(self._sys_model.add_constraints(
                 var_k0 + var_k1 <= 1.1,
                 name=f'{self.label_full}|lock_k0_and_k1|{variable.name}'),
                 f'lock_k0_and_k1|{variable.name}'
@@ -371,7 +371,7 @@ class AggregationModel(Model):
 
             # Begrenzung der Korrektur-Anzahl:
             # eq: sum(K) <= n_Corr_max
-            self.add(self._model.add_constraints(
+            self.add(self._sys_model.add_constraints(
                 sum(var_k0) + sum(var_k1) <= round(self.aggregation_parameters.percentage_of_period_freedom / 100 * length),
                 name=f'{self.label_full}|limit_corrections|{variable.name}'),
                 f'limit_corrections|{variable.name}'
