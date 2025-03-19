@@ -71,6 +71,7 @@ docs = [
 [project.urls]
 homepage = "https://tu-dresden.de/ing/maschinenwesen/iet/gewv/forschung/forschungsprojekte/flixopt"
 repository = "https://github.com/flixOpt/flixopt"
+documentation = "https://flixopt.github.io/flixopt/"
 
 [tool.setuptools.packages.find]
 where = ["."]

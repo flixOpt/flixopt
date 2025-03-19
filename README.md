@@ -1,5 +1,11 @@
 # flixOpt: Energy and Material Flow Optimization Framework
 
+[![📚 Documentation](https://img.shields.io/badge/📚_docs-online-brightgreen.svg)](https://flixopt.github.io/flixopt/)
+[![CI](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
+[![PyPI version](https://badge.fury.io/py/flixopt.svg)](https://badge.fury.io/py/flixopt)
+[![Python Versions](https://img.shields.io/pypi/pyversions/flixopt.svg)](https://pypi.org/project/flixopt/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **flixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP). Combining flexibility and efficiency, it provides a powerful platform for both dispatch and investment optimization challenges.
 
 ---
@@ -21,6 +27,10 @@ We recommend installing flixOpt with all dependencies, which enables interactive
 `pip install "flixOpt[full] @ git+https://github.com/flixOpt/flixopt.git"`
 
 ---
+
+## 📚 Documentation
+
+Full documentation is available at [https://flixopt.github.io/flixopt/](https://flixopt.github.io/flixopt/)
 
 ## 🌟 Key Features and Concepts
 
