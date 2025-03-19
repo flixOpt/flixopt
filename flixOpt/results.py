@@ -273,6 +273,17 @@ class CalculationResults:
     def objective(self) -> float:
         return self.infos['Main Results']['Objective']
 
+    @property
+    def variables(self) -> linopy.Variables:
+        if self.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self.model.variables
+
+    @property
+    def constraints(self) -> linopy.Constraints:
+        if self.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self.model.constraints
 
 class _ElementResults:
     @classmethod
