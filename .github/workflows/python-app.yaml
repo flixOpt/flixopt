@@ -10,6 +10,13 @@ on:
     types: [opened, synchronize, reopened]
   release:
     types: [created]  # Trigger when a release is created
+  workflow_dispatch:  # Allow manual triggering of the workflow
+    inputs:
+      deploy_docs:
+        description: 'Deploy documentation'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   lint:
@@ -58,7 +65,8 @@ jobs:
 
   deploy-docs:
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'created'  # Only on release creation
+    # Run on release creation OR manual dispatch with deploy_docs=true
+    if: github.event_name == 'release' && github.event.action == 'created' || github.event_name == 'workflow_dispatch' && inputs.deploy_docs
     steps:
       - uses: actions/checkout@v4
       - name: Configure Git Credentials
@@ -68,8 +76,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - name: Install dependencies
+
+      - name: Install documentation dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -e .[docs]
       - name: Deploy documentation
         run: mkdocs gh-deploy --force
