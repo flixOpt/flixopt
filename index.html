@@ -1395,34 +1395,38 @@
 <p>Although flixOpt is in its early stages, it is fully functional and ready for experimentation. Feedback and collaboration are highly encouraged to help shape its future.</p>
 <h2 id="key-features">🌟 Key Features</h2>
 <ul>
-<li><strong>High-level Interface</strong> with low-level control</li>
+<li>
+<p><strong>High-level Interface</strong> with low-level control</p>
+<ul>
 <li>User-friendly interface for defining energy systems</li>
 <li>Fine-grained control for advanced configurations</li>
-<li>
-<p>Pre-defined components like CHP, Heat Pump, Cooling Tower, etc.</p>
+<li>Pre-defined components like CHP, Heat Pump, Cooling Tower, etc.</li>
+</ul>
 </li>
 <li>
 <p><strong>Investment Optimization</strong></p>
-</li>
+<ul>
 <li>Combined dispatch and investment optimization</li>
 <li>Size and discrete investment decisions</li>
-<li>
-<p>Integration with On/Off variables and constraints</p>
+<li>Integration with On/Off variables and constraints</li>
+</ul>
 </li>
 <li>
 <p><strong>Multiple Effects</strong></p>
-</li>
+<ul>
 <li>Couple effects (e.g., specific CO2 costs)</li>
 <li>Set constraints (e.g., max CO2 emissions)</li>
-<li>
-<p>Easily switch optimization targets (e.g., costs vs CO2)</p>
+<li>Easily switch optimization targets (e.g., costs vs CO2)</li>
+</ul>
 </li>
 <li>
 <p><strong>Calculation Modes</strong></p>
-</li>
+<ul>
 <li><strong>Full Mode</strong> - Exact solutions with high computational requirements</li>
 <li><strong>Segmented Mode</strong> - Speed up complex systems with variable time overlap</li>
 <li><strong>Aggregated Mode</strong> - Typical periods for large-scale simulations</li>
+</ul>
+</li>
 </ul>
 <h2 id="installation">📦 Installation</h2>
 <p>Install flixOpt directly using pip:</p>
@@ -1432,35 +1436,73 @@
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;flixOpt[full] @ git+https://github.com/flixOpt/flixOpt.git&quot;</span>
 </span></code></pre></div>
 <h2 id="quick-example">🖥️ Quick Example</h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">flixOpt</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">fo</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Create timesteps</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">time_series</span> <span class="o">=</span> <span class="n">fo</span><span class="o">.</span><span class="n">create_datetime_array</span><span class="p">(</span><span class="s1">&#39;2023-01-01&#39;</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="s1">&#39;1h&#39;</span><span class="p">)</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">system</span> <span class="o">=</span> <span class="n">fo</span><span class="o">.</span><span class="n">FlowSystem</span><span class="p">(</span><span class="n">time_series</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="sd">This script shows how to use the flixOpt framework to model a super minimalistic energy system.</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">rich.pretty</span><span class="w"> </span><span class="kn">import</span> <span class="n">pprint</span>
 </span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1"># Create buses</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">heat_bus</span> <span class="o">=</span> <span class="n">fo</span><span class="o">.</span><span class="n">Bus</span><span class="p">(</span><span class="s2">&quot;Heat&quot;</span><span class="p">)</span>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">electricity_bus</span> <span class="o">=</span> <span class="n">fo</span><span class="o">.</span><span class="n">Bus</span><span class="p">(</span><span class="s2">&quot;Electricity&quot;</span><span class="p">)</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="c1"># Create flows</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="n">heat_demand</span> <span class="o">=</span> <span class="n">fo</span><span class="o">.</span><span class="n">Flow</span><span class="p">(</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;heat_demand&quot;</span><span class="p">,</span>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">bus</span><span class="o">=</span><span class="n">heat_bus</span><span class="p">,</span>
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">fixed_relative_profile</span><span class="o">=</span><span class="mi">100</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">24</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="mi">50</span>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="p">)</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="c1"># Create a heat pump component</span>
-</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="n">heat_pump</span> <span class="o">=</span> <span class="n">fo</span><span class="o">.</span><span class="n">linear_converters</span><span class="o">.</span><span class="n">HeatPump</span><span class="p">(</span>
-</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;HeatPump&quot;</span><span class="p">,</span>
-</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>    <span class="n">COP</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
-</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="n">P_el</span><span class="o">=</span><span class="n">fo</span><span class="o">.</span><span class="n">Flow</span><span class="p">(</span><span class="s2">&quot;power&quot;</span><span class="p">,</span> <span class="n">electricity_bus</span><span class="p">),</span>
-</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="n">Q_th</span><span class="o">=</span><span class="n">fo</span><span class="o">.</span><span class="n">Flow</span><span class="p">(</span><span class="s2">&quot;heat&quot;</span><span class="p">,</span> <span class="n">heat_bus</span><span class="p">)</span>
-</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="p">)</span>
-</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>
-</span><span id="__span-2-27"><a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="c1"># Add everything to the system</span>
-</span><span id="__span-2-28"><a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="n">system</span><span class="o">.</span><span class="n">add_elements</span><span class="p">(</span><span class="n">heat_bus</span><span class="p">,</span> <span class="n">electricity_bus</span><span class="p">)</span>
-</span><span id="__span-2-29"><a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="n">system</span><span class="o">.</span><span class="n">add_components</span><span class="p">(</span><span class="n">heat_pump</span><span class="p">)</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="kn">import</span><span class="w"> </span><span class="nn">flixOpt</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">fx</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="c1"># --- Define Thermal Load Profile ---</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="c1"># Load profile (e.g., kW) for heating demand over time</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">thermal_load_profile</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">30</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">])</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">datetime_series</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">create_datetime_array</span><span class="p">(</span><span class="s1">&#39;2020-01-01&#39;</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="s1">&#39;h&#39;</span><span class="p">)</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="c1"># --- Define Energy Buses ---</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="c1"># These represent the different energy carriers in the system</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="n">electricity_bus</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">Bus</span><span class="p">(</span><span class="s1">&#39;Electricity&#39;</span><span class="p">)</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="n">heat_bus</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">Bus</span><span class="p">(</span><span class="s1">&#39;District Heating&#39;</span><span class="p">)</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="n">fuel_bus</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">Bus</span><span class="p">(</span><span class="s1">&#39;Natural Gas&#39;</span><span class="p">)</span>
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>    <span class="c1"># --- Define Objective Effect (Cost) ---</span>
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="c1"># Cost effect representing the optimization objective (minimizing costs)</span>
+</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="n">cost_effect</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">Effect</span><span class="p">(</span><span class="s1">&#39;costs&#39;</span><span class="p">,</span> <span class="s1">&#39;€&#39;</span><span class="p">,</span> <span class="s1">&#39;Cost&#39;</span><span class="p">,</span> <span class="n">is_standard</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">is_objective</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>
+</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    <span class="c1"># --- Define Flow System Components ---</span>
+</span><span id="__span-2-27"><a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>    <span class="c1"># Boiler component with thermal output (heat) and fuel input (gas)</span>
+</span><span id="__span-2-28"><a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>    <span class="n">boiler</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">linear_converters</span><span class="o">.</span><span class="n">Boiler</span><span class="p">(</span>
+</span><span id="__span-2-29"><a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>        <span class="s1">&#39;Boiler&#39;</span><span class="p">,</span>
+</span><span id="__span-2-30"><a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>        <span class="n">eta</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+</span><span id="__span-2-31"><a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>        <span class="n">Q_th</span><span class="o">=</span><span class="n">fx</span><span class="o">.</span><span class="n">Flow</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Thermal Output&#39;</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="n">heat_bus</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">50</span><span class="p">),</span>
+</span><span id="__span-2-32"><a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>        <span class="n">Q_fu</span><span class="o">=</span><span class="n">fx</span><span class="o">.</span><span class="n">Flow</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Fuel Input&#39;</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="n">fuel_bus</span><span class="p">),</span>
+</span><span id="__span-2-33"><a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>    <span class="p">)</span>
+</span><span id="__span-2-34"><a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>
+</span><span id="__span-2-35"><a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    <span class="c1"># Heat load component with a fixed thermal demand profile</span>
+</span><span id="__span-2-36"><a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>    <span class="n">heat_load</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">Sink</span><span class="p">(</span>
+</span><span id="__span-2-37"><a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>        <span class="s1">&#39;Heat Demand&#39;</span><span class="p">,</span>
+</span><span id="__span-2-38"><a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>        <span class="n">sink</span><span class="o">=</span><span class="n">fx</span><span class="o">.</span><span class="n">Flow</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Thermal Load&#39;</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="n">heat_bus</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">fixed_relative_profile</span><span class="o">=</span><span class="n">thermal_load_profile</span><span class="p">),</span>
+</span><span id="__span-2-39"><a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>    <span class="p">)</span>
+</span><span id="__span-2-40"><a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>
+</span><span id="__span-2-41"><a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>    <span class="c1"># Gas source component with cost-effect per flow hour</span>
+</span><span id="__span-2-42"><a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>    <span class="n">gas_source</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">Source</span><span class="p">(</span>
+</span><span id="__span-2-43"><a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a>        <span class="s1">&#39;Natural Gas Tariff&#39;</span><span class="p">,</span>
+</span><span id="__span-2-44"><a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a>        <span class="n">source</span><span class="o">=</span><span class="n">fx</span><span class="o">.</span><span class="n">Flow</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Gas Flow&#39;</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="n">fuel_bus</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">effects_per_flow_hour</span><span class="o">=</span><span class="mf">0.04</span><span class="p">),</span>  <span class="c1"># 0.04 €/kWh</span>
+</span><span id="__span-2-45"><a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a>    <span class="p">)</span>
+</span><span id="__span-2-46"><a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a>
+</span><span id="__span-2-47"><a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a>    <span class="c1"># --- Build the Flow System ---</span>
+</span><span id="__span-2-48"><a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a>    <span class="c1"># Add all components and effects to the system</span>
+</span><span id="__span-2-49"><a id="__codelineno-2-49" name="__codelineno-2-49" href="#__codelineno-2-49"></a>    <span class="n">flow_system</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">FlowSystem</span><span class="p">(</span><span class="n">datetime_series</span><span class="p">)</span>
+</span><span id="__span-2-50"><a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a>    <span class="n">flow_system</span><span class="o">.</span><span class="n">add_elements</span><span class="p">(</span><span class="n">cost_effect</span><span class="p">,</span> <span class="n">boiler</span><span class="p">,</span> <span class="n">heat_load</span><span class="p">,</span> <span class="n">gas_source</span><span class="p">)</span>
+</span><span id="__span-2-51"><a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a>
+</span><span id="__span-2-52"><a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a>    <span class="c1"># --- Define and Run Calculation ---</span>
+</span><span id="__span-2-53"><a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a>    <span class="n">calculation</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">FullCalculation</span><span class="p">(</span><span class="s1">&#39;Simulation1&#39;</span><span class="p">,</span> <span class="n">flow_system</span><span class="p">)</span>
+</span><span id="__span-2-54"><a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a>    <span class="n">calculation</span><span class="o">.</span><span class="n">do_modeling</span><span class="p">()</span>
+</span><span id="__span-2-55"><a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a>
+</span><span id="__span-2-56"><a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a>    <span class="c1"># --- Solve the Calculation and Save Results ---</span>
+</span><span id="__span-2-57"><a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a>    <span class="n">calculation</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">fx</span><span class="o">.</span><span class="n">solvers</span><span class="o">.</span><span class="n">HighsSolver</span><span class="p">(),</span> <span class="n">save_results</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-2-58"><a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a>
+</span><span id="__span-2-59"><a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a>    <span class="c1"># --- Load and Analyze Results ---</span>
+</span><span id="__span-2-60"><a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a>    <span class="c1"># Load results and plot the operation of the District Heating Bus</span>
+</span><span id="__span-2-61"><a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">fx</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">CalculationResults</span><span class="p">(</span><span class="n">calculation</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">folder</span><span class="o">=</span><span class="s1">&#39;results&#39;</span><span class="p">)</span>
+</span><span id="__span-2-62"><a id="__codelineno-2-62" name="__codelineno-2-62" href="#__codelineno-2-62"></a>    <span class="n">results</span><span class="o">.</span><span class="n">plot_operation</span><span class="p">(</span><span class="s1">&#39;District Heating&#39;</span><span class="p">,</span> <span class="s1">&#39;area&#39;</span><span class="p">)</span>
+</span><span id="__span-2-63"><a id="__codelineno-2-63" name="__codelineno-2-63" href="#__codelineno-2-63"></a>
+</span><span id="__span-2-64"><a id="__codelineno-2-64" name="__codelineno-2-64" href="#__codelineno-2-64"></a>    <span class="c1"># Print results to the console. Check Results in file or perform more plotting</span>
+</span><span id="__span-2-65"><a id="__codelineno-2-65" name="__codelineno-2-65" href="#__codelineno-2-65"></a>    <span class="n">pprint</span><span class="p">(</span><span class="n">calculation</span><span class="o">.</span><span class="n">results</span><span class="p">())</span>
+</span><span id="__span-2-66"><a id="__codelineno-2-66" name="__codelineno-2-66" href="#__codelineno-2-66"></a>    <span class="n">pprint</span><span class="p">(</span><span class="s1">&#39;Look into .yaml and .json file for results&#39;</span><span class="p">)</span>
+</span><span id="__span-2-67"><a id="__codelineno-2-67" name="__codelineno-2-67" href="#__codelineno-2-67"></a>    <span class="n">pprint</span><span class="p">(</span><span class="n">calculation</span><span class="o">.</span><span class="n">system_model</span><span class="o">.</span><span class="n">main_results</span><span class="p">)</span>
 </span></code></pre></div>
 <h2 id="how-it-works">⚙️ How It Works</h2>
 <p>flixOpt transforms your energy system model into a mathematical optimization problem, solves it using state-of-the-art solvers, and returns the optimal operation strategy and investment decisions.</p>
