@@ -57,12 +57,15 @@ full = [
 ]
 
 docs = [
-    "mkdocs-material==9.*",
+    "mkdocs-material>=9.0.0",
     "mkdocstrings-python",
-    "mkdocs-section-index",
     "mkdocs-table-reader-plugin",
     "mkdocs-gen-files",
-    "mkdocs-include-markdown-plugin"
+    "mkdocs-include-markdown-plugin",
+    "mkdocs-literate-nav",
+    "markdown-include",
+    "pymdown-extensions",
+    "pygments"
 ]
 
 [project.urls]
