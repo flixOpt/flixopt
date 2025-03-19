@@ -38,5 +38,5 @@ Working with flixOpt follows a general pattern:
 Now that you've installed flixOpt and understand the basic workflow, you can:
 
 - Learn about the [core concepts of flixOpt](concepts-and-math/index.md)
-- Explore some [examples](examples/index.md)
+- Explore some [examples](examples/)
 - Check the [API reference](api-reference/index.md) for detailed documentation
