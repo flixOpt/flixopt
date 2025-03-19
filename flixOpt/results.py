@@ -294,13 +294,6 @@ class _ElementResults:
 
         self.solution = self._calculation_results.solution[self._variable_names]
 
-        if self._calculation_results.model is not None:
-            self.variables = self._calculation_results.model.variables[self._variable_names]
-            self.constraints = self._calculation_results.model.constraints[self._constraint_names]
-        else:
-            self.variables = None
-            self.constraints = None
-
     def filter_solution(self, variable_dims: Optional[Literal['scalar', 'numeric']] = None) -> xr.Dataset:
         """
         Filter the solution of the element by dimension.
@@ -309,6 +302,30 @@ class _ElementResults:
             variable_dims: The dimension of the variables to filter for.
         """
         return filter_dataset(self.solution, variable_dims)
+
+    @property
+    def variables(self) -> linopy.Variables:
+        """
+        Returns the variables of the element.
+
+        Raises:
+            ValueError: If the linopy model is not availlable.
+        """
+        if self._calculation_results.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self._calculation_results.model.variables[self._variable_names]
+
+    @property
+    def constraints(self) -> linopy.Constraints:
+        """
+        Returns the variables of the element.
+
+        Raises:
+            ValueError: If the linopy model is not availlable.
+        """
+        if self._calculation_results.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self._calculation_results.model.constraints[self._variable_names]
 
 
 class _NodeResults(_ElementResults):
