@@ -47,35 +47,7 @@ pip install "flixOpt[full] @ git+https://github.com/flixOpt/flixOpt.git"
 ## 🖥️ Quick Example
 
 ```python
-import flixOpt as fo
-import numpy as np
-
-# Create timesteps
-time_series = fo.create_datetime_array('2023-01-01', steps=24, freq='1h')
-system = fo.FlowSystem(time_series)
-
-# Create buses
-heat_bus = fo.Bus("Heat")
-electricity_bus = fo.Bus("Electricity")
-
-# Create flows
-heat_demand = fo.Flow(
-    label="heat_demand",
-    bus=heat_bus,
-    fixed_relative_profile=100*np.sin(np.linspace(0, 2*np.pi, 24))**2 + 50
-)
-
-# Create a heat pump component
-heat_pump = fo.linear_converters.HeatPump(
-    label="HeatPump",
-    COP=3.0,
-    P_el=fo.Flow("power", electricity_bus),
-    Q_th=fo.Flow("heat", heat_bus)
-)
-
-# Add everything to the system
-system.add_elements(heat_bus, electricity_bus)
-system.add_components(heat_pump)
+{! ../examples/00_Minmal/minimal_example.py !}
 ```
 
 ## ⚙️ How It Works
