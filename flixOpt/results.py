@@ -133,6 +133,22 @@ class CalculationResults:
         self.timesteps_extra = pd.DatetimeIndex([datetime.datetime.fromisoformat(date) for date in results_structure['Time']], name='time')
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
 
+    def filter_solution(self,
+               variable_dims: Optional[Literal['scalar', 'numeric']] = None,
+               element: Optional[str] = None) -> xr.Dataset:
+        """
+        Filter the solution to a specific variable dimension and element.
+        If no element is specified, all elements are included.
+
+        Args:
+            variable_dims: The dimension of the variables to filter for.
+            element: The element to filter for.
+        """
+        if element is None:
+            return filter_dataset(self.solution, variable_dims)
+        else:
+            return filter_dataset(self[element].solution, variable_dims)
+
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
             return self.components[key]
@@ -279,16 +295,22 @@ class _ElementResults:
 
         self.solution = self._calculation_results.solution[self._variable_names]
 
-        self._variable_names_time = [name for name in self._variable_names if 'time' in self.solution[name].dims]
-
-        self.solution_time = self._calculation_results.solution[self._variable_names_time]
-
         if self._calculation_results.model is not None:
             self.variables = self._calculation_results.model.variables[self._variable_names]
             self.constraints = self._calculation_results.model.constraints[self._constraint_names]
         else:
             self.variables = None
             self.constraints = None
+
+    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'numeric']] = None) -> xr.Dataset:
+        """
+        Filter the solution to a specific dimension.
+        If no element is specified, all elements are included.
+
+        Args:
+            variable_dims: The dimension of the variables to filter for.
+        """
+        return filter_dataset(self.solution, variable_dims)
 
 
 class _NodeResults(_ElementResults):
@@ -596,3 +618,24 @@ def sanitize_dataset(
     if timesteps is not None and not ds.indexes['time'].equals(timesteps):
         ds = ds.reindex({'time': timesteps}, fill_value=np.nan)
     return ds
+
+
+def filter_dataset(
+        ds: xr.Dataset,
+        variable_dims: Optional[Literal['scalar', 'numeric']] = None,
+) -> xr.Dataset:
+    """
+    Filters a dataset by its dimensions.
+    Args:
+        ds: The dataset to filter.
+        variable_dims: The dimension of the variables to filter for.
+    """
+    if variable_dims is None:
+        return ds
+
+    if variable_dims == 'scalar':
+        return ds[[name for name, da in ds.data_vars.items() if len(da.dims) == 0]]
+    elif variable_dims == 'numeric':
+        return ds[[name for name, da in ds.data_vars.items() if len(da.dims) >= 1]]
+    else:
+        raise ValueError(f'Not allowed value for "filter_dataset": {variable_dims=}')
