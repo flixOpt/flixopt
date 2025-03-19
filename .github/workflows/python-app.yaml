@@ -58,6 +58,7 @@ jobs:
 
   deploy-docs:
     runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'created'  # Only on release creation
     steps:
       - uses: actions/checkout@v4
       - name: Configure Git Credentials
