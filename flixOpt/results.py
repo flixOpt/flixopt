@@ -421,10 +421,11 @@ class ComponentResults(_NodeResults):
             show=show,
             save=True if save else False)
 
-    def charge_state_and_flow_rates(self,
-                                    negate_inputs: bool = True,
-                                    negate_outputs: bool = False,
-                                    threshold: Optional[float] = 1e-5) -> xr.Dataset:
+    def node_balance_with_charge_state(
+            self,
+            negate_inputs: bool = True,
+            negate_outputs: bool = False,
+            threshold: Optional[float] = 1e-5) -> xr.Dataset:
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
         variable_names = self.inputs + self.outputs + [self._charge_state]
