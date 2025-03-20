@@ -9,7 +9,7 @@ import numpy as np
 
 from .components import LinearConverter
 from .core import Numeric_TS, TimeSeriesData
-from .elements import Flow
+from .elements import Flow, MediumCategories
 from .interface import OnOffParameters
 
 logger = logging.getLogger('flixOpt')
@@ -54,6 +54,8 @@ class Boiler(LinearConverter):
         self.Q_fu = Q_fu
         self.Q_th = Q_th
 
+        assign_medium_category(self.Q_fu, MediumCategories.fuel)
+        assign_medium_category(self.Q_th, MediumCategories.heat)
         check_bounds(eta, 'eta', self.label_full, 0, 1)
 
 
@@ -95,6 +97,8 @@ class Power2Heat(LinearConverter):
         self.P_el = P_el
         self.Q_th = Q_th
 
+        assign_medium_category(self.P_el, MediumCategories.electricity)
+        assign_medium_category(self.Q_th, MediumCategories.heat)
         check_bounds(eta, 'eta', self.label_full, 0, 1)
 
 
@@ -135,6 +139,8 @@ class HeatPump(LinearConverter):
         self.P_el = P_el
         self.Q_th = Q_th
 
+        assign_medium_category(self.P_el, MediumCategories.electricity)
+        assign_medium_category(self.Q_th, MediumCategories.heat)
         check_bounds(COP, 'COP', self.label_full, 1, 20)
 
 
@@ -176,6 +182,8 @@ class CoolingTower(LinearConverter):
         self.P_el = P_el
         self.Q_th = Q_th
 
+        assign_medium_category(self.P_el, MediumCategories.electricity)
+        assign_medium_category(self.Q_th, MediumCategories.heat)
         check_bounds(specific_electricity_demand, 'specific_electricity_demand', self.label_full, 0, 1)
 
 
@@ -230,6 +238,9 @@ class CHP(LinearConverter):
         self.P_el = P_el
         self.Q_th = Q_th
 
+        assign_medium_category(self.P_el, MediumCategories.electricity)
+        assign_medium_category(self.Q_th, MediumCategories.heat)
+        assign_medium_category(self.Q_fu, MediumCategories.fuel)
         check_bounds(eta_th, 'eta_th', self.label_full, 0, 1)
         check_bounds(eta_el, 'eta_el', self.label_full, 0, 1)
         check_bounds(eta_el + eta_th, 'eta_th+eta_el', self.label_full, 0, 1)
@@ -281,6 +292,9 @@ class HeatPumpWithSource(LinearConverter):
         self.Q_ab = Q_ab
         self.Q_th = Q_th
 
+        assign_medium_category(self.P_el, MediumCategories.electricity)
+        assign_medium_category(self.Q_th, MediumCategories.heat)
+        assign_medium_category(self.Q_ab, MediumCategories.heat)  # TODO: Check if this is necessary
         check_bounds(COP, 'eta_th', self.label_full, 1, 20)
 
 
@@ -323,3 +337,28 @@ def check_bounds(
             f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}."
             f'    {parameter_label}.max={np.max(value)};    {parameter_label}={value}'
         )
+
+
+def assign_medium_category(flow: Flow, medium_category: str) -> None:
+    """
+    Assigns a medium category to a flow.
+    If the flow already has a category assigned, a warning is raised.
+
+    Parameters
+    ----------
+    flow: Flow
+    medium_category: str
+        The medium category to assign to the flow.
+
+    Returns
+    -------
+    None
+    """
+    if flow.medium is not None:
+        logger.warning(
+            f'Flow {flow.label} already has a medium category assigned ({flow.medium}). '
+            f'The new medium category {medium_category} will be ignored.'
+        )
+    else:
+        flow.medium = medium_category
+        logger.debug(f'Automatically assigned {medium_category=} to flow {flow.label_full}.')

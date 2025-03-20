@@ -668,7 +668,7 @@ def visualize_network(
             node_id,
             label=node['label'],
             shape={'Bus': 'circle', 'Component': 'box'}[node['class']],
-            color={'Bus': '#393E46', 'Component': '#00ADB5'}[node['class']],
+            color=node['color'],
             title=node['infos'].replace(')', '\n)'),
             font={'size': 14},
         )
@@ -680,7 +680,7 @@ def visualize_network(
             label=edge['label'],
             title=edge['infos'].replace(')', '\n)'),
             font={'color': '#4D4D4D', 'size': 14},
-            color='#222831',
+            color=edge['color'],
         )
 
     # Enhanced physics settings

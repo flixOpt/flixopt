@@ -14,6 +14,7 @@ import logging
 import math
 import pathlib
 import timeit
+import zipfile
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
@@ -26,6 +27,7 @@ from .core import Numeric, Skalar
 from .elements import Component
 from .features import InvestmentModel
 from .flow_system import FlowSystem
+from .math_modeling import Equation, Inequation, Variable
 from .solvers import Solver
 from .structure import SystemModel, copy_and_convert_datatypes, get_compact_representation
 
@@ -41,7 +43,7 @@ class Calculation:
         self,
         name,
         flow_system: FlowSystem,
-        modeling_language: Literal['pyomo', 'cvxpy'] = 'pyomo',
+        modeling_language: Literal['pyomo', 'linopy'] = 'pyomo',
         time_indices: Optional[Union[range, List[int]]] = None,
     ):
         """
@@ -51,7 +53,7 @@ class Calculation:
             name of calculation
         flow_system : FlowSystem
             flow_system which should be calculated
-        modeling_language : 'pyomo','cvxpy' (not implemeted yet)
+        modeling_language : 'pyomo', 'linopy'
             choose optimization modeling language
         time_indices : List[int] or None
             list with indices, which should be used for calculation. If None, then all timesteps are used.
@@ -62,7 +64,12 @@ class Calculation:
         self.time_indices = time_indices
 
         self.system_model: Optional[SystemModel] = None
-        self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}  # Dauer der einzelnen Dinge
+        self.durations = {
+            'modeling': 0.0,
+            'translating': 0.0,
+            'solving': 0.0,
+            'saving': 0.0,
+        }  # Dauer der einzelnen Dinge
 
         self._paths: Dict[str, Optional[Union[pathlib.Path, List[pathlib.Path]]]] = {
             'log': None,
@@ -87,20 +94,20 @@ class Calculation:
             path.mkdir(parents=True, exist_ok=True)  # Pfad anlegen, fall noch nicht vorhanden:
 
             self._paths['log'] = path / f'{self.name}_solver.log'
-            self._paths['data'] = path / f'{self.name}_data.json'
-            self._paths['results'] = path / f'{self.name}_results.json'
+            self._paths['data'] = path / f'{self.name}_data.zip'
             self._paths['infos'] = path / f'{self.name}_infos.yaml'
 
     def _save_solve_infos(self):
         t_start = timeit.default_timer()
         indent = 4 if len(self.flow_system.time_series) < 50 else None
-        with open(self._paths['results'], 'w', encoding='utf-8') as f:
-            results = copy_and_convert_datatypes(self.results(), use_numpy=False, use_element_label=False)
-            json.dump(results, f, indent=indent)
 
-        with open(self._paths['data'], 'w', encoding='utf-8') as f:
-            data = copy_and_convert_datatypes(self.flow_system.infos(), use_numpy=False, use_element_label=False)
-            json.dump(data, f, indent=indent)
+        with zipfile.ZipFile(self._paths['data'], 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
+            with zipf.open('results.json', 'w') as file:
+                results = copy_and_convert_datatypes(self.results(), use_numpy=False, use_element_label=False)
+                file.write(json.dumps(results, indent=indent).encode('utf-8'))
+            with zipf.open('data.json', 'w') as file:
+                data = copy_and_convert_datatypes(self.flow_system.infos(), use_numpy=False, use_element_label=False)
+                file.write(json.dumps(data, indent=indent).encode('utf-8'))
 
         self.durations['saving'] = round(timeit.default_timer() - t_start, 2)
 
@@ -141,6 +148,18 @@ class Calculation:
             'Durations': self.durations,
         }
 
+    def add_constrains(self, *constraints: Union[Equation, Inequation]):
+        if self.system_model is None:
+            raise Exception('System Model not defined yet')
+        for constraint in constraints:
+            self.system_model.add_user_constraint(constraint)
+
+    def add_variables(self, *variables: Variable):
+        if self.system_model is None:
+            raise Exception('System Model not defined yet')
+        for variable in variables:
+            self.system_model.add_user_variable(variable)
+
 
 class FullCalculation(Calculation):
     """
@@ -156,15 +175,19 @@ class FullCalculation(Calculation):
 
         self.system_model = SystemModel(self.name, self.modeling_language, self.flow_system, self.time_indices)
         self.system_model.do_modeling()
-        self.system_model.translate_to_modeling_language()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self.system_model
 
     def solve(self, solver: Solver, save_results: Union[bool, str, pathlib.Path] = False):
-        self._define_path_names(save_results)
         t_start = timeit.default_timer()
+        self.system_model.translate_to_modeling_language()
+        self.durations['translating'] = round(timeit.default_timer() - t_start, 2)
+
+        self._define_path_names(save_results)
         solver.logfile_name = self._paths['log']
+
+        t_start = timeit.default_timer()
         self.system_model.solve(solver)
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
 
@@ -183,7 +206,7 @@ class AggregatedCalculation(Calculation):
         flow_system: FlowSystem,
         aggregation_parameters: AggregationParameters,
         components_to_clusterize: Optional[List[Component]] = None,
-        modeling_language: Literal['pyomo', 'cvxpy'] = 'pyomo',
+        modeling_language: Literal['pyomo', 'linopy'] = 'pyomo',
         time_indices: Optional[Union[range, List[int]]] = None,
     ):
         """
@@ -202,7 +225,7 @@ class AggregatedCalculation(Calculation):
             computed in the DataAggregation
         flow_system : FlowSystem
             flow_system which should be calculated
-        modeling_language : 'pyomo','cvxpy' (not implemeted yet)
+        modeling_language : 'pyomo', 'linopy'
             choose optimization modeling language
         time_indices : List[int] or None
             list with indices, which should be used for calculation. If None, then all timesteps are used.
@@ -286,15 +309,19 @@ class AggregatedCalculation(Calculation):
         self.system_model.other_models.append(aggregation_model)
         aggregation_model.do_modeling(self.system_model)
 
-        self.system_model.translate_to_modeling_language()
-
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
+
         return self.system_model
 
     def solve(self, solver: Solver, save_results: Union[bool, str, pathlib.Path] = False):
-        self._define_path_names(save_results)
         t_start = timeit.default_timer()
+        self.system_model.translate_to_modeling_language()
+        self.durations['translating'] = round(timeit.default_timer() - t_start, 2)
+
+        self._define_path_names(save_results)
         solver.logfile_name = self._paths['log']
+
+        t_start = timeit.default_timer()
         self.system_model.solve(solver)
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
 
@@ -309,7 +336,7 @@ class SegmentedCalculation(Calculation):
         flow_system: FlowSystem,
         segment_length: int,
         overlap_length: int,
-        modeling_language: Literal['pyomo', 'cvxpy'] = 'pyomo',
+        modeling_language: Literal['pyomo', 'linopy'] = 'pyomo',
         time_indices: Optional[Union[range, list[int]]] = None,
     ):
         """
@@ -334,7 +361,7 @@ class SegmentedCalculation(Calculation):
         overlap_length : int
             The number of time_steps that are added to each individual model. Used for better
             results of storages)
-        modeling_language : 'pyomo', 'cvxpy' (not implemeted yet)
+        modeling_language : 'pyomo', 'linopy' (not implemeted yet)
             choose optimization modeling language
         time_indices : List[int] or None
             list with indices, which should be used for calculation. If None, then all timesteps are used.
@@ -433,26 +460,28 @@ class SegmentedCalculation(Calculation):
     def _save_solve_infos(self):
         t_start = timeit.default_timer()
         indent = 4 if len(self.flow_system.time_series) < 50 else None
-        with open(self._paths['results'], 'w', encoding='utf-8') as f:
-            results = copy_and_convert_datatypes(
-                self.results(combined_arrays=True), use_numpy=False, use_element_label=False
-            )
-            json.dump(results, f, indent=indent)
 
-        with open(self._paths['data'], 'w', encoding='utf-8') as f:
-            data = copy_and_convert_datatypes(self.flow_system.infos(), use_numpy=False, use_element_label=False)
-            json.dump(data, f, indent=indent)
+        with zipfile.ZipFile(self._paths['data'], 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
+            with zipf.open('results.json', 'w') as file:
+                results = copy_and_convert_datatypes(
+                    self.results(combined_arrays=True), use_numpy=False, use_element_label=False
+                )
+                file.write(json.dumps(results, indent=indent).encode('utf-8'))
+            with zipf.open('data.json', 'w') as file:
+                data = copy_and_convert_datatypes(self.flow_system.infos(), use_numpy=False, use_element_label=False)
+                file.write(json.dumps(data, indent=indent).encode('utf-8'))
 
-        with open(self._paths['results'].parent / f'{self.name}_results_extra.json', 'w', encoding='utf-8') as f:
-            results = {
-                'Individual Results': copy_and_convert_datatypes(
-                    self.results(individual_results=True), use_numpy=False, use_element_label=False
-                ),
-                'Skalar Results': copy_and_convert_datatypes(
-                    self.results(combined_scalars=True), use_numpy=False, use_element_label=False
-                ),
-            }
-            json.dump(results, f, indent=indent)
+            with zipf.open('results_extra.json', 'w') as file:
+                results = {
+                    'Individual Results': copy_and_convert_datatypes(
+                        self.results(individual_results=True), use_numpy=False, use_element_label=False
+                    ),
+                    'Skalar Results': copy_and_convert_datatypes(
+                        self.results(combined_scalars=True), use_numpy=False, use_element_label=False
+                    ),
+                }
+                file.write(json.dumps(results, indent=indent).encode('utf-8'))
+
         self.durations['saving'] = round(timeit.default_timer() - t_start, 2)
 
         t_start = timeit.default_timer()

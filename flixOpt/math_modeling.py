@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
-import pyomo.environ as pyo
+from numpy import inf
 
 from . import utils
 from .core import Numeric
@@ -148,7 +148,7 @@ class _Constraint:
         factor: Numeric,
         indices_of_variable: Optional[Union[int, np.ndarray, range, List[int]]] = None,
         as_sum: bool = False,
-    ) -> None:
+    ) -> '_Constraint':
         """
         Adds a summand to the left side of the equation.
 
@@ -196,8 +196,9 @@ class _Constraint:
                 f'Length of Summand with variable "{variable.label}" does not fit equation "{self.label}": {e}'
             ) from e
         self.summands.append(summand)
+        return self
 
-    def add_constant(self, value: Numeric) -> None:
+    def add_constant(self, value: Numeric) -> '_Constraint':
         """
         Adds a constant value to the rigth side of the equation
 
@@ -224,6 +225,8 @@ class _Constraint:
             self._update_length(length)
         except ValueError as e:
             raise ValueError(f'Length of Constant {value=} does not fit: {e}') from e
+
+        return self
 
     def description(self, at_index: int = 0) -> str:
         raise NotImplementedError('Not implemented for Abstract class <_Constraint>')
@@ -434,7 +437,7 @@ class MathModel:
     ----------
     label : str
         A descriptive label for the model.
-    modeling_language : {'pyomo', 'cvxpy'}, optional
+    modeling_language : {'pyomo', 'linopy'}, optional
         Specifies the modeling language used for translation (default is 'pyomo').
 
     Attributes
@@ -472,7 +475,7 @@ class MathModel:
         Returns a dictionary of variable results after solving.
     """
 
-    def __init__(self, label: str, modeling_language: Literal['pyomo', 'cvxpy'] = 'pyomo'):
+    def __init__(self, label: str, modeling_language: Literal['pyomo', 'linopy'] = 'pyomo'):
         self._infos = {}
         self.label = label
         self.modeling_language: str = modeling_language
@@ -513,8 +516,11 @@ class MathModel:
         if self.modeling_language == 'pyomo':
             self.model = PyomoModel()
             self.model.translate_model(self)
+        elif self.modeling_language == 'linopy':
+            self.model = LinopyModel()
+            self.model.translate_model(self)
         else:
-            raise NotImplementedError('Modeling Language cvxpy is not yet implemented')
+            raise NotImplementedError(f'Modeling Language {self.modeling_language} is not yet implemented')
         self.duration['Translation'] = round(timeit.default_timer() - t_start, 2)
 
     def solve(self, solver: 'Solver') -> None:
@@ -799,8 +805,18 @@ class GurobiSolver(Solver):
                     '"gurobi_logtools". For further details of the solving process, '
                     'install the dependency via "pip install gurobi_logtools".'
                 )
+        elif isinstance(modeling_language, LinopyModel):
+            status = modeling_language.model.solve(
+                log_fn=self.logfile_name,
+                solver_name='gurobi',
+                **{'mipgap': self.mip_gap, 'TimeLimit': self.time_limit_seconds},
+            )
+
+            self.objective = modeling_language.model.objective.value
+            self.termination_message = status[1]
+            self.best_bound = modeling_language.model.solver_model.ObjBound
         else:
-            raise NotImplementedError('Only Pyomo is implemented for GUROBI solver.')
+            raise NotImplementedError('Only Pyomo and Linopy are implemented for GUROBI solver.')
 
 
 class CplexSolver(Solver):
@@ -892,8 +908,18 @@ class HighsSolver(Solver):
                 logger.warning(f'Solution is not optimal. Termination Message: "{self.termination_message}"')
             self.best_bound = self._results.best_objective_bound
             self.log = f'Not Implemented for {self.__class__.__name__} yet'
+        elif isinstance(modeling_language, LinopyModel):
+            status = modeling_language.model.solve(
+                log_fn=self.logfile_name,
+                solver_name='highs',
+                **{'mip_rel_gap': self.mip_gap, 'time_limit': self.time_limit_seconds},
+            )
+
+            self.objective = modeling_language.model.objective.value
+            self.termination_message = status[1]
+            self.best_bound = None
         else:
-            raise NotImplementedError('Only Pyomo is implemented for HIGHS solver.')
+            raise NotImplementedError('Only Pyomo and linopy are implemented for HIGHS solver.')
 
 
 class CbcSolver(Solver):
@@ -996,6 +1022,9 @@ class PyomoModel(ModelingLanguage):
     """
 
     def __init__(self):
+        global pyo
+        import pyomo.environ as pyo
+
         logger.debug('Loaded pyomo modules')
 
         self.model = pyo.ConcreteModel(name='(Minimalbeispiel)')
@@ -1143,3 +1172,153 @@ class PyomoModel(ModelingLanguage):
         self._counter += 1  # Counter to guarantee unique names
         self.model.add_component(f'{part.label}__{self._counter}', pyomo_comp)
         self.mapping[part] = pyomo_comp
+
+
+class LinopyModel(ModelingLanguage):
+    """
+    Pyomo-based modeling language for constructing and solving optimization models.
+    Translates a MathModel into a PyomoModel.
+
+    Attributes:
+        model: Pyomo model instance.
+        mapping (dict): Maps variables and equations to Pyomo components.
+        _counter (int): Counter for naming Pyomo components.
+    """
+
+    def __init__(self):
+        global linopy
+        global pd
+        import linopy
+        import pandas as pd
+
+        logger.debug('Imported linopy and pandas')
+        self.model = linopy.Model()
+        self.mapping: Dict[Variable, linopy.Variable] = {}
+
+    def solve(self, math_model: MathModel, solver: Solver):
+        solver.solve(self)
+
+        # write results
+        math_model.result_of_objective = self.model.objective.value
+        for variable in math_model.variables:
+            raw_results = self.mapping[variable].solution
+            if variable.is_binary:
+                dtype = np.int8  # geht das vielleicht noch kleiner ???
+            else:
+                dtype = float
+
+            if raw_results.ndim == 0 and dtype is float:
+                variable.result = float(raw_results)
+            elif raw_results.ndim == 0 and dtype == np.int8:
+                variable.result = np.int8(raw_results)
+            else:  # transform to np-array (fromiter() is 5-7x faster than np.array(list(...)) )
+                variable.result = np.fromiter(raw_results, dtype=dtype)
+
+    def translate_model(self, math_model: MathModel):
+        for variable in math_model.variables:  # Variablen erstellen
+            logger.debug(f'VAR {variable.label} gets translated to linopy')
+            self.translate_variable(variable)
+        for eq in math_model.equations:  # Gleichungen erstellen
+            logger.debug(f'EQ {eq.label} gets translated to linopy')
+            self.translate_equation(eq)
+        for ineq in math_model.inequations:  # Ungleichungen erstellen:
+            logger.debug(f'INEQ {ineq.label} gets translated to linopy')
+            self.translate_equation(ineq)
+
+        obj = math_model.objective
+        logger.debug(f'{obj.label} gets translated to Pyomo')
+        self.translate_objective(obj)
+
+    def translate_variable(self, variable: Variable):
+        assert isinstance(variable, Variable), 'Wrong type of variable'
+
+        if variable.is_binary:
+            var = self.model.add_variables(
+                binary=True,
+                coords=(pd.RangeIndex(variable.indices),) if len(variable.indices) > 1 else None,
+                name=variable.label,
+            )
+        else:
+            lower = utils.as_vector(variable.lower_bound, variable.length) if variable.lower_bound is not None else -inf
+            upper = utils.as_vector(variable.upper_bound, variable.length) if variable.upper_bound is not None else inf
+            if isinstance(lower, np.ndarray) and variable.length == 1:
+                lower = lower[0]
+            if isinstance(upper, np.ndarray) and variable.length == 1:
+                upper = upper[0]
+            var = self.model.add_variables(
+                lower=lower,
+                upper=upper,
+                coords=(pd.RangeIndex(variable.indices),) if len(variable.indices) > 1 else None,
+                name=variable.label,
+            )
+
+        if variable.fixed:  # Wenn Vorgabe-Wert vorhanden:
+            fixed_value = utils.as_vector(variable.fixed_value, variable.length)
+            if isinstance(fixed_value, np.ndarray) and variable.length == 1:
+                fixed_value = fixed_value[0]
+            self.model.add_constraints(var == fixed_value, name=f'fix_{variable.label}')
+
+        self.mapping[variable] = var
+
+    def translate_equation(self, constraint: _Constraint):
+        if not isinstance(constraint, _Constraint):
+            raise TypeError(f'Wrong Class: {constraint.__class__.__name__}')
+
+        lhs = 0
+        summands_sorted = sorted(constraint.summands, key=lambda summand: len(summand.factor_vec), reverse=True)
+        for (
+            summand
+        ) in summands_sorted:  # Sorting is necessary to not cretae a ScalarExpression if SumOfSummand is present
+            lhs += self._summand_math_expression(summand)  # i-te Gleichung (wenn Skalar, dann wird i ignoriert)
+        rhs = constraint.constant_vector
+        if len(rhs) == 1:
+            rhs = rhs[0]
+        if isinstance(constraint, Equation):
+            self.model.add_constraints(lhs == rhs, name=constraint.label)
+        elif isinstance(constraint, Inequation):
+            self.model.add_constraints(lhs <= rhs, name=constraint.label)
+        else:
+            raise TypeError(f'Wrong Class: {constraint.__class__.__name__}')
+
+    def translate_objective(self, objective: Equation):
+        if not isinstance(objective, Equation):
+            raise TypeError(f'Class {objective.__class__.__name__} Can not be the objective!')
+        if not objective.is_objective:
+            raise TypeError(
+                f'Objective Equation is not marked as objective, {objective.is_objective=}, '
+                f'but was sent to translate to objective!'
+            )
+        if objective.length != 1:
+            raise Exception('Length of Objective must be 0')
+
+        lhs = 0
+        for summand in objective.summands:
+            lhs += self._summand_math_expression(summand)  # i-te Gleichung (wenn Skalar, dann wird i ignoriert)
+        self.model.add_objective(lhs)
+
+    def _summand_math_expression(self, summand: Summand) -> 'linopy.LinearExpression':
+        linopy_variable = self.mapping[summand.variable]
+
+        if summand.variable.length != 1:
+            linopy_variable = linopy_variable.loc[summand.indices]
+
+        factor = summand.factor_vec
+        if len(summand.factor_vec) == 1:
+            factor = factor[0]
+
+        if summand.variable.length == 1 and len(summand.factor_vec) != 1:
+
+            def scalar_var_and_array_factor(m, i):
+                return linopy_variable.at[i] * factor[i]
+
+            expr = self.model.linexpr(scalar_var_and_array_factor, (range(len(factor)),))
+            if isinstance(summand, SumOfSummand):
+                return expr.sum()
+            else:
+                return expr
+
+        if isinstance(summand, SumOfSummand):
+            return (factor * linopy_variable).sum()
+        else:
+            # Ausdruck für i-te Gleichung (falls Skalar, dann immer gleicher Ausdruck ausgegeben)
+            return linopy_variable * factor

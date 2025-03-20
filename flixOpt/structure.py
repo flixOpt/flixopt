@@ -35,7 +35,7 @@ class SystemModel(MathModel):
     def __init__(
         self,
         label: str,
-        modeling_language: Literal['pyomo', 'cvxpy'],
+        modeling_language: Literal['pyomo', 'linopy'],
         flow_system: 'FlowSystem',
         time_indices: Optional[Union[List[int], range]],
     ):
@@ -52,7 +52,8 @@ class SystemModel(MathModel):
         self.effect_collection_model = flow_system.effect_collection.create_model(self)
         self.component_models: List['ComponentModel'] = []
         self.bus_models: List['BusModel'] = []
-        self.other_models: List[ElementModel] = []
+        self._user_model = ElementModel(Element('User'), 'Model')
+        self.other_models: List[ElementModel] = [self._user_model]
 
     def do_modeling(self):
         self.effect_collection_model.do_modeling(self)
@@ -157,6 +158,21 @@ class SystemModel(MathModel):
             'Time': self.time_series_with_end,
             'Time intervals in hours': self.dt_in_hours,
         }
+
+    def add_user_constraint(self, constraint: Union[Equation, Inequation]):
+        assert constraint.label not in self._user_model.constraints, (
+            f'Constraint with label "{constraint.label}" already exists'
+        )
+        for summand in constraint.summands:
+            if summand.variable not in self.all_variables.values():
+                raise KeyError(f'Variable "{summand.variable.label}" used in constraint "{constraint.label}" not found')
+        self._user_model.constraints[constraint.label] = constraint
+
+    def add_user_variable(self, variable: Variable):
+        assert variable.label not in self._user_model.variables, (
+            f'Variable with label "{variable.label}" already exists'
+        )
+        self._user_model.variables[variable.label] = variable
 
     @property
     def main_results(self) -> Dict[str, Union[Skalar, Dict]]:

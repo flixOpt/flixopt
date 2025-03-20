@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .core import TimeSeries
 from .effects import Effect, EffectCollection
-from .elements import Bus, Component, Flow
+from .elements import Bus, Component, Flow, MediumColors
 from .structure import Element, SystemModel, get_compact_representation, get_str_representation
 
 if TYPE_CHECKING:
@@ -25,6 +25,8 @@ class FlowSystem:
     """
     A FlowSystem organizes the high level Elements (Components & Effects).
     """
+
+    default_color = MediumColors.default
 
     def __init__(
         self,
@@ -80,8 +82,8 @@ class FlowSystem:
         for new_component in new_components:
             logger.info(f'Registered new Component: {new_component.label}')
             self._check_if_element_is_unique(new_component)  # check if already exists:
-            new_component.register_component_in_flows()  # Komponente in Flow registrieren
-            new_component.register_flows_in_bus()  # Flows in Bus registrieren:
+            new_component.connect_elements()
+
             self.components[new_component.label] = new_component  # Add to existing components
 
     def add_elements(self, *args: Element) -> None:
@@ -107,10 +109,12 @@ class FlowSystem:
             element.transform_data()
 
     def network_infos(self) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
+        colors = self.colors()
         nodes = {
             node.label_full: {
                 'label': node.label,
                 'class': 'Bus' if isinstance(node, Bus) else 'Component',
+                'color': colors[node.label_full],
                 'infos': node.__str__(),
             }
             for node in list(self.components.values()) + list(self.buses.values())
@@ -119,6 +123,7 @@ class FlowSystem:
         edges = {
             flow.label_full: {
                 'label': flow.label,
+                'color': colors[flow.label_full],
                 'start': flow.bus.label_full if flow.is_input_in_comp else flow.comp.label_full,
                 'end': flow.comp.label_full if flow.is_input_in_comp else flow.bus.label_full,
                 'infos': flow.__str__(),
@@ -290,6 +295,15 @@ class FlowSystem:
     @property
     def all_time_series(self) -> List[TimeSeries]:
         return [ts for element in self.all_elements.values() for ts in element.used_time_series]
+
+    def colors(self) -> Dict[str, str]:
+        """Returns a dictionary of colors for all elements in the flow system."""
+        return {
+            element.label_full: element.medium.color
+            if (isinstance(element, (Bus, Flow)) and element.medium is not None)
+            else self.default_color
+            for element in self.all_elements.values()
+        }
 
 
 def create_datetime_array(
