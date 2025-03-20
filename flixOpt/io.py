@@ -180,16 +180,37 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
     """
     documentation = {
         'objective': model.objective.__repr__(),
+        'termination_condition': model.termination_condition,
+        'status': model.status,
         'nvars': model.nvars,
         'nvarsbin': model.binaries.nvars,
         'nvarscont': model.continuous.nvars,
         'ncons': model.ncons,
         'variables': {variable_name: variable.__repr__() for variable_name, variable in model.variables.items()},
-        'constraints': {constraint_name: constraint.__repr__() for constraint_name, constraint in model.constraints.items()},
+        'constraints': {
+            constraint_name: constraint.__repr__() for constraint_name, constraint in model.constraints.items()
+        },
         'binaries': list(model.binaries),
         'integers': list(model.integers),
         'continuous': list(model.continuous),
+        'infeasible_constraints': '',
     }
+
+    if model.status  == 'warning':
+        logger.critical(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
+        try:
+            from contextlib import redirect_stdout
+            import io
+            f = io.StringIO()
+
+            # Redirect stdout to our buffer
+            with redirect_stdout(f):
+                model.print_infeasibilities()
+
+            documentation['infeasible_constraints'] = f.getvalue()
+        except NotImplementedError:
+            logger.critical('Infeasible constraints could not get retrieved. This functionality is only availlable with gurobi')
+            documentation['infeasible_constraints'] = 'Not possible to retrieve infeasible constraints'
 
     if path is not None:
         if path.suffix not in ['.yaml', '.yml']:

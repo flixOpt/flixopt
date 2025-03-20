@@ -153,6 +153,11 @@ class FullCalculation(Calculation):
                          **solver.options)
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
 
+        if self.model.status == 'warning':
+            from .io import document_linopy_model
+            document_linopy_model(self.model, self.folder / f'{self.name}_model_doc.yaml')
+            #TODO: Raise an exception here?
+
         # Log the formatted output
         if log_main_results:
             logger.info(f'{" Main Results ":#^80}')
