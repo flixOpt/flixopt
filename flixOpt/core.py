@@ -723,12 +723,15 @@ class TimeSeriesCollection:
         else:
             series_to_include = self.non_constants
 
-        ds = xr.Dataset({ts.name: ts.active_data for ts in series_to_include},
-                        coords={'time': self.timesteps_extra})
+        # Create individual datasets and merge them
+        ds = xr.merge([ts.active_data.to_dataset(name=ts.name) for ts in series_to_include])
+
+        # Ensure the correct time coordinates
+        ds = ds.reindex(time=self.timesteps_extra)
 
         ds.attrs.update({
-            "timesteps_extra": f"{self.timesteps_extra[0]} ... {self.timesteps_extra[-1]} | len={len(self.timesteps_extra)}",
-            "hours_per_timestep": self._format_stats(self.hours_per_timestep),
+                'timesteps_extra': f'{self.timesteps_extra[0]} ... {self.timesteps_extra[-1]} | len={len(self.timesteps_extra)}',
+                'hours_per_timestep': self._format_stats(self.hours_per_timestep),
         })
 
         return ds
