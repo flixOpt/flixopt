@@ -310,15 +310,6 @@ class _ElementResults:
 
         self.solution = self._calculation_results.solution[self._variable_names]
 
-    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'numeric']] = None) -> xr.Dataset:
-        """
-        Filter the solution of the element by dimension.
-
-        Args:
-            variable_dims: The dimension of the variables to filter for.
-        """
-        return filter_dataset(self.solution, variable_dims)
-
     @property
     def variables(self) -> linopy.Variables:
         """
@@ -342,6 +333,15 @@ class _ElementResults:
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._variable_names]
+
+    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'numeric']] = None) -> xr.Dataset:
+        """
+        Filter the solution of the element by dimension.
+
+        Args:
+            variable_dims: The dimension of the variables to filter for.
+        """
+        return filter_dataset(self.solution, variable_dims)
 
 
 class _NodeResults(_ElementResults):
@@ -512,6 +512,19 @@ class SegmentedCalculationResults:
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
 
+    @property
+    def meta_data(self) -> Dict[str, Union[int, List[str]]]:
+        return {
+            'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
+            'timesteps_per_segment': self.timesteps_per_segment,
+            'overlap_timesteps': self.overlap_timesteps,
+            'sub_calculations': [calc.name for calc in self.segment_results]
+        }
+
+    @property
+    def segment_names(self) -> List[str]:
+        return [segment.name for segment in self.segment_results]
+
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Returns the solution of a variable without overlap"""
         dataarrays = [result.solution[variable_name].isel(time=slice(None, self.timesteps_per_segment))
@@ -555,19 +568,6 @@ class SegmentedCalculationResults:
         with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(self.meta_data, f, indent=4, ensure_ascii=False)
         logger.info(f'Saved calculation "{name}" to {path}')
-
-    @property
-    def meta_data(self) -> Dict[str, Union[int, List[str]]]:
-        return {
-            'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
-            'timesteps_per_segment': self.timesteps_per_segment,
-            'overlap_timesteps': self.overlap_timesteps,
-            'sub_calculations': [calc.name for calc in self.segment_results]
-        }
-
-    @property
-    def segment_names(self) -> List[str]:
-        return [segment.name for segment in self.segment_results]
 
 
 def plotly_save_and_show(fig: plotly.graph_objs.Figure,
