@@ -153,6 +153,11 @@ class FullCalculation(Calculation):
                          **solver.options)
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
 
+        if self.model.status == 'warning':
+            from .io import document_linopy_model
+            document_linopy_model(self.model, self.folder / f'{self.name}_model_doc.yaml')
+            #TODO: Raise an exception here?
+
         # Log the formatted output
         if log_main_results:
             logger.info(f'{" Main Results ":#^80}')
@@ -163,31 +168,6 @@ class FullCalculation(Calculation):
             )
 
         self.results = CalculationResults.from_calculation(self)
-
-    def save_results(self, save_flow_system: bool = False, compression: int = 0):
-        """
-        Saves the results of the calculation to a folder with the name of the calculation.
-        The folder is created if it does not exist.
-
-        The CalculationResults are saved as a .nc and a .json file.
-        The calculation infos are saved as a .yaml file.
-        Optionally, the flow_system is saved as a .nc file.
-
-        Parameters
-        ----------
-        save_flow_system : bool, optional
-            Whether to save the flow_system, by default False
-        compression : int, optional
-            Compression level for the netCDF file, by default 0 wich leads to no compression.
-            Currently, only the Flow System file can be compressed.
-        """
-        t_start = timeit.default_timer()
-        with open(self.folder / f'{self.name}_infos.yaml', 'w', encoding='utf-8') as f:
-            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4)
-        self.results.to_file(self.folder, self.name)
-        if save_flow_system:
-            self.flow_system.to_netcdf(self.folder / f'{self.name}_flowsystem.nc', compression)
-        self.durations['saving'] = round(timeit.default_timer() - t_start, 2)
 
     def _activate_time_series(self):
         self.flow_system.transform_data()

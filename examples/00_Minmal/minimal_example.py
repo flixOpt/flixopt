@@ -58,7 +58,7 @@ if __name__ == '__main__':
 
     # --- Analyze Results ---
     # Access the results of an element
-    df1 = calculation.results['costs'].variables_time.solution.to_dataframe()
+    df1 = calculation.results['costs'].filter_solution('time').to_dataframe()
 
     # Plot the results of a specific element
     calculation.results['District Heating'].plot_node_balance()

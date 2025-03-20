@@ -112,6 +112,9 @@ if __name__ == '__main__':
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # Convert the results for the storage component to a dataframe and display
-    df = calculation.results['Storage'].charge_state_and_flow_rates()
+    df = calculation.results['Storage'].node_balance_with_charge_state()
     print(df)
-    calculation.save_results(save_flow_system=True)
+
+    #Save results to file for later usage
+    calculation.results.to_file()
+

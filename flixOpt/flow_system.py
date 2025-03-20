@@ -117,7 +117,7 @@ class FlowSystem:
         """
         with xr.open_dataset(path) as ds:
             ds = ds.load()
-        ds.attrs = json.loads(ds.attrs['flow_system'])
+        ds.attrs = json.loads(ds.attrs['attrs'])
         return cls.from_dataset(ds)
 
     def add_elements(self, *elements: Element) -> None:
@@ -185,16 +185,35 @@ class FlowSystem:
         return io.replace_timeseries(data, data_mode)
 
     def as_dataset(self, constants_in_dataset: bool = False) -> xr.Dataset:
+        """
+        Convert the FlowSystem to a xarray Dataset.
+
+        Args:
+            constants_in_dataset: If True, constants are included as Dataset variables.
+        """
         ds = self.time_series_collection.to_dataset(include_constants=constants_in_dataset)
         ds.attrs = self.as_dict(data_mode='name')
         return ds
 
-    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
-        if compression != 0 and importlib.util.find_spec('netCDF4') is None:
-            raise ModuleNotFoundError('Encoding is only supported with netCDF4. Install netcdf4 via pip install netcdf4.')
-        ds = self.as_dataset()
-        ds.attrs = {'flow_system': json.dumps(ds.attrs)}
-        ds.to_netcdf(path, encoding=None if compression == 0 else {k: dict(zlib=True, complevel=compression).copy() for k in ds.data_vars})
+    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0, constants_in_dataset: bool = False):
+        """
+        Saves the FlowSystem to a netCDF file.
+        Args:
+            path: The path to the netCDF file.
+            compression: The compression level to use when saving the file.
+            constants_in_dataset: If True, constants are included as Dataset variables.
+        """
+        ds = self.as_dataset(constants_in_dataset=True)
+        ds.attrs = {'attrs': json.dumps(ds.attrs)}
+
+        encoding = None
+        if compression != 0:
+            if importlib.util.find_spec('netCDF4') is not None:
+                encoding = {k: dict(zlib=True, complevel=compression) for k in ds.data_vars}
+            else:
+                logger.warning('FlowSystem was exported without compression due to missing dependency "netcdf4".'
+                               'Install netcdf4 via `pip install netcdf4`.')
+        ds.to_netcdf(path, encoding=encoding)
         logger.info(f'Saved FlowSystem to {path}')
 
     def plot_network(

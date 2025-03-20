@@ -218,7 +218,7 @@ class Flow(Element):
         self.flow_hours_total_min = flow_hours_total_min
         self.on_off_parameters = on_off_parameters
 
-        self.previous_flow_rate = previous_flow_rate
+        self.previous_flow_rate = previous_flow_rate if not isinstance(previous_flow_rate, list) else np.array(previous_flow_rate)
 
         self.component: str = 'UnknownComponent'
         self.is_input_in_component: Optional[bool] = None
@@ -262,6 +262,12 @@ class Flow(Element):
         infos = super().infos(use_numpy, use_element_label)
         infos['is_input_in_component'] = self.is_input_in_component
         return infos
+
+    def to_dict(self) -> Dict:
+        data = super().to_dict()
+        if isinstance(data.get('previous_flow_rate'), np.ndarray):
+            data['previous_flow_rate'] = data['previous_flow_rate'].tolist()
+        return data
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
