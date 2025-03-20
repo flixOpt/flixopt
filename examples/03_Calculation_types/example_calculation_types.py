@@ -15,7 +15,7 @@ import flixOpt as fx
 
 if __name__ == '__main__':
     # Calculation Types
-    full, segmented, aggregated = True, True, True
+    full, segmented, aggregated = True, False, False
 
     # Segmented Properties
     segment_length, overlap_length = 96, 1
@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # Data Import
     data_import = pd.read_csv(pathlib.Path('Zeitreihen2020.csv'), index_col=0).sort_index()
     filtered_data = data_import['2020-01-01':'2020-01-2 23:45:00']
-    # filtered_data = data_import[0:500]  # Alternatively filter by index
+    filtered_data = data_import[0:10000]  # Alternatively filter by index
 
     filtered_data.index = pd.to_datetime(filtered_data.index)
     timesteps = filtered_data.index
@@ -158,10 +158,11 @@ if __name__ == '__main__':
     calculations: List[Union[fx.FullCalculation, fx.AggregatedCalculation, fx.SegmentedCalculation]] = []
 
     if full:
-        calculation = fx.FullCalculation('Full', flow_system)
+        calculation = fx.FullCalculation('Full_long', flow_system)
         calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0, 60))
+        calculation.solve(fx.solvers.GurobiSolver(0.05, 60))
         calculations.append(calculation)
+        calculation.results.to_file()
 
     if segmented:
         calculation = fx.SegmentedCalculation('Segmented', flow_system, segment_length, overlap_length)
@@ -176,40 +177,3 @@ if __name__ == '__main__':
         calculation.do_modeling()
         calculation.solve(fx.solvers.HighsSolver(0, 60))
         calculations.append(calculation)
-
-    # Get solutions for plotting for different calculations
-    def get_solutions(calcs: List, variable: str) -> xr.Dataset:
-        dataarrays = []
-        for calc in calcs:
-            if calc.name == 'Segmented':
-                dataarrays.append(calc.results.solution_without_overlap(variable).rename(calc.name))
-            else:
-                dataarrays.append(calc.results.model.variables[variable].solution.rename(calc.name))
-        return xr.merge(dataarrays)
-
-    # --- Plotting for comparison ---
-    fx.plotting.with_plotly(
-        get_solutions(calculations, 'Speicher|charge_state').to_dataframe(),
-        mode='line', title='Charge State Comparison', ylabel='Charge state', path='results/Charge State.html', save=True
-    )
-
-    fx.plotting.with_plotly(
-        get_solutions(calculations, 'BHKW2(Q_th)|flow_rate').to_dataframe(),
-        mode='line', title='BHKW2(Q_th) Flow Rate Comparison', ylabel='Flow rate', path='results/BHKW2 Thermal Power.html', save=True
-    )
-
-    fx.plotting.with_plotly(
-        get_solutions(calculations, 'costs(operation)|total_per_timestep').to_dataframe(),
-        mode='line', title='Operation Cost Comparison', ylabel='Costs [€]', path='results/Operation Costs.html', save=True
-    )
-
-    fx.plotting.with_plotly(
-        pd.DataFrame(get_solutions(calculations, 'costs(operation)|total_per_timestep').to_dataframe().sum()).T,
-        mode='bar', title='Total Cost Comparison', ylabel='Costs [€]'
-    ).update_layout(barmode='group').write_html('results/Total Costs.html')
-
-    fx.plotting.with_plotly(
-        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]), 'bar'
-    ).update_layout(
-        title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)'
-    ).write_html('results/Speed Comparison.html')
