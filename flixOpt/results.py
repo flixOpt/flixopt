@@ -133,6 +133,39 @@ class CalculationResults:
         self.timesteps_extra = pd.DatetimeIndex([datetime.datetime.fromisoformat(date) for date in results_structure['Time']], name='time')
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
 
+    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
+        if key in self.components:
+            return self.components[key]
+        if key in self.buses:
+            return self.buses[key]
+        if key in self.effects:
+            return self.effects[key]
+        raise KeyError(f'No element with label {key} found.')
+
+    @property
+    def storages(self) -> List['ComponentResults']:
+        """All storages in the results."""
+        return [comp for comp in self.components.values() if comp.is_storage]
+
+    @property
+    def objective(self) -> float:
+        """ The objective result of the optimization. """
+        return self.infos['Main Results']['Objective']
+
+    @property
+    def variables(self) -> linopy.Variables:
+        """ The variables of the optimization. Only available if the linopy.Model is available. """
+        if self.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self.model.variables
+
+    @property
+    def constraints(self) -> linopy.Constraints:
+        """The constraints of the optimization. Only available if the linopy.Model is available."""
+        if self.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self.model.constraints
+
     def filter_solution(self,
                variable_dims: Optional[Literal['scalar', 'numeric']] = None,
                element: Optional[str] = None) -> xr.Dataset:
@@ -148,14 +181,23 @@ class CalculationResults:
             return filter_dataset(self[element].solution, variable_dims)
         return filter_dataset(self.solution, variable_dims)
 
-    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
-        if key in self.components:
-            return self.components[key]
-        if key in self.buses:
-            return self.buses[key]
-        if key in self.effects:
-            return self.effects[key]
-        raise KeyError(f'No element with label {key} found.')
+    def plot_heatmap(self,
+                     variable_name: str,
+                     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
+                     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
+                     color_map: str = 'portland',
+                     save: Union[bool, pathlib.Path] = False,
+                     show: bool = True
+                     ) -> plotly.graph_objs.Figure:
+        return plot_heatmap(
+            dataarray=self.solution[variable_name],
+            name=variable_name,
+            folder=self.folder,
+            heatmap_timeframes=heatmap_timeframes,
+            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
+            color_map=color_map,
+            save=save,
+            show=show)
 
     def to_file(
         self,
@@ -234,24 +276,6 @@ class CalculationResults:
             'network_infos': self.network_infos,
         }
 
-    def plot_heatmap(self,
-                     variable_name: str,
-                     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-                     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-                     color_map: str = 'portland',
-                     save: Union[bool, pathlib.Path] = False,
-                     show: bool = True
-                     ) -> plotly.graph_objs.Figure:
-        return plot_heatmap(
-            dataarray=self.solution[variable_name],
-            name=variable_name,
-            folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
-            save=save,
-            show=show)
-
     @staticmethod
     def _get_paths(
             folder: pathlib.Path,
@@ -265,25 +289,6 @@ class CalculationResults:
         model_documentation_path = folder / f'{name}_model_doc.yaml'
         return model_path, solution_path, infos_path, json_path, flow_system_path, model_documentation_path
 
-    @property
-    def storages(self) -> List['ComponentResults']:
-        return [comp for comp in self.components.values() if comp.is_storage]
-
-    @property
-    def objective(self) -> float:
-        return self.infos['Main Results']['Objective']
-
-    @property
-    def variables(self) -> linopy.Variables:
-        if self.model is None:
-            raise ValueError('The linopy model is not available.')
-        return self.model.variables
-
-    @property
-    def constraints(self) -> linopy.Constraints:
-        if self.model is None:
-            raise ValueError('The linopy model is not available.')
-        return self.model.constraints
 
 class _ElementResults:
     @classmethod
