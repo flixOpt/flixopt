@@ -167,7 +167,7 @@ class CalculationResults:
         return self.model.constraints
 
     def filter_solution(self,
-               variable_dims: Optional[Literal['scalar', 'numeric']] = None,
+               variable_dims: Optional[Literal['scalar', 'time']] = None,
                element: Optional[str] = None) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -334,7 +334,7 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._variable_names]
 
-    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'numeric']] = None) -> xr.Dataset:
+    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'time']] = None) -> xr.Dataset:
         """
         Filter the solution of the element by dimension.
 
@@ -654,7 +654,7 @@ def sanitize_dataset(
 
 def filter_dataset(
         ds: xr.Dataset,
-        variable_dims: Optional[Literal['scalar', 'numeric']] = None,
+        variable_dims: Optional[Literal['scalar', 'time']] = None,
 ) -> xr.Dataset:
     """
     Filters a dataset by its dimensions.
@@ -668,7 +668,7 @@ def filter_dataset(
 
     if variable_dims == 'scalar':
         return ds[[name for name, da in ds.data_vars.items() if len(da.dims) == 0]]
-    elif variable_dims == 'numeric':
-        return ds[[name for name, da in ds.data_vars.items() if len(da.dims) >= 1]]
+    elif variable_dims == 'time':
+        return ds[[name for name, da in ds.data_vars.items() if 'time' in da.dims]]
     else:
         raise ValueError(f'Not allowed value for "filter_dataset()": {variable_dims=}')
