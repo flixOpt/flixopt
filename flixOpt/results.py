@@ -227,17 +227,17 @@ class CalculationResults:
         model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = self._get_paths(
             folder= folder, name= self.name if name is None else name)
 
-        ENCODE = False
+        apply_encoding = False
         if compression != 0:
             if importlib.util.find_spec('netCDF4') is not None:
-                ENCODE = True
+                apply_encoding = True
             else:
                 logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
                                'Install netcdf4 via `pip install netcdf4`.')
 
         self.solution.to_netcdf(
             solution_path,
-            encoding=None if not ENCODE else {data_var: {"zlib": True, "complevel": 5}
+            encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
                                               for data_var in self.solution.data_vars}
         )
 
@@ -245,7 +245,7 @@ class CalculationResults:
         flow_system_ds.attrs = {'attrs': json.dumps(flow_system_ds.attrs)}
         flow_system_ds.to_netcdf(
             flow_system_path,
-            encoding=None if not ENCODE else {data_var: {"zlib": True, "complevel": 5}
+            encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
                                               for data_var in self.flow_system.data_vars}
         )
 

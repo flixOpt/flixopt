@@ -1,17 +1,16 @@
 import datetime
 import json
-import re
-import yaml
 import logging
 import pathlib
-from typing import Dict, Literal, Union, TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Dict, Literal, Union
 
-import xarray as xr
 import linopy
+import xarray as xr
+import yaml
 
 from .core import TimeSeries
 from .flow_system import FlowSystem
-
 
 logger = logging.getLogger('flixOpt')
 
