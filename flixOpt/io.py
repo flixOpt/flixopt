@@ -199,8 +199,8 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
     if model.status  == 'warning':
         logger.critical(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
         try:
-            from contextlib import redirect_stdout
             import io
+            from contextlib import redirect_stdout
             f = io.StringIO()
 
             # Redirect stdout to our buffer
