@@ -22,7 +22,6 @@ from .commons import (
     TimeSeriesData,
     Transmission,
     change_logging_level,
-    create_datetime_array,
     linear_converters,
     plotting,
     results,

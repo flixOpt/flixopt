@@ -6,16 +6,22 @@ These are tightly connected to features.py
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
+from flixOpt.core import TimeSeriesCollection
+
 from .config import CONFIG
-from .core import Numeric, Numeric_TS, Skalar
-from .structure import Element, Interface
+from .core import NumericData, NumericDataTS, Scalar
+from .structure import Element, Interface, register_class_for_io
+
+if TYPE_CHECKING:  # for type checking and preventing circular imports
+    from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
-    from .effects import Effect, EffectTimeSeries, EffectValues, EffectValuesInvest
+    from .effects import Effect, EffectValuesUser, EffectValuesUserScalar
 
 logger = logging.getLogger('flixOpt')
 
 
+@register_class_for_io
 class InvestParameters(Interface):
     """
     collects arguments for invest-stuff
@@ -27,12 +33,12 @@ class InvestParameters(Interface):
         minimum_size: Union[int, float] = 0,  # TODO: Use EPSILON?
         maximum_size: Optional[Union[int, float]] = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: Union[Dict, int, float] = None,
-        specific_effects: Union[Dict, int, float] = None,  # costs per Flow-Unit/Storage-Size/...
+        fix_effects: Optional['EffectValuesUserScalar'] = None,
+        specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
         effects_in_segments: Optional[
-            Tuple[List[Tuple[Skalar, Skalar]], Dict['Effect', List[Tuple[Skalar, Skalar]]]]
+            Tuple[List[Tuple[Scalar, Scalar]], Dict['str', List[Tuple[Scalar, Scalar]]]]
         ] = None,
-        divest_effects: Union[Dict, int, float] = None,
+        divest_effects: Optional['EffectValuesUserScalar'] = None,
     ):
         """
         Parameters
@@ -69,21 +75,19 @@ class InvestParameters(Interface):
         maximum_size : scalar, Optional
             Max nominal value (only if: size_is_fixed = False).
         """
-        self.fix_effects: EffectValuesInvest = fix_effects or {}
-        self.divest_effects: EffectValuesInvest = divest_effects or {}
+        self.fix_effects: EffectValuesUser = fix_effects or {}
+        self.divest_effects: EffectValuesUser = divest_effects or {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: EffectValuesInvest = specific_effects or {}
+        self.specific_effects: EffectValuesUser = specific_effects or {}
         self.effects_in_segments = effects_in_segments
         self._minimum_size = minimum_size
         self._maximum_size = maximum_size or CONFIG.modeling.BIG  # default maximum
 
-    def transform_data(self):
-        from .effects import as_effect_dict
-
-        self.fix_effects = as_effect_dict(self.fix_effects)
-        self.divest_effects = as_effect_dict(self.divest_effects)
-        self.specific_effects = as_effect_dict(self.specific_effects)
+    def transform_data(self, flow_system: 'FlowSystem'):
+        self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)
+        self.divest_effects = flow_system.effects.create_effect_values_dict(self.divest_effects)
+        self.specific_effects = flow_system.effects.create_effect_values_dict(self.specific_effects)
 
     @property
     def minimum_size(self):
@@ -93,18 +97,18 @@ class InvestParameters(Interface):
     def maximum_size(self):
         return self.fixed_size or self._maximum_size
 
-
+@register_class_for_io
 class OnOffParameters(Interface):
     def __init__(
         self,
-        effects_per_switch_on: Union[Dict, Numeric] = None,
-        effects_per_running_hour: Union[Dict, Numeric] = None,
+        effects_per_switch_on: Optional['EffectValuesUser'] = None,
+        effects_per_running_hour: Optional['EffectValuesUser'] = None,
         on_hours_total_min: Optional[int] = None,
         on_hours_total_max: Optional[int] = None,
-        consecutive_on_hours_min: Optional[Numeric] = None,
-        consecutive_on_hours_max: Optional[Numeric] = None,
-        consecutive_off_hours_min: Optional[Numeric] = None,
-        consecutive_off_hours_max: Optional[Numeric] = None,
+        consecutive_on_hours_min: Optional[NumericData] = None,
+        consecutive_on_hours_max: Optional[NumericData] = None,
+        consecutive_off_hours_min: Optional[NumericData] = None,
+        consecutive_off_hours_max: Optional[NumericData] = None,
         switch_on_total_max: Optional[int] = None,
         force_switch_on: bool = False,
     ):
@@ -139,36 +143,35 @@ class OnOffParameters(Interface):
         force_switch_on : bool
             force creation of switch on variable, even if there is no switch_on_total_max
         """
-        self.effects_per_switch_on: Union[EffectValues, EffectTimeSeries] = effects_per_switch_on or {}
-        self.effects_per_running_hour: Union[EffectValues, EffectTimeSeries] = effects_per_running_hour or {}
-        self.on_hours_total_min: Skalar = on_hours_total_min
-        self.on_hours_total_max: Skalar = on_hours_total_max
-        self.consecutive_on_hours_min: Numeric_TS = consecutive_on_hours_min
-        self.consecutive_on_hours_max: Numeric_TS = consecutive_on_hours_max
-        self.consecutive_off_hours_min: Numeric_TS = consecutive_off_hours_min
-        self.consecutive_off_hours_max: Numeric_TS = consecutive_off_hours_max
-        self.switch_on_total_max: Skalar = switch_on_total_max
+        self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}
+        self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}
+        self.on_hours_total_min: Scalar = on_hours_total_min
+        self.on_hours_total_max: Scalar = on_hours_total_max
+        self.consecutive_on_hours_min: NumericDataTS = consecutive_on_hours_min
+        self.consecutive_on_hours_max: NumericDataTS = consecutive_on_hours_max
+        self.consecutive_off_hours_min: NumericDataTS = consecutive_off_hours_min
+        self.consecutive_off_hours_max: NumericDataTS = consecutive_off_hours_max
+        self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
-    def transform_data(self, owner: 'Element'):
-        from .effects import effect_values_to_time_series
-        from .structure import _create_time_series
-
-        self.effects_per_switch_on = effect_values_to_time_series('per_switch_on', self.effects_per_switch_on, owner)
-        self.effects_per_running_hour = effect_values_to_time_series(
-            'per_running_hour', self.effects_per_running_hour, owner
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        self.effects_per_switch_on = flow_system.create_effect_time_series(
+            name_prefix, self.effects_per_switch_on, 'per_switch_on'
         )
-        self.consecutive_on_hours_min = _create_time_series(
-            'consecutive_on_hours_min', self.consecutive_on_hours_min, owner
+        self.effects_per_running_hour = flow_system.create_effect_time_series(
+            name_prefix, self.effects_per_running_hour, 'per_running_hour'
         )
-        self.consecutive_on_hours_max = _create_time_series(
-            'consecutive_on_hours_max', self.consecutive_on_hours_max, owner
+        self.consecutive_on_hours_min = flow_system.create_time_series(
+            f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
         )
-        self.consecutive_off_hours_min = _create_time_series(
-            'consecutive_off_hours_min', self.consecutive_off_hours_min, owner
+        self.consecutive_on_hours_max = flow_system.create_time_series(
+            f'{name_prefix}|consecutive_on_hours_max', self.consecutive_on_hours_max
         )
-        self.consecutive_off_hours_max = _create_time_series(
-            'consecutive_off_hours_max', self.consecutive_off_hours_max, owner
+        self.consecutive_off_hours_min = flow_system.create_time_series(
+            f'{name_prefix}|consecutive_off_hours_min', self.consecutive_off_hours_min
+        )
+        self.consecutive_off_hours_max = flow_system.create_time_series(
+            f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
         )
 
     @property

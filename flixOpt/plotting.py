@@ -122,8 +122,9 @@ def with_plotly(
     elif mode == 'area':
         data[(data > -1e-5) & (data < 1e-5)] = 0  # Preventing issues with plotting
         # Split columns into positive, negative, and mixed categories
-        positive_columns = list(data.columns[(data >= 0).all()])
-        negative_columns = list(data.columns[(data <= 0).all()])
+        positive_columns = list(data.columns[(data >= 0).where(~np.isnan(data), True).all()])
+        negative_columns = list(data.columns[(data <= 0).where(~np.isnan(data), True).all()])
+        negative_columns = [column for column in negative_columns if column not in positive_columns]
         mixed_columns = list(set(data.columns) - set(positive_columns + negative_columns))
         if mixed_columns:
             logger.warning(
@@ -606,7 +607,7 @@ def heat_map_data_from_df(
     return df_pivoted
 
 
-def visualize_network(
+def plot_network(
     node_infos: dict,
     edge_infos: dict,
     path: Optional[Union[str, pathlib.Path]] = None,
@@ -614,7 +615,7 @@ def visualize_network(
         bool,
         List[Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']],
     ] = True,
-    show: bool = True,
+    show: bool = False,
 ) -> Optional['pyvis.network.Network']:
     """
     Visualizes the network structure of a FlowSystem using PyVis, using info-dictionaries.
@@ -643,13 +644,13 @@ def visualize_network(
 
     Usage:
     - Visualize and open the network with default options:
-      >>> self.visualize_network()
+      >>> self.plot_network()
 
-    - Save the visualization without opening:
-      >>> self.visualize_network(show=False)
+    - Save the visualization with opening:
+      >>> self.plot_network(show=True)
 
     - Visualize with custom controls and path:
-      >>> self.visualize_network(path='output/custom_network.html', controls=['nodes', 'layout'])
+      >>> self.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
 
     Notes:
     - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
