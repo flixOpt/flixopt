@@ -11,9 +11,9 @@ import plotly
 import xarray as xr
 import yaml
 
+from . import io as fx_io
 from . import plotting
 from .core import TimeSeriesCollection
-from . import io as fx_io
 
 if TYPE_CHECKING:
     from .calculation import Calculation, SegmentedCalculation
@@ -67,11 +67,13 @@ class CalculationResults:
 
         model_path, solution_path, _, json_path, flow_system_path, _ = cls._get_paths(folder=folder, name=name)
 
+        model = None
         if model_path.exists():
-            logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
-            model = linopy.read_netcdf(model_path)
-        else:
-            model = None
+            try:
+                logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
+                model = linopy.read_netcdf(model_path)
+            except Exception as e:
+                logger.critical(f'Could not load the linopy model "{name}" from file ("{model_path}"): {e}')
 
         with open(json_path, 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
