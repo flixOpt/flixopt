@@ -12,6 +12,8 @@ from .conftest import (
     simple_flow_system,
 )
 
+from flixOpt.io import get_paths
+
 
 @pytest.fixture(params=[flow_system_base, flow_system_segments_of_flows, simple_flow_system, flow_system_long])
 def flow_system(request):
@@ -28,7 +30,8 @@ def test_flow_system_file_io(flow_system, highs_solver):
     calculation_0.solve(highs_solver)
 
     calculation_0.results.to_file()
-    flow_system_1 = fx.FlowSystem.from_netcdf(f'results/{calculation_0.name}_flowsystem.nc')
+    path = get_paths(calculation_0.folder, calculation_0.name)[4]
+    flow_system_1 = fx.FlowSystem.from_netcdf(path)
 
     calculation_1 = fx.FullCalculation('Loaded_IO', flow_system=flow_system_1)
     calculation_1.do_modeling()

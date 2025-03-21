@@ -1,9 +1,10 @@
 import datetime
+import importlib.util
 import json
 import logging
 import pathlib
 import re
-from typing import TYPE_CHECKING, Dict, Literal, Union
+from typing import Dict, Literal, Union, Tuple
 
 import linopy
 import xarray as xr
@@ -13,29 +14,6 @@ from .core import TimeSeries
 from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixOpt')
-
-
-def _results_structure(flow_system: FlowSystem) -> Dict[str, Dict]:
-    return {
-        'Components': {
-            comp.label_full: comp.model.results_structure()
-            for comp in sorted(flow_system.components.values(), key=lambda component: component.label_full.upper())
-        },
-        'Buses': {
-            bus.label_full: bus.model.results_structure()
-            for bus in sorted(flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
-        },
-        'Effects': {
-            effect.label_full: effect.model.results_structure()
-            for effect in sorted(flow_system.effects, key=lambda effect: effect.label_full.upper())
-        },
-        'Time': [datetime.datetime.isoformat(date) for date in flow_system.time_series_collection.timesteps_extra],
-    }
-
-
-def structure_to_json(flow_system: FlowSystem, path: Union[str, pathlib.Path] = 'system_model.json'):
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(_results_structure(flow_system), f, indent=4, ensure_ascii=False)
 
 
 def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
@@ -130,8 +108,6 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
             allow_unicode=True,  # Support Unicode characters
         )
 
-    print(f'Data saved to {output_file}')
-
 
 def _process_complex_strings(data):
     """
@@ -218,3 +194,66 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
         _save_to_yaml(documentation, path)
 
     return documentation
+
+
+def save_dataset_to_netcdf(
+        ds: xr.Dataset,
+        path: Union[str, pathlib.Path],
+        compression: int = 0,
+) -> None:
+    """
+    Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.
+
+    Args:
+        ds: Dataset to save.
+        path: Path to save the dataset to.
+        compression: Compression level for the dataset (0-9). 0 means no compression. 5 is a good default.
+
+    Raises:
+        ValueError: If the path has an invalid file extension.
+    """
+    if path.suffix not in ['.nc', '.nc4']:
+        raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
+
+    apply_encoding = False
+    if compression != 0:
+        if importlib.util.find_spec('netCDF4') is not None:
+            apply_encoding = True
+        else:
+            logger.warning('Dataset was exported without compression due to missing dependency "netcdf4".'
+                           'Install netcdf4 via `pip install netcdf4`.')
+    ds = ds.copy(deep=True)
+    ds.attrs = {'attrs': json.dumps(ds.attrs)}
+    ds.to_netcdf(
+        path,
+        encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
+                                                  for data_var in ds.data_vars}
+    )
+
+
+def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
+    """
+    Load a dataset from a netcdf file. Load the attrs from the 'attrs' attribute.
+
+    Args:
+        path: Path to load the dataset from.
+
+    Returns:
+        Dataset: Loaded dataset.
+    """
+    ds = xr.load_dataset(path)
+    ds.attrs = json.loads(ds.attrs['attrs'])
+    return ds
+
+
+def get_paths(
+        folder: pathlib.Path,
+        name: str
+) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
+    model_path = folder / f'{name}--model.nc'
+    solution_path = folder / f'{name}--solution.nc'
+    summary_path = folder / f'{name}--summary.yaml'
+    network_path = folder/f'{name}--network.json'
+    flow_system_path = folder / f'{name}--flow_system.nc'
+    model_documentation_path = folder / f'{name}--model_documentation.yaml'
+    return model_path, solution_path, summary_path, network_path, flow_system_path, model_documentation_path

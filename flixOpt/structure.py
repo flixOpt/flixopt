@@ -59,6 +59,28 @@ class SystemModel(linopy.Model):
             bus_model.do_modeling()
 
     @property
+    def solution(self):
+        solution = super().solution
+        solution.attrs = {
+            'Components': {
+                comp.label_full: comp.model.results_structure()
+                for comp in sorted(
+                    self.flow_system.components.values(), key=lambda component: component.label_full.upper()
+                )
+            },
+            'Buses': {
+                bus.label_full: bus.model.results_structure()
+                for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+            },
+            'Effects': {
+                effect.label_full: effect.model.results_structure()
+                for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
+            },
+        }
+        solution.reindex(time=self.time_series_collection.timesteps_extra)
+        return solution
+
+    @property
     def hours_per_step(self):
         return self.time_series_collection.hours_per_timestep
 

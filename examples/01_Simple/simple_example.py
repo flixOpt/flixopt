@@ -1,5 +1,5 @@
 """
-THis script shows how to use the flixOpt framework to model a simple energy system.
+This script shows how to use the flixOpt framework to model a simple energy system.
 """
 
 import numpy as np
