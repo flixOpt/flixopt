@@ -23,46 +23,56 @@ logger = logging.getLogger('flixOpt')
 
 
 class CalculationResults:
-    """
-    Results for a Calculation.
+    """Results container for Calculation results.
+
     This class is used to collect the results of a Calculation.
-    It is used to analyze the results and to visualize the results.
+    It provides access to component, bus, and effect
+    results, and includes methods for filtering, plotting, and saving results.
 
-    Parameters
-    ----------
-    model : linopy.Model
-        The linopy model that was used to solve the calculation.
-    infos : Dict
-        Information about the calculation,
-    results_structure : Dict[str, Dict[str, Dict]]
-        The structure of the flow_system that was used to solve the calculation.
+    The recommended way to create instances is through the class methods
+    `from_file()` or `from_calculation()`, rather than direct initialization.
 
-    Attributes
-    ----------
-    model : linopy.Model
-        The linopy model that was used to solve the calculation.
-    components : Dict[str, ComponentResults]
-        A dictionary of ComponentResults for each component in the flow_system.
-    buses : Dict[str, BusResults]
-        A dictionary of BusResults for each bus in the flow_system.
-    effects : Dict[str, EffectResults]
-        A dictionary of EffectResults for each effect in the flow_system.
-    timesteps_extra : pd.DatetimeIndex
-        The extra timesteps of the flow_system.
-    hours_per_timestep : xr.DataArray
-        The duration of each timestep in hours.
+    Attributes:
+        solution (xr.Dataset): Dataset containing optimization results.
+        flow_system (xr.Dataset): Dataset containing the flow system.
+        infos (Dict): Information about the calculation.
+        network_infos (Dict): Information about the network structure.
+        name (str): Name identifier for the calculation.
+        model (linopy.Model): The optimization model (if available).
+        folder (pathlib.Path): Path to the results directory.
+        components (Dict[str, ComponentResults]): Results for each component.
+        buses (Dict[str, BusResults]): Results for each bus.
+        effects (Dict[str, EffectResults]): Results for each effect.
+        timesteps_extra (pd.DatetimeIndex): The extended timesteps.
+        hours_per_timestep (xr.DataArray): Duration of each timestep in hours.
 
-    Class Methods
-    -------
-    from_file(folder: Union[str, pathlib.Path], name: str)
-        Create CalculationResults directly from file.
-    from_calculation(calculation: Calculation)
-        Create CalculationResults directly from a Calculation.
+    Example:
+        Load results from saved files:
 
+        >>> results = CalculationResults.from_file("results_dir", "optimization_run_1")
+        >>> element_result = results["Boiler"]
+        >>> results.plot_heatmap("Boiler(Q_th)|flow_rate")
+        >>> results.to_file(compression=5)
+        >>> results.to_file(folder="new_results_dir", compression=5)  # Save the results to a new folder
     """
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
-        """ Create CalculationResults directly from file"""
+        """Create CalculationResults instance by loading from saved files.
+
+        This method loads the calculation results from previously saved files,
+        including the solution, flow system, model (if available), and metadata.
+
+        Args:
+            folder: Path to the directory containing the saved files.
+            name: Base name of the saved files (without file extensions).
+
+        Returns:
+            CalculationResults: A new instance containing the loaded data.
+
+        Raises:
+            FileNotFoundError: If required files cannot be found.
+            ValueError: If files exist but cannot be properly loaded.
+        """
         folder = pathlib.Path(folder)
 
         model_path, solution_path, _, json_path, flow_system_path, _ = cls._get_paths(folder=folder, name=name)
@@ -87,7 +97,21 @@ class CalculationResults:
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
-        """Create CalculationResults directly from a Calculation"""
+        """Create CalculationResults directly from a Calculation object.
+
+        This method extracts the solution, flow system, and other relevant
+        information directly from an existing Calculation object.
+
+        Args:
+            calculation: A Calculation object containing a solved model.
+
+        Returns:
+            CalculationResults: A new instance containing the results from
+                the provided calculation.
+
+        Raises:
+            AttributeError: If the calculation doesn't have required attributes.
+        """
         solution = calculation.model.solution
         solution.reindex(time=calculation.flow_system.time_series_collection.timesteps_extra)
         solution.attrs = fx_io._results_structure(calculation.flow_system)
@@ -210,7 +234,7 @@ class CalculationResults:
         Args:
             folder: The folder where the results should be saved. Defaults to the folder of the calculation.
             name: The name of the results file. If not provided, Defaults to the name of the calculation.
-            compression: The compression level to use when saving the solution file.
+            compression: The compression level to use when saving the solution file (0-9). 0 means no compression.
             document_model: Wether to document the mathematical formulations in the model.
             save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
                 The model file size is rougly 100 times larger than the solution file.

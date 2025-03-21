@@ -232,7 +232,7 @@ def save_dataset_to_netcdf(
     Args:
         ds: Dataset to save.
         path: Path to save the dataset to.
-        compression: Compression level for the dataset. Default is 5.
+        compression: Compression level for the dataset (0-9). 0 means no compression. 5 is a good default.
 
     Raises:
         ValueError: If the path has an invalid file extension.
@@ -245,7 +245,7 @@ def save_dataset_to_netcdf(
         if importlib.util.find_spec('netCDF4') is not None:
             apply_encoding = True
         else:
-            logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
+            logger.warning('Dataset was exported without compression due to missing dependency "netcdf4".'
                            'Install netcdf4 via `pip install netcdf4`.')
     ds = ds.copy(deep=True)
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
