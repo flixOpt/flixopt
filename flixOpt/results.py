@@ -35,7 +35,7 @@ class CalculationResults:
     Attributes:
         solution (xr.Dataset): Dataset containing optimization results.
         flow_system (xr.Dataset): Dataset containing the flow system.
-        infos (Dict): Information about the calculation.
+        summary (Dict): Information about the calculation.
         network_infos (Dict): Information about the network structure.
         name (str): Name identifier for the calculation.
         model (linopy.Model): The optimization model (if available).
@@ -75,7 +75,8 @@ class CalculationResults:
         """
         folder = pathlib.Path(folder)
 
-        model_path, solution_path, _, json_path, flow_system_path, _ = fx_io.get_paths(folder=folder, name=name)
+        model_path, solution_path, summary_path, network_path, flow_system_path, _ = fx_io.get_paths(folder=folder,
+                                                                                                     name=name)
 
         model = None
         if model_path.exists():
@@ -85,15 +86,19 @@ class CalculationResults:
             except Exception as e:
                 logger.critical(f'Could not load the linopy model "{name}" from file ("{model_path}"): {e}')
 
-        with open(json_path, 'r', encoding='utf-8') as f:
-            meta_data = json.load(f)
+        with open(summary_path, 'r', encoding='utf-8') as f:
+            summary = yaml.load(f, Loader=yaml.FullLoader)
+
+        with open(network_path, 'r', encoding='utf-8') as f:
+            network_infos = json.load(f)
 
         return cls(solution=fx_io.load_dataset_from_netcdf(solution_path),
                    flow_system=fx_io.load_dataset_from_netcdf(flow_system_path),
                    name=name,
                    folder=folder,
                    model=model,
-                   **meta_data)
+                   summary=summary,
+                   network_infos=network_infos)
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
@@ -115,7 +120,7 @@ class CalculationResults:
         return cls(
             solution=calculation.model.solution,
             flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
-            infos=calculation.infos,
+            summary=calculation.summary,
             network_infos=calculation.flow_system.network_infos(),
             model=calculation.model,
             name=calculation.name,
@@ -127,14 +132,14 @@ class CalculationResults:
         solution: xr.Dataset,
         flow_system: xr.Dataset,
         name: str,
-        infos: Dict,
+        summary: Dict,
         network_infos: Dict,
         folder: Optional[pathlib.Path] = None,
         model: Optional[linopy.Model] = None,
     ):
         self.solution = solution
         self.flow_system = flow_system
-        self.infos = infos
+        self.summary = summary
         self.network_infos = network_infos
         self.name = name
         self.model = model
@@ -168,7 +173,7 @@ class CalculationResults:
     @property
     def objective(self) -> float:
         """ The objective result of the optimization. """
-        return self.infos['Main Results']['Objective']
+        return self.summary['Main Results']['Objective']
 
     @property
     def variables(self) -> linopy.Variables:
@@ -243,17 +248,17 @@ class CalculationResults:
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
-        model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = fx_io.get_paths(
+        model_path, solution_path, summary_path, network_path, flow_system_path, model_doc_path = fx_io.get_paths(
             folder= folder, name=name)
 
         fx_io.save_dataset_to_netcdf(self.solution, solution_path, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system, flow_system_path, compression=compression)
 
-        with open(infos_path, 'w', encoding='utf-8') as f:
-            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
 
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(self._get_meta_data(), f, indent=4, ensure_ascii=False)
+        with open(network_path, 'w', encoding='utf-8') as f:
+            json.dump(self.network_infos, f, indent=4, ensure_ascii=False)
 
         if save_linopy_model:
             if self.model is None:
@@ -268,12 +273,6 @@ class CalculationResults:
                 fx_io.document_linopy_model(self.model, path=model_doc_path)
 
         logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
-
-    def _get_meta_data(self) -> Dict:
-        return {
-            'infos': self.infos,
-            'network_infos': self.network_infos,
-        }
 
 
 class _ElementResults:

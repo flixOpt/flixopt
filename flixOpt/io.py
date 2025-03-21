@@ -252,8 +252,8 @@ def get_paths(
 ) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
     model_path = folder / f'{name}--model.nc'
     solution_path = folder / f'{name}--solution.nc'
-    infos_path = folder / f'{name}--infos.yaml'
-    json_path = folder/f'{name}--structure.json'
+    summary_path = folder / f'{name}--summary.yaml'
+    network_path = folder/f'{name}--network.json'
     flow_system_path = folder / f'{name}--flow_system.nc'
     model_documentation_path = folder / f'{name}--model_documentation.yaml'
-    return model_path, solution_path, infos_path, json_path, flow_system_path, model_documentation_path
+    return model_path, solution_path, summary_path, network_path, flow_system_path, model_documentation_path

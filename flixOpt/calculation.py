@@ -114,7 +114,7 @@ class Calculation:
         }
 
     @property
-    def infos(self):
+    def summary(self):
         return {
             'Name': self.name,
             'Number of timesteps': len(self.flow_system.time_series_collection.timesteps),

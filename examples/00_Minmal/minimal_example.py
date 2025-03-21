@@ -68,4 +68,4 @@ if __name__ == '__main__':
     # df2.to_csv('results/District Heating.csv')  # Save results to csv
 
     # Print infos to the console.
-    pprint(calculation.infos)
+    pprint(calculation.summary)
