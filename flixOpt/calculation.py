@@ -8,12 +8,11 @@ There are three different Calculation types:
     3. SegmentedCalculation: Solves a SystemModel for each individual Segment of the FlowSystem.
 """
 
-import json
 import logging
 import math
 import pathlib
 import timeit
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -23,13 +22,14 @@ from . import utils as utils
 from .aggregation import AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
-from .core import NumericData, Scalar
+from .core import Scalar
 from .elements import Component
 from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
 from .solvers import _Solver
 from .structure import SystemModel, copy_and_convert_datatypes, get_compact_representation
+from . import io as fx_io
 
 logger = logging.getLogger('flixOpt')
 
@@ -154,8 +154,11 @@ class FullCalculation(Calculation):
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
 
         if self.model.status == 'warning':
+            # Save the model and the flow_system to file in case of infeasibility
+            _, _, _, _, flow_system_path, model_documentation = fx_io.get_paths(self.folder, self.name)
             from .io import document_linopy_model
-            document_linopy_model(self.model, self.folder / f'{self.name}_model_doc.yaml')
+            document_linopy_model(self.model, self.folder / f'{self.name}--model_documentation.yaml')
+            self.flow_system.to_netcdf(flow_system_path)
             #TODO: Raise an exception here?
 
         # Log the formatted output

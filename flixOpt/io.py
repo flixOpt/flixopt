@@ -4,7 +4,7 @@ import json
 import logging
 import pathlib
 import re
-from typing import TYPE_CHECKING, Dict, Literal, Union
+from typing import Dict, Literal, Union, Tuple
 
 import linopy
 import xarray as xr
@@ -244,3 +244,16 @@ def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
     ds = xr.load_dataset(path)
     ds.attrs = json.loads(ds.attrs['attrs'])
     return ds
+
+
+def get_paths(
+        folder: pathlib.Path,
+        name: str
+) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
+    model_path = folder / f'{name}--model.nc'
+    solution_path = folder / f'{name}--solution.nc'
+    infos_path = folder / f'{name}--infos.yaml'
+    json_path = folder/f'{name}--structure.json'
+    flow_system_path = folder / f'{name}--flow_system.nc'
+    model_documentation_path = folder / f'{name}--model_documentation.yaml'
+    return model_path, solution_path, infos_path, json_path, flow_system_path, model_documentation_path

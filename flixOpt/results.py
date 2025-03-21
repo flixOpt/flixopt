@@ -75,7 +75,7 @@ class CalculationResults:
         """
         folder = pathlib.Path(folder)
 
-        model_path, solution_path, _, json_path, flow_system_path, _ = cls._get_paths(folder=folder, name=name)
+        model_path, solution_path, _, json_path, flow_system_path, _ = fx_io.get_paths(folder=folder, name=name)
 
         model = None
         if model_path.exists():
@@ -243,7 +243,7 @@ class CalculationResults:
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
-        model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = self._get_paths(
+        model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = fx_io.get_paths(
             folder= folder, name=name)
 
         fx_io.save_dataset_to_netcdf(self.solution, solution_path, compression=compression)
@@ -274,19 +274,6 @@ class CalculationResults:
             'infos': self.infos,
             'network_infos': self.network_infos,
         }
-
-    @staticmethod
-    def _get_paths(
-            folder: pathlib.Path,
-            name: str
-    ) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
-        model_path = folder / f'{name}_model.nc'
-        solution_path = folder / f'{name}_solution.nc'
-        infos_path = folder / f'{name}_infos.yaml'
-        json_path = folder/f'{name}_structure.json'
-        flow_system_path = folder / f'{name}_flowsystem.nc'
-        model_documentation_path = folder / f'{name}_model_doc.yaml'
-        return model_path, solution_path, infos_path, json_path, flow_system_path, model_documentation_path
 
 
 class _ElementResults:
