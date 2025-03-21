@@ -1,4 +1,5 @@
 import datetime
+import importlib.util
 import json
 import logging
 import pathlib
@@ -218,3 +219,53 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
         _save_to_yaml(documentation, path)
 
     return documentation
+
+
+def save_dataset_to_netcdf(
+        ds: xr.Dataset,
+        path: Union[str, pathlib.Path],
+        compression: int = 0,
+) -> None:
+    """
+    Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.
+
+    Args:
+        ds: Dataset to save.
+        path: Path to save the dataset to.
+        compression: Compression level for the dataset. Default is 5.
+
+    Raises:
+        ValueError: If the path has an invalid file extension.
+    """
+    if path.suffix not in ['.nc', '.nc4']:
+        raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
+
+    apply_encoding = False
+    if compression != 0:
+        if importlib.util.find_spec('netCDF4') is not None:
+            apply_encoding = True
+        else:
+            logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
+                           'Install netcdf4 via `pip install netcdf4`.')
+    ds = ds.copy(deep=True)
+    ds.attrs = {'attrs': json.dumps(ds.attrs)}
+    ds.to_netcdf(
+        path,
+        encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
+                                                  for data_var in ds.data_vars}
+    )
+
+
+def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
+    """
+    Load a dataset from a netcdf file. Load the attrs from the 'attrs' attribute.
+
+    Args:
+        path: Path to load the dataset from.
+
+    Returns:
+        Dataset: Loaded dataset.
+    """
+    ds = xr.load_dataset(path)
+    ds.attrs = json.loads(ds.attrs['attrs'])
+    return ds

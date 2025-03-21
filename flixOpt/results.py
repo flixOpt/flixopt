@@ -1,5 +1,4 @@
 import datetime
-import importlib.util
 import json
 import logging
 import pathlib
@@ -14,7 +13,7 @@ import yaml
 
 from . import plotting
 from .core import TimeSeriesCollection
-from .io import _results_structure, document_linopy_model
+from . import io as fx_io
 
 if TYPE_CHECKING:
     from .calculation import Calculation, SegmentedCalculation
@@ -68,10 +67,6 @@ class CalculationResults:
 
         model_path, solution_path, _, json_path, flow_system_path, _ = cls._get_paths(folder=folder, name=name)
 
-        solution = xr.load_dataset(solution_path)
-        flow_system = xr.load_dataset(flow_system_path)
-        flow_system.attrs = json.loads(flow_system.attrs['attrs'])
-
         if model_path.exists():
             logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
             model = linopy.read_netcdf(model_path)
@@ -81,8 +76,8 @@ class CalculationResults:
         with open(json_path, 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
 
-        return cls(solution=solution,
-                   flow_system=flow_system,
+        return cls(solution=fx_io.load_dataset_from_netcdf(solution_path),
+                   flow_system=fx_io.load_dataset_from_netcdf(flow_system_path),
                    name=name,
                    folder=folder,
                    model=model,
@@ -91,10 +86,13 @@ class CalculationResults:
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
         """Create CalculationResults directly from a Calculation"""
+        solution = calculation.model.solution
+        solution.reindex(time=calculation.flow_system.time_series_collection.timesteps_extra)
+        solution.attrs = fx_io._results_structure(calculation.flow_system)
+
         return cls(
-            solution=calculation.model.solution,
+            solution=solution,
             flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
-            results_structure=_results_structure(calculation.flow_system),
             infos=calculation.infos,
             network_infos=calculation.flow_system.network_infos(),
             model=calculation.model,
@@ -106,7 +104,6 @@ class CalculationResults:
         self,
         solution: xr.Dataset,
         flow_system: xr.Dataset,
-        results_structure: Dict[str, Dict[str, Dict]],
         name: str,
         infos: Dict,
         network_infos: Dict,
@@ -115,22 +112,21 @@ class CalculationResults:
     ):
         self.solution = solution
         self.flow_system = flow_system
-        self._results_structure = results_structure
         self.infos = infos
         self.network_infos = network_infos
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {label: ComponentResults.from_json(self, infos)
-                           for label, infos in results_structure['Components'].items()}
+                           for label, infos in self.solution.attrs['Components'].items()}
 
         self.buses = {label: BusResults.from_json(self, infos)
-                      for label, infos in results_structure['Buses'].items()}
+                      for label, infos in self.solution.attrs['Buses'].items()}
 
         self.effects = {label: EffectResults.from_json(self, infos)
-                        for label, infos in results_structure['Effects'].items()}
+                        for label, infos in self.solution.attrs['Effects'].items()}
 
-        self.timesteps_extra = pd.DatetimeIndex([datetime.datetime.fromisoformat(date) for date in results_structure['Time']], name='time')
+        self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
@@ -227,27 +223,8 @@ class CalculationResults:
         model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = self._get_paths(
             folder= folder, name= self.name if name is None else name)
 
-        apply_encoding = False
-        if compression != 0:
-            if importlib.util.find_spec('netCDF4') is not None:
-                apply_encoding = True
-            else:
-                logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
-                               'Install netcdf4 via `pip install netcdf4`.')
-
-        self.solution.to_netcdf(
-            solution_path,
-            encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
-                                              for data_var in self.solution.data_vars}
-        )
-
-        flow_system_ds = self.flow_system.copy()
-        flow_system_ds.attrs = {'attrs': json.dumps(flow_system_ds.attrs)}
-        flow_system_ds.to_netcdf(
-            flow_system_path,
-            encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
-                                              for data_var in self.flow_system.data_vars}
-        )
+        fx_io.save_dataset_to_netcdf(self.solution, solution_path, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.flow_system, flow_system_path, compression=compression)
 
         with open(infos_path, 'w', encoding='utf-8') as f:
             yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
@@ -265,13 +242,12 @@ class CalculationResults:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
             else:
-                document_linopy_model(self.model, path=model_doc_path)
+                fx_io.document_linopy_model(self.model, path=model_doc_path)
 
         logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
 
     def _get_meta_data(self) -> Dict:
         return {
-            'results_structure': self._results_structure,
             'infos': self.infos,
             'network_infos': self.network_infos,
         }
@@ -552,7 +528,10 @@ class SegmentedCalculationResults:
             save=save,
             show=show)
 
-    def to_file(self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None):
+    def to_file(self,
+                folder: Optional[Union[str, pathlib.Path]] = None,
+                name: Optional[str] = None,
+                compression: int = 5):
         """Save the results to a file"""
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -563,7 +542,7 @@ class SegmentedCalculationResults:
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
         for segment in self.segment_results:
-            segment.to_file(folder, f'{name}-{segment.name}')
+            segment.to_file(folder=folder, name=f'{name}-{segment.name}', compression=compression)
 
         with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(self.meta_data, f, indent=4, ensure_ascii=False)
