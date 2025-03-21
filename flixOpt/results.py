@@ -112,12 +112,8 @@ class CalculationResults:
         Raises:
             AttributeError: If the calculation doesn't have required attributes.
         """
-        solution = calculation.model.solution
-        solution.reindex(time=calculation.flow_system.time_series_collection.timesteps_extra)
-        solution.attrs = fx_io._results_structure(calculation.flow_system)
-
         return cls(
-            solution=solution,
+            solution=calculation.model.solution,
             flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
             infos=calculation.infos,
             network_infos=calculation.flow_system.network_infos(),
@@ -240,6 +236,7 @@ class CalculationResults:
                 The model file size is rougly 100 times larger than the solution file.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
+        name = self.name if name is None else name
         if not folder.exists():
             try:
                 folder.mkdir(parents=False)
@@ -247,7 +244,7 @@ class CalculationResults:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
         model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = self._get_paths(
-            folder= folder, name= self.name if name is None else name)
+            folder= folder, name=name)
 
         fx_io.save_dataset_to_netcdf(self.solution, solution_path, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system, flow_system_path, compression=compression)

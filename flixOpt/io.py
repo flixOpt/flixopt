@@ -16,29 +16,6 @@ from .flow_system import FlowSystem
 logger = logging.getLogger('flixOpt')
 
 
-def _results_structure(flow_system: FlowSystem) -> Dict[str, Dict]:
-    return {
-        'Components': {
-            comp.label_full: comp.model.results_structure()
-            for comp in sorted(flow_system.components.values(), key=lambda component: component.label_full.upper())
-        },
-        'Buses': {
-            bus.label_full: bus.model.results_structure()
-            for bus in sorted(flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
-        },
-        'Effects': {
-            effect.label_full: effect.model.results_structure()
-            for effect in sorted(flow_system.effects, key=lambda effect: effect.label_full.upper())
-        },
-        'Time': [datetime.datetime.isoformat(date) for date in flow_system.time_series_collection.timesteps_extra],
-    }
-
-
-def structure_to_json(flow_system: FlowSystem, path: Union[str, pathlib.Path] = 'system_model.json'):
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(_results_structure(flow_system), f, indent=4, ensure_ascii=False)
-
-
 def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
     """Recursively replaces TimeSeries objects with their names prefixed by '::::'."""
     if isinstance(obj, dict):
@@ -130,8 +107,6 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
             width=float('inf'),  # Don't wrap long lines
             allow_unicode=True,  # Support Unicode characters
         )
-
-    print(f'Data saved to {output_file}')
 
 
 def _process_complex_strings(data):
