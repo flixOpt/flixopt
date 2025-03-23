@@ -28,5 +28,7 @@ jobs:
           # Install all documentation dependencies directly instead of using -e .[docs]
           pip install mkdocs-material mkdocstrings-python mkdocs-table-reader-plugin mkdocs-include-markdown-plugin mkdocs-gen-files mkdocs-literate-nav markdown-include pymdown-extensions pygments
 
-      - name: Deploy documentation
-        run: mkdocs gh-deploy --force
+      - name: Deploy docs
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          mike deploy --push --update-aliases $VERSION latest

@@ -65,7 +65,8 @@ docs = [
     "mkdocs-literate-nav",
     "markdown-include",
     "pymdown-extensions",
-    "pygments"
+    "pygments",
+    "mike",
 ]
 
 [project.urls]
