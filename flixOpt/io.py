@@ -265,6 +265,17 @@ class CalculationResultsPaths:
         self.flow_system = self.folder / f'{self.name}--flow_system.nc4'
         self.model_documentation = self.folder / f'{self.name}--model_documentation.yaml'
 
+    def all_paths(self) -> Dict[str, pathlib.Path]:
+        """Return a dictionary of all paths."""
+        return {
+            'linopy_model': self.linopy_model,
+            'solution': self.solution,
+            'summary': self.summary,
+            'network': self.network,
+            'flow_system': self.flow_system,
+            'model_documentation': self.model_documentation,
+        }
+
     def create_folders(self, parents: bool = False) -> None:
         """Ensure the folder exists.
         Args:
@@ -283,5 +294,7 @@ class CalculationResultsPaths:
         if new_name is not None:
             self.name = new_name
         if new_folder is not None:
+            if not new_folder.is_dir() or not new_folder.exists():
+                raise FileNotFoundError(f'Folder {new_folder} does not exist or is not a directory.')
             self.folder = new_folder
         self._update_paths()
