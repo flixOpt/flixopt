@@ -32,7 +32,7 @@ classifiers = [
 dependencies = [
     "numpy >= 1.21.5, < 2",
     "PyYAML >= 6.0",
-    "linopy @ git+https://github.com/PyPSA/linopy.git",  # Some features of linopy are not yet released
+    "linopy >= 0.5.1",
     "rich >= 13.0.1",
     "highspy >= 1.5.3",  # Default solver
     "pandas >= 2, < 3",  # Used in post-processing
