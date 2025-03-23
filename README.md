@@ -22,6 +22,32 @@ It was originally developed by [TU Dresden](https://github.com/gewv-tu-dresden) 
 
 ---
 
+## 🌟 Key Features
+
+- **High-level Interface** with low-level control
+    - User-friendly interface for defining flow systems
+    - Pre-defined components like CHP, Heat Pump, Cooling Tower, etc.
+    - Fine-grained control for advanced configurations
+
+- **Investment Optimization**
+    - Combined dispatch and investment optimization
+    - Size optimization and discrete investment decisions
+    - Combined with On/Off variables and constraints
+
+- **Effects, not only Costs --> Multi-criteria Optimization**
+    - flixopt abstracts costs as so called 'Effects'. This allows to model costs, CO2-emissions, primary-energy-demand or area-demand at the same time.
+    - Effects can interact with each other(e.g., specific CO2 costs)
+    - Any of these `Effects` can be used as the optimization objective.
+    - A **Weigted Sum**of Effects can be used as the optimization objective.
+    - Every Effect can be constrained ($\epsilon$-constraint method).
+
+- **Calculation Modes**
+    - **Full** - Solve the model with highest accuracy and computational requirements.
+    - **Segmented** - Speed up solving by using a rolling horizon. 
+    - **Aggregated** - Speed up solving by identifying typical periods using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam). Suitable for large models.
+
+---
+
 ## 📦 Installation
 
 Install flixOpt via pip.
