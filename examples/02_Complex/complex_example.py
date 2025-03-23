@@ -191,5 +191,5 @@ if __name__ == '__main__':
 
     # But let's plot some results anyway
     calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
-    calculation.results['BHKW2'].plot_flow_rates()
+    calculation.results['BHKW2'].plot_node_balance()
     calculation.results['Speicher'].plot_charge_state()

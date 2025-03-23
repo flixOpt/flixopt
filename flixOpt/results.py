@@ -1,4 +1,5 @@
 import datetime
+import importlib.util
 import json
 import logging
 import pathlib
@@ -9,10 +10,11 @@ import numpy as np
 import pandas as pd
 import plotly
 import xarray as xr
+import yaml
 
 from . import plotting
 from .core import TimeSeriesCollection
-from .io import _results_structure
+from .io import _results_structure, document_linopy_model
 
 if TYPE_CHECKING:
     from .calculation import Calculation, SegmentedCalculation
@@ -45,48 +47,72 @@ class CalculationResults:
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
         """ Create CalculationResults directly from file"""
         folder = pathlib.Path(folder)
-        path = folder / name
-        nc_file = path.with_suffix('.nc')
-        logger.info(f'loading calculation "{name}" from file ("{nc_file}")')
-        model = linopy.read_netcdf(nc_file)
-        with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
+
+        model_path, solution_path, _, json_path, flow_system_path, _ = cls._get_paths(folder=folder, name=name)
+
+        solution = xr.load_dataset(solution_path)
+        flow_system = xr.load_dataset(flow_system_path)
+        flow_system.attrs = json.loads(flow_system.attrs['attrs'])
+
+        if model_path.exists():
+            logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
+            model = linopy.read_netcdf(model_path)
+        else:
+            model = None
+
+        with open(json_path, 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
-        return cls(model=model, name=name, folder= folder, **meta_data)
+
+        return cls(solution=solution,
+                   flow_system=flow_system,
+                   name=name,
+                   folder=folder,
+                   model=model,
+                   **meta_data)
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
         """Create CalculationResults directly from a Calculation"""
-        return cls(model=calculation.model,
-                   results_structure=_results_structure(calculation.flow_system),
-                   infos=calculation.infos,
-                   network_infos=calculation.flow_system.network_infos(),
-                   name=calculation.name,
-                   folder=calculation.folder)
+        return cls(
+            solution=calculation.model.solution,
+            flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
+            results_structure=_results_structure(calculation.flow_system),
+            infos=calculation.infos,
+            network_infos=calculation.flow_system.network_infos(),
+            model=calculation.model,
+            name=calculation.name,
+            folder=calculation.folder,
+        )
 
     def __init__(
         self,
-        model: linopy.Model,
+        solution: xr.Dataset,
+        flow_system: xr.Dataset,
         results_structure: Dict[str, Dict[str, Dict]],
         name: str,
         infos: Dict,
         network_infos: Dict,
-        folder: Optional[pathlib.Path] = None
+        folder: Optional[pathlib.Path] = None,
+        model: Optional[linopy.Model] = None,
     ):
         """
         Args:
-            model: The linopy model that was used to solve the calculation.
+            solution: The solution of the optimization.
+            flow_system: The flow_system that was used to create the calculation as a datatset.
             results_structure: The structure of the flow_system that was used to solve the calculation.
             name: The name of the calculation.
             infos: Information about the calculation,
             network_infos: Information about the network.
             folder: The folder where the results are saved.
+            model: The linopy model that was used to solve the calculation.
         """
-
-        self.model = model
+        self.solution = solution
+        self.flow_system = flow_system
         self._results_structure = results_structure
         self.infos = infos
         self.network_infos = network_infos
         self.name = name
+        self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {label: ComponentResults.from_json(self, infos)
                            for label, infos in results_structure['Components'].items()}
@@ -109,21 +135,132 @@ class CalculationResults:
             return self.effects[key]
         raise KeyError(f'No element with label {key} found.')
 
-    def to_file(self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, *args, **kwargs):
-        """Save the results to a file"""
+    @property
+    def storages(self) -> List['ComponentResults']:
+        """All storages in the results."""
+        return [comp for comp in self.components.values() if comp.is_storage]
+
+    @property
+    def objective(self) -> float:
+        """ The objective result of the optimization. """
+        return self.infos['Main Results']['Objective']
+
+    @property
+    def variables(self) -> linopy.Variables:
+        """ The variables of the optimization. Only available if the linopy.Model is available. """
+        if self.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self.model.variables
+
+    @property
+    def constraints(self) -> linopy.Constraints:
+        """The constraints of the optimization. Only available if the linopy.Model is available."""
+        if self.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self.model.constraints
+
+    def filter_solution(self,
+               variable_dims: Optional[Literal['scalar', 'time']] = None,
+               element: Optional[str] = None) -> xr.Dataset:
+        """
+        Filter the solution to a specific variable dimension and element.
+        If no element is specified, all elements are included.
+
+        Args:
+            variable_dims: The dimension of the variables to filter for.
+            element: The element to filter for.
+        """
+        if element is not None:
+            return filter_dataset(self[element].solution, variable_dims)
+        return filter_dataset(self.solution, variable_dims)
+
+    def plot_heatmap(self,
+                     variable_name: str,
+                     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
+                     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
+                     color_map: str = 'portland',
+                     save: Union[bool, pathlib.Path] = False,
+                     show: bool = True
+                     ) -> plotly.graph_objs.Figure:
+        return plot_heatmap(
+            dataarray=self.solution[variable_name],
+            name=variable_name,
+            folder=self.folder,
+            heatmap_timeframes=heatmap_timeframes,
+            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
+            color_map=color_map,
+            save=save,
+            show=show)
+
+    def to_file(
+        self,
+        folder: Optional[Union[str, pathlib.Path]] = None,
+        name: Optional[str] = None,
+        compression: int = 5,
+        document_model: bool = True,
+        save_linopy_model: bool = False,
+    ):
+        """
+        Save the results to a file
+        Args:
+            folder: The folder where the results should be saved. Defaults to the folder of the calculation.
+            name: The name of the results file. If not provided, Defaults to the name of the calculation.
+            compression: The compression level to use when saving the solution file.
+            document_model: Wether to document the mathematical formulations in the model.
+            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
+                The model file size is rougly 100 times larger than the solution file.
+        """
         folder = self.folder if folder is None else pathlib.Path(folder)
-        name = self.name if name is None else name
-        path = folder / name
         if not folder.exists():
             try:
                 folder.mkdir(parents=False)
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
-        self.model.to_netcdf(path.with_suffix('.nc'), *args, **kwargs)
-        with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
+        model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = self._get_paths(
+            folder= folder, name= self.name if name is None else name)
+
+        apply_encoding = False
+        if compression != 0:
+            if importlib.util.find_spec('netCDF4') is not None:
+                apply_encoding = True
+            else:
+                logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
+                               'Install netcdf4 via `pip install netcdf4`.')
+
+        self.solution.to_netcdf(
+            solution_path,
+            encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
+                                              for data_var in self.solution.data_vars}
+        )
+
+        flow_system_ds = self.flow_system.copy()
+        flow_system_ds.attrs = {'attrs': json.dumps(flow_system_ds.attrs)}
+        flow_system_ds.to_netcdf(
+            flow_system_path,
+            encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
+                                              for data_var in self.flow_system.data_vars}
+        )
+
+        with open(infos_path, 'w', encoding='utf-8') as f:
+            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
+
+        with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(self._get_meta_data(), f, indent=4, ensure_ascii=False)
-        logger.info(f'Saved calculation results "{name}" to {path}')
+
+        if save_linopy_model:
+            if self.model is None:
+                logger.critical('No model in the CalculationResults. Saving the model is not possible.')
+            else:
+                self.model.to_netcdf(model_path)
+
+        if document_model:
+            if self.model is None:
+                logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
+            else:
+                document_linopy_model(self.model, path=model_doc_path)
+
+        logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
 
     def _get_meta_data(self) -> Dict:
         return {
@@ -132,27 +269,18 @@ class CalculationResults:
             'network_infos': self.network_infos,
         }
 
-    def plot_heatmap(self,
-                     variable: str,
-                     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-                     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-                     color_map: str = 'portland',
-                     save: Union[bool, pathlib.Path] = False,
-                     show: bool = True
-                     ) -> plotly.graph_objs.Figure:
-        return plot_heatmap(
-            dataarray=self.model.variables[variable].solution,
-            name=variable,
-            folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
-            save=save,
-            show=show)
-
-    @property
-    def storages(self) -> List['ComponentResults']:
-        return [comp for comp in self.components.values() if comp.is_storage]
+    @staticmethod
+    def _get_paths(
+            folder: pathlib.Path,
+            name: str
+    ) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
+        model_path = folder / f'{name}_model.nc'
+        solution_path = folder / f'{name}_solution.nc'
+        infos_path = folder / f'{name}_infos.yaml'
+        json_path = folder/f'{name}_structure.json'
+        flow_system_path = folder / f'{name}_flowsystem.nc'
+        model_documentation_path = folder / f'{name}_model_doc.yaml'
+        return model_path, solution_path, infos_path, json_path, flow_system_path, model_documentation_path
 
 
 class _ElementResults:
@@ -170,15 +298,43 @@ class _ElementResults:
                  constraints: List[str]):
         self._calculation_results = calculation_results
         self.label = label
-        self._variables = variables
-        self._constraints = constraints
+        self._variable_names = variables
+        self._constraint_names = constraints
 
-        self.variables = self._calculation_results.model.variables[self._variables]
-        self.constraints = self._calculation_results.model.constraints[self._constraints]
+        self.solution = self._calculation_results.solution[self._variable_names]
 
     @property
-    def variables_time(self):
-        return self.variables[[name for name in self._variables if 'time' in self.variables[name].dims]]
+    def variables(self) -> linopy.Variables:
+        """
+        Returns the variables of the element.
+
+        Raises:
+            ValueError: If the linopy model is not availlable.
+        """
+        if self._calculation_results.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self._calculation_results.model.variables[self._variable_names]
+
+    @property
+    def constraints(self) -> linopy.Constraints:
+        """
+        Returns the variables of the element.
+
+        Raises:
+            ValueError: If the linopy model is not availlable.
+        """
+        if self._calculation_results.model is None:
+            raise ValueError('The linopy model is not available.')
+        return self._calculation_results.model.constraints[self._variable_names]
+
+    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'time']] = None) -> xr.Dataset:
+        """
+        Filter the solution of the element by dimension.
+
+        Args:
+            variable_dims: The dimension of the variables to filter for.
+        """
+        return filter_dataset(self.solution, variable_dims)
 
 
 class _NodeResults(_ElementResults):
@@ -202,11 +358,11 @@ class _NodeResults(_ElementResults):
         self.inputs = inputs
         self.outputs = outputs
 
-    def plot_flow_rates(self,
+    def plot_node_balance(self,
                         save: Union[bool, pathlib.Path] = False,
                         show: bool = True):
         fig = plotting.with_plotly(
-            self.flow_rates(with_last_timestep=True).to_dataframe(), mode='area', title=f'Flow rates of {self.label}'
+            self.node_balance(with_last_timestep=True).to_dataframe(), mode='area', title=f'Flow rates of {self.label}'
         )
         return plotly_save_and_show(
             fig,
@@ -215,14 +371,14 @@ class _NodeResults(_ElementResults):
             show=show,
             save=True if save else False)
 
-    def flow_rates(self,
+    def node_balance(self,
                    negate_inputs: bool = True,
                    negate_outputs: bool = False,
                    threshold: Optional[float] = 1e-5,
                    with_last_timestep: bool = False) -> xr.Dataset:
-        variables = [name for name in self.variables if name.endswith(('|flow_rate', '|excess_input', '|excess_output'))]
+        variable_names = [name for name in self._variable_names if name.endswith(('|flow_rate', '|excess_input', '|excess_output'))]
         return sanitize_dataset(
-            ds=self.variables[variables].solution,
+            ds=self.solution[variable_names],
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
             negate=(
@@ -242,30 +398,30 @@ class ComponentResults(_NodeResults):
 
     @property
     def is_storage(self) -> bool:
-        return self._charge_state in self.variables
+        return self._charge_state in self._variable_names
 
     @property
     def _charge_state(self) -> str:
         return f'{self.label}|charge_state'
 
     @property
-    def charge_state(self) -> linopy.Variable:
+    def charge_state(self) -> xr.DataArray:
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
-        return self.variables[self._charge_state]
+        return self.solution[self._charge_state]
 
     def plot_charge_state(self,
                           save: Union[bool, pathlib.Path] = False,
                           show: bool = True) -> plotly.graph_objs._figure.Figure:
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
-        fig = plotting.with_plotly(self.flow_rates(with_last_timestep=True).to_dataframe(),
+        fig = plotting.with_plotly(self.node_balance(with_last_timestep=True).to_dataframe(),
                                     mode='area',
                                     title=f'Operation Balance of {self.label}',
                                     show=False)
-        charge_state = self.charge_state.solution.to_dataframe()
+        charge_state = self.charge_state.to_dataframe()
         fig.add_trace(plotly.graph_objs.Scatter(
-            x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self.charge_state.name))
+            x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state))
 
         return plotly_save_and_show(
             fig,
@@ -274,15 +430,16 @@ class ComponentResults(_NodeResults):
             show=show,
             save=True if save else False)
 
-    def charge_state_and_flow_rates(self,
-                                    negate_inputs: bool = True,
-                                    negate_outputs: bool = False,
-                                    threshold: Optional[float] = 1e-5) -> xr.Dataset:
+    def node_balance_with_charge_state(
+            self,
+            negate_inputs: bool = True,
+            negate_outputs: bool = False,
+            threshold: Optional[float] = 1e-5) -> xr.Dataset:
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
-        variables = self.inputs + self.outputs + [self._charge_state]
+        variable_names = self.inputs + self.outputs + [self._charge_state]
         return sanitize_dataset(
-            ds=self.variables[variables].solution,
+            ds=self.solution[variable_names],
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra,
             negate=(
@@ -297,7 +454,8 @@ class EffectResults(_ElementResults):
     """Results for an Effect"""
 
     def get_shares_from(self, element: str):
-        return self.variables[[name for name in self._variables if name.startswith(f'{element}->')]]
+        """ Get the shares from an Element (without subelements) to the Effect"""
+        return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
 
 
 class SegmentedCalculationResults:
@@ -306,7 +464,7 @@ class SegmentedCalculationResults:
     """
     @classmethod
     def from_calculation(cls, calculation: 'SegmentedCalculation'):
-        return cls([CalculationResults.from_calculation(calc) for calc in calculation.sub_calculations],
+        return cls([calc.results for calc in calculation.sub_calculations],
                    all_timesteps=calculation.all_timesteps,
                    timesteps_per_segment=calculation.timesteps_per_segment,
                    overlap_timesteps=calculation.overlap_timesteps,
@@ -347,17 +505,30 @@ class SegmentedCalculationResults:
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
 
-    def solution_without_overlap(self, variable: str) -> xr.DataArray:
+    @property
+    def meta_data(self) -> Dict[str, Union[int, List[str]]]:
+        return {
+            'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
+            'timesteps_per_segment': self.timesteps_per_segment,
+            'overlap_timesteps': self.overlap_timesteps,
+            'sub_calculations': [calc.name for calc in self.segment_results]
+        }
+
+    @property
+    def segment_names(self) -> List[str]:
+        return [segment.name for segment in self.segment_results]
+
+    def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Returns the solution of a variable without overlap"""
-        dataarrays = [result.model.variables[variable].solution.isel(time=slice(None, self.timesteps_per_segment))
+        dataarrays = [result.solution[variable_name].isel(time=slice(None, self.timesteps_per_segment))
                       for result in self.segment_results[:-1]
-                      ] + [self.segment_results[-1].model.variables[variable].solution]
+                      ] + [self.segment_results[-1].solution[variable_name]]
         return xr.concat(dataarrays, dim='time')
 
 
     def plot_heatmap(
         self,
-        variable: str,
+        variable_name: str,
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
@@ -365,8 +536,8 @@ class SegmentedCalculationResults:
         show: bool = True
     ) -> plotly.graph_objs.Figure:
         return plot_heatmap(
-            dataarray=self.solution_without_overlap(variable),
-            name=variable,
+            dataarray=self.solution_without_overlap(variable_name),
+            name=variable_name,
             folder=self.folder,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
@@ -374,7 +545,7 @@ class SegmentedCalculationResults:
             save=save,
             show=show)
 
-    def to_file(self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, *args, **kwargs):
+    def to_file(self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None):
         """Save the results to a file"""
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -390,19 +561,6 @@ class SegmentedCalculationResults:
         with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(self.meta_data, f, indent=4, ensure_ascii=False)
         logger.info(f'Saved calculation "{name}" to {path}')
-
-    @property
-    def meta_data(self) -> Dict[str, Union[int, List[str]]]:
-        return {
-            'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
-            'timesteps_per_segment': self.timesteps_per_segment,
-            'overlap_timesteps': self.overlap_timesteps,
-            'sub_calculations': [calc.name for calc in self.segment_results]
-        }
-
-    @property
-    def segment_names(self) -> List[str]:
-        return [segment.name for segment in self.segment_results]
 
 
 def plotly_save_and_show(fig: plotly.graph_objs.Figure,
@@ -485,3 +643,25 @@ def sanitize_dataset(
     if timesteps is not None and not ds.indexes['time'].equals(timesteps):
         ds = ds.reindex({'time': timesteps}, fill_value=np.nan)
     return ds
+
+
+def filter_dataset(
+        ds: xr.Dataset,
+        variable_dims: Optional[Literal['scalar', 'time']] = None,
+) -> xr.Dataset:
+    """
+    Filters a dataset by its dimensions.
+
+    Args:
+        ds: The dataset to filter.
+        variable_dims: The dimension of the variables to filter for.
+    """
+    if variable_dims is None:
+        return ds
+
+    if variable_dims == 'scalar':
+        return ds[[name for name, da in ds.data_vars.items() if len(da.dims) == 0]]
+    elif variable_dims == 'time':
+        return ds[[name for name, da in ds.data_vars.items() if 'time' in da.dims]]
+    else:
+        raise ValueError(f'Not allowed value for "filter_dataset()": {variable_dims=}')

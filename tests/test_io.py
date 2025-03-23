@@ -27,7 +27,7 @@ def test_flow_system_file_io(flow_system, highs_solver):
     calculation_0.do_modeling()
     calculation_0.solve(highs_solver)
 
-    calculation_0.save_results(save_flow_system=True, compression=5)
+    calculation_0.results.to_file()
     flow_system_1 = fx.FlowSystem.from_netcdf(f'results/{calculation_0.name}_flowsystem.nc')
 
     calculation_1 = fx.FullCalculation('Loaded_IO', flow_system=flow_system_1)
@@ -39,8 +39,8 @@ def test_flow_system_file_io(flow_system, highs_solver):
                                 'objective of loaded flow_system doesnt match the original')
 
     assert_almost_equal_numeric(
-        calculation_0.results.model.variables['costs|total'].solution.values,
-        calculation_1.results.model.variables['costs|total'].solution.values,
+        calculation_0.results.solution['costs|total'].values,
+        calculation_1.results.solution['costs|total'].values,
         'costs doesnt match expected value',
     )
 

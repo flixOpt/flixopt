@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
     # --- Basic overview ---
     fx.plotting.plot_network(*results.network_infos, show=True)
-    results['Fernwärme'].plot_flow_rates()
+    results['Fernwärme'].plot_node_balance()
 
     # --- Detailed Plots ---
     # In depth plot for individual flow rates ('__' is used as the delimiter between Component and Flow
