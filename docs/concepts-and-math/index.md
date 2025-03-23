@@ -70,6 +70,14 @@ flixOpt offers different calculation approaches:
 - [`SegmentedCalculation`][flixOpt.calculation.SegmentedCalculation] - Solves the problem in segments (with optioinal overlap), improving performance for large problems
 - [`AggregatedCalculation`][flixOpt.calculation.AggregatedCalculation] - Uses typical periods to reduce computational requirements
 
+### Results
+
+The results of a calculation are stored in a [`CalculationResults`][flixOpt.results.CalculationResults] object.
+This object contains the solutions of the optimization as well as all information about the [`Calculation`][flixOpt.calculation.Calculation] and the [`FlowSystem`][flixOpt.flow_system.FlowSystem] it was created from.
+The solutions is stored as an `xarray.Dataset`, but can be accessed through their assotiated Component, Bus or Effect.
+
+This [`CalculationResults`][flixOpt.results.CalculationResults] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
+
 ## How These Concepts Work Together
 
 1. You create a `FlowSystem` with a specified time series
