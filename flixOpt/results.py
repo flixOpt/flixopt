@@ -237,7 +237,7 @@ class CalculationResults:
             name: The name of the results file. If not provided, Defaults to the name of the calculation.
             compression: The compression level to use when saving the solution file (0-9). 0 means no compression.
             document_model: Wether to document the mathematical formulations in the model.
-            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
+            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc4 file.
                 The model file size is rougly 100 times larger than the solution file.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
@@ -468,7 +468,7 @@ class SegmentedCalculationResults:
         """ Create SegmentedCalculationResults directly from file"""
         folder = pathlib.Path(folder)
         path = folder / name
-        nc_file = path.with_suffix('.nc')
+        nc_file = path.with_suffix('.nc4')
         logger.info(f'loading calculation "{name}" from file ("{nc_file}")')
         with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
             meta_data = json.load(f)

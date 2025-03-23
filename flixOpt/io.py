@@ -248,10 +248,10 @@ def get_paths(
         folder: pathlib.Path,
         name: str
 ) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
-    model_path = folder / f'{name}--model.nc'
-    solution_path = folder / f'{name}--solution.nc'
+    model_path = folder / f'{name}--linopy_model.nc4'
+    solution_path = folder / f'{name}--solution.nc4'
     summary_path = folder / f'{name}--summary.yaml'
     network_path = folder/f'{name}--network.json'
-    flow_system_path = folder / f'{name}--flow_system.nc'
+    flow_system_path = folder / f'{name}--flow_system.nc4'
     model_documentation_path = folder / f'{name}--model_documentation.yaml'
     return model_path, solution_path, summary_path, network_path, flow_system_path, model_documentation_path
