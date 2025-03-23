@@ -94,7 +94,7 @@ plugins:
      handlers:
        python:  # Configuration for Python code documentation
          options:
-           docstring_style: numpy  # Sets google as the docstring style
+           docstring_style: google  # Sets google as the docstring style
            modernize_annotations: true  # Improves type annotations
            merge_init_into_class: true  # Promotes constructor parameters to class-level documentation
            docstring_section_style: table  # Renders parameter sections as a table (also: list, spacy)

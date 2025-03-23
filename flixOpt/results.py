@@ -135,6 +135,17 @@ class CalculationResults:
         folder: Optional[pathlib.Path] = None,
         model: Optional[linopy.Model] = None,
     ):
+        """
+        Args:
+            solution: The solution of the optimization.
+            flow_system: The flow_system that was used to create the calculation as a datatset.
+            results_structure: The structure of the flow_system that was used to solve the calculation.
+            name: The name of the calculation.
+            infos: Information about the calculation,
+            network_infos: Information about the network.
+            folder: The folder where the results are saved.
+            model: The linopy model that was used to solve the calculation.
+        """
         self.solution = solution
         self.flow_system = flow_system
         self.summary = summary
@@ -563,15 +574,15 @@ def plotly_save_and_show(fig: plotly.graph_objs.Figure,
     """
     Optionally saves and/or displays a Plotly figure.
 
-    Parameters:
-    - fig (go.Figure): The Plotly figure to display or save.
-    - default_filename (Path): The default file path if no user filename is provided.
-    - user_filename (Optional[Path]): An optional user-specified file path.
-    - show (bool): Whether to display the figure (default: True).
-    - save (bool): Whether to save the figure (default: False).
+    Args:
+        fig: The Plotly figure to display or save.
+        default_filename: The default file path if no user filename is provided.
+        user_filename: An optional user-specified file path.
+        show: Whether to display the figure (default: True).
+        save: Whether to save the figure (default: False).
 
     Returns:
-    - go.Figure: The input figure.
+        go.Figure: The input figure.
     """
     filename = user_filename or default_filename
     if show and not save:
@@ -616,14 +627,14 @@ def sanitize_dataset(
     """
     Sanitizes a dataset by dropping variables with small values and optionally reindexing the time axis.
 
-    Parameters:
-    - ds (xr.Dataset): The dataset to sanitize.
-    - timesteps (Optional[pd.DatetimeIndex]): The timesteps to reindex the dataset to. If None, the original timesteps are kept.
-    - threshold (Optional[float]): The threshold for dropping variables. If None, no variables are dropped.
-    - negate (Optional[List[str]]): The variables to negate. If None, no variables are negated.
+    Args:
+        ds: The dataset to sanitize.
+        timesteps: The timesteps to reindex the dataset to. If None, the original timesteps are kept.
+        threshold: The threshold for dropping variables. If None, no variables are dropped.
+        negate: The variables to negate. If None, no variables are negated.
 
     Returns:
-    - xr.Dataset: The sanitized dataset.
+        xr.Dataset: The sanitized dataset.
     """
     if negate is not None:
         for var in negate:

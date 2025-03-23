@@ -41,39 +41,29 @@ class InvestParameters(Interface):
         divest_effects: Optional['EffectValuesUserScalar'] = None,
     ):
         """
-        Parameters
-        ----------
-        fix_effects : None or scalar, optional
-            Fixed investment costs if invested.
-            (Attention: Annualize costs to chosen period!)
-        divest_effects : None or scalar, optional
-            Fixed divestment costs (if not invested, e.g., demolition costs or contractual penalty).
-        fixed_size : int, float, optional
-            Determines if the investment size is fixed.
-        optional : bool, optional
-            If True, investment is not forced.
-        specific_effects : scalar or Dict[Effect: Union[int, float, np.ndarray], optional
-            Specific costs, e.g., in €/kW_nominal or €/m²_nominal.
-            Example: {costs: 3, CO2: 0.3} with costs and CO2 representing an Object of class Effect
-            (Attention: Annualize costs to chosen period!)
-        effects_in_segments : list or List[ List[Union[int,float]], Dict[cEffecType: Union[List[Union[int,float]], optional
-            Linear relation in segments [invest_segments, cost_segments].
-            Example 1:
-                [           [5, 25, 25, 100],       # size in kW
-                 {costs:    [50,250,250,800],       # €
-                  PE:       [5, 25, 25, 100]        # kWh_PrimaryEnergy
-                  }
-                ]
-            Example 2 (if only standard-effect):
-                [   [5, 25, 25, 100],  # kW # size in kW
-                    [50,250,250,800]        # value for standart effect, typically €
-                 ]  # €
-            (Attention: Annualize costs to chosen period!)
-            (Args 'specific_effects' and 'fix_effects' can be used in parallel to InvestsizeSegments)
-        minimum_size : scalar
-            Min nominal value (only if: size_is_fixed = False).
-        maximum_size : scalar, Optional
-            Max nominal value (only if: size_is_fixed = False).
+        Args:
+            fix_effects: Fixed investment costs if invested. (Attention: Annualize costs to chosen period!)
+            divest_effects: Fixed divestment costs (if not invested, e.g., demolition costs or contractual penalty).
+            fixed_size: Determines if the investment size is fixed.
+            optional: If True, investment is not forced.
+            specific_effects: Specific costs, e.g., in €/kW_nominal or €/m²_nominal.
+                Example: {costs: 3, CO2: 0.3} with costs and CO2 representing an Object of class Effect
+                (Attention: Annualize costs to chosen period!)
+            effects_in_segments: Linear relation in segments [invest_segments, cost_segments].
+                Example 1:
+                    [           [5, 25, 25, 100],       # size in kW
+                     {costs:    [50,250,250,800],       # €
+                      PE:       [5, 25, 25, 100]        # kWh_PrimaryEnergy
+                      }
+                    ]
+                Example 2 (if only standard-effect):
+                    [   [5, 25, 25, 100],  # kW # size in kW
+                        [50,250,250,800]        # value for standart effect, typically €
+                     ]  # €
+                (Attention: Annualize costs to chosen period!)
+                (Args 'specific_effects' and 'fix_effects' can be used in parallel to InvestsizeSegments)
+            minimum_size: Min nominal value (only if: size_is_fixed = False).
+            maximum_size: Max nominal value (only if: size_is_fixed = False).
         """
         self.fix_effects: EffectValuesUser = fix_effects or {}
         self.divest_effects: EffectValuesUser = divest_effects or {}
@@ -113,35 +103,24 @@ class OnOffParameters(Interface):
         force_switch_on: bool = False,
     ):
         """
-        on_off_parameters class for modeling on and off state of an Element.
+        Bundles information about the on and off state of an Element.
         If no parameters are given, the default is to create a binary variable for the on state
         without further constraints or effects and a variable for the total on hours.
 
-        Parameters
-        ----------
-        effects_per_switch_on : scalar, array, TimeSeriesData, optional
-            cost of one switch from off (var_on=0) to on (var_on=1),
-            unit i.g. in Euro
-        effects_per_running_hour : scalar or TS, optional
-            costs for operating, i.g. in € per hour
-        on_hours_total_min : scalar, optional
-            min. overall sum of operating hours.
-        on_hours_total_max : scalar, optional
-            max. overall sum of operating hours.
-        consecutive_on_hours_min : scalar, optional
-            min sum of operating hours in one piece
-            (last on-time period of timeseries is not checked and can be shorter)
-        consecutive_on_hours_max : scalar, optional
-            max sum of operating hours in one piece
-        consecutive_off_hours_min : scalar, optional
-            min sum of non-operating hours in one piece
-            (last off-time period of timeseries is not checked and can be shorter)
-        consecutive_off_hours_max : scalar, optional
-            max sum of non-operating hours in one piece
-        switch_on_total_max : integer, optional
-            max nr of switchOn operations
-        force_switch_on : bool
-            force creation of switch on variable, even if there is no switch_on_total_max
+        Args:
+            effects_per_switch_on: cost of one switch from off (var_on=0) to on (var_on=1),
+                unit i.g. in Euro
+            effects_per_running_hour: costs for operating, i.g. in € per hour
+            on_hours_total_min: min. overall sum of operating hours.
+            on_hours_total_max: max. overall sum of operating hours.
+            consecutive_on_hours_min: min sum of operating hours in one piece
+                (last on-time period of timeseries is not checked and can be shorter)
+            consecutive_on_hours_max: max sum of operating hours in one piece
+            consecutive_off_hours_min: min sum of non-operating hours in one piece
+                (last off-time period of timeseries is not checked and can be shorter)
+            consecutive_off_hours_max: max sum of non-operating hours in one piece
+            switch_on_total_max: max nr of switchOn operations
+            force_switch_on: force creation of switch on variable, even if there is no switch_on_total_max
         """
         self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}
         self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}

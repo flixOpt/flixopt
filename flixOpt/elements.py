@@ -25,7 +25,11 @@ logger = logging.getLogger('flixOpt')
 @register_class_for_io
 class Component(Element):
     """
-    basic component class for all components
+    A Component contains incoming and outgoing [`Flows`][flixOpt.elements.Flow]. It defines how these Flows interact with each other.
+    The On or Off state of the Component is defined by all its Flows. Its on, if any of its FLows is On.
+    It's mathematically advisable to define the On/Off state in a FLow rather than a Component if possible,
+    as this introduces less binary variables to the Model
+    Constraints to the On/Off state are defined by the [`on_off_parameters`][flixOpt.interface.OnOffParameters].
     """
 
     def __init__(
@@ -38,20 +42,17 @@ class Component(Element):
         meta_data: Optional[Dict] = None,
     ):
         """
-        Parameters
-        ----------
-        label : str
-            name.
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        inputs : input flows.
-        outputs : output flows.
-        on_off_parameters: Information about on and off state of Component.
-            Component is On/Off, if all connected Flows are On/Off.
-            Induces On-Variable in all FLows!
-            See class OnOffParameters.
-        prevent_simultaneous_flows: Define a Group of Flows. Only one them can be on at a time.
-            Induces On-Variable in all FLows!
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            inputs: input flows.
+            outputs: output flows.
+            on_off_parameters: Information about on and off state of Component.
+                Component is On/Off, if all connected Flows are On/Off.
+                Induces On-Variable in all FLows!
+                See class OnOffParameters.
+            prevent_simultaneous_flows: Define a Group of Flows. Only one them can be on at a time.
+                Induces On-Variable in all Flows! If possible, use OnOffParameters in a single Flow instead.
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, meta_data=meta_data)
         self.inputs: List['Flow'] = inputs or []
@@ -70,7 +71,7 @@ class Component(Element):
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
 
-    def infos(self, use_numpy=True, use_element_label=False) -> Dict:
+    def infos(self, use_numpy=True, use_element_label: bool = False) -> Dict:
         infos = super().infos(use_numpy, use_element_label)
         infos['inputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.inputs]
         infos['outputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.outputs]
@@ -83,25 +84,46 @@ class Component(Element):
 
 @register_class_for_io
 class Bus(Element):
-    """
-    realizing balance of all linked flows
-    (penalty flow is excess can be activated)
+    r"""
+    A Bus represents a nodal balance between the flow rates of its incoming and outgoing [Flows][flixOpt.elements.Flow]
+    ($\mathcal{F}_\text{in}$ and $\mathcal{F}_\text{out}$),
+    which must hold for every time step $\text{t}_i \in \mathcal{T}$.
+
+    $$
+        \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_\text{in}}(\text{t}_i) =
+        \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
+    $$
+
+    To handle ifeasiblities gently, 2 variables $\phi_\text{in}(\text{t}_i)\geq0$ and
+    $\phi_\text{out}(\text{t}_i)\geq0$ might be introduced.
+    These represent the missing or excess flow_rate in Bus. E certain amount of penalty occurs for each missing or
+    excess flow_rate in the balance (`excess_penalty_per_flow_hour`), so they usually dont affect the Optimization.
+    The penalty term is defined as
+
+    $$
+        s_{b \rightarrow \Phi}(\text{t}_i) =
+            \text a_{b \rightarrow \Phi}(\text{t}_i) \cdot \Delta \text{t}_i
+            \cdot [ \phi_\text{in}(\text{t}_i) + \phi_\text{out}(\text{t}_i) ]
+    $$
+
+    Which changes the balance to
+
+    $$
+        \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_ \text{in}}(\text{t}_i) + \phi_\text{in}(\text{t}_i) =
+        \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i) + \phi_\text{out}(\text{t}_i)
+    $$
     """
 
     def __init__(
         self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataTS] = 1e5, meta_data: Optional[Dict] = None
     ):
         """
-        Parameters
-        ----------
-        label : str
-            name.
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        excess_penalty_per_flow_hour : none or scalar, array or TimeSeriesData
-            excess costs / penalty costs (bus balance compensation)
-            (none/ 0 -> no penalty). The default is 1e5.
-            (Take care: if you use a timeseries (no scalar), timeseries is aggregated if calculation_type = aggregated!)
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            excess_penalty_per_flow_hour: excess costs / penalty costs (bus balance compensation)
+                (none/ 0 -> no penalty). The default is 1e5.
+                (Take care: if you use a timeseries (no scalar), timeseries is aggregated if calculation_type = aggregated!)
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, meta_data=meta_data)
         self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
@@ -131,16 +153,20 @@ class Bus(Element):
 class Connection:
     # input/output-dock (TODO:
     # -> wäre cool, damit Komponenten auch auch ohne Knoten verbindbar
-    # input wären wie Flow,aber statt bus : connectsTo -> hier andere Connection oder aber Bus (dort keine Connection, weil nicht notwendig)
+    # input wären wie Flow,aber statt bus: connectsTo -> hier andere Connection oder aber Bus (dort keine Connection, weil nicht notwendig)
 
     def __init__(self):
+        """
+        This class is not yet implemented!
+        """
         raise NotImplementedError()
 
 
 @register_class_for_io
 class Flow(Element):
-    """
-    flows are inputs and outputs of components
+    r"""
+    A **Flow** moves energy (or material) between a [Bus][flixOpt.elements.Bus] and a [Component][flixOpt.elements.Component] in a predefined direction.
+    The flow-rate is the main optimization variable of the **Flow**.
     """
 
     def __init__(
@@ -161,48 +187,33 @@ class Flow(Element):
         meta_data: Optional[Dict] = None,
     ):
         r"""
-        Parameters
-        ----------
-        label : str
-            name of flow
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        bus : Bus, optional
-            bus to which flow is linked
-        size : scalar, InvestmentParameters, optional
-            size of the flow. If InvestmentParameters is used, size is optimized.
-            If size is None, a default value is used.
-        relative_minimum : scalar, array, TimeSeriesData, optional
-            min value is relative_minimum multiplied by size
-        relative_maximum : scalar, array, TimeSeriesData, optional
-            max value is relative_maximum multiplied by size. If size = max then relative_maximum=1
-        load_factor_min : scalar, optional
-            minimal load factor  general: avg Flow per nominalVal/investSize
-            (e.g. boiler, kW/kWh=h; solarthermal: kW/m²;
-             def: :math:`load\_factor:= sumFlowHours/ (nominal\_val \cdot \Delta t_{tot})`
-        load_factor_max : scalar, optional
-            maximal load factor (see minimal load factor)
-        effects_per_flow_hour : scalar, array, TimeSeriesData, optional
-            operational costs, costs per flow-"work"
-        on_off_parameters : OnOffParameters, optional
-            If present, flow can be "off", i.e. be zero (only relevant if relative_minimum > 0)
-            Therefore a binary var "on" is used. Further, several other restrictions and effects can be modeled
-            through this On/Off State (See OnOffParameters)
-        flow_hours_total_max : TYPE, optional
-            maximum flow-hours ("flow-work")
-            (if size is not const, maybe load_factor_max fits better for you!)
-        flow_hours_total_min : TYPE, optional
-            minimum flow-hours ("flow-work")
-            (if size is not const, maybe load_factor_min fits better for you!)
-        fixed_relative_profile : scalar, array, TimeSeriesData, optional
-            fixed relative values for flow (if given).
-            flow_rate(t) := fixed_relative_profile(t) * size(t)
-            With this value, the flow_rate is no opt-variable anymore;
-            (relative_minimum u. relative_maximum are iverwritten)
-            used for fixed load profiles, i.g. heat demand, wind-power, solarthermal
-            If the load-profile is just an upper limit, use relative_maximum instead.
-        previous_flow_rate : scalar, array, optional
-            previous flow rate of the component.
+        Args:
+            label: The label of the FLow. Used to identify it in the FlowSystem. Its `full_label` consists of the label of the Component and the label of the Flow.
+            bus: blabel of the bus the flow is connected to.
+            size: size of the flow. If InvestmentParameters is used, size is optimized.
+                If size is None, a default value is used.
+            relative_minimum: min value is relative_minimum multiplied by size
+            relative_maximum: max value is relative_maximum multiplied by size. If size = max then relative_maximum=1
+            load_factor_min: minimal load factor  general: avg Flow per nominalVal/investSize
+                (e.g. boiler, kW/kWh=h; solarthermal: kW/m²;
+                 def: :math:`load\_factor:= sumFlowHours/ (nominal\_val \cdot \Delta t_{tot})`
+            load_factor_max: maximal load factor (see minimal load factor)
+            effects_per_flow_hour: operational costs, costs per flow-"work"
+            on_off_parameters: If present, flow can be "off", i.e. be zero (only relevant if relative_minimum > 0)
+                Therefore a binary var "on" is used. Further, several other restrictions and effects can be modeled
+                through this On/Off State (See OnOffParameters)
+            flow_hours_total_max: maximum flow-hours ("flow-work")
+                (if size is not const, maybe load_factor_max is the better choice!)
+            flow_hours_total_min: minimum flow-hours ("flow-work")
+                (if size is not predefined, maybe load_factor_min is the better choice!)
+            fixed_relative_profile: fixed relative values for flow (if given).
+                flow_rate(t) := fixed_relative_profile(t) * size(t)
+                With this value, the flow_rate is no optimization-variable anymore.
+                (relative_minimum and relative_maximum are ignored)
+                used for fixed load or supply profiles, i.g. heat demand, wind-power, solarthermal
+                If the load-profile is just an upper limit, use relative_maximum instead.
+            previous_flow_rate: previous flow rate of the component.
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, meta_data=meta_data)
         self.size = size or CONFIG.modeling.BIG  # Default size
@@ -258,7 +269,7 @@ class Flow(Element):
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system)
 
-    def infos(self, use_numpy=True, use_element_label=False) -> Dict:
+    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
         infos = super().infos(use_numpy, use_element_label)
         infos['is_input_in_component'] = self.is_input_in_component
         return infos
