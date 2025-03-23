@@ -4,6 +4,7 @@ import logging
 import pathlib
 import re
 from typing import Dict, Literal, Tuple, Union
+from dataclasses import dataclass
 
 import linopy
 import xarray as xr
@@ -244,14 +245,29 @@ def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
     return ds
 
 
-def get_paths(
-        folder: pathlib.Path,
-        name: str
-) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
-    model_path = folder / f'{name}--linopy_model.nc4'
-    solution_path = folder / f'{name}--solution.nc4'
-    summary_path = folder / f'{name}--summary.yaml'
-    network_path = folder/f'{name}--network.json'
-    flow_system_path = folder / f'{name}--flow_system.nc4'
-    model_documentation_path = folder / f'{name}--model_documentation.yaml'
-    return model_path, solution_path, summary_path, network_path, flow_system_path, model_documentation_path
+@dataclass
+class CalculationResultsPaths:
+    """Container for all paths related to saving CalculationResults."""
+    folder: pathlib.Path
+    name: str
+
+    def __post_init__(self):
+        """Initialize all path attributes."""
+        self.model = self.folder / f"{self.name}--linopy_model.nc4"
+        self.solution = self.folder / f"{self.name}--solution.nc4"
+        self.summary = self.folder / f"{self.name}--summary.yaml"
+        self.network = self.folder / f"{self.name}--network.json"
+        self.flow_system = self.folder / f"{self.name}--flow_system.nc4"
+        self.model_documentation = self.folder / f"{self.name}--model_documentation.yaml"
+
+    def create_folders(self, parents: bool = False) -> None:
+        """Ensure the folder exists.
+        Args:
+            parents: Whether to create the parent folders if they do not exist.
+        """
+        if not self.folder.exists():
+            try:
+                self.folder.mkdir(parents=parents)
+            except FileNotFoundError as e:
+                raise FileNotFoundError(f'Folder {self.folder} and its parent do not exist. Please create them first.') from e
+

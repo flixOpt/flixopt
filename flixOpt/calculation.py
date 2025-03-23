@@ -155,11 +155,11 @@ class FullCalculation(Calculation):
 
         if self.model.status == 'warning':
             # Save the model and the flow_system to file in case of infeasibility
-            _, _, _, _, flow_system_path, model_documentation = fx_io.get_paths(self.folder, self.name)
+            paths = fx_io.CalculationResultsPaths(self.folder, self.name)
             from .io import document_linopy_model
-            document_linopy_model(self.model, self.folder / f'{self.name}--model_documentation.yaml')
-            self.flow_system.to_netcdf(flow_system_path)
-            #TODO: Raise an exception here?
+            document_linopy_model(self.model, paths.model_documentation)
+            self.flow_system.to_netcdf(paths.flow_system)
+            raise RuntimeError(f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.')
 
         # Log the formatted output
         if log_main_results:

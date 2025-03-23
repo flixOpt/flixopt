@@ -74,26 +74,24 @@ class CalculationResults:
             ValueError: If files exist but cannot be properly loaded.
         """
         folder = pathlib.Path(folder)
-
-        model_path, solution_path, summary_path, network_path, flow_system_path, _ = fx_io.get_paths(folder=folder,
-                                                                                                     name=name)
+        paths = fx_io.CalculationResultsPaths(folder, name)
 
         model = None
-        if model_path.exists():
+        if paths.model.exists():
             try:
-                logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
-                model = linopy.read_netcdf(model_path)
+                logger.info(f'loading the linopy model "{name}" from file ("{paths.model}")')
+                model = linopy.read_netcdf(paths.model)
             except Exception as e:
-                logger.critical(f'Could not load the linopy model "{name}" from file ("{model_path}"): {e}')
+                logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.model}"): {e}')
 
-        with open(summary_path, 'r', encoding='utf-8') as f:
+        with open(paths.summary, 'r', encoding='utf-8') as f:
             summary = yaml.load(f, Loader=yaml.FullLoader)
 
-        with open(network_path, 'r', encoding='utf-8') as f:
+        with open(paths.network, 'r', encoding='utf-8') as f:
             network_infos = json.load(f)
 
-        return cls(solution=fx_io.load_dataset_from_netcdf(solution_path),
-                   flow_system=fx_io.load_dataset_from_netcdf(flow_system_path),
+        return cls(solution=fx_io.load_dataset_from_netcdf(paths.solution),
+                   flow_system=fx_io.load_dataset_from_netcdf(paths.flow_system),
                    name=name,
                    folder=folder,
                    model=model,
@@ -248,31 +246,30 @@ class CalculationResults:
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
-        model_path, solution_path, summary_path, network_path, flow_system_path, model_doc_path = fx_io.get_paths(
-            folder= folder, name=name)
+        paths = fx_io.CalculationResultsPaths(folder, name)
 
-        fx_io.save_dataset_to_netcdf(self.solution, solution_path, compression=compression)
-        fx_io.save_dataset_to_netcdf(self.flow_system, flow_system_path, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
 
-        with open(summary_path, 'w', encoding='utf-8') as f:
+        with open(paths.summary, 'w', encoding='utf-8') as f:
             yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
 
-        with open(network_path, 'w', encoding='utf-8') as f:
+        with open(paths.network, 'w', encoding='utf-8') as f:
             json.dump(self.network_infos, f, indent=4, ensure_ascii=False)
 
         if save_linopy_model:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             else:
-                self.model.to_netcdf(model_path)
+                self.model.to_netcdf(paths.model)
 
         if document_model:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
             else:
-                fx_io.document_linopy_model(self.model, path=model_doc_path)
+                fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
-        logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
+        logger.info(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
 
 class _ElementResults:
