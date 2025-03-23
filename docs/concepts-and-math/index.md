@@ -13,23 +13,6 @@ Every flixOpt model starts with creating a FlowSystem. It:
 - Contains and connects [components](#components), [buses](#buses), and [flows](#flows)
 - Manages the [effects](#effects) (objectives and constraints)
 
-### Timesteps
-Time steps are defined as a sequence of discrete time steps $\text{t}_i \in \mathcal{T} \quad \text{for} \quad i \in \{1, 2, \dots, \text{n}\}$ (left-aligned in its timespan).
-From this sequence, the corresponding time intervals $\Delta \text{t}_i \in \Delta \mathcal{T}$ are derived as 
-
-$$\Delta \text{t}_i = \text{t}_{i+1} - \text{t}_i \quad \text{for} \quad i \in \{1, 2, \dots, \text{n}-1\}$$
-
-The final time interval $\Delta \text{t}_\text n$ defaults to $\Delta \text{t}_\text n = \Delta \text{t}_{\text n-1}$, but is of course customizable.
-Non-equidistant time steps are also supported.
-
-### Buses
-
-[`Bus`][flixOpt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
-
-- Balance incoming and outgoing flows
-- Can represent physical networks like heat, electricity, or gas 
-- Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional)
-
 ### Flows
 
 [`Flow`][flixOpt.elements.Flow] objects represent the movement of energy or material between a [Bus](#buses) and a [Component](#components) in a predefined direction.
@@ -39,6 +22,14 @@ Non-equidistant time steps are also supported.
 - Have constraints to limit the flow-rate (min/max, total flow hours, on/off etc.)
 - Can have fixed profiles (for demands or renewable generation)
 - Can have [Effects](#effects) associated by their use (operation, investment, on/off, ...)
+
+### Buses
+
+[`Bus`][flixOpt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
+
+- Balance incoming and outgoing flows
+- Can represent physical networks like heat, electricity, or gas 
+- Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional)
 
 ### Components
 
@@ -62,9 +53,11 @@ These can be freely defined and crosslink to each other (`CO₂` ──[specific
 One effect is designated as the **optimization objective** (typically Costs), while others can have constraints.
 This effect can incorporate several other effects, which woul result in a weighted objective from multiple effects.
 
-### Calculation Modes
+### Calculation
 
-flixOpt offers different calculation approaches:
+A [`FlowSystem`][flixOpt.flow_system.FlowSystem] can be converted to a Model and optimized by creating a [`Calculation`][flixOpt.calculation.Calculation] from it.
+
+flixOpt offers different calculation modes:
 
 - [`FullCalculation`][flixOpt.calculation.FullCalculation] - Solves the entire problem at once
 - [`SegmentedCalculation`][flixOpt.calculation.SegmentedCalculation] - Solves the problem in segments (with optioinal overlap), improving performance for large problems
@@ -80,20 +73,21 @@ This [`CalculationResults`][flixOpt.results.CalculationResults] object can be sa
 
 ## How These Concepts Work Together
 
-The process of woring with flixOpt can be devided into 3 steps:
+The process of working with flixOpt can be divided into 3 steps:
+
 1. Create a [`FlowSystem`][flixOpt.flow_system.FlowSystem], containing all the elements and data of your system
-   -  Define the time series of your system
-   -  Add [`Components`][flixOpt.components] like [`Boilers`][flixOpt.linear_converters.Boiler], [`HeatPumps`][flixOpt.linear_converters.HeatPump], [`CHPs`][flixOpt.linear_converters.CHP], etc.
-   -  Add [`Buses`][flixOpt.elements.Bus] as connection points in your system
-   -  Add [`Effects`][flixOpt.effects.Effect] to represent costs, emissions, etc.
-   - *This [`FlowSystem`][flixOpt.flow_system.FlowSystem] can also be loaded from a netCDF file*
+     -  Define the time series of your system
+     -  Add [`Components`][flixOpt.components] like [`Boilers`][flixOpt.linear_converters.Boiler], [`HeatPumps`][flixOpt.linear_converters.HeatPump], [`CHPs`][flixOpt.linear_converters.CHP], etc.
+     -  Add [`Buses`][flixOpt.elements.Bus] as connection points in your system
+     -  Add [`Effects`][flixOpt.effects.Effect] to represent costs, emissions, etc.
+     - *This [`FlowSystem`][flixOpt.flow_system.FlowSystem] can also be loaded from a netCDF file*
 2. Translate the model to a mathematical optimization problem
-   - Create a [`Calculation`][flixOpt.calculation.Calculation] from your FlowSystem and choose a Solver
-   - ...the model is translated to a mathematical optimization problem...
+     - Create a [`Calculation`][flixOpt.calculation.Calculation] from your FlowSystem and choose a Solver
+     - ...the model is translated to a mathematical optimization problem...
 3. Analyze the results
-   - The results are stored in a [`CalculationResults`][flixOpt.results.CalculationResults] object
-   - This object can be saved to file and reloaded from file
-   - As it contains the used [`FlowSystem`][flixOpt.flow_system.FlowSystem], it can be used to start a new calculation
+     - The results are stored in a [`CalculationResults`][flixOpt.results.CalculationResults] object
+     - This object can be saved to file and reloaded from file
+     - As it contains the used [`FlowSystem`][flixOpt.flow_system.FlowSystem], it can be used to start a new calculation
 
 ![flixOpt Concept and Usage](../images/architecture_flixOpt.png)
 
