@@ -50,6 +50,7 @@ theme:
     - content.code.annotate
     - content.tooltips
     - content.code.copy
+    - navigation.footer.version
 
 markdown_extensions:
   - admonition
@@ -83,6 +84,7 @@ plugins:
   - search  # Enables the search functionality in the documentation
   - table-reader  # Allows including tables from external files
   - include-markdown
+  - mike
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py
@@ -119,6 +121,11 @@ plugins:
 
            extra:
              infer_type_annotations: true  # Uses Python type hints to supplement docstring information
+
+extra:
+  version:
+    provider: mike
+    default: latest
 
 extra_javascript:
   - javascripts/mathjax.js  # Custom MathJax 3 CDN Configuration
