@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Union
 import pytest
 
 import flixOpt as fx
+from flixOpt.io import get_paths
 
 from .conftest import (
     assert_almost_equal_numeric,
@@ -11,8 +12,6 @@ from .conftest import (
     flow_system_segments_of_flows,
     simple_flow_system,
 )
-
-from flixOpt.io import get_paths
 
 
 @pytest.fixture(params=[flow_system_base, flow_system_segments_of_flows, simple_flow_system, flow_system_long])

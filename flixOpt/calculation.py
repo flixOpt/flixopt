@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from . import io as fx_io
 from . import utils as utils
 from .aggregation import AggregationModel, AggregationParameters
 from .components import Storage
@@ -29,7 +30,6 @@ from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
 from .solvers import _Solver
 from .structure import SystemModel, copy_and_convert_datatypes, get_compact_representation
-from . import io as fx_io
 
 logger = logging.getLogger('flixOpt')
 
