@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import sys
+from pathlib import Path
 
 import mkdocs_gen_files
 

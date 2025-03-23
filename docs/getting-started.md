@@ -9,7 +9,7 @@ This guide will help you install flixOpt, understand its basic concepts, and run
 Install flixOpt directly into your environment using pip:
 
 ```bash
-pip install git+https://github.com/flixOpt/flixOpt.git
+pip install flixopt
 ```
 
 This provides the core functionality with the HiGHS solver included.
@@ -19,7 +19,7 @@ This provides the core functionality with the HiGHS solver included.
 For all features including interactive network visualizations and time series aggregation:
 
 ```bash
-pip install "flixOpt[full] @ git+https://github.com/flixOpt/flixOpt.git"
+pip install "flixopt[full]""
 ```
 
 ## Basic Workflow
@@ -38,5 +38,5 @@ Working with flixOpt follows a general pattern:
 Now that you've installed flixOpt and understand the basic workflow, you can:
 
 - Learn about the [core concepts of flixOpt](concepts-and-math/index.md)
-- Explore some [examples](examples/index.md)
+- Explore some [examples](examples/)
 - Check the [API reference](api-reference/index.md) for detailed documentation

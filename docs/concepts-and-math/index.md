@@ -26,9 +26,9 @@ Non-equidistant time steps are also supported.
 
 [`Bus`][flixOpt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
 
-- Balance incoming and outgoing flows \eqref{eq:bus_balance}
+- Balance incoming and outgoing flows
 - Can represent physical networks like heat, electricity, or gas 
-- Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional) \eqref{eq:bus_balance-excess}
+- Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional)
 
 ### Flows
 
