@@ -1,5 +1,11 @@
 # flixOpt: Energy and Material Flow Optimization Framework
 
+[![📚 Documentation](https://img.shields.io/badge/📚_docs-online-brightgreen.svg)](https://flixopt.github.io/flixopt/)
+[![CI](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
+[![PyPI version](https://badge.fury.io/py/flixopt.svg)](https://badge.fury.io/py/flixopt)
+[![Python Versions](https://img.shields.io/pypi/pyversions/flixopt.svg)](https://pypi.org/project/flixopt/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **flixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP). Combining flexibility and efficiency, it provides a powerful platform for both dispatch and investment optimization challenges.
 
 ---
@@ -15,12 +21,16 @@ Although flixOpt is in its early stages, it is fully functional and ready for ex
 ## 📦 Installation
 
 Install flixOpt directly into your environment using pip. Thanks to [HiGHS](https://github.com/ERGO-Code/HiGHS?tab=readme-ov-file), flixOpt can be used without further setup.
-`pip install git+https://github.com/flixOpt/flixOpt.git`
+`pip install flixopt`
 
 We recommend installing flixOpt with all dependencies, which enables interactive network visualizations by [pyvis](https://github.com/WestHealth/pyvis) and time series aggregation by [tsam](https://github.com/FZJ-IEK3-VSA/tsam).
-`pip install "flixOpt[full] @ git+https://github.com/flixOpt/flixOpt.git"`
+`pip install "flixopt[full]"`
 
 ---
+
+## 📚 Documentation
+
+Full documentation is available at [https://flixopt.github.io/flixopt/](https://flixopt.github.io/flixopt/)
 
 ## 🌟 Key Features and Concepts
 
