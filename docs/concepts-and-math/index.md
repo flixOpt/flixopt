@@ -80,26 +80,26 @@ This [`CalculationResults`][flixOpt.results.CalculationResults] object can be sa
 
 ## How These Concepts Work Together
 
-1. You create a `FlowSystem` with a specified time series
-2. You add elements to the FLowSystem:
-    - `Bus` objects as connection points
-    - `Component` objects like Boilers, Storages, etc.. They include `Flow` which define the connection to a Bus.
-    - `Effect` objects to represent costs, emissions, etc.
-3.You choose a calculation mode and solver
-4.flixOpt converts your model into a mathematical optimization problem
-5.The solver finds the optimal solution
-6.You analyze the results with built-in or external tools
+The process of woring with flixOpt can be devided into 3 steps:
+1. Create a [`FlowSystem`][flixOpt.flow_system.FlowSystem], containing all the elements and data of your system
+   -  Define the time series of your system
+   -  Add [`Components`][flixOpt.components] like [`Boilers`][flixOpt.linear_converters.Boiler], [`HeatPumps`][flixOpt.linear_converters.HeatPump], [`CHPs`][flixOpt.linear_converters.CHP], etc.
+   -  Add [`Buses`][flixOpt.elements.Bus] as connection points in your system
+   -  Add [`Effects`][flixOpt.effects.Effect] to represent costs, emissions, etc.
+   - *This [`FlowSystem`][flixOpt.flow_system.FlowSystem] can also be loaded from a netCDF file*
+2. Translate the model to a mathematical optimization problem
+   - Create a [`Calculation`][flixOpt.calculation.Calculation] from your FlowSystem and choose a Solver
+   - ...the model is translated to a mathematical optimization problem...
+3. Analyze the results
+   - The results are stored in a [`CalculationResults`][flixOpt.results.CalculationResults] object
+   - This object can be saved to file and reloaded from file
+   - As it contains the used [`FlowSystem`][flixOpt.flow_system.FlowSystem], it can be used to start a new calculation
+
+![flixOpt Concept and Usage](../images/architecture_flixOpt.png)
 
 ## Advanced Usage
-flixOpt uses [linopy](https://github.com/PyPSA/linopy) to model the mathematical optimization problem.
-Any model created with flixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
+As flixopt is build on [linopy](https://github.com/PyPSA/linopy), any model created with flixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
 This allows to adjust your model to very specific requirements without loosing the convenience of flixOpt.
-
-
-
-## Architechture (outdated)
-![Architecture](../images/architecture_flixOpt.png)
-
 
 <!--## Next Steps-->
 <!---->
