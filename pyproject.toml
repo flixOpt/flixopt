@@ -3,19 +3,21 @@ requires = ["setuptools>=61.0.0", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flixOpt"
+name = "flixopt"
 dynamic = ["version"]
 description = "Vector based energy and material flow optimization framework in Python."
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
 license = { text = "MIT License" }
 authors = [
+    { name = "Chair of Building Energy Systems and Heat Supply, TU Dresden", email = "peter.stange@tu-dresden.de" },
     { name = "Felix Bumann", email = "felixbumann387@gmail.com" },
     { name = "Felix Panitz", email = "baumbude@googlemail.com" },
     { name = "Peter Stange", email = "peter.stange@tu-dresden.de" }
 ]
 maintainers = [
-    { name = "Chair of Building Energy Systems and Heat Supply, TU Dresden", email = "peter.stange@tu-dresden.de" }
+    { name = "Felix Bumann", email = "felixbumann387@gmail.com" },
+    { name = "Peter Stange", email = "peter.stange@tu-dresden.de" }
 ]
 keywords = ["optimization", "energy systems", "numerical analysis"]
 classifiers = [
@@ -26,13 +28,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "Topic :: Scientific/Engineering :: Mathematics :: Numerical Analysis :: Optimization",
-    "Topic :: Software Development :: Libraries :: Python"
+    "Topic :: Scientific/Engineering",
+    "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
     "numpy >= 1.21.5, < 2",
     "PyYAML >= 6.0",
-    "linopy @ git+https://github.com/PyPSA/linopy.git",  # Some features of linopy are not yet released
+    "linopy >= 0.5.1",
     "rich >= 13.0.1",
     "highspy >= 1.5.3",  # Default solver
     "pandas >= 2, < 3",  # Used in post-processing
@@ -59,9 +61,22 @@ full = [
     "netcdf4 >= 1.6.1",  # Used for saving and loading the FlowSystem with compression
 ]
 
+docs = [
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings-python",
+    "mkdocs-table-reader-plugin",
+    "mkdocs-gen-files",
+    "mkdocs-include-markdown-plugin",
+    "mkdocs-literate-nav",
+    "markdown-include",
+    "pymdown-extensions",
+    "pygments"
+]
+
 [project.urls]
 homepage = "https://tu-dresden.de/ing/maschinenwesen/iet/gewv/forschung/forschungsprojekte/flixopt"
-repository = "https://github.com/flixOpt/flixOpt"
+repository = "https://github.com/flixOpt/flixopt"
+documentation = "https://flixopt.github.io/flixopt/"
 
 [tool.setuptools.packages.find]
 where = ["."]
