@@ -258,7 +258,7 @@ class CalculationResultsPaths:
 
     def _update_paths(self):
         """Update all path attributes based on current folder and name."""
-        self.model = self.folder / f'{self.name}--linopy_model.nc4'
+        self.linopy_model = self.folder / f'{self.name}--linopy_model.nc4'
         self.solution = self.folder / f'{self.name}--solution.nc4'
         self.summary = self.folder / f'{self.name}--summary.yaml'
         self.network = self.folder / f'{self.name}--network.json'

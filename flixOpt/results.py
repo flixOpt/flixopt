@@ -77,12 +77,12 @@ class CalculationResults:
         paths = fx_io.CalculationResultsPaths(folder, name)
 
         model = None
-        if paths.model.exists():
+        if paths.linopy_model.exists():
             try:
-                logger.info(f'loading the linopy model "{name}" from file ("{paths.model}")')
-                model = linopy.read_netcdf(paths.model)
+                logger.info(f'loading the linopy model "{name}" from file ("{paths.linopy_model}")')
+                model = linopy.read_netcdf(paths.linopy_model)
             except Exception as e:
-                logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.model}"): {e}')
+                logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
         with open(paths.summary, 'r', encoding='utf-8') as f:
             summary = yaml.load(f, Loader=yaml.FullLoader)
@@ -261,7 +261,7 @@ class CalculationResults:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             else:
-                self.model.to_netcdf(paths.model)
+                self.model.to_netcdf(paths.linopy_model)
 
         if document_model:
             if self.model is None:
