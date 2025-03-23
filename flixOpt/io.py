@@ -3,7 +3,7 @@ import json
 import logging
 import pathlib
 import re
-from typing import Dict, Literal, Tuple, Union
+from typing import Dict, Literal, Tuple, Union, Optional
 from dataclasses import dataclass
 
 import linopy
@@ -248,17 +248,22 @@ def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
 @dataclass
 class CalculationResultsPaths:
     """Container for all paths related to saving CalculationResults."""
+
     folder: pathlib.Path
     name: str
 
     def __post_init__(self):
         """Initialize all path attributes."""
-        self.model = self.folder / f"{self.name}--linopy_model.nc4"
-        self.solution = self.folder / f"{self.name}--solution.nc4"
-        self.summary = self.folder / f"{self.name}--summary.yaml"
-        self.network = self.folder / f"{self.name}--network.json"
-        self.flow_system = self.folder / f"{self.name}--flow_system.nc4"
-        self.model_documentation = self.folder / f"{self.name}--model_documentation.yaml"
+        self._update_paths()
+
+    def _update_paths(self):
+        """Update all path attributes based on current folder and name."""
+        self.model = self.folder / f'{self.name}--linopy_model.nc4'
+        self.solution = self.folder / f'{self.name}--solution.nc4'
+        self.summary = self.folder / f'{self.name}--summary.yaml'
+        self.network = self.folder / f'{self.name}--network.json'
+        self.flow_system = self.folder / f'{self.name}--flow_system.nc4'
+        self.model_documentation = self.folder / f'{self.name}--model_documentation.yaml'
 
     def create_folders(self, parents: bool = False) -> None:
         """Ensure the folder exists.
@@ -269,5 +274,14 @@ class CalculationResultsPaths:
             try:
                 self.folder.mkdir(parents=parents)
             except FileNotFoundError as e:
-                raise FileNotFoundError(f'Folder {self.folder} and its parent do not exist. Please create them first.') from e
+                raise FileNotFoundError(
+                    f'Folder {self.folder} and its parent do not exist. Please create them first.'
+                ) from e
 
+    def update(self, new_name: Optional[str] = None, new_folder: Optional[pathlib.Path] = None) -> None:
+        """Update name and/or folder and refresh all paths."""
+        if new_name is not None:
+            self.name = new_name
+        if new_folder is not None:
+            self.folder = new_folder
+        self._update_paths()
