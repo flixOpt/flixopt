@@ -50,45 +50,25 @@ class Effect(Element):
         maximum_total: Optional[Scalar] = None,
     ):
         """
-        Parameters
-        ----------
-        label : str
-            name
-        unit : str
-            unit of effect, i.g. €, kg_CO2, kWh_primaryEnergy
-        description : str
-            long name
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        is_standard : boolean, optional
-            true, if Standard-Effect (for direct input of value without effect (alternatively to dict)) , else false
-        is_objective : boolean, optional
-            true, if optimization target
-        specific_share_to_other_effects_operation : {effectType: TS, ...}, i.g. 180 €/t_CO2, input as {costs: 180}, optional
-            share to other effects (only operation)
-        specific_share_to_other_effects_invest : {effectType: TS, ...}, i.g. 180 €/t_CO2, input as {costs: 180}, optional
-            share to other effects (only invest).
-        minimum_operation : scalar, optional
-            minimal sum (only operation) of the effect
-        maximum_operation : scalar, optional
-            maximal sum (nur operation) of the effect.
-        minimum_operation_per_hour : scalar or TS
-            maximum value per hour (only operation) of effect (=sum of all effect-shares) for each timestep!
-        maximum_operation_per_hour : scalar or TS
-            minimum value per hour (only operation) of effect (=sum of all effect-shares) for each timestep!
-        minimum_invest : scalar, optional
-            minimal sum (only invest) of the effect
-        maximum_invest : scalar, optional
-            maximal sum (only invest) of the effect
-        minimum_total : scalar, optional
-            min sum of effect (invest+operation).
-        maximum_total : scalar, optional
-            max sum of effect (invest+operation).
-
-        Returns
-        -------
-        None.
-
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            unit: The unit of effect, i.g. €, kg_CO2, kWh_primaryEnergy
+            description: The long name
+            is_standard: true, if Standard-Effect (for direct input of value without effect (alternatively to dict)) , else false
+            is_objective: true, if optimization target
+            specific_share_to_other_effects_operation: {effectType: TS, ...}, i.g. 180 €/t_CO2, input as {costs: 180}, optional
+                share to other effects (only operation)
+            specific_share_to_other_effects_invest: {effectType: TS, ...}, i.g. 180 €/t_CO2, input as {costs: 180}, optional
+                share to other effects (only invest).
+            minimum_operation: minimal sum (only operation) of the effect.
+            maximum_operation: maximal sum (nur operation) of the effect.
+            minimum_operation_per_hour: max. value per hour (only operation) of effect (=sum of all effect-shares) for each timestep!
+            maximum_operation_per_hour:  min. value per hour (only operation) of effect (=sum of all effect-shares) for each timestep!
+            minimum_invest: minimal sum (only invest) of the effect
+            maximum_invest: maximal sum (only invest) of the effect
+            minimum_total: min sum of effect (invest+operation).
+            maximum_total: max sum of effect (invest+operation).
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, meta_data=meta_data)
         self.label = label

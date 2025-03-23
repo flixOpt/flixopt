@@ -40,17 +40,13 @@ class FlowSystem:
             hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
     ):
         """
-        Parameters
-        ----------
-        timesteps : pd.DatetimeIndex
-            The timesteps of the model.
-        hours_of_last_timestep : Optional[float], optional
-            The duration of the last time step. Uses the last time interval if not specified
-        hours_of_previous_timesteps : Union[int, float, np.ndarray]
-            The duration of previous timesteps.
-            If None, the first time increment of time_series is used.
-            This is needed to calculate previous durations (for example consecutive_on_hours).
-            If you use an array, take care that its long enough to cover all previous values!
+        Args:
+            timesteps: The timesteps of the model.
+            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
+            hours_of_previous_timesteps: The duration of previous timesteps.
+                If None, the first time increment of time_series is used.
+                This is needed to calculate previous durations (for example consecutive_on_hours).
+                If you use an array, take care that its long enough to cover all previous values!
         """
         self.time_series_collection = TimeSeriesCollection(
             timesteps=timesteps,
@@ -86,6 +82,12 @@ class FlowSystem:
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'FlowSystem':
+        """
+        Load a FlowSystem from a dictionary.
+
+        Args:
+            data: Dictionary containing the FlowSystem data.
+        """
         timesteps_extra = pd.DatetimeIndex(data['timesteps_extra'], name='time')
         hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
 
@@ -122,13 +124,11 @@ class FlowSystem:
 
     def add_elements(self, *elements: Element) -> None:
         """
-        add all modeling elements, like storages, boilers, heatpumps, buses, ...
+        Add Components(Storages, Boilers, Heatpumps, ...), Buses or Effects to the FlowSystem
 
-        Parameters
-        ----------
-        *elements : childs of  Element like Boiler, HeatPump, Bus,...
-            modeling Elements
-
+        Args:
+            *elements: childs of  Element like Boiler, HeatPump, Bus,...
+                modeling Elements
         """
         if self._connected:
             warnings.warn(
@@ -152,10 +152,8 @@ class FlowSystem:
         This not meant to be reloaded and recreate the object,
         but rather used to document or compare the flow_system to others.
 
-        Parameters:
-        -----------
-        path : Union[str, pathlib.Path]
-            The path to the json file.
+        Args:
+            path: The path to the json file.
         """
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(self.as_dict('stats'), f, indent=4, ensure_ascii=False)
@@ -230,33 +228,23 @@ class FlowSystem:
         """
         Visualizes the network structure of a FlowSystem using PyVis, saving it as an interactive HTML file.
 
-        Parameters:
-        - path (Union[bool, str, pathlib.Path], default='flow_system.html'):
-          Path to save the HTML visualization.
-            - `False`: Visualization is created but not saved.
-            - `str` or `Path`: Specifies file path (default: 'flow_system.html').
-
-        - controls (Union[bool, List[str]], default=True):
-          UI controls to add to the visualization.
-            - `True`: Enables all available controls.
-            - `List`: Specify controls, e.g., ['nodes', 'layout'].
-            - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
-
-        - show (bool, default=True):
-          Whether to open the visualization in the web browser.
+        Args:
+            path: Path to save the HTML visualization.
+                - `False`: Visualization is created but not saved.
+                - `str` or `Path`: Specifies file path (default: 'flow_system.html').
+            controls: UI controls to add to the visualization.
+                - `True`: Enables all available controls.
+                - `List`: Specify controls, e.g., ['nodes', 'layout'].
+                - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
+            show: Whether to open the visualization in the web browser.
 
         Returns:
         - Optional[pyvis.network.Network]: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
 
-        Usage:
-        - Visualize and open the network with default options:
-          >>> self.plot_network()
-
-        - Save the visualization without opening:
-          >>> self.plot_network(show=False)
-
-        - Visualize with custom controls and path:
-          >>> self.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
+        Examples:
+            >>> flow_system.plot_network()
+            >>> flow_system.plot_network(show=False)
+            >>> flow_system.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
 
         Notes:
         - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
@@ -362,10 +350,8 @@ class FlowSystem:
         """
         checks if element or label of element already exists in list
 
-        Parameters
-        ----------
-        element : Element
-            new element to check
+        Args:
+            element: new element to check
         """
         if element in self.all_elements.values():
             raise Exception(f'Element {element.label} already added to FlowSystem!')

@@ -35,6 +35,13 @@ class _Solver:
 
 
 class GurobiSolver(_Solver):
+    """
+    Args:
+        mip_gap (float): Solver's mip gap setting. The MIP gap describes the accepted (MILP) objective,
+            and the lower bound, which is the theoretically optimal solution (LP)
+        time_limit_seconds (int): Solver's time limit in seconds.
+        extra_options (str): Filename for saving the solver log.
+    """
     name: ClassVar[str] = 'gurobi'
 
     @property
@@ -46,6 +53,14 @@ class GurobiSolver(_Solver):
 
 
 class HighsSolver(_Solver):
+    """
+    Args:
+        mip_gap (float): Solver's mip gap setting. The MIP gap describes the accepted (MILP) objective,
+            and the lower bound, which is the theoretically optimal solution (LP)
+        time_limit_seconds (int): Solver's time limit in seconds.
+        threads (int): Number of threads to use.
+        extra_options (str): Filename for saving the solver log.
+    """
     threads: Optional[int] = None
     name: ClassVar[str] = 'highs'
 

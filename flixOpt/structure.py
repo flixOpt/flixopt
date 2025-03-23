@@ -41,8 +41,16 @@ def register_class_for_io(cls):
 
 
 class SystemModel(linopy.Model):
+    """
+    The SystemModel is the linopy Model that is used to create the mathematical model of the flow_system.
+    It is used to create and store the variables and constraints for the flow_system.
+    """
 
     def __init__(self, flow_system: 'FlowSystem'):
+        """
+        Args:
+            flow_system: The flow_system that is used to create the model.
+        """
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
         self.time_series_collection = flow_system.time_series_collection
@@ -77,31 +85,28 @@ class SystemModel(linopy.Model):
 
 class Interface:
     """
-    This class is used to collect arguments about a Model.
+    This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixOpt.
     """
 
     def transform_data(self, flow_system: 'FlowSystem'):
         """ Transforms the data of the interface to match the FlowSystem's dimensions"""
         raise NotImplementedError('Every Interface needs a transform_data() method')
 
-    def infos(self, use_numpy=True, use_element_label=False) -> Dict:
+    def infos(self, use_numpy: bool =True, use_element_label: bool = False) -> Dict:
         """
         Generate a dictionary representation of the object's constructor arguments.
         Excludes default values and empty dictionaries and lists.
         Converts data to be compatible with JSON.
 
-        Parameters:
-        -----------
-        use_numpy bool:
-            Whether to convert NumPy arrays to lists. Defaults to True.
-            If True, numeric numpy arrays (`np.ndarray`) are preserved as-is.
-            If False, they are converted to lists.
-        use_element_label bool:
-            Whether to use the element label instead of the infos of the element. Defaults to False.
-            Note that Elements used as keys in dictionaries are always converted to their labels.
+        Args:
+            use_numpy: Whether to convert NumPy arrays to lists. Defaults to True.
+                If True, numeric numpy arrays (`np.ndarray`) are preserved as-is.
+                If False, they are converted to lists.
+            use_element_label: Whether to use the element label instead of the infos of the element. Defaults to False.
+                Note that Elements used as keys in dictionaries are always converted to their labels.
 
         Returns:
-            Dict: A dictionary representation of the object's constructor arguments.
+            A dictionary representation of the object's constructor arguments.
 
         """
         # Get the constructor arguments and their default values
@@ -126,10 +131,8 @@ class Interface:
         Saves the element to a json file.
         This not meant to be reloaded and recreate the object, but rather used to document or compare the object.
 
-        Parameters:
-        -----------
-        path : Union[str, pathlib.Path]
-            The path to the json file.
+        Args:
+            path: The path to the json file.
         """
         data = get_compact_representation(self.infos(use_numpy=True, use_element_label=True))
         with open(path, 'w', encoding='utf-8') as f:
@@ -206,7 +209,12 @@ class Interface:
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'Interface':
-        """Create an instance from a dictionary representation."""
+        """
+        Create an instance from a dictionary representation.
+
+        Args:
+            data: Dictionary containing the data for the object.
+        """
         return cls._deserialize_dict(data)
 
     def __repr__(self):
@@ -223,16 +231,13 @@ class Interface:
 
 
 class Element(Interface):
-    """Basic Element of flixOpt"""
+    """This class is the basic Element of flixOpt. Every Element has a label"""
 
     def __init__(self, label: str, meta_data: Dict = None):
         """
-        Parameters
-        ----------
-        label : str
-            label of the element
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
+        Args:
+            label: The label of the element
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
@@ -272,18 +277,15 @@ class Element(Interface):
 
 
 class Model:
-    """Stores Variables and Constraints"""
+    """Stores Variables and Constraints."""
 
     def __init__(self, model: SystemModel, label_of_element: str, label: Optional[str] = None, label_full: Optional[str] = None):
         """
-        Parameters
-        ----------
-        label_of_element : str
-            The label of the parent (Element). Used to construct the full label of the model.
-        label : str
-            The label of the model. Used to construct the full label of the model.
-        label_full : str
-            The full label of the model. Can overwrite the full label constructed from the other labels.
+        Args:
+            model: The SystemModel that is used to create the model.
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            label: The label of the model. Used to construct the full label of the model.
+            label_full: The full label of the model. Can overwrite the full label constructed from the other labels.
         """
         self._model = model
         self.label_of_element = label_of_element
@@ -310,12 +312,9 @@ class Model:
         """
         Add a variable, constraint or sub-model to the model
 
-        Parameters
-        ----------
-        item : linopy.Variable, linopy.Constraint, InterfaceModel
-            The variable, constraint or sub-model to add to the model
-        short_name : str, optional
-            The short name of the variable, constraint or sub-model. If not provided, the full name is used.
+        Args:
+            item: The variable, constraint or sub-model to add to the model
+            short_name: The short name of the variable, constraint or sub-model. If not provided, the full name is used.
         """
         # TODO: Check uniquenes of short names
         if isinstance(item, linopy.Variable):
@@ -410,14 +409,13 @@ class Model:
 
 
 class ElementModel(Model):
-    """Interface to create the mathematical Variables and Constraints for Elements"""
+    """Stores the mathematical Variables and Constraints for Elements"""
 
     def __init__(self, model: SystemModel, element: Element):
         """
-        Parameters
-        ----------
-        element : Element
-            The element this model is created for.
+        Args:
+            model: The SystemModel that is used to create the model.
+            element: The element this model is created for.
         """
         super().__init__(model, label_of_element=element.label_full, label=element.label, label_full=element.label_full)
         self.element = element
@@ -444,43 +442,33 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
     - Custom `Element` objects can be represented either by their `label` or their initialization parameters as a dictionary.
     - Timestamps (`datetime`) are converted to ISO 8601 strings.
 
-    Parameters
-    ----------
-    data : Any
-        The input data to process, which may be deeply nested and contain a mix of types.
-    use_numpy : bool, optional
-        If `True`, numeric numpy arrays (`np.ndarray`) are preserved as-is. If `False`, they are converted to lists.
-        Default is `True`.
-    use_element_label : bool, optional
-        If `True`, `Element` objects are represented by their `label`. If `False`, they are converted into a dictionary
-        based on their initialization parameters. Default is `False`.
+    Args:
+        data: The input data to process, which may be deeply nested and contain a mix of types.
+        use_numpy: If `True`, numeric numpy arrays (`np.ndarray`) are preserved as-is. If `False`, they are converted to lists.
+            Default is `True`.
+        use_element_label: If `True`, `Element` objects are represented by their `label`. If `False`, they are converted into a dictionary
+            based on their initialization parameters. Default is `False`.
 
-    Returns
-    -------
-    Any
+    Returns:
         A transformed version of the input data, containing only JSON-compatible types:
         - `int`, `float`, `str`, `bool`, `None`
         - `list`, `dict`
         - `np.ndarray` (if `use_numpy=True`. This is NOT JSON-compatible)
 
-    Raises
-    ------
-    TypeError
-        If the data cannot be converted to the specified types.
+    Raises:
+        TypeError: If the data cannot be converted to the specified types.
 
-    Examples
-    --------
-    >>> copy_and_convert_datatypes({'a': np.array([1, 2, 3]), 'b': Element(label='example')})
-    {'a': array([1, 2, 3]), 'b': {'class': 'Element', 'label': 'example'}}
+    Examples:
+        >>> copy_and_convert_datatypes({'a': np.array([1, 2, 3]), 'b': Element(label='example')})
+        {'a': array([1, 2, 3]), 'b': {'class': 'Element', 'label': 'example'}}
 
-    >>> copy_and_convert_datatypes({'a': np.array([1, 2, 3]), 'b': Element(label='example')}, use_numpy=False)
-    {'a': [1, 2, 3], 'b': {'class': 'Element', 'label': 'example'}}
+        >>> copy_and_convert_datatypes({'a': np.array([1, 2, 3]), 'b': Element(label='example')}, use_numpy=False)
+        {'a': [1, 2, 3], 'b': {'class': 'Element', 'label': 'example'}}
 
-    Notes
-    -----
-    - The function gracefully handles unexpected types by issuing a warning and returning a deep copy of the data.
-    - Empty collections (lists, dictionaries) and default parameter values in `Element` objects are omitted from the output.
-    - Numpy arrays with non-numeric data types are automatically converted to lists.
+    Notes:
+        - The function gracefully handles unexpected types by issuing a warning and returning a deep copy of the data.
+        - Empty collections (lists, dictionaries) and default parameter values in `Element` objects are omitted from the output.
+        - Numpy arrays with non-numeric data types are automatically converted to lists.
     """
     if isinstance(data, np.integer):  # This must be checked before checking for regular int and float!
         return int(data)

@@ -21,10 +21,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('flixOpt')
 
+
 @register_class_for_io
 class LinearConverter(Component):
     """
-    Converts one FLow into another via linear conversion factors
+    Converts input-Flows into output-Flows via linear conversion factors
+
     """
 
     def __init__(
@@ -38,25 +40,20 @@ class LinearConverter(Component):
         meta_data: Optional[Dict] = None,
     ):
         """
-        Parameters
-        ----------
-        label : str
-            name.
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        inputs : input flows.
-        outputs : output flows.
-        on_off_parameters: Information about on and off states. See class OnOffParameters.
-        conversion_factors : linear relation between flows.
-            Either 'conversion_factors' or 'segmented_conversion_factors' can be used!
-            example heat pump:
-        segmented_conversion_factors :  Segmented linear relation between flows.
-            Each Flow gets a List of Segments assigned.
-            If FLows need to be 0 (or Off), include a "Zero-Segment" "(0, 0)", or use on_off_parameters
-            Either 'segmented_conversion_factors' or 'conversion_factors' can be used!
-            --> "gaps" can be expressed by a segment not starting at the end of the prior segment : [(1,3), (4,5)]
-            --> "points" can expressed as segment with same begin and end : [(3,3), (4,4)]
-
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            inputs: The input Flows
+            outputs: The output Flows
+            on_off_parameters: Information about on and off states. See class OnOffParameters.
+            conversion_factors: linear relation between flows.
+                Either 'conversion_factors' or 'segmented_conversion_factors' can be used!
+            segmented_conversion_factors:  Segmented linear relation between flows.
+                Each Flow gets a List of Segments assigned.
+                If FLows need to be 0 (or Off), include a "Zero-Segment" "(0, 0)", or use on_off_parameters
+                Either 'segmented_conversion_factors' or 'conversion_factors' can be used!
+                --> "gaps" can be expressed by a segment not starting at the end of the prior segment: [(1,3), (4,5)]
+                --> "points" can expressed as segment with same begin and end: [(3,3), (4,4)]
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
@@ -131,16 +128,57 @@ class LinearConverter(Component):
 
 @register_class_for_io
 class Storage(Component):
-    """
-    Klasse Storage
-    """
+    r"""
+    **Storages** have one incoming and one outgoing **Flow** - $f_\text{in}$ and $f_\text{out}$ -
+    each with an efficiency $\eta_\text{in}$ and $\eta_\text{out}$.
+    Further, storages have a `size` $\text C$ and a state of charge $c(\text{t}_i)$.
+    Similarly to the flow-rate $p(\text{t}_i)$ of a [`Flow`][flixOpt.elements.Flow],
+    the `size` $\text C$ combined with a relative upper bound
+    $\text c^{\text{U}}_\text{rel}(\text t_{i})$ and lower bound $\text c^{\text{L}}_\text{rel}(\text t_{i})$
+    limits the state of charge $c(\text{t}_i)$ by $\eqref{eq:Storage_Bounds}$.
 
-    # TODO: Dabei fällt mir auf. Vielleicht sollte man mal überlegen, ob man für Ladeleistungen bereits in dem
-    #  jeweiligen Zeitschritt mit einem Verlust berücksichtigt. Zumindest für große Zeitschritte bzw. große Verluste
-    #  eventuell relevant.
-    #  -> Sprich: speicherverlust = charge_state(t) * relative_loss_per_hour * dt + 0.5 * Q_lade(t) * dt * relative_loss_per_hour * dt
-    #  -> müsste man aber auch für den sich ändernden Ladezustand berücksichtigten
+    $$ \label{eq:Storage_Bounds}
+        \text C \cdot \text c^{\text{L}}_{\text{rel}}(\text t_{i})
+        \leq c(\text{t}_i) \leq
+        \text C \cdot \text c^{\text{U}}_{\text{rel}}(\text t_{i})
+    $$
 
+    Where:
+
+    - $\text C$ is the storage capacity
+    - $c(\text{t}_i)$ is the state of charge at time $\text{t}_i$
+    - $\text c^{\text{L}}_{\text{rel}}(\text t_{i})$ is the relative lower bound (typically 0)
+    - $\text c^{\text{U}}_{\text{rel}}(\text t_{i})$ is the relative upper bound (typically 1)
+
+    With $\text c^{\text{L}}_{\text{rel}}(\text t_{i}) = 0$ and $\text c^{\text{U}}_{\text{rel}}(\text t_{i}) = 1$,
+    Equation $\eqref{eq:Storage_Bounds}$ simplifies to
+
+    $$ 0 \leq c(\text t_{i}) \leq \text C $$
+
+    The state of charge $c(\text{t}_i)$ decreases by a fraction of the prior state of charge. The belonging parameter
+    $ \dot{ \text c}_\text{rel, loss}(\text{t}_i)$ expresses the "loss fraction per hour". The storage balance from  $\text{t}_i$ to $\text t_{i+1}$ is
+
+    $$
+    \begin{align*}
+        c(\text{t}_{i+1}) &= c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i) \cdot \Delta \text{t}_{i}) \\
+        &\quad + p_{f_\text{in}}(\text{t}_i) \cdot \Delta \text{t}_i \cdot \eta_\text{in}(\text{t}_i) \\
+        &\quad - \frac{p_{f_\text{out}}(\text{t}_i) \cdot \Delta \text{t}_i}{\eta_\text{out}(\text{t}_i)}
+        \tag{3}
+    \end{align*}
+    $$
+
+    Where:
+
+    - $c(\text{t}_{i+1})$ is the state of charge at time $\text{t}_{i+1}$
+    - $c(\text{t}_{i})$ is the state of charge at time $\text{t}_{i}$
+    - $\dot{\text{c}}_\text{rel,loss}(\text{t}_i)$ is the relative loss rate (self-discharge) per hour
+    - $\Delta \text{t}_{i}$ is the time step duration in hours
+    - $p_{f_\text{in}}(\text{t}_i)$ is the input flow rate at time $\text{t}_i$
+    - $\eta_\text{in}(\text{t}_i)$ is the charging efficiency at time $\text{t}_i$
+    - $p_{f_\text{out}}(\text{t}_i)$ is the output flow rate at time $\text{t}_i$
+    - $\eta_\text{out}(\text{t}_i)$ is the discharging efficiency at time $\text{t}_i$
+
+    """
     def __init__(
         self,
         label: str,
@@ -159,41 +197,29 @@ class Storage(Component):
         meta_data: Optional[Dict] = None,
     ):
         """
-        constructor of storage
+        Storages have one incoming and one outgoing Flow each with an efficiency.
+        Further, storages have a `size` and a `charge_state`.
+        Similarly to the flow-rate of a Flow, the `size` combined with a relative upper and lower bound
+        limits the `charge_state` of the storage.
 
-        Parameters
-        ----------
-        label : str
-            description.
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        charging : Flow
-            ingoing flow.
-        discharging : Flow
-            outgoing flow.
-        capacity_in_flow_hours : Scalar or InvestParameter
-            nominal capacity of the storage
-        relative_minimum_charge_state : float or TS, optional
-            minimum relative charge state. The default is 0.
-        relative_maximum_charge_state : float or TS, optional
-            maximum relative charge state. The default is 1.
-        initial_charge_state : None, float (0...1), 'lastValueOfSim',  optional
-            storage charge_state at the beginning. The default is 0.
-            float: defined charge_state at start of first timestep
-            None: free to choose by optimizer
-            'lastValueOfSim': chargeState0 is equal to chargestate of last timestep ("closed simulation")
-        minimal_final_charge_state : float or None, optional
-            minimal value of chargeState at the end of timeseries.
-        maximal_final_charge_state : float or None, optional
-            maximal value of chargeState at the end of timeseries.
-        eta_charge : float, optional
-            efficiency factor of charging/loading. The default is 1.
-        eta_discharge : TYPE, optional
-            efficiency factor of uncharging/unloading. The default is 1.
-        relative_loss_per_hour : float or TS. optional
-            loss per chargeState-Unit per hour. The default is 0.
-        prevent_simultaneous_charge_and_discharge : boolean, optional
-            should simultaneously Loading and Unloading be avoided? (Attention, Performance maybe becomes worse with avoidInAndOutAtOnce=True). The default is True.
+        For mathematical details take a look at our online documentation
+
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            charging: ingoing flow.
+            discharging: outgoing flow.
+            capacity_in_flow_hours: nominal capacity/size of the storage
+            relative_minimum_charge_state: minimum relative charge state. The default is 0.
+            relative_maximum_charge_state: maximum relative charge state. The default is 1.
+            initial_charge_state: storage charge_state at the beginning. The default is 0.
+            minimal_final_charge_state: minimal value of chargeState at the end of timeseries.
+            maximal_final_charge_state: maximal value of chargeState at the end of timeseries.
+            eta_charge: efficiency factor of charging/loading. The default is 1.
+            eta_discharge: efficiency factor of uncharging/unloading. The default is 1.
+            relative_loss_per_hour: loss per chargeState-Unit per hour. The default is 0.
+            prevent_simultaneous_charge_and_discharge: If True, loading and unloading at the same time is not possible.
+                Increases the number of binary variables, but is recommended for easier evaluation. The default is True.
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         # TODO: fixed_relative_chargeState implementieren
         super().__init__(
@@ -290,32 +316,24 @@ class Transmission(Component):
         absolute_losses: Optional[NumericDataTS] = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
+        meta_data: Optional[Dict] = None,
     ):
         """
         Initializes a Transmission component (Pipe, cable, ...) that models the flows between two sides
         with potential losses.
 
-        Parameters
-        ----------
-        label : str
-            The name of the transmission component.
-        in1 : Flow
-            The inflow at side A. Pass InvestmentParameters here.
-        out1 : Flow
-            The outflow at side B.
-        in2 : Optional[Flow], optional
-            The optional inflow at side B.
-            If in1 got Investmentparameters, the size of this Flow will be equal to in1 (with no extra effects!)
-        out2 : Optional[Flow], optional
-            The optional outflow at side A.
-        relative_losses : Optional[NumericDataTS], optional
-            The relative loss between inflow and outflow, e.g., 0.02 for 2% loss.
-        absolute_losses : Optional[NumericDataTS], optional
-            The absolute loss, occur only when the Flow is on. Induces the creation of the ON-Variable
-        on_off_parameters : OnOffParameters, optional
-            Parameters defining the on/off behavior of the component.
-        prevent_simultaneous_flows_in_both_directions : bool, default=True
-            If True, prevents simultaneous flows in both directions.
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            in1: The inflow at side A. Pass InvestmentParameters here.
+            out1: The outflow at side B.
+            in2: The optional inflow at side B.
+                If in1 got InvestParameters, the size of this Flow will be equal to in1 (with no extra effects!)
+            out2: The optional outflow at side A.
+            relative_losses: The relative loss between inflow and outflow, e.g., 0.02 for 2% loss.
+            absolute_losses: The absolute loss, occur only when the Flow is on. Induces the creation of the ON-Variable
+            on_off_parameters: Parameters defining the on/off behavior of the component.
+            prevent_simultaneous_flows_in_both_directions: If True, inflow and outflow are not allowed to be both non-zero at same timestep.
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(
             label,
@@ -325,6 +343,7 @@ class Transmission(Component):
             prevent_simultaneous_flows=None
             if in2 is None or prevent_simultaneous_flows_in_both_directions is False
             else [in1, in2],
+            meta_data=meta_data,
         )
         self.in1 = in1
         self.out1 = out1
@@ -590,10 +609,6 @@ class SourceAndSink(Component):
     """
     class for source (output-flow) and sink (input-flow) in one commponent
     """
-
-    # source : Flow
-    # sink   : Flow
-
     def __init__(
         self,
         label: str,
@@ -603,20 +618,12 @@ class SourceAndSink(Component):
         meta_data: Optional[Dict] = None,
     ):
         """
-        Parameters
-        ----------
-        label : str
-            name of sourceAndSink
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        source : Flow
-            output-flow of this component
-        sink : Flow
-            input-flow of this component
-        prevent_simultaneous_sink_and_source: boolean. Default ist True.
-            True: inflow and outflow are not allowed to be both non-zero at same timestep.
-            False: inflow and outflow are working independently.
-
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            source: output-flow of this component
+            sink: input-flow of this component
+            prevent_simultaneous_sink_and_source: If True, inflow and outflow can not be active simultaniously.
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(
             label,
@@ -634,14 +641,10 @@ class SourceAndSink(Component):
 class Source(Component):
     def __init__(self, label: str, source: Flow, meta_data: Optional[Dict] = None):
         """
-        Parameters
-        ----------
-        label : str
-            name of source
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        source : Flow
-            output-flow of source
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            source: output-flow of source
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, outputs=[source], meta_data=meta_data)
         self.source = source
@@ -651,16 +654,10 @@ class Source(Component):
 class Sink(Component):
     def __init__(self, label: str, sink: Flow, meta_data: Optional[Dict] = None):
         """
-        constructor of sink
-
-        Parameters
-        ----------
-        label : str
-            name of sink.
-        meta_data : Optional[Dict]
-            used to store more information about the element. Is not used internally, but saved in the results
-        sink : Flow
-            input-flow of sink
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            meta_data: used to store more information about the element. Is not used internally, but saved in the results
+            sink: input-flow of sink
         """
         super().__init__(label, inputs=[sink], meta_data=meta_data)
         self.sink = sink

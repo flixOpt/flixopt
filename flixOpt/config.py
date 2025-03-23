@@ -14,10 +14,11 @@ logger = logging.getLogger('flixOpt')
 def merge_configs(defaults: dict, overrides: dict) -> dict:
     """
     Merge the default configuration with user-provided overrides.
-
-    :param defaults: Default configuration dictionary.
-    :param overrides: User configuration dictionary.
-    :return: Merged configuration dictionary.
+    Args:
+        defaults: Default configuration dictionary.
+        overrides: User configuration dictionary.
+    Returns:
+        Merged configuration dictionary.
     """
     for key, value in overrides.items():
         if isinstance(value, dict) and key in defaults and isinstance(defaults[key], dict):
