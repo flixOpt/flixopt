@@ -372,6 +372,7 @@ class _NodeResults(_ElementResults):
             save=True if save else False)
 
     def plot_node_balance_pie(self,
+                              group_below_percentage: float = 5,
                               save: Union[bool, pathlib.Path] = False,
                               show: bool = True) -> plotly.graph_objects.Figure:
         inputs = sanitize_dataset(
@@ -391,8 +392,10 @@ class _NodeResults(_ElementResults):
             outputs.to_dataframe().sum(),
             colors='viridis',
             title=f'Flow rates of {self.label} (total)',
+            text_info='label+percent',
             subtitles=('Inputs', 'Outputs'),
             legend_title='Flows',
+            group_below_percentage=group_below_percentage,
         )
 
         return plotly_save_and_show(

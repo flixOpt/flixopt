@@ -873,7 +873,11 @@ def dual_pie_with_plotly(
     title: str = '',
     subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
-    hole: float = 0.3,
+    hole: float = 0.2,
+    group_below_percentage: float = 5.0,
+    hover_template: str = '%{label}: %{value} (%{percent})',
+    text_info: str = 'percent+label',
+    text_position: str = 'inside',
     show: bool = False,
     save: bool = False,
     path: Union[str, pathlib.Path] = 'temp-plot.html',
@@ -889,7 +893,12 @@ def dual_pie_with_plotly(
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
-        hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
+        hole: Size of the hole in the center for creating donut charts (0.0 to 100).
+        group_below_percentage: Whether to group small segments (below percentage (0...1)) into an "Other" category.
+        hover_template: Template for hover text. Use %{label}, %{value}, %{percent}.
+        text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
+                  'label+value', 'percent+value', 'label+percent+value', or 'none'.
+        text_position: Position of text: 'inside', 'outside', 'auto', or 'none'.
         show: Whether to show the figure after creation.
         save: Whether to save the figure after creation (without showing).
         path: Path to save the figure.
@@ -900,10 +909,48 @@ def dual_pie_with_plotly(
     from plotly.subplots import make_subplots
     import itertools
 
-    # Create a subplot figure
-    fig = make_subplots(rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]], subplot_titles=subtitles)
+    # Check for empty data
+    if data_left.empty and data_right.empty:
+        logger.warning('Both datasets are empty. Returning empty figure.')
+        return go.Figure()
 
-    all_labels = data_left.index.tolist() + data_right.index.tolist()
+    # Create a subplot figure
+    fig = make_subplots(
+        rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]], subplot_titles=subtitles, horizontal_spacing=0.05
+    )
+
+    # Process series to handle negative values and apply minimum percentage threshold
+    def preprocess_series(series):
+        # Handle negative values
+        if (series < 0).any():
+            logger.warning(f'Negative values detected in data. Using absolute values for pie chart.')
+            series = series.abs()
+
+        # Remove zeros
+        series = series[series > 0]
+
+        # Apply minimum percentage threshold if needed
+        if group_below_percentage and not series.empty:
+            total = series.sum()
+            if total > 0:
+                percentages = (series / total) * 100
+                small_indices = percentages < group_below_percentage
+
+                if small_indices.any():
+                    # Create "Other" category for small values
+                    other_sum = series[small_indices].sum()
+                    # Remove small values and add Other
+                    series = series[~small_indices]
+                    if other_sum > 0:
+                        series['Other'] = other_sum
+
+        return series
+
+    data_left_processed = preprocess_series(data_left)
+    data_right_processed = preprocess_series(data_right)
+
+    # Get unique set of all labels for consistent coloring
+    all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
 
     # Generate consistent color mapping
     if isinstance(colors, str):
@@ -920,8 +967,6 @@ def dual_pie_with_plotly(
 
     # Function to create a pie trace with consistently mapped colors
     def create_pie_trace(data_series, side):
-        # Filter out zero or negative values
-        data_series = data_series[data_series > 0]
         if data_series.empty:
             return None
 
@@ -935,32 +980,34 @@ def dual_pie_with_plotly(
             name=side,
             marker_colors=trace_colors,
             hole=hole,
-            textinfo='percent+label',
-            textposition='inside',
+            textinfo=text_info,
+            textposition=text_position,
             insidetextorientation='radial',
+            hovertemplate=hover_template,
+            sort=True,  # Sort values by default (largest first)
         )
 
     # Add left pie if data exists
-    left_trace = create_pie_trace(data_left, subtitles[0])
+    left_trace = create_pie_trace(data_left_processed, subtitles[0])
     if left_trace:
-        left_trace.domain = dict(x=[0, 0.45])
-        fig.add_trace(left_trace)
+        left_trace.domain = dict(x=[0, 0.48])
+        fig.add_trace(left_trace, row=1, col=1)
 
     # Add right pie if data exists
-    right_trace = create_pie_trace(data_right, subtitles[1])
+    right_trace = create_pie_trace(data_right_processed, subtitles[1])
     if right_trace:
-        right_trace.domain = dict(x=[0.55, 1])
-        fig.add_trace(right_trace)
+        right_trace.domain = dict(x=[0.52, 1])
+        fig.add_trace(right_trace, row=1, col=2)
 
     # Update layout
     fig.update_layout(
         title=title,
         legend_title=legend_title,
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
+        paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
         font=dict(size=14),
-        margin=dict(t=60, b=30, l=30, r=30),
-        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5),
+        margin=dict(t=80, b=50, l=30, r=30),
+        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5, font=dict(size=12)),
     )
 
     # Handle file saving and display
