@@ -101,6 +101,7 @@ def with_plotly(
                 )
             )
     elif mode == 'area':
+        data = data.copy()
         data[(data > -1e-5) & (data < 1e-5)] = 0  # Preventing issues with plotting
         # Split columns into positive, negative, and mixed categories
         positive_columns = list(data.columns[(data >= 0).where(~np.isnan(data), True).all()])
