@@ -1,11 +1,11 @@
-The balance equation for a bus is:
+A Bus is a simple nodal balance between its incoming and outgoing flow rates.
 
 $$ \label{eq:bus_balance}
   \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_\text{in}}(\text{t}_i) =
   \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
 $$
 
-Optionally, a Bus can have a `excess_penalty_per_flow_hour` parameter, which allows to penalize the balance for missing or excess flow-rates.
+Optionally, a Bus can have a `excess_penalty_per_flow_hour` parameter, which allows to penaltize the balance for missing or excess flow-rates.
 This is usefull as it handles a possible ifeasiblity gently.
 
 This changes the balance to
