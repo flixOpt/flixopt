@@ -634,3 +634,313 @@ def plot_network(
             logger.warning(
                 f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}: {e}'
             )
+
+
+def pie_with_plotly(
+        data: pd.DataFrame,
+        colors: Union[List[str], str] = 'viridis',
+        title: str = '',
+        legend_title: str = '',
+        hole: float = 0.0,
+        fig: Optional[go.Figure] = None,
+        show: bool = False,
+        save: bool = False,
+        path: Union[str, pathlib.Path] = 'temp-plot.html',
+) -> go.Figure:
+    """
+    Create a pie chart with Plotly to visualize the proportion of values in a DataFrame.
+
+    Args:
+        data: A DataFrame containing the data to plot. If multiple rows exist,
+              they will be summed unless a specific index value is passed.
+        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
+                to use for coloring the pie segments.
+        title: The title of the plot.
+        legend_title: The title for the legend.
+        hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
+        fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
+        show: Whether to show the figure after creation.
+        save: Whether to save the figure after creation (without showing).
+        path: Path to save the figure.
+
+    Returns:
+        A Plotly figure object containing the generated pie chart.
+
+    Notes:
+        - Negative values are not appropriate for pie charts and will be converted to absolute values with a warning.
+        - If the data contains very small values (less than 1% of the total), they can be grouped into an "Other" category
+          for better readability.
+        - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
+
+    Examples:
+        >>> fig = pie_with_plotly(data, colorscale='Pastel')
+        >>> fig.show()
+    """
+    if data.empty:
+        logger.warning("Empty DataFrame provided for pie chart. Returning empty figure.")
+        return go.Figure()
+
+    # Create a copy to avoid modifying the original DataFrame
+    data_copy = data.copy()
+
+    # Check if any negative values and warn
+    if (data_copy < 0).any().any():
+        logger.warning("Negative values detected in data. Using absolute values for pie chart.")
+        data_copy = data_copy.abs()
+
+    # If data has multiple rows, sum them to get total for each column
+    if len(data_copy) > 1:
+        data_sum = data_copy.sum()
+    else:
+        data_sum = data_copy.iloc[0]
+
+    # Get labels (column names) and values
+    labels = data_sum.index.tolist()
+    values = data_sum.values.tolist()
+
+    # Apply color mapping
+    if isinstance(colors, str):
+        colorscale = px.colors.get_colorscale(colors)
+        colors = px.colors.sample_colorscale(
+            colorscale,
+            [i / (len(labels) - 1) for i in range(len(labels))] if len(labels) > 1 else [0],
+        )
+
+    # Create figure if not provided
+    fig = fig if fig is not None else go.Figure()
+
+    # Add pie trace
+    fig.add_trace(
+        go.Pie(
+            labels=labels,
+            values=values,
+            hole=hole,
+            marker=dict(colors=colors),
+            textinfo='percent+label+value',
+            textposition='inside',
+            insidetextorientation='radial',
+        )
+    )
+
+    # Update layout for better aesthetics
+    fig.update_layout(
+        title=title,
+        legend_title=legend_title,
+        plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
+        paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
+        font=dict(size=14),             # Increase font size for better readability
+    )
+
+    if isinstance(path, pathlib.Path):
+        path = path.as_posix()
+    if show:
+        plotly.offline.plot(fig, filename=path)
+    elif save:  # If show, the file is saved anyway
+        fig.write_html(path)
+
+    return fig
+
+
+def pie_with_matplotlib(
+        data: pd.DataFrame,
+        colors: Union[List[str], str] = 'viridis',
+        title: str = '',
+        figsize: Tuple[int, int] = (10, 8),
+        autopct: str = '%1.1f%%',
+        startangle: int = 90,
+        shadow: bool = False,
+        is_donut: bool = False,
+        fig: Optional[plt.Figure] = None,
+        ax: Optional[plt.Axes] = None,
+        show: bool = False,
+        path: Optional[Union[str, pathlib.Path]] = None,
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Create a pie chart with Matplotlib to visualize the proportion of values in a DataFrame.
+
+    Args:
+        data: A DataFrame containing the data to plot. If multiple rows exist,
+              they will be summed unless a specific index value is passed.
+        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
+                to use for coloring the pie segments.
+        title: The title of the plot.
+        figsize: The size of the figure (width, height) in inches.
+        autopct: String format for the percentage display on wedges.
+        startangle: Starting angle for the first wedge in degrees.
+        shadow: Whether to draw the pie with a shadow beneath it.
+        is_donut: If True, creates a donut chart by adding a white circle in the center.
+        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
+        ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
+        show: Whether to show the figure after creation.
+        path: Path to save the figure to.
+
+    Returns:
+        A tuple containing the Matplotlib figure and axes objects used for the plot.
+
+    Notes:
+        - Negative values are not appropriate for pie charts and will be converted to absolute values with a warning.
+        - If the data contains very small values (less than 1% of the total), they can be grouped into an "Other" category
+          for better readability.
+        - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
+
+    Examples:
+        >>> fig, ax = pie_with_matplotlib(data, colorscale='viridis', is_donut=True)
+        >>> plt.show()
+    """
+    if data.empty:
+        logger.warning("Empty DataFrame provided for pie chart. Returning empty figure.")
+        if fig is None or ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+        return fig, ax
+
+    # Create a copy to avoid modifying the original DataFrame
+    data_copy = data.copy()
+
+    # Check if any negative values and warn
+    if (data_copy < 0).any().any():
+        logger.warning("Negative values detected in data. Using absolute values for pie chart.")
+        data_copy = data_copy.abs()
+
+    # If data has multiple rows, sum them to get total for each column
+    if len(data_copy) > 1:
+        data_sum = data_copy.sum()
+    else:
+        data_sum = data_copy.iloc[0]
+
+    # Get labels (column names) and values
+    labels = data_sum.index.tolist()
+    values = data_sum.values.tolist()
+
+    # Apply color mapping
+    if isinstance(colors, str):
+        cmap = plt.get_cmap(colors, len(labels))
+        colors = [cmap(i) for i in range(len(labels))]
+
+    # Create figure and axis if not provided
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    # Draw the pie chart
+    wedges, texts, autotexts = ax.pie(
+        values,
+        labels=labels,
+        colors=colors,
+        autopct=autopct,
+        startangle=startangle,
+        shadow=shadow,
+        wedgeprops=dict(width=0.5) if is_donut else None,  # Set width for donut
+    )
+
+    # Customize the appearance
+    # Make autopct text more visible
+    for autotext in autotexts:
+        autotext.set_fontsize(10)
+        autotext.set_color('white')
+
+    # Set aspect ratio to be equal to ensure a circular pie
+    ax.set_aspect('equal')
+
+    # Add title
+    if title:
+        ax.set_title(title, fontsize=16)
+
+    # Create a legend if there are many segments
+    if len(labels) > 6:
+        ax.legend(
+            wedges,
+            labels,
+            title="Categories",
+            loc="center left",
+            bbox_to_anchor=(1, 0, 0.5, 1)
+        )
+
+    # Apply tight layout
+    fig.tight_layout()
+
+    # Show or save
+    if show:
+        plt.show()
+    if path is not None:
+        fig.savefig(path, dpi=300, bbox_inches='tight')
+
+    return fig, ax
+
+
+def dual_pie_with_plotly(
+    data_left: pd.DataFrame,
+    data_right: pd.DataFrame,
+    colors: Union[List[str], str] = 'viridis',
+    title: str = '',
+    subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
+    legend_title: str = '',
+    hole: float = 0.3,
+    show: bool = False,
+    save: bool = False,
+    path: Union[str, pathlib.Path] = 'temp-plot.html',
+) -> go.Figure:
+    """
+    Create two pie charts side by side with Plotly, leveraging the existing pie_with_plotly function.
+
+    Args:
+        data_left: DataFrame for the left pie chart.
+        data_right: DataFrame for the right pie chart.
+        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
+                to use for coloring the pie segments.
+        title: The main title of the plot.
+        subtitles: Tuple containing the subtitles for (left, right) charts.
+        legend_title: The title for the legend.
+        hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
+        show: Whether to show the figure after creation.
+        save: Whether to save the figure after creation (without showing).
+        path: Path to save the figure.
+
+    Returns:
+        A Plotly figure object containing the generated dual pie chart.
+    """
+    from plotly.subplots import make_subplots
+
+    # Create a subplot figure
+    fig = make_subplots(rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]], subplot_titles=subtitles)
+
+    # Create a function to get a trace from pie_with_plotly
+    def get_pie_trace(data):
+        if data.empty:
+            return None
+        temp_fig = go.Figure()
+        pie_with_plotly(data=data, colors=colors, hole=hole, fig=temp_fig)
+        if len(temp_fig.data) > 0:
+            return temp_fig.data[0]
+        return None
+
+    # Add left pie trace
+    left_trace = get_pie_trace(data_left)
+    if left_trace:
+        left_trace.domain = dict(x=[0, 0.45])
+        fig.add_trace(left_trace)
+
+    # Add right pie trace
+    right_trace = get_pie_trace(data_right)
+    if right_trace:
+        right_trace.domain = dict(x=[0.55, 1])
+        fig.add_trace(right_trace)
+
+    # Update layout
+    fig.update_layout(
+        title=title,
+        legend_title=legend_title,
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(size=14),
+        margin=dict(t=60, b=30, l=30, r=30),
+        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5),
+    )
+
+    # Handle file saving and display
+    if isinstance(path, pathlib.Path):
+        path = path.as_posix()
+    if show:
+        plotly.offline.plot(fig, filename=path)
+    elif save:
+        fig.write_html(path)
+
+    return fig

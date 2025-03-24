@@ -371,14 +371,35 @@ class _NodeResults(_ElementResults):
             show=show,
             save=True if save else False)
 
+    def plot_node_balance_pie(self,
+                              save: Union[bool, pathlib.Path] = False,
+                              show: bool = True) -> plotly.graph_objects.Figure:
+        node_balance = self.node_balance(with_last_timestep=True,
+                                         negate_inputs=False,
+                                         negate_outputs=False).to_dataframe()
+        fig = plotting.dual_pie_with_plotly(
+            node_balance[[col for col in self.inputs if col in node_balance.columns]],
+            node_balance[[col for col in self.outputs if col in node_balance.columns]],
+            colors='viridis',
+            title=f'Flow rates of {self.label} (total)',
+            subtitles=('Inputs', 'Outputs'),
+            legend_title='Flows',
+        )
+
+        return plotly_save_and_show(
+                fig,
+                self._calculation_results.folder / f'{self.label} (flow rates total).html',
+                user_filename=None if isinstance(save, bool) else pathlib.Path(save),
+                show=show,
+                save=True if save else False)
+
     def node_balance(self,
                    negate_inputs: bool = True,
                    negate_outputs: bool = False,
                    threshold: Optional[float] = 1e-5,
                    with_last_timestep: bool = False) -> xr.Dataset:
-        variable_names = [name for name in self._variable_names if name.endswith(('|flow_rate', '|excess_input', '|excess_output'))]
         return sanitize_dataset(
-            ds=self.solution[variable_names],
+            ds=self.solution[self.inputs + self.outputs],
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
             negate=(
