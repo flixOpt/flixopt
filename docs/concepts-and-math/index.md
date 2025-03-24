@@ -1,4 +1,4 @@
-# flixOpt Concepts & Mathematical Description
+# flixOpt Concepts
 
 flixOpt is built around a set of core concepts that work together to represent and optimize energy and material flow systems. This page provides a high-level overview of these concepts and how they interact.
 
