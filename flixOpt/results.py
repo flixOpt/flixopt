@@ -640,32 +640,61 @@ def plot_heatmap(
 
 
 def sanitize_dataset(
-        ds: xr.Dataset,
-        timesteps: Optional[pd.DatetimeIndex] = None,
-        threshold: Optional[float] = 1e-5,
-        negate: Optional[List[str]] = None,
+    ds: xr.Dataset,
+    timesteps: Optional[pd.DatetimeIndex] = None,
+    threshold: Optional[float] = 1e-5,
+    negate: Optional[List[str]] = None,
+    drop_small_vars: bool = True,
+    zero_small_values: bool = False,
 ) -> xr.Dataset:
     """
-    Sanitizes a dataset by dropping variables with small values and optionally reindexing the time axis.
+    Sanitizes a dataset by handling small values (dropping or zeroing) and optionally reindexing the time axis.
 
     Args:
         ds: The dataset to sanitize.
         timesteps: The timesteps to reindex the dataset to. If None, the original timesteps are kept.
-        threshold: The threshold for dropping variables. If None, no variables are dropped.
+        threshold: The threshold for small values processing. If None, no processing is done.
         negate: The variables to negate. If None, no variables are negated.
+        drop_small_vars: If True, drops variables where all values are below threshold.
+        zero_small_values: If True, sets values below threshold to zero.
 
     Returns:
         xr.Dataset: The sanitized dataset.
     """
+    # Create a copy to avoid modifying the original
+    ds = ds.copy()
+
+    # Step 1: Negate specified variables
     if negate is not None:
         for var in negate:
-            ds[var] = -ds[var]
+            if var in ds:
+                ds[var] = -ds[var]
+
+    # Step 2: Handle small values
     if threshold is not None:
         abs_ds = xr.apply_ufunc(np.abs, ds)
-        vars_to_drop = [var for var in ds.data_vars if (abs_ds[var] <= threshold).all()]
-        ds = ds.drop_vars(vars_to_drop)
+
+        # Option 1: Drop variables where all values are below threshold
+        if drop_small_vars:
+            vars_to_drop = [var for var in ds.data_vars if (abs_ds[var] <= threshold).all()]
+            ds = ds.drop_vars(vars_to_drop)
+
+        # Option 2: Set small values to zero
+        if zero_small_values:
+            for var in ds.data_vars:
+                # Create a boolean mask of values below threshold
+                mask = abs_ds[var] <= threshold
+                # Only proceed if there are values to zero out
+                if mask.any():
+                    # Create a copy to ensure we don't modify data with views
+                    ds[var] = ds[var].copy()
+                    # Set values below threshold to zero
+                    ds[var] = ds[var].where(~mask, 0)
+
+    # Step 3: Reindex to specified timesteps if needed
     if timesteps is not None and not ds.indexes['time'].equals(timesteps):
         ds = ds.reindex({'time': timesteps}, fill_value=np.nan)
+
     return ds
 
 
