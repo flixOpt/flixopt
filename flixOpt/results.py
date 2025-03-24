@@ -16,8 +16,9 @@ from . import plotting
 from .core import TimeSeriesCollection
 
 if TYPE_CHECKING:
-    from .calculation import Calculation, SegmentedCalculation
     import pyvis
+
+    from .calculation import Calculation, SegmentedCalculation
 
 
 logger = logging.getLogger('flixOpt')

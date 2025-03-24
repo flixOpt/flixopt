@@ -3,8 +3,8 @@ import json
 import logging
 import pathlib
 import re
-from typing import Dict, Literal, Tuple, Union, Optional
 from dataclasses import dataclass
+from typing import Dict, Literal, Optional, Tuple, Union
 
 import linopy
 import xarray as xr
