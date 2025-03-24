@@ -1,5 +1,4 @@
 import datetime
-import importlib.util
 import json
 import logging
 import pathlib
@@ -12,9 +11,9 @@ import plotly
 import xarray as xr
 import yaml
 
+from . import io as fx_io
 from . import plotting
 from .core import TimeSeriesCollection
-from .io import _results_structure, document_linopy_model
 
 if TYPE_CHECKING:
     from .calculation import Calculation, SegmentedCalculation
@@ -24,60 +23,102 @@ logger = logging.getLogger('flixOpt')
 
 
 class CalculationResults:
-    """
-    Results for a Calculation.
+    """Results container for Calculation results.
+
     This class is used to collect the results of a Calculation.
-    It is used to analyze the results and to visualize the results.
+    It provides access to component, bus, and effect
+    results, and includes methods for filtering, plotting, and saving results.
+
+    The recommended way to create instances is through the class methods
+    `from_file()` or `from_calculation()`, rather than direct initialization.
 
     Attributes:
-        model: linopy.Model
-            The linopy model that was used to solve the calculation.
-        components: Dict[str, ComponentResults]
-            A dictionary of ComponentResults for each component in the flow_system.
-        buses: Dict[str, BusResults]
-            A dictionary of BusResults for each bus in the flow_system.
-        effects: Dict[str, EffectResults]
-            A dictionary of EffectResults for each effect in the flow_system.
-        timesteps_extra: pd.DatetimeIndex
-            The extra timesteps of the flow_system.
-        hours_per_timestep: xr.DataArray
-            The duration of each timestep in hours.
+        solution (xr.Dataset): Dataset containing optimization results.
+        flow_system (xr.Dataset): Dataset containing the flow system.
+        summary (Dict): Information about the calculation.
+        network_infos (Dict): Information about the network structure.
+        name (str): Name identifier for the calculation.
+        model (linopy.Model): The optimization model (if available).
+        folder (pathlib.Path): Path to the results directory.
+        components (Dict[str, ComponentResults]): Results for each component.
+        buses (Dict[str, BusResults]): Results for each bus.
+        effects (Dict[str, EffectResults]): Results for each effect.
+        timesteps_extra (pd.DatetimeIndex): The extended timesteps.
+        hours_per_timestep (xr.DataArray): Duration of each timestep in hours.
+
+    Example:
+        Load results from saved files:
+
+        >>> results = CalculationResults.from_file("results_dir", "optimization_run_1")
+        >>> element_result = results["Boiler"]
+        >>> results.plot_heatmap("Boiler(Q_th)|flow_rate")
+        >>> results.to_file(compression=5)
+        >>> results.to_file(folder="new_results_dir", compression=5)  # Save the results to a new folder
     """
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
-        """ Create CalculationResults directly from file"""
+        """Create CalculationResults instance by loading from saved files.
+
+        This method loads the calculation results from previously saved files,
+        including the solution, flow system, model (if available), and metadata.
+
+        Args:
+            folder: Path to the directory containing the saved files.
+            name: Base name of the saved files (without file extensions).
+
+        Returns:
+            CalculationResults: A new instance containing the loaded data.
+
+        Raises:
+            FileNotFoundError: If required files cannot be found.
+            ValueError: If files exist but cannot be properly loaded.
+        """
         folder = pathlib.Path(folder)
+        paths = fx_io.CalculationResultsPaths(folder, name)
 
-        model_path, solution_path, _, json_path, flow_system_path, _ = cls._get_paths(folder=folder, name=name)
+        model = None
+        if paths.linopy_model.exists():
+            try:
+                logger.info(f'loading the linopy model "{name}" from file ("{paths.linopy_model}")')
+                model = linopy.read_netcdf(paths.linopy_model)
+            except Exception as e:
+                logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
-        solution = xr.load_dataset(solution_path)
-        flow_system = xr.load_dataset(flow_system_path)
-        flow_system.attrs = json.loads(flow_system.attrs['attrs'])
+        with open(paths.summary, 'r', encoding='utf-8') as f:
+            summary = yaml.load(f, Loader=yaml.FullLoader)
 
-        if model_path.exists():
-            logger.info(f'loading the linopy model "{name}" from file ("{model_path}")')
-            model = linopy.read_netcdf(model_path)
-        else:
-            model = None
+        with open(paths.network, 'r', encoding='utf-8') as f:
+            network_infos = json.load(f)
 
-        with open(json_path, 'r', encoding='utf-8') as f:
-            meta_data = json.load(f)
-
-        return cls(solution=solution,
-                   flow_system=flow_system,
+        return cls(solution=fx_io.load_dataset_from_netcdf(paths.solution),
+                   flow_system=fx_io.load_dataset_from_netcdf(paths.flow_system),
                    name=name,
                    folder=folder,
                    model=model,
-                   **meta_data)
+                   summary=summary,
+                   network_infos=network_infos)
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
-        """Create CalculationResults directly from a Calculation"""
+        """Create CalculationResults directly from a Calculation object.
+
+        This method extracts the solution, flow system, and other relevant
+        information directly from an existing Calculation object.
+
+        Args:
+            calculation: A Calculation object containing a solved model.
+
+        Returns:
+            CalculationResults: A new instance containing the results from
+                the provided calculation.
+
+        Raises:
+            AttributeError: If the calculation doesn't have required attributes.
+        """
         return cls(
             solution=calculation.model.solution,
             flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
-            results_structure=_results_structure(calculation.flow_system),
-            infos=calculation.infos,
+            summary=calculation.summary,
             network_infos=calculation.flow_system.network_infos(),
             model=calculation.model,
             name=calculation.name,
@@ -88,9 +129,8 @@ class CalculationResults:
         self,
         solution: xr.Dataset,
         flow_system: xr.Dataset,
-        results_structure: Dict[str, Dict[str, Dict]],
         name: str,
-        infos: Dict,
+        summary: Dict,
         network_infos: Dict,
         folder: Optional[pathlib.Path] = None,
         model: Optional[linopy.Model] = None,
@@ -108,22 +148,21 @@ class CalculationResults:
         """
         self.solution = solution
         self.flow_system = flow_system
-        self._results_structure = results_structure
-        self.infos = infos
+        self.summary = summary
         self.network_infos = network_infos
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {label: ComponentResults.from_json(self, infos)
-                           for label, infos in results_structure['Components'].items()}
+                           for label, infos in self.solution.attrs['Components'].items()}
 
         self.buses = {label: BusResults.from_json(self, infos)
-                      for label, infos in results_structure['Buses'].items()}
+                      for label, infos in self.solution.attrs['Buses'].items()}
 
         self.effects = {label: EffectResults.from_json(self, infos)
-                        for label, infos in results_structure['Effects'].items()}
+                        for label, infos in self.solution.attrs['Effects'].items()}
 
-        self.timesteps_extra = pd.DatetimeIndex([datetime.datetime.fromisoformat(date) for date in results_structure['Time']], name='time')
+        self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
@@ -143,7 +182,7 @@ class CalculationResults:
     @property
     def objective(self) -> float:
         """ The objective result of the optimization. """
-        return self.infos['Main Results']['Objective']
+        return self.summary['Main Results']['Objective']
 
     @property
     def variables(self) -> linopy.Variables:
@@ -205,82 +244,43 @@ class CalculationResults:
         Args:
             folder: The folder where the results should be saved. Defaults to the folder of the calculation.
             name: The name of the results file. If not provided, Defaults to the name of the calculation.
-            compression: The compression level to use when saving the solution file.
+            compression: The compression level to use when saving the solution file (0-9). 0 means no compression.
             document_model: Wether to document the mathematical formulations in the model.
-            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc file.
+            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc4 file.
                 The model file size is rougly 100 times larger than the solution file.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
+        name = self.name if name is None else name
         if not folder.exists():
             try:
                 folder.mkdir(parents=False)
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
 
-        model_path, solution_path, infos_path, json_path, flow_system_path, model_doc_path = self._get_paths(
-            folder= folder, name= self.name if name is None else name)
+        paths = fx_io.CalculationResultsPaths(folder, name)
 
-        apply_encoding = False
-        if compression != 0:
-            if importlib.util.find_spec('netCDF4') is not None:
-                apply_encoding = True
-            else:
-                logger.warning('CalculationResults were exported without compression due to missing dependency "netcdf4".'
-                               'Install netcdf4 via `pip install netcdf4`.')
+        fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
 
-        self.solution.to_netcdf(
-            solution_path,
-            encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
-                                              for data_var in self.solution.data_vars}
-        )
+        with open(paths.summary, 'w', encoding='utf-8') as f:
+            yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
 
-        flow_system_ds = self.flow_system.copy()
-        flow_system_ds.attrs = {'attrs': json.dumps(flow_system_ds.attrs)}
-        flow_system_ds.to_netcdf(
-            flow_system_path,
-            encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
-                                              for data_var in self.flow_system.data_vars}
-        )
-
-        with open(infos_path, 'w', encoding='utf-8') as f:
-            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
-
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(self._get_meta_data(), f, indent=4, ensure_ascii=False)
+        with open(paths.network, 'w', encoding='utf-8') as f:
+            json.dump(self.network_infos, f, indent=4, ensure_ascii=False)
 
         if save_linopy_model:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             else:
-                self.model.to_netcdf(model_path)
+                self.model.to_netcdf(paths.linopy_model)
 
         if document_model:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
             else:
-                document_linopy_model(self.model, path=model_doc_path)
+                fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
-        logger.info(f'Saved calculation results "{name}" to {solution_path.parent}')
-
-    def _get_meta_data(self) -> Dict:
-        return {
-            'results_structure': self._results_structure,
-            'infos': self.infos,
-            'network_infos': self.network_infos,
-        }
-
-    @staticmethod
-    def _get_paths(
-            folder: pathlib.Path,
-            name: str
-    ) -> Tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
-        model_path = folder / f'{name}_model.nc'
-        solution_path = folder / f'{name}_solution.nc'
-        infos_path = folder / f'{name}_infos.yaml'
-        json_path = folder/f'{name}_structure.json'
-        flow_system_path = folder / f'{name}_flowsystem.nc'
-        model_documentation_path = folder / f'{name}_model_doc.yaml'
-        return model_path, solution_path, infos_path, json_path, flow_system_path, model_documentation_path
+        logger.info(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
 
 class _ElementResults:
@@ -476,7 +476,7 @@ class SegmentedCalculationResults:
         """ Create SegmentedCalculationResults directly from file"""
         folder = pathlib.Path(folder)
         path = folder / name
-        nc_file = path.with_suffix('.nc')
+        nc_file = path.with_suffix('.nc4')
         logger.info(f'loading calculation "{name}" from file ("{nc_file}")')
         with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
@@ -545,7 +545,10 @@ class SegmentedCalculationResults:
             save=save,
             show=show)
 
-    def to_file(self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None):
+    def to_file(self,
+                folder: Optional[Union[str, pathlib.Path]] = None,
+                name: Optional[str] = None,
+                compression: int = 5):
         """Save the results to a file"""
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -556,7 +559,7 @@ class SegmentedCalculationResults:
             except FileNotFoundError as e:
                 raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
         for segment in self.segment_results:
-            segment.to_file(folder, f'{name}-{segment.name}')
+            segment.to_file(folder=folder, name=f'{name}-{segment.name}', compression=compression)
 
         with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(self.meta_data, f, indent=4, ensure_ascii=False)

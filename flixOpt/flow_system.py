@@ -2,7 +2,6 @@
 This module contains the FlowSystem class, which is used to collect instances of many other classes by the end User.
 """
 
-import importlib.util
 import json
 import logging
 import pathlib
@@ -16,7 +15,7 @@ import xarray as xr
 from rich.console import Console
 from rich.pretty import Pretty
 
-from . import io
+from . import io as fx_io
 from .core import NumericData, NumericDataTS, TimeSeries, TimeSeriesCollection, TimeSeriesData
 from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
 from .elements import Bus, Component, Flow
@@ -72,7 +71,7 @@ class FlowSystem:
                                  hours_of_previous_timesteps=ds.attrs['hours_of_previous_timesteps'],
                                  )
 
-        structure = io.insert_dataarray({key: ds.attrs[key] for key in ['components', 'buses', 'effects']}, ds)
+        structure = fx_io.insert_dataarray({key: ds.attrs[key] for key in ['components', 'buses', 'effects']}, ds)
         flow_system.add_elements(
             * [Bus.from_dict(bus) for bus in structure['buses'].values()]
             + [Effect.from_dict(effect) for effect in structure['effects'].values()]
@@ -117,10 +116,7 @@ class FlowSystem:
         """
         Load a FlowSystem from a netcdf file
         """
-        with xr.open_dataset(path) as ds:
-            ds = ds.load()
-        ds.attrs = json.loads(ds.attrs['attrs'])
-        return cls.from_dataset(ds)
+        return cls.from_dataset(fx_io.load_dataset_from_netcdf(path))
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -177,10 +173,10 @@ class FlowSystem:
             "hours_of_previous_timesteps": self.time_series_collection.hours_of_previous_timesteps,
         }
         if data_mode == 'data':
-            return io.replace_timeseries(data, 'data')
+            return fx_io.replace_timeseries(data, 'data')
         elif data_mode == 'stats':
-            return io.remove_none_and_empty(io.replace_timeseries(data, data_mode))
-        return io.replace_timeseries(data, data_mode)
+            return fx_io.remove_none_and_empty(fx_io.replace_timeseries(data, data_mode))
+        return fx_io.replace_timeseries(data, data_mode)
 
     def as_dataset(self, constants_in_dataset: bool = False) -> xr.Dataset:
         """
@@ -193,7 +189,7 @@ class FlowSystem:
         ds.attrs = self.as_dict(data_mode='name')
         return ds
 
-    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0, constants_in_dataset: bool = False):
+    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0, constants_in_dataset: bool = True):
         """
         Saves the FlowSystem to a netCDF file.
         Args:
@@ -201,17 +197,8 @@ class FlowSystem:
             compression: The compression level to use when saving the file.
             constants_in_dataset: If True, constants are included as Dataset variables.
         """
-        ds = self.as_dataset(constants_in_dataset=True)
-        ds.attrs = {'attrs': json.dumps(ds.attrs)}
-
-        encoding = None
-        if compression != 0:
-            if importlib.util.find_spec('netCDF4') is not None:
-                encoding = {k: dict(zlib=True, complevel=compression) for k in ds.data_vars}
-            else:
-                logger.warning('FlowSystem was exported without compression due to missing dependency "netcdf4".'
-                               'Install netcdf4 via `pip install netcdf4`.')
-        ds.to_netcdf(path, encoding=encoding)
+        ds = self.as_dataset(constants_in_dataset=constants_in_dataset)
+        fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
         logger.info(f'Saved FlowSystem to {path}')
 
     def plot_network(

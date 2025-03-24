@@ -8,22 +8,22 @@ There are three different Calculation types:
     3. SegmentedCalculation: Solves a SystemModel for each individual Segment of the FlowSystem.
 """
 
-import json
 import logging
 import math
 import pathlib
 import timeit
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 import yaml
 
+from . import io as fx_io
 from . import utils as utils
 from .aggregation import AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
-from .core import NumericData, Scalar
+from .core import Scalar
 from .elements import Component
 from .features import InvestmentModel
 from .flow_system import FlowSystem
@@ -109,7 +109,7 @@ class Calculation:
         }
 
     @property
-    def infos(self):
+    def summary(self):
         return {
             'Name': self.name,
             'Number of timesteps': len(self.flow_system.time_series_collection.timesteps),
@@ -149,9 +149,12 @@ class FullCalculation(Calculation):
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
 
         if self.model.status == 'warning':
+            # Save the model and the flow_system to file in case of infeasibility
+            paths = fx_io.CalculationResultsPaths(self.folder, self.name)
             from .io import document_linopy_model
-            document_linopy_model(self.model, self.folder / f'{self.name}_model_doc.yaml')
-            #TODO: Raise an exception here?
+            document_linopy_model(self.model, paths.model_documentation)
+            self.flow_system.to_netcdf(paths.flow_system)
+            raise RuntimeError(f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.')
 
         # Log the formatted output
         if log_main_results:

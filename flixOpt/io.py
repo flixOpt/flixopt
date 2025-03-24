@@ -1,41 +1,18 @@
-import datetime
+import importlib.util
 import json
 import logging
 import pathlib
 import re
-from typing import TYPE_CHECKING, Dict, Literal, Union
+from typing import Dict, Literal, Tuple, Union, Optional
+from dataclasses import dataclass
 
 import linopy
 import xarray as xr
 import yaml
 
 from .core import TimeSeries
-from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixOpt')
-
-
-def _results_structure(flow_system: FlowSystem) -> Dict[str, Dict]:
-    return {
-        'Components': {
-            comp.label_full: comp.model.results_structure()
-            for comp in sorted(flow_system.components.values(), key=lambda component: component.label_full.upper())
-        },
-        'Buses': {
-            bus.label_full: bus.model.results_structure()
-            for bus in sorted(flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
-        },
-        'Effects': {
-            effect.label_full: effect.model.results_structure()
-            for effect in sorted(flow_system.effects, key=lambda effect: effect.label_full.upper())
-        },
-        'Time': [datetime.datetime.isoformat(date) for date in flow_system.time_series_collection.timesteps_extra],
-    }
-
-
-def structure_to_json(flow_system: FlowSystem, path: Union[str, pathlib.Path] = 'system_model.json'):
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(_results_structure(flow_system), f, indent=4, ensure_ascii=False)
 
 
 def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
@@ -130,8 +107,6 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
             allow_unicode=True,  # Support Unicode characters
         )
 
-    print(f'Data saved to {output_file}')
-
 
 def _process_complex_strings(data):
     """
@@ -218,3 +193,108 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
         _save_to_yaml(documentation, path)
 
     return documentation
+
+
+def save_dataset_to_netcdf(
+        ds: xr.Dataset,
+        path: Union[str, pathlib.Path],
+        compression: int = 0,
+) -> None:
+    """
+    Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.
+
+    Args:
+        ds: Dataset to save.
+        path: Path to save the dataset to.
+        compression: Compression level for the dataset (0-9). 0 means no compression. 5 is a good default.
+
+    Raises:
+        ValueError: If the path has an invalid file extension.
+    """
+    if path.suffix not in ['.nc', '.nc4']:
+        raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
+
+    apply_encoding = False
+    if compression != 0:
+        if importlib.util.find_spec('netCDF4') is not None:
+            apply_encoding = True
+        else:
+            logger.warning('Dataset was exported without compression due to missing dependency "netcdf4".'
+                           'Install netcdf4 via `pip install netcdf4`.')
+    ds = ds.copy(deep=True)
+    ds.attrs = {'attrs': json.dumps(ds.attrs)}
+    ds.to_netcdf(
+        path,
+        encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
+                                                  for data_var in ds.data_vars}
+    )
+
+
+def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
+    """
+    Load a dataset from a netcdf file. Load the attrs from the 'attrs' attribute.
+
+    Args:
+        path: Path to load the dataset from.
+
+    Returns:
+        Dataset: Loaded dataset.
+    """
+    ds = xr.load_dataset(path)
+    ds.attrs = json.loads(ds.attrs['attrs'])
+    return ds
+
+
+@dataclass
+class CalculationResultsPaths:
+    """Container for all paths related to saving CalculationResults."""
+
+    folder: pathlib.Path
+    name: str
+
+    def __post_init__(self):
+        """Initialize all path attributes."""
+        self._update_paths()
+
+    def _update_paths(self):
+        """Update all path attributes based on current folder and name."""
+        self.linopy_model = self.folder / f'{self.name}--linopy_model.nc4'
+        self.solution = self.folder / f'{self.name}--solution.nc4'
+        self.summary = self.folder / f'{self.name}--summary.yaml'
+        self.network = self.folder / f'{self.name}--network.json'
+        self.flow_system = self.folder / f'{self.name}--flow_system.nc4'
+        self.model_documentation = self.folder / f'{self.name}--model_documentation.yaml'
+
+    def all_paths(self) -> Dict[str, pathlib.Path]:
+        """Return a dictionary of all paths."""
+        return {
+            'linopy_model': self.linopy_model,
+            'solution': self.solution,
+            'summary': self.summary,
+            'network': self.network,
+            'flow_system': self.flow_system,
+            'model_documentation': self.model_documentation,
+        }
+
+    def create_folders(self, parents: bool = False) -> None:
+        """Ensure the folder exists.
+        Args:
+            parents: Whether to create the parent folders if they do not exist.
+        """
+        if not self.folder.exists():
+            try:
+                self.folder.mkdir(parents=parents)
+            except FileNotFoundError as e:
+                raise FileNotFoundError(
+                    f'Folder {self.folder} and its parent do not exist. Please create them first.'
+                ) from e
+
+    def update(self, new_name: Optional[str] = None, new_folder: Optional[pathlib.Path] = None) -> None:
+        """Update name and/or folder and refresh all paths."""
+        if new_name is not None:
+            self.name = new_name
+        if new_folder is not None:
+            if not new_folder.is_dir() or not new_folder.exists():
+                raise FileNotFoundError(f'Folder {new_folder} does not exist or is not a directory.')
+            self.folder = new_folder
+        self._update_paths()
