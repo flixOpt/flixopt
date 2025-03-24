@@ -19,7 +19,7 @@ if __name__ == '__main__':
         ) from e
 
     # --- Basic overview ---
-    fx.plotting.plot_network(*results.network_infos, show=True)
+    results.plot_network(show=True)
     results['Fernwärme'].plot_node_balance()
 
     # --- Detailed Plots ---
