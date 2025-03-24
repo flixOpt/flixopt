@@ -4,8 +4,12 @@
 
 It bridges the gap between **high-level energy systems models** like [FINE](https://github.com/FZJ-IEK3-VSA/FINE) used for design and (multi-period) investment decisions and **low-level dispatch optimization tools** used for operation decisions.
 
+<figure markdown>
+  ![flixOpt Conceptual Usage](./images/architecture_flixOpt.png)
+  <figcaption>Conceptual Usage and IO operations of flixOpt</figcaption>
+</figure>
 
-## 🛠️ Getting Started
+## 🚀️ Getting Started
 
 See the [Getting Started Guide](getting-started.md) to start using flixOpt.
 

@@ -83,13 +83,17 @@ The process of working with flixOpt can be divided into 3 steps:
      - *This [`FlowSystem`][flixOpt.flow_system.FlowSystem] can also be loaded from a netCDF file*
 2. Translate the model to a mathematical optimization problem
      - Create a [`Calculation`][flixOpt.calculation.Calculation] from your FlowSystem and choose a Solver
-     - ...the model is translated to a mathematical optimization problem...
+     - ...The Calculation is translated internaly to a mathematical optimization problem...
+     - ...and solved by the chosen solver.
 3. Analyze the results
      - The results are stored in a [`CalculationResults`][flixOpt.results.CalculationResults] object
-     - This object can be saved to file and reloaded from file
+     - This object can be saved to file and reloaded from file, retaining all information about the calculation
      - As it contains the used [`FlowSystem`][flixOpt.flow_system.FlowSystem], it can be used to start a new calculation
 
-![flixOpt Concept and Usage](../images/architecture_flixOpt.png)
+<figure markdown>
+  ![flixOpt Conceptual Usage](../images/architecture_flixOpt.png)
+  <figcaption>Conceptual Usage and IO operations of flixOpt</figcaption>
+</figure>
 
 ## Advanced Usage
 As flixopt is build on [linopy](https://github.com/PyPSA/linopy), any model created with flixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
