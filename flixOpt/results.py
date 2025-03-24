@@ -374,12 +374,21 @@ class _NodeResults(_ElementResults):
     def plot_node_balance_pie(self,
                               save: Union[bool, pathlib.Path] = False,
                               show: bool = True) -> plotly.graph_objects.Figure:
-        node_balance = self.node_balance(with_last_timestep=True,
-                                         negate_inputs=False,
-                                         negate_outputs=False).to_dataframe()
+        inputs = sanitize_dataset(
+            ds=self.solution[self.inputs],
+            threshold=1e-5,
+            drop_small_vars=True,
+            zero_small_values=True,
+        )
+        outputs = sanitize_dataset(
+            ds=self.solution[self.outputs],
+            threshold=1e-5,
+            drop_small_vars=True,
+            zero_small_values=True,
+        )
         fig = plotting.dual_pie_with_plotly(
-            node_balance[[col for col in self.inputs if col in node_balance.columns]],
-            node_balance[[col for col in self.outputs if col in node_balance.columns]],
+            inputs.to_dataframe().sum(),
+            outputs.to_dataframe().sum(),
             colors='viridis',
             title=f'Flow rates of {self.label} (total)',
             subtitles=('Inputs', 'Outputs'),

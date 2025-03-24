@@ -867,8 +867,8 @@ def pie_with_matplotlib(
 
 
 def dual_pie_with_plotly(
-    data_left: pd.DataFrame,
-    data_right: pd.DataFrame,
+    data_left: pd.Series,
+    data_right: pd.Series,
     colors: Union[List[str], str] = 'viridis',
     title: str = '',
     subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
@@ -879,11 +879,11 @@ def dual_pie_with_plotly(
     path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
-    Create two pie charts side by side with Plotly, leveraging the existing pie_with_plotly function.
+    Create two pie charts side by side with Plotly, with consistent coloring across both charts.
 
     Args:
-        data_left: DataFrame for the left pie chart.
-        data_right: DataFrame for the right pie chart.
+        data_left: Series for the left pie chart.
+        data_right: Series for the right pie chart.
         colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
                 to use for coloring the pie segments.
         title: The main title of the plot.
@@ -898,28 +898,56 @@ def dual_pie_with_plotly(
         A Plotly figure object containing the generated dual pie chart.
     """
     from plotly.subplots import make_subplots
+    import itertools
 
     # Create a subplot figure
     fig = make_subplots(rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]], subplot_titles=subtitles)
 
-    # Create a function to get a trace from pie_with_plotly
-    def get_pie_trace(data):
-        if data.empty:
-            return None
-        temp_fig = go.Figure()
-        pie_with_plotly(data=data, colors=colors, hole=hole, fig=temp_fig)
-        if len(temp_fig.data) > 0:
-            return temp_fig.data[0]
-        return None
+    all_labels = data_left.index.tolist() + data_right.index.tolist()
 
-    # Add left pie trace
-    left_trace = get_pie_trace(data_left)
+    # Generate consistent color mapping
+    if isinstance(colors, str):
+        colorscale = px.colors.get_colorscale(colors)
+        color_list = px.colors.sample_colorscale(
+            colorscale,
+            [i / (len(all_labels) - 1) for i in range(len(all_labels))] if len(all_labels) > 1 else [0],
+        )
+        color_map = {label: color_list[i] for i, label in enumerate(all_labels)}
+    else:
+        # If colors is a list, create a cycling iterator
+        color_iter = itertools.cycle(colors)
+        color_map = {label: next(color_iter) for label in all_labels}
+
+    # Function to create a pie trace with consistently mapped colors
+    def create_pie_trace(data_series, side):
+        # Filter out zero or negative values
+        data_series = data_series[data_series > 0]
+        if data_series.empty:
+            return None
+
+        labels = data_series.index.tolist()
+        values = data_series.values.tolist()
+        trace_colors = [color_map[label] for label in labels]
+
+        return go.Pie(
+            labels=labels,
+            values=values,
+            name=side,
+            marker_colors=trace_colors,
+            hole=hole,
+            textinfo='percent+label',
+            textposition='inside',
+            insidetextorientation='radial',
+        )
+
+    # Add left pie if data exists
+    left_trace = create_pie_trace(data_left, subtitles[0])
     if left_trace:
         left_trace.domain = dict(x=[0, 0.45])
         fig.add_trace(left_trace)
 
-    # Add right pie trace
-    right_trace = get_pie_trace(data_right)
+    # Add right pie if data exists
+    right_trace = create_pie_trace(data_right, subtitles[1])
     if right_trace:
         right_trace.domain = dict(x=[0.55, 1])
         fig.add_trace(right_trace)
