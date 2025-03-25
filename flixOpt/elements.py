@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, Scalar, TimeSeriesCollection, PlausibilityError
+from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
 from .effects import EffectValuesUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters

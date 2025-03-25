@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Set, Tuple, Uni
 
 import linopy
 import numpy as np
-import pandas as pd
 
 from . import utils
-from .core import NumericData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection, PlausibilityError
+from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, MultipleSegmentsModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
