@@ -14,6 +14,8 @@ from .commons import (
     InvestParameters,
     LinearConverter,
     OnOffParameters,
+    Segment,
+    Piecewise,
     SegmentedCalculation,
     Sink,
     Source,
