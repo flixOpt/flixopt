@@ -26,6 +26,10 @@ NumericDataTS = Union[NumericData, 'TimeSeriesData']
 """Represents either standard numeric data or TimeSeriesData."""
 
 
+class PlausibilityError(Exception):
+    """Error for a failing Plausibility check."""
+    pass
+
 class ConversionError(Exception):
     """Base exception for data conversion errors."""
     pass
@@ -110,7 +114,7 @@ class TimeSeriesData:
         self.agg_group = agg_group
         self.agg_weight = agg_weight
         if (agg_group is not None) and (agg_weight is not None):
-            raise Exception('Either <agg_group> or explicit <agg_weigth> can be used. Not both!')
+            raise ValueError('Either <agg_group> or explicit <agg_weigth> can be used. Not both!')
         self.label: Optional[str] = None
 
     def __repr__(self):
