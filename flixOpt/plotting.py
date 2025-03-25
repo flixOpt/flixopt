@@ -920,7 +920,18 @@ def dual_pie_with_plotly(
     )
 
     # Process series to handle negative values and apply minimum percentage threshold
-    def preprocess_series(series):
+    def preprocess_series(series: pd.Series):
+        """
+        Preprocess a series for pie chart display by handling negative values
+        and grouping the smallest parts together if they collectively represent
+        less than the specified percentage threshold.
+
+        Args:
+            series: The series to preprocess
+
+        Returns:
+            A preprocessed pandas Series
+        """
         # Handle negative values
         if (series < 0).any():
             logger.warning(f'Negative values detected in data. Using absolute values for pie chart.')
@@ -933,16 +944,27 @@ def dual_pie_with_plotly(
         if group_below_percentage and not series.empty:
             total = series.sum()
             if total > 0:
-                percentages = (series / total) * 100
-                small_indices = percentages < group_below_percentage
+                # Sort series by value (ascending)
+                sorted_series = series.sort_values()
 
-                if small_indices.any():
-                    # Create "Other" category for small values
-                    other_sum = series[small_indices].sum()
-                    # Remove small values and add Other
-                    series = series[~small_indices]
+                # Calculate cumulative percentage contribution
+                cumulative_percent = (sorted_series.cumsum() / total) * 100
+
+                # Find entries that collectively make up less than group_below_percentage
+                to_group = cumulative_percent <= group_below_percentage
+
+                if to_group.any():
+                    # Create "Other" category for the smallest values that together are < threshold
+                    other_sum = sorted_series[to_group].sum()
+
+                    # Keep only values that aren't in the "Other" group
+                    result_series = series[~series.index.isin(sorted_series[to_group].index)]
+
+                    # Add the "Other" category if it has a value
                     if other_sum > 0:
-                        series['Other'] = other_sum
+                        result_series['Other'] = other_sum
+
+                    return result_series
 
         return series
 
