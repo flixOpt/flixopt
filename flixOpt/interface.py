@@ -59,6 +59,12 @@ class Piecewise(Interface):
         self.segments = segments
         self.allow_0 = allow_0
 
+    def __len__(self):
+        return len(self.segments)
+
+    def __getitem__(self, index):
+        return self.segments[index]  # Enables indexing like piecewise[i]
+
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         for i, segment in enumerate(self.segments):
             segment.transform_data(flow_system, f'{name_prefix}|Segment{i}')

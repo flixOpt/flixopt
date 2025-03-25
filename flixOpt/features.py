@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters
+from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -765,8 +765,8 @@ class MultipleSegmentsModel(Model):
         for var_name in self._sample_points.keys():
             variable = self._model.variables[var_name]
             self.add(self._model.add_constraints(
-                variable == sum([segment.lambda0 * segment.sample_points[var_name][0]
-                                 + segment.lambda1 * segment.sample_points[var_name][1]
+                variable == sum([segment.lambda0 * segment.sample_points[var_name].start
+                                 + segment.lambda1 * segment.sample_points[var_name].end
                                  for segment in self._segment_models]),
                 name=f'{self.label_full}|{var_name}_lambda'),
                 f'{var_name}_lambda'
@@ -904,8 +904,8 @@ class SegmentedSharesModel(Model):
         self,
         model: SystemModel,
         label_of_element: str,
-        variable_segments: Tuple[linopy.Variable, List[Tuple[Scalar, Scalar]]],
-        share_segments: Dict[str, List[Tuple[Scalar, Scalar]]],
+        variable_segments: Tuple[linopy.Variable, Piecewise],
+        share_segments: Dict[str, Piecewise],
         can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
         label: str = 'SegmentedShares',
     ):
