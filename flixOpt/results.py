@@ -379,7 +379,7 @@ class _NodeResults(_ElementResults):
         Plots a pie chart of the flow hours of the inputs and outputs of the component.
 
         Args:
-            lower_percentage_group: The percentage (0...100) of the total flow hours is grouped together.
+            lower_percentage_group: The percentage of flow_hours that is grouped in "Others" (0...100)
             save: Whether to save the figure.
             show: Whether to show the figure.
         """
