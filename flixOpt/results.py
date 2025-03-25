@@ -371,15 +371,21 @@ class _NodeResults(_ElementResults):
             show=show,
             save=True if save else False)
 
-    def plot_node_balance_pie(self,
-                              lower_percentage_group: float = 5,
-                              save: Union[bool, pathlib.Path] = False,
-                              show: bool = True) -> plotly.graph_objects.Figure:
+    def plot_node_balance_pie(
+        self,
+        lower_percentage_group: float = 5,
+        colors: Union[str, List[str]] = 'viridis',
+        text_info: str = 'percent+label+value',
+        save: Union[bool, pathlib.Path] = False,
+        show: bool = True,
+    ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of the component.
 
         Args:
+            colors: a colorscale or a list of colors to use for the plot
             lower_percentage_group: The percentage of flow_hours that is grouped in "Others" (0...100)
+            text_info: What information to display on the pie plot
             save: Whether to save the figure.
             show: Whether to show the figure.
         """
@@ -398,9 +404,9 @@ class _NodeResults(_ElementResults):
         fig = plotting.dual_pie_with_plotly(
             inputs.to_dataframe().sum(),
             outputs.to_dataframe().sum(),
-            colors='viridis',
+            colors=colors,
             title=f'Flow hours of {self.label}',
-            text_info='label+percent',
+            text_info=text_info,
             subtitles=('Inputs', 'Outputs'),
             legend_title='Flows',
             lower_percentage_group=lower_percentage_group,
