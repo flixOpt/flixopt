@@ -279,6 +279,29 @@ def flow_system_segments_of_flows(flow_system_complex) -> fx.FlowSystem:
 
 
 @pytest.fixture
+def flow_system_segments_of_flows_2(flow_system_complex) -> fx.FlowSystem:
+    """
+    Use segments/Piecewise with numeric data
+    """
+    flow_system = flow_system_complex
+
+    flow_system.add_elements(fx.LinearConverter(
+        'KWK',
+        inputs=[fx.Flow('Q_fu', bus='Gas')],
+        outputs=[fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
+                 fx.Flow('Q_th', bus='Fernwärme')],
+        segmented_conversion_factors= {
+            'P_el': fx.Piecewise([fx.Segment(np.linspace(5, 6, len(flow_system.time_series_collection.timesteps)), 30), fx.Segment(40, np.linspace(60, 70, len(flow_system.time_series_collection.timesteps)))]),
+            'Q_th': fx.Piecewise([fx.Segment(6, 35), fx.Segment(45, 100)]),
+            'Q_fu': fx.Piecewise([fx.Segment(12, 70), fx.Segment(90, 200)]),
+        },
+        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+    ))
+
+    return flow_system
+
+
+@pytest.fixture
 def flow_system_long():
     """
     Fixture to create and return the flow system with loaded data
