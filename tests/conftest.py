@@ -208,9 +208,13 @@ def flow_system_complex() -> fx.FlowSystem:
 
     invest_speicher = fx.InvestParameters(
         fix_effects=0,
-        effects_in_segments=([(5, 25), (25, 100)],
-                             {'costs': [(50, 250), (250, 800)], 'PE': [(5, 25), (25, 100)]}
-                             ),
+        effects_in_segments= (
+            fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),
+            {
+                'costs': fx.Piecewise([fx.Segment(50, 250), fx.Segment(250, 800)]),
+                'PE': fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)])
+            }
+        ),
         optional=False,
         specific_effects={'costs': 0.01, 'CO2': 0.01},
         minimum_size=0,
@@ -263,10 +267,10 @@ def flow_system_segments_of_flows(flow_system_complex) -> fx.FlowSystem:
         inputs=[fx.Flow('Q_fu', bus='Gas')],
         outputs=[fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
                  fx.Flow('Q_th', bus='Fernwärme')],
-        segmented_conversion_factors={
-            'P_el': [(5, 30), (40, 60)],
-            'Q_th': [(6, 35), (45, 100)],
-            'Q_fu': [(12, 70), (90, 200)],
+        segmented_conversion_factors= {
+            'P_el': fx.Piecewise([fx.Segment(5, 30), fx.Segment(40, 60)]),
+            'Q_th': fx.Piecewise([fx.Segment(6, 35), fx.Segment(45, 100)]),
+            'Q_fu': fx.Piecewise([fx.Segment(12, 70), fx.Segment(90, 200)]),
         },
         on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
     ))
