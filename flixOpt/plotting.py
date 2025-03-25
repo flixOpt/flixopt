@@ -874,7 +874,7 @@ def dual_pie_with_plotly(
     subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
     hole: float = 0.2,
-    group_below_percentage: float = 5.0,
+    lower_percentage_group: float = 5.0,
     hover_template: str = '%{label}: %{value} (%{percent})',
     text_info: str = 'percent+label',
     text_position: str = 'inside',
@@ -894,7 +894,7 @@ def dual_pie_with_plotly(
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating donut charts (0.0 to 100).
-        group_below_percentage: Whether to group small segments (below percentage (0...1)) into an "Other" category.
+        lower_percentage_group: Whether to group small segments (below percentage (0...1)) into an "Other" category.
         hover_template: Template for hover text. Use %{label}, %{value}, %{percent}.
         text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
                   'label+value', 'percent+value', 'label+percent+value', or 'none'.
@@ -941,7 +941,7 @@ def dual_pie_with_plotly(
         series = series[series > 0]
 
         # Apply minimum percentage threshold if needed
-        if group_below_percentage and not series.empty:
+        if lower_percentage_group and not series.empty:
             total = series.sum()
             if total > 0:
                 # Sort series by value (ascending)
@@ -950,10 +950,10 @@ def dual_pie_with_plotly(
                 # Calculate cumulative percentage contribution
                 cumulative_percent = (sorted_series.cumsum() / total) * 100
 
-                # Find entries that collectively make up less than group_below_percentage
-                to_group = cumulative_percent <= group_below_percentage
+                # Find entries that collectively make up less than lower_percentage_group
+                to_group = cumulative_percent <= lower_percentage_group
 
-                if to_group.any():
+                if to_group.sum() > 1:
                     # Create "Other" category for the smallest values that together are < threshold
                     other_sum = sorted_series[to_group].sum()
 

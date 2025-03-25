@@ -372,9 +372,17 @@ class _NodeResults(_ElementResults):
             save=True if save else False)
 
     def plot_node_balance_pie(self,
-                              group_below_percentage: float = 5,
+                              lower_percentage_group: float = 5,
                               save: Union[bool, pathlib.Path] = False,
                               show: bool = True) -> plotly.graph_objects.Figure:
+        """
+        Plots a pie chart of the flow hours of the inputs and outputs of the component.
+
+        Args:
+            lower_percentage_group: The percentage (0...100) of the total flow hours is grouped together.
+            save: Whether to save the figure.
+            show: Whether to show the figure.
+        """
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs],
             threshold=1e-5,
@@ -395,7 +403,7 @@ class _NodeResults(_ElementResults):
             text_info='label+percent',
             subtitles=('Inputs', 'Outputs'),
             legend_title='Flows',
-            group_below_percentage=group_below_percentage,
+            lower_percentage_group=lower_percentage_group,
         )
 
         return plotly_save_and_show(
