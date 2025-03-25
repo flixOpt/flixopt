@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise
+from .interface import InvestParameters, OnOffParameters, Piecewise, Segment
 from .structure import Model, SystemModel
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -668,7 +668,7 @@ class SegmentModel(Model):
         model: SystemModel,
         label_of_element: str,
         segment_index: Union[int, str],
-        sample_points: Dict[str, Tuple[Union[NumericData, TimeSeries], Union[NumericData, TimeSeries]]],
+        sample_points: Dict[str, Segment],
         as_time_series: bool = True,
     ):
         super().__init__(model, label_of_element, f'Segment{segment_index}')
@@ -716,7 +716,7 @@ class MultipleSegmentsModel(Model):
         self,
         model: SystemModel,
         label_of_element: str,
-        sample_points: Dict[str, List[Tuple[NumericData, NumericData]]],
+        sample_points: Dict[str, Piecewise],
         can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
         as_time_series: bool = True,
         label: str = 'MultipleSegments',
@@ -741,7 +741,7 @@ class MultipleSegmentsModel(Model):
         self._segment_models: List[SegmentModel] = []
 
     def do_modeling(self):
-        restructured_variables_with_segments: List[Dict[str, Tuple[NumericData, NumericData]]] = [
+        restructured_variables_with_segments: List[Dict[str, Segment]] = [
             {key: values[i] for key, values in self._sample_points.items()} for i in range(self._nr_of_segments)
         ]
 
