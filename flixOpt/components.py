@@ -95,11 +95,9 @@ class LinearConverter(Component):
         super().transform_data(flow_system)
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
-        else:
-            self.segmented_conversion_factors = {
-                flow: piecewise.transform_data(flow_system, self.flows[flow].label_full)
-                for flow, piecewise in self.segmented_conversion_factors.items()
-            }
+        if self.segmented_conversion_factors:
+            for flow, piecewise in self.segmented_conversion_factors.items():
+                piecewise.transform_data(flow_system, self.flows[flow].label_full)
 
     def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, TimeSeries]]:
         """macht alle Faktoren, die nicht TimeSeries sind, zu TimeSeries"""
@@ -465,14 +463,12 @@ class LinearConverterModel(ComponentModel):
         # (linear) segments:
         else:
             # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Segment itself
-            segments: Dict[str, List[Tuple[NumericData, NumericData]]] = {
-                self.element.flows[flow].model.flow_rate.name: [
-                    (ts1.active_data, ts2.active_data) for ts1, ts2 in self.element.segmented_conversion_factors[flow]
-                ]
-                for flow in self.element.flows
+            segmented_conversion_factors = {
+                self.element.flows[flow].model.flow_rate.name: piecewise
+                for flow, piecewise in self.element.segmented_conversion_factors.items()
             }
             linear_segments = MultipleSegmentsModel(
-                self._model, self.label_of_element, segments, self.on_off.on if self.on_off is not None else None
+                self._model, self.label_of_element, segmented_conversion_factors, self.on_off.on if self.on_off is not None else None
             )  # TODO: Add Outside_segments Variable (On)
             linear_segments.do_modeling()
             self.sub_models.append(linear_segments)
