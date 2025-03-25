@@ -98,9 +98,9 @@ if __name__ == '__main__':
     Q_th = fx.Flow('Q_th', bus='Fernwärme')
     Q_fu = fx.Flow('Q_fu', bus='Gas')
     segmented_conversion_factors = {
-        P_el.label: fx.Piecewise(fx.Segment(5, 30), fx.Segment(40, 60)),
-        Q_th.label: fx.Piecewise(fx.Segment(6, 35), fx.Segment(45, 100)),
-        Q_fu.label: fx.Piecewise(fx.Segment(12, 70), fx.Segment(90, 200)),
+        P_el.label: fx.Piecewise([fx.Segment(5, 30), fx.Segment(40, 60)]),
+        Q_th.label: fx.Piecewise([fx.Segment(6, 35), fx.Segment(45, 100)]),
+        Q_fu.label: fx.Piecewise([fx.Segment(12, 70), fx.Segment(90, 200)]),
     }
 
     bhkw_2 = fx.LinearConverter(
@@ -114,10 +114,10 @@ if __name__ == '__main__':
     # 4. Define Storage Component
     # Storage with variable size and segmented investment effects
     segmented_investment_effects = (
-        fx.Piecewise(fx.Segment(5, 25), fx.Segment(25, 100)),
+        fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),
         {
-            Costs.label: fx.Piecewise(fx.Segment(50, 250), fx.Segment(250, 800)),
-            PE.label: fx.Piecewise(fx.Segment(5, 25), fx.Segment(25, 100)),
+            Costs.label: fx.Piecewise([fx.Segment(50, 250), fx.Segment(250, 800)]),
+            PE.label: fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),
         },
     )
 
