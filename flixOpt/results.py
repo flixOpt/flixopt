@@ -380,18 +380,18 @@ class _NodeResults(_ElementResults):
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
-        )
+        ) * self._calculation_results.hours_per_timestep
         outputs = sanitize_dataset(
             ds=self.solution[self.outputs],
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
-        )
+        ) * self._calculation_results.hours_per_timestep
         fig = plotting.dual_pie_with_plotly(
             inputs.to_dataframe().sum(),
             outputs.to_dataframe().sum(),
             colors='viridis',
-            title=f'Flow rates of {self.label} (total)',
+            title=f'Flow hours of {self.label}',
             text_info='label+percent',
             subtitles=('Inputs', 'Outputs'),
             legend_title='Flows',
@@ -400,7 +400,7 @@ class _NodeResults(_ElementResults):
 
         return plotly_save_and_show(
                 fig,
-                self._calculation_results.folder / f'{self.label} (flow rates total).html',
+                self._calculation_results.folder / f'{self.label} (flow hours).html',
                 user_filename=None if isinstance(save, bool) else pathlib.Path(save),
                 show=show,
                 save=True if save else False)
