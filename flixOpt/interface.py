@@ -22,6 +22,53 @@ logger = logging.getLogger('flixOpt')
 
 
 @register_class_for_io
+class Segment(Interface):
+    """
+    This class is used to define a segment, which is part of a Piecewise object.
+    """
+
+    def __init__(self, start: NumericData, end: NumericData):
+        """
+        Args:
+            start: The x-values of the segment.
+            end: The end of the segment.
+        """
+        self.start = start
+        self.end = end
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
+        self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
+
+    @property
+    def is_scalar(self) -> bool:
+        return isinstance(self.start, Scalar) and isinstance(self.end, Scalar)
+
+
+@register_class_for_io
+class Piecewise(Interface):
+    """
+    This class is used to define a piecewise function.
+    """
+
+    def __init__(self, *segments: Segment, allow_0: bool = False):
+        """
+        Args:
+            *segments: The segments of the piecewise function.
+        """
+        self.segments = segments
+        self.allow_0 = allow_0
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        for i, segment in enumerate(self.segments):
+            segment.transform_data(flow_system, f'{name_prefix}|Segment{i}')
+
+    @property
+    def is_scalar(self) -> bool:
+        return all([segment.is_scalar for segment in self.segments])
+
+
+@register_class_for_io
 class InvestParameters(Interface):
     """
     collects arguments for invest-stuff
@@ -35,9 +82,7 @@ class InvestParameters(Interface):
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScalar'] = None,
         specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
-        effects_in_segments: Optional[
-            Tuple[List[Tuple[Scalar, Scalar]], Dict['str', List[Tuple[Scalar, Scalar]]]]
-        ] = None,
+        effects_in_segments: Optional[Tuple[Piecewise, Dict[str, Piecewise]]] = None,
         divest_effects: Optional['EffectValuesUserScalar'] = None,
     ):
         """

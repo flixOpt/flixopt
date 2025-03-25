@@ -12,7 +12,7 @@ from . import utils
 from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, MultipleSegmentsModel, OnOffModel
-from .interface import InvestParameters, OnOffParameters
+from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import SystemModel, register_class_for_io
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ class LinearConverter(Component):
         outputs: List[Flow],
         on_off_parameters: OnOffParameters = None,
         conversion_factors: List[Dict[str, NumericDataTS]] = None,
-        segmented_conversion_factors: Dict[str, List[Tuple[NumericDataTS, NumericDataTS]]] = None,
+        segmented_conversion_factors: Dict[str, Piecewise] = None,
         meta_data: Optional[Dict] = None,
     ):
         """
@@ -56,7 +56,7 @@ class LinearConverter(Component):
         """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
-        self.segmented_conversion_factors = segmented_conversion_factors or {}
+        self.segmented_conversion_factors = segmented_conversion_factors
 
     def create_model(self, model: SystemModel) -> 'LinearConverterModel':
         self._plausibility_checks()
@@ -96,16 +96,10 @@ class LinearConverter(Component):
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
         else:
-            segmented_conversion_factors = {}
-            for flow, segments in self.segmented_conversion_factors.items():
-                segmented_conversion_factors[flow] = [
-                    (
-                        flow_system.create_time_series(f'{self.flows[flow].label_full}|Stützstelle|{idx}a', segment[0]),
-                        flow_system.create_time_series(f'{self.flows[flow].label_full}|Stützstelle|{idx}b', segment[1]),
-                    )
-                    for idx, segment in enumerate(segments)
-                ]
-            self.segmented_conversion_factors = segmented_conversion_factors
+            self.segmented_conversion_factors = {
+                flow: piecewise.transform_data(flow_system, self.flows[flow].label_full)
+                for flow, piecewise in self.segmented_conversion_factors.items()
+            }
 
     def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, TimeSeries]]:
         """macht alle Faktoren, die nicht TimeSeries sind, zu TimeSeries"""
