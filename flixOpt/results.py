@@ -651,8 +651,8 @@ def sanitize_dataset(
         for var in negate:
             ds[var] = -ds[var]
     if threshold is not None:
-        abs_ds = xr.apply_ufunc(np.abs, ds)
-        vars_to_drop = [var for var in ds.data_vars if (abs_ds[var] <= threshold).all()]
+        ds_no_nan_abs = xr.apply_ufunc(np.abs, ds).fillna(0)  # Replace NaN with 0 (below thres        ds_without_na = ds.fillna(0)  # Replace NaN with 0 (below threshold) for the comparison
+        vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all()]
         ds = ds.drop_vars(vars_to_drop)
     if timesteps is not None and not ds.indexes['time'].equals(timesteps):
         ds = ds.reindex({'time': timesteps}, fill_value=np.nan)
