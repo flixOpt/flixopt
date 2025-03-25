@@ -51,13 +51,12 @@ class Piecewise(Interface):
     This class is used to define a piecewise function.
     """
 
-    def __init__(self, *segments: Segment, allow_0: bool = False):
+    def __init__(self, *segments: Segment):
         """
         Args:
             *segments: The segments of the piecewise function.
         """
         self.segments = segments
-        self.allow_0 = allow_0
 
     def __len__(self):
         return len(self.segments)
