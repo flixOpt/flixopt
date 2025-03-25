@@ -140,7 +140,7 @@ class FlowSystem:
             elif isinstance(new_element, Bus):
                 self._add_buses(new_element)
             else:
-                raise Exception('argument is not instance of a modeling Element (Element)')
+                raise TypeError(f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} ')
 
     def to_json(self, path: Union[str, pathlib.Path]):
         """
