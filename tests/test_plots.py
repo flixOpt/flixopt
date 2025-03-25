@@ -6,7 +6,6 @@ Manual test script for plots
 import unittest
 from typing import Optional
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly
@@ -53,28 +52,20 @@ class TestPlots(unittest.TestCase):
     def test_bar_plots(self):
         data = self.get_sample_data(nr_of_columns=10, nr_of_periods=1, time_steps_per_period=24)
         plotly.offline.plot(plotting.with_plotly(data, 'bar'))
-        plotting.with_matplotlib(data, 'bar')
-        plt.show()
 
         data = self.get_sample_data(
             nr_of_columns=10, nr_of_periods=5, time_steps_per_period=24, drop_fraction_of_indices=0.3
         )
         plotly.offline.plot(plotting.with_plotly(data, 'bar'))
-        plotting.with_matplotlib(data, 'bar')
-        plt.show()
 
     def test_line_plots(self):
         data = self.get_sample_data(nr_of_columns=10, nr_of_periods=1, time_steps_per_period=24)
         plotly.offline.plot(plotting.with_plotly(data, 'line'))
-        plotting.with_matplotlib(data, 'line')
-        plt.show()
 
         data = self.get_sample_data(
             nr_of_columns=10, nr_of_periods=5, time_steps_per_period=24, drop_fraction_of_indices=0.3
         )
         plotly.offline.plot(plotting.with_plotly(data, 'line'))
-        plotting.with_matplotlib(data, 'line')
-        plt.show()
 
     def test_stacked_line_plots(self):
         data = self.get_sample_data(nr_of_columns=10, nr_of_periods=1, time_steps_per_period=24)
@@ -91,10 +82,8 @@ class TestPlots(unittest.TestCase):
 
         # Convert data for heatmap plotting using 'day' as period and 'hour' steps
         heatmap_data = plotting.reshape_to_2d(data.iloc[:, 0].values.flatten(), 24)
-        # Plotting heatmaps with Plotly and Matplotlib
+        # Plotting heatmaps with Plotly
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
-        plt.show()
 
     def test_heat_map_plots_resampling(self):
         date_range = pd.date_range(start='2023-01-01', end='2023-03-21', freq='5min')
@@ -115,20 +104,14 @@ class TestPlots(unittest.TestCase):
         # Convert data for heatmap plotting using 'day' as period and 'hour' steps
         heatmap_data = plotting.heat_map_data_from_df(data, 'MS', 'D')
         plotly.offline.plot(plotting.heat_map_plotly(heatmap_data))
-        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
-        plt.show()
 
         heatmap_data = plotting.heat_map_data_from_df(data, 'W', 'h', fill='ffill')
-        # Plotting heatmaps with Plotly and Matplotlib
+        # Plotting heatmaps with Plotly
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
-        plt.show()
 
         heatmap_data = plotting.heat_map_data_from_df(data, 'D', 'h', fill='ffill')
-        # Plotting heatmaps with Plotly and Matplotlib
+        # Plotting heatmaps with Plotly
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
-        plt.show()
 
 
 if __name__ == '__main__':
