@@ -419,6 +419,7 @@ class _NodeResults(_ElementResults):
         text_info: str = 'percent+label+value',
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
+        engine: Literal['plotly'] = 'plotly'
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -429,7 +430,10 @@ class _NodeResults(_ElementResults):
             text_info: What information to display on the pie plot
             save: Whether to save the figure.
             show: Whether to show the figure.
+            engine: Plotting engine to use. Only 'plotly' is implemented atm.
         """
+        if engine != 'plotly':
+            raise NotImplementedError(f'Plotting engine "{engine}" not implemented for Component.plot_node_balance_pie.')
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs],
             threshold=1e-5,
@@ -504,19 +508,25 @@ class ComponentResults(_NodeResults):
     def plot_charge_state(
         self,
         save: Union[bool, pathlib.Path] = False,
-        show: bool = True
+        show: bool = True,
+        engine: Literal['plotly'] = 'plotly'
     ) -> plotly.graph_objs.Figure:
         """
         Plots the charge state of a Storage.
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
+            engine: Plotting engine to use. Only 'plotly' is implemented atm.
 
         Raises:
             ValueError: If the Component is not a Storage.
         """
+        if engine != 'plotly':
+            raise NotImplementedError(f'Plotting engine "{engine}" not implemented for ComponentResults.plot_charge_state.')
+
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
+
         fig = plotting.with_plotly(self.node_balance(with_last_timestep=True).to_dataframe(),
                                     mode='area',
                                     title=f'Operation Balance of {self.label}',
