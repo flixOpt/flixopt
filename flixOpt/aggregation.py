@@ -5,9 +5,9 @@ Through this, aggregating TimeSeriesData is possible.
 
 import copy
 import logging
+import pathlib
 import timeit
 import warnings
-import pathlib
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import linopy
