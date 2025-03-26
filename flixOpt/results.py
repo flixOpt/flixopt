@@ -388,29 +388,26 @@ class _NodeResults(_ElementResults):
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
         """
         if engine == 'plotly':
-            fig = plotting.with_plotly(
+            figure_like = plotting.with_plotly(
                 self.node_balance(with_last_timestep=True).to_dataframe(), mode='area', title=f'Flow rates of {self.label}'
             )
-            return plotting.plotly_save_and_show(
-                fig,
-                self._calculation_results.folder / f'{self.label} (flow rates).html',
-                user_filename=None if isinstance(save, bool) else pathlib.Path(save),
-                show=show,
-                save=True if save else False)
+            default_filetype = '.html'
         elif engine == 'matplotlib':
-            fig, ax = plotting.with_matplotlib(
+            figure_like = plotting.with_matplotlib(
                 self.node_balance(with_last_timestep=True).to_dataframe(), mode='bar', title=f'Flow rates of {self.label}'
             )
-            return plotting.matplotlib_save_and_show(
-                fig,
-                ax,
-                self._calculation_results.folder / f'{self.label} (flow rates).png',
-                user_filename=None if isinstance(save, bool) else pathlib.Path(save),
-                show=show,
-                save=True if save else False
-            )
+            default_filetype = '.png'
         else:
             raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+
+        return plotting.export_figure(
+            figure_like=figure_like,
+            default_path=self._calculation_results.folder / f'{self.label} (flow rates)',
+            default_filetype=default_filetype,
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
 
     def plot_node_balance_pie(
         self,
@@ -446,7 +443,8 @@ class _NodeResults(_ElementResults):
             drop_small_vars=True,
             zero_small_values=True,
         ) * self._calculation_results.hours_per_timestep
-        fig = plotting.dual_pie_with_plotly(
+
+        figure_like = plotting.dual_pie_with_plotly(
             inputs.to_dataframe().sum(),
             outputs.to_dataframe().sum(),
             colors=colors,
@@ -457,12 +455,14 @@ class _NodeResults(_ElementResults):
             lower_percentage_group=lower_percentage_group,
         )
 
-        return plotting.plotly_save_and_show(
-                fig,
-                self._calculation_results.folder / f'{self.label} (flow hours).html',
-                user_filename=None if isinstance(save, bool) else pathlib.Path(save),
-                show=show,
-                save=True if save else False)
+        return plotting.export_figure(
+            figure_like=figure_like,
+            default_path=self._calculation_results.folder / f'{self.label} (flow hours)',
+            default_filetype='.html',
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
 
     def node_balance(
         self,
@@ -536,10 +536,11 @@ class ComponentResults(_NodeResults):
         fig.add_trace(plotly.graph_objs.Scatter(
             x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state))
 
-        return plotting.plotly_save_and_show(
+        return plotting.export_figure(
             fig,
-            self._calculation_results.folder / f'{self.label} (charge state).html',
-            user_filename=None if isinstance(save, bool) else pathlib.Path(save),
+            default_path=self._calculation_results.folder / f'{self.label} (charge state)',
+            default_filetype='.html',
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False)
 
@@ -735,31 +736,28 @@ def plot_heatmap(
     xlabel, ylabel = f'timeframe [{heatmap_timeframes}]', f'timesteps [{heatmap_timesteps_per_frame}]'
 
     if engine == 'plotly':
-        fig = plotting.heat_map_plotly(
+        figure_like = plotting.heat_map_plotly(
             heatmap_data, title=name, color_map=color_map,
             xlabel=xlabel, ylabel=ylabel
         )
-        return plotting.plotly_save_and_show(
-            fig,
-            folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame}).html',
-            user_filename=None if isinstance(save, bool) else pathlib.Path(save),
-            show=show,
-            save=True if save else False)
+        default_filetype = '.html'
     elif engine == 'matplotlib':
-        fig, ax = plotting.heat_map_matplotlib(
+        figure_like = plotting.heat_map_matplotlib(
             heatmap_data, title=name, color_map=color_map,
             xlabel=xlabel, ylabel=ylabel
         )
-        return plotting.matplotlib_save_and_show(
-            fig,
-            ax,
-            folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame}).png',
-            user_filename=None if isinstance(save, bool) else pathlib.Path(save),
-            show=show,
-            save=True if save else False
-        )
+        default_filetype = '.png'
     else:
         raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+
+    return plotting.export_figure(
+            figure_like=figure_like,
+            default_path=folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})',
+            default_filetype=default_filetype,
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
 
 
 def sanitize_dataset(
