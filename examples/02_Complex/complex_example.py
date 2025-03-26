@@ -116,7 +116,7 @@ if __name__ == '__main__':
     # 4. Define Storage Component
     # Storage with variable size and segmented investment effects
     segmented_investment_effects = fx.PiecewiseShares(
-        origin_piecewise=fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),
+        piecewise_origin=fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),
         piecewise_shares={
             Costs.label: fx.Piecewise([fx.Segment(50, 250), fx.Segment(250, 800)]),
             PE.label: fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),

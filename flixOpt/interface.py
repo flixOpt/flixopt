@@ -4,7 +4,7 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union, Iterator
 
 from flixOpt.core import TimeSeriesCollection
 
@@ -16,8 +16,6 @@ import pandas as pd
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .flow_system import FlowSystem
-
-if TYPE_CHECKING:
     from .effects import Effect, EffectValuesUser, EffectValuesUserScalar
 
 logger = logging.getLogger('flixOpt')
@@ -92,10 +90,15 @@ class PiecewiseConversion:
     def __len__(self):
         return len(self.piecewises)
 
-    def __getitem__(self, key: str):
-        if not isinstance(str, str):
-            raise TypeError(f'Expected str, got {type(key)}')
-        return self.piecewises[key]
+    def __getitem__(self, key: Union[str, int]) -> Union[Piecewise, Dict[str, Segment]]:
+        if isinstance(key, str):
+            return self.piecewises[key]
+        elif isinstance(key, int):  # Return str to Segment
+            return {key: piecewise[key] for key, piecewise in self.piecewises.items()}
+        raise TypeError(f'Expected str or int, got {type(key)}')
+
+    def __iter__(self) -> Iterator[Dict[str, Segment]]:
+        return iter([self[i] for i in range(len(self))])
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         for i, piecewise in enumerate(self.piecewises.values()):
@@ -104,12 +107,13 @@ class PiecewiseConversion:
 
 @register_class_for_io
 class PiecewiseShares:
-    def __init__(self, origin_piecewise: Piecewise, piecewise_shares: Dict[str, Piecewise]):
-        self.origin_piecewise = origin_piecewise
+    def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
+        self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
+        self.scalar = True
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.origin_piecewise.transform_data(flow_system, f'{name_prefix}')
+        self.piecewise_origin.transform_data(flow_system, f'{name_prefix}')
         for i, piecewise in enumerate(self.piecewise_shares.values()):
             piecewise.transform_data(flow_system, f'{name_prefix}')  #TODO:
 
@@ -128,7 +132,7 @@ class InvestParameters(Interface):
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScalar'] = None,
         specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
-        effects_in_segments: Optional[Tuple[Piecewise, Dict[str, Piecewise]]] = None,
+        effects_in_segments: Optional[PiecewiseShares] = None,
         divest_effects: Optional['EffectValuesUserScalar'] = None,
     ):
         """
@@ -177,6 +181,7 @@ class InvestParameters(Interface):
     @property
     def maximum_size(self):
         return self.fixed_size or self._maximum_size
+
 
 @register_class_for_io
 class OnOffParameters(Interface):

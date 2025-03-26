@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise, Segment, PiecewiseConversion
+from .interface import InvestParameters, OnOffParameters, Piecewise, Segment, PiecewiseConversion, PiecewiseShares
 from .structure import Model, SystemModel
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -106,8 +106,8 @@ class InvestmentModel(Model):
                 SegmentedSharesModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    variable_segments=(self.size, self.parameters.effects_in_segments[0]),
-                    share_segments=self.parameters.effects_in_segments[1],
+                    variable_segments=(self.size, self.parameters.effects_in_segments.piecewise_origin),
+                    share_segments=self.parameters.effects_in_segments.piecewise_shares,
                     can_be_outside_segments=self.is_invested),
                 'segments'
             )
@@ -668,7 +668,7 @@ class SegmentModel(Model):
         model: SystemModel,
         label_of_element: str,
         segment_index: Union[int, str],
-        sample_points: Dict[str, Segment],
+        segments: Dict[str, Segment],
         as_time_series: bool = True,
     ):
         super().__init__(model, label_of_element, f'Segment{segment_index}')
@@ -678,7 +678,7 @@ class SegmentModel(Model):
 
         self._segment_index = segment_index
         self._as_time_series = as_time_series
-        self.sample_points = sample_points
+        self.segments = segments
 
     def do_modeling(self):
         self.in_segment = self.add(self._model.add_variables(
@@ -710,13 +710,13 @@ class SegmentModel(Model):
         )
 
 
-class PiecewiseConversionModel(Model):
+class PiecewiseModel(Model):
     # TODO: Length...
     def __init__(
         self,
         model: SystemModel,
         label_of_element: str,
-        piecewise_conversion: PiecewiseConversion,
+        piecewise_variables: Dict[str, Piecewise],
         variable_mapping: Dict[str, linopy.Variable],
         can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
         as_time_series: bool = True,
@@ -726,8 +726,8 @@ class PiecewiseConversionModel(Model):
         Args:
             model: Model to which the segmented variable belongs.
             label_of_element: Name of the parent variable.
-            sample_points: Dictionary mapping variables (names) to their sample points for each segment.
-                The sample points are tuples of the form (start, end).
+            piecewise_conversion:
+            variable_mapping: Dictionary mapping Piecewise names to variables.
             can_be_outside_segments: Whether the variable can be outside the segments. If True, a variable is created.
                 If False or None, no variable is created. If a Variable is passed, it is used.
             as_time_series: Whether to create a scalar or time series variable.
@@ -743,20 +743,16 @@ class PiecewiseConversionModel(Model):
         self._segment_models: List[SegmentModel] = []
 
     def do_modeling(self):
-        restructured_variables_with_segments: List[Dict[str, Segment]] = [
-            {key: values[i] for key, values in self._sample_points.items()} for i in range(self._nr_of_segments)
-        ]
-
         self._segment_models = [
             self.add(
                 SegmentModel(
                     self._model,
                     label_of_element=self.label_of_element,
                     segment_index=i,
-                    sample_points=sample_points,
+                    segments=segments,
                     as_time_series=self._as_time_series),
                 f'Segment_{i}')
-            for i, sample_points in enumerate(restructured_variables_with_segments)
+            for i, (key, segments) in enumerate(self._piecewise_conversion)
         ]
 
         for segment_model in self._segment_models:
@@ -906,42 +902,38 @@ class SegmentedSharesModel(Model):
         self,
         model: SystemModel,
         label_of_element: str,
-        variable_segments: Tuple[linopy.Variable, Piecewise],
-        share_segments: Dict[str, Piecewise],
+        piecewise_shares: PiecewiseShares,
+        origin_variable: linopy.Variable,
         can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
         label: str = 'SegmentedShares',
     ):
         super().__init__(model, label_of_element, label)
-        assert len(variable_segments[1]) == len(list(share_segments.values())[0]), (
-            'Segment length of variable_segments and share_segments must be equal'
-        )
         self._can_be_outside_segments = can_be_outside_segments
-        self._variable_segments = variable_segments
-        self._share_segments = share_segments
+        self._piecewise_shares = piecewise_shares
+        self.origin_variable = origin_variable
         self._shares: Dict['Effect', linopy.Variable] = {}
         self._segments_model: Optional[PiecewiseConversionModel] = None
-        self._as_tme_series: bool = 'time' in self._variable_segments[0].indexes
+        self._as_tme_series: bool = not self._piecewise_shares.scalar
+        #TODO
 
     def do_modeling(self):
         self._shares = {
-            effect: self.add(self._model.add_variables(
+            effect_label: self.add(self._model.add_variables(
                 coords=self._model.coords if self._as_tme_series else None,
-                name=f'{self.label_full}|{effect}'),
-                f'{effect}'
-            ) for effect in self._share_segments
+                name=f'{self.label_full}|{effect_label}'),
+                f'{effect_label}'
+            ) for effect_label in self._piecewise_shares.piecewise_shares
         }
 
-        # Mapping variable names to segments
-        segments: Dict[str, List[Tuple[Scalar, Scalar]]] = {
-            **{self._shares[effect].name: segment for effect, segment in self._share_segments.items()},
-            **{self._variable_segments[0].name: self._variable_segments[1]},
-        }
+        variable_mapping = {effect_label: self._shares[effect_label]
+                            for effect_label in self._piecewise_shares.piecewise_shares}
 
         self._segments_model = self.add(
             PiecewiseConversionModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
-                sample_points=segments,
+                piecewise_conversion=self._piecewise_shares,
+                variable_mapping=variable_mapping,
                 can_be_outside_segments=self._can_be_outside_segments,
                 as_time_series=self._as_tme_series),
             'segments'
