@@ -1067,3 +1067,62 @@ def dual_pie_with_plotly(
         fig.write_html(path)
 
     return fig
+
+
+def plotly_save_and_show(
+    fig: plotly.graph_objs.Figure,
+    default_filename: pathlib.Path,
+    user_filename: Optional[pathlib.Path] = None,
+    show: bool = True,
+    save: bool = False,
+) -> plotly.graph_objs.Figure:
+    """
+    Optionally saves and/or displays a Plotly figure.
+
+    Args:
+        fig: The Plotly figure to display or save.
+        default_filename: The default file path if no user filename is provided.
+        user_filename: An optional user-specified file path.
+        show: Whether to display the figure (default: True).
+        save: Whether to save the figure (default: False).
+
+    Returns:
+        go.Figure: The input figure.
+    """
+    filename = user_filename or default_filename
+    if show and not save:
+        fig.show()
+    elif save and show:
+        plotly.offline.plot(fig, filename=str(filename))
+    elif save and not show:
+        fig.write_html(filename)
+    return fig
+
+
+def matplotlib_save_and_show(
+    fig: plt.Figure,
+    ax: plt.Axes,
+    default_filename: pathlib.Path,
+    user_filename: Optional[pathlib.Path] = None,
+    show: bool = True,
+    save: bool = False
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Optionally saves and/or displays a Matplotlib figure.
+
+    Args:
+        fig: The Matplotlib figure to display or save.
+        default_filename: The default file path if no user filename is provided.
+        user_filename: An optional user-specified file path.
+        show: Whether to display the figure (default: True).
+        save: Whether to save the figure (default: False).
+
+    Returns:
+        plt.Figure: The input figure.
+    """
+    filename = user_filename or default_filename
+    if show:
+        fig.show()
+    if save:
+        fig.savefig(str(filename), dpi=300)
+    return fig, ax

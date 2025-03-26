@@ -391,7 +391,7 @@ class _NodeResults(_ElementResults):
             fig = plotting.with_plotly(
                 self.node_balance(with_last_timestep=True).to_dataframe(), mode='area', title=f'Flow rates of {self.label}'
             )
-            return plotly_save_and_show(
+            return plotting.plotly_save_and_show(
                 fig,
                 self._calculation_results.folder / f'{self.label} (flow rates).html',
                 user_filename=None if isinstance(save, bool) else pathlib.Path(save),
@@ -401,7 +401,7 @@ class _NodeResults(_ElementResults):
             fig, ax = plotting.with_matplotlib(
                 self.node_balance(with_last_timestep=True).to_dataframe(), mode='bar', title=f'Flow rates of {self.label}'
             )
-            return matplotlib_save_and_show(
+            return plotting.matplotlib_save_and_show(
                 fig,
                 ax,
                 self._calculation_results.folder / f'{self.label} (flow rates).png',
@@ -457,7 +457,7 @@ class _NodeResults(_ElementResults):
             lower_percentage_group=lower_percentage_group,
         )
 
-        return plotly_save_and_show(
+        return plotting.plotly_save_and_show(
                 fig,
                 self._calculation_results.folder / f'{self.label} (flow hours).html',
                 user_filename=None if isinstance(save, bool) else pathlib.Path(save),
@@ -535,7 +535,7 @@ class ComponentResults(_NodeResults):
         fig.add_trace(plotly.graph_objs.Scatter(
             x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state))
 
-        return plotly_save_and_show(
+        return plotting.plotly_save_and_show(
             fig,
             self._calculation_results.folder / f'{self.label} (charge state).html',
             user_filename=None if isinstance(save, bool) else pathlib.Path(save),
@@ -703,60 +703,6 @@ class SegmentedCalculationResults:
         logger.info(f'Saved calculation "{name}" to {path}')
 
 
-def plotly_save_and_show(fig: plotly.graph_objs.Figure,
-                         default_filename: pathlib.Path,
-                         user_filename: Optional[pathlib.Path] = None,
-                         show: bool = True,
-                         save: bool = False) -> plotly.graph_objs.Figure:
-    """
-    Optionally saves and/or displays a Plotly figure.
-
-    Args:
-        fig: The Plotly figure to display or save.
-        default_filename: The default file path if no user filename is provided.
-        user_filename: An optional user-specified file path.
-        show: Whether to display the figure (default: True).
-        save: Whether to save the figure (default: False).
-
-    Returns:
-        go.Figure: The input figure.
-    """
-    filename = user_filename or default_filename
-    if show and not save:
-        fig.show()
-    elif save and show:
-        plotly.offline.plot(fig, filename=str(filename))
-    elif save and not show:
-        fig.write_html(filename)
-    return fig
-
-
-def matplotlib_save_and_show(fig: plt.Figure,
-                             ax: plt.Axes,
-                             default_filename: pathlib.Path,
-                             user_filename: Optional[pathlib.Path] = None,
-                             show: bool = True,
-                             save: bool = False) -> Tuple[plt.Figure, plt.Axes]:
-    """
-    Optionally saves and/or displays a Matplotlib figure.
-
-    Args:
-        fig: The Matplotlib figure to display or save.
-        default_filename: The default file path if no user filename is provided.
-        user_filename: An optional user-specified file path.
-        show: Whether to display the figure (default: True).
-        save: Whether to save the figure (default: False).
-
-    Returns:
-        plt.Figure: The input figure.
-    """
-    filename = user_filename or default_filename
-    if show:
-        fig.show()
-    if save:
-        fig.savefig(str(filename), dpi=300)
-    return fig, ax
-
 def plot_heatmap(
     dataarray: xr.DataArray,
     name: str,
@@ -792,7 +738,7 @@ def plot_heatmap(
             heatmap_data, title=name, color_map=color_map,
             xlabel=xlabel, ylabel=ylabel
         )
-        return plotly_save_and_show(
+        return plotting.plotly_save_and_show(
             fig,
             folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame}).html',
             user_filename=None if isinstance(save, bool) else pathlib.Path(save),
@@ -803,7 +749,7 @@ def plot_heatmap(
             heatmap_data, title=name, color_map=color_map,
             xlabel=xlabel, ylabel=ylabel
         )
-        return matplotlib_save_and_show(
+        return plotting.matplotlib_save_and_show(
             fig,
             ax,
             folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame}).png',
