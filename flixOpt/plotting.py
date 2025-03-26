@@ -27,6 +27,7 @@ def with_plotly(
     colors: Union[List[str], str] = 'viridis',
     title: str = '',
     ylabel: str = '',
+    xlabel: str = 'Time in h',
     fig: Optional[go.Figure] = None,
     show: bool = False,
     save: bool = False,
@@ -150,7 +151,7 @@ def with_plotly(
             gridwidth=0.5,  # Customize grid line width
         ),
         xaxis=dict(
-            title='Time in h',
+            title=xlabel,
             showgrid=True,  # Enable grid lines on the x-axis
             gridcolor='lightgrey',  # Customize grid line color
             gridwidth=0.5,  # Customize grid line width
@@ -181,6 +182,9 @@ def with_matplotlib(
     data: pd.DataFrame,
     mode: Literal['bar', 'line'] = 'bar',
     colors: Union[List[str], str] = 'viridis',
+    title: str = '',
+    ylabel: str = '',
+    xlabel: str = 'Time in h',
     figsize: Tuple[int, int] = (12, 6),
     fig: Optional[plt.Figure] = None,
     ax: Optional[plt.Axes] = None,
@@ -261,7 +265,9 @@ def with_matplotlib(
             ax.step(data.index, data[column], where='post', color=colors[i], label=column)
 
     # Aesthetics
-    ax.set_xlabel('Time in h', fontsize=14)
+    ax.set_xlabel(xlabel, ha='center')
+    ax.set_ylabel(ylabel, va='center')
+    ax.set_title(title)
     ax.grid(color='lightgrey', linestyle='-', linewidth=0.5)
     ax.legend(
         loc='upper center',  # Place legend at the bottom center
@@ -282,6 +288,9 @@ def with_matplotlib(
 def heat_map_matplotlib(
     data: pd.DataFrame,
     color_map: str = 'viridis',
+    title: str = '',
+    xlabel: str = 'Period',
+    ylabel: str = 'Step',
     figsize: Tuple[float, float] = (12, 6),
     show: bool = False,
     path: Optional[Union[str, pathlib.Path]] = None,
@@ -324,8 +333,9 @@ def heat_map_matplotlib(
     ax.set_yticklabels(data.index, va='center')
 
     # Add labels to the axes
-    ax.set_xlabel('Period', ha='center')
-    ax.set_ylabel('Step', va='center')
+    ax.set_xlabel(xlabel, ha='center')
+    ax.set_ylabel(ylabel, va='center')
+    ax.set_title(title)
 
     # Position x-axis labels at the top
     ax.xaxis.set_label_position('top')
@@ -349,7 +359,7 @@ def heat_map_plotly(
     data: pd.DataFrame,
     color_map: str = 'viridis',
     title: str = '',
-    xlabel: str = 'Periods',
+    xlabel: str = 'Period',
     ylabel: str = 'Step',
     categorical_labels: bool = True,
     show: bool = False,
