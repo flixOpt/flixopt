@@ -429,8 +429,6 @@ class _NodeResults(_ElementResults):
             show: Whether to show the figure.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
         """
-        if engine != 'plotly':
-            raise NotImplementedError(f'Plotting engine "{engine}" not implemented for Component.plot_node_balance_pie.')
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs],
             threshold=1e-5,
@@ -444,21 +442,37 @@ class _NodeResults(_ElementResults):
             zero_small_values=True,
         ) * self._calculation_results.hours_per_timestep
 
-        figure_like = plotting.dual_pie_with_plotly(
-            inputs.to_dataframe().sum(),
-            outputs.to_dataframe().sum(),
-            colors=colors,
-            title=f'Flow hours of {self.label}',
-            text_info=text_info,
-            subtitles=('Inputs', 'Outputs'),
-            legend_title='Flows',
-            lower_percentage_group=lower_percentage_group,
-        )
+        if engine == 'plotly':
+            figure_like = plotting.dual_pie_with_plotly(
+                inputs.to_dataframe().sum(),
+                outputs.to_dataframe().sum(),
+                colors=colors,
+                title=f'Flow hours of {self.label}',
+                text_info=text_info,
+                subtitles=('Inputs', 'Outputs'),
+                legend_title='Flows',
+                lower_percentage_group=lower_percentage_group,
+            )
+            default_filetype = '.html'
+        elif engine == 'matplotlib':
+            logger.debug('Parameter text_info is not supported for matplotlib')
+            figure_like = plotting.dual_pie_with_matplotlib(
+                inputs.to_dataframe().sum(),
+                outputs.to_dataframe().sum(),
+                colors=colors,
+                title=f'Flow hours of {self.label}',
+                subtitles=('Inputs', 'Outputs'),
+                legend_title='Flows',
+                lower_percentage_group=lower_percentage_group,
+            )
+            default_filetype = '.png'
+        else:
+            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
         return plotting.export_figure(
             figure_like=figure_like,
             default_path=self._calculation_results.folder / f'{self.label} (flow hours)',
-            default_filetype='.html',
+            default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
@@ -545,10 +559,11 @@ class ComponentResults(_NodeResults):
             save=True if save else False)
 
     def node_balance_with_charge_state(
-            self,
-            negate_inputs: bool = True,
-            negate_outputs: bool = False,
-            threshold: Optional[float] = 1e-5) -> xr.Dataset:
+        self,
+        negate_inputs: bool = True,
+        negate_outputs: bool = False,
+        threshold: Optional[float] = 1e-5
+    ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Storage including its charge state.
         Args:

@@ -20,11 +20,16 @@ def save(request):
     return request.param
 
 
-def test_results_plots_matplotlib(flow_system, show, save):
+@pytest.fixture(params=['plotly', 'matplotlib'])
+def plotting_engine(request):
+    return request.param
+
+
+def test_results_plots(flow_system, plotting_engine, show, save):
     calculation = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
     results = calculation.results
 
-    results['Boiler'].plot_node_balance(engine='matplotlib', save=save, show=show)
+    results['Boiler'].plot_node_balance(engine=plotting_engine, save=save, show=show)
 
     results.plot_heatmap('Speicher(Q_th_load)|flow_rate',
                          heatmap_timeframes='D',
@@ -32,32 +37,14 @@ def test_results_plots_matplotlib(flow_system, show, save):
                          color_map='viridis',
                          save=show,
                          show=save,
-                         engine='matplotlib')
+                         engine=plotting_engine)
 
-    with pytest.raises(NotImplementedError):
-        results['Speicher'].plot_charge_state(engine='matplotlib')
+    results['Speicher'].plot_node_balance_pie(engine=plotting_engine, save=save, show=show)
 
-    with pytest.raises(NotImplementedError):
-        results['Speicher'].plot_node_balance_pie(engine='matplotlib', save=save, show=show)
+    if plotting_engine == 'matplotlib':
+        with pytest.raises(NotImplementedError):
+            results['Speicher'].plot_charge_state(engine=plotting_engine)
+    else:
+        results['Speicher'].plot_charge_state(engine=plotting_engine)
+
     plt.close('all')
-
-
-def test_results_plots_plotly(flow_system, save, show):
-    calculation = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
-    results = calculation.results
-
-    results['Boiler'].plot_node_balance(engine='plotly', save=save, show=show)
-
-    results.plot_heatmap('Speicher(Q_th_load)|flow_rate',
-                         heatmap_timeframes='D',
-                         heatmap_timesteps_per_frame='h',
-                         color_map='viridis',
-                         save=show,
-                         show=save,
-                         engine='matplotlib')
-
-    results['Speicher'].plot_charge_state(engine='plotly')
-
-    results['Speicher'].plot_node_balance_pie(engine='plotly', save=save, show=show)
-
-
