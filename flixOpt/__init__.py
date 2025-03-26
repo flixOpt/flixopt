@@ -16,6 +16,8 @@ from .commons import (
     OnOffParameters,
     Segment,
     Piecewise,
+    PiecewiseConversion,
+    PiecewiseShares,
     SegmentedCalculation,
     Sink,
     Source,
