@@ -8,8 +8,8 @@ import logging
 import pathlib
 from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union
 
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -993,60 +993,44 @@ def dual_pie_with_plotly(
     return fig
 
 
-def plotly_save_and_show(
-    fig: plotly.graph_objs.Figure,
-    default_filename: pathlib.Path,
-    user_filename: Optional[pathlib.Path] = None,
-    show: bool = True,
-    save: bool = False,
-) -> plotly.graph_objs.Figure:
-    """
-    Optionally saves and/or displays a Plotly figure.
-
-    Args:
-        fig: The Plotly figure to display or save.
-        default_filename: The default file path if no user filename is provided.
-        user_filename: An optional user-specified file path.
-        show: Whether to display the figure (default: True).
-        save: Whether to save the figure (default: False).
-
-    Returns:
-        go.Figure: The input figure.
-    """
-    filename = user_filename or default_filename
-    if show and not save:
-        fig.show()
-    elif save and show:
-        plotly.offline.plot(fig, filename=str(filename))
-    elif save and not show:
-        fig.write_html(filename)
-    return fig
-
-
-def matplotlib_save_and_show(
-    fig: plt.Figure,
-    ax: plt.Axes,
+def export_figure(
+    figure_like: Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]],
     default_filename: pathlib.Path,
     user_filename: Optional[pathlib.Path] = None,
     show: bool = True,
     save: bool = False
-) -> Tuple[plt.Figure, plt.Axes]:
+) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
     """
-    Optionally saves and/or displays a Matplotlib figure.
+    Export a figure to a file and or show it.
 
     Args:
-        fig: The Matplotlib figure to display or save.
+        figure_like: The figure to export. Can be a Plotly figure or a tuple of Matplotlib figure and axes.
         default_filename: The default file path if no user filename is provided.
         user_filename: An optional user-specified file path.
         show: Whether to display the figure (default: True).
         save: Whether to save the figure (default: False).
-
-    Returns:
-        plt.Figure: The input figure.
     """
-    filename = user_filename or default_filename
-    if show:
-        fig.show()
-    if save:
-        fig.savefig(str(filename), dpi=300)
-    return fig, ax
+
+    if isinstance(figure_like, plotly.graph_objs.Figure):
+        fig = figure_like
+        filename = user_filename or default_filename
+        if not filename.suffix == '.html':
+            logger.debug(f'To save a plotly figure, the filename should end with ".html". Got {filename}')
+        if show and not save:
+            fig.show()
+        elif save and show:
+            plotly.offline.plot(fig, filename=str(filename))
+        elif save and not show:
+            fig.write_html(filename)
+        return figure_like
+
+    elif isinstance(figure_like, tuple):
+        fig, ax = figure_like
+        filename = user_filename or default_filename
+        if show:
+            fig.show()
+        if save:
+            fig.savefig(str(filename), dpi=300)
+        return fig, ax
+    else:
+        raise TypeError(f'Figure type not supported: {type(figure_like)}')
