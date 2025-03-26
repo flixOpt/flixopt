@@ -380,7 +380,7 @@ class _NodeResults(_ElementResults):
         show: bool = True,
     ) -> plotly.graph_objects.Figure:
         """
-        Plots a pie chart of the flow hours of the inputs and outputs of the component.
+        Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
 
         Args:
             colors: a colorscale or a list of colors to use for the plot
