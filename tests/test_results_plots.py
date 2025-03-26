@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import pytest
 
 import flixOpt as fx
@@ -38,6 +39,7 @@ def test_results_plots_matplotlib(flow_system, show, save):
 
     with pytest.raises(NotImplementedError):
         results['Speicher'].plot_node_balance_pie(engine='matplotlib', save=save, show=show)
+    plt.close('all')
 
 
 def test_results_plots_plotly(flow_system, save, show):
