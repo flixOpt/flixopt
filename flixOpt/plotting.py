@@ -8,8 +8,8 @@ import logging
 import pathlib
 from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union
 
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -41,9 +41,6 @@ def with_plotly(
     ylabel: str = '',
     xlabel: str = 'Time in h',
     fig: Optional[go.Figure] = None,
-    show: bool = False,
-    save: bool = False,
-    path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
     Plot a DataFrame with Plotly, using either stacked bars or stepped lines.
@@ -55,9 +52,6 @@ def with_plotly(
         title: The title of the plot.
         ylabel: The label for the y-axis.
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
-        show: Wether to show the figure after creation. (This includes saving the figure)
-        save: Wether to save the figure after creation (without showing)
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the generated plot.
@@ -181,12 +175,6 @@ def with_plotly(
         ),
     )
 
-    if isinstance(path, pathlib.Path):
-        path = path.as_posix()
-    if show:
-        plotly.offline.plot(fig, filename=path)
-    elif save:  # If show, the file is saved anyway
-        fig.write_html(path)
     return fig
 
 
@@ -200,8 +188,6 @@ def with_matplotlib(
     figsize: Tuple[int, int] = (12, 6),
     fig: Optional[plt.Figure] = None,
     ax: Optional[plt.Axes] = None,
-    show: bool = False,
-    path: Optional[Union[str, pathlib.Path]] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
@@ -216,8 +202,6 @@ def with_matplotlib(
         figsize: Specify the size of the figure
         fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
         ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
-        show: Wether to show the figure after creation.
-        path: Path to save the figure to.
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -292,11 +276,6 @@ def with_matplotlib(
     )
     fig.tight_layout()
 
-    if show:
-        plt.show()
-    if path is not None:
-        fig.savefig(path, dpi=300)
-
     return fig, ax
 
 
@@ -307,8 +286,6 @@ def heat_map_matplotlib(
     xlabel: str = 'Period',
     ylabel: str = 'Step',
     figsize: Tuple[float, float] = (12, 6),
-    show: bool = False,
-    path: Optional[Union[str, pathlib.Path]] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Plots a DataFrame as a heatmap using Matplotlib. The columns of the DataFrame will be displayed on the x-axis,
@@ -319,8 +296,6 @@ def heat_map_matplotlib(
             The values in the DataFrame will be represented as colors in the heatmap.
         color_map: The colormap to use for the heatmap. Default is 'viridis'. Matplotlib supports various colormaps like 'plasma', 'inferno', 'cividis', etc.
         figsize: The size of the figure to create. Default is (12, 6), which results in a width of 12 inches and a height of 6 inches.
-        show: Wether to show the figure after creation.
-        path: Path to save the figure to.
 
     Returns:
         A tuple containing the Matplotlib `Figure` and `Axes` objects. The `Figure` contains the overall plot, while the `Axes` is the area
@@ -362,10 +337,6 @@ def heat_map_matplotlib(
     fig.colorbar(sm1, ax=ax, pad=0.12, aspect=15, fraction=0.2, orientation='horizontal')
 
     fig.tight_layout()
-    if show:
-        plt.show()
-    if path is not None:
-        fig.savefig(path, dpi=300)
 
     return fig, ax
 
@@ -377,9 +348,6 @@ def heat_map_plotly(
     xlabel: str = 'Period',
     ylabel: str = 'Step',
     categorical_labels: bool = True,
-    show: bool = False,
-    save: bool = False,
-    path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
     Plots a DataFrame as a heatmap using Plotly. The columns of the DataFrame will be mapped to the x-axis,
@@ -432,13 +400,6 @@ def heat_map_plotly(
         xaxis=dict(title=xlabel, side='top', type='category' if categorical_labels else None),
         yaxis=dict(title=ylabel, autorange='reversed', type='category' if categorical_labels else None),
     )
-
-    if isinstance(path, pathlib.Path):
-        path = path.as_posix()
-    if show:
-        plotly.offline.plot(fig, filename=path)
-    elif save:  # If show, the file is saved anyway
-        fig.write_html(path)
 
     return fig
 
@@ -662,15 +623,12 @@ def plot_network(
 
 
 def pie_with_plotly(
-        data: pd.DataFrame,
-        colors: Union[List[str], str] = 'viridis',
-        title: str = '',
-        legend_title: str = '',
-        hole: float = 0.0,
-        fig: Optional[go.Figure] = None,
-        show: bool = False,
-        save: bool = False,
-        path: Union[str, pathlib.Path] = 'temp-plot.html',
+    data: pd.DataFrame,
+    colors: Union[List[str], str] = 'viridis',
+    title: str = '',
+    legend_title: str = '',
+    hole: float = 0.0,
+    fig: Optional[go.Figure] = None,
 ) -> go.Figure:
     """
     Create a pie chart with Plotly to visualize the proportion of values in a DataFrame.
@@ -684,9 +642,6 @@ def pie_with_plotly(
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
-        show: Whether to show the figure after creation.
-        save: Whether to save the figure after creation (without showing).
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the generated pie chart.
@@ -756,29 +711,18 @@ def pie_with_plotly(
         font=dict(size=14),             # Increase font size for better readability
     )
 
-    if isinstance(path, pathlib.Path):
-        path = path.as_posix()
-    if show:
-        plotly.offline.plot(fig, filename=path)
-    elif save:  # If show, the file is saved anyway
-        fig.write_html(path)
-
     return fig
 
 
 def pie_with_matplotlib(
-        data: pd.DataFrame,
-        colors: Union[List[str], str] = 'viridis',
-        title: str = '',
-        figsize: Tuple[int, int] = (10, 8),
-        autopct: str = '%1.1f%%',
-        startangle: int = 90,
-        shadow: bool = False,
-        is_donut: bool = False,
-        fig: Optional[plt.Figure] = None,
-        ax: Optional[plt.Axes] = None,
-        show: bool = False,
-        path: Optional[Union[str, pathlib.Path]] = None,
+    data: pd.DataFrame,
+    colors: Union[List[str], str] = 'viridis',
+    title: str = '',
+    legend_title: str = 'Categories',
+    hole: float = 0.0,
+    figsize: Tuple[int, int] = (10, 8),
+    fig: Optional[plt.Figure] = None,
+    ax: Optional[plt.Axes] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Create a pie chart with Matplotlib to visualize the proportion of values in a DataFrame.
@@ -789,15 +733,11 @@ def pie_with_matplotlib(
         colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
                 to use for coloring the pie segments.
         title: The title of the plot.
+        legend_title: The title for the legend.
+        hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
         figsize: The size of the figure (width, height) in inches.
-        autopct: String format for the percentage display on wedges.
-        startangle: Starting angle for the first wedge in degrees.
-        shadow: Whether to draw the pie with a shadow beneath it.
-        is_donut: If True, creates a donut chart by adding a white circle in the center.
         fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
         ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
-        show: Whether to show the figure after creation.
-        path: Path to save the figure to.
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -809,7 +749,7 @@ def pie_with_matplotlib(
         - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
 
     Examples:
-        >>> fig, ax = pie_with_matplotlib(data, colorscale='viridis', is_donut=True)
+        >>> fig, ax = pie_with_matplotlib(data, colors='viridis', hole=0.3)
         >>> plt.show()
     """
     if data.empty:
@@ -850,11 +790,22 @@ def pie_with_matplotlib(
         values,
         labels=labels,
         colors=colors,
-        autopct=autopct,
-        startangle=startangle,
-        shadow=shadow,
-        wedgeprops=dict(width=0.5) if is_donut else None,  # Set width for donut
+        autopct='%1.1f%%',
+        startangle=90,
+        shadow=False,
+        wedgeprops=dict(width=0.5) if hole > 0 else None,  # Set width for donut
     )
+
+    # Adjust the wedgeprops to make donut hole size consistent with plotly
+    # For matplotlib, the hole size is determined by the wedge width
+    # Convert hole parameter to wedge width
+    if hole > 0:
+        # Adjust hole size to match plotly's hole parameter
+        # In matplotlib, wedge width is relative to the radius (which is 1)
+        # For plotly, hole is a fraction of the radius
+        wedge_width = 1 - hole
+        for wedge in wedges:
+            wedge.set_width(wedge_width)
 
     # Customize the appearance
     # Make autopct text more visible
@@ -874,19 +825,13 @@ def pie_with_matplotlib(
         ax.legend(
             wedges,
             labels,
-            title="Categories",
+            title=legend_title,
             loc="center left",
             bbox_to_anchor=(1, 0, 0.5, 1)
         )
 
     # Apply tight layout
     fig.tight_layout()
-
-    # Show or save
-    if show:
-        plt.show()
-    if path is not None:
-        fig.savefig(path, dpi=300, bbox_inches='tight')
 
     return fig, ax
 
@@ -903,9 +848,6 @@ def dual_pie_with_plotly(
     hover_template: str = '%{label}: %{value} (%{percent})',
     text_info: str = 'percent+label',
     text_position: str = 'inside',
-    show: bool = False,
-    save: bool = False,
-    path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
     Create two pie charts side by side with Plotly, with consistent coloring across both charts.
@@ -924,9 +866,6 @@ def dual_pie_with_plotly(
         text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
                   'label+value', 'percent+value', 'label+percent+value', or 'none'.
         text_position: Position of text: 'inside', 'outside', 'auto', or 'none'.
-        show: Whether to show the figure after creation.
-        save: Whether to save the figure after creation (without showing).
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the generated dual pie chart.
@@ -1058,12 +997,227 @@ def dual_pie_with_plotly(
         legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5, font=dict(size=12)),
     )
 
-    # Handle file saving and display
-    if isinstance(path, pathlib.Path):
-        path = path.as_posix()
-    if show:
-        plotly.offline.plot(fig, filename=path)
-    elif save:
-        fig.write_html(path)
-
     return fig
+
+
+def dual_pie_with_matplotlib(
+    data_left: pd.Series,
+    data_right: pd.Series,
+    colors: Union[List[str], str] = 'viridis',
+    title: str = '',
+    subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
+    legend_title: str = '',
+    hole: float = 0.2,
+    lower_percentage_group: float = 5.0,
+    figsize: Tuple[int, int] = (14, 7),
+    fig: Optional[plt.Figure] = None,
+    axes: Optional[List[plt.Axes]] = None,
+) -> Tuple[plt.Figure, List[plt.Axes]]:
+    """
+    Create two pie charts side by side with Matplotlib, with consistent coloring across both charts.
+    Leverages the existing pie_with_matplotlib function.
+
+    Args:
+        data_left: Series for the left pie chart.
+        data_right: Series for the right pie chart.
+        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
+                to use for coloring the pie segments.
+        title: The main title of the plot.
+        subtitles: Tuple containing the subtitles for (left, right) charts.
+        legend_title: The title for the legend.
+        hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
+        lower_percentage_group: Whether to group small segments (below percentage) into an "Other" category.
+        figsize: The size of the figure (width, height) in inches.
+        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
+        axes: A list of Matplotlib axes objects to plot on. If not provided, new axes will be created.
+
+    Returns:
+        A tuple containing the Matplotlib figure and list of axes objects used for the plot.
+    """
+    import itertools
+
+    # Check for empty data
+    if data_left.empty and data_right.empty:
+        logger.warning('Both datasets are empty. Returning empty figure.')
+        if fig is None:
+            fig, axes = plt.subplots(1, 2, figsize=figsize)
+        return fig, axes
+
+    # Create figure and axes if not provided
+    if fig is None or axes is None:
+        fig, axes = plt.subplots(1, 2, figsize=figsize)
+
+    # Process series to handle negative values and apply minimum percentage threshold
+    def preprocess_series(series: pd.Series):
+        """
+        Preprocess a series for pie chart display by handling negative values
+        and grouping the smallest parts together if they collectively represent
+        less than the specified percentage threshold.
+        """
+        # Handle negative values
+        if (series < 0).any():
+            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+            series = series.abs()
+
+        # Remove zeros
+        series = series[series > 0]
+
+        # Apply minimum percentage threshold if needed
+        if lower_percentage_group and not series.empty:
+            total = series.sum()
+            if total > 0:
+                # Sort series by value (ascending)
+                sorted_series = series.sort_values()
+
+                # Calculate cumulative percentage contribution
+                cumulative_percent = (sorted_series.cumsum() / total) * 100
+
+                # Find entries that collectively make up less than lower_percentage_group
+                to_group = cumulative_percent <= lower_percentage_group
+
+                if to_group.sum() > 1:
+                    # Create "Other" category for the smallest values that together are < threshold
+                    other_sum = sorted_series[to_group].sum()
+
+                    # Keep only values that aren't in the "Other" group
+                    result_series = series[~series.index.isin(sorted_series[to_group].index)]
+
+                    # Add the "Other" category if it has a value
+                    if other_sum > 0:
+                        result_series['Other'] = other_sum
+
+                    return result_series
+
+        return series
+
+    # Preprocess data
+    data_left_processed = preprocess_series(data_left)
+    data_right_processed = preprocess_series(data_right)
+
+    # Convert Series to DataFrames for pie_with_matplotlib
+    df_left = pd.DataFrame(data_left_processed).T if not data_left_processed.empty else pd.DataFrame()
+    df_right = pd.DataFrame(data_right_processed).T if not data_right_processed.empty else pd.DataFrame()
+
+    # Get unique set of all labels for consistent coloring
+    all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
+
+    # Generate a consistent color mapping for both charts
+    if isinstance(colors, str):
+        cmap = plt.get_cmap(colors, len(all_labels))
+        color_list = [cmap(i) for i in range(len(all_labels))]
+    else:
+        # If colors is a list, create a cycling iterator
+        color_iter = itertools.cycle(colors)
+        color_list = [next(color_iter) for _ in range(len(all_labels))]
+
+    # Create a mapping from label to color
+    color_map = {label: color_list[i] for i, label in enumerate(all_labels)}
+
+    # Configure colors for each DataFrame based on the consistent mapping
+    left_colors = [color_map[col] for col in df_left.columns] if not df_left.empty else []
+    right_colors = [color_map[col] for col in df_right.columns] if not df_right.empty else []
+
+    # Create left pie chart
+    if not df_left.empty:
+        pie_with_matplotlib(data=df_left, colors=left_colors, title=subtitles[0], hole=hole, fig=fig, ax=axes[0])
+    else:
+        axes[0].set_title(subtitles[0])
+        axes[0].axis('off')
+
+    # Create right pie chart
+    if not df_right.empty:
+        pie_with_matplotlib(data=df_right, colors=right_colors, title=subtitles[1], hole=hole, fig=fig, ax=axes[1])
+    else:
+        axes[1].set_title(subtitles[1])
+        axes[1].axis('off')
+
+    # Add main title
+    if title:
+        fig.suptitle(title, fontsize=16, y=0.98)
+
+    # Adjust layout
+    fig.tight_layout()
+
+    # Create a unified legend if both charts have data
+    if not df_left.empty and not df_right.empty:
+        # Remove individual legends
+        for ax in axes:
+            if ax.get_legend():
+                ax.get_legend().remove()
+
+        # Create handles for the unified legend
+        handles = []
+        labels_for_legend = []
+
+        for label in all_labels:
+            color = color_map[label]
+            patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10, label=label)
+            handles.append(patch)
+            labels_for_legend.append(label)
+
+        # Add unified legend
+        fig.legend(
+            handles=handles,
+            labels=labels_for_legend,
+            title=legend_title,
+            loc='lower center',
+            bbox_to_anchor=(0.5, 0),
+            ncol=min(len(all_labels), 5),  # Limit columns to 5 for readability
+        )
+
+        # Add padding at the bottom for the legend
+        fig.subplots_adjust(bottom=0.2)
+
+    return fig, axes
+
+
+def export_figure(
+    figure_like: Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]],
+    default_path: pathlib.Path,
+    default_filetype: Optional[str] = None,
+    user_path: Optional[pathlib.Path] = None,
+    show: bool = True,
+    save: bool = False
+) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    """
+    Export a figure to a file and or show it.
+
+    Args:
+        figure_like: The figure to export. Can be a Plotly figure or a tuple of Matplotlib figure and axes.
+        default_path: The default file path if no user filename is provided.
+        default_filetype: The default filetype if the path doesnt end with a filetype.
+        user_path: An optional user-specified file path.
+        show: Whether to display the figure (default: True).
+        save: Whether to save the figure (default: False).
+
+    Raises:
+        ValueError: If no default filetype is provided and the path doesn't specify a filetype.
+        TypeError: If the figure type is not supported.
+    """
+    filename = user_path or default_path
+    if filename.suffix == '':
+        if default_filetype is None:
+            raise ValueError('No default filetype provided')
+        filename = filename.with_suffix(default_filetype)
+
+    if isinstance(figure_like, plotly.graph_objs.Figure):
+        fig = figure_like
+        if not filename.suffix == '.html':
+            logger.debug(f'To save a plotly figure, the filename should end with ".html". Got {filename}')
+        if show and not save:
+            fig.show()
+        elif save and show:
+            plotly.offline.plot(fig, filename=str(filename))
+        elif save and not show:
+            fig.write_html(filename)
+        return figure_like
+
+    elif isinstance(figure_like, tuple):
+        fig, ax = figure_like
+        if show:
+            fig.show()
+        if save:
+            fig.savefig(str(filename), dpi=300)
+        return fig, ax
+
+    raise TypeError(f'Figure type not supported: {type(figure_like)}')
