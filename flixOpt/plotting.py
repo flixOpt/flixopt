@@ -919,8 +919,9 @@ def dual_pie_with_plotly(
     Returns:
         A Plotly figure object containing the generated dual pie chart.
     """
-    from plotly.subplots import make_subplots
     import itertools
+
+    from plotly.subplots import make_subplots
 
     # Check for empty data
     if data_left.empty and data_right.empty:
@@ -947,7 +948,7 @@ def dual_pie_with_plotly(
         """
         # Handle negative values
         if (series < 0).any():
-            logger.warning(f'Negative values detected in data. Using absolute values for pie chart.')
+            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
             series = series.abs()
 
         # Remove zeros

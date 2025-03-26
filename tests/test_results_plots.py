@@ -9,14 +9,18 @@ from .conftest import create_calculation_and_solve, simple_flow_system
 def show(request):
     return request.param
 
+@pytest.fixture(params=[simple_flow_system])
+def flow_system(request):
+    return request.getfixturevalue(request.param.__name__)
+
 
 @pytest.fixture(params=[True, False])
 def save(request):
     return request.param
 
 
-def test_results_plots_matplotlib(simple_flow_system, show, save):
-    calculation = create_calculation_and_solve(simple_flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
+def test_results_plots_matplotlib(flow_system, show, save):
+    calculation = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
     results = calculation.results
 
     results['Boiler'].plot_node_balance(engine='matplotlib', save=save, show=show)
@@ -36,8 +40,8 @@ def test_results_plots_matplotlib(simple_flow_system, show, save):
         results['Speicher'].plot_node_balance_pie(engine='matplotlib', save=save, show=show)
 
 
-def test_results_plots_plotly(simple_flow_system, save, show):
-    calculation = create_calculation_and_solve(simple_flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
+def test_results_plots_plotly(flow_system, save, show):
+    calculation = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
     results = calculation.results
 
     results['Boiler'].plot_node_balance(engine='plotly', save=save, show=show)

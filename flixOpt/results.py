@@ -5,10 +5,10 @@ import pathlib
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import linopy
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly
-import matplotlib.pyplot as plt
 import xarray as xr
 import yaml
 
