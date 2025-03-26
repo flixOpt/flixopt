@@ -662,15 +662,15 @@ def plot_network(
 
 
 def pie_with_plotly(
-        data: pd.DataFrame,
-        colors: Union[List[str], str] = 'viridis',
-        title: str = '',
-        legend_title: str = '',
-        hole: float = 0.0,
-        fig: Optional[go.Figure] = None,
-        show: bool = False,
-        save: bool = False,
-        path: Union[str, pathlib.Path] = 'temp-plot.html',
+    data: pd.DataFrame,
+    colors: Union[List[str], str] = 'viridis',
+    title: str = '',
+    legend_title: str = '',
+    hole: float = 0.0,
+    fig: Optional[go.Figure] = None,
+    show: bool = False,
+    save: bool = False,
+    path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
     Create a pie chart with Plotly to visualize the proportion of values in a DataFrame.
@@ -767,18 +767,18 @@ def pie_with_plotly(
 
 
 def pie_with_matplotlib(
-        data: pd.DataFrame,
-        colors: Union[List[str], str] = 'viridis',
-        title: str = '',
-        figsize: Tuple[int, int] = (10, 8),
-        autopct: str = '%1.1f%%',
-        startangle: int = 90,
-        shadow: bool = False,
-        is_donut: bool = False,
-        fig: Optional[plt.Figure] = None,
-        ax: Optional[plt.Axes] = None,
-        show: bool = False,
-        path: Optional[Union[str, pathlib.Path]] = None,
+    data: pd.DataFrame,
+    colors: Union[List[str], str] = 'viridis',
+    title: str = '',
+    figsize: Tuple[int, int] = (10, 8),
+    autopct: str = '%1.1f%%',
+    startangle: int = 90,
+    shadow: bool = False,
+    is_donut: bool = False,
+    fig: Optional[plt.Figure] = None,
+    ax: Optional[plt.Axes] = None,
+    show: bool = False,
+    path: Optional[Union[str, pathlib.Path]] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Create a pie chart with Matplotlib to visualize the proportion of values in a DataFrame.
