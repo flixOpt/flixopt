@@ -799,9 +799,6 @@ def plot_heatmap(
             show=show,
             save=True if save else False)
     elif engine == 'matplotlib':
-        if color_map == 'portland':
-            logger.debug('Rename colormap "portland" to "coolwarm", as portland is not availlable in matplotlib')
-            color_map = 'coolwarm'
         fig, ax = plotting.heat_map_matplotlib(
             heatmap_data, title=name, color_map=color_map,
             xlabel=xlabel, ylabel=ylabel

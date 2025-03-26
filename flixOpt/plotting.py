@@ -9,6 +9,7 @@ import pathlib
 from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -19,6 +20,17 @@ if TYPE_CHECKING:
     import pyvis
 
 logger = logging.getLogger('flixOpt')
+
+# Define the colors for the 'portland' colormap in matplotlib
+_portland_colors = [
+    [12/255, 51/255, 131/255],    # Dark blue
+    [10/255, 136/255, 186/255],   # Light blue
+    [242/255, 211/255, 56/255],   # Yellow
+    [242/255, 143/255, 56/255],   # Orange
+    [217/255, 30/255, 30/255]     # Red
+]
+
+plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
 def with_plotly(
