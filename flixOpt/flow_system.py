@@ -140,7 +140,7 @@ class FlowSystem:
             elif isinstance(new_element, Bus):
                 self._add_buses(new_element)
             else:
-                raise Exception('argument is not instance of a modeling Element (Element)')
+                raise TypeError(f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} ')
 
     def to_json(self, path: Union[str, pathlib.Path]):
         """
@@ -341,10 +341,10 @@ class FlowSystem:
             element: new element to check
         """
         if element in self.all_elements.values():
-            raise Exception(f'Element {element.label} already added to FlowSystem!')
+            raise ValueError(f'Element {element.label} already added to FlowSystem!')
         # check if name is already used:
         if element.label_full in self.all_elements:
-            raise Exception(f'Label of Element {element.label} already used in another element!')
+            raise ValueError(f'Label of Element {element.label} already used in another element!')
 
     def _add_effects(self, *args: Effect) -> None:
         self.effects.add_effects(*args)

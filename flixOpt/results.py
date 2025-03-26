@@ -17,6 +17,8 @@ from . import plotting
 from .core import TimeSeriesCollection
 
 if TYPE_CHECKING:
+    import pyvis
+
     from .calculation import Calculation, SegmentedCalculation
 
 
@@ -37,7 +39,6 @@ class CalculationResults:
         solution (xr.Dataset): Dataset containing optimization results.
         flow_system (xr.Dataset): Dataset containing the flow system.
         summary (Dict): Information about the calculation.
-        network_infos (Dict): Information about the network structure.
         name (str): Name identifier for the calculation.
         model (linopy.Model): The optimization model (if available).
         folder (pathlib.Path): Path to the results directory.
@@ -88,16 +89,12 @@ class CalculationResults:
         with open(paths.summary, 'r', encoding='utf-8') as f:
             summary = yaml.load(f, Loader=yaml.FullLoader)
 
-        with open(paths.network, 'r', encoding='utf-8') as f:
-            network_infos = json.load(f)
-
         return cls(solution=fx_io.load_dataset_from_netcdf(paths.solution),
                    flow_system=fx_io.load_dataset_from_netcdf(paths.flow_system),
                    name=name,
                    folder=folder,
                    model=model,
-                   summary=summary,
-                   network_infos=network_infos)
+                   summary=summary)
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
@@ -120,7 +117,6 @@ class CalculationResults:
             solution=calculation.model.solution,
             flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
             summary=calculation.summary,
-            network_infos=calculation.flow_system.network_infos(),
             model=calculation.model,
             name=calculation.name,
             folder=calculation.folder,
@@ -132,7 +128,6 @@ class CalculationResults:
         flow_system: xr.Dataset,
         name: str,
         summary: Dict,
-        network_infos: Dict,
         folder: Optional[pathlib.Path] = None,
         model: Optional[linopy.Model] = None,
     ):
@@ -140,17 +135,14 @@ class CalculationResults:
         Args:
             solution: The solution of the optimization.
             flow_system: The flow_system that was used to create the calculation as a datatset.
-            results_structure: The structure of the flow_system that was used to solve the calculation.
             name: The name of the calculation.
-            infos: Information about the calculation,
-            network_infos: Information about the network.
+            summary: Information about the calculation,
             folder: The folder where the results are saved.
             model: The linopy model that was used to solve the calculation.
         """
         self.solution = solution
         self.flow_system = flow_system
         self.summary = summary
-        self.network_infos = network_infos
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
@@ -236,6 +228,28 @@ class CalculationResults:
             engine=engine,
         )
 
+    def plot_network(
+            self,
+            controls: Union[
+                bool,
+                List[
+                    Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
+                ],
+            ] = True,
+            path: Optional[pathlib.Path] = None,
+            show: bool = False
+    ) -> 'pyvis.network.Network':
+        """ See flixOpt.flow_system.FlowSystem.plot_network """
+        try:
+            from .flow_system import FlowSystem
+            flow_system = FlowSystem.from_dataset(self.flow_system)
+        except Exception as e:
+            logger.critical(f'Could not reconstruct the flow_system from dataset: {e}')
+            return None
+        if path is None:
+            path = self.folder / f'{self.name}--network.html'
+        return flow_system.plot_network(controls=controls, path=path, show=show)
+
     def to_file(
         self,
         folder: Optional[Union[str, pathlib.Path]] = None,
@@ -269,9 +283,6 @@ class CalculationResults:
 
         with open(paths.summary, 'w', encoding='utf-8') as f:
             yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
-
-        with open(paths.network, 'w', encoding='utf-8') as f:
-            json.dump(self.network_infos, f, indent=4, ensure_ascii=False)
 
         if save_linopy_model:
             if self.model is None:
@@ -827,18 +838,18 @@ def sanitize_dataset(
 
     # Step 2: Handle small values
     if threshold is not None:
-        abs_ds = xr.apply_ufunc(np.abs, ds)
+        ds_no_nan_abs = xr.apply_ufunc(np.abs, ds).fillna(0)  # Replace NaN with 0 (below threshold) for the comparison
 
         # Option 1: Drop variables where all values are below threshold
         if drop_small_vars:
-            vars_to_drop = [var for var in ds.data_vars if (abs_ds[var] <= threshold).all()]
+            vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all()]
             ds = ds.drop_vars(vars_to_drop)
 
         # Option 2: Set small values to zero
         if zero_small_values:
             for var in ds.data_vars:
                 # Create a boolean mask of values below threshold
-                mask = abs_ds[var] <= threshold
+                mask = ds_no_nan_abs[var] <= threshold
                 # Only proceed if there are values to zero out
                 if mask.any():
                     # Create a copy to ensure we don't modify data with views

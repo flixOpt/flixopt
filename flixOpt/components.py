@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Set, Tuple, Uni
 
 import linopy
 import numpy as np
-import pandas as pd
 
 from . import utils
-from .core import NumericData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection
+from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, MultipleSegmentsModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
@@ -66,13 +65,13 @@ class LinearConverter(Component):
 
     def _plausibility_checks(self) -> None:
         if not self.conversion_factors and not self.segmented_conversion_factors:
-            raise Exception('Either conversion_factors or segmented_conversion_factors must be defined!')
+            raise PlausibilityError('Either conversion_factors or segmented_conversion_factors must be defined!')
         if self.conversion_factors and self.segmented_conversion_factors:
-            raise Exception('Only one of conversion_factors or segmented_conversion_factors can be defined, not both!')
+            raise PlausibilityError('Only one of conversion_factors or segmented_conversion_factors can be defined, not both!')
 
         if self.conversion_factors:
             if self.degrees_of_freedom <= 0:
-                raise Exception(
+                raise PlausibilityError(
                     f'Too Many conversion_factors_specified. Care that you use less conversion_factors '
                     f'then inputs + outputs!! With {len(self.inputs + self.outputs)} inputs and outputs, '
                     f'use not more than {len(self.inputs + self.outputs) - 1} conversion_factors!'
@@ -81,13 +80,13 @@ class LinearConverter(Component):
             for conversion_factor in self.conversion_factors:
                 for flow in conversion_factor:
                     if flow not in self.flows:
-                        raise Exception(
+                        raise PlausibilityError(
                             f'{self.label}: Flow {flow} in conversion_factors is not in inputs/outputs'
                         )
         if self.segmented_conversion_factors:
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
-                    raise Exception(
+                    raise PlausibilityError(
                         f'segmented_conversion_factors (in {self.label_full}) and variable size '
                         f'(in flow {flow.label_full}) do not make sense together!'
                     )
@@ -566,7 +565,7 @@ class StorageModel(ComponentModel):
                     name_short
                 )
             else:  # TODO: Validation in Storage Class, not in Model
-                raise Exception(f'initial_charge_state has undefined value: {self.element.initial_charge_state}')
+                raise PlausibilityError(f'initial_charge_state has undefined value: {self.element.initial_charge_state}')
 
         if self.element.maximal_final_charge_state is not None:
             self.add(self._model.add_constraints(

@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, Scalar, TimeSeriesCollection
+from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
 from .effects import EffectValuesUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
@@ -283,7 +283,7 @@ class Flow(Element):
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
         if np.any(self.relative_minimum > self.relative_maximum):
-            raise Exception(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
+            raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if (
             self.size == CONFIG.modeling.BIG and self.fixed_relative_profile is not None

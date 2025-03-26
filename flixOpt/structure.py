@@ -85,8 +85,7 @@ class SystemModel(linopy.Model):
                 for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
             },
         }
-        solution.reindex(time=self.time_series_collection.timesteps_extra)
-        return solution
+        return solution.reindex(time=self.time_series_collection.timesteps_extra)
 
     @property
     def hours_per_step(self):
