@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise, Segment
+from .interface import InvestParameters, OnOffParameters, Piecewise, Segment, PiecewiseConversion
 from .structure import Model, SystemModel
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -710,16 +710,17 @@ class SegmentModel(Model):
         )
 
 
-class MultipleSegmentsModel(Model):
+class PiecewiseConversionModel(Model):
     # TODO: Length...
     def __init__(
         self,
         model: SystemModel,
         label_of_element: str,
-        sample_points: Dict[str, Piecewise],
+        piecewise_conversion: PiecewiseConversion,
+        variable_mapping: Dict[str, linopy.Variable],
         can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
         as_time_series: bool = True,
-        label: str = 'MultipleSegments',
+        label: str = 'PiecewiseConversion',
     ):
         """
         Args:
@@ -737,7 +738,8 @@ class MultipleSegmentsModel(Model):
 
         self._as_time_series = as_time_series
         self._can_be_outside_segments = can_be_outside_segments
-        self._sample_points = sample_points
+        self._piecewise_conversion = piecewise_conversion
+        self._variable_mapping = variable_mapping
         self._segment_models: List[SegmentModel] = []
 
     def do_modeling(self):
@@ -917,7 +919,7 @@ class SegmentedSharesModel(Model):
         self._variable_segments = variable_segments
         self._share_segments = share_segments
         self._shares: Dict['Effect', linopy.Variable] = {}
-        self._segments_model: Optional[MultipleSegmentsModel] = None
+        self._segments_model: Optional[PiecewiseConversionModel] = None
         self._as_tme_series: bool = 'time' in self._variable_segments[0].indexes
 
     def do_modeling(self):
@@ -936,7 +938,7 @@ class SegmentedSharesModel(Model):
         }
 
         self._segments_model = self.add(
-            MultipleSegmentsModel(
+            PiecewiseConversionModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
                 sample_points=segments,

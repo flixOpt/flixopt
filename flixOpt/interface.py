@@ -12,6 +12,8 @@ from .config import CONFIG
 from .core import NumericData, NumericDataTS, Scalar
 from .structure import Element, Interface, register_class_for_io
 
+import pandas as pd
+
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .flow_system import FlowSystem
 
@@ -39,6 +41,9 @@ class Segment(Interface):
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
         self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
+
+    def as_series(self):
+        return pd.Series([self.start, self.end])
 
     @property
     def is_scalar(self) -> bool:
@@ -68,9 +73,45 @@ class Piecewise(Interface):
         for i, segment in enumerate(self.segments):
             segment.transform_data(flow_system, f'{name_prefix}|Segment{i}')
 
+    def as_series(self):
+        data = []
+        for segment in self.segments:
+            data.append([segment.start, segment.end])
+        return pd.Series(data)
+
     @property
     def is_scalar(self) -> bool:
         return all([segment.is_scalar for segment in self.segments])
+
+
+@register_class_for_io
+class PiecewiseConversion:
+    def __init__(self, piecewises: Dict[str, Piecewise]):
+        self.piecewises = piecewises
+
+    def __len__(self):
+        return len(self.piecewises)
+
+    def __getitem__(self, key: str):
+        if not isinstance(str, str):
+            raise TypeError(f'Expected str, got {type(key)}')
+        return self.piecewises[key]
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        for i, piecewise in enumerate(self.piecewises.values()):
+            piecewise.transform_data(flow_system, f'{name_prefix}')  #TODO:
+
+
+@register_class_for_io
+class PiecewiseShares:
+    def __init__(self, origin_piecewise: Piecewise, piecewise_shares: Dict[str, Piecewise]):
+        self.origin_piecewise = origin_piecewise
+        self.piecewise_shares = piecewise_shares
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        self.origin_piecewise.transform_data(flow_system, f'{name_prefix}')
+        for i, piecewise in enumerate(self.piecewise_shares.values()):
+            piecewise.transform_data(flow_system, f'{name_prefix}')  #TODO:
 
 
 @register_class_for_io
