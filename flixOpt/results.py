@@ -527,10 +527,11 @@ class ComponentResults(_NodeResults):
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
-        fig = plotting.with_plotly(self.node_balance(with_last_timestep=True).to_dataframe(),
-                                    mode='area',
-                                    title=f'Operation Balance of {self.label}',
-                                    show=False)
+        fig = plotting.with_plotly(
+            self.node_balance(with_last_timestep=True).to_dataframe(),
+            mode='area',
+            title=f'Operation Balance of {self.label}',
+        )
         charge_state = self.charge_state.to_dataframe()
         fig.add_trace(plotly.graph_objs.Scatter(
             x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state))

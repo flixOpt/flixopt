@@ -41,9 +41,6 @@ def with_plotly(
     ylabel: str = '',
     xlabel: str = 'Time in h',
     fig: Optional[go.Figure] = None,
-    show: bool = False,
-    save: bool = False,
-    path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
     Plot a DataFrame with Plotly, using either stacked bars or stepped lines.
@@ -55,9 +52,6 @@ def with_plotly(
         title: The title of the plot.
         ylabel: The label for the y-axis.
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
-        show: Wether to show the figure after creation. (This includes saving the figure)
-        save: Wether to save the figure after creation (without showing)
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the generated plot.
@@ -181,12 +175,6 @@ def with_plotly(
         ),
     )
 
-    if isinstance(path, pathlib.Path):
-        path = path.as_posix()
-    if show:
-        plotly.offline.plot(fig, filename=path)
-    elif save:  # If show, the file is saved anyway
-        fig.write_html(path)
     return fig
 
 
@@ -200,8 +188,6 @@ def with_matplotlib(
     figsize: Tuple[int, int] = (12, 6),
     fig: Optional[plt.Figure] = None,
     ax: Optional[plt.Axes] = None,
-    show: bool = False,
-    path: Optional[Union[str, pathlib.Path]] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
@@ -216,8 +202,6 @@ def with_matplotlib(
         figsize: Specify the size of the figure
         fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
         ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
-        show: Wether to show the figure after creation.
-        path: Path to save the figure to.
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -292,11 +276,6 @@ def with_matplotlib(
     )
     fig.tight_layout()
 
-    if show:
-        plt.show()
-    if path is not None:
-        fig.savefig(path, dpi=300)
-
     return fig, ax
 
 
@@ -307,8 +286,6 @@ def heat_map_matplotlib(
     xlabel: str = 'Period',
     ylabel: str = 'Step',
     figsize: Tuple[float, float] = (12, 6),
-    show: bool = False,
-    path: Optional[Union[str, pathlib.Path]] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Plots a DataFrame as a heatmap using Matplotlib. The columns of the DataFrame will be displayed on the x-axis,
@@ -319,8 +296,6 @@ def heat_map_matplotlib(
             The values in the DataFrame will be represented as colors in the heatmap.
         color_map: The colormap to use for the heatmap. Default is 'viridis'. Matplotlib supports various colormaps like 'plasma', 'inferno', 'cividis', etc.
         figsize: The size of the figure to create. Default is (12, 6), which results in a width of 12 inches and a height of 6 inches.
-        show: Wether to show the figure after creation.
-        path: Path to save the figure to.
 
     Returns:
         A tuple containing the Matplotlib `Figure` and `Axes` objects. The `Figure` contains the overall plot, while the `Axes` is the area
@@ -362,10 +337,6 @@ def heat_map_matplotlib(
     fig.colorbar(sm1, ax=ax, pad=0.12, aspect=15, fraction=0.2, orientation='horizontal')
 
     fig.tight_layout()
-    if show:
-        plt.show()
-    if path is not None:
-        fig.savefig(path, dpi=300)
 
     return fig, ax
 
@@ -377,9 +348,6 @@ def heat_map_plotly(
     xlabel: str = 'Period',
     ylabel: str = 'Step',
     categorical_labels: bool = True,
-    show: bool = False,
-    save: bool = False,
-    path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
     Plots a DataFrame as a heatmap using Plotly. The columns of the DataFrame will be mapped to the x-axis,
@@ -432,13 +400,6 @@ def heat_map_plotly(
         xaxis=dict(title=xlabel, side='top', type='category' if categorical_labels else None),
         yaxis=dict(title=ylabel, autorange='reversed', type='category' if categorical_labels else None),
     )
-
-    if isinstance(path, pathlib.Path):
-        path = path.as_posix()
-    if show:
-        plotly.offline.plot(fig, filename=path)
-    elif save:  # If show, the file is saved anyway
-        fig.write_html(path)
 
     return fig
 
@@ -668,9 +629,6 @@ def pie_with_plotly(
     legend_title: str = '',
     hole: float = 0.0,
     fig: Optional[go.Figure] = None,
-    show: bool = False,
-    save: bool = False,
-    path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
     Create a pie chart with Plotly to visualize the proportion of values in a DataFrame.
@@ -684,9 +642,6 @@ def pie_with_plotly(
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
-        show: Whether to show the figure after creation.
-        save: Whether to save the figure after creation (without showing).
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the generated pie chart.
@@ -756,13 +711,6 @@ def pie_with_plotly(
         font=dict(size=14),             # Increase font size for better readability
     )
 
-    if isinstance(path, pathlib.Path):
-        path = path.as_posix()
-    if show:
-        plotly.offline.plot(fig, filename=path)
-    elif save:  # If show, the file is saved anyway
-        fig.write_html(path)
-
     return fig
 
 
@@ -777,8 +725,6 @@ def pie_with_matplotlib(
     is_donut: bool = False,
     fig: Optional[plt.Figure] = None,
     ax: Optional[plt.Axes] = None,
-    show: bool = False,
-    path: Optional[Union[str, pathlib.Path]] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Create a pie chart with Matplotlib to visualize the proportion of values in a DataFrame.
@@ -796,8 +742,6 @@ def pie_with_matplotlib(
         is_donut: If True, creates a donut chart by adding a white circle in the center.
         fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
         ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
-        show: Whether to show the figure after creation.
-        path: Path to save the figure to.
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -882,12 +826,6 @@ def pie_with_matplotlib(
     # Apply tight layout
     fig.tight_layout()
 
-    # Show or save
-    if show:
-        plt.show()
-    if path is not None:
-        fig.savefig(path, dpi=300, bbox_inches='tight')
-
     return fig, ax
 
 
@@ -903,9 +841,6 @@ def dual_pie_with_plotly(
     hover_template: str = '%{label}: %{value} (%{percent})',
     text_info: str = 'percent+label',
     text_position: str = 'inside',
-    show: bool = False,
-    save: bool = False,
-    path: Union[str, pathlib.Path] = 'temp-plot.html',
 ) -> go.Figure:
     """
     Create two pie charts side by side with Plotly, with consistent coloring across both charts.
@@ -924,9 +859,6 @@ def dual_pie_with_plotly(
         text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
                   'label+value', 'percent+value', 'label+percent+value', or 'none'.
         text_position: Position of text: 'inside', 'outside', 'auto', or 'none'.
-        show: Whether to show the figure after creation.
-        save: Whether to save the figure after creation (without showing).
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the generated dual pie chart.
@@ -1057,14 +989,6 @@ def dual_pie_with_plotly(
         margin=dict(t=80, b=50, l=30, r=30),
         legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5, font=dict(size=12)),
     )
-
-    # Handle file saving and display
-    if isinstance(path, pathlib.Path):
-        path = path.as_posix()
-    if show:
-        plotly.offline.plot(fig, filename=path)
-    elif save:
-        fig.write_html(path)
 
     return fig
 
