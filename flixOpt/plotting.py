@@ -1000,6 +1000,177 @@ def dual_pie_with_plotly(
     return fig
 
 
+def dual_pie_with_matplotlib(
+    data_left: pd.Series,
+    data_right: pd.Series,
+    colors: Union[List[str], str] = 'viridis',
+    title: str = '',
+    subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
+    legend_title: str = '',
+    hole: float = 0.2,
+    lower_percentage_group: float = 5.0,
+    figsize: Tuple[int, int] = (14, 7),
+    fig: Optional[plt.Figure] = None,
+    axes: Optional[List[plt.Axes]] = None,
+) -> Tuple[plt.Figure, List[plt.Axes]]:
+    """
+    Create two pie charts side by side with Matplotlib, with consistent coloring across both charts.
+    Leverages the existing pie_with_matplotlib function.
+
+    Args:
+        data_left: Series for the left pie chart.
+        data_right: Series for the right pie chart.
+        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
+                to use for coloring the pie segments.
+        title: The main title of the plot.
+        subtitles: Tuple containing the subtitles for (left, right) charts.
+        legend_title: The title for the legend.
+        hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
+        lower_percentage_group: Whether to group small segments (below percentage) into an "Other" category.
+        figsize: The size of the figure (width, height) in inches.
+        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
+        axes: A list of Matplotlib axes objects to plot on. If not provided, new axes will be created.
+
+    Returns:
+        A tuple containing the Matplotlib figure and list of axes objects used for the plot.
+    """
+    import itertools
+
+    # Check for empty data
+    if data_left.empty and data_right.empty:
+        logger.warning('Both datasets are empty. Returning empty figure.')
+        if fig is None:
+            fig, axes = plt.subplots(1, 2, figsize=figsize)
+        return fig, axes
+
+    # Create figure and axes if not provided
+    if fig is None or axes is None:
+        fig, axes = plt.subplots(1, 2, figsize=figsize)
+
+    # Process series to handle negative values and apply minimum percentage threshold
+    def preprocess_series(series: pd.Series):
+        """
+        Preprocess a series for pie chart display by handling negative values
+        and grouping the smallest parts together if they collectively represent
+        less than the specified percentage threshold.
+        """
+        # Handle negative values
+        if (series < 0).any():
+            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+            series = series.abs()
+
+        # Remove zeros
+        series = series[series > 0]
+
+        # Apply minimum percentage threshold if needed
+        if lower_percentage_group and not series.empty:
+            total = series.sum()
+            if total > 0:
+                # Sort series by value (ascending)
+                sorted_series = series.sort_values()
+
+                # Calculate cumulative percentage contribution
+                cumulative_percent = (sorted_series.cumsum() / total) * 100
+
+                # Find entries that collectively make up less than lower_percentage_group
+                to_group = cumulative_percent <= lower_percentage_group
+
+                if to_group.sum() > 1:
+                    # Create "Other" category for the smallest values that together are < threshold
+                    other_sum = sorted_series[to_group].sum()
+
+                    # Keep only values that aren't in the "Other" group
+                    result_series = series[~series.index.isin(sorted_series[to_group].index)]
+
+                    # Add the "Other" category if it has a value
+                    if other_sum > 0:
+                        result_series['Other'] = other_sum
+
+                    return result_series
+
+        return series
+
+    # Preprocess data
+    data_left_processed = preprocess_series(data_left)
+    data_right_processed = preprocess_series(data_right)
+
+    # Convert Series to DataFrames for pie_with_matplotlib
+    df_left = pd.DataFrame(data_left_processed).T if not data_left_processed.empty else pd.DataFrame()
+    df_right = pd.DataFrame(data_right_processed).T if not data_right_processed.empty else pd.DataFrame()
+
+    # Get unique set of all labels for consistent coloring
+    all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
+
+    # Generate a consistent color mapping for both charts
+    if isinstance(colors, str):
+        cmap = plt.get_cmap(colors, len(all_labels))
+        color_list = [cmap(i) for i in range(len(all_labels))]
+    else:
+        # If colors is a list, create a cycling iterator
+        color_iter = itertools.cycle(colors)
+        color_list = [next(color_iter) for _ in range(len(all_labels))]
+
+    # Create a mapping from label to color
+    color_map = {label: color_list[i] for i, label in enumerate(all_labels)}
+
+    # Configure colors for each DataFrame based on the consistent mapping
+    left_colors = [color_map[col] for col in df_left.columns] if not df_left.empty else []
+    right_colors = [color_map[col] for col in df_right.columns] if not df_right.empty else []
+
+    # Create left pie chart
+    if not df_left.empty:
+        pie_with_matplotlib(data=df_left, colors=left_colors, title=subtitles[0], hole=hole, fig=fig, ax=axes[0])
+    else:
+        axes[0].set_title(subtitles[0])
+        axes[0].axis('off')
+
+    # Create right pie chart
+    if not df_right.empty:
+        pie_with_matplotlib(data=df_right, colors=right_colors, title=subtitles[1], hole=hole, fig=fig, ax=axes[1])
+    else:
+        axes[1].set_title(subtitles[1])
+        axes[1].axis('off')
+
+    # Add main title
+    if title:
+        fig.suptitle(title, fontsize=16, y=0.98)
+
+    # Adjust layout
+    fig.tight_layout()
+
+    # Create a unified legend if both charts have data
+    if not df_left.empty and not df_right.empty:
+        # Remove individual legends
+        for ax in axes:
+            if ax.get_legend():
+                ax.get_legend().remove()
+
+        # Create handles for the unified legend
+        handles = []
+        labels_for_legend = []
+
+        for label in all_labels:
+            color = color_map[label]
+            patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10, label=label)
+            handles.append(patch)
+            labels_for_legend.append(label)
+
+        # Add unified legend
+        fig.legend(
+            handles=handles,
+            labels=labels_for_legend,
+            title=legend_title,
+            loc='lower center',
+            bbox_to_anchor=(0.5, 0),
+            ncol=min(len(all_labels), 5),  # Limit columns to 5 for readability
+        )
+
+        # Add padding at the bottom for the legend
+        fig.subplots_adjust(bottom=0.2)
+
+    return fig, axes
+
+
 def export_figure(
     figure_like: Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]],
     default_path: pathlib.Path,
