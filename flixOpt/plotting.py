@@ -995,8 +995,9 @@ def dual_pie_with_plotly(
 
 def export_figure(
     figure_like: Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]],
-    default_filename: pathlib.Path,
-    user_filename: Optional[pathlib.Path] = None,
+    default_path: pathlib.Path,
+    default_filetype: Optional[str] = None,
+    user_path: Optional[pathlib.Path] = None,
     show: bool = True,
     save: bool = False
 ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
@@ -1005,15 +1006,24 @@ def export_figure(
 
     Args:
         figure_like: The figure to export. Can be a Plotly figure or a tuple of Matplotlib figure and axes.
-        default_filename: The default file path if no user filename is provided.
-        user_filename: An optional user-specified file path.
+        default_path: The default file path if no user filename is provided.
+        default_filetype: The default filetype if the path doesnt end with a filetype.
+        user_path: An optional user-specified file path.
         show: Whether to display the figure (default: True).
         save: Whether to save the figure (default: False).
+
+    Raises:
+        ValueError: If no default filetype is provided and the path doesn't specify a filetype.
+        TypeError: If the figure type is not supported.
     """
+    filename = user_path or default_path
+    if filename.suffix == '':
+        if default_filetype is None:
+            raise ValueError('No default filetype provided')
+        filename = filename.with_suffix(default_filetype)
 
     if isinstance(figure_like, plotly.graph_objs.Figure):
         fig = figure_like
-        filename = user_filename or default_filename
         if not filename.suffix == '.html':
             logger.debug(f'To save a plotly figure, the filename should end with ".html". Got {filename}')
         if show and not save:
@@ -1026,11 +1036,10 @@ def export_figure(
 
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
-        filename = user_filename or default_filename
         if show:
             fig.show()
         if save:
             fig.savefig(str(filename), dpi=300)
         return fig, ax
-    else:
-        raise TypeError(f'Figure type not supported: {type(figure_like)}')
+
+    raise TypeError(f'Figure type not supported: {type(figure_like)}')
