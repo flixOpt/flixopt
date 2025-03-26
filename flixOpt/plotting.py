@@ -718,11 +718,9 @@ def pie_with_matplotlib(
     data: pd.DataFrame,
     colors: Union[List[str], str] = 'viridis',
     title: str = '',
+    legend_title: str = 'Categories',
+    hole: float = 0.0,
     figsize: Tuple[int, int] = (10, 8),
-    autopct: str = '%1.1f%%',
-    startangle: int = 90,
-    shadow: bool = False,
-    is_donut: bool = False,
     fig: Optional[plt.Figure] = None,
     ax: Optional[plt.Axes] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
@@ -735,11 +733,9 @@ def pie_with_matplotlib(
         colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
                 to use for coloring the pie segments.
         title: The title of the plot.
+        legend_title: The title for the legend.
+        hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
         figsize: The size of the figure (width, height) in inches.
-        autopct: String format for the percentage display on wedges.
-        startangle: Starting angle for the first wedge in degrees.
-        shadow: Whether to draw the pie with a shadow beneath it.
-        is_donut: If True, creates a donut chart by adding a white circle in the center.
         fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
         ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
 
@@ -753,7 +749,7 @@ def pie_with_matplotlib(
         - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
 
     Examples:
-        >>> fig, ax = pie_with_matplotlib(data, colorscale='viridis', is_donut=True)
+        >>> fig, ax = pie_with_matplotlib(data, colors='viridis', hole=0.3)
         >>> plt.show()
     """
     if data.empty:
@@ -794,11 +790,22 @@ def pie_with_matplotlib(
         values,
         labels=labels,
         colors=colors,
-        autopct=autopct,
-        startangle=startangle,
-        shadow=shadow,
-        wedgeprops=dict(width=0.5) if is_donut else None,  # Set width for donut
+        autopct='%1.1f%%',
+        startangle=90,
+        shadow=False,
+        wedgeprops=dict(width=0.5) if hole > 0 else None,  # Set width for donut
     )
+
+    # Adjust the wedgeprops to make donut hole size consistent with plotly
+    # For matplotlib, the hole size is determined by the wedge width
+    # Convert hole parameter to wedge width
+    if hole > 0:
+        # Adjust hole size to match plotly's hole parameter
+        # In matplotlib, wedge width is relative to the radius (which is 1)
+        # For plotly, hole is a fraction of the radius
+        wedge_width = 1 - hole
+        for wedge in wedges:
+            wedge.set_width(wedge_width)
 
     # Customize the appearance
     # Make autopct text more visible
@@ -818,7 +825,7 @@ def pie_with_matplotlib(
         ax.legend(
             wedges,
             labels,
-            title="Categories",
+            title=legend_title,
             loc="center left",
             bbox_to_anchor=(1, 0, 0.5, 1)
         )
