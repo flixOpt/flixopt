@@ -198,6 +198,9 @@ def with_matplotlib(
         data: A DataFrame containing the data to plot. The index should represent time (e.g., hours), and each column represents a separate data series.
         mode: Plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
         colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for coloring the data series.
+        title: The title of the plot.
+        ylabel: The ylabel of the plot.
+        xlabel: The xlabel of the plot.
         figsize: Specify the size of the figure
         fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
         ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.

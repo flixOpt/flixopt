@@ -404,7 +404,7 @@ class _NodeResults(_ElementResults):
             return matplotlib_save_and_show(
                 fig,
                 ax,
-                self._calculation_results.folder / f'{self.label} (flow rates).html',
+                self._calculation_results.folder / f'{self.label} (flow rates).png',
                 user_filename=None if isinstance(save, bool) else pathlib.Path(save),
                 show=show,
                 save=True if save else False
@@ -796,7 +796,7 @@ def plot_heatmap(
         return matplotlib_save_and_show(
             fig,
             ax,
-            folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame}).html',
+            folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame}).png',
             user_filename=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False
