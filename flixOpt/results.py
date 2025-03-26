@@ -460,7 +460,7 @@ class _NodeResults(_ElementResults):
                 inputs.to_dataframe().sum(),
                 outputs.to_dataframe().sum(),
                 colors=colors,
-                title=f'Flow hours of {self.label}',
+                title=f'Total flow hours of {self.label}',
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
                 lower_percentage_group=lower_percentage_group,
@@ -471,7 +471,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / f'{self.label} (flow hours)',
+            default_path=self._calculation_results.folder / f'{self.label} (total flow hours)',
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
