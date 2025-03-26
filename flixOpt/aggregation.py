@@ -7,8 +7,8 @@ import copy
 import logging
 import timeit
 import warnings
-from collections import Counter
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+import pathlib
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import linopy
 import numpy as np
@@ -140,7 +140,12 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str = 'viridis', show: bool = True) -> 'go.Figure':
+    def plot(
+        self,
+        colormap: str = 'viridis',
+        show: bool = True,
+        save: Optional[pathlib.Path] = None
+    ) -> 'go.Figure':
         from . import plotting
 
         df_org = self.original_data.copy().rename(
@@ -152,11 +157,21 @@ class Aggregation:
         fig = plotting.with_plotly(df_org, 'line', colors=colormap)
         for trace in fig.data:
             trace.update(dict(line=dict(dash='dash')))
-        fig = plotting.with_plotly(df_agg, 'line', colors=colormap, show=show, fig=fig)
+        fig = plotting.with_plotly(df_agg, 'line', colors=colormap, fig=fig)
 
         fig.update_layout(
             title='Original vs Aggregated Data (original = ---)', xaxis_title='Index', yaxis_title='Value'
         )
+
+        plotting.export_figure(
+            figure_like=fig,
+            default_path=pathlib.Path('aggregated data.html'),
+            default_filetype='.html',
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
+
         return fig
 
     def get_cluster_indices(self) -> Dict[str, List[np.ndarray]]:
