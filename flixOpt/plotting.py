@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 import plotly.express as px
