@@ -50,10 +50,10 @@ class Piecewise(Interface):
     def __len__(self):
         return len(self.pieces)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Piece:
         return self.pieces[index]  # Enables indexing like piecewise[i]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
@@ -73,20 +73,6 @@ class PiecewiseConversion(Interface):
             piecewises: Dict of Piecewises defining the conversion factors. flow labels as keys, piecewise as values
         """
         self.piecewises = piecewises
-
-    def __len__(self):
-        return len(self.piecewises)
-
-    def __getitem__(self, index: Union[str, int]) -> Union[Piecewise, Dict[str, Piece]]:
-        """ Get a Piecewise by label or a Dict of Pieces by index. """
-        if isinstance(index, str):
-            return self.piecewises[index]
-        elif isinstance(index, int):  # Return str to Piece
-            return {key: piecewise[index] for key, piecewise in self.piecewises.items()}
-        raise TypeError(f'Expected str or int, got {type(index)}')
-
-    def __iter__(self) -> Iterator[Dict[str, Piece]]:
-        return iter([self[i] for i in range(len(self))])
 
     def items(self):
         return self.piecewises.items()
