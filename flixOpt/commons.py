@@ -17,7 +17,7 @@ from .config import CONFIG, change_logging_level
 from .core import TimeSeriesData
 from .effects import Effect
 from .elements import Bus, Flow
-from .flow_system import FlowSystem, create_datetime_array
+from .flow_system import FlowSystem
 from .interface import InvestParameters, OnOffParameters
 
 __all__ = [
@@ -34,7 +34,6 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
-    'create_datetime_array',
     'FullCalculation',
     'SegmentedCalculation',
     'AggregatedCalculation',

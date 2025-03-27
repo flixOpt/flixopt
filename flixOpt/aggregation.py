@@ -5,11 +5,12 @@ Through this, aggregating TimeSeriesData is possible.
 
 import copy
 import logging
+import pathlib
 import timeit
 import warnings
-from collections import Counter
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
+import linopy
 import numpy as np
 import pandas as pd
 
@@ -20,16 +21,13 @@ except ImportError:
     TSAM_AVAILABLE = False
 
 from .components import Storage
-from .core import Skalar, TimeSeries, TimeSeriesData
+from .core import Scalar, TimeSeriesData
 from .elements import Component
 from .flow_system import FlowSystem
-from .math_modeling import Equation, Variable, VariableTS
 from .structure import (
     Element,
-    ElementModel,
+    Model,
     SystemModel,
-    create_equation,
-    create_variable,
 )
 
 if TYPE_CHECKING:
@@ -47,20 +45,23 @@ class Aggregation:
     def __init__(
         self,
         original_data: pd.DataFrame,
-        hours_per_time_step: Skalar,
-        hours_per_period: Skalar,
+        hours_per_time_step: Scalar,
+        hours_per_period: Scalar,
         nr_of_periods: int = 8,
         weights: Dict[str, float] = None,
         time_series_for_high_peaks: List[str] = None,
         time_series_for_low_peaks: List[str] = None,
     ):
-        """
-        Write a docstring please
 
-        Parameters
-        ----------
-        timeseries: pd.DataFrame
-            timeseries of the data with a datetime index
+        """
+        Args:
+            original_data: The original data to aggregate
+            hours_per_time_step: The duration of each timestep in hours.
+            hours_per_period: The duration of each period in hours.
+            nr_of_periods: The number of typical periods to use in the aggregation.
+            weights: The weights for aggregation. If None, all time series are equally weighted.
+            time_series_for_high_peaks: List of time series to use for explicitly selecting periods with high values.
+            time_series_for_low_peaks: List of time series to use for explicitly selecting periods with low values.
         """
         if not TSAM_AVAILABLE:
             raise ImportError("The 'tsam' package is required for clustering functionality. "
@@ -93,7 +94,7 @@ class Aggregation:
             extremePeriodMethod='new_cluster_center'
             if self.use_extreme_periods
             else 'None',  # Wenn Extremperioden eingebunden werden sollen, nutze die Methode 'new_cluster_center' aus tsam
-            weightDict=self.weights,
+            weightDict={name: weight for name, weight in self.weights.items() if name in self.original_data.columns},
             addPeakMax=self.time_series_for_high_peaks,
             addPeakMin=self.time_series_for_low_peaks,
         )
@@ -139,7 +140,12 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str = 'viridis', show: bool = True) -> 'go.Figure':
+    def plot(
+        self,
+        colormap: str = 'viridis',
+        show: bool = True,
+        save: Optional[pathlib.Path] = None
+    ) -> 'go.Figure':
         from . import plotting
 
         df_org = self.original_data.copy().rename(
@@ -151,11 +157,21 @@ class Aggregation:
         fig = plotting.with_plotly(df_org, 'line', colors=colormap)
         for trace in fig.data:
             trace.update(dict(line=dict(dash='dash')))
-        fig = plotting.with_plotly(df_agg, 'line', colors=colormap, show=show, fig=fig)
+        fig = plotting.with_plotly(df_agg, 'line', colors=colormap, fig=fig)
 
         fig.update_layout(
             title='Original vs Aggregated Data (original = ---)', xaxis_title='Index', yaxis_title='Value'
         )
+
+        plotting.export_figure(
+            figure_like=fig,
+            default_path=pathlib.Path('aggregated data.html'),
+            default_filetype='.html',
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
+
         return fig
 
     def get_cluster_indices(self) -> Dict[str, List[np.ndarray]]:
@@ -217,60 +233,6 @@ class Aggregation:
         return np.array(idx_var1), np.array(idx_var2)
 
 
-class TimeSeriesCollection:
-    def __init__(self, time_series_list: List[TimeSeries]):
-        self.time_series_list = time_series_list
-        self.group_weights: Dict[str, float] = {}
-        self._unique_labels()
-        self._calculate_aggregation_weigths()
-        self.weights: Dict[str, float] = {
-            time_series.label: time_series.aggregation_weight for time_series in self.time_series_list
-        }
-        self.data: Dict[str, np.ndarray] = {
-            time_series.label: time_series.active_data for time_series in self.time_series_list
-        }
-
-        if np.all(np.isclose(list(self.weights.values()), 1, atol=1e-6)):
-            logger.info('All Aggregation weights were set to 1')
-
-    def _calculate_aggregation_weigths(self):
-        """Calculates the aggergation weights of all TimeSeries. Necessary to use groups"""
-        groups = [
-            time_series.aggregation_group
-            for time_series in self.time_series_list
-            if time_series.aggregation_group is not None
-        ]
-        group_size = dict(Counter(groups))
-        self.group_weights = {group: 1 / size for group, size in group_size.items()}
-        for time_series in self.time_series_list:
-            time_series.aggregation_weight = self.group_weights.get(
-                time_series.aggregation_group, time_series.aggregation_weight or 1
-            )
-
-    def _unique_labels(self):
-        """Makes sure every label of the TimeSeries in time_series_list is unique"""
-        label_counts = Counter([time_series.label for time_series in self.time_series_list])
-        duplicates = [label for label, count in label_counts.items() if count > 1]
-        assert duplicates == [], 'Duplicate TimeSeries labels found: {}.'.format(', '.join(duplicates))
-
-    def insert_data(self, data: Dict[str, np.ndarray]):
-        for time_series in self.time_series_list:
-            if time_series.label in data:
-                time_series.aggregated_data = data[time_series.label]
-                logger.debug(f'Inserted data for {time_series.label}')
-
-    def description(self) -> str:
-        # TODO:
-        result = f'{len(self.time_series_list)} TimeSeries used for aggregation:\n'
-        for time_series in self.time_series_list:
-            result += f' -> {time_series.label} (weight: {time_series.aggregation_weight:.4f}; group: "{time_series.aggregation_group}")\n'
-        if self.group_weights:
-            result += f'Aggregation_Groups: {list(self.group_weights.keys())}\n'
-        else:
-            result += 'Warning!: no agg_types defined, i.e. all TS have weight 1 (or explicitly given weight)!\n'
-        return result
-
-
 class AggregationParameters:
     def __init__(
         self,
@@ -286,29 +248,20 @@ class AggregationParameters:
         """
         Initializes aggregation parameters for time series data
 
-        Parameters
-        ----------
-        hours_per_period : float
-            Duration of each period in hours.
-        nr_of_periods : int
-            Number of typical periods to use in the aggregation.
-        fix_storage_flows : bool
-            Whether to aggregate storage flows (load/unload); if other flows
-            are fixed, fixing storage flows is usually not required.
-        aggregate_data_and_fix_non_binary_vars : bool
-            Whether to aggregate all time series data, which allows to fix all time series variables (like flow_rate),
-            or only fix binary variables. If False non time_series data is changed!! If True, the mathematical Problem
-            is simplified even further.
-        percentage_of_period_freedom : float, optional
-            Specifies the maximum percentage (0–100) of binary values within each period
-            that can deviate as "free variables", chosen by the solver (default is 0).
-            This allows binary variables to be 'partly equated' between aggregated periods.
-        penalty_of_period_freedom : float, optional
-            The penalty associated with each "free variable"; defaults to 0. Added to Penalty
-        time_series_for_high_peaks : list of TimeSeriesData
-            List of time series to use for explicitly selecting periods with high values.
-        time_series_for_low_peaks : list of TimeSeriesData
-            List of time series to use for explicitly selecting periods with low values.
+        Args:
+            hours_per_period: Duration of each period in hours.
+            nr_of_periods: Number of typical periods to use in the aggregation.
+            fix_storage_flows: Whether to aggregate storage flows (load/unload); if other flows
+                are fixed, fixing storage flows is usually not required.
+            aggregate_data_and_fix_non_binary_vars: Whether to aggregate all time series data, which allows to fix all time series variables (like flow_rate),
+                or only fix binary variables. If False non time_series data is changed!! If True, the mathematical Problem
+                is simplified even further.
+            percentage_of_period_freedom: Specifies the maximum percentage (0–100) of binary values within each period
+                that can deviate as "free variables", chosen by the solver (default is 0).
+                This allows binary variables to be 'partly equated' between aggregated periods.
+            penalty_of_period_freedom: The penalty associated with each "free variable"; defaults to 0. Added to Penalty
+            time_series_for_high_peaks: List of TimeSeriesData to use for explicitly selecting periods with high values.
+            time_series_for_low_peaks: List of TimeSeriesData to use for explicitly selecting periods with low values.
         """
         self.hours_per_period = hours_per_period
         self.nr_of_periods = nr_of_periods
@@ -336,13 +289,14 @@ class AggregationParameters:
         return self.time_series_for_low_peaks is not None
 
 
-class AggregationModel(ElementModel):
+class AggregationModel(Model):
     """The AggregationModel holds equations and variables related to the Aggregation of a FLowSystem.
     It creates Equations that equates indices of variables, and introduces penalties related to binary variables, that
     escape the equation to their related binaries in other periods"""
 
     def __init__(
         self,
+        model: SystemModel,
         aggregation_parameters: AggregationParameters,
         flow_system: FlowSystem,
         aggregation_data: Aggregation,
@@ -351,13 +305,13 @@ class AggregationModel(ElementModel):
         """
         Modeling-Element for "index-equating"-equations
         """
-        super().__init__(Element('Aggregation'), 'Model')
+        super().__init__(model, label_of_element='Aggregation', label_full='Aggregation')
         self.flow_system = flow_system
         self.aggregation_parameters = aggregation_parameters
         self.aggregation_data = aggregation_data
         self.components_to_clusterize = components_to_clusterize
 
-    def do_modeling(self, system_model: SystemModel):
+    def do_modeling(self):
         if not self.components_to_clusterize:
             components = self.flow_system.components.values()
         else:
@@ -365,66 +319,74 @@ class AggregationModel(ElementModel):
 
         indices = self.aggregation_data.get_equation_indices(skip_first_index_of_period=True)
 
+        time_variables: Set[str] = {k for k, v in self._model.variables.data.items() if 'time' in v.indexes}
+        binary_variables: Set[str] = {k for k, v in self._model.variables.data.items() if k in self._model.binaries}
+        binary_time_variables: Set[str] = time_variables & binary_variables
+
         for component in components:
             if isinstance(component, Storage) and not self.aggregation_parameters.fix_storage_flows:
                 continue  # Fix Nothing in The Storage
 
-            all_variables_of_component = component.model.all_variables
+            all_variables_of_component = set(component.model.variables)
+
             if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
-                all_relevant_variables = [v for v in all_variables_of_component.values() if isinstance(v, VariableTS)]
+                relevant_variables = component.model.variables[all_variables_of_component & time_variables]
             else:
-                all_relevant_variables = [
-                    v for v in all_variables_of_component.values() if isinstance(v, VariableTS) and v.is_binary
-                ]
-            for variable in all_relevant_variables:
-                self.equate_indices(variable, indices, system_model)
+                relevant_variables = component.model.variables[all_variables_of_component & binary_time_variables]
+            for variable in relevant_variables:
+                self._equate_indices(component.model.variables[variable], indices)
 
         penalty = self.aggregation_parameters.penalty_of_period_freedom
         if (self.aggregation_parameters.percentage_of_period_freedom > 0) and penalty != 0:
-            for label, variable in self.variables.items():
-                system_model.effect_collection_model.add_share_to_penalty(
-                    f'Aggregation_penalty__{label}', variable, penalty
+            for variable in self.variables_direct.values():
+                self._model.effects.add_share_to_penalty(
+                    'Aggregation',
+                    variable * penalty
                 )
 
-    def equate_indices(
-        self, variable: Variable, indices: Tuple[np.ndarray, np.ndarray], system_model: SystemModel
-    ) -> Equation:
+    def _equate_indices(self, variable: linopy.Variable, indices: Tuple[np.ndarray, np.ndarray]) -> None:
+        assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!!'
+        length = len(indices[0])
+
         # Gleichung:
         # eq1: x(p1,t) - x(p3,t) = 0 # wobei p1 und p3 im gleichen Cluster sind und t = 0..N_p
-        length = len(indices[0])
-        assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!!'
-
-        eq = create_equation(f'Equate_indices_of_{variable.label}', self)
-        eq.add_summand(variable, 1, indices_of_variable=indices[0])
-        eq.add_summand(variable, -1, indices_of_variable=indices[1])
+        con = self.add(self._model.add_constraints(
+            variable.isel(time=indices[0]) - variable.isel(time=indices[1]) == 0,
+            name=f'{self.label_full}|equate_indices|{variable.name}'),
+            f'equate_indices|{variable.name}')
 
         # Korrektur: (bisher nur für Binärvariablen:)
-        if variable.is_binary and self.aggregation_parameters.percentage_of_period_freedom > 0:
-            # correction-vars (so viele wie Indexe in eq:)
-            var_k1 = create_variable(f'Korr1_{variable.label}', self, length, is_binary=True)
-            var_k0 = create_variable(f'Korr0_{variable.label}', self, length, is_binary=True)
+        if variable.name in self._model.variables.binaries and self.aggregation_parameters.percentage_of_period_freedom > 0:
+            var_k1 = self.add(self._model.add_variables(
+                binary=True,
+                coords={'time': variable.isel(time=indices[0]).indexes['time']},
+                name=f'{self.label_full}|correction1|{variable.name}'), f'correction1|{variable.name}')
+
+            var_k0 = self.add(self._model.add_variables(
+                binary=True,
+                coords={'time': variable.isel(time=indices[0]).indexes['time']},
+                name=f'{self.label_full}|correction0|{variable.name}'), f'correction0|{variable.name}')
+
             # equation extends ...
             # --> On(p3) can be 0/1 independent of On(p1,t)!
             # eq1: On(p1,t) - On(p3,t) + K1(p3,t) - K0(p3,t) = 0
             # --> correction On(p3) can be:
             #  On(p1,t) = 1 -> On(p3) can be 0 -> K0=1 (,K1=0)
             #  On(p1,t) = 0 -> On(p3) can be 1 -> K1=1 (,K0=1)
-            eq.add_summand(var_k1, +1)
-            eq.add_summand(var_k0, -1)
+            con.lhs += 1 * var_k1 - 1 * var_k0
 
             # interlock var_k1 and var_K2:
             # eq: var_k0(t)+var_k1(t) <= 1.1
-            eq_lock = create_equation(f'lock_K0andK1_{variable.label}', self, eq_type='ineq')
-            eq_lock.add_summand(var_k0, 1)
-            eq_lock.add_summand(var_k1, 1)
-            eq_lock.add_constant(1.1)
+            self.add(self._model.add_constraints(
+                var_k0 + var_k1 <= 1.1,
+                name=f'{self.label_full}|lock_k0_and_k1|{variable.name}'),
+                f'lock_k0_and_k1|{variable.name}'
+            )
 
             # Begrenzung der Korrektur-Anzahl:
             # eq: sum(K) <= n_Corr_max
-            eq_max = create_equation(f'Nr_of_Corrections_{variable.label}', self, eq_type='ineq')
-            eq_max.add_summand(var_k1, 1, as_sum=True)
-            eq_max.add_summand(var_k0, 1, as_sum=True)
-            eq_max.add_constant(
-                round(self.aggregation_parameters.percentage_of_period_freedom / 100 * var_k1.length)
-            )  # Maximum
-        return eq
+            self.add(self._model.add_constraints(
+                sum(var_k0) + sum(var_k1) <= round(self.aggregation_parameters.percentage_of_period_freedom / 100 * length),
+                name=f'{self.label_full}|limit_corrections|{variable.name}'),
+                f'limit_corrections|{variable.name}'
+            )
