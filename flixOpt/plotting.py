@@ -4,16 +4,17 @@ It provides high level functions to plot data with plotly and matplotlib.
 It's meant to be used in results.py, but is designed to be used by the end user as well.
 """
 
+import itertools
 import logging
 import pathlib
-import itertools
-from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
+from plotly.exceptions import PlotlyError
 import plotly.graph_objects as go
 import plotly.offline
 
@@ -80,8 +81,8 @@ def process_colors(
         if engine == 'plotly':
             try:
                 colorscale = px.colors.get_colorscale(colors)
-            except:
-                logger.warning(f"Colorscale '{colors}' not found in Plotly. Using {default_colormap}.")
+            except PlotlyError as e:
+                logger.warning(f"Colorscale '{colors}' not found in Plotly. Using {default_colormap}.: {e}")
                 colorscale = px.colors.get_colorscale(default_colormap)
 
             # Generate color points evenly spaced across the colorscale
@@ -92,8 +93,8 @@ def process_colors(
         else:  # matplotlib
             try:
                 cmap = plt.get_cmap(colors, len(labels))
-            except:
-                logger.warning(f"Colormap '{colors}' not found in Matplotlib. Using {default_colormap}.")
+            except ValueError as e:
+                logger.warning(f"Colormap '{colors}' not found in Matplotlib. Using {default_colormap}.: {e}")
                 cmap = plt.get_cmap(default_colormap, len(labels))
 
             color_list = [cmap(i) for i in range(len(labels))]
