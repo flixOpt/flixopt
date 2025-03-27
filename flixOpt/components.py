@@ -96,8 +96,7 @@ class LinearConverter(Component):
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
         if self.segmented_conversion_factors:
-            for flow, piecewise in self.segmented_conversion_factors.items():
-                piecewise.transform_data(flow_system, self.flows[flow].label_full)
+            self.segmented_conversion_factors.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
     def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, TimeSeries]]:
         """macht alle Faktoren, die nicht TimeSeries sind, zu TimeSeries"""

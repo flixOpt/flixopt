@@ -91,9 +91,12 @@ class PiecewiseConversion(Interface):
     def __iter__(self) -> Iterator[Dict[str, Piece]]:
         return iter([self[i] for i in range(len(self))])
 
+    def items(self):
+        return self.piecewises.items()
+
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        for i, piecewise in enumerate(self.piecewises.values()):
-            piecewise.transform_data(flow_system, f'{name_prefix}')  #TODO:
+        for name, piecewise in self.piecewises.items():
+            piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
 
 @register_class_for_io
