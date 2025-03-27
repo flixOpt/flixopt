@@ -77,12 +77,13 @@ class PiecewiseConversion(Interface):
     def __len__(self):
         return len(self.piecewises)
 
-    def __getitem__(self, key: Union[str, int]) -> Union[Piecewise, Dict[str, Piece]]:
-        if isinstance(key, str):
-            return self.piecewises[key]
-        elif isinstance(key, int):  # Return str to Piece
-            return {key: piecewise[key] for key, piecewise in self.piecewises.items()}
-        raise TypeError(f'Expected str or int, got {type(key)}')
+    def __getitem__(self, index: Union[str, int]) -> Union[Piecewise, Dict[str, Piece]]:
+        """ Get a Piecewise by label or a Dict of Pieces by index. """
+        if isinstance(index, str):
+            return self.piecewises[index]
+        elif isinstance(index, int):  # Return str to Piece
+            return {key: piecewise[index] for key, piecewise in self.piecewises.items()}
+        raise TypeError(f'Expected str or int, got {type(index)}')
 
     def __iter__(self) -> Iterator[Dict[str, Piece]]:
         return iter([self[i] for i in range(len(self))])
