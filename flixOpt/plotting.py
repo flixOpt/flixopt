@@ -1363,28 +1363,3 @@ def export_figure(
         return fig, ax
 
     raise TypeError(f'Figure type not supported: {type(figure_like)}')
-
-if __name__ == '__main__':
-    # Example 1: Simple line plot with viridis colormap
-    data = pd.DataFrame(...)
-    fig = with_plotly(data, mode='line', colors='viridis')
-    export_figure(fig, default_path=pathlib.Path.cwd() / 'fig', show=True)
-
-    # Example 2: Bar chart with custom color list
-    custom_colors = ['#FF5733', '#33FF57', '#3357FF', '#F3FF33']
-    fig, ax = with_matplotlib(data, mode='bar', colors=custom_colors)
-    export_figure((fig, ax), default_path=pathlib.Path.cwd() / 'fig', show=True)
-
-    # Example 3: Pie chart with specific category colors
-    color_mapping = {
-        'Category A': '#E41A1C',
-        'Category B': '#377EB8',
-        'Category C': '#4DAF4A',
-        'Category D': '#984EA3'
-    }
-    fig = pie_with_plotly(data, colors=color_mapping)
-    export_figure(fig, default_path=pathlib.Path.cwd() / 'fig', show=True)
-
-    # Example 4: Getting a consistent color mapping for multiple visualizations
-    categories = ['Revenue', 'Expenses', 'Profit', 'Investment']
-    color_map = ColorProcessor(engine='plotly').process_colors(colors='portland', labels=categories, return_mapping=True)
