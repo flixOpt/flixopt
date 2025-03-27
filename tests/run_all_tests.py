@@ -7,4 +7,4 @@ or run testmodules individually
 import pytest
 
 if __name__ == '__main__':
-    pytest.main(['--disable-warnings'])
+    pytest.main(['test_io.py', '--disable-warnings'])

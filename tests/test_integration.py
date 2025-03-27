@@ -318,7 +318,7 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Speicher|PiecewiseShares|costs'].solution.values,
+            calculation.results.model['Speicher|PiecewiseEffects|costs'].solution.values,
             800,
             'Speicher investCosts_segmented_costs doesnt match expected value',
         )
@@ -360,7 +360,7 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            comps['Speicher'].model.variables['Speicher|PiecewiseShares|costs'].solution.values,
+            comps['Speicher'].model.variables['Speicher|PiecewiseEffects|costs'].solution.values,
             454.74666666666667,
             'Speicher investCosts_segmented_costs doesnt match expected value',
         )

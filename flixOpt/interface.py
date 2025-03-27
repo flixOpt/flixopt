@@ -98,7 +98,7 @@ class PiecewiseConversion(Interface):
 
 
 @register_class_for_io
-class PiecewiseShares(Interface):
+class PiecewiseEffects(Interface):
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
@@ -123,7 +123,7 @@ class InvestParameters(Interface):
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScalar'] = None,
         specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
-        piecewise_effects: Optional[PiecewiseShares] = None,
+        piecewise_effects: Optional[PiecewiseEffects] = None,
         divest_effects: Optional['EffectValuesUserScalar'] = None,
     ):
         """

@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise, Piece, PiecewiseConversion, PiecewiseShares
+from .interface import InvestParameters, OnOffParameters, Piecewise, Piece, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -103,7 +103,7 @@ class InvestmentModel(Model):
 
         if self.parameters.piecewise_effects:
             self._segments = self.add(
-                PiecewiseSharesModel(
+                PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
@@ -870,7 +870,7 @@ class ShareAllocationModel(Model):
                 self._eq_total_per_timestep.lhs -= self.shares[name]
 
 
-class PiecewiseSharesModel(Model):
+class PiecewiseEffectsModel(Model):
     # TODO: Length...
     def __init__(
         self,
@@ -879,7 +879,7 @@ class PiecewiseSharesModel(Model):
         piecewise_origin: Tuple[str, Piecewise],
         piecewise_shares: Dict[str, Piecewise],
         can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
-        label: str = 'PiecewiseShares',
+        label: str = 'PiecewiseEffects',
     ):
         super().__init__(model, label_of_element, label)
         assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (

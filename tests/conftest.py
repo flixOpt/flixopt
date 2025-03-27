@@ -208,7 +208,7 @@ def flow_system_complex() -> fx.FlowSystem:
 
     invest_speicher = fx.InvestParameters(
         fix_effects=0,
-        piecewise_effects=fx.PiecewiseShares(
+        piecewise_effects=fx.PiecewiseEffects(
             piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
             piecewise_shares={
                 'costs': fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),

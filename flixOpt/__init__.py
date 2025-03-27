@@ -17,7 +17,7 @@ from .commons import (
     Piece,
     Piecewise,
     PiecewiseConversion,
-    PiecewiseShares,
+    PiecewiseEffects,
     SegmentedCalculation,
     Sink,
     Source,
