@@ -229,7 +229,9 @@ class Flow(Element):
         self.flow_hours_total_min = flow_hours_total_min
         self.on_off_parameters = on_off_parameters
 
-        self.previous_flow_rate = previous_flow_rate if not isinstance(previous_flow_rate, list) else np.array(previous_flow_rate)
+        self.previous_flow_rate = (
+            previous_flow_rate if not isinstance(previous_flow_rate, list) else np.array(previous_flow_rate)
+        )
 
         self.component: str = 'UnknownComponent'
         self.is_input_in_component: Optional[bool] = None
@@ -240,7 +242,7 @@ class Flow(Element):
                 f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow.',
                 UserWarning,
                 stacklevel=1,
-                )
+            )
             self._bus_object = bus
         else:
             self.bus = bus
@@ -333,9 +335,9 @@ class FlowModel(ElementModel):
                 lower=self.absolute_flow_rate_bounds[0] if self.element.on_off_parameters is None else 0,
                 upper=self.absolute_flow_rate_bounds[1],
                 coords=self._model.coords,
-                name=f'{self.label_full}|flow_rate'
+                name=f'{self.label_full}|flow_rate',
             ),
-            'flow_rate'
+            'flow_rate',
         )
 
         # OnOff
@@ -349,7 +351,7 @@ class FlowModel(ElementModel):
                     defining_bounds=[self.absolute_flow_rate_bounds],
                     previous_values=[self.element.previous_flow_rate],
                 ),
-                'on_off'
+                'on_off',
             )
             self.on_off.do_modeling()
 
@@ -364,7 +366,7 @@ class FlowModel(ElementModel):
                     relative_bounds_of_defining_variable=self.relative_flow_rate_bounds,
                     on_variable=self.on_off.on if self.on_off is not None else None,
                 ),
-                'investment'
+                'investment',
             )
             self._investment.do_modeling()
 
@@ -373,17 +375,17 @@ class FlowModel(ElementModel):
                 lower=self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else -np.inf,
                 upper=self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else np.inf,
                 coords=None,
-                name=f'{self.label_full}|total_flow_hours'
+                name=f'{self.label_full}|total_flow_hours',
             ),
-            'total_flow_hours'
+            'total_flow_hours',
         )
 
         self.add(
             self._model.add_constraints(
                 self.total_flow_hours == (self.flow_rate * self._model.hours_per_step).sum(),
-                name=f'{self.label_full}|total_flow_hours'
+                name=f'{self.label_full}|total_flow_hours',
             ),
-            'total_flow_hours'
+            'total_flow_hours',
         )
 
         # Load factor
@@ -419,7 +421,7 @@ class FlowModel(ElementModel):
                         self.total_flow_hours <= size * flow_hours_per_size_max,
                         name=f'{self.label_full}|{name_short}',
                     ),
-                    name_short
+                    name_short,
                 )
 
         #  eq: size * sum(dt)* load_factor_min <= var_sumFlowHours
@@ -434,7 +436,7 @@ class FlowModel(ElementModel):
                         self.total_flow_hours >= size * flow_hours_per_size_min,
                         name=f'{self.label_full}|{name_short}',
                     ),
-                    name_short
+                    name_short,
                 )
 
     @property
@@ -470,23 +472,20 @@ class BusModel(ElementModel):
             self.add(flow.model.flow_rate, flow.label_full)
         inputs = sum([flow.model.flow_rate for flow in self.element.inputs])
         outputs = sum([flow.model.flow_rate for flow in self.element.outputs])
-        eq_bus_balance = self.add(self._model.add_constraints(
-            inputs == outputs,
-            name=f'{self.label_full}|balance'
-        ))
+        eq_bus_balance = self.add(self._model.add_constraints(inputs == outputs, name=f'{self.label_full}|balance'))
 
         # Fehlerplus/-minus:
         if self.element.with_excess:
             excess_penalty = np.multiply(
                 self._model.hours_per_step, self.element.excess_penalty_per_flow_hour.active_data
             )
-            self.excess_input = self.add(self._model.add_variables(
-                lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_input'),
-                'excess_input'
+            self.excess_input = self.add(
+                self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_input'),
+                'excess_input',
             )
-            self.excess_output = self.add(self._model.add_variables(
-                lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_output'),
-                'excess_output'
+            self.excess_output = self.add(
+                self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_output'),
+                'excess_output',
             )
             eq_bus_balance.lhs -= -self.excess_input + self.excess_output
 
@@ -529,13 +528,16 @@ class ComponentModel(ElementModel):
             sub_model.do_modeling()
 
         if self.element.on_off_parameters:
-            self.on_off = self.add(OnOffModel(
-                self._model,
-                self.element.on_off_parameters,
-                self.label_of_element,
-                defining_variables=[flow.model.flow_rate for flow in all_flows],
-                defining_bounds=[flow.model.absolute_flow_rate_bounds for flow in all_flows],
-                previous_values=[flow.previous_flow_rate for flow in all_flows]))
+            self.on_off = self.add(
+                OnOffModel(
+                    self._model,
+                    self.element.on_off_parameters,
+                    self.label_of_element,
+                    defining_variables=[flow.model.flow_rate for flow in all_flows],
+                    defining_bounds=[flow.model.absolute_flow_rate_bounds for flow in all_flows],
+                    previous_values=[flow.previous_flow_rate for flow in all_flows],
+                )
+            )
 
             self.on_off.do_modeling()
 
@@ -546,6 +548,8 @@ class ComponentModel(ElementModel):
             simultaneous_use.do_modeling()
 
     def results_structure(self):
-        return {**super().results_structure(),
-                'inputs': [flow.model.flow_rate.name for flow in self.element.inputs],
-                'outputs': [flow.model.flow_rate.name for flow in self.element.outputs]}
+        return {
+            **super().results_structure(),
+            'inputs': [flow.model.flow_rate.name for flow in self.element.inputs],
+            'outputs': [flow.model.flow_rate.name for flow in self.element.outputs],
+        }

@@ -79,9 +79,7 @@ class Effect(Element):
         self.specific_share_to_other_effects_operation: EffectValuesUser = (
             specific_share_to_other_effects_operation or {}
         )
-        self.specific_share_to_other_effects_invest: EffectValuesUser = (
-            specific_share_to_other_effects_invest or {}
-        )
+        self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
         self.minimum_operation_per_hour: NumericDataTS = minimum_operation_per_hour
@@ -100,9 +98,7 @@ class Effect(Element):
         )
 
         self.specific_share_to_other_effects_operation = flow_system.create_effect_time_series(
-            f'{self.label_full}|operation->',
-            self.specific_share_to_other_effects_operation,
-            'operation'
+            f'{self.label_full}|operation->', self.specific_share_to_other_effects_operation, 'operation'
         )
 
     def create_model(self, model: SystemModel) -> 'EffectModel':
@@ -128,7 +124,7 @@ class EffectModel(ElementModel):
                 'invest',
                 label_full=f'{self.label_full}(invest)',
                 total_max=self.element.maximum_invest,
-                total_min=self.element.minimum_invest
+                total_min=self.element.minimum_invest,
             )
         )
 
@@ -159,18 +155,18 @@ class EffectModel(ElementModel):
                 lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
                 upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
                 coords=None,
-                name=f'{self.label_full}|total'
+                name=f'{self.label_full}|total',
             ),
-            'total'
+            'total',
         )
 
         self.add(
             self._model.add_constraints(
-                self.total == self.operation.total.sum() + self.invest.total.sum(),
-                name=f'{self.label_full}|total'
+                self.total == self.operation.total.sum() + self.invest.total.sum(), name=f'{self.label_full}|total'
             ),
-            'total'
+            'total',
         )
+
 
 EffectValuesExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
 EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
@@ -225,11 +221,11 @@ class EffectCollection:
         """
 
         def get_effect_label(eff: Union[Effect, str]) -> str:
-            """ Temporary function to get the label of an effect and warn for deprecation """
+            """Temporary function to get the label of an effect and warn for deprecation"""
             if isinstance(eff, Effect):
                 warnings.warn(
-                    f"The use of effect objects when specifying EffectValues is deprecated. "
-                    f"Use the label of the effect instead. Used effect: {eff.label_full}",
+                    f'The use of effect objects when specifying EffectValues is deprecated. '
+                    f'Use the label of the effect instead. Used effect: {eff.label_full}',
                     UserWarning,
                     stacklevel=2,
                 )
@@ -252,6 +248,7 @@ class EffectCollection:
                 f'  {effect_label} -> has share in: {share_ffect_label}\n'
                 f'  {share_ffect_label} -> has share in: {effect_label}'
             )
+
         for effect in self.effects.values():
             # Effekt darf nicht selber als Share in seinen ShareEffekten auftauchen:
             # operation:
@@ -347,7 +344,7 @@ class EffectCollectionModel(Model):
         for effect, expression in expressions.items():
             if target == 'operation':
                 self.effects[effect].model.operation.add_share(name, expression)
-            elif target =='invest':
+            elif target == 'invest':
                 self.effects[effect].model.invest.add_share(name, expression)
             else:
                 raise ValueError(f'Target {target} not supported!')
@@ -360,15 +357,15 @@ class EffectCollectionModel(Model):
     def do_modeling(self):
         for effect in self.effects:
             effect.create_model(self._model)
-        self.penalty = self.add(ShareAllocationModel(self._model, shares_are_time_series=False, label_of_element='Penalty'))
+        self.penalty = self.add(
+            ShareAllocationModel(self._model, shares_are_time_series=False, label_of_element='Penalty')
+        )
         for model in [effect.model for effect in self.effects] + [self.penalty]:
             model.do_modeling()
 
         self._add_share_between_effects()
 
-        self._model.add_objective(
-            self.effects.objective_effect.model.total + self.penalty.total
-        )
+        self._model.add_objective(self.effects.objective_effect.model.total + self.penalty.total)
 
     def _add_share_between_effects(self):
         for origin_effect in self.effects:

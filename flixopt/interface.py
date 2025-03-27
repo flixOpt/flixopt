@@ -87,6 +87,7 @@ class InvestParameters(Interface):
     def maximum_size(self):
         return self.fixed_size or self._maximum_size
 
+
 @register_class_for_io
 class OnOffParameters(Interface):
     def __init__(

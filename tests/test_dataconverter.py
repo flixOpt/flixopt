@@ -8,7 +8,7 @@ from flixopt.core import ConversionError, DataConverter  # Adjust this import to
 
 @pytest.fixture
 def sample_time_index(request):
-    index = pd.date_range("2024-01-01", periods=5, freq="D", name='time')
+    index = pd.date_range('2024-01-01', periods=5, freq='D', name='time')
     return index
 
 
@@ -34,10 +34,7 @@ def test_series_conversion(sample_time_index):
 
 def test_dataframe_conversion(sample_time_index):
     # Create a single-column DataFrame
-    df = pd.DataFrame(
-        {"A": [1, 2, 3, 4, 5]},
-        index=sample_time_index
-    )
+    df = pd.DataFrame({'A': [1, 2, 3, 4, 5]}, index=sample_time_index)
 
     # Test DataFrame conversion
     result = DataConverter.as_dataarray(df, sample_time_index)
@@ -58,11 +55,7 @@ def test_ndarray_conversion(sample_time_index):
 
 def test_dataarray_conversion(sample_time_index):
     # Create a DataArray
-    original = xr.DataArray(
-        data=np.array([1, 2, 3, 4, 5]),
-        coords={'time': sample_time_index},
-        dims=['time']
-    )
+    original = xr.DataArray(data=np.array([1, 2, 3, 4, 5]), coords={'time': sample_time_index}, dims=['time'])
 
     # Test DataArray conversion
     result = DataConverter.as_dataarray(original, sample_time_index)
@@ -78,18 +71,15 @@ def test_dataarray_conversion(sample_time_index):
 def test_invalid_inputs(sample_time_index):
     # Test invalid input type
     with pytest.raises(ConversionError):
-        DataConverter.as_dataarray("invalid_string", sample_time_index)
+        DataConverter.as_dataarray('invalid_string', sample_time_index)
 
     # Test mismatched Series index
-    mismatched_series = pd.Series([1, 2, 3, 4, 5, 6], index=pd.date_range("2025-01-01", periods=6, freq="D"))
+    mismatched_series = pd.Series([1, 2, 3, 4, 5, 6], index=pd.date_range('2025-01-01', periods=6, freq='D'))
     with pytest.raises(ConversionError):
         DataConverter.as_dataarray(mismatched_series, sample_time_index)
 
     # Test DataFrame with multiple columns
-    df_multi_col = pd.DataFrame({
-        "A": [1, 2, 3, 4, 5],
-        "B": [6, 7, 8, 9, 10]
-    }, index=sample_time_index)
+    df_multi_col = pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [6, 7, 8, 9, 10]}, index=sample_time_index)
     with pytest.raises(ConversionError):
         DataConverter.as_dataarray(df_multi_col, sample_time_index)
 
@@ -104,7 +94,7 @@ def test_invalid_inputs(sample_time_index):
 
 def test_time_index_validation():
     # Test with unnamed index
-    unnamed_index = pd.date_range("2024-01-01", periods=5, freq="D")
+    unnamed_index = pd.date_range('2024-01-01', periods=5, freq='D')
     with pytest.raises(ConversionError):
         DataConverter.as_dataarray(42, unnamed_index)
 
@@ -119,5 +109,5 @@ def test_time_index_validation():
         DataConverter.as_dataarray(42, wrong_type_index)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     pytest.main()

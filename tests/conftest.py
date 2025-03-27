@@ -30,11 +30,7 @@ def solver_fixture(request):
 
 # Custom assertion function
 def assert_almost_equal_numeric(
-        actual,
-        desired,
-        err_msg,
-        relative_error_range_in_percent=0.011,
-        absolute_tolerance=1e-9
+    actual, desired, err_msg, relative_error_range_in_percent=0.011, absolute_tolerance=1e-9
 ):
     """
     Custom assertion function for comparing numeric values with relative and absolute tolerances
@@ -45,13 +41,7 @@ def assert_almost_equal_numeric(
         delta = abs(relative_tol * desired) if desired != 0 else absolute_tolerance
         assert np.isclose(actual, desired, atol=delta), err_msg
     else:
-        np.testing.assert_allclose(
-            actual,
-            desired,
-            rtol=relative_tol,
-            atol=absolute_tolerance,
-            err_msg=err_msg
-        )
+        np.testing.assert_allclose(actual, desired, rtol=relative_tol, atol=absolute_tolerance, err_msg=err_msg)
 
 
 @pytest.fixture
@@ -110,27 +100,20 @@ def simple_flow_system() -> fx.FlowSystem:
     )
 
     heat_load = fx.Sink(
-        'Wärmelast',
-        sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=base_thermal_load)
+        'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=base_thermal_load)
     )
 
     gas_tariff = fx.Source(
-        'Gastarif',
-        source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})
+        'Gastarif', source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})
     )
 
     electricity_feed_in = fx.Sink(
-        'Einspeisung',
-        sink=fx.Flow('P_el', bus='Strom', effects_per_flow_hour=-1 * base_electrical_price)
+        'Einspeisung', sink=fx.Flow('P_el', bus='Strom', effects_per_flow_hour=-1 * base_electrical_price)
     )
 
     # Create flow system
     flow_system = fx.FlowSystem(base_timesteps)
-    flow_system.add_elements(
-        fx.Bus('Strom'),
-        fx.Bus('Fernwärme'),
-        fx.Bus('Gas')
-    )
+    flow_system.add_elements(fx.Bus('Strom'), fx.Bus('Fernwärme'), fx.Bus('Gas'))
     flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
 
     return flow_system
@@ -173,7 +156,9 @@ def flow_system_complex() -> fx.FlowSystem:
         fx.Bus('Fernwärme'),
         fx.Bus('Gas'),
         fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)),
-        fx.Source('Gastarif', source=fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})),
+        fx.Source(
+            'Gastarif', source=fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})
+        ),
         fx.Sink('Einspeisung', sink=fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)),
     )
 
@@ -208,9 +193,7 @@ def flow_system_complex() -> fx.FlowSystem:
 
     invest_speicher = fx.InvestParameters(
         fix_effects=0,
-        effects_in_segments=([(5, 25), (25, 100)],
-                             {'costs': [(50, 250), (250, 800)], 'PE': [(5, 25), (25, 100)]}
-                             ),
+        effects_in_segments=([(5, 25), (25, 100)], {'costs': [(50, 250), (250, 800)], 'PE': [(5, 25), (25, 100)]}),
         optional=False,
         specific_effects={'costs': 0.01, 'CO2': 0.01},
         minimum_size=0,
@@ -241,15 +224,17 @@ def flow_system_base(flow_system_complex) -> fx.FlowSystem:
     """
     flow_system = flow_system_complex
 
-    flow_system.add_elements(fx.linear_converters.CHP(
-        'KWK',
-        eta_th=0.5,
-        eta_el=0.4,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, previous_flow_rate=10),
-        Q_th=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
-        Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3),
-    ))
+    flow_system.add_elements(
+        fx.linear_converters.CHP(
+            'KWK',
+            eta_th=0.5,
+            eta_el=0.4,
+            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+            P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, previous_flow_rate=10),
+            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
+            Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3),
+        )
+    )
 
     return flow_system
 
@@ -258,18 +243,22 @@ def flow_system_base(flow_system_complex) -> fx.FlowSystem:
 def flow_system_segments_of_flows(flow_system_complex) -> fx.FlowSystem:
     flow_system = flow_system_complex
 
-    flow_system.add_elements(fx.LinearConverter(
-        'KWK',
-        inputs=[fx.Flow('Q_fu', bus='Gas')],
-        outputs=[fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
-                 fx.Flow('Q_th', bus='Fernwärme')],
-        segmented_conversion_factors={
-            'P_el': [(5, 30), (40, 60)],
-            'Q_th': [(6, 35), (45, 100)],
-            'Q_fu': [(12, 70), (90, 200)],
-        },
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
-    ))
+    flow_system.add_elements(
+        fx.LinearConverter(
+            'KWK',
+            inputs=[fx.Flow('Q_fu', bus='Gas')],
+            outputs=[
+                fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
+                fx.Flow('Q_th', bus='Fernwärme'),
+            ],
+            segmented_conversion_factors={
+                'P_el': [(5, 30), (40, 60)],
+                'Q_th': [(6, 35), (45, 100)],
+                'Q_fu': [(12, 70), (90, 200)],
+            },
+            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+        )
+    )
 
     return flow_system
 
@@ -290,8 +279,10 @@ def flow_system_long():
     p_el = data['Strompr.€/MWh'].values
     gas_price = data['Gaspr.€/MWh'].values
 
-    thermal_load_ts, electrical_load_ts = fx.TimeSeriesData(thermal_load), fx.TimeSeriesData(electrical_load,
-                                                                                             agg_weight=0.7)
+    thermal_load_ts, electrical_load_ts = (
+        fx.TimeSeriesData(thermal_load),
+        fx.TimeSeriesData(electrical_load, agg_weight=0.7),
+    )
     p_feed_in, p_sell = (
         fx.TimeSeriesData(-(p_el - 0.5), agg_group='p_el'),
         fx.TimeSeriesData(p_el + 0.5, agg_group='p_el'),
@@ -299,18 +290,30 @@ def flow_system_long():
 
     flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))
     flow_system.add_elements(
-        fx.Bus('Strom'), fx.Bus('Fernwärme'),  fx.Bus('Gas'), fx.Bus('Kohle'),
-
+        fx.Bus('Strom'),
+        fx.Bus('Fernwärme'),
+        fx.Bus('Gas'),
+        fx.Bus('Kohle'),
         fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True),
         fx.Effect('CO2', 'kg', 'CO2_e-Emissionen'),
         fx.Effect('PE', 'kWh_PE', 'Primärenergie'),
-
-        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_load_ts)),
+        fx.Sink(
+            'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_load_ts)
+        ),
         fx.Sink('Stromlast', sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_load_ts)),
-        fx.Source('Kohletarif',source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})),
-        fx.Source('Gastarif', source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})),
+        fx.Source(
+            'Kohletarif',
+            source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3}),
+        ),
+        fx.Source(
+            'Gastarif',
+            source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3}),
+        ),
         fx.Sink('Einspeisung', sink=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=p_feed_in)),
-        fx.Source('Stromtarif', source=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3}))
+        fx.Source(
+            'Stromtarif',
+            source=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3}),
+        ),
     )
 
     flow_system.add_elements(
@@ -353,9 +356,9 @@ def flow_system_long():
 
     # Return all the necessary data
     return flow_system, {
-            'thermal_load_ts': thermal_load_ts,
-            'electrical_load_ts': electrical_load_ts,
-        }
+        'thermal_load_ts': thermal_load_ts,
+        'electrical_load_ts': electrical_load_ts,
+    }
 
 
 def create_calculation_and_solve(flow_system: fx.FlowSystem, solver, name: str) -> fx.FullCalculation:

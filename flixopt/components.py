@@ -67,7 +67,9 @@ class LinearConverter(Component):
         if not self.conversion_factors and not self.segmented_conversion_factors:
             raise PlausibilityError('Either conversion_factors or segmented_conversion_factors must be defined!')
         if self.conversion_factors and self.segmented_conversion_factors:
-            raise PlausibilityError('Only one of conversion_factors or segmented_conversion_factors can be defined, not both!')
+            raise PlausibilityError(
+                'Only one of conversion_factors or segmented_conversion_factors can be defined, not both!'
+            )
 
         if self.conversion_factors:
             if self.degrees_of_freedom <= 0:
@@ -178,6 +180,7 @@ class Storage(Component):
     - $\eta_\text{out}(\text{t}_i)$ is the discharging efficiency at time $\text{t}_i$
 
     """
+
     def __init__(
         self,
         label: str,
@@ -252,10 +255,14 @@ class Storage(Component):
     def transform_data(self, flow_system: 'FlowSystem') -> None:
         super().transform_data(flow_system)
         self.relative_minimum_charge_state = flow_system.create_time_series(
-            f'{self.label_full}|relative_minimum_charge_state', self.relative_minimum_charge_state, needs_extra_timestep=True
+            f'{self.label_full}|relative_minimum_charge_state',
+            self.relative_minimum_charge_state,
+            needs_extra_timestep=True,
         )
         self.relative_maximum_charge_state = flow_system.create_time_series(
-            f'{self.label_full}|relative_maximum_charge_state', self.relative_maximum_charge_state, needs_extra_timestep=True
+            f'{self.label_full}|relative_maximum_charge_state',
+            self.relative_maximum_charge_state,
+            needs_extra_timestep=True,
         )
         self.eta_charge = flow_system.create_time_series(f'{self.label_full}|eta_charge', self.eta_charge)
         self.eta_discharge = flow_system.create_time_series(f'{self.label_full}|eta_discharge', self.eta_discharge)
@@ -287,11 +294,15 @@ class Storage(Component):
             maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
 
             if self.initial_charge_state > maximum_inital_capacity:
-                raise ValueError(f'{self.label_full}: {self.initial_charge_state=} '
-                                 f'is above allowed maximum charge_state {maximum_inital_capacity}')
+                raise ValueError(
+                    f'{self.label_full}: {self.initial_charge_state=} '
+                    f'is above allowed maximum charge_state {maximum_inital_capacity}'
+                )
             if self.initial_charge_state < minimum_inital_capacity:
-                raise ValueError(f'{self.label_full}: {self.initial_charge_state=} '
-                                 f'is below allowed minimum charge_state {minimum_inital_capacity}')
+                raise ValueError(
+                    f'{self.label_full}: {self.initial_charge_state=} '
+                    f'is below allowed minimum charge_state {minimum_inital_capacity}'
+                )
         elif self.initial_charge_state != 'lastValueOfSim':
             raise ValueError(f'{self.label_full}: {self.initial_charge_state=} has an invalid value')
 
@@ -418,19 +429,23 @@ class TransmissionModel(ComponentModel):
         # equate size of both directions
         if isinstance(self.element.in1.size, InvestParameters) and self.element.in2 is not None:
             # eq: in1.size = in2.size
-            self.add(self._model.add_constraints(
-                self.element.in1.model._investment.size == self.element.in2.model._investment.size,
-                name=f'{self.label_full}|same_size'),
-                'same_size'
+            self.add(
+                self._model.add_constraints(
+                    self.element.in1.model._investment.size == self.element.in2.model._investment.size,
+                    name=f'{self.label_full}|same_size',
+                ),
+                'same_size',
             )
 
     def create_transmission_equation(self, name: str, in_flow: Flow, out_flow: Flow) -> linopy.Constraint:
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
-        con_transmission = self.add(self._model.add_constraints(
-            out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses.active_data - 1),
-            name=f'{self.label_full}|{name}'),
-            name
+        con_transmission = self.add(
+            self._model.add_constraints(
+                out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses.active_data - 1),
+                name=f'{self.label_full}|{name}',
+            ),
+            name,
         )
 
         if self.element.absolute_losses is not None:
@@ -462,9 +477,8 @@ class LinearConverterModel(ComponentModel):
                 self.add(
                     self._model.add_constraints(
                         sum([flow.model.flow_rate * conv_factors[flow.label].active_data for flow in used_inputs])
-                        ==
-                        sum([flow.model.flow_rate * conv_factors[flow.label].active_data for flow in used_outputs]),
-                        name=f'{self.label_full}|conversion_{i}'
+                        == sum([flow.model.flow_rate * conv_factors[flow.label].active_data for flow in used_outputs]),
+                        name=f'{self.label_full}|conversion_{i}',
                     )
                 )
 
@@ -498,21 +512,25 @@ class StorageModel(ComponentModel):
         super().do_modeling()
 
         lb, ub = self.absolute_charge_state_bounds
-        self.charge_state = self.add(self._model.add_variables(
-            lower=lb, upper=ub, coords=self._model.coords_extra,
-            name=f'{self.label_full}|charge_state'),
-            'charge_state'
+        self.charge_state = self.add(
+            self._model.add_variables(
+                lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|charge_state'
+            ),
+            'charge_state',
         )
-        self.netto_discharge = self.add(self._model.add_variables(
-            coords=self._model.coords, name=f'{self.label_full}|netto_discharge'),
-            'netto_discharge'
+        self.netto_discharge = self.add(
+            self._model.add_variables(coords=self._model.coords, name=f'{self.label_full}|netto_discharge'),
+            'netto_discharge',
         )
         # netto_discharge:
         # eq: nettoFlow(t) - discharging(t) + charging(t) = 0
-        self.add(self._model.add_constraints(
-            self.netto_discharge == self.element.discharging.model.flow_rate - self.element.charging.model.flow_rate,
-            name=f'{self.label_full}|netto_discharge'),
-            'netto_discharge'
+        self.add(
+            self._model.add_constraints(
+                self.netto_discharge
+                == self.element.discharging.model.flow_rate - self.element.charging.model.flow_rate,
+                name=f'{self.label_full}|netto_discharge',
+            ),
+            'netto_discharge',
         )
 
         charge_state = self.charge_state
@@ -523,14 +541,15 @@ class StorageModel(ComponentModel):
         eff_charge = self.element.eta_charge.active_data
         eff_discharge = self.element.eta_discharge.active_data
 
-        self.add(self._model.add_constraints(
-            charge_state.isel(time=slice(1, None))
-            ==
-            charge_state.isel(time=slice(None, -1)) * (1 - rel_loss * hours_per_step)
-            + charge_rate * eff_charge * hours_per_step
-            - discharge_rate * eff_discharge * hours_per_step,
-            name=f'{self.label_full}|charge_state'),
-            'charge_state'
+        self.add(
+            self._model.add_constraints(
+                charge_state.isel(time=slice(1, None))
+                == charge_state.isel(time=slice(None, -1)) * (1 - rel_loss * hours_per_step)
+                + charge_rate * eff_charge * hours_per_step
+                - discharge_rate * eff_discharge * hours_per_step,
+                name=f'{self.label_full}|charge_state',
+            ),
+            'charge_state',
         )
 
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
@@ -553,32 +572,40 @@ class StorageModel(ComponentModel):
             name = f'{self.label_full}|{name_short}'
 
             if utils.is_number(self.element.initial_charge_state):
-                self.add(self._model.add_constraints(
-                    self.charge_state.isel(time=0) == self.element.initial_charge_state,
-                    name=name),
-                    name_short
+                self.add(
+                    self._model.add_constraints(
+                        self.charge_state.isel(time=0) == self.element.initial_charge_state, name=name
+                    ),
+                    name_short,
                 )
             elif self.element.initial_charge_state == 'lastValueOfSim':
-                self.add(self._model.add_constraints(
-                    self.charge_state.isel(time=0) == self.charge_state.isel(time=-1),
-                    name=name),
-                    name_short
+                self.add(
+                    self._model.add_constraints(
+                        self.charge_state.isel(time=0) == self.charge_state.isel(time=-1), name=name
+                    ),
+                    name_short,
                 )
             else:  # TODO: Validation in Storage Class, not in Model
-                raise PlausibilityError(f'initial_charge_state has undefined value: {self.element.initial_charge_state}')
+                raise PlausibilityError(
+                    f'initial_charge_state has undefined value: {self.element.initial_charge_state}'
+                )
 
         if self.element.maximal_final_charge_state is not None:
-            self.add(self._model.add_constraints(
-                self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
-                name=f'{self.label_full}|final_charge_max'),
-                'final_charge_max'
+            self.add(
+                self._model.add_constraints(
+                    self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
+                    name=f'{self.label_full}|final_charge_max',
+                ),
+                'final_charge_max',
             )
 
         if self.element.minimal_final_charge_state is not None:
-            self.add(self._model.add_constraints(
-                self.charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
-                name=f'{self.label_full}|final_charge_min'),
-                'final_charge_min'
+            self.add(
+                self._model.add_constraints(
+                    self.charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
+                    name=f'{self.label_full}|final_charge_min',
+                ),
+                'final_charge_min',
             )
 
     @property
@@ -608,6 +635,7 @@ class SourceAndSink(Component):
     """
     class for source (output-flow) and sink (input-flow) in one commponent
     """
+
     def __init__(
         self,
         label: str,

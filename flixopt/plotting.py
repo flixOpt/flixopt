@@ -25,11 +25,11 @@ logger = logging.getLogger('flixopt')
 
 # Define the colors for the 'portland' colormap in matplotlib
 _portland_colors = [
-    [12/255, 51/255, 131/255],    # Dark blue
-    [10/255, 136/255, 186/255],   # Light blue
-    [242/255, 211/255, 56/255],   # Yellow
-    [242/255, 143/255, 56/255],   # Orange
-    [217/255, 30/255, 30/255]     # Red
+    [12 / 255, 51 / 255, 131 / 255],  # Dark blue
+    [10 / 255, 136 / 255, 186 / 255],  # Light blue
+    [242 / 255, 211 / 255, 56 / 255],  # Yellow
+    [242 / 255, 143 / 255, 56 / 255],  # Orange
+    [217 / 255, 30 / 255, 30 / 255],  # Red
 ]
 
 plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
@@ -60,7 +60,7 @@ class ColorProcessor:
             engine: The plotting engine to use ('plotly' or 'matplotlib')
             default_colormap: Default colormap to use if none is specified
         """
-        if engine not in ["plotly", "matplotlib"]:
+        if engine not in ['plotly', 'matplotlib']:
             raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
         self.engine = engine
         self.default_colormap = default_colormap
@@ -80,9 +80,7 @@ class ColorProcessor:
             try:
                 colorscale = px.colors.get_colorscale(colormap_name)
             except PlotlyError as e:
-                logger.warning(
-                    f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}"
-                )
+                logger.warning(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
                 colorscale = px.colors.get_colorscale(self.default_colormap)
 
             # Generate evenly spaced points
@@ -806,7 +804,7 @@ def pie_with_plotly(
 
     """
     if data.empty:
-        logger.warning("Empty DataFrame provided for pie chart. Returning empty figure.")
+        logger.warning('Empty DataFrame provided for pie chart. Returning empty figure.')
         return go.Figure()
 
     # Create a copy to avoid modifying the original DataFrame
@@ -814,7 +812,7 @@ def pie_with_plotly(
 
     # Check if any negative values and warn
     if (data_copy < 0).any().any():
-        logger.warning("Negative values detected in data. Using absolute values for pie chart.")
+        logger.warning('Negative values detected in data. Using absolute values for pie chart.')
         data_copy = data_copy.abs()
 
     # If data has multiple rows, sum them to get total for each column
@@ -852,7 +850,7 @@ def pie_with_plotly(
         legend_title=legend_title,
         plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
         paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
-        font=dict(size=14),             # Increase font size for better readability
+        font=dict(size=14),  # Increase font size for better readability
     )
 
     return fig
@@ -896,7 +894,7 @@ def pie_with_matplotlib(
 
     """
     if data.empty:
-        logger.warning("Empty DataFrame provided for pie chart. Returning empty figure.")
+        logger.warning('Empty DataFrame provided for pie chart. Returning empty figure.')
         if fig is None or ax is None:
             fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
@@ -906,7 +904,7 @@ def pie_with_matplotlib(
 
     # Check if any negative values and warn
     if (data_copy < 0).any().any():
-        logger.warning("Negative values detected in data. Using absolute values for pie chart.")
+        logger.warning('Negative values detected in data. Using absolute values for pie chart.')
         data_copy = data_copy.abs()
 
     # If data has multiple rows, sum them to get total for each column
@@ -963,13 +961,7 @@ def pie_with_matplotlib(
 
     # Create a legend if there are many segments
     if len(labels) > 6:
-        ax.legend(
-            wedges,
-            labels,
-            title=legend_title,
-            loc="center left",
-            bbox_to_anchor=(1, 0, 0.5, 1)
-        )
+        ax.legend(wedges, labels, title=legend_title, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1))
 
     # Apply tight layout
     fig.tight_layout()
@@ -1022,9 +1014,7 @@ def dual_pie_with_plotly(
 
     # Create a subplot figure
     fig = make_subplots(
-        rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]],
-        subplot_titles=subtitles,
-        horizontal_spacing=0.05
+        rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]], subplot_titles=subtitles, horizontal_spacing=0.05
     )
 
     # Process series to handle negative values and apply minimum percentage threshold
@@ -1301,7 +1291,7 @@ def export_figure(
     default_filetype: Optional[str] = None,
     user_path: Optional[pathlib.Path] = None,
     show: bool = True,
-    save: bool = False
+    save: bool = False,
 ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
     """
     Export a figure to a file and or show it.

@@ -33,10 +33,10 @@ class FlowSystem:
     """
 
     def __init__(
-            self,
-            timesteps: pd.DatetimeIndex,
-            hours_of_last_timestep: Optional[float] = None,
-            hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
+        self,
+        timesteps: pd.DatetimeIndex,
+        hours_of_last_timestep: Optional[float] = None,
+        hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
     ):
         """
         Args:
@@ -66,14 +66,15 @@ class FlowSystem:
         timesteps_extra = pd.DatetimeIndex(ds.attrs['timesteps_extra'], name='time')
         hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
 
-        flow_system = FlowSystem(timesteps=timesteps_extra[:-1],
-                                 hours_of_last_timestep=hours_of_last_timestep,
-                                 hours_of_previous_timesteps=ds.attrs['hours_of_previous_timesteps'],
-                                 )
+        flow_system = FlowSystem(
+            timesteps=timesteps_extra[:-1],
+            hours_of_last_timestep=hours_of_last_timestep,
+            hours_of_previous_timesteps=ds.attrs['hours_of_previous_timesteps'],
+        )
 
         structure = fx_io.insert_dataarray({key: ds.attrs[key] for key in ['components', 'buses', 'effects']}, ds)
         flow_system.add_elements(
-            * [Bus.from_dict(bus) for bus in structure['buses'].values()]
+            *[Bus.from_dict(bus) for bus in structure['buses'].values()]
             + [Effect.from_dict(effect) for effect in structure['effects'].values()]
             + [CLASS_REGISTRY[comp['__class__']].from_dict(comp) for comp in structure['components'].values()]
         )
@@ -90,18 +91,15 @@ class FlowSystem:
         timesteps_extra = pd.DatetimeIndex(data['timesteps_extra'], name='time')
         hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
 
-        flow_system = FlowSystem(timesteps=timesteps_extra[:-1],
-                                 hours_of_last_timestep=hours_of_last_timestep,
-                                 hours_of_previous_timesteps=data['hours_of_previous_timesteps'],
-                                 )
-
-        flow_system.add_elements(
-            *[Bus.from_dict(bus) for bus in data['buses'].values()]
+        flow_system = FlowSystem(
+            timesteps=timesteps_extra[:-1],
+            hours_of_last_timestep=hours_of_last_timestep,
+            hours_of_previous_timesteps=data['hours_of_previous_timesteps'],
         )
 
-        flow_system.add_elements(
-            *[Effect.from_dict(effect) for effect in data['effects'].values()]
-        )
+        flow_system.add_elements(*[Bus.from_dict(bus) for bus in data['buses'].values()])
+
+        flow_system.add_elements(*[Effect.from_dict(effect) for effect in data['effects'].values()])
 
         flow_system.add_elements(
             *[CLASS_REGISTRY[comp['__class__']].from_dict(comp) for comp in data['components'].values()]
@@ -129,7 +127,7 @@ class FlowSystem:
         if self._connected:
             warnings.warn(
                 'You are adding elements to an already connected FlowSystem. This is not recommended (But it works).',
-            stacklevel=2
+                stacklevel=2,
             )
             self._connected = False
         for new_element in list(elements):
@@ -140,7 +138,9 @@ class FlowSystem:
             elif isinstance(new_element, Bus):
                 self._add_buses(new_element)
             else:
-                raise TypeError(f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} ')
+                raise TypeError(
+                    f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
+                )
 
     def to_json(self, path: Union[str, pathlib.Path]):
         """
@@ -157,20 +157,19 @@ class FlowSystem:
     def as_dict(self, data_mode: Literal['data', 'name', 'stats'] = 'data') -> Dict:
         """Convert the object to a dictionary representation."""
         data = {
-            "components": {
+            'components': {
                 comp.label: comp.to_dict()
                 for comp in sorted(self.components.values(), key=lambda component: component.label.upper())
             },
-            "buses": {
-                bus.label: bus.to_dict()
-                for bus in sorted(self.buses.values(), key=lambda bus: bus.label.upper())
+            'buses': {
+                bus.label: bus.to_dict() for bus in sorted(self.buses.values(), key=lambda bus: bus.label.upper())
             },
-            "effects": {
+            'effects': {
                 effect.label: effect.to_dict()
                 for effect in sorted(self.effects, key=lambda effect: effect.label.upper())
             },
-            "timesteps_extra": [date.isoformat() for date in self.time_series_collection.timesteps_extra],
-            "hours_of_previous_timesteps": self.time_series_collection.hours_of_previous_timesteps,
+            'timesteps_extra': [date.isoformat() for date in self.time_series_collection.timesteps_extra],
+            'hours_of_previous_timesteps': self.time_series_collection.hours_of_previous_timesteps,
         }
         if data_mode == 'data':
             return fx_io.replace_timeseries(data, 'data')
@@ -273,10 +272,10 @@ class FlowSystem:
             element.transform_data(self)
 
     def create_time_series(
-            self,
-            name: str,
-            data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
-            needs_extra_timestep: bool = False,
+        self,
+        name: str,
+        data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
+        needs_extra_timestep: bool = False,
     ) -> Optional[TimeSeries]:
         """
         Tries to create a TimeSeries from NumericData Data and adds it to the time_series_collection
@@ -292,21 +291,18 @@ class FlowSystem:
             if data in self.time_series_collection:
                 return data
             return self.time_series_collection.create_time_series(
-                data=data.active_data,
-                name=name,
-                needs_extra_timestep=needs_extra_timestep
+                data=data.active_data, name=name, needs_extra_timestep=needs_extra_timestep
             )
         return self.time_series_collection.create_time_series(
-            data=data,
-            name=name,
-            needs_extra_timestep=needs_extra_timestep
+            data=data, name=name, needs_extra_timestep=needs_extra_timestep
         )
 
-    def create_effect_time_series(self,
-                                  label_prefix: Optional[str],
-                                  effect_values: EffectValuesUser,
-                                  label_suffix: Optional[str] = None,
-                                  ) -> Optional[EffectTimeSeries]:
+    def create_effect_time_series(
+        self,
+        label_prefix: Optional[str],
+        effect_values: EffectValuesUser,
+        label_suffix: Optional[str] = None,
+    ) -> Optional[EffectTimeSeries]:
         """
         Transform EffectValues to EffectTimeSeries.
         Creates a TimeSeries for each key in the nested_values dictionary, using the value as the data.
@@ -320,10 +316,7 @@ class FlowSystem:
             return None
 
         return {
-            effect: self.create_time_series(
-                '|'.join(filter(None, [label_prefix, effect, label_suffix])),
-                value
-            )
+            effect: self.create_time_series('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
             for effect, value in effect_values.items()
         }
 
@@ -376,19 +369,24 @@ class FlowSystem:
                         f'This is deprecated and will be removed in the future. '
                         f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead.',
                         UserWarning,
-                        stacklevel=1)
+                        stacklevel=1,
+                    )
 
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
                 if bus is None:
-                    raise KeyError(f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.label_full}". '
-                                   f'Please add it first.')
+                    raise KeyError(
+                        f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.label_full}". '
+                        f'Please add it first.'
+                    )
                 if flow.is_input_in_component and flow not in bus.outputs:
                     bus.outputs.append(flow)
                 elif not flow.is_input_in_component and flow not in bus.inputs:
                     bus.inputs.append(flow)
-        logger.debug(f'Connected {len(self.buses)} Buses and {len(self.components)} '
-                     f'via {len(self.flows)} Flows inside the FlowSystem.')
+        logger.debug(
+            f'Connected {len(self.buses)} Buses and {len(self.components)} '
+            f'via {len(self.flows)} Flows inside the FlowSystem.'
+        )
         self._connected = True
 
     def __repr__(self):
