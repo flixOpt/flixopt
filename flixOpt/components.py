@@ -46,12 +46,8 @@ class LinearConverter(Component):
             on_off_parameters: Information about on and off states. See class OnOffParameters.
             conversion_factors: linear relation between flows.
                 Either 'conversion_factors' or 'piecewise_conversion' can be used!
-            piecewise_conversion:  Segmented linear relation between flows.
-                Each Flow gets a List of Segments assigned.
-                If Flows need to be 0 (or Off), include a "Zero-Piece" "(0, 0)", or use on_off_parameters
-                Either 'piecewise_conversion' or 'conversion_factors' can be used!
-                --> "gaps" can be expressed by a piece not starting at the end of the prior piece: [(1,3), (4,5)]
-                --> "points" can expressed as piece with same begin and end: [(3,3), (4,4)]
+            piecewise_conversion: Define a piecewise linear relation between flow rates of different flows.
+                Either 'conversion_factors' or 'piecewise_conversion' can be used!
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
@@ -459,7 +455,6 @@ class LinearConverterModel(ComponentModel):
                     )
                 )
 
-        # (linear) segments:
         else:
             # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             piecewise_conversion = {
