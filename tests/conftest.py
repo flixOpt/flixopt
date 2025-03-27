@@ -290,11 +290,11 @@ def flow_system_segments_of_flows_2(flow_system_complex) -> fx.FlowSystem:
         inputs=[fx.Flow('Q_fu', bus='Gas')],
         outputs=[fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
                  fx.Flow('Q_th', bus='Fernwärme')],
-        piecewise_conversion= {
+        piecewise_conversion= fx.PiecewiseConversion({
             'P_el': fx.Piecewise([fx.Piece(np.linspace(5, 6, len(flow_system.time_series_collection.timesteps)), 30), fx.Piece(40, np.linspace(60, 70, len(flow_system.time_series_collection.timesteps)))]),
             'Q_th': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
             'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
-        },
+        }),
         on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
     ))
 
