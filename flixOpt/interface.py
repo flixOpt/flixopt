@@ -38,9 +38,6 @@ class Piece(Interface):
         self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
         self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
 
-    def as_series(self):
-        return pd.Series([self.start, self.end])
-
     @property
     def is_scalar(self) -> bool:
         return isinstance(self.start, Scalar) and isinstance(self.end, Scalar)
@@ -71,12 +68,6 @@ class Piecewise(Interface):
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         for i, piece in enumerate(self.pieces):
             piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
-
-    def as_series(self):
-        data = []
-        for piece in self.pieces:
-            data.append([piece.start, piece.end])
-        return pd.Series(data)
 
     @property
     def is_scalar(self) -> bool:
@@ -111,7 +102,6 @@ class PiecewiseShares:
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
-        self.scalar = True
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         self.piecewise_origin.transform_data(flow_system, f'{name_prefix}')
