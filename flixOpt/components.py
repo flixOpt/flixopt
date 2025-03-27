@@ -35,7 +35,7 @@ class LinearConverter(Component):
         outputs: List[Flow],
         on_off_parameters: OnOffParameters = None,
         conversion_factors: List[Dict[str, NumericDataTS]] = None,
-        segmented_conversion_factors: Optional[PiecewiseConversion] = None,
+        piecewise_conversion: Optional[PiecewiseConversion] = None,
         meta_data: Optional[Dict] = None,
     ):
         """
@@ -45,18 +45,18 @@ class LinearConverter(Component):
             outputs: The output Flows
             on_off_parameters: Information about on and off states. See class OnOffParameters.
             conversion_factors: linear relation between flows.
-                Either 'conversion_factors' or 'segmented_conversion_factors' can be used!
-            segmented_conversion_factors:  Segmented linear relation between flows.
+                Either 'conversion_factors' or 'piecewise_conversion' can be used!
+            piecewise_conversion:  Segmented linear relation between flows.
                 Each Flow gets a List of Segments assigned.
                 If Flows need to be 0 (or Off), include a "Zero-Piece" "(0, 0)", or use on_off_parameters
-                Either 'segmented_conversion_factors' or 'conversion_factors' can be used!
+                Either 'piecewise_conversion' or 'conversion_factors' can be used!
                 --> "gaps" can be expressed by a piece not starting at the end of the prior piece: [(1,3), (4,5)]
                 --> "points" can expressed as piece with same begin and end: [(3,3), (4,4)]
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
-        self.segmented_conversion_factors = segmented_conversion_factors
+        self.piecewise_conversion = piecewise_conversion
 
     def create_model(self, model: SystemModel) -> 'LinearConverterModel':
         self._plausibility_checks()
@@ -64,10 +64,10 @@ class LinearConverter(Component):
         return self.model
 
     def _plausibility_checks(self) -> None:
-        if not self.conversion_factors and not self.segmented_conversion_factors:
-            raise PlausibilityError('Either conversion_factors or segmented_conversion_factors must be defined!')
-        if self.conversion_factors and self.segmented_conversion_factors:
-            raise PlausibilityError('Only one of conversion_factors or segmented_conversion_factors can be defined, not both!')
+        if not self.conversion_factors and not self.piecewise_conversion:
+            raise PlausibilityError('Either conversion_factors or piecewise_conversion must be defined!')
+        if self.conversion_factors and self.piecewise_conversion:
+            raise PlausibilityError('Only one of conversion_factors or piecewise_conversion can be defined, not both!')
 
         if self.conversion_factors:
             if self.degrees_of_freedom <= 0:
@@ -83,11 +83,11 @@ class LinearConverter(Component):
                         raise PlausibilityError(
                             f'{self.label}: Flow {flow} in conversion_factors is not in inputs/outputs'
                         )
-        if self.segmented_conversion_factors:
+        if self.piecewise_conversion:
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
                     raise PlausibilityError(
-                        f'segmented_conversion_factors (in {self.label_full}) and variable size '
+                        f'piecewise_conversion (in {self.label_full}) and variable size '
                         f'(in flow {flow.label_full}) do not make sense together!'
                     )
 
@@ -95,8 +95,8 @@ class LinearConverter(Component):
         super().transform_data(flow_system)
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
-        if self.segmented_conversion_factors:
-            self.segmented_conversion_factors.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
+        if self.piecewise_conversion:
+            self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
     def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, TimeSeries]]:
         """macht alle Faktoren, die nicht TimeSeries sind, zu TimeSeries"""
@@ -462,16 +462,16 @@ class LinearConverterModel(ComponentModel):
         # (linear) segments:
         else:
             # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
-            segmented_conversion_factors = {
+            piecewise_conversion = {
                 self.element.flows[flow].model.flow_rate.name: piecewise
-                for flow, piecewise in self.element.segmented_conversion_factors.items()
+                for flow, piecewise in self.element.piecewise_conversion.items()
             }
 
             piecewise_conversion = PiecewiseModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
                 label=self.label_full,
-                piecewise_variables=segmented_conversion_factors,
+                piecewise_variables=piecewise_conversion,
                 can_be_outside_segments=self.on_off.on if self.on_off is not None else None,
                 as_time_series=True
             )
