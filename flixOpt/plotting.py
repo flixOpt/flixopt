@@ -65,8 +65,16 @@ def process_colors(
         The colors will be in the format appropriate for the specified engine.
     """
     if len(labels) == 0:
-        logger.warning('No labels provided for color assignment')
+        logger.warning('No labels provided for color assignment.')
         return {} if return_mapping else []
+
+    # Special case: Empty list or empty dict provided - use default colormap instead
+    if isinstance(colors, list) and len(colors) == 0:
+        logger.warning(f'Empty color list provided. Using {default_colormap} instead.')
+        colors = default_colormap
+    elif isinstance(colors, dict) and len(colors) == 0:
+        logger.warning(f'Empty color dictionary provided. Using {default_colormap} instead.')
+        colors = default_colormap
 
     # Case 1: When colors is a string (colormap/colorscale name)
     if isinstance(colors, str):
@@ -86,7 +94,7 @@ def process_colors(
             try:
                 cmap = plt.get_cmap(colors, len(labels))
             except ValueError as e:
-                logger.warning(f"Colormap '{colors}' not found in Matplotlib. Using {default_colormap}.: {e}")
+                logger.warning(f"Colormap '{colors}' not found in Matplotlib. Using {default_colormap}: {e}")
                 cmap = plt.get_cmap(default_colormap, len(labels))
 
             color_list = [cmap(i) for i in range(len(labels))]
@@ -130,12 +138,12 @@ def process_colors(
                 cmap = plt.get_cmap(default_colormap, len(missing_labels))
                 missing_colors = [cmap(i) for i in range(len(missing_labels))]
 
-            # Add missing colors to the dictionary
+            colors_copy = colors.copy()  # Create a copy to avoid modifying the original
             for i, label in enumerate(missing_labels):
-                colors[label] = missing_colors[i]
+                colors_copy[label] = missing_colors[i]
 
         # Create color list in the same order as labels
-        color_list = [colors[label] for label in labels]
+        color_list = [colors_copy[label] for label in labels]
 
     else:
         logger.warning(f'Unsupported color specification type: {type(colors)}. Using {default_colormap} instead.')
