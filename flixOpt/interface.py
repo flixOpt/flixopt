@@ -73,12 +73,16 @@ class Piecewise(Interface):
 class PiecewiseConversion(Interface):
     def __init__(self, piecewises: Dict[str, Piecewise]):
         """
-        Define a peicewise conversion between multiple Flows.
+        Define a piecewise conversion between multiple Flows.
+        --> "gaps" can be expressed by a piece not starting at the end of the prior piece: [(1,3), (4,5)]
+        --> "points" can expressed as piece with same begin and end: [(3,3), (4,4)]
 
         Args:
             piecewises: Dict of Piecewises defining the conversion factors. flow labels as keys, piecewise as values
+            allow_zero: If True, the all flow rates are also allowed to be 0, even if no OnOffParameters are defined.
         """
         self.piecewises = piecewises
+        self.allow_zero = allow_zero
 
     def __len__(self):
         return len(self.piecewises)
