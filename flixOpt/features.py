@@ -108,7 +108,7 @@ class InvestmentModel(Model):
                     label_of_element=self.label_of_element,
                     piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
                     piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
-                    can_be_outside_segments=self.is_invested),
+                    zero_point=self.is_invested),
                 'segments'
             )
             self.piecewise_effects.do_modeling()
@@ -714,16 +714,29 @@ class PiecewiseModel(Model):
         label_of_element: str,
         label: str,
         piecewise_variables: Dict[str, Piecewise],
-        can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
+        zero_point: Optional[Union[bool, linopy.Variable]],
         as_time_series: bool,
     ):
+        """
+        Modeling a Piecewise relation between miultiple variables.
+        The relation is defined by a list of Pieces, which are assigned to the variables.
+        Each Piece is a tuple of (start, end).
+
+        Args:
+            model: The SystemModel that is used to create the model.
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            label: The label of the model. Used to construct the full label of the model.
+            piecewise_variables: The variables to which the Pieces are assigned.
+            zero_point: A variable that can be used to define a zero point for the Piecewise relation. If None or False, no zero point is defined.
+            as_time_series: Whether the Piecewise relation is defined for a TimeSeries or a single variable.
+        """
         super().__init__(model, label_of_element, label)
         self._piecewise_variables = piecewise_variables
-        self._can_be_outside_segments = can_be_outside_segments
+        self._zero_point = zero_point
         self._as_time_series = as_time_series
 
         self.pieces: List[PieceModel] = []
-        self.zero_piece: Optional[linopy.Variable] = None
+        self.zero_point: Optional[linopy.Variable] = None
 
     def do_modeling(self):
         for i in range(len(list(self._piecewise_variables.values())[0])):
@@ -750,22 +763,22 @@ class PiecewiseModel(Model):
 
             # a) eq: Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 1                Aufenthalt nur in Segmenten erlaubt
             # b) eq: -On(t) + Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 0       zusätzlich kann alles auch Null sein
-            if isinstance(self._can_be_outside_segments, linopy.Variable):
-                self.zero_piece = self._can_be_outside_segments
-                rhs = self.zero_piece
-            elif self._can_be_outside_segments is True:
-                self.zero_piece = self.add(self._model.add_variables(
+            if isinstance(self._zero_point, linopy.Variable):
+                self.zero_point = self._zero_point
+                rhs = self.zero_point
+            elif self._zero_point is True:
+                self.zero_point = self.add(self._model.add_variables(
                     coords=self._model.coords,
                     binary=True,
-                    name=f'{self.label_full}|zero_piece'),
-                    'zero_piece'
+                    name=f'{self.label_full}|zero_point'),
+                    'zero_point'
                 )
-                rhs = self.zero_piece
+                rhs = self.zero_point
             else:
                 rhs = 1
 
             self.add(self._model.add_constraints(
-                sum([piece.in_segment for piece in self.pieces]) <= rhs,
+                sum([piece.inside_piece for piece in self.pieces]) <= rhs,
                 name=f'{self.label_full}|{variable.name}_single_segment'),
                 'single_segment'
             )
@@ -878,14 +891,14 @@ class PiecewiseEffectsModel(Model):
         label_of_element: str,
         piecewise_origin: Tuple[str, Piecewise],
         piecewise_shares: Dict[str, Piecewise],
-        can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
+        zero_point: Optional[Union[bool, linopy.Variable]],
         label: str = 'PiecewiseEffects',
     ):
         super().__init__(model, label_of_element, label)
         assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
             'Piece length of variable_segments and share_segments must be equal'
         )
-        self._can_be_outside_segments = can_be_outside_segments
+        self._zero_point = zero_point
         self._piecewise_origin = piecewise_origin
         self._piecewise_shares = piecewise_shares
         self._shares: Dict[str, linopy.Variable] = {}
@@ -912,7 +925,7 @@ class PiecewiseEffectsModel(Model):
                 label_of_element=self.label_of_element,
                 label=f'{self.label_full}|PiecewiseModel',
                 piecewise_variables=piecewise_variables,
-                can_be_outside_segments=self._can_be_outside_segments,
+                zero_point=self._zero_point,
                 as_time_series=False,
             )
         )

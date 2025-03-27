@@ -467,7 +467,7 @@ class LinearConverterModel(ComponentModel):
                 label_of_element=self.label_of_element,
                 label=self.label_full,
                 piecewise_variables=piecewise_conversion,
-                can_be_outside_segments=self.on_off.on if self.on_off is not None else None,
+                zero_point=self.on_off.on if self.on_off is not None else False,
                 as_time_series=True
             )
             piecewise_conversion.do_modeling()
