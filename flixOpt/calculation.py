@@ -8,22 +8,22 @@ There are three different Calculation types:
     3. SegmentedCalculation: Solves a SystemModel for each individual Segment of the FlowSystem.
 """
 
-import json
 import logging
 import math
 import pathlib
 import timeit
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 import yaml
 
+from . import io as fx_io
 from . import utils as utils
 from .aggregation import AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
-from .core import NumericData, Scalar
+from .core import Scalar
 from .elements import Component
 from .features import InvestmentModel
 from .flow_system import FlowSystem
@@ -109,7 +109,7 @@ class Calculation:
         }
 
     @property
-    def infos(self):
+    def summary(self):
         return {
             'Name': self.name,
             'Number of timesteps': len(self.flow_system.time_series_collection.timesteps),
@@ -148,6 +148,14 @@ class FullCalculation(Calculation):
                          **solver.options)
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
 
+        if self.model.status == 'warning':
+            # Save the model and the flow_system to file in case of infeasibility
+            paths = fx_io.CalculationResultsPaths(self.folder, self.name)
+            from .io import document_linopy_model
+            document_linopy_model(self.model, paths.model_documentation)
+            self.flow_system.to_netcdf(paths.flow_system)
+            raise RuntimeError(f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.')
+
         # Log the formatted output
         if log_main_results:
             logger.info(f'{" Main Results ":#^80}')
@@ -158,26 +166,6 @@ class FullCalculation(Calculation):
             )
 
         self.results = CalculationResults.from_calculation(self)
-
-    def save_results(self, save_flow_system: bool = False, compression: int = 0):
-        """
-        Saves the results of the calculation to a folder with the name of the calculation.
-        The folder is created if it does not exist.
-
-        The CalculationResults are saved as a .nc and a .json file.
-        The calculation infos are saved as a .yaml file.
-        Optionally, the flow_system is saved as a .nc file.
-
-        Args:
-            save_flow_system: Whether to save the flow_system, by default False
-            compression: Compression level for the netCDF file, by default 0 wich leads to no compression.
-                Currently, only the Flow System file can be compressed.
-        """
-        with open(self.folder / f'{self.name}_infos.yaml', 'w', encoding='utf-8') as f:
-            yaml.dump(self.infos, f, allow_unicode=True, sort_keys=False, indent=4)
-        self.results.to_file(self.folder, self.name)
-        if save_flow_system:
-            self.flow_system.to_netcdf(self.folder / f'{self.name}_flowsystem.nc', compression)
 
     def _activate_time_series(self):
         self.flow_system.transform_data()
@@ -251,7 +239,7 @@ class AggregatedCalculation(FullCalculation):
         steps_per_period = self.aggregation_parameters.hours_per_period / self.flow_system.time_series_collection.hours_per_timestep.max()
         is_integer = (self.aggregation_parameters.hours_per_period % self.flow_system.time_series_collection.hours_per_timestep.max()).item() == 0
         if not (steps_per_period.size == 1 and is_integer):
-            raise Exception(
+            raise ValueError(
                 f'The selected {self.aggregation_parameters.hours_per_period=} does not match the time '
                 f'step size of {dt_min} hours). It must be a multiple of {dt_min} hours.'
             )
@@ -271,7 +259,7 @@ class AggregatedCalculation(FullCalculation):
         )
 
         self.aggregation.cluster()
-        self.aggregation.plot()
+        self.aggregation.plot(show=True, save= self.folder / 'aggregation.html')
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
             self.flow_system.time_series_collection.insert_new_data(self.aggregation.aggregated_data, include_extra_timestep=False)
         self.durations['aggregation'] = round(timeit.default_timer() - t_start_agg, 2)

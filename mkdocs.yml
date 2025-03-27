@@ -2,7 +2,7 @@
 # https://mkdocstrings.github.io/python/usage/configuration/docstrings/
 # https://squidfunk.github.io/mkdocs-material/setup/
 
-site_name: flixOpt
+site_name: flixopt
 site_description: Energy and Material Flow Optimization Framework
 site_url: https://flixopt.github.io/flixopt/
 repo_url: https://github.com/flixOpt/flixopt
@@ -50,6 +50,7 @@ theme:
     - content.code.annotate
     - content.tooltips
     - content.code.copy
+    - navigation.footer.version
 
 markdown_extensions:
   - admonition
@@ -83,6 +84,7 @@ plugins:
   - search  # Enables the search functionality in the documentation
   - table-reader  # Allows including tables from external files
   - include-markdown
+  - mike
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py
@@ -119,6 +121,11 @@ plugins:
 
            extra:
              infer_type_annotations: true  # Uses Python type hints to supplement docstring information
+
+extra:
+  version:
+    provider: mike
+    default: latest
 
 extra_javascript:
   - javascripts/mathjax.js  # Custom MathJax 3 CDN Configuration

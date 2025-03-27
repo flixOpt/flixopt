@@ -106,8 +106,13 @@ class Effect(Element):
         )
 
     def create_model(self, model: SystemModel) -> 'EffectModel':
+        self._plausibility_checks()
         self.model = EffectModel(model, self)
         return self.model
+
+    def _plausibility_checks(self) -> None:
+        # TODO: Check for plausibility
+        pass
 
 
 class EffectModel(ElementModel):
@@ -195,7 +200,7 @@ class EffectCollection:
     def add_effects(self, *effects: Effect) -> None:
         for effect in list(effects):
             if effect in self:
-                raise Exception(f'Effect with label "{effect.label=}" already added!')
+                raise ValueError(f'Effect with label "{effect.label=}" already added!')
             if effect.is_standard:
                 self.standard_effect = effect
             if effect.is_objective:
@@ -349,7 +354,7 @@ class EffectCollectionModel(Model):
 
     def add_share_to_penalty(self, name: str, expression: linopy.LinearExpression) -> None:
         if expression.ndim != 0:
-            raise Exception(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
+            raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
         self.penalty.add_share(name, expression)
 
     def do_modeling(self):

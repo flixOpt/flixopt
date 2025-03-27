@@ -3,4 +3,5 @@
 - [Concepts & Math](concepts-and-math/)
 - [Examples](examples/)
 - [API-Reference](api-reference/)
+- [Release Notes](release-notes/)
 - [Contribute](contribute.md)

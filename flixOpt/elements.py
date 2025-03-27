@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, Scalar, TimeSeriesCollection
+from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
 from .effects import EffectValuesUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
@@ -63,6 +63,7 @@ class Component(Element):
         self.flows: Dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
     def create_model(self, model: SystemModel) -> 'ComponentModel':
+        self._plausibility_checks()
         self.model = ComponentModel(model, self)
         return self.model
 
@@ -75,6 +76,10 @@ class Component(Element):
         infos['inputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.inputs]
         infos['outputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.outputs]
         return infos
+
+    def _plausibility_checks(self) -> None:
+        # TODO: Check for plausibility
+        pass
 
 
 @register_class_for_io
@@ -126,6 +131,7 @@ class Bus(Element):
         self.outputs: List[Flow] = []
 
     def create_model(self, model: SystemModel) -> 'BusModel':
+        self._plausibility_checks()
         self.model = BusModel(model, self)
         return self.model
 
@@ -223,7 +229,7 @@ class Flow(Element):
         self.flow_hours_total_min = flow_hours_total_min
         self.on_off_parameters = on_off_parameters
 
-        self.previous_flow_rate = previous_flow_rate
+        self.previous_flow_rate = previous_flow_rate if not isinstance(previous_flow_rate, list) else np.array(previous_flow_rate)
 
         self.component: str = 'UnknownComponent'
         self.is_input_in_component: Optional[bool] = None
@@ -268,10 +274,16 @@ class Flow(Element):
         infos['is_input_in_component'] = self.is_input_in_component
         return infos
 
+    def to_dict(self) -> Dict:
+        data = super().to_dict()
+        if isinstance(data.get('previous_flow_rate'), np.ndarray):
+            data['previous_flow_rate'] = data['previous_flow_rate'].tolist()
+        return data
+
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
         if np.any(self.relative_minimum > self.relative_maximum):
-            raise Exception(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
+            raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if (
             self.size == CONFIG.modeling.BIG and self.fixed_relative_profile is not None
@@ -426,20 +438,15 @@ class FlowModel(ElementModel):
                 )
 
     @property
-    def with_investment(self) -> bool:
-        """Checks if the element's size is investment-driven."""
-        return isinstance(self.element.size, InvestParameters)
-
-    @property
     def absolute_flow_rate_bounds(self) -> Tuple[NumericData, NumericData]:
         """Returns absolute flow rate bounds. Important for OnOffModel"""
-        rel_min, rel_max = self.relative_flow_rate_bounds
+        relative_minimum, relative_maximum = self.relative_flow_rate_bounds
         size = self.element.size
-        if not self.with_investment:
-            return rel_min * size, rel_max * size
+        if not isinstance(size, InvestParameters):
+            return relative_minimum * size, relative_maximum * size
         if size.fixed_size is not None:
-            return rel_min * size.fixed_size, rel_max * size.fixed_size
-        return rel_min * size.minimum_size, rel_max * size.maximum_size
+            return relative_minimum * size.fixed_size, relative_maximum * size.fixed_size
+        return relative_minimum * size.minimum_size, relative_maximum * size.maximum_size
 
     @property
     def relative_flow_rate_bounds(self) -> Tuple[NumericData, NumericData]:

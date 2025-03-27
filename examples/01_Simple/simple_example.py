@@ -1,5 +1,5 @@
 """
-THis script shows how to use the flixOpt framework to model a simple energy system.
+This script shows how to use the flixOpt framework to model a simple energy system.
 """
 
 import numpy as np
@@ -107,13 +107,18 @@ if __name__ == '__main__':
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
     # --- Analyze Results ---
-    calculation.results['Fernwärme'].plot_flow_rates()
-    calculation.results['Storage'].plot_flow_rates()
+    calculation.results['Fernwärme'].plot_node_balance_pie()
+    calculation.results['Fernwärme'].plot_node_balance()
+    calculation.results['Storage'].plot_node_balance()
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # Convert the results for the storage component to a dataframe and display
-    df = calculation.results['Storage'].charge_state_and_flow_rates()
+    df = calculation.results['Storage'].node_balance_with_charge_state()
     print(df)
+
+    # Save results to file for later usage
+    calculation.results.to_file()
 
     # Launch a dashboard to explore the results
     calculation.results.launch_dashboard()
+

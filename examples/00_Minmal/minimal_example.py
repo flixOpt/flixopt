@@ -58,14 +58,15 @@ if __name__ == '__main__':
 
     # --- Analyze Results ---
     # Access the results of an element
-    df1 = calculation.results['costs'].variables_time.solution.to_dataframe()
+    df1 = calculation.results['costs'].filter_solution('time').to_dataframe()
 
     # Plot the results of a specific element
-    calculation.results['District Heating'].plot_flow_rates()
+    calculation.results['District Heating'].plot_node_balance_pie()
+    calculation.results['District Heating'].plot_node_balance()
 
     # Save results to a file
-    df2 = calculation.results['District Heating'].flow_rates().to_dataframe()
+    df2 = calculation.results['District Heating'].node_balance().to_dataframe()
     # df2.to_csv('results/District Heating.csv')  # Save results to csv
 
     # Print infos to the console.
-    pprint(calculation.infos)
+    pprint(calculation.summary)

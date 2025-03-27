@@ -73,12 +73,12 @@ class TestFlowSystem:
 
         # Verify key variables from loaded results
         assert_almost_equal_numeric(
-            results.model.variables['costs|total'].solution.values,
+            results.solution['costs|total'].values,
             81.88394666666667,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            results.model.variables['CO2|total'].solution.values,
+            results.solution['CO2|total'].values,
             255.09184,
             'CO2 doesnt match expected value'
         )
@@ -427,7 +427,7 @@ class TestModelingTypes:
             )
         else:
             assert_almost_equal_numeric(
-                sum(calc.results.solution_without_overlap('costs(operation)|total_per_timestep')),
+                calc.results.solution_without_overlap('costs(operation)|total_per_timestep').sum(),
                 expected_costs[modeling_type],
                 f'Costs do not match for {modeling_type} modeling type'
             )

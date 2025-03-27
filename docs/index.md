@@ -1,96 +1,33 @@
 # flixOpt: Energy and Material Flow Optimization Framework
 
-**flixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP). Combining flexibility and efficiency, it provides a powerful platform for both dispatch and investment optimization challenges.
+**flixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
 
-## 🚀 Introduction
+It bridges the gap between **high-level energy systems models** like [FINE](https://github.com/FZJ-IEK3-VSA/FINE) used for design and (multi-period) investment decisions and **low-level dispatch optimization tools** used for operation decisions.
 
-flixOpt was developed by [TU Dresden](https://github.com/gewv-tu-dresden) as part of the SMARTBIOGRID project, funded by the German Federal Ministry for Economic Affairs and Energy. Building on the Matlab-based flixOptMat framework, flixOpt also incorporates concepts from [oemof/solph](https://github.com/oemof/oemof-solph).
+<figure markdown>
+  ![flixOpt Conceptual Usage](./images/architecture_flixOpt.png)
+  <figcaption>Conceptual Usage and IO operations of flixOpt</figcaption>
+</figure>
 
-Although flixOpt is in its early stages, it is fully functional and ready for experimentation. Feedback and collaboration are highly encouraged to help shape its future.
+## 🚀️ Getting Started
 
-## 🌟 Key Features
+See the [Getting Started Guide](getting-started.md) to start using flixOpt.
 
-- **High-level Interface** with low-level control
-  - User-friendly interface for defining energy systems
-  - Fine-grained control for advanced configurations
-  - Pre-defined components like CHP, Heat Pump, Cooling Tower, etc.
-
-- **Investment Optimization**
-  - Combined dispatch and investment optimization
-  - Size and discrete investment decisions
-  - Integration with On/Off variables and constraints
-
-- **Multiple Effects**
-  - Couple effects (e.g., specific CO2 costs)
-  - Set constraints (e.g., max CO2 emissions)
-  - Easily switch optimization targets (e.g., costs vs CO2)
-
-- **Calculation Modes**
-  - **Full Mode** - Exact solutions with high computational requirements
-  - **Segmented Mode** - Speed up complex systems with variable time overlap
-  - **Aggregated Mode** - Typical periods for large-scale simulations
-
-## 📦 Installation
-
-Install flixOpt directly using pip:
-
-```bash
-pip install git+https://github.com/flixOpt/flixOpt.git
-```
-
-For full functionality including visualization and time series aggregation:
-
-```bash
-pip install "flixOpt[full] @ git+https://github.com/flixOpt/flixOpt.git"
-```
-
-## 🖥️ Quick Example
-
-```python
-import flixOpt as fo
-import numpy as np
-
-# Create timesteps
-time_series = fo.create_datetime_array('2023-01-01', steps=24, freq='1h')
-system = fo.FlowSystem(time_series)
-
-# Create buses
-heat_bus = fo.Bus("Heat")
-electricity_bus = fo.Bus("Electricity")
-
-# Create flows
-heat_demand = fo.Flow(
-    label="heat_demand",
-    bus=heat_bus,
-    fixed_relative_profile=100*np.sin(np.linspace(0, 2*np.pi, 24))**2 + 50
-)
-
-# Create a heat pump component
-heat_pump = fo.linear_converters.HeatPump(
-    label="HeatPump",
-    COP=3.0,
-    P_el=fo.Flow("power", electricity_bus),
-    Q_th=fo.Flow("heat", heat_bus)
-)
-
-# Add everything to the system
-system.add_elements(heat_bus, electricity_bus)
-system.add_components(heat_pump)
-```
+See the [Examples](examples/) section for detailed examples.
 
 ## ⚙️ How It Works
 
-flixOpt transforms your energy system model into a mathematical optimization problem, solves it using state-of-the-art solvers, and returns the optimal operation strategy and investment decisions.
+See our [Concepts & Math](concepts-and-math/index.md) to understand the core concepts of flixOpt.
 
 ## 🛠️ Compatible Solvers
 
 flixOpt works with various solvers:
 
-- HiGHS (installed by default)
-- CBC
-- GLPK
-- Gurobi
-- CPLEX
+- [HiGHS](https://highs.dev/) (installed by default)
+- [Gurobi](https://www.gurobi.com/)  
+- [CBC](https://github.com/coin-or/Cbc)  
+- [GLPK](https://www.gnu.org/software/glpk/)
+- [CPLEX](https://www.ibm.com/analytics/cplex-optimizer)
 
 ## 📝 Citation
 

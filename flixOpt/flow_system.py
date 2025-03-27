@@ -2,7 +2,6 @@
 This module contains the FlowSystem class, which is used to collect instances of many other classes by the end User.
 """
 
-import importlib.util
 import json
 import logging
 import pathlib
@@ -16,7 +15,7 @@ import xarray as xr
 from rich.console import Console
 from rich.pretty import Pretty
 
-from . import io
+from . import io as fx_io
 from .core import NumericData, NumericDataTS, TimeSeries, TimeSeriesCollection, TimeSeriesData
 from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
 from .elements import Bus, Component, Flow
@@ -72,7 +71,7 @@ class FlowSystem:
                                  hours_of_previous_timesteps=ds.attrs['hours_of_previous_timesteps'],
                                  )
 
-        structure = io.insert_dataarray({key: ds.attrs[key] for key in ['components', 'buses', 'effects']}, ds)
+        structure = fx_io.insert_dataarray({key: ds.attrs[key] for key in ['components', 'buses', 'effects']}, ds)
         flow_system.add_elements(
             * [Bus.from_dict(bus) for bus in structure['buses'].values()]
             + [Effect.from_dict(effect) for effect in structure['effects'].values()]
@@ -117,10 +116,7 @@ class FlowSystem:
         """
         Load a FlowSystem from a netcdf file
         """
-        with xr.open_dataset(path) as ds:
-            ds = ds.load()
-        ds.attrs = json.loads(ds.attrs['flow_system'])
-        return cls.from_dataset(ds)
+        return cls.from_dataset(fx_io.load_dataset_from_netcdf(path))
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -144,7 +140,7 @@ class FlowSystem:
             elif isinstance(new_element, Bus):
                 self._add_buses(new_element)
             else:
-                raise Exception('argument is not instance of a modeling Element (Element)')
+                raise TypeError(f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} ')
 
     def to_json(self, path: Union[str, pathlib.Path]):
         """
@@ -177,22 +173,32 @@ class FlowSystem:
             "hours_of_previous_timesteps": self.time_series_collection.hours_of_previous_timesteps,
         }
         if data_mode == 'data':
-            return io.replace_timeseries(data, 'data')
+            return fx_io.replace_timeseries(data, 'data')
         elif data_mode == 'stats':
-            return io.remove_none_and_empty(io.replace_timeseries(data, data_mode))
-        return io.replace_timeseries(data, data_mode)
+            return fx_io.remove_none_and_empty(fx_io.replace_timeseries(data, data_mode))
+        return fx_io.replace_timeseries(data, data_mode)
 
     def as_dataset(self, constants_in_dataset: bool = False) -> xr.Dataset:
+        """
+        Convert the FlowSystem to a xarray Dataset.
+
+        Args:
+            constants_in_dataset: If True, constants are included as Dataset variables.
+        """
         ds = self.time_series_collection.to_dataset(include_constants=constants_in_dataset)
         ds.attrs = self.as_dict(data_mode='name')
         return ds
 
-    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
-        if compression != 0 and importlib.util.find_spec('netCDF4') is None:
-            raise ModuleNotFoundError('Encoding is only supported with netCDF4. Install netcdf4 via pip install netcdf4.')
-        ds = self.as_dataset()
-        ds.attrs = {'flow_system': json.dumps(ds.attrs)}
-        ds.to_netcdf(path, encoding=None if compression == 0 else {k: dict(zlib=True, complevel=compression).copy() for k in ds.data_vars})
+    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0, constants_in_dataset: bool = True):
+        """
+        Saves the FlowSystem to a netCDF file.
+        Args:
+            path: The path to the netCDF file.
+            compression: The compression level to use when saving the file.
+            constants_in_dataset: If True, constants are included as Dataset variables.
+        """
+        ds = self.as_dataset(constants_in_dataset=constants_in_dataset)
+        fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
         logger.info(f'Saved FlowSystem to {path}')
 
     def plot_network(
@@ -335,10 +341,10 @@ class FlowSystem:
             element: new element to check
         """
         if element in self.all_elements.values():
-            raise Exception(f'Element {element.label} already added to FlowSystem!')
+            raise ValueError(f'Element {element.label} already added to FlowSystem!')
         # check if name is already used:
         if element.label_full in self.all_elements:
-            raise Exception(f'Label of Element {element.label} already used in another element!')
+            raise ValueError(f'Label of Element {element.label} already used in another element!')
 
     def _add_effects(self, *args: Effect) -> None:
         self.effects.add_effects(*args)
