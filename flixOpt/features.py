@@ -39,7 +39,7 @@ class InvestmentModel(Model):
         self.size: Optional[Union[Scalar, linopy.Variable]] = None
         self.is_invested: Optional[linopy.Variable] = None
 
-        self._segments: Optional[SegmentedSharesModel] = None
+        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
 
         self._on_variable = on_variable
         self._defining_variable = defining_variable
@@ -102,7 +102,7 @@ class InvestmentModel(Model):
             )
 
         if self.parameters.piecewise_effects:
-            self._segments = self.add(
+            self.piecewise_effects = self.add(
                 PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
@@ -111,7 +111,7 @@ class InvestmentModel(Model):
                     can_be_outside_segments=self.is_invested),
                 'segments'
             )
-            self._segments.do_modeling()
+            self.piecewise_effects.do_modeling()
 
     def _create_bounds_for_optional_investment(self):
         if self.parameters.fixed_size:
@@ -671,17 +671,17 @@ class PieceModel(Model):
         as_time_series: bool = True,
     ):
         super().__init__(model, label_of_element, label)
-        self.in_segment: Optional[linopy.Variable] = None
+        self.inside_piece: Optional[linopy.Variable] = None
         self.lambda0: Optional[linopy.Variable] = None
         self.lambda1: Optional[linopy.Variable] = None
         self._as_time_series = as_time_series
 
     def do_modeling(self):
-        self.in_segment = self.add(self._model.add_variables(
+        self.inside_piece = self.add(self._model.add_variables(
             binary=True,
-            name=f'{self.label_full}|in_segment',
+            name=f'{self.label_full}|inside_piece',
             coords=self._model.coords if self._as_time_series else None),
-            'in_segment'
+            'inside_piece'
         )
 
         self.lambda0 = self.add(self._model.add_variables(
@@ -701,8 +701,8 @@ class PieceModel(Model):
         # eq:  lambda0(t) + lambda1(t) = in_segment(t)
         self.add(self._model.add_constraints(
             self.in_segment == self.lambda0 + self.lambda1,
-            name=f'{self.label_full}|in_segment'),
-            'in_segment'
+            name=f'{self.label_full}|inside_piece'),
+            'inside_piece'
         )
 
 
