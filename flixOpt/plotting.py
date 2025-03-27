@@ -6,7 +6,8 @@ It's meant to be used in results.py, but is designed to be used by the end user 
 
 import logging
 import pathlib
-from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union
+import itertools
+from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union, Dict, Any
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -32,17 +33,6 @@ _portland_colors = [
 
 plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
-
-import logging
-import itertools
-from typing import Dict, List, Literal, Optional, Tuple, Union, Any
-
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import numpy as np
-import plotly.express as px
-
-logger = logging.getLogger('flixOpt')
 
 ColorType = Union[str, List[str], Dict[str, str]]
 EngineType = Literal['plotly', 'matplotlib']
