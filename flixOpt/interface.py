@@ -102,13 +102,21 @@ class PiecewiseConversion(Interface):
 @register_class_for_io
 class PiecewiseEffects(Interface):
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
+        """
+        Define piecewise effects related to a variable.
+
+        Args:
+            piecewise_origin: Piecewise of the related variable
+            piecewise_shares: Piecewise defining the shares to different Effects
+        """
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.piecewise_origin.transform_data(flow_system, f'{name_prefix}')
-        for i, piecewise in enumerate(self.piecewise_shares.values()):
-            piecewise.transform_data(flow_system, f'{name_prefix}')  #TODO:
+        raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
+        #self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
+        #for name, piecewise in self.piecewise_shares.items():
+        #    piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{name}')
 
 
 @register_class_for_io
