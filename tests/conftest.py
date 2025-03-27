@@ -208,13 +208,13 @@ def flow_system_complex() -> fx.FlowSystem:
 
     invest_speicher = fx.InvestParameters(
         fix_effects=0,
-        piecewise_effects= (
-            fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
-            {
+        piecewise_effects=fx.PiecewiseShares(
+            piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
+            piecewise_shares={
                 'costs': fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),
                 'PE': fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)])
-            }
-        ),
+                }
+            ),
         optional=False,
         specific_effects={'costs': 0.01, 'CO2': 0.01},
         minimum_size=0,
