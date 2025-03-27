@@ -5,6 +5,7 @@ import pathlib
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import linopy
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly
@@ -205,14 +206,16 @@ class CalculationResults:
             return filter_dataset(self[element].solution, variable_dims)
         return filter_dataset(self.solution, variable_dims)
 
-    def plot_heatmap(self,
-                     variable_name: str,
-                     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-                     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-                     color_map: str = 'portland',
-                     save: Union[bool, pathlib.Path] = False,
-                     show: bool = True
-                     ) -> plotly.graph_objs.Figure:
+    def plot_heatmap(
+        self,
+        variable_name: str,
+        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
+        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
+        color_map: str = 'portland',
+        save: Union[bool, pathlib.Path] = False,
+        show: bool = True,
+        engine: plotting.PlottingEngine = 'plotly'
+    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         return plot_heatmap(
             dataarray=self.solution[variable_name],
             name=variable_name,
@@ -221,7 +224,9 @@ class CalculationResults:
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
             color_map=color_map,
             save=save,
-            show=show)
+            show=show,
+            engine=engine,
+        )
 
     def plot_network(
             self,
@@ -369,27 +374,126 @@ class _NodeResults(_ElementResults):
         self.inputs = inputs
         self.outputs = outputs
 
-    def plot_node_balance(self,
-                        save: Union[bool, pathlib.Path] = False,
-                        show: bool = True):
-        fig = plotting.with_plotly(
-            self.node_balance(with_last_timestep=True).to_dataframe(), mode='area', title=f'Flow rates of {self.label}'
-        )
-        return plotly_save_and_show(
-            fig,
-            self._calculation_results.folder / f'{self.label} (flow rates).html',
-            user_filename=None if isinstance(save, bool) else pathlib.Path(save),
-            show=show,
-            save=True if save else False)
+    def plot_node_balance(
+        self,
+        save: Union[bool, pathlib.Path] = False,
+        show: bool = True,
+        colors: plotting.ColorType = 'viridis',
+        engine: plotting.PlottingEngine = 'plotly',
+    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+        """
+        Plots the node balance of the Component or Bus.
+        Args:
+            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+            show: Whether to show the plot or not.
+            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+        """
+        if engine == 'plotly':
+            figure_like = plotting.with_plotly(
+                self.node_balance(with_last_timestep=True).to_dataframe(),
+                colors=colors,
+                mode='area',
+                title=f'Flow rates of {self.label}'
+            )
+            default_filetype = '.html'
+        elif engine == 'matplotlib':
+            figure_like = plotting.with_matplotlib(
+                self.node_balance(with_last_timestep=True).to_dataframe(),
+                colors=colors,
+                mode='bar',
+                title=f'Flow rates of {self.label}',
+            )
+            default_filetype = '.png'
+        else:
+            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
-    def node_balance(self,
-                   negate_inputs: bool = True,
-                   negate_outputs: bool = False,
-                   threshold: Optional[float] = 1e-5,
-                   with_last_timestep: bool = False) -> xr.Dataset:
-        variable_names = [name for name in self._variable_names if name.endswith(('|flow_rate', '|excess_input', '|excess_output'))]
+        return plotting.export_figure(
+            figure_like=figure_like,
+            default_path=self._calculation_results.folder / f'{self.label} (flow rates)',
+            default_filetype=default_filetype,
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
+
+    def plot_node_balance_pie(
+        self,
+        lower_percentage_group: float = 5,
+        colors: plotting.ColorType = 'viridis',
+        text_info: str = 'percent+label+value',
+        save: Union[bool, pathlib.Path] = False,
+        show: bool = True,
+        engine: plotting.PlottingEngine = 'plotly'
+    ) -> plotly.graph_objects.Figure:
+        """
+        Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
+
+        Args:
+            colors: a colorscale or a list of colors to use for the plot
+            lower_percentage_group: The percentage of flow_hours that is grouped in "Others" (0...100)
+            text_info: What information to display on the pie plot
+            save: Whether to save the figure.
+            show: Whether to show the figure.
+            engine: Plotting engine to use. Only 'plotly' is implemented atm.
+        """
+        inputs = sanitize_dataset(
+            ds=self.solution[self.inputs],
+            threshold=1e-5,
+            drop_small_vars=True,
+            zero_small_values=True,
+        ) * self._calculation_results.hours_per_timestep
+        outputs = sanitize_dataset(
+            ds=self.solution[self.outputs],
+            threshold=1e-5,
+            drop_small_vars=True,
+            zero_small_values=True,
+        ) * self._calculation_results.hours_per_timestep
+
+        if engine == 'plotly':
+            figure_like = plotting.dual_pie_with_plotly(
+                inputs.to_dataframe().sum(),
+                outputs.to_dataframe().sum(),
+                colors=colors,
+                title=f'Flow hours of {self.label}',
+                text_info=text_info,
+                subtitles=('Inputs', 'Outputs'),
+                legend_title='Flows',
+                lower_percentage_group=lower_percentage_group,
+            )
+            default_filetype = '.html'
+        elif engine == 'matplotlib':
+            logger.debug('Parameter text_info is not supported for matplotlib')
+            figure_like = plotting.dual_pie_with_matplotlib(
+                inputs.to_dataframe().sum(),
+                outputs.to_dataframe().sum(),
+                colors=colors,
+                title=f'Total flow hours of {self.label}',
+                subtitles=('Inputs', 'Outputs'),
+                legend_title='Flows',
+                lower_percentage_group=lower_percentage_group,
+            )
+            default_filetype = '.png'
+        else:
+            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+
+        return plotting.export_figure(
+            figure_like=figure_like,
+            default_path=self._calculation_results.folder / f'{self.label} (total flow hours)',
+            default_filetype=default_filetype,
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
+
+    def node_balance(
+        self,
+        negate_inputs: bool = True,
+        negate_outputs: bool = False,
+        threshold: Optional[float] = 1e-5,
+        with_last_timestep: bool = False
+    ) -> xr.Dataset:
         return sanitize_dataset(
-            ds=self.solution[variable_names],
+            ds=self.solution[self.inputs + self.outputs],
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
             negate=(
@@ -417,35 +521,72 @@ class ComponentResults(_NodeResults):
 
     @property
     def charge_state(self) -> xr.DataArray:
+        """ Get the solution of the charge state of the Storage. """
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
         return self.solution[self._charge_state]
 
-    def plot_charge_state(self,
-                          save: Union[bool, pathlib.Path] = False,
-                          show: bool = True) -> plotly.graph_objs._figure.Figure:
+    def plot_charge_state(
+        self,
+        save: Union[bool, pathlib.Path] = False,
+        show: bool = True,
+        colors: plotting.ColorType = 'viridis',
+        engine: plotting.PlottingEngine = 'plotly'
+    ) -> plotly.graph_objs.Figure:
+        """
+        Plots the charge state of a Storage.
+        Args:
+            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+            show: Whether to show the plot or not.
+            colors: The c
+            engine: Plotting engine to use. Only 'plotly' is implemented atm.
+
+        Raises:
+            ValueError: If the Component is not a Storage.
+        """
+        if engine != 'plotly':
+            raise NotImplementedError(f'Plotting engine "{engine}" not implemented for ComponentResults.plot_charge_state.')
+
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
-        fig = plotting.with_plotly(self.node_balance(with_last_timestep=True).to_dataframe(),
-                                    mode='area',
-                                    title=f'Operation Balance of {self.label}',
-                                    show=False)
+
+        fig = plotting.with_plotly(
+            self.node_balance(with_last_timestep=True).to_dataframe(),
+            colors=colors,
+            mode='area',
+            title=f'Operation Balance of {self.label}',
+        )
+
+        # TODO: Use colors for charge state?
+
         charge_state = self.charge_state.to_dataframe()
         fig.add_trace(plotly.graph_objs.Scatter(
             x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state))
 
-        return plotly_save_and_show(
+        return plotting.export_figure(
             fig,
-            self._calculation_results.folder / f'{self.label} (charge state).html',
-            user_filename=None if isinstance(save, bool) else pathlib.Path(save),
+            default_path=self._calculation_results.folder / f'{self.label} (charge state)',
+            default_filetype='.html',
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False)
 
     def node_balance_with_charge_state(
-            self,
-            negate_inputs: bool = True,
-            negate_outputs: bool = False,
-            threshold: Optional[float] = 1e-5) -> xr.Dataset:
+        self,
+        negate_inputs: bool = True,
+        negate_outputs: bool = False,
+        threshold: Optional[float] = 1e-5
+    ) -> xr.Dataset:
+        """
+        Returns a dataset with the node balance of the Storage including its charge state.
+        Args:
+            negate_inputs: Whether to negate the inputs of the Storage.
+            negate_outputs: Whether to negate the outputs of the Storage.
+            threshold: The threshold for small values.
+
+        Raises:
+            ValueError: If the Component is not a Storage.
+        """
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
         variable_names = self.inputs + self.outputs + [self._charge_state]
@@ -530,7 +671,7 @@ class SegmentedCalculationResults:
         return [segment.name for segment in self.segment_results]
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
-        """Returns the solution of a variable without overlap"""
+        """Returns the solution of a variable without overlapping timesteps"""
         dataarrays = [result.solution[variable_name].isel(time=slice(None, self.timesteps_per_segment))
                       for result in self.segment_results[:-1]
                       ] + [self.segment_results[-1].solution[variable_name]]
@@ -544,8 +685,21 @@ class SegmentedCalculationResults:
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
         save: Union[bool, pathlib.Path] = False,
-        show: bool = True
-    ) -> plotly.graph_objs.Figure:
+        show: bool = True,
+        engine: plotting.PlottingEngine = 'plotly',
+    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+        """
+        Plots a heatmap of the solution of a variable.
+
+        Args:
+            variable_name: The name of the variable to plot.
+            heatmap_timeframes: The timeframes to use for the heatmap.
+            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
+            color_map: The color map to use for the heatmap.
+            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+            show: Whether to show the plot or not.
+            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+        """
         return plot_heatmap(
             dataarray=self.solution_without_overlap(variable_name),
             name=variable_name,
@@ -554,7 +708,9 @@ class SegmentedCalculationResults:
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
             color_map=color_map,
             save=save,
-            show=show)
+            show=show,
+            engine=engine,
+        )
 
     def to_file(self,
                 folder: Optional[Union[str, pathlib.Path]] = None,
@@ -577,34 +733,6 @@ class SegmentedCalculationResults:
         logger.info(f'Saved calculation "{name}" to {path}')
 
 
-def plotly_save_and_show(fig: plotly.graph_objs.Figure,
-                         default_filename: pathlib.Path,
-                         user_filename: Optional[pathlib.Path] = None,
-                         show: bool = True,
-                         save: bool = False) -> plotly.graph_objs.Figure:
-    """
-    Optionally saves and/or displays a Plotly figure.
-
-    Args:
-        fig: The Plotly figure to display or save.
-        default_filename: The default file path if no user filename is provided.
-        user_filename: An optional user-specified file path.
-        show: Whether to display the figure (default: True).
-        save: Whether to save the figure (default: False).
-
-    Returns:
-        go.Figure: The input figure.
-    """
-    filename = user_filename or default_filename
-    if show and not save:
-        fig.show()
-    elif save and show:
-        plotly.offline.plot(fig, filename=str(filename))
-    elif save and not show:
-        fig.write_html(filename)
-    return fig
-
-
 def plot_heatmap(
     dataarray: xr.DataArray,
     name: str,
@@ -613,49 +741,109 @@ def plot_heatmap(
     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
     color_map: str = 'portland',
     save: Union[bool, pathlib.Path] = False,
-    show: bool = True
+    show: bool = True,
+    engine: plotting.PlottingEngine = 'plotly'
 ):
+    """
+    Plots a heatmap of the solution of a variable.
+
+    Args:
+        dataarray: The dataarray to plot.
+        name: The name of the variable to plot.
+        folder: The folder to save the plot to.
+        heatmap_timeframes: The timeframes to use for the heatmap.
+        heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
+        color_map: The color map to use for the heatmap.
+        save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+        show: Whether to show the plot or not.
+        engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+    """
     heatmap_data = plotting.heat_map_data_from_df(
         dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill')
-    fig = plotting.heat_map_plotly(
-        heatmap_data, title=name, color_map=color_map,
-        xlabel=f'timeframe [{heatmap_timeframes}]', ylabel=f'timesteps [{heatmap_timesteps_per_frame}]'
-    )
-    return plotly_save_and_show(
-        fig,
-        folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame}).html',
-        user_filename=None if isinstance(save, bool) else pathlib.Path(save),
-        show=show,
-        save=True if save else False)
+
+    xlabel, ylabel = f'timeframe [{heatmap_timeframes}]', f'timesteps [{heatmap_timesteps_per_frame}]'
+
+    if engine == 'plotly':
+        figure_like = plotting.heat_map_plotly(
+            heatmap_data, title=name, color_map=color_map,
+            xlabel=xlabel, ylabel=ylabel
+        )
+        default_filetype = '.html'
+    elif engine == 'matplotlib':
+        figure_like = plotting.heat_map_matplotlib(
+            heatmap_data, title=name, color_map=color_map,
+            xlabel=xlabel, ylabel=ylabel
+        )
+        default_filetype = '.png'
+    else:
+        raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+
+    return plotting.export_figure(
+            figure_like=figure_like,
+            default_path=folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})',
+            default_filetype=default_filetype,
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
 
 
 def sanitize_dataset(
-        ds: xr.Dataset,
-        timesteps: Optional[pd.DatetimeIndex] = None,
-        threshold: Optional[float] = 1e-5,
-        negate: Optional[List[str]] = None,
+    ds: xr.Dataset,
+    timesteps: Optional[pd.DatetimeIndex] = None,
+    threshold: Optional[float] = 1e-5,
+    negate: Optional[List[str]] = None,
+    drop_small_vars: bool = True,
+    zero_small_values: bool = False,
 ) -> xr.Dataset:
     """
-    Sanitizes a dataset by dropping variables with small values and optionally reindexing the time axis.
+    Sanitizes a dataset by handling small values (dropping or zeroing) and optionally reindexing the time axis.
 
     Args:
         ds: The dataset to sanitize.
         timesteps: The timesteps to reindex the dataset to. If None, the original timesteps are kept.
-        threshold: The threshold for dropping variables. If None, no variables are dropped.
+        threshold: The threshold for small values processing. If None, no processing is done.
         negate: The variables to negate. If None, no variables are negated.
+        drop_small_vars: If True, drops variables where all values are below threshold.
+        zero_small_values: If True, sets values below threshold to zero.
 
     Returns:
         xr.Dataset: The sanitized dataset.
     """
+    # Create a copy to avoid modifying the original
+    ds = ds.copy()
+
+    # Step 1: Negate specified variables
     if negate is not None:
         for var in negate:
-            ds[var] = -ds[var]
+            if var in ds:
+                ds[var] = -ds[var]
+
+    # Step 2: Handle small values
     if threshold is not None:
-        ds_no_nan_abs = xr.apply_ufunc(np.abs, ds).fillna(0)  # Replace NaN with 0 (below thres        ds_without_na = ds.fillna(0)  # Replace NaN with 0 (below threshold) for the comparison
-        vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all()]
-        ds = ds.drop_vars(vars_to_drop)
+        ds_no_nan_abs = xr.apply_ufunc(np.abs, ds).fillna(0)  # Replace NaN with 0 (below threshold) for the comparison
+
+        # Option 1: Drop variables where all values are below threshold
+        if drop_small_vars:
+            vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all()]
+            ds = ds.drop_vars(vars_to_drop)
+
+        # Option 2: Set small values to zero
+        if zero_small_values:
+            for var in ds.data_vars:
+                # Create a boolean mask of values below threshold
+                mask = ds_no_nan_abs[var] <= threshold
+                # Only proceed if there are values to zero out
+                if mask.any():
+                    # Create a copy to ensure we don't modify data with views
+                    ds[var] = ds[var].copy()
+                    # Set values below threshold to zero
+                    ds[var] = ds[var].where(~mask, 0)
+
+    # Step 3: Reindex to specified timesteps if needed
     if timesteps is not None and not ds.indexes['time'].equals(timesteps):
         ds = ds.reindex({'time': timesteps}, fill_value=np.nan)
+
     return ds
 
 

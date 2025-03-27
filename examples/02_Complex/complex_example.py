@@ -195,3 +195,4 @@ if __name__ == '__main__':
     calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
     calculation.results['BHKW2'].plot_node_balance()
     calculation.results['Speicher'].plot_charge_state()
+    calculation.results['Fernwärme'].plot_node_balance_pie()

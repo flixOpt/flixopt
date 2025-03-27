@@ -259,7 +259,7 @@ class AggregatedCalculation(FullCalculation):
         )
 
         self.aggregation.cluster()
-        self.aggregation.plot()
+        self.aggregation.plot(show=True, save= self.folder / 'aggregation.html')
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
             self.flow_system.time_series_collection.insert_new_data(self.aggregation.aggregated_data, include_extra_timestep=False)
         self.durations['aggregation'] = round(timeit.default_timer() - t_start_agg, 2)
