@@ -75,7 +75,7 @@ class Piecewise(Interface):
 
 
 @register_class_for_io
-class PiecewiseConversion:
+class PiecewiseConversion(Interface):
     def __init__(self, piecewises: Dict[str, Piecewise]):
         self.piecewises = piecewises
 
@@ -98,7 +98,7 @@ class PiecewiseConversion:
 
 
 @register_class_for_io
-class PiecewiseShares:
+class PiecewiseShares(Interface):
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
