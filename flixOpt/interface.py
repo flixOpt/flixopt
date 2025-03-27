@@ -67,6 +67,9 @@ class Piecewise(Interface):
     def __getitem__(self, index):
         return self.segments[index]  # Enables indexing like piecewise[i]
 
+    def __iter__(self):
+        return iter(self.segments)  # Enables iteration like for piece in piecewise: ...
+
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         for i, segment in enumerate(self.segments):
             segment.transform_data(flow_system, f'{name_prefix}|Segment{i}')

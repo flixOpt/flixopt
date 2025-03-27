@@ -741,9 +741,9 @@ class PiecewiseModel(Model):
         for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
             self.add(self._model.add_constraints(
-                variable == sum([segment.lambda0 * segment.sample_points[var_name].start
-                                 + segment.lambda1 * segment.sample_points[var_name].end
-                                 for segment in self._segment_models]),
+                variable == sum([piece_model.lambda0 * piece_bounds.start
+                                 + piece_model.lambda1 * piece_bounds.end
+                                 for piece_model, piece_bounds in zip(self.pieces, self._piecewise_variables[var_name])]),
                 name=f'{self.label_full}|{var_name}_lambda'),
                 f'{var_name}_lambda'
             )
@@ -765,7 +765,7 @@ class PiecewiseModel(Model):
                 rhs = 1
 
             self.add(self._model.add_constraints(
-                sum([segment.in_segment for segment in self._segment_models]) <= rhs,
+                sum([segment.in_segment for segment in self.pieces]) <= rhs,
                 name=f'{self.label_full}|{variable.name}_single_segment'),
                 'single_segment'
             )
