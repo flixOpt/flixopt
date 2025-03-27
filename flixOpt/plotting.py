@@ -36,7 +36,17 @@ plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _po
 
 
 ColorType = Union[str, List[str], Dict[str, str]]
+"""Identifier for the colors to use. 
+Use the name of a colorscale, a list of colors or a dictionary of labels to colors.
+The colors must be valid color strings (HEX or names). Depending on the Engine used, other formats are possible.
+See also: 
+- https://htmlcolorcodes.com/color-names/
+- https://matplotlib.org/stable/tutorials/colors/colormaps.html
+- https://plotly.com/python/builtin-colorscales/
+"""
+
 EngineType = Literal['plotly', 'matplotlib']
+"""Identifier for the plotting engine to use."""
 
 
 def process_colors(
