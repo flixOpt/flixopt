@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise, Piece, PiecewiseConversion, PiecewiseEffects
+from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -743,7 +743,7 @@ class PiecewiseModel(Model):
             self.add(self._model.add_constraints(
                 variable == sum([piece_model.lambda0 * piece_bounds.start
                                  + piece_model.lambda1 * piece_bounds.end
-                                 for piece_model, piece_bounds in zip(self.pieces, self._piecewise_variables[var_name])]),
+                                 for piece_model, piece_bounds in zip(self.pieces, self._piecewise_variables[var_name], strict=False)]),
                 name=f'{self.label_full}|{var_name}_lambda'),
                 f'{var_name}_lambda'
             )

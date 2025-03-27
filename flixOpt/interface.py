@@ -4,17 +4,16 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union, Iterator
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
 
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, Scalar
-from .structure import Element, Interface, register_class_for_io
-
-import pandas as pd
+from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
+    from .effects import EffectValuesUser, EffectValuesUserScalar
     from .flow_system import FlowSystem
-    from .effects import Effect, EffectValuesUser, EffectValuesUserScalar
+
 
 logger = logging.getLogger('flixOpt')
 
