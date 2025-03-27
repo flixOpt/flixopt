@@ -71,7 +71,7 @@ class Piecewise(Interface):
 
 @register_class_for_io
 class PiecewiseConversion(Interface):
-    def __init__(self, piecewises: Dict[str, Piecewise]):
+    def __init__(self, piecewises: Dict[str, Piecewise], allow_zero: bool = False):
         """
         Define a piecewise conversion between multiple Flows.
         --> "gaps" can be expressed by a piece not starting at the end of the prior piece: [(1,3), (4,5)]
