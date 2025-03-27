@@ -979,7 +979,7 @@ def pie_with_matplotlib(
 def dual_pie_with_plotly(
     data_left: pd.Series,
     data_right: pd.Series,
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -995,8 +995,10 @@ def dual_pie_with_plotly(
     Args:
         data_left: Series for the left pie chart.
         data_right: Series for the right pie chart.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
-                to use for coloring the pie segments.
+        colors: Color specification, can be:
+            - A string with a colorscale name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping category names to colors (e.g., {'Category1': '#ff0000'})
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
@@ -1010,8 +1012,6 @@ def dual_pie_with_plotly(
     Returns:
         A Plotly figure object containing the generated dual pie chart.
     """
-    import itertools
-
     from plotly.subplots import make_subplots
 
     # Check for empty data
@@ -1021,7 +1021,9 @@ def dual_pie_with_plotly(
 
     # Create a subplot figure
     fig = make_subplots(
-        rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]], subplot_titles=subtitles, horizontal_spacing=0.05
+        rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]],
+        subplot_titles=subtitles,
+        horizontal_spacing=0.05
     )
 
     # Process series to handle negative values and apply minimum percentage threshold
@@ -1079,18 +1081,8 @@ def dual_pie_with_plotly(
     # Get unique set of all labels for consistent coloring
     all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
 
-    # Generate consistent color mapping
-    if isinstance(colors, str):
-        colorscale = px.colors.get_colorscale(colors)
-        color_list = px.colors.sample_colorscale(
-            colorscale,
-            [i / (len(all_labels) - 1) for i in range(len(all_labels))] if len(all_labels) > 1 else [0],
-        )
-        color_map = {label: color_list[i] for i, label in enumerate(all_labels)}
-    else:
-        # If colors is a list, create a cycling iterator
-        color_iter = itertools.cycle(colors)
-        color_map = {label: next(color_iter) for label in all_labels}
+    # Get consistent color mapping for both charts using our unified function
+    color_map = process_colors(colors, all_labels, engine='plotly', return_mapping=True)
 
     # Function to create a pie trace with consistently mapped colors
     def create_pie_trace(data_series, side):
