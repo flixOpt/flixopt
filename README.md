@@ -38,7 +38,7 @@ It was originally developed by [TU Dresden](https://github.com/gewv-tu-dresden) 
     - flixopt abstracts costs as so called 'Effects'. This allows to model costs, CO2-emissions, primary-energy-demand or area-demand at the same time.
     - Effects can interact with each other(e.g., specific CO2 costs)
     - Any of these `Effects` can be used as the optimization objective.
-    - A **Weigted Sum**of Effects can be used as the optimization objective.
+    - A **Weigted Sum** of Effects can be used as the optimization objective.
     - Every Effect can be constrained ($\epsilon$-constraint method).
 
 - **Calculation Modes**

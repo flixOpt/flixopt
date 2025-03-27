@@ -176,7 +176,10 @@ EffectValuesExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
 EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
 EffectValuesDict = Dict[str, NumericDataTS]  # How effect values are stored
 EffectValuesUser = Union[NumericDataTS, Dict[str, NumericDataTS]]  # User-specified Shares to Effects
+""" This datatype is used to define the share to an effect by a certain attribute. """
+
 EffectValuesUserScalar = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
+""" This datatype is used to define the share to an effect by a certain attribute. Only scalars are allowed. """
 
 
 class EffectCollection:

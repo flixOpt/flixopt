@@ -1,4 +1,4 @@
-# flixOpt Concepts & Mathematical Description
+# flixOpt Concepts
 
 flixOpt is built around a set of core concepts that work together to represent and optimize energy and material flow systems. This page provides a high-level overview of these concepts and how they interact.
 
@@ -48,10 +48,13 @@ Every flixOpt model starts with creating a FlowSystem. It:
 - Costs (investment, operation)
 - Emissions (CO₂, NOx, etc.)
 - Resource consumption
+- Area demand
 
 These can be freely defined and crosslink to each other (`CO₂` ──[specific CO₂-costs]─→ `Costs`).
-One effect is designated as the **optimization objective** (typically Costs), while others can have constraints.
-This effect can incorporate several other effects, which woul result in a weighted objective from multiple effects.
+One effect is designated as the **optimization objective** (typically Costs), while others can be constrained.
+This approach allows for a multi-criteria optimization using both...
+ - ... the **Weigted Sum**Method, by Optimizing a theoretical Effect which other Effects crosslink to.
+ - ... the ($\epsilon$-constraint method) by constraining effects.
 
 ### Calculation
 
