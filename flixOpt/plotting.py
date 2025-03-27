@@ -186,7 +186,7 @@ def get_categorical_colormap(
 def with_plotly(
     data: pd.DataFrame,
     mode: Literal['bar', 'line', 'area'] = 'area',
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -196,38 +196,27 @@ def with_plotly(
     Plot a DataFrame with Plotly, using either stacked bars or stepped lines.
 
     Args:
-        data: A DataFrame containing the data to plot, where the index represents time (e.g., hours), and each column represents a separate data series.
-        mode: The plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for coloring the data series.
+        data: A DataFrame containing the data to plot, where the index represents time (e.g., hours),
+              and each column represents a separate data series.
+        mode: The plotting mode. Use 'bar' for stacked bar charts, 'line' for stepped lines,
+              or 'area' for stacked area charts.
+        colors: Color specification, can be:
+            - A string with a colorscale name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         ylabel: The label for the y-axis.
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
 
     Returns:
         A Plotly figure object containing the generated plot.
-
-    Notes:
-        - If `mode` is 'bar', bars are stacked for each data series.
-        - If `mode` is 'line', a stepped line is drawn for each data series.
-        - The legend is positioned below the plot for a cleaner layout when many data series are present.
-
-    Examples:
-        >>> fig = with_plotly(data, mode='bar', colorscale='plasma')
-        >>> fig.show()
     """
     assert mode in ['bar', 'line', 'area'], f"'mode' must be one of {['bar', 'line', 'area']}"
     if data.empty:
         return go.Figure()
-    if isinstance(colors, str):
-        colorscale = px.colors.get_colorscale(colors)
-        colors = px.colors.sample_colorscale(
-            colorscale,
-            [i / (len(data.columns) - 1) for i in range(len(data.columns))] if len(data.columns) > 1 else [0],
-        )
 
-    assert len(colors) == len(data.columns), (
-        f'The number of colors does not match the provided data columns. {len(colors)=}; {len(colors)=}'
-    )
+    processed_colors = process_colors(colors, list(data.columns), engine='plotly')
+
     fig = fig if fig is not None else go.Figure()
 
     if mode == 'bar':
@@ -237,7 +226,7 @@ def with_plotly(
                     x=data.index,
                     y=data[column],
                     name=column,
-                    marker=dict(color=colors[i]),
+                    marker=dict(color=processed_colors[i]),
                 )
             )
 
@@ -254,7 +243,7 @@ def with_plotly(
                     y=data[column],
                     mode='lines',
                     name=column,
-                    line=dict(shape='hv', color=colors[i]),
+                    line=dict(shape='hv', color=processed_colors[i]),
                 )
             )
     elif mode == 'area':
@@ -265,13 +254,15 @@ def with_plotly(
         negative_columns = list(data.columns[(data <= 0).where(~np.isnan(data), True).all()])
         negative_columns = [column for column in negative_columns if column not in positive_columns]
         mixed_columns = list(set(data.columns) - set(positive_columns + negative_columns))
+
         if mixed_columns:
             logger.warning(
                 f'Data for plotting stacked lines contains columns with both positive and negative values:'
                 f' {mixed_columns}. These can not be stacked, and are printed as simple lines'
             )
 
-        colors_stacked = {column: colors[i] for i, column in enumerate(data.columns)}
+        # Get color mapping for all columns
+        colors_stacked = {column: processed_colors[i] for i, column in enumerate(data.columns)}
 
         for column in positive_columns + negative_columns:
             fig.add_trace(
@@ -331,7 +322,7 @@ def with_plotly(
 def with_matplotlib(
     data: pd.DataFrame,
     mode: Literal['bar', 'line'] = 'bar',
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -343,9 +334,13 @@ def with_matplotlib(
     Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
 
     Args:
-        data: A DataFrame containing the data to plot. The index should represent time (e.g., hours), and each column represents a separate data series.
+        data: A DataFrame containing the data to plot. The index should represent time (e.g., hours),
+              and each column represents a separate data series.
         mode: Plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for coloring the data series.
+        colors: Color specification, can be:
+            - A string with a colormap name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         ylabel: The ylabel of the plot.
         xlabel: The xlabel of the plot.
@@ -371,12 +366,7 @@ def with_matplotlib(
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    if isinstance(colors, str):
-        cmap = plt.get_cmap(colors, len(data.columns))
-        colors = [cmap(i) for i in range(len(data.columns))]
-    assert len(colors) == len(data.columns), (
-        f'The number of colors does not match the provided data columns. {len(colors)=}; {len(colors)=}'
-    )
+    processed_colors = process_colors(colors, list(data.columns), engine='matplotlib')
 
     if mode == 'bar':
         cumulative_positive = np.zeros(len(data))
@@ -391,7 +381,7 @@ def with_matplotlib(
                 data.index,
                 positive_values,
                 bottom=cumulative_positive,
-                color=colors[i],
+                color=processed_colors[i],
                 label=column,
                 width=width,
                 align='center',
@@ -402,7 +392,7 @@ def with_matplotlib(
                 data.index,
                 negative_values,
                 bottom=cumulative_negative,
-                color=colors[i],
+                color=processed_colors[i],
                 label='',  # No label for negative bars
                 width=width,
                 align='center',
@@ -411,7 +401,7 @@ def with_matplotlib(
 
     elif mode == 'line':
         for i, column in enumerate(data.columns):
-            ax.step(data.index, data[column], where='post', color=colors[i], label=column)
+            ax.step(data.index, data[column], where='post', color=processed_colors[i], label=column)
 
     # Aesthetics
     ax.set_xlabel(xlabel, ha='center')
