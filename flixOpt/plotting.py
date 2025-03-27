@@ -45,7 +45,7 @@ See also:
 - https://plotly.com/python/builtin-colorscales/
 """
 
-EngineType = Literal['plotly', 'matplotlib']
+PlottingEngine = Literal['plotly', 'matplotlib']
 """Identifier for the plotting engine to use."""
 
 
