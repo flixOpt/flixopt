@@ -20,12 +20,10 @@ logger = logging.getLogger('flixOpt')
 
 @register_class_for_io
 class Piece(Interface):
-    """
-    This class is used to define a piece, which is part of a Piecewise object.
-    """
-
     def __init__(self, start: NumericData, end: NumericData):
         """
+        Define a Piece, which is part of a Piecewise object.
+
         Args:
             start: The x-values of the piece.
             end: The end of the piece.
@@ -44,12 +42,10 @@ class Piece(Interface):
 
 @register_class_for_io
 class Piecewise(Interface):
-    """
-    This class is used to define a piecewise function.
-    """
-
     def __init__(self, pieces: List[Piece]):
         """
+        Define a Piecewise, consisting of a list of Pieces.
+
         Args:
             pieces: The pieces of the piecewise.
         """
@@ -76,6 +72,12 @@ class Piecewise(Interface):
 @register_class_for_io
 class PiecewiseConversion(Interface):
     def __init__(self, piecewises: Dict[str, Piecewise]):
+        """
+        Define a peicewise conversion between multiple Flows.
+
+        Args:
+            piecewises: Dict of Piecewises defining the conversion factors. flow labels as keys, piecewise as values
+        """
         self.piecewises = piecewises
 
     def __len__(self):
