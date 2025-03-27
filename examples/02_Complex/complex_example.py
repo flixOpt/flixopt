@@ -13,7 +13,7 @@ if __name__ == '__main__':
     # Configure options for testing various parameters and behaviors
     check_penalty = False
     excess_penalty = 1e5
-    use_chp_with_segments = False
+    use_chp_with_piecewise_conversion = True
     time_indices = None  # Define specific time steps for custom calculations, or use the entire series
 
     # --- Define Demand and Price Profiles ---
@@ -92,12 +92,12 @@ if __name__ == '__main__':
         Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
     )
 
-    # 3. Define CHP with Linear Segments
-    # This CHP unit uses linear segments for more dynamic behavior over time
+    # 3. Define CHP with Piecewise Conversion
+    # This CHP unit uses piecewise conversion for more dynamic behavior over time
     P_el = fx.Flow('P_el', bus='Strom', size=60, previous_flow_rate=20)
     Q_th = fx.Flow('Q_th', bus='Fernwärme')
     Q_fu = fx.Flow('Q_fu', bus='Gas')
-    segmented_conversion_factors = fx.PiecewiseConversion(
+    piecewise_conversion = fx.PiecewiseConversion(
         {
             P_el.label: fx.Piecewise([fx.Piece(5, 30), fx.Piece(40, 60)]),
             Q_th.label: fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
@@ -109,12 +109,12 @@ if __name__ == '__main__':
         'BHKW2',
         inputs=[Q_fu],
         outputs=[P_el, Q_th],
-        segmented_conversion_factors=segmented_conversion_factors,
+        piecewise_conversion=piecewise_conversion,
         on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
     )
 
     # 4. Define Storage Component
-    # Storage with variable size and segmented investment effects
+    # Storage with variable size and piecewise investment effects
     segmented_investment_effects = fx.PiecewiseEffects(
         piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
         piecewise_shares={
@@ -177,7 +177,7 @@ if __name__ == '__main__':
     # --- Build FlowSystem ---
     # Select components to be included in the flow system
     flow_system.add_elements(Costs, CO2, PE, Gaskessel, Waermelast, Gasbezug, Stromverkauf, speicher)
-    flow_system.add_elements(bhkw_2) if use_chp_with_segments else flow_system.add_elements(bhkw)
+    flow_system.add_elements(bhkw_2) if use_chp_with_piecewise_conversion else flow_system.add_elements(bhkw)
 
     pprint(flow_system)  # Get a string representation of the FlowSystem
 
