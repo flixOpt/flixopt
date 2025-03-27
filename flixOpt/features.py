@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise, Segment, PiecewiseConversion, PiecewiseShares
+from .interface import InvestParameters, OnOffParameters, Piecewise, Piece, PiecewiseConversion, PiecewiseShares
 from .structure import Model, SystemModel
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -101,13 +101,13 @@ class InvestmentModel(Model):
                 target='invest',
             )
 
-        if self.parameters.effects_in_segments:
+        if self.parameters.piecewise_effects:
             self._segments = self.add(
                 PiecewiseSharesModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    piecewise_origin=(self.size.name, self.parameters.effects_in_segments.piecewise_origin),
-                    piecewise_shares=self.parameters.effects_in_segments.piecewise_shares,
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
                     can_be_outside_segments=self.is_invested),
                 'segments'
             )
@@ -303,7 +303,7 @@ class OnOffModel(Model):
         # % Bedingungen 1) und 2) müssen erfüllt sein:
 
         # % Anmerkung: Falls "abschnittsweise linear" gewählt, dann ist eigentlich nur Bedingung 1) noch notwendig
-        # %            (und dann auch nur wenn erstes Segment bei Q_th=0 beginnt. Dann soll bei Q_th=0 (d.h. die Maschine ist Aus) On = 0 und segment1.onSeg = 0):)
+        # %            (und dann auch nur wenn erstes Piece bei Q_th=0 beginnt. Dann soll bei Q_th=0 (d.h. die Maschine ist Aus) On = 0 und segment1.onSeg = 0):)
         # %            Fazit: Wenn kein Performance-Verlust durch mehr Gleichungen, dann egal!
 
         nr_of_def_vars = len(self._defining_variables)
@@ -661,7 +661,7 @@ class OnOffModel(Model):
 
 
 class PieceModel(Model):
-    """Class for modeling a linear segment of one or more variables in parallel"""
+    """Class for modeling a linear piece of one or more variables in parallel"""
 
     def __init__(
         self,
@@ -765,7 +765,7 @@ class PiecewiseModel(Model):
                 rhs = 1
 
             self.add(self._model.add_constraints(
-                sum([segment.in_segment for segment in self.pieces]) <= rhs,
+                sum([piece.in_segment for piece in self.pieces]) <= rhs,
                 name=f'{self.label_full}|{variable.name}_single_segment'),
                 'single_segment'
             )
@@ -883,7 +883,7 @@ class PiecewiseSharesModel(Model):
     ):
         super().__init__(model, label_of_element, label)
         assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
-            'Segment length of variable_segments and share_segments must be equal'
+            'Piece length of variable_segments and share_segments must be equal'
         )
         self._can_be_outside_segments = can_be_outside_segments
         self._piecewise_origin = piecewise_origin

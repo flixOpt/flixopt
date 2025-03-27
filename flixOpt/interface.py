@@ -6,8 +6,6 @@ These are tightly connected to features.py
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union, Iterator
 
-from flixOpt.core import TimeSeriesCollection
-
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, Scalar
 from .structure import Element, Interface, register_class_for_io
@@ -22,16 +20,16 @@ logger = logging.getLogger('flixOpt')
 
 
 @register_class_for_io
-class Segment(Interface):
+class Piece(Interface):
     """
-    This class is used to define a segment, which is part of a Piecewise object.
+    This class is used to define a piece, which is part of a Piecewise object.
     """
 
     def __init__(self, start: NumericData, end: NumericData):
         """
         Args:
-            start: The x-values of the segment.
-            end: The end of the segment.
+            start: The x-values of the piece.
+            end: The end of the piece.
         """
         self.start = start
         self.end = end
@@ -54,35 +52,35 @@ class Piecewise(Interface):
     This class is used to define a piecewise function.
     """
 
-    def __init__(self, segments: List[Segment]):
+    def __init__(self, pieces: List[Piece]):
         """
         Args:
-            segments: The segments of the piecewise.
+            pieces: The pieces of the piecewise.
         """
-        self.segments = segments
+        self.pieces = pieces
 
     def __len__(self):
-        return len(self.segments)
+        return len(self.pieces)
 
     def __getitem__(self, index):
-        return self.segments[index]  # Enables indexing like piecewise[i]
+        return self.pieces[index]  # Enables indexing like piecewise[i]
 
     def __iter__(self):
-        return iter(self.segments)  # Enables iteration like for piece in piecewise: ...
+        return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        for i, segment in enumerate(self.segments):
-            segment.transform_data(flow_system, f'{name_prefix}|Segment{i}')
+        for i, piece in enumerate(self.pieces):
+            piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
 
     def as_series(self):
         data = []
-        for segment in self.segments:
-            data.append([segment.start, segment.end])
+        for piece in self.pieces:
+            data.append([piece.start, piece.end])
         return pd.Series(data)
 
     @property
     def is_scalar(self) -> bool:
-        return all([segment.is_scalar for segment in self.segments])
+        return all([piece.is_scalar for piece in self.pieces])
 
 
 @register_class_for_io
@@ -93,14 +91,14 @@ class PiecewiseConversion:
     def __len__(self):
         return len(self.piecewises)
 
-    def __getitem__(self, key: Union[str, int]) -> Union[Piecewise, Dict[str, Segment]]:
+    def __getitem__(self, key: Union[str, int]) -> Union[Piecewise, Dict[str, Piece]]:
         if isinstance(key, str):
             return self.piecewises[key]
-        elif isinstance(key, int):  # Return str to Segment
+        elif isinstance(key, int):  # Return str to Piece
             return {key: piecewise[key] for key, piecewise in self.piecewises.items()}
         raise TypeError(f'Expected str or int, got {type(key)}')
 
-    def __iter__(self) -> Iterator[Dict[str, Segment]]:
+    def __iter__(self) -> Iterator[Dict[str, Piece]]:
         return iter([self[i] for i in range(len(self))])
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
@@ -135,7 +133,7 @@ class InvestParameters(Interface):
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScalar'] = None,
         specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
-        effects_in_segments: Optional[PiecewiseShares] = None,
+        piecewise_effects: Optional[PiecewiseShares] = None,
         divest_effects: Optional['EffectValuesUserScalar'] = None,
     ):
         """
@@ -147,7 +145,7 @@ class InvestParameters(Interface):
             specific_effects: Specific costs, e.g., in €/kW_nominal or €/m²_nominal.
                 Example: {costs: 3, CO2: 0.3} with costs and CO2 representing an Object of class Effect
                 (Attention: Annualize costs to chosen period!)
-            effects_in_segments: Linear relation in segments [invest_segments, cost_segments].
+            piecewise_effects: Linear piecewise relation [invest_pieces, cost_pieces].
                 Example 1:
                     [           [5, 25, 25, 100],       # size in kW
                      {costs:    [50,250,250,800],       # €
@@ -159,7 +157,7 @@ class InvestParameters(Interface):
                         [50,250,250,800]        # value for standart effect, typically €
                      ]  # €
                 (Attention: Annualize costs to chosen period!)
-                (Args 'specific_effects' and 'fix_effects' can be used in parallel to InvestsizeSegments)
+                (Args 'specific_effects' and 'fix_effects' can be used in parallel to Investsizepieces)
             minimum_size: Min nominal value (only if: size_is_fixed = False).
             maximum_size: Max nominal value (only if: size_is_fixed = False).
         """
@@ -168,7 +166,7 @@ class InvestParameters(Interface):
         self.fixed_size = fixed_size
         self.optional = optional
         self.specific_effects: EffectValuesUser = specific_effects or {}
-        self.effects_in_segments = effects_in_segments
+        self.piecewise_effects = piecewise_effects
         self._minimum_size = minimum_size
         self._maximum_size = maximum_size or CONFIG.modeling.BIG  # default maximum
 

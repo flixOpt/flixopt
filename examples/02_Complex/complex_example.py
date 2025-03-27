@@ -99,9 +99,9 @@ if __name__ == '__main__':
     Q_fu = fx.Flow('Q_fu', bus='Gas')
     segmented_conversion_factors = fx.PiecewiseConversion(
         {
-            P_el.label: fx.Piecewise([fx.Segment(5, 30), fx.Segment(40, 60)]),
-            Q_th.label: fx.Piecewise([fx.Segment(6, 35), fx.Segment(45, 100)]),
-            Q_fu.label: fx.Piecewise([fx.Segment(12, 70), fx.Segment(90, 200)]),
+            P_el.label: fx.Piecewise([fx.Piece(5, 30), fx.Piece(40, 60)]),
+            Q_th.label: fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
+            Q_fu.label: fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
         }
     )
 
@@ -116,10 +116,10 @@ if __name__ == '__main__':
     # 4. Define Storage Component
     # Storage with variable size and segmented investment effects
     segmented_investment_effects = fx.PiecewiseShares(
-        piecewise_origin=fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),
+        piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
         piecewise_shares={
-            Costs.label: fx.Piecewise([fx.Segment(50, 250), fx.Segment(250, 800)]),
-            PE.label: fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),
+            Costs.label: fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),
+            PE.label: fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
         },
     )
 
@@ -128,7 +128,7 @@ if __name__ == '__main__':
         charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
         capacity_in_flow_hours=fx.InvestParameters(
-            effects_in_segments=segmented_investment_effects,  # Investment effects
+            piecewise_effects=segmented_investment_effects,  # Investment effects
             optional=False,  # Forced investment
             minimum_size=0,
             maximum_size=1000,  # Optimizing between 0 and 1000 kWh

@@ -48,10 +48,10 @@ class LinearConverter(Component):
                 Either 'conversion_factors' or 'segmented_conversion_factors' can be used!
             segmented_conversion_factors:  Segmented linear relation between flows.
                 Each Flow gets a List of Segments assigned.
-                If FLows need to be 0 (or Off), include a "Zero-Segment" "(0, 0)", or use on_off_parameters
+                If Flows need to be 0 (or Off), include a "Zero-Piece" "(0, 0)", or use on_off_parameters
                 Either 'segmented_conversion_factors' or 'conversion_factors' can be used!
-                --> "gaps" can be expressed by a segment not starting at the end of the prior segment: [(1,3), (4,5)]
-                --> "points" can expressed as segment with same begin and end: [(3,3), (4,4)]
+                --> "gaps" can be expressed by a piece not starting at the end of the prior piece: [(1,3), (4,5)]
+                --> "points" can expressed as piece with same begin and end: [(3,3), (4,4)]
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
@@ -462,7 +462,7 @@ class LinearConverterModel(ComponentModel):
 
         # (linear) segments:
         else:
-            # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Segment itself
+            # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             segmented_conversion_factors = {
                 self.element.flows[flow].model.flow_rate.name: piecewise
                 for flow, piecewise in self.element.segmented_conversion_factors.items()

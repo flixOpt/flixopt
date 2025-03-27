@@ -208,11 +208,11 @@ def flow_system_complex() -> fx.FlowSystem:
 
     invest_speicher = fx.InvestParameters(
         fix_effects=0,
-        effects_in_segments= (
-            fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)]),
+        piecewise_effects= (
+            fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
             {
-                'costs': fx.Piecewise([fx.Segment(50, 250), fx.Segment(250, 800)]),
-                'PE': fx.Piecewise([fx.Segment(5, 25), fx.Segment(25, 100)])
+                'costs': fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),
+                'PE': fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)])
             }
         ),
         optional=False,
@@ -268,9 +268,9 @@ def flow_system_segments_of_flows(flow_system_complex) -> fx.FlowSystem:
         outputs=[fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
                  fx.Flow('Q_th', bus='Fernwärme')],
         segmented_conversion_factors= {
-            'P_el': fx.Piecewise([fx.Segment(5, 30), fx.Segment(40, 60)]),
-            'Q_th': fx.Piecewise([fx.Segment(6, 35), fx.Segment(45, 100)]),
-            'Q_fu': fx.Piecewise([fx.Segment(12, 70), fx.Segment(90, 200)]),
+            'P_el': fx.Piecewise([fx.Piece(5, 30), fx.Piece(40, 60)]),
+            'Q_th': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
+            'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
         },
         on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
     ))
@@ -291,9 +291,9 @@ def flow_system_segments_of_flows_2(flow_system_complex) -> fx.FlowSystem:
         outputs=[fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
                  fx.Flow('Q_th', bus='Fernwärme')],
         segmented_conversion_factors= {
-            'P_el': fx.Piecewise([fx.Segment(np.linspace(5, 6, len(flow_system.time_series_collection.timesteps)), 30), fx.Segment(40, np.linspace(60, 70, len(flow_system.time_series_collection.timesteps)))]),
-            'Q_th': fx.Piecewise([fx.Segment(6, 35), fx.Segment(45, 100)]),
-            'Q_fu': fx.Piecewise([fx.Segment(12, 70), fx.Segment(90, 200)]),
+            'P_el': fx.Piecewise([fx.Piece(np.linspace(5, 6, len(flow_system.time_series_collection.timesteps)), 30), fx.Piece(40, np.linspace(60, 70, len(flow_system.time_series_collection.timesteps)))]),
+            'Q_th': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
+            'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
         },
         on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
     ))

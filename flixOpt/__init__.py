@@ -14,7 +14,7 @@ from .commons import (
     InvestParameters,
     LinearConverter,
     OnOffParameters,
-    Segment,
+    Piece,
     Piecewise,
     PiecewiseConversion,
     PiecewiseShares,
