@@ -698,9 +698,9 @@ class PieceModel(Model):
             'lambda1'
         )
 
-        # eq:  lambda0(t) + lambda1(t) = in_segment(t)
+        # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
         self.add(self._model.add_constraints(
-            self.in_segment == self.lambda0 + self.lambda1,
+            self.inside_piece == self.lambda0 + self.lambda1,
             name=f'{self.label_full}|inside_piece'),
             'inside_piece'
         )
