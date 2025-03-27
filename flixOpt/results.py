@@ -668,7 +668,7 @@ class SegmentedCalculationResults:
 
     @property
     def segment_names(self) -> List[str]:
-        return [piece.name for segment in self.segment_results]
+        return [segment.name for segment in self.segment_results]
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Returns the solution of a variable without overlapping timesteps"""
