@@ -764,7 +764,7 @@ def plot_network(
 
 def pie_with_plotly(
     data: pd.DataFrame,
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
@@ -776,8 +776,10 @@ def pie_with_plotly(
     Args:
         data: A DataFrame containing the data to plot. If multiple rows exist,
               they will be summed unless a specific index value is passed.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
-                to use for coloring the pie segments.
+        colors: Color specification, can be:
+            - A string with a colorscale name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -793,7 +795,7 @@ def pie_with_plotly(
         - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
 
     Examples:
-        >>> fig = pie_with_plotly(data, colorscale='Pastel')
+        >>> fig = pie_with_plotly(data, colors='Pastel')
         >>> fig.show()
     """
     if data.empty:
@@ -818,13 +820,8 @@ def pie_with_plotly(
     labels = data_sum.index.tolist()
     values = data_sum.values.tolist()
 
-    # Apply color mapping
-    if isinstance(colors, str):
-        colorscale = px.colors.get_colorscale(colors)
-        colors = px.colors.sample_colorscale(
-            colorscale,
-            [i / (len(labels) - 1) for i in range(len(labels))] if len(labels) > 1 else [0],
-        )
+    # Apply color mapping using the unified color processor
+    processed_colors = process_colors(colors, labels, engine='plotly')
 
     # Create figure if not provided
     fig = fig if fig is not None else go.Figure()
@@ -835,7 +832,7 @@ def pie_with_plotly(
             labels=labels,
             values=values,
             hole=hole,
-            marker=dict(colors=colors),
+            marker=dict(colors=processed_colors),
             textinfo='percent+label+value',
             textposition='inside',
             insidetextorientation='radial',
@@ -856,7 +853,7 @@ def pie_with_plotly(
 
 def pie_with_matplotlib(
     data: pd.DataFrame,
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
@@ -870,8 +867,10 @@ def pie_with_matplotlib(
     Args:
         data: A DataFrame containing the data to plot. If multiple rows exist,
               they will be summed unless a specific index value is passed.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
-                to use for coloring the pie segments.
+        colors: Color specification, can be:
+            - A string with a colormap name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -916,10 +915,8 @@ def pie_with_matplotlib(
     labels = data_sum.index.tolist()
     values = data_sum.values.tolist()
 
-    # Apply color mapping
-    if isinstance(colors, str):
-        cmap = plt.get_cmap(colors, len(labels))
-        colors = [cmap(i) for i in range(len(labels))]
+    # Apply color mapping using the unified color processor
+    processed_colors = process_colors(colors, labels, engine='matplotlib')
 
     # Create figure and axis if not provided
     if fig is None or ax is None:
@@ -929,7 +926,7 @@ def pie_with_matplotlib(
     wedges, texts, autotexts = ax.pie(
         values,
         labels=labels,
-        colors=colors,
+        colors=processed_colors,
         autopct='%1.1f%%',
         startangle=90,
         shadow=False,
@@ -1135,7 +1132,7 @@ def dual_pie_with_plotly(
 def dual_pie_with_matplotlib(
     data_left: pd.Series,
     data_right: pd.Series,
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1152,8 +1149,10 @@ def dual_pie_with_matplotlib(
     Args:
         data_left: Series for the left pie chart.
         data_right: Series for the right pie chart.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
-                to use for coloring the pie segments.
+        colors: Color specification, can be:
+            - A string with a colormap name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping category names to colors (e.g., {'Category1': '#ff0000'})
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
@@ -1166,8 +1165,6 @@ def dual_pie_with_matplotlib(
     Returns:
         A tuple containing the Matplotlib figure and list of axes objects used for the plot.
     """
-    import itertools
-
     # Check for empty data
     if data_left.empty and data_right.empty:
         logger.warning('Both datasets are empty. Returning empty figure.')
@@ -1233,17 +1230,8 @@ def dual_pie_with_matplotlib(
     # Get unique set of all labels for consistent coloring
     all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
 
-    # Generate a consistent color mapping for both charts
-    if isinstance(colors, str):
-        cmap = plt.get_cmap(colors, len(all_labels))
-        color_list = [cmap(i) for i in range(len(all_labels))]
-    else:
-        # If colors is a list, create a cycling iterator
-        color_iter = itertools.cycle(colors)
-        color_list = [next(color_iter) for _ in range(len(all_labels))]
-
-    # Create a mapping from label to color
-    color_map = {label: color_list[i] for i, label in enumerate(all_labels)}
+    # Get consistent color mapping for both charts using our unified function
+    color_map = process_colors(colors, all_labels, engine='matplotlib', return_mapping=True)
 
     # Configure colors for each DataFrame based on the consistent mapping
     left_colors = [color_map[col] for col in df_left.columns] if not df_left.empty else []
