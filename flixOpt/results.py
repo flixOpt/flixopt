@@ -214,7 +214,7 @@ class CalculationResults:
         color_map: str = 'portland',
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
-        engine: Literal['plotly', 'matplotlib'] = 'plotly'
+        engine: plotting.PlottingEngine = 'plotly'
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         return plot_heatmap(
             dataarray=self.solution[variable_name],
@@ -378,7 +378,8 @@ class _NodeResults(_ElementResults):
         self,
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
-        engine: Literal['plotly', 'matplotlib'] = 'plotly'
+        colors: plotting.ColorType = 'viridis',
+        engine: plotting.PlottingEngine = 'plotly',
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
         Plots the node balance of the Component or Bus.
@@ -389,12 +390,18 @@ class _NodeResults(_ElementResults):
         """
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
-                self.node_balance(with_last_timestep=True).to_dataframe(), mode='area', title=f'Flow rates of {self.label}'
+                self.node_balance(with_last_timestep=True).to_dataframe(),
+                colors=colors,
+                mode='area',
+                title=f'Flow rates of {self.label}'
             )
             default_filetype = '.html'
         elif engine == 'matplotlib':
             figure_like = plotting.with_matplotlib(
-                self.node_balance(with_last_timestep=True).to_dataframe(), mode='bar', title=f'Flow rates of {self.label}'
+                self.node_balance(with_last_timestep=True).to_dataframe(),
+                colors=colors,
+                mode='bar',
+                title=f'Flow rates of {self.label}',
             )
             default_filetype = '.png'
         else:
@@ -412,11 +419,11 @@ class _NodeResults(_ElementResults):
     def plot_node_balance_pie(
         self,
         lower_percentage_group: float = 5,
-        colors: Union[str, List[str]] = 'viridis',
+        colors: plotting.ColorType = 'viridis',
         text_info: str = 'percent+label+value',
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
-        engine: Literal['plotly'] = 'plotly'
+        engine: plotting.PlottingEngine = 'plotly'
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -523,13 +530,15 @@ class ComponentResults(_NodeResults):
         self,
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
-        engine: Literal['plotly'] = 'plotly'
+        colors: plotting.ColorType = 'viridis',
+        engine: plotting.PlottingEngine = 'plotly'
     ) -> plotly.graph_objs.Figure:
         """
         Plots the charge state of a Storage.
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
+            colors: The c
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
 
         Raises:
@@ -543,9 +552,13 @@ class ComponentResults(_NodeResults):
 
         fig = plotting.with_plotly(
             self.node_balance(with_last_timestep=True).to_dataframe(),
+            colors=colors,
             mode='area',
             title=f'Operation Balance of {self.label}',
         )
+
+        # TODO: Use colors for charge state?
+
         charge_state = self.charge_state.to_dataframe()
         fig.add_trace(plotly.graph_objs.Scatter(
             x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state))
@@ -673,7 +686,7 @@ class SegmentedCalculationResults:
         color_map: str = 'portland',
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
-        engine: Literal['plotly', 'matplotlib'] = 'plotly',
+        engine: plotting.PlottingEngine = 'plotly',
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
         Plots a heatmap of the solution of a variable.
@@ -729,7 +742,7 @@ def plot_heatmap(
     color_map: str = 'portland',
     save: Union[bool, pathlib.Path] = False,
     show: bool = True,
-    engine: Literal['plotly', 'matplotlib'] = 'plotly'
+    engine: plotting.PlottingEngine = 'plotly'
 ):
     """
     Plots a heatmap of the solution of a variable.

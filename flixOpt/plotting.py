@@ -4,9 +4,10 @@ It provides high level functions to plot data with plotly and matplotlib.
 It's meant to be used in results.py, but is designed to be used by the end user as well.
 """
 
+import itertools
 import logging
 import pathlib
-from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -15,6 +16,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.offline
+from plotly.exceptions import PlotlyError
 
 if TYPE_CHECKING:
     import pyvis
@@ -33,10 +35,200 @@ _portland_colors = [
 plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
+ColorType = Union[str, List[str], Dict[str, str]]
+"""Identifier for the colors to use. 
+Use the name of a colorscale, a list of colors or a dictionary of labels to colors.
+The colors must be valid color strings (HEX or names). Depending on the Engine used, other formats are possible.
+See also: 
+- https://htmlcolorcodes.com/color-names/
+- https://matplotlib.org/stable/tutorials/colors/colormaps.html
+- https://plotly.com/python/builtin-colorscales/
+"""
+
+PlottingEngine = Literal['plotly', 'matplotlib']
+"""Identifier for the plotting engine to use."""
+
+
+class ColorProcessor:
+    """Class to handle color processing for different visualization engines."""
+
+    def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str = 'viridis'):
+        """
+        Initialize the color processor.
+
+        Args:
+            engine: The plotting engine to use ('plotly' or 'matplotlib')
+            default_colormap: Default colormap to use if none is specified
+        """
+        if engine not in ["plotly", "matplotlib"]:
+            raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
+        self.engine = engine
+        self.default_colormap = default_colormap
+
+    def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> List[Any]:
+        """
+        Generate colors from a named colormap.
+
+        Args:
+            colormap_name: Name of the colormap
+            num_colors: Number of colors to generate
+
+        Returns:
+            List of colors in the format appropriate for the engine
+        """
+        if self.engine == 'plotly':
+            try:
+                colorscale = px.colors.get_colorscale(colormap_name)
+            except PlotlyError as e:
+                logger.warning(
+                    f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}"
+                )
+                colorscale = px.colors.get_colorscale(self.default_colormap)
+
+            # Generate evenly spaced points
+            color_points = [i / (num_colors - 1) for i in range(num_colors)] if num_colors > 1 else [0]
+            return px.colors.sample_colorscale(colorscale, color_points)
+
+        else:  # matplotlib
+            try:
+                cmap = plt.get_cmap(colormap_name, num_colors)
+            except ValueError as e:
+                logger.warning(
+                    f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}"
+                )
+                cmap = plt.get_cmap(self.default_colormap, num_colors)
+
+            return [cmap(i) for i in range(num_colors)]
+
+    def _handle_color_list(self, colors: List[str], num_labels: int) -> List[str]:
+        """
+        Handle a list of colors, cycling if necessary.
+
+        Args:
+            colors: List of color strings
+            num_labels: Number of labels that need colors
+
+        Returns:
+            List of colors matching the number of labels
+        """
+        if len(colors) == 0:
+            logger.warning(f'Empty color list provided. Using {self.default_colormap} instead.')
+            return self._generate_colors_from_colormap(self.default_colormap, num_labels)
+
+        if len(colors) < num_labels:
+            logger.warning(
+                f'Not enough colors provided ({len(colors)}) for all labels ({num_labels}). Colors will cycle.'
+            )
+            # Cycle through the colors
+            color_iter = itertools.cycle(colors)
+            return [next(color_iter) for _ in range(num_labels)]
+        else:
+            # Trim if necessary
+            if len(colors) > num_labels:
+                logger.warning(
+                    f'More colors provided ({len(colors)}) than labels ({num_labels}). Extra colors will be ignored.'
+                )
+            return colors[:num_labels]
+
+    def _handle_color_dict(self, colors: Dict[str, str], labels: List[str]) -> List[str]:
+        """
+        Handle a dictionary mapping labels to colors.
+
+        Args:
+            colors: Dictionary mapping labels to colors
+            labels: List of labels that need colors
+
+        Returns:
+            List of colors in the same order as labels
+        """
+        if len(colors) == 0:
+            logger.warning(f'Empty color dictionary provided. Using {self.default_colormap} instead.')
+            return self._generate_colors_from_colormap(self.default_colormap, len(labels))
+
+        # Find missing labels
+        missing_labels = set(labels) - set(colors.keys())
+        if missing_labels:
+            logger.warning(
+                f'Some labels have no color specified: {missing_labels}. Using {self.default_colormap} for these.'
+            )
+
+            # Generate colors for missing labels
+            missing_colors = self._generate_colors_from_colormap(self.default_colormap, len(missing_labels))
+
+            # Create a copy to avoid modifying the original
+            colors_copy = colors.copy()
+            for i, label in enumerate(missing_labels):
+                colors_copy[label] = missing_colors[i]
+        else:
+            colors_copy = colors
+
+        # Create color list in the same order as labels
+        return [colors_copy[label] for label in labels]
+
+    def process_colors(
+        self,
+        colors: ColorType,
+        labels: List[str],
+        return_mapping: bool = False,
+    ) -> Union[List[Any], Dict[str, Any]]:
+        """
+        Process colors for the specified labels.
+
+        Args:
+            colors: Color specification (colormap name, list of colors, or label-to-color mapping)
+            labels: List of data labels that need colors assigned
+            return_mapping: If True, returns a dictionary mapping labels to colors;
+                           if False, returns a list of colors in the same order as labels
+
+        Returns:
+            Either a list of colors or a dictionary mapping labels to colors
+        """
+        if len(labels) == 0:
+            logger.warning('No labels provided for color assignment.')
+            return {} if return_mapping else []
+
+        # Process based on type of colors input
+        if isinstance(colors, str):
+            color_list = self._generate_colors_from_colormap(colors, len(labels))
+        elif isinstance(colors, list):
+            color_list = self._handle_color_list(colors, len(labels))
+        elif isinstance(colors, dict):
+            color_list = self._handle_color_dict(colors, labels)
+        else:
+            logger.warning(
+                f'Unsupported color specification type: {type(colors)}. Using {self.default_colormap} instead.'
+            )
+            color_list = self._generate_colors_from_colormap(self.default_colormap, len(labels))
+
+        # Return either a list or a mapping
+        if return_mapping:
+            return {label: color_list[i] for i, label in enumerate(labels)}
+        else:
+            return color_list
+
+
+def get_categorical_colormap(
+    category_names: List[str], colormap: str = 'tab10', engine: PlottingEngine = 'plotly'
+) -> Dict[str, Any]:
+    """
+    Creates a consistent mapping of categories to colors from a colormap.
+
+    Args:
+        category_names: List of category names to assign colors to
+        colormap: Name of the colormap to use
+        engine: The plotting engine ('plotly' or 'matplotlib')
+
+    Returns:
+        Dictionary mapping category names to colors in the format required by the specified engine
+    """
+    processor = ColorProcessor(engine=engine, default_colormap=colormap)
+    return processor.process_colors(colormap, category_names, return_mapping=True)
+
+
 def with_plotly(
     data: pd.DataFrame,
     mode: Literal['bar', 'line', 'area'] = 'area',
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -46,38 +238,27 @@ def with_plotly(
     Plot a DataFrame with Plotly, using either stacked bars or stepped lines.
 
     Args:
-        data: A DataFrame containing the data to plot, where the index represents time (e.g., hours), and each column represents a separate data series.
-        mode: The plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for coloring the data series.
+        data: A DataFrame containing the data to plot, where the index represents time (e.g., hours),
+              and each column represents a separate data series.
+        mode: The plotting mode. Use 'bar' for stacked bar charts, 'line' for stepped lines,
+              or 'area' for stacked area charts.
+        colors: Color specification, can be:
+            - A string with a colorscale name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         ylabel: The label for the y-axis.
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
 
     Returns:
         A Plotly figure object containing the generated plot.
-
-    Notes:
-        - If `mode` is 'bar', bars are stacked for each data series.
-        - If `mode` is 'line', a stepped line is drawn for each data series.
-        - The legend is positioned below the plot for a cleaner layout when many data series are present.
-
-    Examples:
-        >>> fig = with_plotly(data, mode='bar', colorscale='plasma')
-        >>> fig.show()
     """
     assert mode in ['bar', 'line', 'area'], f"'mode' must be one of {['bar', 'line', 'area']}"
     if data.empty:
         return go.Figure()
-    if isinstance(colors, str):
-        colorscale = px.colors.get_colorscale(colors)
-        colors = px.colors.sample_colorscale(
-            colorscale,
-            [i / (len(data.columns) - 1) for i in range(len(data.columns))] if len(data.columns) > 1 else [0],
-        )
 
-    assert len(colors) == len(data.columns), (
-        f'The number of colors does not match the provided data columns. {len(colors)=}; {len(colors)=}'
-    )
+    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, list(data.columns))
+
     fig = fig if fig is not None else go.Figure()
 
     if mode == 'bar':
@@ -87,7 +268,7 @@ def with_plotly(
                     x=data.index,
                     y=data[column],
                     name=column,
-                    marker=dict(color=colors[i]),
+                    marker=dict(color=processed_colors[i]),
                 )
             )
 
@@ -104,7 +285,7 @@ def with_plotly(
                     y=data[column],
                     mode='lines',
                     name=column,
-                    line=dict(shape='hv', color=colors[i]),
+                    line=dict(shape='hv', color=processed_colors[i]),
                 )
             )
     elif mode == 'area':
@@ -115,13 +296,15 @@ def with_plotly(
         negative_columns = list(data.columns[(data <= 0).where(~np.isnan(data), True).all()])
         negative_columns = [column for column in negative_columns if column not in positive_columns]
         mixed_columns = list(set(data.columns) - set(positive_columns + negative_columns))
+
         if mixed_columns:
             logger.warning(
                 f'Data for plotting stacked lines contains columns with both positive and negative values:'
                 f' {mixed_columns}. These can not be stacked, and are printed as simple lines'
             )
 
-        colors_stacked = {column: colors[i] for i, column in enumerate(data.columns)}
+        # Get color mapping for all columns
+        colors_stacked = {column: processed_colors[i] for i, column in enumerate(data.columns)}
 
         for column in positive_columns + negative_columns:
             fig.add_trace(
@@ -181,7 +364,7 @@ def with_plotly(
 def with_matplotlib(
     data: pd.DataFrame,
     mode: Literal['bar', 'line'] = 'bar',
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -193,9 +376,13 @@ def with_matplotlib(
     Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
 
     Args:
-        data: A DataFrame containing the data to plot. The index should represent time (e.g., hours), and each column represents a separate data series.
+        data: A DataFrame containing the data to plot. The index should represent time (e.g., hours),
+              and each column represents a separate data series.
         mode: Plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma') to use for coloring the data series.
+        colors: Color specification, can be:
+            - A string with a colormap name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         ylabel: The ylabel of the plot.
         xlabel: The xlabel of the plot.
@@ -211,22 +398,13 @@ def with_matplotlib(
           Negative values are stacked separately without extra labels in the legend.
         - If `mode` is 'line', stepped lines are drawn for each data series.
         - The legend is placed below the plot to accommodate multiple data series.
-
-    Examples:
-        >>> fig, ax = with_matplotlib(data, mode='bar', colorscale='plasma')
-        >>> plt.show()
     """
     assert mode in ['bar', 'line'], f"'mode' must be one of {['bar', 'line']} for matplotlib"
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    if isinstance(colors, str):
-        cmap = plt.get_cmap(colors, len(data.columns))
-        colors = [cmap(i) for i in range(len(data.columns))]
-    assert len(colors) == len(data.columns), (
-        f'The number of colors does not match the provided data columns. {len(colors)=}; {len(colors)=}'
-    )
+    processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
 
     if mode == 'bar':
         cumulative_positive = np.zeros(len(data))
@@ -241,7 +419,7 @@ def with_matplotlib(
                 data.index,
                 positive_values,
                 bottom=cumulative_positive,
-                color=colors[i],
+                color=processed_colors[i],
                 label=column,
                 width=width,
                 align='center',
@@ -252,7 +430,7 @@ def with_matplotlib(
                 data.index,
                 negative_values,
                 bottom=cumulative_negative,
-                color=colors[i],
+                color=processed_colors[i],
                 label='',  # No label for negative bars
                 width=width,
                 align='center',
@@ -261,7 +439,7 @@ def with_matplotlib(
 
     elif mode == 'line':
         for i, column in enumerate(data.columns):
-            ax.step(data.index, data[column], where='post', color=colors[i], label=column)
+            ax.step(data.index, data[column], where='post', color=processed_colors[i], label=column)
 
     # Aesthetics
     ax.set_xlabel(xlabel, ha='center')
@@ -551,16 +729,6 @@ def plot_network(
     Returns:
         The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
 
-    Usage:
-    - Visualize and open the network with default options:
-      >>> self.plot_network()
-
-    - Save the visualization with opening:
-      >>> self.plot_network(show=True)
-
-    - Visualize with custom controls and path:
-      >>> self.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
-
     Notes:
     - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
     - Nodes are styled based on type (e.g., circles for buses, boxes for components) and annotated with node information.
@@ -624,7 +792,7 @@ def plot_network(
 
 def pie_with_plotly(
     data: pd.DataFrame,
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
@@ -636,8 +804,10 @@ def pie_with_plotly(
     Args:
         data: A DataFrame containing the data to plot. If multiple rows exist,
               they will be summed unless a specific index value is passed.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
-                to use for coloring the pie segments.
+        colors: Color specification, can be:
+            - A string with a colorscale name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -652,9 +822,6 @@ def pie_with_plotly(
           for better readability.
         - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
 
-    Examples:
-        >>> fig = pie_with_plotly(data, colorscale='Pastel')
-        >>> fig.show()
     """
     if data.empty:
         logger.warning("Empty DataFrame provided for pie chart. Returning empty figure.")
@@ -678,13 +845,8 @@ def pie_with_plotly(
     labels = data_sum.index.tolist()
     values = data_sum.values.tolist()
 
-    # Apply color mapping
-    if isinstance(colors, str):
-        colorscale = px.colors.get_colorscale(colors)
-        colors = px.colors.sample_colorscale(
-            colorscale,
-            [i / (len(labels) - 1) for i in range(len(labels))] if len(labels) > 1 else [0],
-        )
+    # Apply color mapping using the unified color processor
+    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, list(data.columns))
 
     # Create figure if not provided
     fig = fig if fig is not None else go.Figure()
@@ -695,7 +857,7 @@ def pie_with_plotly(
             labels=labels,
             values=values,
             hole=hole,
-            marker=dict(colors=colors),
+            marker=dict(colors=processed_colors),
             textinfo='percent+label+value',
             textposition='inside',
             insidetextorientation='radial',
@@ -716,7 +878,7 @@ def pie_with_plotly(
 
 def pie_with_matplotlib(
     data: pd.DataFrame,
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
@@ -730,8 +892,10 @@ def pie_with_matplotlib(
     Args:
         data: A DataFrame containing the data to plot. If multiple rows exist,
               they will be summed unless a specific index value is passed.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
-                to use for coloring the pie segments.
+        colors: Color specification, can be:
+            - A string with a colormap name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -748,9 +912,6 @@ def pie_with_matplotlib(
           for better readability.
         - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
 
-    Examples:
-        >>> fig, ax = pie_with_matplotlib(data, colors='viridis', hole=0.3)
-        >>> plt.show()
     """
     if data.empty:
         logger.warning("Empty DataFrame provided for pie chart. Returning empty figure.")
@@ -776,10 +937,8 @@ def pie_with_matplotlib(
     labels = data_sum.index.tolist()
     values = data_sum.values.tolist()
 
-    # Apply color mapping
-    if isinstance(colors, str):
-        cmap = plt.get_cmap(colors, len(labels))
-        colors = [cmap(i) for i in range(len(labels))]
+    # Apply color mapping using the unified color processor
+    processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, labels)
 
     # Create figure and axis if not provided
     if fig is None or ax is None:
@@ -789,7 +948,7 @@ def pie_with_matplotlib(
     wedges, texts, autotexts = ax.pie(
         values,
         labels=labels,
-        colors=colors,
+        colors=processed_colors,
         autopct='%1.1f%%',
         startangle=90,
         shadow=False,
@@ -839,7 +998,7 @@ def pie_with_matplotlib(
 def dual_pie_with_plotly(
     data_left: pd.Series,
     data_right: pd.Series,
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -855,8 +1014,10 @@ def dual_pie_with_plotly(
     Args:
         data_left: Series for the left pie chart.
         data_right: Series for the right pie chart.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
-                to use for coloring the pie segments.
+        colors: Color specification, can be:
+            - A string with a colorscale name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping category names to colors (e.g., {'Category1': '#ff0000'})
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
@@ -870,8 +1031,6 @@ def dual_pie_with_plotly(
     Returns:
         A Plotly figure object containing the generated dual pie chart.
     """
-    import itertools
-
     from plotly.subplots import make_subplots
 
     # Check for empty data
@@ -881,7 +1040,9 @@ def dual_pie_with_plotly(
 
     # Create a subplot figure
     fig = make_subplots(
-        rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]], subplot_titles=subtitles, horizontal_spacing=0.05
+        rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]],
+        subplot_titles=subtitles,
+        horizontal_spacing=0.05
     )
 
     # Process series to handle negative values and apply minimum percentage threshold
@@ -939,18 +1100,8 @@ def dual_pie_with_plotly(
     # Get unique set of all labels for consistent coloring
     all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
 
-    # Generate consistent color mapping
-    if isinstance(colors, str):
-        colorscale = px.colors.get_colorscale(colors)
-        color_list = px.colors.sample_colorscale(
-            colorscale,
-            [i / (len(all_labels) - 1) for i in range(len(all_labels))] if len(all_labels) > 1 else [0],
-        )
-        color_map = {label: color_list[i] for i, label in enumerate(all_labels)}
-    else:
-        # If colors is a list, create a cycling iterator
-        color_iter = itertools.cycle(colors)
-        color_map = {label: next(color_iter) for label in all_labels}
+    # Get consistent color mapping for both charts using our unified function
+    color_map = ColorProcessor(engine='plotly').process_colors(colors, all_labels, return_mapping=True)
 
     # Function to create a pie trace with consistently mapped colors
     def create_pie_trace(data_series, side):
@@ -1003,7 +1154,7 @@ def dual_pie_with_plotly(
 def dual_pie_with_matplotlib(
     data_left: pd.Series,
     data_right: pd.Series,
-    colors: Union[List[str], str] = 'viridis',
+    colors: ColorType = 'viridis',
     title: str = '',
     subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1020,8 +1171,10 @@ def dual_pie_with_matplotlib(
     Args:
         data_left: Series for the left pie chart.
         data_right: Series for the right pie chart.
-        colors: A List of colors (as str) or a name of a colorscale (e.g., 'viridis', 'plasma')
-                to use for coloring the pie segments.
+        colors: Color specification, can be:
+            - A string with a colormap name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping category names to colors (e.g., {'Category1': '#ff0000'})
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
@@ -1034,8 +1187,6 @@ def dual_pie_with_matplotlib(
     Returns:
         A tuple containing the Matplotlib figure and list of axes objects used for the plot.
     """
-    import itertools
-
     # Check for empty data
     if data_left.empty and data_right.empty:
         logger.warning('Both datasets are empty. Returning empty figure.')
@@ -1101,17 +1252,8 @@ def dual_pie_with_matplotlib(
     # Get unique set of all labels for consistent coloring
     all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
 
-    # Generate a consistent color mapping for both charts
-    if isinstance(colors, str):
-        cmap = plt.get_cmap(colors, len(all_labels))
-        color_list = [cmap(i) for i in range(len(all_labels))]
-    else:
-        # If colors is a list, create a cycling iterator
-        color_iter = itertools.cycle(colors)
-        color_list = [next(color_iter) for _ in range(len(all_labels))]
-
-    # Create a mapping from label to color
-    color_map = {label: color_list[i] for i, label in enumerate(all_labels)}
+    # Get consistent color mapping for both charts using our unified function
+    color_map = ColorProcessor(engine='plotly').process_colors(colors, all_labels, return_mapping=True)
 
     # Configure colors for each DataFrame based on the consistent mapping
     left_colors = [color_map[col] for col in df_left.columns] if not df_left.empty else []
