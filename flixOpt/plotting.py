@@ -207,24 +207,6 @@ class ColorProcessor:
             return color_list
 
 
-def get_categorical_colormap(
-    category_names: List[str], colormap: str = 'tab10', engine: PlottingEngine = 'plotly'
-) -> Dict[str, Any]:
-    """
-    Creates a consistent mapping of categories to colors from a colormap.
-
-    Args:
-        category_names: List of category names to assign colors to
-        colormap: Name of the colormap to use
-        engine: The plotting engine ('plotly' or 'matplotlib')
-
-    Returns:
-        Dictionary mapping category names to colors in the format required by the specified engine
-    """
-    processor = ColorProcessor(engine=engine, default_colormap=colormap)
-    return processor.process_colors(colormap, category_names, return_mapping=True)
-
-
 def with_plotly(
     data: pd.DataFrame,
     mode: Literal['bar', 'line', 'area'] = 'area',
@@ -1253,7 +1235,7 @@ def dual_pie_with_matplotlib(
     all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
 
     # Get consistent color mapping for both charts using our unified function
-    color_map = ColorProcessor(engine='plotly').process_colors(colors, all_labels, return_mapping=True)
+    color_map = ColorProcessor(engine='matplotlib').process_colors(colors, all_labels, return_mapping=True)
 
     # Configure colors for each DataFrame based on the consistent mapping
     left_colors = [color_map[col] for col in df_left.columns] if not df_left.empty else []
