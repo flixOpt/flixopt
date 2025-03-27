@@ -15,7 +15,6 @@ from .core import NumericData, Scalar, TimeSeries
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
 
-
 logger = logging.getLogger('flixOpt')
 
 
