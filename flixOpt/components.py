@@ -11,7 +11,7 @@ import numpy as np
 from . import utils
 from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
 from .elements import Component, ComponentModel, Flow
-from .features import InvestmentModel, PiecewiseConversionModel, OnOffModel
+from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
 from .structure import SystemModel, register_class_for_io
 
@@ -467,11 +467,17 @@ class LinearConverterModel(ComponentModel):
                 self.element.flows[flow].model.flow_rate.name: piecewise
                 for flow, piecewise in self.element.segmented_conversion_factors.items()
             }
-            linear_segments = PiecewiseConversionModel(
-                self._model, self.label_of_element, segmented_conversion_factors, self.on_off.on if self.on_off is not None else None
-            )  # TODO: Add Outside_segments Variable (On)
-            linear_segments.do_modeling()
-            self.sub_models.append(linear_segments)
+
+            piecewise_conversion = PiecewiseModel(
+                model=self._model,
+                label_of_element=self.label_of_element,
+                label=self.label_full,
+                piecewise_variables=segmented_conversion_factors,
+                can_be_outside_segments=self.on_off.on if self.on_off is not None else None,
+                as_time_series=True
+            )
+            piecewise_conversion.do_modeling()
+            self.sub_models.append(piecewise_conversion)
 
 
 class StorageModel(ComponentModel):
