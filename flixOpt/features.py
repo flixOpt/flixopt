@@ -15,9 +15,6 @@ from .core import NumericData, Scalar, TimeSeries
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
 
-if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from .effects import Effect
-
 
 logger = logging.getLogger('flixOpt')
 
@@ -884,7 +881,6 @@ class ShareAllocationModel(Model):
 
 
 class PiecewiseEffectsModel(Model):
-    # TODO: Length...
     def __init__(
         self,
         model: SystemModel,
@@ -901,12 +897,12 @@ class PiecewiseEffectsModel(Model):
         self._zero_point = zero_point
         self._piecewise_origin = piecewise_origin
         self._piecewise_shares = piecewise_shares
-        self._shares: Dict[str, linopy.Variable] = {}
+        self.shares: Dict[str, linopy.Variable] = {}
 
         self.piecewise_model: Optional[PiecewiseModel] = None
 
     def do_modeling(self):
-        self._shares = {
+        self.shares = {
             effect: self.add(self._model.add_variables(
                 coords=None,
                 name=f'{self.label_full}|{effect}'),
@@ -916,7 +912,7 @@ class PiecewiseEffectsModel(Model):
 
         piecewise_variables = {
             self._piecewise_origin[0]: self._piecewise_origin[1],
-            **{self._shares[effect_label].name: self._piecewise_shares[effect_label] for effect_label in self._piecewise_shares}
+            **{self.shares[effect_label].name: self._piecewise_shares[effect_label] for effect_label in self._piecewise_shares}
         }
 
         self.piecewise_model = self.add(
@@ -935,7 +931,7 @@ class PiecewiseEffectsModel(Model):
         # Shares
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
-            expressions={effect: variable*1 for effect, variable in self._shares.items()},
+            expressions={effect: variable*1 for effect, variable in self.shares.items()},
             target='invest',
         )
 
