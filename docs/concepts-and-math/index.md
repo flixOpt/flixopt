@@ -1,13 +1,13 @@
-# flixOpt Concepts & Mathematical Description
+# flixopt Concepts & Mathematical Description
 
-flixOpt is built around a set of core concepts that work together to represent and optimize energy and material flow systems. This page provides a high-level overview of these concepts and how they interact.
+flixopt is built around a set of core concepts that work together to represent and optimize energy and material flow systems. This page provides a high-level overview of these concepts and how they interact.
 
 ## Core Concepts
 
 ### FlowSystem
 
-The [`FlowSystem`][flixOpt.flow_system.FlowSystem] is the central organizing unit in flixOpt. 
-Every flixOpt model starts with creating a FlowSystem. It:
+The [`FlowSystem`][flixopt.flow_system.FlowSystem] is the central organizing unit in flixopt. 
+Every flixopt model starts with creating a FlowSystem. It:
 
 - Defines the timesteps for the optimization
 - Contains and connects [components](#components), [buses](#buses), and [flows](#flows)

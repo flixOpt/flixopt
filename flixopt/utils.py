@@ -1,5 +1,5 @@
 """
-This module contains several utility functions used throughout the flixOpt framework.
+This module contains several utility functions used throughout the flixopt framework.
 """
 
 import logging
@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import numpy as np
 import xarray as xr
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 def is_number(number_alias: Union[int, float, str]):
@@ -30,7 +30,9 @@ def round_floats(obj, decimals=2):
     return obj
 
 
-def convert_dataarray(data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray', 'structure']) -> Union[List, np.ndarray, xr.DataArray, str]:
+def convert_dataarray(
+    data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray', 'structure']
+) -> Union[List, np.ndarray, xr.DataArray, str]:
     """
     Convert a DataArray to a different format.
 

@@ -1,27 +1,27 @@
-# flixOpt: Energy and Material Flow Optimization Framework
+# flixopt: Energy and Material Flow Optimization Framework
 
-**flixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
+**flixopt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
 
 It bridges the gap between **high-level energy systems models** like [FINE](https://github.com/FZJ-IEK3-VSA/FINE) used for design and (multi-period) investment decisions and **low-level dispatch optimization tools** used for operation decisions.
 
 <figure markdown>
-  ![flixOpt Conceptual Usage](./images/architecture_flixOpt.png)
-  <figcaption>Conceptual Usage and IO operations of flixOpt</figcaption>
+  ![flixopt Conceptual Usage](./images/architecture_flixopt.png)
+  <figcaption>Conceptual Usage and IO operations of flixopt</figcaption>
 </figure>
 
 ## 🚀️ Getting Started
 
-See the [Getting Started Guide](getting-started.md) to start using flixOpt.
+See the [Getting Started Guide](getting-started.md) to start using flixopt.
 
 See the [Examples](examples/) section for detailed examples.
 
 ## ⚙️ How It Works
 
-See our [Concepts & Math](concepts-and-math/index.md) to understand the core concepts of flixOpt.
+See our [Concepts & Math](concepts-and-math/index.md) to understand the core concepts of flixopt.
 
 ## 🛠️ Compatible Solvers
 
-flixOpt works with various solvers:
+flixopt works with various solvers:
 
 - [HiGHS](https://highs.dev/) (installed by default)
 - [Gurobi](https://www.gurobi.com/)  
@@ -31,7 +31,7 @@ flixOpt works with various solvers:
 
 ## 📝 Citation
 
-If you use flixOpt in your research or project, please cite:
+If you use flixopt in your research or project, please cite:
 
 - **Main Citation:** [DOI:10.18086/eurosun.2022.04.07](https://doi.org/10.18086/eurosun.2022.04.07)
 - **Short Overview:** [DOI:10.13140/RG.2.2.14948.24969](https://doi.org/10.13140/RG.2.2.14948.24969)

@@ -1,7 +1,7 @@
 """
-Unit tests for the flixOpt framework.
+Unit tests for the flixopt framework.
 
-This module defines a set of unit tests for testing the functionality of the `flixOpt` framework.
+This module defines a set of unit tests for testing the functionality of the `flixopt` framework.
 The tests focus on verifying the correct behavior of flow systems, including component modeling,
 investment optimization, and operational constraints like on-off behavior.
 
@@ -22,7 +22,7 @@ import pandas as pd
 import pytest
 from numpy.testing import assert_allclose
 
-import flixOpt as fx
+import flixopt as fx
 
 np.random.seed(45)
 
@@ -93,9 +93,7 @@ def flow_system_minimal(timesteps) -> fx.FlowSystem:
     return flow_system
 
 
-def solve_and_load(
-    flow_system: fx.FlowSystem, solver
-) -> fx.results.CalculationResults:
+def solve_and_load(flow_system: fx.FlowSystem, solver) -> fx.results.CalculationResults:
     calculation = fx.FullCalculation('Calculation', flow_system)
     calculation.do_modeling()
     calculation.solve(solver)
@@ -354,11 +352,12 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         self.flow_system.add_elements(
             fx.Source(
                 'Wärmequelle',
-                source=fx.Flow('Q_th',
-                               bus=self.get_element('Fernwärme'),
-                               fixed_relative_profile=np.linspace(0, 5, len(self.datetime_array)),
-                               size=fx.InvestParameters(optional=False, minimum_size=2, maximum_size=5),
-                               )
+                source=fx.Flow(
+                    'Q_th',
+                    bus=self.get_element('Fernwärme'),
+                    fixed_relative_profile=np.linspace(0, 5, len(self.datetime_array)),
+                    size=fx.InvestParameters(optional=False, minimum_size=2, maximum_size=5),
+                ),
             )
         )
         self.get_element('Fernwärme').excess_penalty_per_flow_hour = 1e5
@@ -381,8 +380,6 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         )
 
 
-
-
 def test_on(solver_fixture, time_steps_fixture):
     """Tests if the On Variable is correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
@@ -391,9 +388,9 @@ def test_on(solver_fixture, time_steps_fixture):
             'Boiler',
             0.5,
             Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100, on_off_parameters=fx.OnOffParameters()
-        ),
-    ))
+            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100, on_off_parameters=fx.OnOffParameters()),
+        )
+    )
 
     solve_and_load(flow_system, solver_fixture)
     boiler = flow_system.all_elements['Boiler']
@@ -608,7 +605,9 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
             ),
         ),
     )
-    flow_system.all_elements['Wärmelast'].sink.fixed_relative_profile = np.array([0, 10, 20, 0, 12])  # Else its non deterministic
+    flow_system.all_elements['Wärmelast'].sink.fixed_relative_profile = np.array(
+        [0, 10, 20, 0, 12]
+    )  # Else its non deterministic
 
     solve_and_load(flow_system, solver_fixture)
     boiler = flow_system.all_elements['Boiler']
@@ -713,6 +712,7 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__flow_rate" does not have the right value',
     )
 
+
 def test_consecutive_off(solver_fixture, time_steps_fixture):
     """Tests if the consecutive on hours are correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
@@ -736,7 +736,9 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
             ),
         ),
     )
-    flow_system.all_elements['Wärmelast'].sink.fixed_relative_profile = np.array([5, 0, 20, 18, 12])  # Else its non deterministic
+    flow_system.all_elements['Wärmelast'].sink.fixed_relative_profile = np.array(
+        [5, 0, 20, 18, 12]
+    )  # Else its non deterministic
 
     solve_and_load(flow_system, solver_fixture)
     boiler = flow_system.all_elements['Boiler']

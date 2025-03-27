@@ -1,11 +1,12 @@
 """
-This module contains the solvers of the flixOpt framework, making them available to the end user in a compact way.
+This module contains the solvers of the flixopt framework, making them available to the end user in a compact way.
 """
+
 import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict, Optional
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @dataclass
@@ -18,6 +19,7 @@ class _Solver:
             and the lower bound, which is the theoretically optimal solution (LP)
         logfile_name (str): Filename for saving the solver log.
     """
+
     name: ClassVar[str]
     mip_gap: float
     time_limit_seconds: int
@@ -42,6 +44,7 @@ class GurobiSolver(_Solver):
         time_limit_seconds (int): Solver's time limit in seconds.
         extra_options (str): Filename for saving the solver log.
     """
+
     name: ClassVar[str] = 'gurobi'
 
     @property
@@ -61,6 +64,7 @@ class HighsSolver(_Solver):
         threads (int): Number of threads to use.
         extra_options (str): Filename for saving the solver log.
     """
+
     threads: Optional[int] = None
     name: ClassVar[str] = 'highs'
 
@@ -71,4 +75,3 @@ class HighsSolver(_Solver):
             'time_limit': self.time_limit_seconds,
             'threads': self.threads,
         }
-
