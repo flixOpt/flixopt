@@ -259,7 +259,7 @@ def flow_system_base(flow_system_complex) -> fx.FlowSystem:
 
 
 @pytest.fixture
-def flow_system_piecewise_conversion(flow_system_complex) -> fx.FlowSystem: #TODO
+def flow_system_piecewise_conversion(flow_system_complex) -> fx.FlowSystem:
     flow_system = flow_system_complex
 
     flow_system.add_elements(fx.LinearConverter(

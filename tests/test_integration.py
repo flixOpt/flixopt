@@ -323,8 +323,8 @@ class TestComplex:
             'Speicher|PiecewiseEffects|costs doesnt match expected value',
         )
 
-    def test_segments_of_flows(self, flow_system_piecewise_conversion, highs_solver): #TODO
-        calculation = create_calculation_and_solve(flow_system_piecewise_conversion, highs_solver, 'test_segments_of_flows')
+    def test_piecewise_conversion(self, flow_system_piecewise_conversion, highs_solver):
+        calculation = create_calculation_and_solve(flow_system_piecewise_conversion, highs_solver, 'test_piecewise_conversion')
 
         effects = calculation.flow_system.effects
         comps = calculation.flow_system.components
