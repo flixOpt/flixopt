@@ -33,6 +33,156 @@ _portland_colors = [
 plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
+import logging
+import itertools
+from typing import Dict, List, Literal, Optional, Tuple, Union, Any
+
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import numpy as np
+import plotly.express as px
+
+logger = logging.getLogger('flixOpt')
+
+ColorType = Union[str, List[str], Dict[str, str]]
+EngineType = Literal['plotly', 'matplotlib']
+
+
+def process_colors(
+    colors: ColorType,
+    labels: List[str],
+    engine: EngineType = 'plotly',
+    return_mapping: bool = False,
+    default_colormap: str = 'viridis',
+) -> Union[List[Any], Dict[str, Any]]:
+    """
+    Unified color processor that handles various color inputs for both Plotly and Matplotlib.
+
+    Args:
+        colors: Color specification, can be:
+            - A string with a colormap/colorscale name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dictionary mapping labels to colors (e.g., {'A': '#ff0000', 'B': '#00ff00'})
+        labels: List of data labels that need colors assigned
+        engine: The plotting engine being used ('plotly' or 'matplotlib')
+        return_mapping: If True, returns a dictionary mapping labels to colors;
+                       if False, returns a list of colors in the same order as labels
+        default_colormap: Default colormap to use if none is specified
+
+    Returns:
+        Either a list of colors or a dictionary mapping labels to colors, depending on return_mapping.
+        The colors will be in the format appropriate for the specified engine.
+
+    Examples:
+        >>> # Get a list of colors for Plotly from a colormap name
+        >>> colors = process_colors('viridis', ['A', 'B', 'C'], engine='plotly')
+        >>> # Get a color mapping for Matplotlib from a list of colors
+        >>> color_map = process_colors(
+        ...     ['red', 'green', 'blue'], ['X', 'Y', 'Z'], engine='matplotlib', return_mapping=True
+        ... )
+    """
+    if len(labels) == 0:
+        logger.warning('No labels provided for color assignment')
+        return {} if return_mapping else []
+
+    # Case 1: When colors is a string (colormap/colorscale name)
+    if isinstance(colors, str):
+        if engine == 'plotly':
+            try:
+                colorscale = px.colors.get_colorscale(colors)
+            except:
+                logger.warning(f"Colorscale '{colors}' not found in Plotly. Using {default_colormap}.")
+                colorscale = px.colors.get_colorscale(default_colormap)
+
+            # Generate color points evenly spaced across the colorscale
+            color_list = px.colors.sample_colorscale(
+                colorscale,
+                [i / (len(labels) - 1) for i in range(len(labels))] if len(labels) > 1 else [0],
+            )
+        else:  # matplotlib
+            try:
+                cmap = plt.get_cmap(colors, len(labels))
+            except:
+                logger.warning(f"Colormap '{colors}' not found in Matplotlib. Using {default_colormap}.")
+                cmap = plt.get_cmap(default_colormap, len(labels))
+
+            color_list = [cmap(i) for i in range(len(labels))]
+
+    # Case 2: When colors is a list
+    elif isinstance(colors, list):
+        if len(colors) < len(labels):
+            logger.warning(
+                f'Not enough colors provided ({len(colors)}) for all labels ({len(labels)}). Colors will cycle.'
+            )
+            # Create a cycling iterator to handle cases where not enough colors are provided
+            color_iter = itertools.cycle(colors)
+            color_list = [next(color_iter) for _ in range(len(labels))]
+        else:
+            # Use colors as provided, trimming if necessary
+            color_list = colors[: len(labels)]
+            if len(colors) > len(labels):
+                logger.warning(
+                    f'More colors provided ({len(colors)}) than labels ({len(labels)}). Extra colors will be ignored.'
+                )
+
+    # Case 3: When colors is a dictionary mapping labels to colors
+    elif isinstance(colors, dict):
+        # Check if all labels have a color
+        missing_labels = set(labels) - set(colors.keys())
+        if missing_labels:
+            logger.warning(
+                f'Some labels have no color specified: {missing_labels}. Using {default_colormap} for these.'
+            )
+
+            # Generate colors for missing labels
+            if engine == 'plotly':
+                colorscale = px.colors.get_colorscale(default_colormap)
+                missing_colors = px.colors.sample_colorscale(
+                    colorscale,
+                    [i / (len(missing_labels) - 1) for i in range(len(missing_labels))]
+                    if len(missing_labels) > 1
+                    else [0],
+                )
+            else:  # matplotlib
+                cmap = plt.get_cmap(default_colormap, len(missing_labels))
+                missing_colors = [cmap(i) for i in range(len(missing_labels))]
+
+            # Add missing colors to the dictionary
+            for i, label in enumerate(missing_labels):
+                colors[label] = missing_colors[i]
+
+        # Create color list in the same order as labels
+        color_list = [colors[label] for label in labels]
+
+    else:
+        logger.warning(f'Unsupported color specification type: {type(colors)}. Using {default_colormap} instead.')
+        # Fall back to default colormap
+        return process_colors(default_colormap, labels, engine, return_mapping)
+
+    # Return either a list or a mapping
+    if return_mapping:
+        return {label: color_list[i] for i, label in enumerate(labels)}
+    else:
+        return color_list
+
+
+def get_categorical_colormap(
+    category_names: List[str], colormap: str = 'tab10', engine: EngineType = 'plotly'
+) -> Dict[str, Any]:
+    """
+    Creates a consistent mapping of categories to colors from a colormap.
+
+    Args:
+        category_names: List of category names to assign colors to
+        colormap: Name of the colormap to use
+        engine: The plotting engine ('plotly' or 'matplotlib')
+
+    Returns:
+        Dictionary mapping category names to colors in the format required by the specified engine
+    """
+    return process_colors(colormap, category_names, engine=engine, return_mapping=True)
+
+
 def with_plotly(
     data: pd.DataFrame,
     mode: Literal['bar', 'line', 'area'] = 'area',
