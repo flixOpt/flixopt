@@ -8,7 +8,7 @@ We warmly welcome contributions from the community! This guide will help you get
 3. Run `pytest` and `ruff check .` to ensure your code passes all tests
 
 ## Documentation
-flixOpt uses [mkdocs](https://www.mkdocs.org/) to generate documentation. To preview the documentation locally, run `mkdocs serve` in the root directory.
+flixopt uses [mkdocs](https://www.mkdocs.org/) to generate documentation. To preview the documentation locally, run `mkdocs serve` in the root directory.
 
 ## Helpful Commands
 - `mkdocs serve` to preview the documentation locally. Navigate to `http://127.0.0.1:8000/` to view the documentation.
@@ -28,7 +28,7 @@ flixOpt uses [mkdocs](https://www.mkdocs.org/) to generate documentation. To pre
 - Ensure 100% test coverage for new code
 
 ## Branches
-As we start to think flixOpt in **Releases**, we decided to introduce multiple **dev**-branches instead of only one:
+As we start to think flixopt in **Releases**, we decided to introduce multiple **dev**-branches instead of only one:
 Following the **Semantic Versioning** guidelines, we introduced:
 - `next/patch`: This is where all pull requests for the next patch release (1.0.x) go.  
 - `next/minor`: This is where all pull requests for the next minor release (1.x.0) go.  

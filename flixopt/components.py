@@ -1,5 +1,5 @@
 """
-This module contains the basic components of the flixOpt framework.
+This module contains the basic components of the flixopt framework.
 """
 
 import logging
@@ -18,7 +18,7 @@ from .structure import SystemModel, register_class_for_io
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -131,7 +131,7 @@ class Storage(Component):
     **Storages** have one incoming and one outgoing **Flow** - $f_\text{in}$ and $f_\text{out}$ -
     each with an efficiency $\eta_\text{in}$ and $\eta_\text{out}$.
     Further, storages have a `size` $\text C$ and a state of charge $c(\text{t}_i)$.
-    Similarly to the flow-rate $p(\text{t}_i)$ of a [`Flow`][flixOpt.elements.Flow],
+    Similarly to the flow-rate $p(\text{t}_i)$ of a [`Flow`][flixopt.elements.Flow],
     the `size` $\text C$ combined with a relative upper bound
     $\text c^{\text{U}}_\text{rel}(\text t_{i})$ and lower bound $\text c^{\text{L}}_\text{rel}(\text t_{i})$
     limits the state of charge $c(\text{t}_i)$ by $\eqref{eq:Storage_Bounds}$.

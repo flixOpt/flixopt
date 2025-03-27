@@ -6,7 +6,7 @@ These are tightly connected to features.py
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-from flixOpt.core import TimeSeriesCollection
+from flixopt.core import TimeSeriesCollection
 
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, Scalar
@@ -18,7 +18,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 if TYPE_CHECKING:
     from .effects import Effect, EffectValuesUser, EffectValuesUserScalar
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io

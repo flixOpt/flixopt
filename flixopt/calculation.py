@@ -1,5 +1,5 @@
 """
-This module contains the Calculation functionality for the flixOpt framework.
+This module contains the Calculation functionality for the flixopt framework.
 It is used to calculate a SystemModel for a given FlowSystem through a solver.
 There are three different Calculation types:
     1. FullCalculation: Calculates the SystemModel for the full FlowSystem
@@ -31,7 +31,7 @@ from .results import CalculationResults, SegmentedCalculationResults
 from .solvers import _Solver
 from .structure import SystemModel, copy_and_convert_datatypes, get_compact_representation
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class Calculation:
@@ -70,7 +70,7 @@ class Calculation:
 
     @property
     def main_results(self) -> Dict[str, Union[Scalar, Dict]]:
-        from flixOpt.features import InvestmentModel
+        from flixopt.features import InvestmentModel
 
         return {
             "Objective": self.model.objective.value,

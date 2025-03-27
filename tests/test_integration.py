@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import flixOpt as fx
+import flixopt as fx
 
 from .conftest import (
     assert_almost_equal_numeric,

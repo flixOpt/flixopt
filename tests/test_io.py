@@ -2,8 +2,8 @@ from typing import Dict, List, Optional, Union
 
 import pytest
 
-import flixOpt as fx
-from flixOpt.io import CalculationResultsPaths
+import flixopt as fx
+from flixopt.io import CalculationResultsPaths
 
 from .conftest import (
     assert_almost_equal_numeric,

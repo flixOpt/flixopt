@@ -6,7 +6,7 @@ site_name: flixopt
 site_description: Energy and Material Flow Optimization Framework
 site_url: https://flixopt.github.io/flixopt/
 repo_url: https://github.com/flixOpt/flixopt
-repo_name: flixOpt/flixopt
+repo_name: flixopt/flixopt
 
 
 theme:
@@ -133,4 +133,4 @@ extra_javascript:
   - https://polyfill.io/v3/polyfill.min.js?features=es6  #Support for older browsers
 
 watch:
-  - flixOpt
+  - flixopt
