@@ -14,9 +14,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
-from plotly.exceptions import PlotlyError
 import plotly.graph_objects as go
 import plotly.offline
+from plotly.exceptions import PlotlyError
 
 if TYPE_CHECKING:
     import pyvis
@@ -63,14 +63,6 @@ def process_colors(
     Returns:
         Either a list of colors or a dictionary mapping labels to colors, depending on return_mapping.
         The colors will be in the format appropriate for the specified engine.
-
-    Examples:
-        >>> # Get a list of colors for Plotly from a colormap name
-        >>> colors = process_colors('viridis', ['A', 'B', 'C'], engine='plotly')
-        >>> # Get a color mapping for Matplotlib from a list of colors
-        >>> color_map = process_colors(
-        ...     ['red', 'green', 'blue'], ['X', 'Y', 'Z'], engine='matplotlib', return_mapping=True
-        ... )
     """
     if len(labels) == 0:
         logger.warning('No labels provided for color assignment')
@@ -347,10 +339,6 @@ def with_matplotlib(
           Negative values are stacked separately without extra labels in the legend.
         - If `mode` is 'line', stepped lines are drawn for each data series.
         - The legend is placed below the plot to accommodate multiple data series.
-
-    Examples:
-        >>> fig, ax = with_matplotlib(data, mode='bar', colorscale='plasma')
-        >>> plt.show()
     """
     assert mode in ['bar', 'line'], f"'mode' must be one of {['bar', 'line']} for matplotlib"
 
@@ -682,16 +670,6 @@ def plot_network(
     Returns:
         The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
 
-    Usage:
-    - Visualize and open the network with default options:
-      >>> self.plot_network()
-
-    - Save the visualization with opening:
-      >>> self.plot_network(show=True)
-
-    - Visualize with custom controls and path:
-      >>> self.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
-
     Notes:
     - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
     - Nodes are styled based on type (e.g., circles for buses, boxes for components) and annotated with node information.
@@ -785,9 +763,6 @@ def pie_with_plotly(
           for better readability.
         - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
 
-    Examples:
-        >>> fig = pie_with_plotly(data, colors='Pastel')
-        >>> fig.show()
     """
     if data.empty:
         logger.warning("Empty DataFrame provided for pie chart. Returning empty figure.")
@@ -878,9 +853,6 @@ def pie_with_matplotlib(
           for better readability.
         - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
 
-    Examples:
-        >>> fig, ax = pie_with_matplotlib(data, colors='viridis', hole=0.3)
-        >>> plt.show()
     """
     if data.empty:
         logger.warning("Empty DataFrame provided for pie chart. Returning empty figure.")
@@ -1332,3 +1304,28 @@ def export_figure(
         return fig, ax
 
     raise TypeError(f'Figure type not supported: {type(figure_like)}')
+
+if __name__ == '__main__':
+    # Example 1: Simple line plot with viridis colormap
+    data = pd.DataFrame(...)
+    fig = with_plotly(data, mode='line', colors='viridis')
+    export_figure(fig, default_path=pathlib.Path.cwd() / 'fig', show=True)
+
+    # Example 2: Bar chart with custom color list
+    custom_colors = ['#FF5733', '#33FF57', '#3357FF', '#F3FF33']
+    fig, ax = with_matplotlib(data, mode='bar', colors=custom_colors)
+    export_figure((fig, ax), default_path=pathlib.Path.cwd() / 'fig', show=True)
+
+    # Example 3: Pie chart with specific category colors
+    color_mapping = {
+        'Category A': '#E41A1C',
+        'Category B': '#377EB8',
+        'Category C': '#4DAF4A',
+        'Category D': '#984EA3'
+    }
+    fig = pie_with_plotly(data, colors=color_mapping)
+    export_figure(fig, default_path=pathlib.Path.cwd() / 'fig', show=True)
+
+    # Example 4: Getting a consistent color mapping for multiple visualizations
+    categories = ['Revenue', 'Expenses', 'Profit', 'Investment']
+    color_map = get_categorical_colormap(categories, colormap='portland')
