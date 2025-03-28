@@ -318,13 +318,13 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Speicher|SegmentedShares|costs'].solution.values,
+            calculation.results.model['Speicher|PiecewiseEffects|costs'].solution.values,
             800,
-            'Speicher investCosts_segmented_costs doesnt match expected value',
+            'Speicher|PiecewiseEffects|costs doesnt match expected value',
         )
 
-    def test_segments_of_flows(self, flow_system_segments_of_flows, highs_solver):
-        calculation = create_calculation_and_solve(flow_system_segments_of_flows, highs_solver, 'test_segments_of_flows')
+    def test_piecewise_conversion(self, flow_system_piecewise_conversion, highs_solver):
+        calculation = create_calculation_and_solve(flow_system_piecewise_conversion, highs_solver, 'test_piecewise_conversion')
 
         effects = calculation.flow_system.effects
         comps = calculation.flow_system.components
@@ -360,7 +360,7 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            comps['Speicher'].model.variables['Speicher|SegmentedShares|costs'].solution.values,
+            comps['Speicher'].model.variables['Speicher|PiecewiseEffects|costs'].solution.values,
             454.74666666666667,
             'Speicher investCosts_segmented_costs doesnt match expected value',
         )

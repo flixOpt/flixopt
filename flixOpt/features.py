@@ -12,12 +12,8 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters
+from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
-
-if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from .effects import Effect
-
 
 logger = logging.getLogger('flixOpt')
 
@@ -39,7 +35,7 @@ class InvestmentModel(Model):
         self.size: Optional[Union[Scalar, linopy.Variable]] = None
         self.is_invested: Optional[linopy.Variable] = None
 
-        self._segments: Optional[SegmentedSharesModel] = None
+        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
 
         self._on_variable = on_variable
         self._defining_variable = defining_variable
@@ -101,17 +97,17 @@ class InvestmentModel(Model):
                 target='invest',
             )
 
-        if self.parameters.effects_in_segments:
-            self._segments = self.add(
-                SegmentedSharesModel(
+        if self.parameters.piecewise_effects:
+            self.piecewise_effects = self.add(
+                PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    variable_segments=(self.size, self.parameters.effects_in_segments[0]),
-                    share_segments=self.parameters.effects_in_segments[1],
-                    can_be_outside_segments=self.is_invested),
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
+                    zero_point=self.is_invested),
                 'segments'
             )
-            self._segments.do_modeling()
+            self.piecewise_effects.do_modeling()
 
     def _create_bounds_for_optional_investment(self):
         if self.parameters.fixed_size:
@@ -303,7 +299,7 @@ class OnOffModel(Model):
         # % Bedingungen 1) und 2) müssen erfüllt sein:
 
         # % Anmerkung: Falls "abschnittsweise linear" gewählt, dann ist eigentlich nur Bedingung 1) noch notwendig
-        # %            (und dann auch nur wenn erstes Segment bei Q_th=0 beginnt. Dann soll bei Q_th=0 (d.h. die Maschine ist Aus) On = 0 und segment1.onSeg = 0):)
+        # %            (und dann auch nur wenn erstes Piece bei Q_th=0 beginnt. Dann soll bei Q_th=0 (d.h. die Maschine ist Aus) On = 0 und segment1.onSeg = 0):)
         # %            Fazit: Wenn kein Performance-Verlust durch mehr Gleichungen, dann egal!
 
         nr_of_def_vars = len(self._defining_variables)
@@ -660,32 +656,28 @@ class OnOffModel(Model):
             )
 
 
-class SegmentModel(Model):
-    """Class for modeling a linear segment of one or more variables in parallel"""
+class PieceModel(Model):
+    """Class for modeling a linear piece of one or more variables in parallel"""
 
     def __init__(
         self,
         model: SystemModel,
         label_of_element: str,
-        segment_index: Union[int, str],
-        sample_points: Dict[str, Tuple[Union[NumericData, TimeSeries], Union[NumericData, TimeSeries]]],
+        label: str,
         as_time_series: bool = True,
     ):
-        super().__init__(model, label_of_element, f'Segment{segment_index}')
-        self.in_segment: Optional[linopy.Variable] = None
+        super().__init__(model, label_of_element, label)
+        self.inside_piece: Optional[linopy.Variable] = None
         self.lambda0: Optional[linopy.Variable] = None
         self.lambda1: Optional[linopy.Variable] = None
-
-        self._segment_index = segment_index
         self._as_time_series = as_time_series
-        self.sample_points = sample_points
 
     def do_modeling(self):
-        self.in_segment = self.add(self._model.add_variables(
+        self.inside_piece = self.add(self._model.add_variables(
             binary=True,
-            name=f'{self.label_full}|in_segment',
+            name=f'{self.label_full}|inside_piece',
             coords=self._model.coords if self._as_time_series else None),
-            'in_segment'
+            'inside_piece'
         )
 
         self.lambda0 = self.add(self._model.add_variables(
@@ -702,101 +694,90 @@ class SegmentModel(Model):
             'lambda1'
         )
 
-        # eq:  lambda0(t) + lambda1(t) = in_segment(t)
+        # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
         self.add(self._model.add_constraints(
-            self.in_segment == self.lambda0 + self.lambda1,
-            name=f'{self.label_full}|in_segment'),
-            'in_segment'
+            self.inside_piece == self.lambda0 + self.lambda1,
+            name=f'{self.label_full}|inside_piece'),
+            'inside_piece'
         )
 
 
-class MultipleSegmentsModel(Model):
-    # TODO: Length...
+class PiecewiseModel(Model):
+
     def __init__(
         self,
         model: SystemModel,
         label_of_element: str,
-        sample_points: Dict[str, List[Tuple[NumericData, NumericData]]],
-        can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
-        as_time_series: bool = True,
-        label: str = 'MultipleSegments',
+        label: str,
+        piecewise_variables: Dict[str, Piecewise],
+        zero_point: Optional[Union[bool, linopy.Variable]],
+        as_time_series: bool,
     ):
         """
+        Modeling a Piecewise relation between miultiple variables.
+        The relation is defined by a list of Pieces, which are assigned to the variables.
+        Each Piece is a tuple of (start, end).
+
         Args:
-            model: Model to which the segmented variable belongs.
-            label_of_element: Name of the parent variable.
-            sample_points: Dictionary mapping variables (names) to their sample points for each segment.
-                The sample points are tuples of the form (start, end).
-            can_be_outside_segments: Whether the variable can be outside the segments. If True, a variable is created.
-                If False or None, no variable is created. If a Variable is passed, it is used.
-            as_time_series: Whether to create a scalar or time series variable.
-            label: Name of the Model.
+            model: The SystemModel that is used to create the model.
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            label: The label of the model. Used to construct the full label of the model.
+            piecewise_variables: The variables to which the Pieces are assigned.
+            zero_point: A variable that can be used to define a zero point for the Piecewise relation. If None or False, no zero point is defined.
+            as_time_series: Whether the Piecewise relation is defined for a TimeSeries or a single variable.
         """
         super().__init__(model, label_of_element, label)
-        self.outside_segments: Optional[linopy.Variable] = None
-
+        self._piecewise_variables = piecewise_variables
+        self._zero_point = zero_point
         self._as_time_series = as_time_series
-        self._can_be_outside_segments = can_be_outside_segments
-        self._sample_points = sample_points
-        self._segment_models: List[SegmentModel] = []
+
+        self.pieces: List[PieceModel] = []
+        self.zero_point: Optional[linopy.Variable] = None
 
     def do_modeling(self):
-        restructured_variables_with_segments: List[Dict[str, Tuple[NumericData, NumericData]]] = [
-            {key: values[i] for key, values in self._sample_points.items()} for i in range(self._nr_of_segments)
-        ]
+        for i in range(len(list(self._piecewise_variables.values())[0])):
+            new_piece = self.add(
+                PieceModel(
+                model=self._model,
+                label_of_element=self.label_of_element,
+                label=f'Piece_{i}',
+                as_time_series=self._as_time_series,
+                )
+            )
+            self.pieces.append(new_piece)
+            new_piece.do_modeling()
 
-        self._segment_models = [
-            self.add(
-                SegmentModel(
-                    self._model,
-                    label_of_element=self.label_of_element,
-                    segment_index=i,
-                    sample_points=sample_points,
-                    as_time_series=self._as_time_series),
-                f'Segment_{i}')
-            for i, sample_points in enumerate(restructured_variables_with_segments)
-        ]
-
-        for segment_model in self._segment_models:
-            segment_model.do_modeling()
-
-        #  eq: - v(t) + (v_0_0 * lambda_0_0 + v_0_1 * lambda_0_1) + (v_1_0 * lambda_1_0 + v_1_1 * lambda_1_1) ... = 0
-        #  -> v_0_0, v_0_1 = Stützstellen des Segments 0
-        for var_name in self._sample_points.keys():
+        for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
             self.add(self._model.add_constraints(
-                variable == sum([segment.lambda0 * segment.sample_points[var_name][0]
-                                 + segment.lambda1 * segment.sample_points[var_name][1]
-                                 for segment in self._segment_models]),
+                variable == sum([piece_model.lambda0 * piece_bounds.start
+                                 + piece_model.lambda1 * piece_bounds.end
+                                 for piece_model, piece_bounds in zip(self.pieces, self._piecewise_variables[var_name], strict=False)]),
                 name=f'{self.label_full}|{var_name}_lambda'),
                 f'{var_name}_lambda'
             )
 
             # a) eq: Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 1                Aufenthalt nur in Segmenten erlaubt
             # b) eq: -On(t) + Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 0       zusätzlich kann alles auch Null sein
-            if isinstance(self._can_be_outside_segments, linopy.Variable):
-                self.outside_segments = self._can_be_outside_segments
-                rhs = self.outside_segments
-            elif self._can_be_outside_segments is True:
-                self.outside_segments = self.add(self._model.add_variables(
+            if isinstance(self._zero_point, linopy.Variable):
+                self.zero_point = self._zero_point
+                rhs = self.zero_point
+            elif self._zero_point is True:
+                self.zero_point = self.add(self._model.add_variables(
                     coords=self._model.coords,
                     binary=True,
-                    name=f'{self.label_full}|outside_segments'),
-                    'outside_segments'
+                    name=f'{self.label_full}|zero_point'),
+                    'zero_point'
                 )
-                rhs = self.outside_segments
+                rhs = self.zero_point
             else:
                 rhs = 1
 
             self.add(self._model.add_constraints(
-                sum([segment.in_segment for segment in self._segment_models]) <= rhs,
+                sum([piece.inside_piece for piece in self.pieces]) <= rhs,
                 name=f'{self.label_full}|{variable.name}_single_segment'),
                 'single_segment'
             )
-
-    @property
-    def _nr_of_segments(self):
-        return len(next(iter(self._sample_points.values())))
 
 
 class ShareAllocationModel(Model):
@@ -898,59 +879,59 @@ class ShareAllocationModel(Model):
                 self._eq_total_per_timestep.lhs -= self.shares[name]
 
 
-class SegmentedSharesModel(Model):
-    # TODO: Length...
+class PiecewiseEffectsModel(Model):
     def __init__(
         self,
         model: SystemModel,
         label_of_element: str,
-        variable_segments: Tuple[linopy.Variable, List[Tuple[Scalar, Scalar]]],
-        share_segments: Dict[str, List[Tuple[Scalar, Scalar]]],
-        can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
-        label: str = 'SegmentedShares',
+        piecewise_origin: Tuple[str, Piecewise],
+        piecewise_shares: Dict[str, Piecewise],
+        zero_point: Optional[Union[bool, linopy.Variable]],
+        label: str = 'PiecewiseEffects',
     ):
         super().__init__(model, label_of_element, label)
-        assert len(variable_segments[1]) == len(list(share_segments.values())[0]), (
-            'Segment length of variable_segments and share_segments must be equal'
+        assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
+            'Piece length of variable_segments and share_segments must be equal'
         )
-        self._can_be_outside_segments = can_be_outside_segments
-        self._variable_segments = variable_segments
-        self._share_segments = share_segments
-        self._shares: Dict['Effect', linopy.Variable] = {}
-        self._segments_model: Optional[MultipleSegmentsModel] = None
-        self._as_tme_series: bool = 'time' in self._variable_segments[0].indexes
+        self._zero_point = zero_point
+        self._piecewise_origin = piecewise_origin
+        self._piecewise_shares = piecewise_shares
+        self.shares: Dict[str, linopy.Variable] = {}
+
+        self.piecewise_model: Optional[PiecewiseModel] = None
 
     def do_modeling(self):
-        self._shares = {
+        self.shares = {
             effect: self.add(self._model.add_variables(
-                coords=self._model.coords if self._as_tme_series else None,
+                coords=None,
                 name=f'{self.label_full}|{effect}'),
                 f'{effect}'
-            ) for effect in self._share_segments
+            ) for effect in self._piecewise_shares
         }
 
-        # Mapping variable names to segments
-        segments: Dict[str, List[Tuple[Scalar, Scalar]]] = {
-            **{self._shares[effect].name: segment for effect, segment in self._share_segments.items()},
-            **{self._variable_segments[0].name: self._variable_segments[1]},
+        piecewise_variables = {
+            self._piecewise_origin[0]: self._piecewise_origin[1],
+            **{self.shares[effect_label].name: self._piecewise_shares[effect_label] for effect_label in self._piecewise_shares}
         }
 
-        self._segments_model = self.add(
-            MultipleSegmentsModel(
+        self.piecewise_model = self.add(
+            PiecewiseModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
-                sample_points=segments,
-                can_be_outside_segments=self._can_be_outside_segments,
-                as_time_series=self._as_tme_series),
-            'segments'
+                label=f'{self.label_full}|PiecewiseModel',
+                piecewise_variables=piecewise_variables,
+                zero_point=self._zero_point,
+                as_time_series=False,
+            )
         )
-        self._segments_model.do_modeling()
+
+        self.piecewise_model.do_modeling()
 
         # Shares
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
-            expressions={effect: variable*1 for effect, variable in self._shares.items()},
-            target='operation' if self._as_tme_series else 'invest',
+            expressions={effect: variable*1 for effect, variable in self.shares.items()},
+            target='invest',
         )
 
 

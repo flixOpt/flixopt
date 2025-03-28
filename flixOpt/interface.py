@@ -4,21 +4,102 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
-
-from flixOpt.core import TimeSeriesCollection
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
 
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, Scalar
-from .structure import Element, Interface, register_class_for_io
+from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
+    from .effects import EffectValuesUser, EffectValuesUserScalar
     from .flow_system import FlowSystem
 
-if TYPE_CHECKING:
-    from .effects import Effect, EffectValuesUser, EffectValuesUserScalar
 
 logger = logging.getLogger('flixOpt')
+
+
+@register_class_for_io
+class Piece(Interface):
+    def __init__(self, start: NumericData, end: NumericData):
+        """
+        Define a Piece, which is part of a Piecewise object.
+
+        Args:
+            start: The x-values of the piece.
+            end: The end of the piece.
+        """
+        self.start = start
+        self.end = end
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
+        self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
+
+
+@register_class_for_io
+class Piecewise(Interface):
+    def __init__(self, pieces: List[Piece]):
+        """
+        Define a Piecewise, consisting of a list of Pieces.
+
+        Args:
+            pieces: The pieces of the piecewise.
+        """
+        self.pieces = pieces
+
+    def __len__(self):
+        return len(self.pieces)
+
+    def __getitem__(self, index) -> Piece:
+        return self.pieces[index]  # Enables indexing like piecewise[i]
+
+    def __iter__(self) -> Iterator[Piece]:
+        return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        for i, piece in enumerate(self.pieces):
+            piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
+
+
+@register_class_for_io
+class PiecewiseConversion(Interface):
+    def __init__(self, piecewises: Dict[str, Piecewise]):
+        """
+        Define a piecewise conversion between multiple Flows.
+        --> "gaps" can be expressed by a piece not starting at the end of the prior piece: [(1,3), (4,5)]
+        --> "points" can expressed as piece with same begin and end: [(3,3), (4,4)]
+
+        Args:
+            piecewises: Dict of Piecewises defining the conversion factors. flow labels as keys, piecewise as values
+        """
+        self.piecewises = piecewises
+
+    def items(self):
+        return self.piecewises.items()
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        for name, piecewise in self.piecewises.items():
+            piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
+
+
+@register_class_for_io
+class PiecewiseEffects(Interface):
+    def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
+        """
+        Define piecewise effects related to a variable.
+
+        Args:
+            piecewise_origin: Piecewise of the related variable
+            piecewise_shares: Piecewise defining the shares to different Effects
+        """
+        self.piecewise_origin = piecewise_origin
+        self.piecewise_shares = piecewise_shares
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
+        #self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
+        #for name, piecewise in self.piecewise_shares.items():
+        #    piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{name}')
 
 
 @register_class_for_io
@@ -35,9 +116,7 @@ class InvestParameters(Interface):
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScalar'] = None,
         specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
-        effects_in_segments: Optional[
-            Tuple[List[Tuple[Scalar, Scalar]], Dict['str', List[Tuple[Scalar, Scalar]]]]
-        ] = None,
+        piecewise_effects: Optional[PiecewiseEffects] = None,
         divest_effects: Optional['EffectValuesUserScalar'] = None,
     ):
         """
@@ -49,7 +128,7 @@ class InvestParameters(Interface):
             specific_effects: Specific costs, e.g., in €/kW_nominal or €/m²_nominal.
                 Example: {costs: 3, CO2: 0.3} with costs and CO2 representing an Object of class Effect
                 (Attention: Annualize costs to chosen period!)
-            effects_in_segments: Linear relation in segments [invest_segments, cost_segments].
+            piecewise_effects: Linear piecewise relation [invest_pieces, cost_pieces].
                 Example 1:
                     [           [5, 25, 25, 100],       # size in kW
                      {costs:    [50,250,250,800],       # €
@@ -61,7 +140,7 @@ class InvestParameters(Interface):
                         [50,250,250,800]        # value for standart effect, typically €
                      ]  # €
                 (Attention: Annualize costs to chosen period!)
-                (Args 'specific_effects' and 'fix_effects' can be used in parallel to InvestsizeSegments)
+                (Args 'specific_effects' and 'fix_effects' can be used in parallel to Investsizepieces)
             minimum_size: Min nominal value (only if: size_is_fixed = False).
             maximum_size: Max nominal value (only if: size_is_fixed = False).
         """
@@ -70,7 +149,7 @@ class InvestParameters(Interface):
         self.fixed_size = fixed_size
         self.optional = optional
         self.specific_effects: EffectValuesUser = specific_effects or {}
-        self.effects_in_segments = effects_in_segments
+        self.piecewise_effects = piecewise_effects
         self._minimum_size = minimum_size
         self._maximum_size = maximum_size or CONFIG.modeling.BIG  # default maximum
 
@@ -86,6 +165,7 @@ class InvestParameters(Interface):
     @property
     def maximum_size(self):
         return self.fixed_size or self._maximum_size
+
 
 @register_class_for_io
 class OnOffParameters(Interface):

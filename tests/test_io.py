@@ -9,12 +9,12 @@ from .conftest import (
     assert_almost_equal_numeric,
     flow_system_base,
     flow_system_long,
-    flow_system_segments_of_flows,
+    flow_system_segments_of_flows_2,
     simple_flow_system,
 )
 
 
-@pytest.fixture(params=[flow_system_base, flow_system_segments_of_flows, simple_flow_system, flow_system_long])
+@pytest.fixture(params=[flow_system_base, flow_system_segments_of_flows_2, simple_flow_system, flow_system_long])
 def flow_system(request):
     fs = request.getfixturevalue(request.param.__name__)
     if isinstance(fs, fx.FlowSystem):
