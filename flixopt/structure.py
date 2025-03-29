@@ -1,5 +1,5 @@
 """
-This module contains the core structure of the flixOpt framework.
+This module contains the core structure of the flixopt framework.
 These classes are not directly used by the end user, but are used by other modules.
 """
 
@@ -25,17 +25,20 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 CLASS_REGISTRY = {}
+
 
 def register_class_for_io(cls):
     """Register a class for serialization/deserialization."""
     name = cls.__name__
     if name in CLASS_REGISTRY:
-        raise ValueError(f'Class {name} already registered! Use a different Name for the class! '
-                         f'This error should only happen in developement')
+        raise ValueError(
+            f'Class {name} already registered! Use a different Name for the class! '
+            f'This error should only happen in developement'
+        )
     CLASS_REGISTRY[name] = cls
     return cls
 
@@ -106,14 +109,14 @@ class SystemModel(linopy.Model):
 
 class Interface:
     """
-    This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixOpt.
+    This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixopt.
     """
 
     def transform_data(self, flow_system: 'FlowSystem'):
-        """ Transforms the data of the interface to match the FlowSystem's dimensions"""
+        """Transforms the data of the interface to match the FlowSystem's dimensions"""
         raise NotImplementedError('Every Interface needs a transform_data() method')
 
-    def infos(self, use_numpy: bool =True, use_element_label: bool = False) -> Dict:
+    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
         """
         Generate a dictionary representation of the object's constructor arguments.
         Excludes default values and empty dictionaries and lists.
@@ -252,7 +255,7 @@ class Interface:
 
 
 class Element(Interface):
-    """This class is the basic Element of flixOpt. Every Element has a label"""
+    """This class is the basic Element of flixopt. Every Element has a label"""
 
     def __init__(self, label: str, meta_data: Dict = None):
         """
@@ -300,7 +303,9 @@ class Element(Interface):
 class Model:
     """Stores Variables and Constraints."""
 
-    def __init__(self, model: SystemModel, label_of_element: str, label: Optional[str] = None, label_full: Optional[str] = None):
+    def __init__(
+        self, model: SystemModel, label_of_element: str, label: Optional[str] = None, label_full: Optional[str] = None
+    ):
         """
         Args:
             model: The SystemModel that is used to create the model.
@@ -326,9 +331,7 @@ class Model:
         raise NotImplementedError('Every Model needs a do_modeling() method')
 
     def add(
-        self,
-        item: Union[linopy.Variable, linopy.Constraint, 'Model'],
-        short_name: Optional[str] = None
+        self, item: Union[linopy.Variable, linopy.Constraint, 'Model'], short_name: Optional[str] = None
     ) -> Union[linopy.Variable, linopy.Constraint, 'Model']:
         """
         Add a variable, constraint or sub-model to the model
@@ -349,12 +352,15 @@ class Model:
             self._sub_models_short[item.label_full] = short_name or item.label_full
         else:
             raise ValueError(
-                f'Item must be a linopy.Variable, linopy.Constraint or flixOpt.structure.Model, got {type(item)}')
+                f'Item must be a linopy.Variable, linopy.Constraint or flixopt.structure.Model, got {type(item)}'
+            )
         return item
 
-    def filter_variables(self,
-                         filter_by: Optional[Literal['binary', 'continuous', 'integer']] = None,
-                         length: Literal['scalar', 'time'] = None):
+    def filter_variables(
+        self,
+        filter_by: Optional[Literal['binary', 'continuous', 'integer']] = None,
+        length: Literal['scalar', 'time'] = None,
+    ):
         if filter_by is None:
             all_variables = self.variables
         elif filter_by == 'binary':
@@ -379,7 +385,7 @@ class Model:
 
     @property
     def label_full(self) -> str:
-        """ Used to construct the names of variables and constraints """
+        """Used to construct the names of variables and constraints"""
         if self._label_full is not None:
             return self._label_full
         elif self._label is not None:
@@ -537,7 +543,7 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
             return data.label
         return data.infos(use_numpy, use_element_label)
     elif isinstance(data, xr.DataArray):
-        #TODO: This is a temporary basic work around
+        # TODO: This is a temporary basic work around
         return copy_and_convert_datatypes(data.values, use_numpy, use_element_label)
     else:
         raise TypeError(f'copy_and_convert_datatypes() did get unexpected data of type "{type(data)}": {data=}')

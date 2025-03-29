@@ -2,19 +2,19 @@ from typing import Dict, List, Optional, Union
 
 import pytest
 
-import flixOpt as fx
-from flixOpt.io import CalculationResultsPaths
+import flixopt as fx
+from flixopt.io import CalculationResultsPaths
 
 from .conftest import (
     assert_almost_equal_numeric,
     flow_system_base,
     flow_system_long,
-    flow_system_segments_of_flows,
+    flow_system_segments_of_flows_2,
     simple_flow_system,
 )
 
 
-@pytest.fixture(params=[flow_system_base, flow_system_segments_of_flows, simple_flow_system, flow_system_long])
+@pytest.fixture(params=[flow_system_base, flow_system_segments_of_flows_2, simple_flow_system, flow_system_long])
 def flow_system(request):
     fs = request.getfixturevalue(request.param.__name__)
     if isinstance(fs, fx.FlowSystem):
@@ -36,9 +36,11 @@ def test_flow_system_file_io(flow_system, highs_solver):
     calculation_1.do_modeling()
     calculation_1.solve(highs_solver)
 
-    assert_almost_equal_numeric(calculation_0.results.model.objective.value,
-                                calculation_1.results.model.objective.value,
-                                'objective of loaded flow_system doesnt match the original')
+    assert_almost_equal_numeric(
+        calculation_0.results.model.objective.value,
+        calculation_1.results.model.objective.value,
+        'objective of loaded flow_system doesnt match the original',
+    )
 
     assert_almost_equal_numeric(
         calculation_0.results.solution['costs|total'].values,

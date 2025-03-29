@@ -1,37 +1,47 @@
-# flixOpt: Energy and Material Flow Optimization Framework
+# FlixOpt
 
-**flixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
+**FlixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
 
-It bridges the gap between **high-level energy systems models** like [FINE](https://github.com/FZJ-IEK3-VSA/FINE) used for design and (multi-period) investment decisions and **low-level dispatch optimization tools** used for operation decisions.
+It borrows concepts from both [FINE](https://github.com/FZJ-IEK3-VSA/FINE) and [oemof.solph](https://github.com/oemof/oemof-solph).
+
+## Why FlixOpt?
+
+FlixOpt is designed as a general-purpose optimization framework to get your model running quickly, without sacrificing flexibility down the road:
+
+- **Easy to Use API**: FlixOpt provides a Pythonic, object-oriented interface that makes mathematical optimization more accessible to Python developers.
+
+- **Approachable Learning Curve**: Designed to be accessible from the start, with options for more detailed models down the road.
+
+- **Domain Independence**: While frameworks like oemof and FINE excel at energy system modeling with domain-specific components, FlixOpt offers a more general mathematical approach that can be applied across different fields.
+
+- **Extensibility**: Easily add custom constraints or variables to any FlixOpt Model using [linopy](https://github.com/PyPSA/linopy). Tailor any FlixOpt model to your specific needs without loosing the convenience of the framework.
+
+- **Solver Agnostic**: Work with different solvers through a consistent interface.
+
+- **Results File I/O**: Built to analyze results independent of running the optimization.
 
 <figure markdown>
-  ![flixOpt Conceptual Usage](./images/architecture_flixOpt.png)
-  <figcaption>Conceptual Usage and IO operations of flixOpt</figcaption>
+  ![FlixOpt Conceptual Usage](./images/architecture_flixOpt.png)
+  <figcaption>Conceptual Usage and IO operations of FlixOpt</figcaption>
 </figure>
 
-## 🚀️ Getting Started
+## Installation
 
-See the [Getting Started Guide](getting-started.md) to start using flixOpt.
+```bash
+pip install flixopt
+```
 
-See the [Examples](examples/) section for detailed examples.
+For more detailed installation options, see the [Getting Started](getting-started.md) guide.
 
-## ⚙️ How It Works
+## License
 
-See our [Concepts & Math](concepts-and-math/index.md) to understand the core concepts of flixOpt.
+FlixOpt is released under the MIT License. See [LICENSE](https://github.com/flixopt/flixopt/blob/main/LICENSE) for details.
 
-## 🛠️ Compatible Solvers
+## Citation
 
-flixOpt works with various solvers:
-
-- [HiGHS](https://highs.dev/) (installed by default)
-- [Gurobi](https://www.gurobi.com/)  
-- [CBC](https://github.com/coin-or/Cbc)  
-- [GLPK](https://www.gnu.org/software/glpk/)
-- [CPLEX](https://www.ibm.com/analytics/cplex-optimizer)
-
-## 📝 Citation
-
-If you use flixOpt in your research or project, please cite:
+If you use FlixOpt in your research or project, please cite:
 
 - **Main Citation:** [DOI:10.18086/eurosun.2022.04.07](https://doi.org/10.18086/eurosun.2022.04.07)
 - **Short Overview:** [DOI:10.13140/RG.2.2.14948.24969](https://doi.org/10.13140/RG.2.2.14948.24969)
+
+*A more sophisticated paper is in progress*

@@ -13,7 +13,7 @@ from .elements import Flow
 from .interface import OnOffParameters
 from .structure import register_class_for_io
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -297,7 +297,11 @@ class HeatPumpWithSource(LinearConverter):
 
 
 def check_bounds(
-    value: NumericDataTS, parameter_label: str, element_label: str, lower_bound: NumericDataTS, upper_bound: NumericDataTS
+    value: NumericDataTS,
+    parameter_label: str,
+    element_label: str,
+    lower_bound: NumericDataTS,
+    upper_bound: NumericDataTS,
 ) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.

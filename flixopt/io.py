@@ -12,7 +12,7 @@ import yaml
 
 from .core import TimeSeries
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
@@ -25,13 +25,13 @@ def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
         if obj.all_equal:
             return obj.active_data.values[0].item()
         elif mode == 'name':
-            return f"::::{obj.name}"
+            return f'::::{obj.name}'
         elif mode == 'stats':
             return obj.stats
         elif mode == 'data':
             return obj
         else:
-            raise ValueError(f"Invalid mode {mode}")
+            raise ValueError(f'Invalid mode {mode}')
     else:
         return obj
 
@@ -42,7 +42,7 @@ def insert_dataarray(obj, ds: xr.Dataset):
         return {k: insert_dataarray(v, ds) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [insert_dataarray(v, ds) for v in obj]
-    elif isinstance(obj, str) and obj.startswith("::::"):
+    elif isinstance(obj, str) and obj.startswith('::::'):
         da = ds[obj[4:]]
         if da.isel(time=-1).isnull():
             return da.isel(time=slice(0, -1))
@@ -55,12 +55,14 @@ def remove_none_and_empty(obj):
     """Recursively removes None and empty dicts and lists values from a dictionary or list."""
 
     if isinstance(obj, dict):
-        return {k: remove_none_and_empty(v) for k, v in obj.items() if
-                not (v is None or (isinstance(v, (list, dict)) and not v))}
+        return {
+            k: remove_none_and_empty(v)
+            for k, v in obj.items()
+            if not (v is None or (isinstance(v, (list, dict)) and not v))
+        }
 
     elif isinstance(obj, list):
-        return [remove_none_and_empty(v) for v in obj if
-                not (v is None or (isinstance(v, (list, dict)) and not v))]
+        return [remove_none_and_empty(v) for v in obj if not (v is None or (isinstance(v, (list, dict)) and not v))]
 
     else:
         return obj
@@ -158,8 +160,8 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
         'termination_condition': model.termination_condition,
         'status': model.status,
         'nvars': model.nvars,
-        'nvarsbin': model.binaries.nvars,
-        'nvarscont': model.continuous.nvars,
+        'nvarsbin': model.binaries.nvars if len(model.binaries) > 0 else 0,  # Temporary, waiting for linopy to fix
+        'nvarscont': model.continuous.nvars if len(model.continuous) > 0 else 0,  # Temporary, waiting for linopy to fix
         'ncons': model.ncons,
         'variables': {variable_name: variable.__repr__() for variable_name, variable in model.variables.items()},
         'constraints': {
@@ -171,11 +173,12 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
         'infeasible_constraints': '',
     }
 
-    if model.status  == 'warning':
+    if model.status == 'warning':
         logger.critical(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
         try:
             import io
             from contextlib import redirect_stdout
+
             f = io.StringIO()
 
             # Redirect stdout to our buffer
@@ -184,7 +187,9 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
 
             documentation['infeasible_constraints'] = f.getvalue()
         except NotImplementedError:
-            logger.critical('Infeasible constraints could not get retrieved. This functionality is only availlable with gurobi')
+            logger.critical(
+                'Infeasible constraints could not get retrieved. This functionality is only availlable with gurobi'
+            )
             documentation['infeasible_constraints'] = 'Not possible to retrieve infeasible constraints'
 
     if path is not None:
@@ -196,9 +201,9 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
 
 
 def save_dataset_to_netcdf(
-        ds: xr.Dataset,
-        path: Union[str, pathlib.Path],
-        compression: int = 0,
+    ds: xr.Dataset,
+    path: Union[str, pathlib.Path],
+    compression: int = 0,
 ) -> None:
     """
     Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.
@@ -219,14 +224,17 @@ def save_dataset_to_netcdf(
         if importlib.util.find_spec('netCDF4') is not None:
             apply_encoding = True
         else:
-            logger.warning('Dataset was exported without compression due to missing dependency "netcdf4".'
-                           'Install netcdf4 via `pip install netcdf4`.')
+            logger.warning(
+                'Dataset was exported without compression due to missing dependency "netcdf4".'
+                'Install netcdf4 via `pip install netcdf4`.'
+            )
     ds = ds.copy(deep=True)
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
     ds.to_netcdf(
         path,
-        encoding=None if not apply_encoding else {data_var: {"zlib": True, "complevel": 5}
-                                                  for data_var in ds.data_vars}
+        encoding=None
+        if not apply_encoding
+        else {data_var: {'zlib': True, 'complevel': 5} for data_var in ds.data_vars},
     )
 
 

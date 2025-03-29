@@ -1,5 +1,5 @@
 """
-This module contains the features of the flixOpt framework.
+This module contains the features of the flixopt framework.
 Features extend the functionality of Elements.
 """
 
@@ -12,14 +12,10 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters
+from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
 
-if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from .effects import Effect
-
-
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class InvestmentModel(Model):
@@ -39,7 +35,7 @@ class InvestmentModel(Model):
         self.size: Optional[Union[Scalar, linopy.Variable]] = None
         self.is_invested: Optional[linopy.Variable] = None
 
-        self._segments: Optional[SegmentedSharesModel] = None
+        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
 
         self._on_variable = on_variable
         self._defining_variable = defining_variable
@@ -48,24 +44,27 @@ class InvestmentModel(Model):
 
     def do_modeling(self):
         if self.parameters.fixed_size and not self.parameters.optional:
-            self.size = self.add(self._model.add_variables(
-                lower=self.parameters.fixed_size,
-                upper=self.parameters.fixed_size,
-                name=f'{self.label_full}|size'),
-                'size')
+            self.size = self.add(
+                self._model.add_variables(
+                    lower=self.parameters.fixed_size, upper=self.parameters.fixed_size, name=f'{self.label_full}|size'
+                ),
+                'size',
+            )
         else:
-            self.size = self.add(self._model.add_variables(
-                lower=0 if self.parameters.optional else self.parameters.minimum_size,
-                upper=self.parameters.maximum_size,
-                name=f'{self.label_full}|size'),
-                'size')
+            self.size = self.add(
+                self._model.add_variables(
+                    lower=0 if self.parameters.optional else self.parameters.minimum_size,
+                    upper=self.parameters.maximum_size,
+                    name=f'{self.label_full}|size',
+                ),
+                'size',
+            )
 
         # Optional
         if self.parameters.optional:
-            self.is_invested = self.add(self._model.add_variables(
-                binary=True,
-                name=f'{self.label_full}|is_invested'),
-                'is_invested')
+            self.is_invested = self.add(
+                self._model.add_variables(binary=True, name=f'{self.label_full}|is_invested'), 'is_invested'
+            )
 
             self._create_bounds_for_optional_investment()
 
@@ -75,14 +74,15 @@ class InvestmentModel(Model):
         self._create_shares()
 
     def _create_shares(self):
-
         # fix_effects:
         fix_effects = self.parameters.fix_effects
         if fix_effects != {}:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={effect: self.is_invested * factor if self.is_invested is not None else factor
-                             for effect, factor in fix_effects.items()},
+                expressions={
+                    effect: self.is_invested * factor if self.is_invested is not None else factor
+                    for effect, factor in fix_effects.items()
+                },
                 target='invest',
             )
 
@@ -101,64 +101,81 @@ class InvestmentModel(Model):
                 target='invest',
             )
 
-        if self.parameters.effects_in_segments:
-            self._segments = self.add(
-                SegmentedSharesModel(
+        if self.parameters.piecewise_effects:
+            self.piecewise_effects = self.add(
+                PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    variable_segments=(self.size, self.parameters.effects_in_segments[0]),
-                    share_segments=self.parameters.effects_in_segments[1],
-                    can_be_outside_segments=self.is_invested),
-                'segments'
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
+                    zero_point=self.is_invested,
+                ),
+                'segments',
             )
-            self._segments.do_modeling()
+            self.piecewise_effects.do_modeling()
 
     def _create_bounds_for_optional_investment(self):
         if self.parameters.fixed_size:
             # eq: investment_size = isInvested * fixed_size
-            self.add(self._model.add_constraints(
-                self.size == self.is_invested * self.parameters.fixed_size,
-                name=f'{self.label_full}|is_invested'),
-                'is_invested')
+            self.add(
+                self._model.add_constraints(
+                    self.size == self.is_invested * self.parameters.fixed_size, name=f'{self.label_full}|is_invested'
+                ),
+                'is_invested',
+            )
 
         else:
             # eq1: P_invest <= isInvested * investSize_max
-            self.add(self._model.add_constraints(
-                self.size <= self.is_invested * self.parameters.maximum_size,
-                name=f'{self.label_full}|is_invested_ub'),
-                'is_invested_ub')
+            self.add(
+                self._model.add_constraints(
+                    self.size <= self.is_invested * self.parameters.maximum_size,
+                    name=f'{self.label_full}|is_invested_ub',
+                ),
+                'is_invested_ub',
+            )
 
             # eq2: P_invest >= isInvested * max(epsilon, investSize_min)
-            self.add(self._model.add_constraints(
-                self.size >= self.is_invested * np.maximum(CONFIG.modeling.EPSILON,self.parameters.minimum_size),
-                name=f'{self.label_full}|is_invested_lb'),
-                'is_invested_lb')
+            self.add(
+                self._model.add_constraints(
+                    self.size >= self.is_invested * np.maximum(CONFIG.modeling.EPSILON, self.parameters.minimum_size),
+                    name=f'{self.label_full}|is_invested_lb',
+                ),
+                'is_invested_lb',
+            )
 
     def _create_bounds_for_defining_variable(self):
         variable = self._defining_variable
         lb_relative, ub_relative = self._relative_bounds_of_defining_variable
         if np.all(lb_relative == ub_relative):
-            self.add(self._model.add_constraints(
-                variable == self.size * ub_relative,
-                name=f'{self.label_full}|fix_{variable.name}'),
-                f'fix_{variable.name}')
+            self.add(
+                self._model.add_constraints(
+                    variable == self.size * ub_relative, name=f'{self.label_full}|fix_{variable.name}'
+                ),
+                f'fix_{variable.name}',
+            )
             if self._on_variable is not None:
-                raise ValueError(f'Flow {self.label} has a fixed relative flow rate and an on_variable.'
-                                 f'This combination is currently not supported.')
+                raise ValueError(
+                    f'Flow {self.label} has a fixed relative flow rate and an on_variable.'
+                    f'This combination is currently not supported.'
+                )
             return
 
         # eq: defining_variable(t)  <= size * upper_bound(t)
-        self.add(self._model.add_constraints(
-            variable <= self.size * ub_relative,
-            name=f'{self.label_full}|ub_{variable.name}'),
-            f'ub_{variable.name}')
+        self.add(
+            self._model.add_constraints(
+                variable <= self.size * ub_relative, name=f'{self.label_full}|ub_{variable.name}'
+            ),
+            f'ub_{variable.name}',
+        )
 
         if self._on_variable is None:
             # eq: defining_variable(t) >= investment_size * relative_minimum(t)
-            self.add(self._model.add_constraints(
-                variable >= self.size * lb_relative,
-                name=f'{self.label_full}|lb_{variable.name}'),
-                f'lb_{variable.name}')
+            self.add(
+                self._model.add_constraints(
+                    variable >= self.size * lb_relative, name=f'{self.label_full}|lb_{variable.name}'
+                ),
+                f'lb_{variable.name}',
+            )
         else:
             ## 2. Gleichung: Minimum durch Investmentgröße und On
             # eq: defining_variable(t) >= mega * (On(t)-1) + size * relative_minimum(t)
@@ -167,10 +184,12 @@ class InvestmentModel(Model):
             # eq: - defining_variable(t) + mega * On(t) + size * relative_minimum(t) <= + mega
             mega = lb_relative * self.parameters.maximum_size
             on = self._on_variable
-            self.add(self._model.add_constraints(
-                variable >= mega * (on - 1) + self.size * lb_relative,
-                name=f'{self.label_full}|lb_{variable.name}'),
-                f'lb_{variable.name}')
+            self.add(
+                self._model.add_constraints(
+                    variable >= mega * (on - 1) + self.size * lb_relative, name=f'{self.label_full}|lb_{variable.name}'
+                ),
+                f'lb_{variable.name}',
+            )
             # anmerkung: Glg bei Spezialfall relative_minimum = 0 redundant zu OnOff ??
 
 
@@ -236,17 +255,17 @@ class OnOffModel(Model):
             self._model.add_variables(
                 lower=self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
                 upper=self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
-                name=f'{self.label_full}|on_hours_total'
+                name=f'{self.label_full}|on_hours_total',
             ),
-            'on_hours_total'
+            'on_hours_total',
         )
 
         self.add(
             self._model.add_constraints(
                 self.total_on_hours == (self.on * self._model.hours_per_step).sum(),
-                name=f'{self.label_full}|on_hours_total'
+                name=f'{self.label_full}|on_hours_total',
             ),
-            'on_hours_total'
+            'on_hours_total',
         )
 
         self._add_on_constraints()
@@ -258,7 +277,7 @@ class OnOffModel(Model):
                     binary=True,
                     coords=self._model.coords,
                 ),
-                'off'
+                'off',
             )
 
             # eq: var_on(t) + var_off(t) = 1
@@ -283,16 +302,25 @@ class OnOffModel(Model):
             )
 
         if self.parameters.use_switch_on:
-            self.switch_on = self.add(self._model.add_variables(
-                binary=True, name=f'{self.label_full}|switch_on', coords=self._model.coords),'switch_on')
+            self.switch_on = self.add(
+                self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.coords),
+                'switch_on',
+            )
 
-            self.switch_off = self.add(self._model.add_variables(
-                binary=True, name=f'{self.label_full}|switch_off', coords=self._model.coords), 'switch_off')
+            self.switch_off = self.add(
+                self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.coords),
+                'switch_off',
+            )
 
-            self.switch_on_nr = self.add(self._model.add_variables(
-                upper=self.parameters.switch_on_total_max if self.parameters.switch_on_total_max is not None else np.inf,
-                name=f'{self.label_full}|switch_on_nr'),
-                'switch_on_nr')
+            self.switch_on_nr = self.add(
+                self._model.add_variables(
+                    upper=self.parameters.switch_on_total_max
+                    if self.parameters.switch_on_total_max is not None
+                    else np.inf,
+                    name=f'{self.label_full}|switch_on_nr',
+                ),
+                'switch_on_nr',
+            )
 
             self._add_switch_constraints()
 
@@ -303,7 +331,7 @@ class OnOffModel(Model):
         # % Bedingungen 1) und 2) müssen erfüllt sein:
 
         # % Anmerkung: Falls "abschnittsweise linear" gewählt, dann ist eigentlich nur Bedingung 1) noch notwendig
-        # %            (und dann auch nur wenn erstes Segment bei Q_th=0 beginnt. Dann soll bei Q_th=0 (d.h. die Maschine ist Aus) On = 0 und segment1.onSeg = 0):)
+        # %            (und dann auch nur wenn erstes Piece bei Q_th=0 beginnt. Dann soll bei Q_th=0 (d.h. die Maschine ist Aus) On = 0 und segment1.onSeg = 0):)
         # %            Fazit: Wenn kein Performance-Verlust durch mehr Gleichungen, dann egal!
 
         nr_of_def_vars = len(self._defining_variables)
@@ -316,19 +344,17 @@ class OnOffModel(Model):
             # eq: On(t) * max(epsilon, lower_bound) <= Q_th(t)
             self.add(
                 self._model.add_constraints(
-                    self.on * np.maximum(CONFIG.modeling.EPSILON, lb) <= def_var,
-                    name=f'{self.label_full}|on_con1'
+                    self.on * np.maximum(CONFIG.modeling.EPSILON, lb) <= def_var, name=f'{self.label_full}|on_con1'
                 ),
-                'on_con1'
+                'on_con1',
             )
 
             # eq: Q_th(t) <= Q_th_max * On(t)
             self.add(
                 self._model.add_constraints(
-                    self.on * np.maximum(CONFIG.modeling.EPSILON, ub) >= def_var,
-                    name=f'{self.label_full}|on_con2'
+                    self.on * np.maximum(CONFIG.modeling.EPSILON, ub) >= def_var, name=f'{self.label_full}|on_con2'
                 ),
-                'on_con2'
+                'on_con2',
             )
 
         else:  # Bei mehreren Leistungsvariablen:
@@ -339,10 +365,9 @@ class OnOffModel(Model):
             # eq: On(t) * Epsilon <= sum(alle Leistungen(t))
             self.add(
                 self._model.add_constraints(
-                    self.on * lb <= sum(self._defining_variables),
-                    name=f'{self.label_full}|on_con1'
+                    self.on * lb <= sum(self._defining_variables), name=f'{self.label_full}|on_con1'
                 ),
-                'on_con1'
+                'on_con1',
             )
 
             ## sum(alle Leistung) >0 -> On = 1|On=0 -> sum(Leistung)=0
@@ -352,9 +377,9 @@ class OnOffModel(Model):
             self.add(
                 self._model.add_constraints(
                     self.on * ub >= sum([def_var / nr_of_def_vars for def_var in self._defining_variables]),
-                    name=f'{self.label_full}|on_con2'
+                    name=f'{self.label_full}|on_con2',
                 ),
-                'on_con2'
+                'on_con2',
             )
 
         if np.max(ub) > CONFIG.modeling.BIG_BINARY_BOUND:
@@ -422,30 +447,34 @@ class OnOffModel(Model):
                     f'(dt={self._model.hours_per_step[0]}h)!'
                 )
 
-        duration_in_hours = self.add(self._model.add_variables(
-            lower=0,
-            upper=maximum_duration.active_data if maximum_duration is not None else mega,
-            coords=self._model.coords,
-            name=f'{self.label_full}|{variable_name}'),
-            variable_name
+        duration_in_hours = self.add(
+            self._model.add_variables(
+                lower=0,
+                upper=maximum_duration.active_data if maximum_duration is not None else mega,
+                coords=self._model.coords,
+                name=f'{self.label_full}|{variable_name}',
+            ),
+            variable_name,
         )
 
         # 1) eq: duration(t) - On(t) * BIG <= 0
-        self.add(self._model.add_constraints(
-            duration_in_hours <= binary_variable * mega,
-            name=f'{self.label_full}|{variable_name}_con1'),
-            f'{variable_name}_con1'
+        self.add(
+            self._model.add_constraints(
+                duration_in_hours <= binary_variable * mega, name=f'{self.label_full}|{variable_name}_con1'
+            ),
+            f'{variable_name}_con1',
         )
 
         # 2a) eq: duration(t) - duration(t-1) <= dt(t)
         #    on(t)=1 -> duration(t) - duration(t-1) <= dt(t)
         #    on(t)=0 -> duration(t-1) >= negat. value
-        self.add(self._model.add_constraints(
-            duration_in_hours.isel(time=slice(1, None))
-            <=
-            duration_in_hours.isel(time=slice(None, -1)) + self._model.hours_per_step.isel(time=slice(None, -1)),
-            name=f'{self.label_full}|{variable_name}_con2a'),
-            f'{variable_name}_con2a'
+        self.add(
+            self._model.add_constraints(
+                duration_in_hours.isel(time=slice(1, None))
+                <= duration_in_hours.isel(time=slice(None, -1)) + self._model.hours_per_step.isel(time=slice(None, -1)),
+                name=f'{self.label_full}|{variable_name}_con2a',
+            ),
+            f'{variable_name}_con2a',
         )
 
         # 2b) eq: dt(t) - BIG * ( 1-On(t) ) <= duration(t) - duration(t-1)
@@ -454,13 +483,15 @@ class OnOffModel(Model):
         #   on(t)=1 -> duration(t)- duration(t-1) >= dt(t)
         #   on(t)=0 -> duration(t)- duration(t-1) >= negat. value
 
-        self.add(self._model.add_constraints(
-            duration_in_hours.isel(time=slice(1, None))
-            >=
-            duration_in_hours.isel(time=slice(None, -1)) + self._model.hours_per_step.isel(time=slice(None, -1))
-            + (binary_variable.isel(time=slice(1, None)) - 1) * mega,
-            name=f'{self.label_full}|{variable_name}_con2b'),
-            f'{variable_name}_con2b'
+        self.add(
+            self._model.add_constraints(
+                duration_in_hours.isel(time=slice(1, None))
+                >= duration_in_hours.isel(time=slice(None, -1))
+                + self._model.hours_per_step.isel(time=slice(None, -1))
+                + (binary_variable.isel(time=slice(1, None)) - 1) * mega,
+                name=f'{self.label_full}|{variable_name}_con2b',
+            ),
+            f'{variable_name}_con2b',
         )
 
         # 3) check minimum_duration before switchOff-step
@@ -471,13 +502,14 @@ class OnOffModel(Model):
             # Note: (previous values before t=1 are not recognised!)
             # eq: duration(t) >= minimum_duration(t) * [On(t) - On(t+1)] for t=1..(n-1)
             # eq: -duration(t) + minimum_duration(t) * On(t) - minimum_duration(t) * On(t+1) <= 0
-            self.add(self._model.add_constraints(
-                duration_in_hours
-                >=
-                (binary_variable.isel(time=slice(None, -1)) - binary_variable.isel(time=slice(1, None)))
-                * minimum_duration.isel(time=slice(None, -1)),
-                name=f'{self.label_full}|{variable_name}_minimum_duration'),
-                f'{variable_name}_minimum_duration'
+            self.add(
+                self._model.add_constraints(
+                    duration_in_hours
+                    >= (binary_variable.isel(time=slice(None, -1)) - binary_variable.isel(time=slice(1, None)))
+                    * minimum_duration.isel(time=slice(None, -1)),
+                    name=f'{self.label_full}|{variable_name}_minimum_duration',
+                ),
+                f'{variable_name}_minimum_duration',
             )
 
             if 0 < previous_duration < minimum_duration.isel(time=0):
@@ -485,25 +517,31 @@ class OnOffModel(Model):
                 # Note: Only if the previous consecutive_duration is smaller than the minimum duration
                 # and the previous_duration is greater 0!
                 # eq: On(t=0) = 1
-                self.add(self._model.add_constraints(
-                    binary_variable.isel(time=0) == 1,
-                    name=f'{self.label_full}|{variable_name}_minimum_inital'),
-                    f'{variable_name}_minimum_inital'
+                self.add(
+                    self._model.add_constraints(
+                        binary_variable.isel(time=0) == 1, name=f'{self.label_full}|{variable_name}_minimum_inital'
+                    ),
+                    f'{variable_name}_minimum_inital',
                 )
 
             # 4) first index:
             # eq: duration(t=0)= dt(0) * On(0)
-            self.add(self._model.add_constraints(
-                duration_in_hours.isel(time=0) == self._model.hours_per_step.isel(time=0) * binary_variable.isel(time=0),
-                name=f'{self.label_full}|{variable_name}_initial'),
-                f'{variable_name}_initial'
+            self.add(
+                self._model.add_constraints(
+                    duration_in_hours.isel(time=0)
+                    == self._model.hours_per_step.isel(time=0) * binary_variable.isel(time=0),
+                    name=f'{self.label_full}|{variable_name}_initial',
+                ),
+                f'{variable_name}_initial',
             )
 
         return duration_in_hours
 
     def _add_switch_constraints(self):
         assert self.switch_on is not None, f'Switch On Variable of {self.label_full} must be defined to add constraints'
-        assert self.switch_off is not None, f'Switch Off Variable of {self.label_full} must be defined to add constraints'
+        assert self.switch_off is not None, (
+            f'Switch Off Variable of {self.label_full} must be defined to add constraints'
+        )
         assert self.switch_on_nr is not None, (
             f'Nr of Switch On Variable of {self.label_full} must be defined to add constraints'
         )
@@ -513,41 +551,37 @@ class OnOffModel(Model):
         self.add(
             self._model.add_constraints(
                 self.switch_on.isel(time=slice(1, None)) - self.switch_off.isel(time=slice(1, None))
-                ==
-                self.on.isel(time=slice(1,None)) - self.on.isel(time=slice(None,-1)),
-                name=f'{self.label_full}|switch_con'
+                == self.on.isel(time=slice(1, None)) - self.on.isel(time=slice(None, -1)),
+                name=f'{self.label_full}|switch_con',
             ),
-            'switch_con'
+            'switch_con',
         )
         # Initital switch on
         # eq: SwitchOn(t=0)-SwitchOff(t=0) = On(t=0) - On(t=-1)
         self.add(
             self._model.add_constraints(
                 self.switch_on.isel(time=0) - self.switch_off.isel(time=0)
-                ==
-                self.on.isel(time=0) - self.previous_on_values[-1],
-                name=f'{self.label_full}|initial_switch_con'
+                == self.on.isel(time=0) - self.previous_on_values[-1],
+                name=f'{self.label_full}|initial_switch_con',
             ),
-            'initial_switch_con'
+            'initial_switch_con',
         )
         ## Entweder SwitchOff oder SwitchOn
         # eq: SwitchOn(t) + SwitchOff(t) <= 1.1
         self.add(
             self._model.add_constraints(
-                self.switch_on + self.switch_off <= 1.1,
-                name=f'{self.label_full}|switch_on_or_off'
+                self.switch_on + self.switch_off <= 1.1, name=f'{self.label_full}|switch_on_or_off'
             ),
-            'switch_on_or_off'
+            'switch_on_or_off',
         )
 
         ## Anzahl Starts:
         # eq: nrSwitchOn = sum(SwitchOn(t))
         self.add(
             self._model.add_constraints(
-                self.switch_on_nr == self.switch_on.sum(),
-                name=f'{self.label_full}|switch_on_nr'
+                self.switch_on_nr == self.switch_on.sum(), name=f'{self.label_full}|switch_on_nr'
             ),
-            'switch_on_nr'
+            'switch_on_nr',
         )
 
     def _create_shares(self):
@@ -565,8 +599,10 @@ class OnOffModel(Model):
         if effects_per_running_hour != {}:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={effect: self.on * factor * self._model.hours_per_step
-                             for effect, factor in effects_per_running_hour.items()},
+                expressions={
+                    effect: self.on * factor * self._model.hours_per_step
+                    for effect, factor in effects_per_running_hour.items()
+                },
                 target='operation',
             )
 
@@ -611,8 +647,7 @@ class OnOffModel(Model):
 
     @staticmethod
     def compute_consecutive_duration(
-        binary_values: NumericData,
-        hours_per_timestep: Union[int, float, np.ndarray]
+        binary_values: NumericData, hours_per_timestep: Union[int, float, np.ndarray]
     ) -> Scalar:
         """
         Computes the final consecutive duration in State 'on' (=1) in hours, from a binary.
@@ -660,143 +695,146 @@ class OnOffModel(Model):
             )
 
 
-class SegmentModel(Model):
-    """Class for modeling a linear segment of one or more variables in parallel"""
+class PieceModel(Model):
+    """Class for modeling a linear piece of one or more variables in parallel"""
 
     def __init__(
         self,
         model: SystemModel,
         label_of_element: str,
-        segment_index: Union[int, str],
-        sample_points: Dict[str, Tuple[Union[NumericData, TimeSeries], Union[NumericData, TimeSeries]]],
+        label: str,
         as_time_series: bool = True,
     ):
-        super().__init__(model, label_of_element, f'Segment{segment_index}')
-        self.in_segment: Optional[linopy.Variable] = None
+        super().__init__(model, label_of_element, label)
+        self.inside_piece: Optional[linopy.Variable] = None
         self.lambda0: Optional[linopy.Variable] = None
         self.lambda1: Optional[linopy.Variable] = None
-
-        self._segment_index = segment_index
         self._as_time_series = as_time_series
-        self.sample_points = sample_points
 
     def do_modeling(self):
-        self.in_segment = self.add(self._model.add_variables(
-            binary=True,
-            name=f'{self.label_full}|in_segment',
-            coords=self._model.coords if self._as_time_series else None),
-            'in_segment'
+        self.inside_piece = self.add(
+            self._model.add_variables(
+                binary=True,
+                name=f'{self.label_full}|inside_piece',
+                coords=self._model.coords if self._as_time_series else None,
+            ),
+            'inside_piece',
         )
 
-        self.lambda0 = self.add(self._model.add_variables(
-            lower=0, upper=1,
-            name=f'{self.label_full}|lambda0',
-            coords=self._model.coords if self._as_time_series else None),
-            'lambda0'
+        self.lambda0 = self.add(
+            self._model.add_variables(
+                lower=0,
+                upper=1,
+                name=f'{self.label_full}|lambda0',
+                coords=self._model.coords if self._as_time_series else None,
+            ),
+            'lambda0',
         )
 
-        self.lambda1 = self.add(self._model.add_variables(
-            lower=0, upper=1,
-            name=f'{self.label_full}|lambda1',
-            coords=self._model.coords if self._as_time_series else None),
-            'lambda1'
+        self.lambda1 = self.add(
+            self._model.add_variables(
+                lower=0,
+                upper=1,
+                name=f'{self.label_full}|lambda1',
+                coords=self._model.coords if self._as_time_series else None,
+            ),
+            'lambda1',
         )
 
-        # eq:  lambda0(t) + lambda1(t) = in_segment(t)
-        self.add(self._model.add_constraints(
-            self.in_segment == self.lambda0 + self.lambda1,
-            name=f'{self.label_full}|in_segment'),
-            'in_segment'
+        # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
+        self.add(
+            self._model.add_constraints(
+                self.inside_piece == self.lambda0 + self.lambda1, name=f'{self.label_full}|inside_piece'
+            ),
+            'inside_piece',
         )
 
 
-class MultipleSegmentsModel(Model):
-    # TODO: Length...
+class PiecewiseModel(Model):
     def __init__(
         self,
         model: SystemModel,
         label_of_element: str,
-        sample_points: Dict[str, List[Tuple[NumericData, NumericData]]],
-        can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
-        as_time_series: bool = True,
-        label: str = 'MultipleSegments',
+        label: str,
+        piecewise_variables: Dict[str, Piecewise],
+        zero_point: Optional[Union[bool, linopy.Variable]],
+        as_time_series: bool,
     ):
         """
+        Modeling a Piecewise relation between miultiple variables.
+        The relation is defined by a list of Pieces, which are assigned to the variables.
+        Each Piece is a tuple of (start, end).
+
         Args:
-            model: Model to which the segmented variable belongs.
-            label_of_element: Name of the parent variable.
-            sample_points: Dictionary mapping variables (names) to their sample points for each segment.
-                The sample points are tuples of the form (start, end).
-            can_be_outside_segments: Whether the variable can be outside the segments. If True, a variable is created.
-                If False or None, no variable is created. If a Variable is passed, it is used.
-            as_time_series: Whether to create a scalar or time series variable.
-            label: Name of the Model.
+            model: The SystemModel that is used to create the model.
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            label: The label of the model. Used to construct the full label of the model.
+            piecewise_variables: The variables to which the Pieces are assigned.
+            zero_point: A variable that can be used to define a zero point for the Piecewise relation. If None or False, no zero point is defined.
+            as_time_series: Whether the Piecewise relation is defined for a TimeSeries or a single variable.
         """
         super().__init__(model, label_of_element, label)
-        self.outside_segments: Optional[linopy.Variable] = None
-
+        self._piecewise_variables = piecewise_variables
+        self._zero_point = zero_point
         self._as_time_series = as_time_series
-        self._can_be_outside_segments = can_be_outside_segments
-        self._sample_points = sample_points
-        self._segment_models: List[SegmentModel] = []
+
+        self.pieces: List[PieceModel] = []
+        self.zero_point: Optional[linopy.Variable] = None
 
     def do_modeling(self):
-        restructured_variables_with_segments: List[Dict[str, Tuple[NumericData, NumericData]]] = [
-            {key: values[i] for key, values in self._sample_points.items()} for i in range(self._nr_of_segments)
-        ]
-
-        self._segment_models = [
-            self.add(
-                SegmentModel(
-                    self._model,
+        for i in range(len(list(self._piecewise_variables.values())[0])):
+            new_piece = self.add(
+                PieceModel(
+                    model=self._model,
                     label_of_element=self.label_of_element,
-                    segment_index=i,
-                    sample_points=sample_points,
-                    as_time_series=self._as_time_series),
-                f'Segment_{i}')
-            for i, sample_points in enumerate(restructured_variables_with_segments)
-        ]
+                    label=f'Piece_{i}',
+                    as_time_series=self._as_time_series,
+                )
+            )
+            self.pieces.append(new_piece)
+            new_piece.do_modeling()
 
-        for segment_model in self._segment_models:
-            segment_model.do_modeling()
-
-        #  eq: - v(t) + (v_0_0 * lambda_0_0 + v_0_1 * lambda_0_1) + (v_1_0 * lambda_1_0 + v_1_1 * lambda_1_1) ... = 0
-        #  -> v_0_0, v_0_1 = Stützstellen des Segments 0
-        for var_name in self._sample_points.keys():
+        for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
-            self.add(self._model.add_constraints(
-                variable == sum([segment.lambda0 * segment.sample_points[var_name][0]
-                                 + segment.lambda1 * segment.sample_points[var_name][1]
-                                 for segment in self._segment_models]),
-                name=f'{self.label_full}|{var_name}_lambda'),
-                f'{var_name}_lambda'
+            self.add(
+                self._model.add_constraints(
+                    variable
+                    == sum(
+                        [
+                            piece_model.lambda0 * piece_bounds.start + piece_model.lambda1 * piece_bounds.end
+                            for piece_model, piece_bounds in zip(
+                                self.pieces, self._piecewise_variables[var_name], strict=False
+                            )
+                        ]
+                    ),
+                    name=f'{self.label_full}|{var_name}_lambda',
+                ),
+                f'{var_name}_lambda',
             )
 
             # a) eq: Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 1                Aufenthalt nur in Segmenten erlaubt
             # b) eq: -On(t) + Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 0       zusätzlich kann alles auch Null sein
-            if isinstance(self._can_be_outside_segments, linopy.Variable):
-                self.outside_segments = self._can_be_outside_segments
-                rhs = self.outside_segments
-            elif self._can_be_outside_segments is True:
-                self.outside_segments = self.add(self._model.add_variables(
-                    coords=self._model.coords,
-                    binary=True,
-                    name=f'{self.label_full}|outside_segments'),
-                    'outside_segments'
+            if isinstance(self._zero_point, linopy.Variable):
+                self.zero_point = self._zero_point
+                rhs = self.zero_point
+            elif self._zero_point is True:
+                self.zero_point = self.add(
+                    self._model.add_variables(
+                        coords=self._model.coords, binary=True, name=f'{self.label_full}|zero_point'
+                    ),
+                    'zero_point',
                 )
-                rhs = self.outside_segments
+                rhs = self.zero_point
             else:
                 rhs = 1
 
-            self.add(self._model.add_constraints(
-                sum([segment.in_segment for segment in self._segment_models]) <= rhs,
-                name=f'{self.label_full}|{variable.name}_single_segment'),
-                'single_segment'
+            self.add(
+                self._model.add_constraints(
+                    sum([piece.inside_piece for piece in self.pieces]) <= rhs,
+                    name=f'{self.label_full}|{variable.name}_single_segment',
+                ),
+                'single_segment',
             )
-
-    @property
-    def _nr_of_segments(self):
-        return len(next(iter(self._sample_points.values())))
 
 
 class ShareAllocationModel(Model):
@@ -837,25 +875,31 @@ class ShareAllocationModel(Model):
             self._model.add_variables(
                 lower=self._total_min, upper=self._total_max, coords=None, name=f'{self.label_full}|total'
             ),
-            'total'
+            'total',
         )
         # eq: sum = sum(share_i) # skalar
-        self._eq_total = self.add(self._model.add_constraints(self.total == 0, name=f'{self.label_full}|total'), 'total')
+        self._eq_total = self.add(
+            self._model.add_constraints(self.total == 0, name=f'{self.label_full}|total'), 'total'
+        )
 
         if self._shares_are_time_series:
             self.total_per_timestep = self.add(
-                    self._model.add_variables(
-                    lower=-np.inf if (self._min_per_hour is None) else np.multiply(self._min_per_hour, self._model.hours_per_step),
-                    upper=np.inf if (self._max_per_hour is None) else np.multiply(self._max_per_hour, self._model.hours_per_step),
+                self._model.add_variables(
+                    lower=-np.inf
+                    if (self._min_per_hour is None)
+                    else np.multiply(self._min_per_hour, self._model.hours_per_step),
+                    upper=np.inf
+                    if (self._max_per_hour is None)
+                    else np.multiply(self._max_per_hour, self._model.hours_per_step),
                     coords=self._model.coords,
-                    name=f'{self.label_full}|total_per_timestep'
+                    name=f'{self.label_full}|total_per_timestep',
                 ),
-                'total_per_timestep'
+                'total_per_timestep',
             )
 
             self._eq_total_per_timestep = self.add(
                 self._model.add_constraints(self.total_per_timestep == 0, name=f'{self.label_full}|total_per_timestep'),
-                'total_per_timestep'
+                'total_per_timestep',
             )
 
             # Add it to the total
@@ -881,16 +925,17 @@ class ShareAllocationModel(Model):
         else:
             self.shares[name] = self.add(
                 self._model.add_variables(
-                    coords=None if isinstance(expression, linopy.LinearExpression) and expression.ndim == 0 or not isinstance(expression, linopy.LinearExpression) else self._model.coords,
-                    name=f'{name}->{self.label_full}'
+                    coords=None
+                    if isinstance(expression, linopy.LinearExpression)
+                    and expression.ndim == 0
+                    or not isinstance(expression, linopy.LinearExpression)
+                    else self._model.coords,
+                    name=f'{name}->{self.label_full}',
                 ),
-                name
+                name,
             )
             self.share_constraints[name] = self.add(
-                self._model.add_constraints(
-                    self.shares[name] == expression, name=f'{name}->{self.label_full}'
-                ),
-                name
+                self._model.add_constraints(self.shares[name] == expression, name=f'{name}->{self.label_full}'), name
             )
             if self.shares[name].ndim == 0:
                 self._eq_total.lhs -= self.shares[name]
@@ -898,59 +943,59 @@ class ShareAllocationModel(Model):
                 self._eq_total_per_timestep.lhs -= self.shares[name]
 
 
-class SegmentedSharesModel(Model):
-    # TODO: Length...
+class PiecewiseEffectsModel(Model):
     def __init__(
         self,
         model: SystemModel,
         label_of_element: str,
-        variable_segments: Tuple[linopy.Variable, List[Tuple[Scalar, Scalar]]],
-        share_segments: Dict[str, List[Tuple[Scalar, Scalar]]],
-        can_be_outside_segments: Optional[Union[bool, linopy.Variable]],
-        label: str = 'SegmentedShares',
+        piecewise_origin: Tuple[str, Piecewise],
+        piecewise_shares: Dict[str, Piecewise],
+        zero_point: Optional[Union[bool, linopy.Variable]],
+        label: str = 'PiecewiseEffects',
     ):
         super().__init__(model, label_of_element, label)
-        assert len(variable_segments[1]) == len(list(share_segments.values())[0]), (
-            'Segment length of variable_segments and share_segments must be equal'
+        assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
+            'Piece length of variable_segments and share_segments must be equal'
         )
-        self._can_be_outside_segments = can_be_outside_segments
-        self._variable_segments = variable_segments
-        self._share_segments = share_segments
-        self._shares: Dict['Effect', linopy.Variable] = {}
-        self._segments_model: Optional[MultipleSegmentsModel] = None
-        self._as_tme_series: bool = 'time' in self._variable_segments[0].indexes
+        self._zero_point = zero_point
+        self._piecewise_origin = piecewise_origin
+        self._piecewise_shares = piecewise_shares
+        self.shares: Dict[str, linopy.Variable] = {}
+
+        self.piecewise_model: Optional[PiecewiseModel] = None
 
     def do_modeling(self):
-        self._shares = {
-            effect: self.add(self._model.add_variables(
-                coords=self._model.coords if self._as_tme_series else None,
-                name=f'{self.label_full}|{effect}'),
-                f'{effect}'
-            ) for effect in self._share_segments
+        self.shares = {
+            effect: self.add(self._model.add_variables(coords=None, name=f'{self.label_full}|{effect}'), f'{effect}')
+            for effect in self._piecewise_shares
         }
 
-        # Mapping variable names to segments
-        segments: Dict[str, List[Tuple[Scalar, Scalar]]] = {
-            **{self._shares[effect].name: segment for effect, segment in self._share_segments.items()},
-            **{self._variable_segments[0].name: self._variable_segments[1]},
+        piecewise_variables = {
+            self._piecewise_origin[0]: self._piecewise_origin[1],
+            **{
+                self.shares[effect_label].name: self._piecewise_shares[effect_label]
+                for effect_label in self._piecewise_shares
+            },
         }
 
-        self._segments_model = self.add(
-            MultipleSegmentsModel(
+        self.piecewise_model = self.add(
+            PiecewiseModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
-                sample_points=segments,
-                can_be_outside_segments=self._can_be_outside_segments,
-                as_time_series=self._as_tme_series),
-            'segments'
+                label=f'{self.label_full}|PiecewiseModel',
+                piecewise_variables=piecewise_variables,
+                zero_point=self._zero_point,
+                as_time_series=False,
+            )
         )
-        self._segments_model.do_modeling()
+
+        self.piecewise_model.do_modeling()
 
         # Shares
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
-            expressions={effect: variable*1 for effect, variable in self._shares.items()},
-            target='operation' if self._as_tme_series else 'invest',
+            expressions={effect: variable * 1 for effect, variable in self.shares.items()},
+            target='invest',
         )
 
 
@@ -972,15 +1017,26 @@ class PreventSimultaneousUsageModel(Model):
     # --> könnte man auch umsetzen (statt force_on_variable() für die Flows, aber sollte aufs selbe wie "new" kommen)
     """
 
-    def __init__(self, model: SystemModel, variables: List[linopy.Variable], label_of_element: str, label: str = 'PreventSimultaneousUsage'):
+    def __init__(
+        self,
+        model: SystemModel,
+        variables: List[linopy.Variable],
+        label_of_element: str,
+        label: str = 'PreventSimultaneousUsage',
+    ):
         super().__init__(model, label_of_element, label)
         self._simultanious_use_variables = variables
-        assert len(self._simultanious_use_variables) >= 2, f'Model {self.__class__.__name__} must get at least two variables'
+        assert len(self._simultanious_use_variables) >= 2, (
+            f'Model {self.__class__.__name__} must get at least two variables'
+        )
         for variable in self._simultanious_use_variables:  # classic
             assert variable.attrs['binary'], f'Variable {variable} must be binary for use in {self.__class__.__name__}'
 
     def do_modeling(self):
         # eq: sum(flow_i.on(t)) <= 1.1 (1 wird etwas größer gewählt wg. Binärvariablengenauigkeit)
-        self.add(self._model.add_constraints(sum(self._simultanious_use_variables) <= 1.1,
-                                             name=f'{self.label_full}|prevent_simultaneous_use'),
-                 'prevent_simultaneous_use')
+        self.add(
+            self._model.add_constraints(
+                sum(self._simultanious_use_variables) <= 1.1, name=f'{self.label_full}|prevent_simultaneous_use'
+            ),
+            'prevent_simultaneous_use',
+        )

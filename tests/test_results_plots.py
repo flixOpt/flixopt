@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pytest
 
-import flixOpt as fx
+import flixopt as fx
 
 from .conftest import create_calculation_and_solve, simple_flow_system
 
@@ -9,6 +9,7 @@ from .conftest import create_calculation_and_solve, simple_flow_system
 @pytest.fixture(params=[True, False])
 def show(request):
     return request.param
+
 
 @pytest.fixture(params=[simple_flow_system])
 def flow_system(request):
@@ -25,11 +26,17 @@ def plotting_engine(request):
     return request.param
 
 
-@pytest.fixture(params=[
-    'viridis',  # Test string colormap
-    ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'],  # Test color list
-    {'Boiler(Q_th)|flow_rate': '#ff0000', 'Heat Demand(Q_th)|flow_rate': '#00ff00', 'Speicher(Q_th_load)|flow_rate': '#0000ff'}  # Test color dict
-])
+@pytest.fixture(
+    params=[
+        'viridis',  # Test string colormap
+        ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'],  # Test color list
+        {
+            'Boiler(Q_th)|flow_rate': '#ff0000',
+            'Heat Demand(Q_th)|flow_rate': '#00ff00',
+            'Speicher(Q_th_load)|flow_rate': '#0000ff',
+        },  # Test color dict
+    ]
+)
 def color_spec(request):
     return request.param
 
@@ -40,13 +47,15 @@ def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
 
     results['Boiler'].plot_node_balance(engine=plotting_engine, save=save, show=show, colors=color_spec)
 
-    results.plot_heatmap('Speicher(Q_th_load)|flow_rate',
-                         heatmap_timeframes='D',
-                         heatmap_timesteps_per_frame='h',
-                         color_map='viridis',  # Note: heatmap only accepts string colormap
-                         save=show,
-                         show=save,
-                         engine=plotting_engine)
+    results.plot_heatmap(
+        'Speicher(Q_th_load)|flow_rate',
+        heatmap_timeframes='D',
+        heatmap_timesteps_per_frame='h',
+        color_map='viridis',  # Note: heatmap only accepts string colormap
+        save=show,
+        show=save,
+        engine=plotting_engine,
+    )
 
     results['Speicher'].plot_node_balance_pie(engine=plotting_engine, save=save, show=show, colors=color_spec)
 
