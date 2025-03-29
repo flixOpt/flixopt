@@ -656,52 +656,6 @@ class OnOffModel(Model):
             )
 
 
-class PieceModel(Model):
-    """Class for modeling a linear piece of one or more variables in parallel"""
-
-    def __init__(
-        self,
-        model: SystemModel,
-        label_of_element: str,
-        label: str,
-        as_time_series: bool = True,
-    ):
-        super().__init__(model, label_of_element, label)
-        self.inside_piece: Optional[linopy.Variable] = None
-        self.lambda0: Optional[linopy.Variable] = None
-        self.lambda1: Optional[linopy.Variable] = None
-        self._as_time_series = as_time_series
-
-    def do_modeling(self):
-        self.inside_piece = self.add(self._model.add_variables(
-            binary=True,
-            name=f'{self.label_full}|inside_piece',
-            coords=self._model.coords if self._as_time_series else None),
-            'inside_piece'
-        )
-
-        self.lambda0 = self.add(self._model.add_variables(
-            lower=0, upper=1,
-            name=f'{self.label_full}|lambda0',
-            coords=self._model.coords if self._as_time_series else None),
-            'lambda0'
-        )
-
-        self.lambda1 = self.add(self._model.add_variables(
-            lower=0, upper=1,
-            name=f'{self.label_full}|lambda1',
-            coords=self._model.coords if self._as_time_series else None),
-            'lambda1'
-        )
-
-        # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
-        self.add(self._model.add_constraints(
-            self.inside_piece == self.lambda0 + self.lambda1,
-            name=f'{self.label_full}|inside_piece'),
-            'inside_piece'
-        )
-
-
 class PiecewiseModel(Model):
 
     def __init__(
@@ -731,28 +685,60 @@ class PiecewiseModel(Model):
         self._zero_point = zero_point
         self._as_time_series = as_time_series
 
-        self.pieces: List[PieceModel] = []
         self.zero_point: Optional[linopy.Variable] = None
+        self.inside_piece: List[linopy.Variable] = []
+        self.lambda0: List[linopy.Variable] = []
+        self.lambda1: List[linopy.Variable] = []
 
     def do_modeling(self):
         for i in range(len(list(self._piecewise_variables.values())[0])):
-            new_piece = self.add(
-                PieceModel(
-                model=self._model,
-                label_of_element=self.label_of_element,
-                label=f'Piece_{i}',
-                as_time_series=self._as_time_series,
-                )
+            inside_piece = self.add(
+                self._model.add_variables(
+                    binary=True,
+                    name=f'{self.label_full}|Piece_{i}|inside_piece',
+                    coords=self._model.coords if self._as_time_series else None,
+                ),
+                f'Piece_{i}|inside_piece',
             )
-            self.pieces.append(new_piece)
-            new_piece.do_modeling()
+
+            lambda0 = self.add(
+                self._model.add_variables(
+                    lower=0,
+                    upper=1,
+                    name=f'{self.label_full}|Piece_{i}|lambda0',
+                    coords=self._model.coords if self._as_time_series else None,
+                ),
+                f'Piece_{i}|lambda0',
+            )
+
+            lambda1 = self.add(
+                self._model.add_variables(
+                    lower=0,
+                    upper=1,
+                    name=f'{self.label_full}|Piece_{i}|lambda1',
+                    coords=self._model.coords if self._as_time_series else None,
+                ),
+                f'Piece_{i}|lambda1',
+            )
+
+            # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
+            self.add(
+                self._model.add_constraints(
+                    inside_piece == lambda0 + lambda1, name=f'{self.label_full}|Piece_{i}|inside_piece'
+                ),
+                f'Piece_{i}|inside_piece',
+            )
+
+            self.lambda0.append(lambda0)
+            self.lambda1.append(lambda1)
+            self.inside_piece.append(inside_piece)
 
         for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
             self.add(self._model.add_constraints(
-                variable == sum([piece_model.lambda0 * piece_bounds.start
-                                 + piece_model.lambda1 * piece_bounds.end
-                                 for piece_model, piece_bounds in zip(self.pieces, self._piecewise_variables[var_name], strict=False)]),
+                variable == sum([lambda0 * piece_bounds.start
+                                 + lambda1 * piece_bounds.end
+                                 for lambda0, lambda1, piece_bounds in zip(self.lambda0, self.lambda1, self._piecewise_variables[var_name], strict=False)]),
                 name=f'{self.label_full}|{var_name}_lambda'),
                 f'{var_name}_lambda'
             )
@@ -774,7 +760,7 @@ class PiecewiseModel(Model):
                 rhs = 1
 
             self.add(self._model.add_constraints(
-                sum([piece.inside_piece for piece in self.pieces]) <= rhs,
+                sum(self.inside_piece) <= rhs,
                 name=f'{self.label_full}|{variable.name}_single_segment'),
                 'single_segment'
             )
