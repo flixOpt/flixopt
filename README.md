@@ -61,7 +61,7 @@ We recommend installing FlixOpt with all dependencies, which enables additional 
 
 ## 📚 Documentation
 
-The documentation is available at [https://flixopt.github.io/flixopt/](https://flixopt.github.io/flixopt/)
+The documentation is available at [https://flixopt.github.io/flixopt/latest/](https://flixopt.github.io/flixopt/latest/)
 
 ---
 
