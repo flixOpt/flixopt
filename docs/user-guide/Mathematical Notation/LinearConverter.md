@@ -18,4 +18,4 @@ $$
 
 where $\text a$ can be interpreted as the conversion efficiency of the **LinearTransformer**.
 #### Piecewise Concersion factors
-The conversion efficiency can be defined as a piecewise function.
+The conversion efficiency can be defined as a piecewise linear approximation. See [Piecewise](Piecewise.md) for more details.
