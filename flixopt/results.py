@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from .calculation import Calculation, SegmentedCalculation
 
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class CalculationResults:
@@ -239,7 +239,7 @@ class CalculationResults:
             path: Optional[pathlib.Path] = None,
             show: bool = False
     ) -> 'pyvis.network.Network':
-        """ See flixOpt.flow_system.FlowSystem.plot_network """
+        """ See flixopt.flow_system.FlowSystem.plot_network """
         try:
             from .flow_system import FlowSystem
             flow_system = FlowSystem.from_dataset(self.flow_system)

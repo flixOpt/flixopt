@@ -1,5 +1,5 @@
 """
-This module contains the Aggregation functionality for the flixOpt framework.
+This module contains the Aggregation functionality for the flixopt framework.
 Through this, aggregating TimeSeriesData is possible.
 """
 
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     import plotly.graph_objects as go
 
 warnings.filterwarnings('ignore', category=DeprecationWarning)
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class Aggregation:
