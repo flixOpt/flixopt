@@ -24,7 +24,7 @@ from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_represe
 if TYPE_CHECKING:
     import pyvis
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class FlowSystem:

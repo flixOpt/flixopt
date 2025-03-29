@@ -1,11 +1,11 @@
 """
-This module contains the solvers of the flixOpt framework, making them available to the end user in a compact way.
+This module contains the solvers of the flixopt framework, making them available to the end user in a compact way.
 """
 import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict, Optional
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @dataclass

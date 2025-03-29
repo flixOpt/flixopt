@@ -13,7 +13,7 @@ from .elements import Flow
 from .interface import OnOffParameters
 from .structure import register_class_for_io
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io

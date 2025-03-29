@@ -1,6 +1,6 @@
 # Piecewise
 
-A Piecewise is a collection of [`Pieces`][flixOpt.interface.Piece], which each define a valid range for a variable $v$
+A Piecewise is a collection of [`Pieces`][flixopt.interface.Piece], which each define a valid range for a variable $v$
 
 $$ \label{eq:active_piece}
     \beta_\text{k} = \lambda_\text{0, k} + \lambda_\text{1, k}

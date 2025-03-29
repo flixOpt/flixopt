@@ -12,7 +12,7 @@ import yaml
 
 from .core import TimeSeries
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):

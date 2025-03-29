@@ -1,7 +1,7 @@
 """
-Unit tests for the flixOpt framework.
+Unit tests for the flixopt framework.
 
-This module defines a set of unit tests for testing the functionality of the `flixOpt` framework.
+This module defines a set of unit tests for testing the functionality of the `flixopt` framework.
 The tests focus on verifying the correct behavior of flow systems, including component modeling,
 investment optimization, and operational constraints like on-off behavior.
 
@@ -22,7 +22,7 @@ import pandas as pd
 import pytest
 from numpy.testing import assert_allclose
 
-import flixOpt as fx
+import flixopt as fx
 
 np.random.seed(45)
 

@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pytest
 
-import flixOpt as fx
+import flixopt as fx
 
 from .conftest import create_calculation_and_solve, simple_flow_system
 

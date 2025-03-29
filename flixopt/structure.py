@@ -1,5 +1,5 @@
 """
-This module contains the core structure of the flixOpt framework.
+This module contains the core structure of the flixopt framework.
 These classes are not directly used by the end user, but are used by other modules.
 """
 
@@ -25,7 +25,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 CLASS_REGISTRY = {}
@@ -106,7 +106,7 @@ class SystemModel(linopy.Model):
 
 class Interface:
     """
-    This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixOpt.
+    This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixopt.
     """
 
     def transform_data(self, flow_system: 'FlowSystem'):
@@ -252,7 +252,7 @@ class Interface:
 
 
 class Element(Interface):
-    """This class is the basic Element of flixOpt. Every Element has a label"""
+    """This class is the basic Element of flixopt. Every Element has a label"""
 
     def __init__(self, label: str, meta_data: Dict = None):
         """
@@ -349,7 +349,7 @@ class Model:
             self._sub_models_short[item.label_full] = short_name or item.label_full
         else:
             raise ValueError(
-                f'Item must be a linopy.Variable, linopy.Constraint or flixOpt.structure.Model, got {type(item)}')
+                f'Item must be a linopy.Variable, linopy.Constraint or flixopt.structure.Model, got {type(item)}')
         return item
 
     def filter_variables(self,

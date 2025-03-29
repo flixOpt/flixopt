@@ -15,7 +15,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .flow_system import FlowSystem
 
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io

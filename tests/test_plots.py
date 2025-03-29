@@ -12,7 +12,7 @@ import pandas as pd
 import plotly
 import pytest
 
-from flixOpt import plotting
+from flixopt import plotting
 
 
 class TestPlots(unittest.TestCase):

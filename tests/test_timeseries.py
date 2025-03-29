@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixOpt.core import ConversionError, DataConverter, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from flixopt.core import ConversionError, DataConverter, TimeSeries, TimeSeriesCollection, TimeSeriesData
 
 
 @pytest.fixture

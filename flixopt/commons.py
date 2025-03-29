@@ -1,5 +1,5 @@
 """
-This module makes the commonly used classes and functions available in the flixOpt framework.
+This module makes the commonly used classes and functions available in the flixopt framework.
 """
 
 from . import linear_converters, plotting, results, solvers

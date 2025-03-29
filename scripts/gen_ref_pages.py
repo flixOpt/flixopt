@@ -11,7 +11,7 @@ sys.path.insert(0, str(root))
 
 nav = mkdocs_gen_files.Nav()
 
-src = root / "flixOpt"
+src = root / "flixopt"
 api_dir = "api-reference"
 
 for path in sorted(src.rglob("*.py")):
@@ -34,10 +34,10 @@ for path in sorted(src.rglob("*.py")):
     if parts:
         nav[parts] = doc_path.as_posix()
 
-        # Generate documentation file - always using the flixOpt prefix
+        # Generate documentation file - always using the flixopt prefix
         with mkdocs_gen_files.open(full_doc_path, "w") as fd:
-            # Use 'flixOpt.' prefix for all module references
-            module_id = "flixOpt." + ".".join(parts)
+            # Use 'flixopt.' prefix for all module references
+            module_id = "flixopt." + ".".join(parts)
             fd.write(f"::: {module_id}\n"
                      f"    options:\n"
                      f"       inherited_members: true\n")
@@ -48,7 +48,7 @@ for path in sorted(src.rglob("*.py")):
 with mkdocs_gen_files.open(f"{api_dir}/index.md", "w") as index_file:
     index_file.write("# API Reference\n\n")
     index_file.write(
-        "This section contains the documentation for all modules and classes in flixOpt.\n"
+        "This section contains the documentation for all modules and classes in flixopt.\n"
         "For more information on how to use the classes and functions, see the [Concepts & Math](../concepts-and-math/index.md) section.\n")
 
 with mkdocs_gen_files.open(f"{api_dir}/SUMMARY.md", "w") as nav_file:
