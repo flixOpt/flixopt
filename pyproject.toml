@@ -85,7 +85,7 @@ where = ["."]
 exclude = ["tests", "docs", "examples", "examples.*", "Tutorials", ".git", ".vscode", "build", ".venv", "venv/"]
 
 [tool.setuptools.package-data]
-"flixOpt" = ["config.yaml"]
+"flixopt" = ["config.yaml"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"

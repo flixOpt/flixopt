@@ -1,13 +1,13 @@
-# flixOpt Concepts
+# FlixOpt Concepts
 
-flixOpt is built around a set of core concepts that work together to represent and optimize energy and material flow systems. This page provides a high-level overview of these concepts and how they interact.
+FlixOpt is built around a set of core concepts that work together to represent and optimize energy and material flow systems. This page provides a high-level overview of these concepts and how they interact.
 
 ## Core Concepts
 
 ### FlowSystem
 
-The [`FlowSystem`][flixOpt.flow_system.FlowSystem] is the central organizing unit in flixOpt. 
-Every flixOpt model starts with creating a FlowSystem. It:
+The [`FlowSystem`][flixOpt.flow_system.FlowSystem] is the central organizing unit in FlixOpt. 
+Every FlixOpt model starts with creating a FlowSystem. It:
 
 - Defines the timesteps for the optimization
 - Contains and connects [components](#components), [buses](#buses), and [flows](#flows)
@@ -72,7 +72,7 @@ This approach allows for a multi-criteria optimization using both...
 
 A [`FlowSystem`][flixOpt.flow_system.FlowSystem] can be converted to a Model and optimized by creating a [`Calculation`][flixOpt.calculation.Calculation] from it.
 
-flixOpt offers different calculation modes:
+FlixOpt offers different calculation modes:
 
 - [`FullCalculation`][flixOpt.calculation.FullCalculation] - Solves the entire problem at once
 - [`SegmentedCalculation`][flixOpt.calculation.SegmentedCalculation] - Solves the problem in segments (with optioinal overlap), improving performance for large problems
@@ -88,7 +88,7 @@ This [`CalculationResults`][flixOpt.results.CalculationResults] object can be sa
 
 ## How These Concepts Work Together
 
-The process of working with flixOpt can be divided into 3 steps:
+The process of working with FlixOpt can be divided into 3 steps:
 
 1. Create a [`FlowSystem`][flixOpt.flow_system.FlowSystem], containing all the elements and data of your system
      -  Define the time series of your system
@@ -106,13 +106,13 @@ The process of working with flixOpt can be divided into 3 steps:
      - As it contains the used [`FlowSystem`][flixOpt.flow_system.FlowSystem], it can be used to start a new calculation
 
 <figure markdown>
-  ![flixOpt Conceptual Usage](../images/architecture_flixOpt.png)
-  <figcaption>Conceptual Usage and IO operations of flixOpt</figcaption>
+  ![FlixOpt Conceptual Usage](../images/architecture_flixOpt.png)
+  <figcaption>Conceptual Usage and IO operations of FlixOpt</figcaption>
 </figure>
 
 ## Advanced Usage
-As flixopt is build on [linopy](https://github.com/PyPSA/linopy), any model created with flixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
-This allows to adjust your model to very specific requirements without loosing the convenience of flixOpt.
+As flixopt is build on [linopy](https://github.com/PyPSA/linopy), any model created with FlixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
+This allows to adjust your model to very specific requirements without loosing the convenience of FlixOpt.
 
 <!--## Next Steps-->
 <!---->

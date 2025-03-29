@@ -1,12 +1,12 @@
-# Getting Started with flixOpt
+# Getting Started with FlixOpt
 
-This guide will help you install flixOpt, understand its basic concepts, and run your first optimization model.
+This guide will help you install FlixOpt, understand its basic concepts, and run your first optimization model.
 
 ## Installation
 
 ### Basic Installation
 
-Install flixOpt directly into your environment using pip:
+Install FlixOpt directly into your environment using pip:
 
 ```bash
 pip install flixopt
@@ -24,7 +24,7 @@ pip install "flixopt[full]""
 
 ## Basic Workflow
 
-Working with flixOpt follows a general pattern:
+Working with FlixOpt follows a general pattern:
 
 1. **Create a [`FlowSystem`][flixOpt.flow_system.FlowSystem]** with a time series
 2. **Define [`Effects`][flixOpt.effects.Effect]** (costs, emissions, etc.)
@@ -35,8 +35,8 @@ Working with flixOpt follows a general pattern:
 
 ## Next Steps
 
-Now that you've installed flixOpt and understand the basic workflow, you can:
+Now that you've installed FlixOpt and understand the basic workflow, you can:
 
-- Learn about the [core concepts of flixOpt](user-guide/index.md)
+- Learn about the [core concepts of FlixOpt](user-guide/index.md)
 - Explore some [examples](examples/)
 - Check the [API reference](api-reference/index.md) for detailed documentation

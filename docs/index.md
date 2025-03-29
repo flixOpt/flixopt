@@ -21,8 +21,8 @@ FlixOpt is designed as a general-purpose optimization framework to get your mode
 - **Results File I/O**: Built to analyze results independent of running the optimization.
 
 <figure markdown>
-  ![flixOpt Conceptual Usage](./images/architecture_flixOpt.png)
-  <figcaption>Conceptual Usage and IO operations of flixOpt</figcaption>
+  ![FlixOpt Conceptual Usage](./images/architecture_flixOpt.png)
+  <figcaption>Conceptual Usage and IO operations of FlixOpt</figcaption>
 </figure>
 
 ## Installation

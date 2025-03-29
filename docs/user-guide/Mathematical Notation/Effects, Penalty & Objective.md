@@ -98,7 +98,7 @@ $$
 
 ## Penalty
 
-Additionally to the user defined [Effects](#effects), a Penalty $\Phi$ is part of every flixOpt Model.
+Additionally to the user defined [Effects](#effects), a Penalty $\Phi$ is part of every FlixOpt Model.
 Its used to prevent unsolvable problems and simplify troubleshooting.
 Shares to the penalty can originate from every Element and are constructed similarly to 
 $\eqref{Share_invest}$ and  $\eqref{Share_operation}$.
@@ -117,7 +117,7 @@ At the moment, penalties only occur in [Buses](#buses)
 
 ## Objective
 
-The optimization objective of a flixOpt Model is defined as $\eqref{eq:Objective}$
+The optimization objective of a FlixOpt Model is defined as $\eqref{eq:Objective}$
 $$ \label{eq:Objective}
 \min(E_{\Omega} + \Phi)
 $$
