@@ -34,7 +34,8 @@ classifiers = [
 dependencies = [
     "numpy >= 1.21.5, < 2",
     "PyYAML >= 6.0",
-    "Pyomo >= 6.4.2",
+    "linopy >= 0.5.1",
+    "netcdf4 >= 1.6.1",
     "rich >= 13.0.1",
     "highspy >= 1.5.3",  # Default solver
     "pandas >= 2, < 3",  # Used in post-processing
@@ -49,11 +50,16 @@ dev = [
     "ruff",
     "pyvis == 0.3.1",  # Used for visualizing the FLowSystem
     "tsam >= 2.3.1",  # Used for time series aggregation
+    "scipy >= 1.15.1",  # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
+    "gurobipy >= 10.0",
 ]
 
 full = [
     "pyvis == 0.3.1",  # Used for visualizing the FLowSystem
     "tsam >= 2.3.1",  # Used for time series aggregation
+    "scipy >= 1.15.1",  # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
+    "streamlit >= 1.44.0",
+    "gurobipy >= 10.0",
 ]
 
 docs = [

@@ -17,8 +17,8 @@ from .config import CONFIG, change_logging_level
 from .core import TimeSeriesData
 from .effects import Effect
 from .elements import Bus, Flow
-from .flow_system import FlowSystem, create_datetime_array
-from .interface import InvestParameters, OnOffParameters
+from .flow_system import FlowSystem
+from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 
 __all__ = [
     'TimeSeriesData',
@@ -34,12 +34,15 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
-    'create_datetime_array',
     'FullCalculation',
     'SegmentedCalculation',
     'AggregatedCalculation',
     'InvestParameters',
     'OnOffParameters',
+    'Piece',
+    'Piecewise',
+    'PiecewiseConversion',
+    'PiecewiseEffects',
     'AggregationParameters',
     'plotting',
     'results',
