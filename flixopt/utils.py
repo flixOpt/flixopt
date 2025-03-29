@@ -30,7 +30,9 @@ def round_floats(obj, decimals=2):
     return obj
 
 
-def convert_dataarray(data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray', 'structure']) -> Union[List, np.ndarray, xr.DataArray, str]:
+def convert_dataarray(
+    data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray', 'structure']
+) -> Union[List, np.ndarray, xr.DataArray, str]:
     """
     Convert a DataArray to a different format.
 

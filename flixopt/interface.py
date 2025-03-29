@@ -97,8 +97,8 @@ class PiecewiseEffects(Interface):
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
-        #self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
-        #for name, piecewise in self.piecewise_shares.items():
+        # self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
+        # for name, piecewise in self.piecewise_shares.items():
         #    piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{name}')
 
 
