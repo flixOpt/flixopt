@@ -32,7 +32,9 @@ _portland_colors = [
     [217 / 255, 30 / 255, 30 / 255],  # Red
 ]
 
-plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
+# Check if the colormap already exists before registering it
+if 'portland' not in plt.colormaps:
+    plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
 ColorType = Union[str, List[str], Dict[str, str]]
