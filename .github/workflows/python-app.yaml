@@ -104,7 +104,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-22.04
-    needs: [publish-testpypi]  # Only run after TestPyPI publish succeeds
+    needs: [test]  # Only run after TestPyPI publish succeeds
     if: github.event_name == 'release' && github.event.action == 'created'  # Only on release creation
 
     steps:
