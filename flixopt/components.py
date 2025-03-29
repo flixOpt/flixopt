@@ -1,5 +1,5 @@
 """
-This module contains the basic components of the flixOpt framework.
+This module contains the basic components of the flixopt framework.
 """
 
 import logging
@@ -18,7 +18,7 @@ from .structure import SystemModel, register_class_for_io
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io

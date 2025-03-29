@@ -1,5 +1,5 @@
 """
-This module contains the basic elements of the flixOpt framework.
+This module contains the basic elements of the flixopt framework.
 """
 
 import logging
@@ -19,17 +19,17 @@ from .structure import Element, ElementModel, SystemModel, register_class_for_io
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
 class Component(Element):
     """
-    A Component contains incoming and outgoing [`Flows`][flixOpt.elements.Flow]. It defines how these Flows interact with each other.
+    A Component contains incoming and outgoing [`Flows`][flixopt.elements.Flow]. It defines how these Flows interact with each other.
     The On or Off state of the Component is defined by all its Flows. Its on, if any of its FLows is On.
     It's mathematically advisable to define the On/Off state in a FLow rather than a Component if possible,
     as this introduces less binary variables to the Model
-    Constraints to the On/Off state are defined by the [`on_off_parameters`][flixOpt.interface.OnOffParameters].
+    Constraints to the On/Off state are defined by the [`on_off_parameters`][flixopt.interface.OnOffParameters].
     """
 
     def __init__(
@@ -139,7 +139,7 @@ class Connection:
 @register_class_for_io
 class Flow(Element):
     r"""
-    A **Flow** moves energy (or material) between a [Bus][flixOpt.elements.Bus] and a [Component][flixOpt.elements.Component] in a predefined direction.
+    A **Flow** moves energy (or material) between a [Bus][flixopt.elements.Bus] and a [Component][flixopt.elements.Component] in a predefined direction.
     The flow-rate is the main optimization variable of the **Flow**.
     """
 

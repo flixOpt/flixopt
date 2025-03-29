@@ -1,5 +1,5 @@
 """
-This module contains several utility functions used throughout the flixOpt framework.
+This module contains several utility functions used throughout the flixopt framework.
 """
 
 import logging
@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import numpy as np
 import xarray as xr
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 def is_number(number_alias: Union[int, float, str]):

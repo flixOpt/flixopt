@@ -1,5 +1,5 @@
 """
-This module contains the features of the flixOpt framework.
+This module contains the features of the flixopt framework.
 Features extend the functionality of Elements.
 """
 
@@ -15,7 +15,7 @@ from .core import NumericData, Scalar, TimeSeries
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 class InvestmentModel(Model):

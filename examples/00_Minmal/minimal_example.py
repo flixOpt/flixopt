@@ -1,12 +1,12 @@
 """
-This script shows how to use the flixOpt framework to model a super minimalistic energy system.
+This script shows how to use the flixopt framework to model a super minimalistic energy system.
 """
 
 import numpy as np
 import pandas as pd
 from rich.pretty import pprint
 
-import flixOpt as fx
+import flixopt as fx
 
 if __name__ == '__main__':
     # --- Define the Flow System, that will hold all elements, and the time steps you want to model ---

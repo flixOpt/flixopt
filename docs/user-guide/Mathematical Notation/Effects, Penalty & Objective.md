@@ -1,10 +1,10 @@
 ## Effects
-[`Effects`][flixOpt.effects.Effect] are used to allocate things like costs, emissions, or other "effects" occuring in the system.
+[`Effects`][flixopt.effects.Effect] are used to allocate things like costs, emissions, or other "effects" occuring in the system.
 These arise from so called **Shares**, which originate from **Elements** like [Flows](Flow.md).
 
 **Example:**
 
-[`Flows`][flixOpt.elements.Flow] have an attribute called `effects_per_flow_hour`, defining the effect amount of per flow hour.
+[`Flows`][flixopt.elements.Flow] have an attribute called `effects_per_flow_hour`, defining the effect amount of per flow hour.
 Assiziated effects could be:
 - costs - given in [€/kWh]...
 - ...or emissions - given in [kg/kWh].
@@ -98,7 +98,7 @@ $$
 
 ## Penalty
 
-Additionally to the user defined [Effects](#effects), a Penalty $\Phi$ is part of every flixOpt Model.
+Additionally to the user defined [Effects](#effects), a Penalty $\Phi$ is part of every FlixOpt Model.
 Its used to prevent unsolvable problems and simplify troubleshooting.
 Shares to the penalty can originate from every Element and are constructed similarly to 
 $\eqref{Share_invest}$ and  $\eqref{Share_operation}$.
@@ -117,7 +117,7 @@ At the moment, penalties only occur in [Buses](#buses)
 
 ## Objective
 
-The optimization objective of a flixOpt Model is defined as $\eqref{eq:Objective}$
+The optimization objective of a FlixOpt Model is defined as $\eqref{eq:Objective}$
 $$ \label{eq:Objective}
 \min(E_{\Omega} + \Phi)
 $$

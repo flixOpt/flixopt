@@ -3,7 +3,7 @@
 
 ## Naming Conventions
 
-flixOpt uses the following naming conventions:
+FlixOpt uses the following naming conventions:
 
 - All optimization variables are denoted by italic letters (e.g., $x$, $y$, $z$)
 - All parameters and constants are denoted by non italic small letters (e.g., $\text{a}$, $\text{b}$, $\text{c}$)

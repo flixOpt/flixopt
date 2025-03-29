@@ -1,5 +1,5 @@
 """
-This module contains the effects of the flixOpt framework.
+This module contains the effects of the flixopt framework.
 Furthermore, it contains the EffectCollection, which is used to collect all effects of a system.
 Different Datatypes are used to represent the effects with assigned values by the user,
 which are then transformed into the internal data structure.
@@ -20,7 +20,7 @@ from .structure import Element, ElementModel, Interface, Model, SystemModel, reg
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
-logger = logging.getLogger('flixOpt')
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
