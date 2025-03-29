@@ -116,6 +116,5 @@ if __name__ == '__main__':
     df = calculation.results['Storage'].node_balance_with_charge_state()
     print(df)
 
-    #Save results to file for later usage
+    # Save results to file for later usage
     calculation.results.to_file()
-

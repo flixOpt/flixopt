@@ -23,16 +23,12 @@ class TestFlowSystem:
 
         # Cost assertions
         assert_almost_equal_numeric(
-            effects['costs'].model.total.solution.item(),
-            81.88394666666667,
-            'costs doesnt match expected value'
+            effects['costs'].model.total.solution.item(), 81.88394666666667, 'costs doesnt match expected value'
         )
 
         # CO2 assertions
         assert_almost_equal_numeric(
-            effects['CO2'].model.total.solution.item(),
-            255.09184,
-            'CO2 doesnt match expected value'
+            effects['CO2'].model.total.solution.item(), 255.09184, 'CO2 doesnt match expected value'
         )
 
     def test_model_components(self, simple_flow_system, highs_solver):
@@ -66,10 +62,7 @@ class TestFlowSystem:
         calculation.results.to_file()
 
         # Load results from file
-        results = fx.results.CalculationResults.from_file(
-            calculation.folder,
-            calculation.name
-        )
+        results = fx.results.CalculationResults.from_file(calculation.folder, calculation.name)
 
         # Verify key variables from loaded results
         assert_almost_equal_numeric(
@@ -77,11 +70,7 @@ class TestFlowSystem:
             81.88394666666667,
             'costs doesnt match expected value',
         )
-        assert_almost_equal_numeric(
-            results.solution['CO2|total'].values,
-            255.09184,
-            'CO2 doesnt match expected value'
-        )
+        assert_almost_equal_numeric(results.solution['CO2|total'].values, 255.09184, 'CO2 doesnt match expected value')
 
 
 class TestComponents:
@@ -91,10 +80,7 @@ class TestComponents:
         flow_system.add_elements(fx.Bus('Wärme lokal'))
 
         boiler = fx.linear_converters.Boiler(
-            'Boiler',
-            eta=0.5,
-            Q_th=fx.Flow('Q_th', bus='Wärme lokal'),
-            Q_fu=fx.Flow('Q_fu', bus='Gas')
+            'Boiler', eta=0.5, Q_th=fx.Flow('Q_th', bus='Wärme lokal'), Q_fu=fx.Flow('Q_fu', bus='Gas')
         )
 
         transmission = fx.Transmission(
@@ -113,7 +99,7 @@ class TestComponents:
         assert_almost_equal_numeric(
             transmission.in1.model.on_off.on.solution.values,
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
-            'On does not work properly'
+            'On does not work properly',
         )
 
         assert_almost_equal_numeric(
@@ -130,9 +116,7 @@ class TestComponents:
         boiler = fx.linear_converters.Boiler(
             'Boiler_Standard',
             eta=0.9,
-            Q_th=fx.Flow(
-                'Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])
-            ),
+            Q_th=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
             Q_fu=fx.Flow('Q_fu', bus='Gas'),
         )
 
@@ -146,7 +130,8 @@ class TestComponents:
                 'Q_th_Last',
                 bus='Wärme lokal',
                 size=1,
-                fixed_relative_profile=flow_system.components['Wärmelast'].sink.fixed_relative_profile * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
+                fixed_relative_profile=flow_system.components['Wärmelast'].sink.fixed_relative_profile
+                * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
             ),
         )
 
@@ -168,7 +153,7 @@ class TestComponents:
         assert_almost_equal_numeric(
             transmission.in1.model.on_off.on.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
-            'On does not work properly'
+            'On does not work properly',
         )
 
         assert_almost_equal_numeric(
@@ -192,14 +177,14 @@ class TestComponents:
 
 
 class TestComplex:
-
     def test_basic_flow_system(self, flow_system_base, highs_solver):
         calculation = create_calculation_and_solve(flow_system_base, highs_solver, 'test_basic_flow_system')
 
         # Assertions
         assert_almost_equal_numeric(
             calculation.results.model['costs|total'].solution.item(),
-            -11597.873624489237, 'costs doesnt match expected value'
+            -11597.873624489237,
+            'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
@@ -262,12 +247,14 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['CO2(operation)|total'].solution.values, 1293.1864834809337,
-            'CO2 doesnt match expected value'
+            calculation.results.model['CO2(operation)|total'].solution.values,
+            1293.1864834809337,
+            'CO2 doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            calculation.results.model['CO2(invest)|total'].solution.values, 0.9999999999999994,
-            'CO2 doesnt match expected value'
+            calculation.results.model['CO2(invest)|total'].solution.values,
+            0.9999999999999994,
+            'CO2 doesnt match expected value',
         )
         assert_almost_equal_numeric(
             calculation.results.model['Kessel(Q_th)|flow_rate'].solution.values,
@@ -324,7 +311,9 @@ class TestComplex:
         )
 
     def test_piecewise_conversion(self, flow_system_piecewise_conversion, highs_solver):
-        calculation = create_calculation_and_solve(flow_system_piecewise_conversion, highs_solver, 'test_piecewise_conversion')
+        calculation = create_calculation_and_solve(
+            flow_system_piecewise_conversion, highs_solver, 'test_piecewise_conversion'
+        )
 
         effects = calculation.flow_system.effects
         comps = calculation.flow_system.components
@@ -367,7 +356,6 @@ class TestComplex:
 
 
 class TestModelingTypes:
-
     @pytest.fixture(params=['full', 'segmented', 'aggregated'])
     def modeling_calculation(self, request, flow_system_long, highs_solver):
         """
@@ -416,21 +404,22 @@ class TestModelingTypes:
         expected_costs = {
             'full': 343613,
             'segmented': 343613,  # Approximate value
-            'aggregated': 342967.0
+            'aggregated': 342967.0,
         }
 
         if modeling_type in ['full', 'aggregated']:
             assert_almost_equal_numeric(
                 calc.results.model['costs|total'].solution.item(),
                 expected_costs[modeling_type],
-                f'Costs do not match for {modeling_type} modeling type'
+                f'Costs do not match for {modeling_type} modeling type',
             )
         else:
             assert_almost_equal_numeric(
                 calc.results.solution_without_overlap('costs(operation)|total_per_timestep').sum(),
                 expected_costs[modeling_type],
-                f'Costs do not match for {modeling_type} modeling type'
+                f'Costs do not match for {modeling_type} modeling type',
             )
+
 
 if __name__ == '__main__':
     pytest.main(['-v'])

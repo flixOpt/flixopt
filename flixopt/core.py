@@ -28,10 +28,13 @@ NumericDataTS = Union[NumericData, 'TimeSeriesData']
 
 class PlausibilityError(Exception):
     """Error for a failing Plausibility check."""
+
     pass
+
 
 class ConversionError(Exception):
     """Base exception for data conversion errors."""
+
     pass
 
 
@@ -46,7 +49,7 @@ class DataConverter:
     def as_dataarray(data: NumericData, timesteps: pd.DatetimeIndex) -> xr.DataArray:
         """Convert data to xarray.DataArray with specified timesteps index."""
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
-            raise ValueError(f"Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}")
+            raise ValueError(f'Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}')
         if not timesteps.name == 'time':
             raise ConversionError(f'DatetimeIndex is not named correctly. Must be named "time", got {timesteps.name=}')
 
@@ -69,7 +72,7 @@ class DataConverter:
                 return xr.DataArray(data.values, coords=coords, dims=dims)
             elif isinstance(data, np.ndarray):
                 if data.ndim != 1:
-                    raise ConversionError(f"Array must be 1-dimensional, got {data.ndim}")
+                    raise ConversionError(f'Array must be 1-dimensional, got {data.ndim}')
                 elif data.shape[0] != expected_shape[0]:
                     raise ConversionError(f"Array shape {data.shape} doesn't match expected {expected_shape}")
                 return xr.DataArray(data, coords=coords, dims=dims)
@@ -77,14 +80,16 @@ class DataConverter:
                 if data.dims != tuple(dims):
                     raise ConversionError(f"DataArray dimensions {data.dims} don't match expected {dims}")
                 if data.sizes[dims[0]] != len(coords[0]):
-                    raise ConversionError(f"DataArray length {data.sizes[dims[0]]} doesn't match expected {len(coords[0])}")
+                    raise ConversionError(
+                        f"DataArray length {data.sizes[dims[0]]} doesn't match expected {len(coords[0])}"
+                    )
                 return data.copy(deep=True)
             else:
-                raise ConversionError(f"Unsupported type: {type(data).__name__}")
+                raise ConversionError(f'Unsupported type: {type(data).__name__}')
         except Exception as e:
             if isinstance(e, ConversionError):
                 raise
-            raise ConversionError(f"Converting data {type(data)} to xarray.Dataset raised an error: {str(e)}") from e
+            raise ConversionError(f'Converting data {type(data)} to xarray.Dataset raised an error: {str(e)}') from e
 
 
 class TimeSeriesData:
@@ -145,14 +150,15 @@ class TimeSeries:
     """
 
     @classmethod
-    def from_datasource(cls,
-                        data: NumericData,
-                        name: str,
-                        timesteps: pd.DatetimeIndex,
-                        aggregation_weight: Optional[float] = None,
-                        aggregation_group: Optional[str] = None,
-                        needs_extra_timestep: bool = False
-                        ) -> 'TimeSeries':
+    def from_datasource(
+        cls,
+        data: NumericData,
+        name: str,
+        timesteps: pd.DatetimeIndex,
+        aggregation_weight: Optional[float] = None,
+        aggregation_group: Optional[str] = None,
+        needs_extra_timestep: bool = False,
+    ) -> 'TimeSeries':
         """
         Initialize the TimeSeries from multiple data sources.
 
@@ -172,7 +178,7 @@ class TimeSeries:
             name,
             aggregation_weight,
             aggregation_group,
-            needs_extra_timestep
+            needs_extra_timestep,
         )
 
     @classmethod
@@ -198,23 +204,25 @@ class TimeSeries:
                 data = json.load(f)
 
         # Convert ISO date strings to datetime objects
-        data["data"]["coords"]["time"]["data"] = pd.to_datetime(data["data"]["coords"]["time"]["data"])
+        data['data']['coords']['time']['data'] = pd.to_datetime(data['data']['coords']['time']['data'])
 
         # Create the TimeSeries instance
         return cls(
-            data=xr.DataArray.from_dict(data["data"]),
-            name=data["name"],
-            aggregation_weight=data["aggregation_weight"],
-            aggregation_group=data["aggregation_group"],
-            needs_extra_timestep=data["needs_extra_timestep"]
+            data=xr.DataArray.from_dict(data['data']),
+            name=data['name'],
+            aggregation_weight=data['aggregation_weight'],
+            aggregation_group=data['aggregation_group'],
+            needs_extra_timestep=data['needs_extra_timestep'],
         )
 
-    def __init__(self,
-                 data: xr.DataArray,
-                 name: str,
-                 aggregation_weight: Optional[float] = None,
-                 aggregation_group: Optional[str] = None,
-                 needs_extra_timestep: bool = False):
+    def __init__(
+        self,
+        data: xr.DataArray,
+        name: str,
+        aggregation_weight: Optional[float] = None,
+        aggregation_group: Optional[str] = None,
+        needs_extra_timestep: bool = False,
+    ):
         """
         Initialize a TimeSeries with a DataArray.
 
@@ -269,17 +277,15 @@ class TimeSeries:
             Dictionary representation of the TimeSeries
         """
         data = {
-            "name": self.name,
-            "aggregation_weight": self.aggregation_weight,
-            "aggregation_group": self.aggregation_group,
-            "needs_extra_timestep": self.needs_extra_timestep,
-            "data": self.active_data.to_dict(),
+            'name': self.name,
+            'aggregation_weight': self.aggregation_weight,
+            'aggregation_group': self.aggregation_group,
+            'needs_extra_timestep': self.needs_extra_timestep,
+            'data': self.active_data.to_dict(),
         }
 
         # Convert datetime objects to ISO strings
-        data["data"]["coords"]["time"]["data"] = [
-            date.isoformat() for date in data["data"]["coords"]["time"]["data"]
-        ]
+        data['data']['coords']['time']['data'] = [date.isoformat() for date in data['data']['coords']['time']['data']]
 
         # Save to file if path is provided
         if path is not None:
@@ -331,7 +337,7 @@ class TimeSeries:
         elif isinstance(timesteps, pd.DatetimeIndex):
             self._active_timesteps = timesteps
         else:
-            raise TypeError("active_timesteps must be a pandas DatetimeIndex or None")
+            raise TypeError('active_timesteps must be a pandas DatetimeIndex or None')
 
         self._update_active_data()
 
@@ -446,10 +452,10 @@ class TimeSeries:
             'aggregation_group': self.aggregation_group,
             'needs_extra_timestep': self.needs_extra_timestep,
             'shape': self.active_data.shape,
-            'time_range': f"{self.active_timesteps[0]} to {self.active_timesteps[-1]}"
+            'time_range': f'{self.active_timesteps[0]} to {self.active_timesteps[-1]}',
         }
-        attr_str = ', '.join(f"{k}={repr(v)}" for k, v in attrs.items())
-        return f"TimeSeries({attr_str})"
+        attr_str = ', '.join(f'{k}={repr(v)}' for k, v in attrs.items())
+        return f'TimeSeries({attr_str})'
 
     def __str__(self):
         """
@@ -470,12 +476,11 @@ class TimeSeriesCollection:
     """
 
     def __init__(
-            self,
-            timesteps: pd.DatetimeIndex,
-            hours_of_last_timestep: Optional[float] = None,
-            hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None
+        self,
+        timesteps: pd.DatetimeIndex,
+        hours_of_last_timestep: Optional[float] = None,
+        hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None,
     ):
-
         """
         Args:
             timesteps: The timesteps of the Collection.
@@ -510,21 +515,14 @@ class TimeSeriesCollection:
 
     @classmethod
     def with_uniform_timesteps(
-            cls,
-            start_time: pd.Timestamp,
-            periods: int,
-            freq: str,
-            hours_per_step: Optional[float] = None
+        cls, start_time: pd.Timestamp, periods: int, freq: str, hours_per_step: Optional[float] = None
     ) -> 'TimeSeriesCollection':
         """Create a collection with uniform timesteps."""
         timesteps = pd.date_range(start_time, periods=periods, freq=freq, name='time')
         return cls(timesteps, hours_of_previous_timesteps=hours_per_step)
 
     def create_time_series(
-            self,
-            data: Union[NumericData, TimeSeriesData],
-            name: str,
-            needs_extra_timestep: bool = False
+        self, data: Union[NumericData, TimeSeriesData], name: str, needs_extra_timestep: bool = False
     ) -> TimeSeries:
         """
         Creates a TimeSeries from the given data and adds it to the collection.
@@ -554,16 +552,13 @@ class TimeSeriesCollection:
                 timesteps=timesteps_to_use,
                 aggregation_weight=data.agg_weight,
                 aggregation_group=data.agg_group,
-                needs_extra_timestep=needs_extra_timestep
+                needs_extra_timestep=needs_extra_timestep,
             )
             # Connect the user time series to the created TimeSeries
             data.label = name
         else:
             time_series = TimeSeries.from_datasource(
-                name=name,
-                data=data,
-                timesteps=timesteps_to_use,
-                needs_extra_timestep=needs_extra_timestep
+                name=name, data=data, timesteps=timesteps_to_use, needs_extra_timestep=needs_extra_timestep
             )
 
         # Add to the collection
@@ -600,7 +595,7 @@ class TimeSeriesCollection:
         self._active_timesteps = active_timesteps
         first_ts_index = np.where(self.all_timesteps == active_timesteps[0])[0][0]
         last_ts_idx = np.where(self.all_timesteps == active_timesteps[-1])[0][0]
-        self._active_timesteps_extra = self.all_timesteps_extra[first_ts_index:last_ts_idx + 2]
+        self._active_timesteps_extra = self.all_timesteps_extra[first_ts_index : last_ts_idx + 2]
         self._active_hours_per_timestep = self.all_hours_per_timestep.isel(time=slice(first_ts_index, last_ts_idx + 1))
 
         # Update all time series
@@ -636,13 +631,14 @@ class TimeSeriesCollection:
             include_extra_timestep: Whether the provided data already includes the extra timestep, by default False
         """
         if not isinstance(data, pd.DataFrame):
-            raise TypeError(f"data must be a pandas DataFrame, got {type(data).__name__}")
+            raise TypeError(f'data must be a pandas DataFrame, got {type(data).__name__}')
 
         # Check if the DataFrame index matches the expected timesteps
         expected_timesteps = self.timesteps_extra if include_extra_timestep else self.timesteps
         if not data.index.equals(expected_timesteps):
             raise ValueError(
-                f"DataFrame index must match {'collection timesteps with extra timestep' if include_extra_timestep else 'collection timesteps'}")
+                f'DataFrame index must match {"collection timesteps with extra timestep" if include_extra_timestep else "collection timesteps"}'
+            )
 
         for name, ts in self.time_series_data.items():
             if name in data.columns:
@@ -670,9 +666,9 @@ class TimeSeriesCollection:
 
                 logger.debug(f'Updated data for {name}')
 
-    def to_dataframe(self,
-                     filtered: Literal['all', 'constant', 'non_constant'] = 'non_constant',
-                     include_extra_timestep: bool = True) -> pd.DataFrame:
+    def to_dataframe(
+        self, filtered: Literal['all', 'constant', 'non_constant'] = 'non_constant', include_extra_timestep: bool = True
+    ) -> pd.DataFrame:
         """
         Convert collection to DataFrame with optional filtering and timestep control.
 
@@ -723,10 +719,12 @@ class TimeSeriesCollection:
         # Ensure the correct time coordinates
         ds = ds.reindex(time=self.timesteps_extra)
 
-        ds.attrs.update({
+        ds.attrs.update(
+            {
                 'timesteps_extra': f'{self.timesteps_extra[0]} ... {self.timesteps_extra[-1]} | len={len(self.timesteps_extra)}',
                 'hours_per_timestep': self._format_stats(self.hours_per_timestep),
-        })
+            }
+        )
 
         return ds
 
@@ -754,13 +752,12 @@ class TimeSeriesCollection:
 
     @staticmethod
     def _create_timesteps_with_extra(
-            timesteps: pd.DatetimeIndex,
-            hours_of_last_timestep: Optional[float]
+        timesteps: pd.DatetimeIndex, hours_of_last_timestep: Optional[float]
     ) -> pd.DatetimeIndex:
         """Create timesteps with an extra step at the end."""
         if hours_of_last_timestep is not None:
             # Create the extra timestep using the specified duration
-            last_date = pd.DatetimeIndex([timesteps[-1] + pd.Timedelta(hours=hours_of_last_timestep)],name='time')
+            last_date = pd.DatetimeIndex([timesteps[-1] + pd.Timedelta(hours=hours_of_last_timestep)], name='time')
         else:
             # Use the last interval as the extra timestep duration
             last_date = pd.DatetimeIndex([timesteps[-1] + (timesteps[-1] - timesteps[-2])], name='time')
@@ -770,8 +767,7 @@ class TimeSeriesCollection:
 
     @staticmethod
     def _calculate_hours_of_previous_timesteps(
-            timesteps: pd.DatetimeIndex,
-            hours_of_previous_timesteps: Optional[Union[float, np.ndarray]]
+        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: Optional[Union[float, np.ndarray]]
     ) -> Union[float, np.ndarray]:
         """Calculate duration of regular timesteps."""
         if hours_of_previous_timesteps is not None:
@@ -788,20 +784,13 @@ class TimeSeriesCollection:
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
 
         return xr.DataArray(
-            data=hours_per_step,
-            coords={'time': timesteps_extra[:-1]},
-            dims=('time',),
-            name='hours_per_step'
+            data=hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=('time',), name='hours_per_step'
         )
 
     def _calculate_group_weights(self) -> Dict[str, float]:
         """Calculate weights for aggregation groups."""
         # Count series in each group
-        groups = [
-            ts.aggregation_group
-            for ts in self.time_series_data.values()
-            if ts.aggregation_group is not None
-        ]
+        groups = [ts.aggregation_group for ts in self.time_series_data.values() if ts.aggregation_group is not None]
         group_counts = Counter(groups)
 
         # Calculate weight for each group (1/count)
@@ -832,7 +821,7 @@ class TimeSeriesCollection:
         min_val = np.min(values)
         max_val = np.max(values)
 
-        return f"mean: {mean_val:.2f}, min: {min_val:.2f}, max: {max_val:.2f}"
+        return f'mean: {mean_val:.2f}, min: {min_val:.2f}, max: {max_val:.2f}'
 
     def __getitem__(self, name: str) -> TimeSeries:
         """Get a TimeSeries by name."""
@@ -860,18 +849,12 @@ class TimeSeriesCollection:
     @property
     def non_constants(self) -> List[TimeSeries]:
         """Get time series with varying values."""
-        return [
-            ts for ts in self.time_series_data.values()
-            if not ts.all_equal
-        ]
+        return [ts for ts in self.time_series_data.values() if not ts.all_equal]
 
     @property
     def constants(self) -> List[TimeSeries]:
         """Get time series with constant values."""
-        return [
-            ts for ts in self.time_series_data.values()
-            if ts.all_equal
-        ]
+        return [ts for ts in self.time_series_data.values() if ts.all_equal]
 
     @property
     def timesteps(self) -> pd.DatetimeIndex:
@@ -886,7 +869,9 @@ class TimeSeriesCollection:
     @property
     def hours_per_timestep(self) -> xr.DataArray:
         """Get the duration of each active timestep."""
-        return self.all_hours_per_timestep if self._active_hours_per_timestep is None else self._active_hours_per_timestep
+        return (
+            self.all_hours_per_timestep if self._active_hours_per_timestep is None else self._active_hours_per_timestep
+        )
 
     @property
     def hours_of_last_timestep(self) -> float:
@@ -894,34 +879,36 @@ class TimeSeriesCollection:
         return float(self.hours_per_timestep[-1].item())
 
     def __repr__(self):
-        return f"TimeSeriesCollection:\n{self.to_dataset()}"
+        return f'TimeSeriesCollection:\n{self.to_dataset()}'
 
     def __str__(self):
         longest_name = max([time_series.name for time_series in self.time_series_data], key=len)
 
-        stats_summary = "\n".join(
-            [f"  - {time_series.name:<{len(longest_name)}}: {get_numeric_stats(time_series.active_data)}"
-             for time_series in self.time_series_data]
+        stats_summary = '\n'.join(
+            [
+                f'  - {time_series.name:<{len(longest_name)}}: {get_numeric_stats(time_series.active_data)}'
+                for time_series in self.time_series_data
+            ]
         )
 
         return (
-            f"TimeSeriesCollection with {len(self.time_series_data)} series\n"
-            f"  Time Range: {self.timesteps[0]} → {self.timesteps[-1]}\n"
-            f"  No. of timesteps: {len(self.timesteps)} + 1 extra\n"
-            f"  Hours per timestep: {get_numeric_stats(self.hours_per_timestep)}\n"
-            f"  Time Series Data:\n"
-            f"{stats_summary}"
+            f'TimeSeriesCollection with {len(self.time_series_data)} series\n'
+            f'  Time Range: {self.timesteps[0]} → {self.timesteps[-1]}\n'
+            f'  No. of timesteps: {len(self.timesteps)} + 1 extra\n'
+            f'  Hours per timestep: {get_numeric_stats(self.hours_per_timestep)}\n'
+            f'  Time Series Data:\n'
+            f'{stats_summary}'
         )
 
 
 def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10) -> str:
     """Calculates the mean, median, min, max, and standard deviation of a numeric DataArray."""
-    format_spec = f">{padd}.{decimals}f" if padd else f".{decimals}f"
+    format_spec = f'>{padd}.{decimals}f' if padd else f'.{decimals}f'
     if np.unique(data).size == 1:
-        return f"{data.max().item():{format_spec}} (constant)"
+        return f'{data.max().item():{format_spec}} (constant)'
     mean = data.mean().item()
     median = data.median().item()
     min_val = data.min().item()
     max_val = data.max().item()
     std = data.std().item()
-    return f"{mean:{format_spec}} (mean), {median:{format_spec}} (median), {min_val:{format_spec}} (min), {max_val:{format_spec}} (max), {std:{format_spec}} (std)"
+    return f'{mean:{format_spec}} (mean), {median:{format_spec}} (median), {min_val:{format_spec}} (min), {max_val:{format_spec}} (max), {std:{format_spec}} (std)'

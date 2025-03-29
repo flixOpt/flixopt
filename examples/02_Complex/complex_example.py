@@ -50,7 +50,9 @@ if __name__ == '__main__':
     Gaskessel = fx.linear_converters.Boiler(
         'Kessel',
         eta=0.5,  # Efficiency ratio
-        on_off_parameters=fx.OnOffParameters(effects_per_running_hour={Costs.label: 0, CO2.label: 1000}),  # CO2 emissions per hour
+        on_off_parameters=fx.OnOffParameters(
+            effects_per_running_hour={Costs.label: 0, CO2.label: 1000}
+        ),  # CO2 emissions per hour
         Q_th=fx.Flow(
             label='Q_th',  # Thermal output
             bus='Fernwärme',  # Linked bus

@@ -121,12 +121,14 @@ if __name__ == '__main__':
 
     # Gas Tariff
     a_gas_tarif = fx.Source(
-        'Gastarif', source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: gas_price, CO2.label: 0.3})
+        'Gastarif',
+        source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: gas_price, CO2.label: 0.3}),
     )
 
     # Coal Tariff
     a_kohle_tarif = fx.Source(
-        'Kohletarif', source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={costs.label: 4.6, CO2.label: 0.3})
+        'Kohletarif',
+        source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={costs.label: 4.6, CO2.label: 0.3}),
     )
 
     # Electricity Tariff and Feed-in
@@ -136,7 +138,9 @@ if __name__ == '__main__':
 
     a_strom_tarif = fx.Source(
         'Stromtarif',
-        source=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={costs.label: TS_electricity_price_buy, CO2: 0.3}),
+        source=fx.Flow(
+            'P_el', bus='Strom', size=1000, effects_per_flow_hour={costs.label: TS_electricity_price_buy, CO2: 0.3}
+        ),
     )
 
     # Flow System Setup
@@ -190,26 +194,34 @@ if __name__ == '__main__':
     # --- Plotting for comparison ---
     fx.plotting.with_plotly(
         get_solutions(calculations, 'Speicher|charge_state').to_dataframe(),
-        mode='line', title='Charge State Comparison', ylabel='Charge state',
+        mode='line',
+        title='Charge State Comparison',
+        ylabel='Charge state',
     ).write_html('results/Charge State.html')
 
     fx.plotting.with_plotly(
         get_solutions(calculations, 'BHKW2(Q_th)|flow_rate').to_dataframe(),
-        mode='line', title='BHKW2(Q_th) Flow Rate Comparison', ylabel='Flow rate',
+        mode='line',
+        title='BHKW2(Q_th) Flow Rate Comparison',
+        ylabel='Flow rate',
     ).write_html('results/BHKW2 Thermal Power.html')
 
     fx.plotting.with_plotly(
         get_solutions(calculations, 'costs(operation)|total_per_timestep').to_dataframe(),
-        mode='line', title='Operation Cost Comparison', ylabel='Costs [€]'
+        mode='line',
+        title='Operation Cost Comparison',
+        ylabel='Costs [€]',
     ).write_html('results/Operation Costs.html')
 
     fx.plotting.with_plotly(
         pd.DataFrame(get_solutions(calculations, 'costs(operation)|total_per_timestep').to_dataframe().sum()).T,
-        mode='bar', title='Total Cost Comparison', ylabel='Costs [€]'
+        mode='bar',
+        title='Total Cost Comparison',
+        ylabel='Costs [€]',
     ).update_layout(barmode='group').write_html('results/Total Costs.html')
 
     fx.plotting.with_plotly(
         pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]), 'bar'
-    ).update_layout(
-        title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)'
-    ).write_html('results/Speed Comparison.html')
+    ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
+        'results/Speed Comparison.html'
+    )

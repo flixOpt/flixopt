@@ -51,12 +51,13 @@ class CalculationResults:
     Example:
         Load results from saved files:
 
-        >>> results = CalculationResults.from_file("results_dir", "optimization_run_1")
-        >>> element_result = results["Boiler"]
-        >>> results.plot_heatmap("Boiler(Q_th)|flow_rate")
+        >>> results = CalculationResults.from_file('results_dir', 'optimization_run_1')
+        >>> element_result = results['Boiler']
+        >>> results.plot_heatmap('Boiler(Q_th)|flow_rate')
         >>> results.to_file(compression=5)
-        >>> results.to_file(folder="new_results_dir", compression=5)  # Save the results to a new folder
+        >>> results.to_file(folder='new_results_dir', compression=5)  # Save the results to a new folder
     """
+
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
         """Create CalculationResults instance by loading from saved files.
@@ -89,12 +90,14 @@ class CalculationResults:
         with open(paths.summary, 'r', encoding='utf-8') as f:
             summary = yaml.load(f, Loader=yaml.FullLoader)
 
-        return cls(solution=fx_io.load_dataset_from_netcdf(paths.solution),
-                   flow_system=fx_io.load_dataset_from_netcdf(paths.flow_system),
-                   name=name,
-                   folder=folder,
-                   model=model,
-                   summary=summary)
+        return cls(
+            solution=fx_io.load_dataset_from_netcdf(paths.solution),
+            flow_system=fx_io.load_dataset_from_netcdf(paths.flow_system),
+            name=name,
+            folder=folder,
+            model=model,
+            summary=summary,
+        )
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
@@ -146,14 +149,15 @@ class CalculationResults:
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.components = {label: ComponentResults.from_json(self, infos)
-                           for label, infos in self.solution.attrs['Components'].items()}
+        self.components = {
+            label: ComponentResults.from_json(self, infos) for label, infos in self.solution.attrs['Components'].items()
+        }
 
-        self.buses = {label: BusResults.from_json(self, infos)
-                      for label, infos in self.solution.attrs['Buses'].items()}
+        self.buses = {label: BusResults.from_json(self, infos) for label, infos in self.solution.attrs['Buses'].items()}
 
-        self.effects = {label: EffectResults.from_json(self, infos)
-                        for label, infos in self.solution.attrs['Effects'].items()}
+        self.effects = {
+            label: EffectResults.from_json(self, infos) for label, infos in self.solution.attrs['Effects'].items()
+        }
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
@@ -174,12 +178,12 @@ class CalculationResults:
 
     @property
     def objective(self) -> float:
-        """ The objective result of the optimization. """
+        """The objective result of the optimization."""
         return self.summary['Main Results']['Objective']
 
     @property
     def variables(self) -> linopy.Variables:
-        """ The variables of the optimization. Only available if the linopy.Model is available. """
+        """The variables of the optimization. Only available if the linopy.Model is available."""
         if self.model is None:
             raise ValueError('The linopy model is not available.')
         return self.model.variables
@@ -191,9 +195,9 @@ class CalculationResults:
             raise ValueError('The linopy model is not available.')
         return self.model.constraints
 
-    def filter_solution(self,
-               variable_dims: Optional[Literal['scalar', 'time']] = None,
-               element: Optional[str] = None) -> xr.Dataset:
+    def filter_solution(
+        self, variable_dims: Optional[Literal['scalar', 'time']] = None, element: Optional[str] = None
+    ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
         If no element is specified, all elements are included.
@@ -214,7 +218,7 @@ class CalculationResults:
         color_map: str = 'portland',
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
-        engine: plotting.PlottingEngine = 'plotly'
+        engine: plotting.PlottingEngine = 'plotly',
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         return plot_heatmap(
             dataarray=self.solution[variable_name],
@@ -229,19 +233,20 @@ class CalculationResults:
         )
 
     def plot_network(
-            self,
-            controls: Union[
-                bool,
-                List[
-                    Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-                ],
-            ] = True,
-            path: Optional[pathlib.Path] = None,
-            show: bool = False
+        self,
+        controls: Union[
+            bool,
+            List[
+                Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
+            ],
+        ] = True,
+        path: Optional[pathlib.Path] = None,
+        show: bool = False,
     ) -> 'pyvis.network.Network':
-        """ See flixopt.flow_system.FlowSystem.plot_network """
+        """See flixopt.flow_system.FlowSystem.plot_network"""
         try:
             from .flow_system import FlowSystem
+
             flow_system = FlowSystem.from_dataset(self.flow_system)
         except Exception as e:
             logger.critical(f'Could not reconstruct the flow_system from dataset: {e}')
@@ -274,7 +279,9 @@ class CalculationResults:
             try:
                 folder.mkdir(parents=False)
             except FileNotFoundError as e:
-                raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
+                raise FileNotFoundError(
+                    f'Folder {folder} and its parent do not exist. Please create them first.'
+                ) from e
 
         paths = fx_io.CalculationResultsPaths(folder, name)
 
@@ -302,16 +309,11 @@ class CalculationResults:
 class _ElementResults:
     @classmethod
     def from_json(cls, calculation_results, json_data: Dict) -> '_ElementResults':
-        return cls(calculation_results,
-                   json_data['label'],
-                   json_data['variables'],
-                   json_data['constraints'])
+        return cls(calculation_results, json_data['label'], json_data['variables'], json_data['constraints'])
 
-    def __init__(self,
-                 calculation_results: CalculationResults,
-                 label: str,
-                 variables: List[str],
-                 constraints: List[str]):
+    def __init__(
+        self, calculation_results: CalculationResults, label: str, variables: List[str], constraints: List[str]
+    ):
         self._calculation_results = calculation_results
         self.label = label
         self._variable_names = variables
@@ -355,21 +357,25 @@ class _ElementResults:
 
 class _NodeResults(_ElementResults):
     @classmethod
-    def from_json(cls, calculation_results, json_data: Dict)  -> '_NodeResults':
-        return cls(calculation_results,
-                   json_data['label'],
-                   json_data['variables'],
-                   json_data['constraints'],
-                   json_data['inputs'],
-                   json_data['outputs'])
+    def from_json(cls, calculation_results, json_data: Dict) -> '_NodeResults':
+        return cls(
+            calculation_results,
+            json_data['label'],
+            json_data['variables'],
+            json_data['constraints'],
+            json_data['inputs'],
+            json_data['outputs'],
+        )
 
-    def __init__(self,
-                 calculation_results: CalculationResults,
-                 label: str,
-                 variables: List[str],
-                 constraints: List[str],
-                 inputs: List[str],
-                 outputs: List[str]):
+    def __init__(
+        self,
+        calculation_results: CalculationResults,
+        label: str,
+        variables: List[str],
+        constraints: List[str],
+        inputs: List[str],
+        outputs: List[str],
+    ):
         super().__init__(calculation_results, label, variables, constraints)
         self.inputs = inputs
         self.outputs = outputs
@@ -393,7 +399,7 @@ class _NodeResults(_ElementResults):
                 self.node_balance(with_last_timestep=True).to_dataframe(),
                 colors=colors,
                 mode='area',
-                title=f'Flow rates of {self.label}'
+                title=f'Flow rates of {self.label}',
             )
             default_filetype = '.html'
         elif engine == 'matplotlib':
@@ -423,7 +429,7 @@ class _NodeResults(_ElementResults):
         text_info: str = 'percent+label+value',
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
-        engine: plotting.PlottingEngine = 'plotly'
+        engine: plotting.PlottingEngine = 'plotly',
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -436,18 +442,24 @@ class _NodeResults(_ElementResults):
             show: Whether to show the figure.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
         """
-        inputs = sanitize_dataset(
-            ds=self.solution[self.inputs],
-            threshold=1e-5,
-            drop_small_vars=True,
-            zero_small_values=True,
-        ) * self._calculation_results.hours_per_timestep
-        outputs = sanitize_dataset(
-            ds=self.solution[self.outputs],
-            threshold=1e-5,
-            drop_small_vars=True,
-            zero_small_values=True,
-        ) * self._calculation_results.hours_per_timestep
+        inputs = (
+            sanitize_dataset(
+                ds=self.solution[self.inputs],
+                threshold=1e-5,
+                drop_small_vars=True,
+                zero_small_values=True,
+            )
+            * self._calculation_results.hours_per_timestep
+        )
+        outputs = (
+            sanitize_dataset(
+                ds=self.solution[self.outputs],
+                threshold=1e-5,
+                drop_small_vars=True,
+                zero_small_values=True,
+            )
+            * self._calculation_results.hours_per_timestep
+        )
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -490,17 +502,21 @@ class _NodeResults(_ElementResults):
         negate_inputs: bool = True,
         negate_outputs: bool = False,
         threshold: Optional[float] = 1e-5,
-        with_last_timestep: bool = False
+        with_last_timestep: bool = False,
     ) -> xr.Dataset:
         return sanitize_dataset(
             ds=self.solution[self.inputs + self.outputs],
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
             negate=(
-                self.outputs + self.inputs if negate_outputs and negate_inputs
-                else self.outputs if negate_outputs
-                else self.inputs if negate_inputs
-                else None),
+                self.outputs + self.inputs
+                if negate_outputs and negate_inputs
+                else self.outputs
+                if negate_outputs
+                else self.inputs
+                if negate_inputs
+                else None
+            ),
         )
 
 
@@ -521,7 +537,7 @@ class ComponentResults(_NodeResults):
 
     @property
     def charge_state(self) -> xr.DataArray:
-        """ Get the solution of the charge state of the Storage. """
+        """Get the solution of the charge state of the Storage."""
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
         return self.solution[self._charge_state]
@@ -531,7 +547,7 @@ class ComponentResults(_NodeResults):
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
-        engine: plotting.PlottingEngine = 'plotly'
+        engine: plotting.PlottingEngine = 'plotly',
     ) -> plotly.graph_objs.Figure:
         """
         Plots the charge state of a Storage.
@@ -545,7 +561,9 @@ class ComponentResults(_NodeResults):
             ValueError: If the Component is not a Storage.
         """
         if engine != 'plotly':
-            raise NotImplementedError(f'Plotting engine "{engine}" not implemented for ComponentResults.plot_charge_state.')
+            raise NotImplementedError(
+                f'Plotting engine "{engine}" not implemented for ComponentResults.plot_charge_state.'
+            )
 
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
@@ -560,8 +578,11 @@ class ComponentResults(_NodeResults):
         # TODO: Use colors for charge state?
 
         charge_state = self.charge_state.to_dataframe()
-        fig.add_trace(plotly.graph_objs.Scatter(
-            x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state))
+        fig.add_trace(
+            plotly.graph_objs.Scatter(
+                x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
+            )
+        )
 
         return plotting.export_figure(
             fig,
@@ -569,13 +590,11 @@ class ComponentResults(_NodeResults):
             default_filetype='.html',
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
-            save=True if save else False)
+            save=True if save else False,
+        )
 
     def node_balance_with_charge_state(
-        self,
-        negate_inputs: bool = True,
-        negate_outputs: bool = False,
-        threshold: Optional[float] = 1e-5
+        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: Optional[float] = 1e-5
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Storage including its charge state.
@@ -595,10 +614,14 @@ class ComponentResults(_NodeResults):
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra,
             negate=(
-                self.outputs + self.inputs if negate_outputs and negate_inputs
-                else self.outputs if negate_outputs
-                else self.inputs if negate_inputs
-                else None),
+                self.outputs + self.inputs
+                if negate_outputs and negate_inputs
+                else self.outputs
+                if negate_outputs
+                else self.inputs
+                if negate_inputs
+                else None
+            ),
         )
 
 
@@ -606,7 +629,7 @@ class EffectResults(_ElementResults):
     """Results for an Effect"""
 
     def get_shares_from(self, element: str):
-        """ Get the shares from an Element (without subelements) to the Effect"""
+        """Get the shares from an Element (without subelements) to the Effect"""
         return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
 
 
@@ -614,18 +637,21 @@ class SegmentedCalculationResults:
     """
     Class to store the results of a SegmentedCalculation.
     """
+
     @classmethod
     def from_calculation(cls, calculation: 'SegmentedCalculation'):
-        return cls([calc.results for calc in calculation.sub_calculations],
-                   all_timesteps=calculation.all_timesteps,
-                   timesteps_per_segment=calculation.timesteps_per_segment,
-                   overlap_timesteps=calculation.overlap_timesteps,
-                   name=calculation.name,
-                   folder=calculation.folder)
+        return cls(
+            [calc.results for calc in calculation.sub_calculations],
+            all_timesteps=calculation.all_timesteps,
+            timesteps_per_segment=calculation.timesteps_per_segment,
+            overlap_timesteps=calculation.overlap_timesteps,
+            name=calculation.name,
+            folder=calculation.folder,
+        )
 
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
-        """ Create SegmentedCalculationResults directly from file"""
+        """Create SegmentedCalculationResults directly from file"""
         folder = pathlib.Path(folder)
         path = folder / name
         nc_file = path.with_suffix('.nc4')
@@ -634,21 +660,24 @@ class SegmentedCalculationResults:
             meta_data = json.load(f)
         return cls(
             [CalculationResults.from_file(folder, name) for name in meta_data['sub_calculations']],
-            all_timesteps=pd.DatetimeIndex([datetime.datetime.fromisoformat(date)
-                                            for date in meta_data['all_timesteps']], name='time'),
+            all_timesteps=pd.DatetimeIndex(
+                [datetime.datetime.fromisoformat(date) for date in meta_data['all_timesteps']], name='time'
+            ),
             timesteps_per_segment=meta_data['timesteps_per_segment'],
             overlap_timesteps=meta_data['overlap_timesteps'],
             name=name,
-            folder=folder
+            folder=folder,
         )
 
-    def __init__(self,
-                 segment_results: List[CalculationResults],
-                 all_timesteps: pd.DatetimeIndex,
-                 timesteps_per_segment: int,
-                 overlap_timesteps: int,
-                 name: str,
-                 folder: Optional[pathlib.Path] = None):
+    def __init__(
+        self,
+        segment_results: List[CalculationResults],
+        all_timesteps: pd.DatetimeIndex,
+        timesteps_per_segment: int,
+        overlap_timesteps: int,
+        name: str,
+        folder: Optional[pathlib.Path] = None,
+    ):
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
         self.timesteps_per_segment = timesteps_per_segment
@@ -663,7 +692,7 @@ class SegmentedCalculationResults:
             'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
             'timesteps_per_segment': self.timesteps_per_segment,
             'overlap_timesteps': self.overlap_timesteps,
-            'sub_calculations': [calc.name for calc in self.segment_results]
+            'sub_calculations': [calc.name for calc in self.segment_results],
         }
 
     @property
@@ -672,11 +701,11 @@ class SegmentedCalculationResults:
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Returns the solution of a variable without overlapping timesteps"""
-        dataarrays = [result.solution[variable_name].isel(time=slice(None, self.timesteps_per_segment))
-                      for result in self.segment_results[:-1]
-                      ] + [self.segment_results[-1].solution[variable_name]]
+        dataarrays = [
+            result.solution[variable_name].isel(time=slice(None, self.timesteps_per_segment))
+            for result in self.segment_results[:-1]
+        ] + [self.segment_results[-1].solution[variable_name]]
         return xr.concat(dataarrays, dim='time')
-
 
     def plot_heatmap(
         self,
@@ -712,10 +741,9 @@ class SegmentedCalculationResults:
             engine=engine,
         )
 
-    def to_file(self,
-                folder: Optional[Union[str, pathlib.Path]] = None,
-                name: Optional[str] = None,
-                compression: int = 5):
+    def to_file(
+        self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, compression: int = 5
+    ):
         """Save the results to a file"""
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -724,7 +752,9 @@ class SegmentedCalculationResults:
             try:
                 folder.mkdir(parents=False)
             except FileNotFoundError as e:
-                raise FileNotFoundError(f'Folder {folder} and its parent do not exist. Please create them first.') from e
+                raise FileNotFoundError(
+                    f'Folder {folder} and its parent do not exist. Please create them first.'
+                ) from e
         for segment in self.segment_results:
             segment.to_file(folder=folder, name=f'{name}-{segment.name}', compression=compression)
 
@@ -742,7 +772,7 @@ def plot_heatmap(
     color_map: str = 'portland',
     save: Union[bool, pathlib.Path] = False,
     show: bool = True,
-    engine: plotting.PlottingEngine = 'plotly'
+    engine: plotting.PlottingEngine = 'plotly',
 ):
     """
     Plots a heatmap of the solution of a variable.
@@ -759,33 +789,32 @@ def plot_heatmap(
         engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
     """
     heatmap_data = plotting.heat_map_data_from_df(
-        dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill')
+        dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
+    )
 
     xlabel, ylabel = f'timeframe [{heatmap_timeframes}]', f'timesteps [{heatmap_timesteps_per_frame}]'
 
     if engine == 'plotly':
         figure_like = plotting.heat_map_plotly(
-            heatmap_data, title=name, color_map=color_map,
-            xlabel=xlabel, ylabel=ylabel
+            heatmap_data, title=name, color_map=color_map, xlabel=xlabel, ylabel=ylabel
         )
         default_filetype = '.html'
     elif engine == 'matplotlib':
         figure_like = plotting.heat_map_matplotlib(
-            heatmap_data, title=name, color_map=color_map,
-            xlabel=xlabel, ylabel=ylabel
+            heatmap_data, title=name, color_map=color_map, xlabel=xlabel, ylabel=ylabel
         )
         default_filetype = '.png'
     else:
         raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
     return plotting.export_figure(
-            figure_like=figure_like,
-            default_path=folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})',
-            default_filetype=default_filetype,
-            user_path=None if isinstance(save, bool) else pathlib.Path(save),
-            show=show,
-            save=True if save else False,
-        )
+        figure_like=figure_like,
+        default_path=folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})',
+        default_filetype=default_filetype,
+        user_path=None if isinstance(save, bool) else pathlib.Path(save),
+        show=show,
+        save=True if save else False,
+    )
 
 
 def sanitize_dataset(
@@ -848,8 +877,8 @@ def sanitize_dataset(
 
 
 def filter_dataset(
-        ds: xr.Dataset,
-        variable_dims: Optional[Literal['scalar', 'time']] = None,
+    ds: xr.Dataset,
+    variable_dims: Optional[Literal['scalar', 'time']] = None,
 ) -> xr.Dataset:
     """
     Filters a dataset by its dimensions.

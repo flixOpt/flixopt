@@ -55,7 +55,6 @@ if __name__ == '__main__':
     calculation.do_modeling()
     calculation.solve(fx.solvers.HighsSolver(0.01, 60))
 
-
     # --- Analyze Results ---
     # Access the results of an element
     df1 = calculation.results['costs'].filter_solution('time').to_dataframe()
