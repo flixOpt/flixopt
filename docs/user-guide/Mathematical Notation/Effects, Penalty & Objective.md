@@ -1,10 +1,10 @@
 ## Effects
-[`Effects`][flixOpt.effects.Effect] are used to allocate things like costs, emissions, or other "effects" occuring in the system.
+[`Effects`][flixopt.effects.Effect] are used to allocate things like costs, emissions, or other "effects" occuring in the system.
 These arise from so called **Shares**, which originate from **Elements** like [Flows](Flow.md).
 
 **Example:**
 
-[`Flows`][flixOpt.elements.Flow] have an attribute called `effects_per_flow_hour`, defining the effect amount of per flow hour.
+[`Flows`][flixopt.elements.Flow] have an attribute called `effects_per_flow_hour`, defining the effect amount of per flow hour.
 Assiziated effects could be:
 - costs - given in [€/kWh]...
 - ...or emissions - given in [kg/kWh].

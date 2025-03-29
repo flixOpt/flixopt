@@ -6,7 +6,7 @@ FlixOpt is built around a set of core concepts that work together to represent a
 
 ### FlowSystem
 
-The [`FlowSystem`][flixOpt.flow_system.FlowSystem] is the central organizing unit in FlixOpt. 
+The [`FlowSystem`][flixopt.flow_system.FlowSystem] is the central organizing unit in FlixOpt. 
 Every FlixOpt model starts with creating a FlowSystem. It:
 
 - Defines the timesteps for the optimization
@@ -15,7 +15,7 @@ Every FlixOpt model starts with creating a FlowSystem. It:
 
 ### Flows
 
-[`Flow`][flixOpt.elements.Flow] objects represent the movement of energy or material between a [Bus](#buses) and a [Component](#components) in a predefined direction.
+[`Flow`][flixopt.elements.Flow] objects represent the movement of energy or material between a [Bus](#buses) and a [Component](#components) in a predefined direction.
 
 - Have a `size` which, generally speaking, defines how fast energy or material can be moved. Usually measured in MW, kW, m³/h, etc.
 - Have a `flow_rate`, which is defines how fast energy or material is transported. Usually measured in MW, kW, m³/h, etc.
@@ -37,7 +37,7 @@ Examples:
 
 ### Buses
 
-[`Bus`][flixOpt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
+[`Bus`][flixopt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
 
 - Balance incoming and outgoing flows
 - Can represent physical networks like heat, electricity, or gas 
@@ -45,17 +45,17 @@ Examples:
 
 ### Components
 
-[`Component`][flixOpt.elements.Component] objects usually represent physical entities in your system that interact with [`Flows`][flixOpt.elements.Flow]. They include:
+[`Component`][flixopt.elements.Component] objects usually represent physical entities in your system that interact with [`Flows`][flixopt.elements.Flow]. They include:
 
-- [`LinearConverters`][flixOpt.components.LinearConverter] - Converts input flows to output flows with (piecewise) linear relationships
-- [`Storages`][flixOpt.components.Storage] - Stores energy or material over time
-- [`Sources`][flixOpt.components.Source] / [`Sinks`][flixOpt.components.Sink] / [`SourceAndSinks`][flixOpt.components.SourceAndSink] - Produce or consume flows. They are usually used to model external demands or supplies.
-- [`Transmissions`][flixOpt.components.Transmission] - Moves flows between locations with possible losses
-- Specialized [`LinearConverters`][flixOpt.components.LinearConverter] like [`Boilers`][flixOpt.linear_converters.Boiler], [`HeatPumps`][flixOpt.linear_converters.HeatPump], [`CHPs`][flixOpt.linear_converters.CHP], etc. These simplify the usage of the `LinearConverter` class and can also be used as blueprint on how to define custom classes or parameterize existing ones.
+- [`LinearConverters`][flixopt.components.LinearConverter] - Converts input flows to output flows with (piecewise) linear relationships
+- [`Storages`][flixopt.components.Storage] - Stores energy or material over time
+- [`Sources`][flixopt.components.Source] / [`Sinks`][flixopt.components.Sink] / [`SourceAndSinks`][flixopt.components.SourceAndSink] - Produce or consume flows. They are usually used to model external demands or supplies.
+- [`Transmissions`][flixopt.components.Transmission] - Moves flows between locations with possible losses
+- Specialized [`LinearConverters`][flixopt.components.LinearConverter] like [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc. These simplify the usage of the `LinearConverter` class and can also be used as blueprint on how to define custom classes or parameterize existing ones.
 
 ### Effects
 
-[`Effect`][flixOpt.effects.Effect] objects represent impacts or metrics related to your system, such as:
+[`Effect`][flixopt.effects.Effect] objects represent impacts or metrics related to your system, such as:
 
 - Costs (investment, operation)
 - Emissions (CO₂, NOx, etc.)
@@ -70,40 +70,40 @@ This approach allows for a multi-criteria optimization using both...
 
 ### Calculation
 
-A [`FlowSystem`][flixOpt.flow_system.FlowSystem] can be converted to a Model and optimized by creating a [`Calculation`][flixOpt.calculation.Calculation] from it.
+A [`FlowSystem`][flixopt.flow_system.FlowSystem] can be converted to a Model and optimized by creating a [`Calculation`][flixopt.calculation.Calculation] from it.
 
 FlixOpt offers different calculation modes:
 
-- [`FullCalculation`][flixOpt.calculation.FullCalculation] - Solves the entire problem at once
-- [`SegmentedCalculation`][flixOpt.calculation.SegmentedCalculation] - Solves the problem in segments (with optioinal overlap), improving performance for large problems
-- [`AggregatedCalculation`][flixOpt.calculation.AggregatedCalculation] - Uses typical periods to reduce computational requirements
+- [`FullCalculation`][flixopt.calculation.FullCalculation] - Solves the entire problem at once
+- [`SegmentedCalculation`][flixopt.calculation.SegmentedCalculation] - Solves the problem in segments (with optioinal overlap), improving performance for large problems
+- [`AggregatedCalculation`][flixopt.calculation.AggregatedCalculation] - Uses typical periods to reduce computational requirements
 
 ### Results
 
-The results of a calculation are stored in a [`CalculationResults`][flixOpt.results.CalculationResults] object.
-This object contains the solutions of the optimization as well as all information about the [`Calculation`][flixOpt.calculation.Calculation] and the [`FlowSystem`][flixOpt.flow_system.FlowSystem] it was created from.
+The results of a calculation are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object.
+This object contains the solutions of the optimization as well as all information about the [`Calculation`][flixopt.calculation.Calculation] and the [`FlowSystem`][flixopt.flow_system.FlowSystem] it was created from.
 The solutions is stored as an `xarray.Dataset`, but can be accessed through their assotiated Component, Bus or Effect.
 
-This [`CalculationResults`][flixOpt.results.CalculationResults] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
+This [`CalculationResults`][flixopt.results.CalculationResults] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
 
 ## How These Concepts Work Together
 
 The process of working with FlixOpt can be divided into 3 steps:
 
-1. Create a [`FlowSystem`][flixOpt.flow_system.FlowSystem], containing all the elements and data of your system
+1. Create a [`FlowSystem`][flixopt.flow_system.FlowSystem], containing all the elements and data of your system
      -  Define the time series of your system
-     -  Add [`Components`][flixOpt.components] like [`Boilers`][flixOpt.linear_converters.Boiler], [`HeatPumps`][flixOpt.linear_converters.HeatPump], [`CHPs`][flixOpt.linear_converters.CHP], etc.
-     -  Add [`Buses`][flixOpt.elements.Bus] as connection points in your system
-     -  Add [`Effects`][flixOpt.effects.Effect] to represent costs, emissions, etc.
-     - *This [`FlowSystem`][flixOpt.flow_system.FlowSystem] can also be loaded from a netCDF file*
+     -  Add [`Components`][flixopt.components] like [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc.
+     -  Add [`Buses`][flixopt.elements.Bus] as connection points in your system
+     -  Add [`Effects`][flixopt.effects.Effect] to represent costs, emissions, etc.
+     - *This [`FlowSystem`][flixopt.flow_system.FlowSystem] can also be loaded from a netCDF file*
 2. Translate the model to a mathematical optimization problem
-     - Create a [`Calculation`][flixOpt.calculation.Calculation] from your FlowSystem and choose a Solver
+     - Create a [`Calculation`][flixopt.calculation.Calculation] from your FlowSystem and choose a Solver
      - ...The Calculation is translated internaly to a mathematical optimization problem...
      - ...and solved by the chosen solver.
 3. Analyze the results
-     - The results are stored in a [`CalculationResults`][flixOpt.results.CalculationResults] object
+     - The results are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object
      - This object can be saved to file and reloaded from file, retaining all information about the calculation
-     - As it contains the used [`FlowSystem`][flixOpt.flow_system.FlowSystem], it can be used to start a new calculation
+     - As it contains the used [`FlowSystem`][flixopt.flow_system.FlowSystem], it can be used to start a new calculation
 
 <figure markdown>
   ![FlixOpt Conceptual Usage](../images/architecture_flixOpt.png)

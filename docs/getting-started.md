@@ -26,12 +26,12 @@ pip install "flixopt[full]""
 
 Working with FlixOpt follows a general pattern:
 
-1. **Create a [`FlowSystem`][flixOpt.flow_system.FlowSystem]** with a time series
-2. **Define [`Effects`][flixOpt.effects.Effect]** (costs, emissions, etc.)
-3. **Define [`Buses`][flixOpt.elements.Bus]** as connection points in your system
-4. **Add [`Components`][flixOpt.components]** like converters, storage, sources/sinks with their Flows
-5. **Run [`Calculations`][flixOpt.calculation]** to optimize your system
-6. **Analyze [`Results`][flixOpt.results]** using built-in or external visualization tools
+1. **Create a [`FlowSystem`][flixopt.flow_system.FlowSystem]** with a time series
+2. **Define [`Effects`][flixopt.effects.Effect]** (costs, emissions, etc.)
+3. **Define [`Buses`][flixopt.elements.Bus]** as connection points in your system
+4. **Add [`Components`][flixopt.components]** like converters, storage, sources/sinks with their Flows
+5. **Run [`Calculations`][flixopt.calculation]** to optimize your system
+6. **Analyze [`Results`][flixopt.results]** using built-in or external visualization tools
 
 ## Next Steps
 
