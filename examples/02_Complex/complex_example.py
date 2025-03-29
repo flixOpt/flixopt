@@ -1,12 +1,12 @@
 """
-This script shows how to use the flixOpt framework to model a more complex energy system.
+This script shows how to use the flixopt framework to model a more complex energy system.
 """
 
 import numpy as np
 import pandas as pd
 from rich.pretty import pprint  # Used for pretty printing
 
-import flixOpt as fx
+import flixopt as fx
 
 if __name__ == '__main__':
     # --- Experiment Options ---
@@ -50,7 +50,9 @@ if __name__ == '__main__':
     Gaskessel = fx.linear_converters.Boiler(
         'Kessel',
         eta=0.5,  # Efficiency ratio
-        on_off_parameters=fx.OnOffParameters(effects_per_running_hour={Costs.label: 0, CO2.label: 1000}),  # CO2 emissions per hour
+        on_off_parameters=fx.OnOffParameters(
+            effects_per_running_hour={Costs.label: 0, CO2.label: 1000}
+        ),  # CO2 emissions per hour
         Q_th=fx.Flow(
             label='Q_th',  # Thermal output
             bus='Fernwärme',  # Linked bus

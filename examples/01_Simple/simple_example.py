@@ -1,12 +1,12 @@
 """
-This script shows how to use the flixOpt framework to model a simple energy system.
+This script shows how to use the flixopt framework to model a simple energy system.
 """
 
 import numpy as np
 import pandas as pd
 from rich.pretty import pprint  # Used for pretty printing
 
-import flixOpt as fx
+import flixopt as fx
 
 if __name__ == '__main__':
     # --- Create Time Series Data ---
@@ -116,6 +116,5 @@ if __name__ == '__main__':
     df = calculation.results['Storage'].node_balance_with_charge_state()
     print(df)
 
-    #Save results to file for later usage
+    # Save results to file for later usage
     calculation.results.to_file()
-
