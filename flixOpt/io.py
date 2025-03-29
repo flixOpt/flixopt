@@ -158,8 +158,8 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
         'termination_condition': model.termination_condition,
         'status': model.status,
         'nvars': model.nvars,
-        'nvarsbin': model.binaries.nvars,
-        'nvarscont': model.continuous.nvars,
+        'nvarsbin': model.binaries.nvars if len(model.binaries) > 0 else 0,  #Temporary, waiting for linopy to fix
+        'nvarscont': model.continuous.nvars if len(model.continuous) > 0 else 0,  #Temporary, waiting for linopy to fix
         'ncons': model.ncons,
         'variables': {variable_name: variable.__repr__() for variable_name, variable in model.variables.items()},
         'constraints': {
