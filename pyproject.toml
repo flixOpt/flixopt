@@ -34,7 +34,8 @@ classifiers = [
 dependencies = [
     "numpy >= 1.21.5, < 2",
     "PyYAML >= 6.0",
-    "Pyomo >= 6.4.2",
+    "linopy >= 0.5.1",
+    "netcdf4 >= 1.6.1",
     "rich >= 13.0.1",
     "highspy >= 1.5.3",  # Default solver
     "pandas >= 2, < 3",  # Used in post-processing
@@ -49,11 +50,16 @@ dev = [
     "ruff",
     "pyvis == 0.3.1",  # Used for visualizing the FLowSystem
     "tsam >= 2.3.1",  # Used for time series aggregation
+    "scipy >= 1.15.1",  # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
+    "gurobipy >= 10.0",
 ]
 
 full = [
     "pyvis == 0.3.1",  # Used for visualizing the FLowSystem
     "tsam >= 2.3.1",  # Used for time series aggregation
+    "scipy >= 1.15.1",  # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
+    "streamlit >= 1.44.0",
+    "gurobipy >= 10.0",
 ]
 
 docs = [
@@ -79,7 +85,7 @@ where = ["."]
 exclude = ["tests", "docs", "examples", "examples.*", "Tutorials", ".git", ".vscode", "build", ".venv", "venv/"]
 
 [tool.setuptools.package-data]
-"flixOpt" = ["config.yaml"]
+"flixopt" = ["config.yaml"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
@@ -102,8 +108,6 @@ select = ["E", "F", "W", "I", "B", "N"]  # Enable linting rules by category (e.g
 ignore = [  # Ignore specific rules
     "E501",  # Ignore line-length checks (use Black for formatting)
     "F401",  # Allow unused imports in some cases (use __all__)
-    "N813",  # Allow importing of flixOpt as fx (lowercase)
-    "N999",  # Allow module Name flixOpt
 ]
 extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any rules specified by `fixable`.
 
@@ -111,7 +115,7 @@ extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any ru
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]  # Ignore assertions in test files
 "tests/test_integration.py" = ["N806"]  # Ignore NOT lowercase names in test files
-"flixOpt/linear_converters.py" = ["N803"]  # Parameters with NOT lowercase names
+"flixopt/linear_converters.py" = ["N803"]  # Parameters with NOT lowercase names
 
 [tool.ruff.format]
 quote-style = "single"

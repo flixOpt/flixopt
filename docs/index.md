@@ -1,58 +1,47 @@
-# flixOpt: Energy and Material Flow Optimization Framework
+# FlixOpt
 
-**flixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP). Combining flexibility and efficiency, it provides a powerful platform for both dispatch and investment optimization challenges.
+**FlixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
 
-## 🚀 Introduction
+It borrows concepts from both [FINE](https://github.com/FZJ-IEK3-VSA/FINE) and [oemof.solph](https://github.com/oemof/oemof-solph).
 
-flixOpt was developed by [TU Dresden](https://github.com/gewv-tu-dresden) as part of the SMARTBIOGRID project, funded by the German Federal Ministry for Economic Affairs and Energy. Building on the Matlab-based flixOptMat framework, flixOpt also incorporates concepts from [oemof/solph](https://github.com/oemof/oemof-solph).
+## Why FlixOpt?
 
-Although flixOpt is in its early stages, it is fully functional and ready for experimentation. Feedback and collaboration are highly encouraged to help shape its future.
+FlixOpt is designed as a general-purpose optimization framework to get your model running quickly, without sacrificing flexibility down the road:
 
-## 🌟 Key Features
+- **Easy to Use API**: FlixOpt provides a Pythonic, object-oriented interface that makes mathematical optimization more accessible to Python developers.
 
-- **High-level Interface** with low-level control
-    - User-friendly interface for defining energy systems
-    - Fine-grained control for advanced configurations
-    - Pre-defined components like CHP, Heat Pump, Cooling Tower, etc.
+- **Approachable Learning Curve**: Designed to be accessible from the start, with options for more detailed models down the road.
 
-- **Investment Optimization**
-    - Combined dispatch and investment optimization
-    - Size and discrete investment decisions
-    - Integration with On/Off variables and constraints
+- **Domain Independence**: While frameworks like oemof and FINE excel at energy system modeling with domain-specific components, FlixOpt offers a more general mathematical approach that can be applied across different fields.
 
-- **Multiple Effects**
-    - Couple effects (e.g., specific CO2 costs)
-    - Set constraints (e.g., max CO2 emissions)
-    - Easily switch optimization targets (e.g., costs vs CO2)
+- **Extensibility**: Easily add custom constraints or variables to any FlixOpt Model using [linopy](https://github.com/PyPSA/linopy). Tailor any FlixOpt model to your specific needs without loosing the convenience of the framework.
 
-- **Calculation Modes**
-    - **Full Mode** - Exact solutions with high computational requirements
-    - **Segmented Mode** - Speed up complex systems with variable time overlap
-    - **Aggregated Mode** - Typical periods for large-scale simulations
+- **Solver Agnostic**: Work with different solvers through a consistent interface.
 
-## 🛠️ Getting Started
+- **Results File I/O**: Built to analyze results independent of running the optimization.
 
-See the [Getting Started Guide](getting-started.md) to start using flixOpt.
+<figure markdown>
+  ![FlixOpt Conceptual Usage](./images/architecture_flixOpt.png)
+  <figcaption>Conceptual Usage and IO operations of FlixOpt</figcaption>
+</figure>
 
-See the [Examples](examples/) section for detailed examples.
+## Installation
 
-## ⚙️ How It Works
+```bash
+pip install flixopt
+```
 
-See our [Concepts & Math](concepts-and-math/index.md) to understand the core concepts of flixOpt.
+For more detailed installation options, see the [Getting Started](getting-started.md) guide.
 
-## 🛠️ Compatible Solvers
+## License
 
-flixOpt works with various solvers:
+FlixOpt is released under the MIT License. See [LICENSE](https://github.com/flixopt/flixopt/blob/main/LICENSE) for details.
 
-- HiGHS (installed by default)
-- CBC
-- GLPK
-- Gurobi
-- CPLEX
+## Citation
 
-## 📝 Citation
-
-If you use flixOpt in your research or project, please cite:
+If you use FlixOpt in your research or project, please cite:
 
 - **Main Citation:** [DOI:10.18086/eurosun.2022.04.07](https://doi.org/10.18086/eurosun.2022.04.07)
 - **Short Overview:** [DOI:10.13140/RG.2.2.14948.24969](https://doi.org/10.13140/RG.2.2.14948.24969)
+
+*A more sophisticated paper is in progress*

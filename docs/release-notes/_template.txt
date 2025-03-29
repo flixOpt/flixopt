@@ -1,0 +1,32 @@
+# Release v{version}
+
+**Release Date:** YYYY-MM-DD
+
+## What's New
+
+* Feature 1 - Description
+* Feature 2 - Description
+
+## Improvements
+
+* Improvement 1 - Description
+* Improvement 2 - Description
+
+## Bug Fixes
+
+* Fixed issue with X
+* Resolved problem with Y
+
+## Breaking Changes
+
+* Change 1 - Migration instructions
+* Change 2 - Migration instructions
+
+## Deprecations
+
+* Feature X will be removed in v{next_version}
+
+## Dependencies
+
+* Added dependency X v1.2.3
+* Updated dependency Y to v2.0.0
