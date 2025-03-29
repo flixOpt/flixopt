@@ -33,12 +33,6 @@ pip install flixopt
 
 For more detailed installation options, see the [Getting Started](getting-started.md) guide.
 
-## Resources
-
-- [GitHub Repository](https://github.com/flixopt/flixopt)
-- [PyPI Package](https://pypi.org/project/flixopt/)
-
-
 ## License
 
 FlixOpt is released under the MIT License. See [LICENSE](https://github.com/flixopt/flixopt/blob/main/LICENSE) for details.
