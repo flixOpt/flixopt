@@ -594,11 +594,9 @@ class TimeSeriesCollection:
             data: The data to create the TimeSeries from.
             name: The name of the TimeSeries.
             needs_extra_timestep: Whether to create an additional timestep at the end of the timesteps.
-            The data to create the TimeSeries from.
 
         Returns:
             The created TimeSeries.
-
         """
         # Check for duplicate name
         if name in self.time_series_data:
@@ -613,6 +611,7 @@ class TimeSeriesCollection:
                 name=name,
                 data=data.data,
                 timesteps=timesteps_to_use,
+                scenarios=self.scenarios,
                 aggregation_weight=data.agg_weight,
                 aggregation_group=data.agg_group,
                 needs_extra_timestep=needs_extra_timestep,
@@ -621,7 +620,11 @@ class TimeSeriesCollection:
             data.label = name
         else:
             time_series = TimeSeries.from_datasource(
-                name=name, data=data, timesteps=timesteps_to_use, needs_extra_timestep=needs_extra_timestep
+                name=name,
+                data=data,
+                timesteps=timesteps_to_use,
+                scenarios=self.scenarios,
+                needs_extra_timestep=needs_extra_timestep,
             )
 
         # Add to the collection
@@ -639,36 +642,54 @@ class TimeSeriesCollection:
 
         return self.weights
 
-    def activate_timesteps(self, active_timesteps: Optional[pd.DatetimeIndex] = None):
+    def activate_timesteps(  # TODO: rename
+        self, active_timesteps: Optional[pd.DatetimeIndex] = None, active_scenarios: Optional[pd.Index] = None
+    ):
         """
-        Update active timesteps for the collection and all time series.
-        If no arguments are provided, the active timesteps are reset.
+        Update active timesteps and scenarios for the collection and all time series.
+        If no arguments are provided, the active states are reset.
 
         Args:
             active_timesteps: The active timesteps of the model.
-                If None, the all timesteps of the TimeSeriesCollection are taken.
+                If None, all timesteps of the TimeSeriesCollection are taken.
+            active_scenarios: The active scenarios of the model.
+                If None, all scenarios of the TimeSeriesCollection are taken.
         """
-        if active_timesteps is None:
+        if active_timesteps is None and active_scenarios is None:
             return self.reset()
 
-        if not np.all(np.isin(active_timesteps, self.all_timesteps)):
-            raise ValueError('active_timesteps must be a subset of the timesteps of the TimeSeriesCollection')
+        # Handle timesteps
+        if active_timesteps is not None:
+            if not np.all(np.isin(active_timesteps, self.all_timesteps)):
+                raise ValueError('active_timesteps must be a subset of the timesteps of the TimeSeriesCollection')
 
-        # Calculate derived timesteps
-        self._active_timesteps = active_timesteps
-        first_ts_index = np.where(self.all_timesteps == active_timesteps[0])[0][0]
-        last_ts_idx = np.where(self.all_timesteps == active_timesteps[-1])[0][0]
-        self._active_timesteps_extra = self.all_timesteps_extra[first_ts_index : last_ts_idx + 2]
-        self._active_hours_per_timestep = self.all_hours_per_timestep.isel(time=slice(first_ts_index, last_ts_idx + 1))
+            # Calculate derived timesteps
+            self._active_timesteps = active_timesteps
+            first_ts_index = np.where(self.all_timesteps == active_timesteps[0])[0][0]
+            last_ts_idx = np.where(self.all_timesteps == active_timesteps[-1])[0][0]
+            self._active_timesteps_extra = self.all_timesteps_extra[first_ts_index : last_ts_idx + 2]
+            self._active_hours_per_timestep = self.all_hours_per_timestep.isel(
+                time=slice(first_ts_index, last_ts_idx + 1)
+            )
+
+        # Handle scenarios
+        if active_scenarios is not None:
+            if self.all_scenarios is None:
+                logger.warning('This TimeSeriesCollection does not have scenarios. Ignoring scenarios setting.')
+            else:
+                if not np.all(np.isin(active_scenarios, self.all_scenarios)):
+                    raise ValueError('active_scenarios must be a subset of the scenarios of the TimeSeriesCollection')
+                self._active_scenarios = active_scenarios
 
         # Update all time series
-        self._update_time_series_timesteps()
+        self._update_time_series_active_states()
 
     def reset(self):
-        """Reset active timesteps to defaults for all time series."""
+        """Reset active timesteps and scenarios to defaults for all time series."""
         self._active_timesteps = None
         self._active_timesteps_extra = None
         self._active_hours_per_timestep = None
+        self._active_scenarios = None
 
         for time_series in self.time_series_data.values():
             time_series.reset()
@@ -782,6 +803,10 @@ class TimeSeriesCollection:
         # Ensure the correct time coordinates
         ds = ds.reindex(time=self.timesteps_extra)
 
+        # Add scenarios dimension if present
+        if self.scenarios is not None:
+            ds = ds.reindex(scenario=self.scenarios)
+
         ds.attrs.update(
             {
                 'timesteps_extra': f'{self.timesteps_extra[0]} ... {self.timesteps_extra[-1]} | len={len(self.timesteps_extra)}',
@@ -791,13 +816,17 @@ class TimeSeriesCollection:
 
         return ds
 
-    def _update_time_series_timesteps(self):
-        """Update active timesteps for all time series."""
+    def _update_time_series_active_states(self):
+        """Update active timesteps and scenarios for all time series."""
         for ts in self.time_series_data.values():
+            # Set timesteps
             if ts.needs_extra_timestep:
                 ts.active_timesteps = self.timesteps_extra
             else:
                 ts.active_timesteps = self.timesteps
+            # Set scenarios
+            if self.scenarios is not None:
+                ts.active_scenarios = self.scenarios
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex):
@@ -940,6 +969,11 @@ class TimeSeriesCollection:
     def hours_of_last_timestep(self) -> float:
         """Get the duration of the last timestep."""
         return float(self.hours_per_timestep[-1].item())
+
+    @property
+    def scenarios(self) -> Optional[pd.Index]:
+        """Get the active scenarios."""
+        return self.all_scenarios if self._active_scenarios is None else self._active_scenarios
 
     def __repr__(self):
         return f'TimeSeriesCollection:\n{self.to_dataset()}'
