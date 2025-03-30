@@ -4,6 +4,7 @@ It provides Datatypes, logging functionality, and some functions to transform da
 """
 
 import inspect
+import textwrap
 import json
 import logging
 import pathlib
@@ -1022,7 +1023,7 @@ class TimeSeries:
         Returns:
             Descriptive string with statistics
         """
-        return f"TimeSeries '{self.name}': {self.stats}"
+        return f'TimeSeries "{self.name}":\n{textwrap.indent(self.stats, "  ")}'
 
 
 class TimeSeriesCollection:
