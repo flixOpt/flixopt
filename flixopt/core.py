@@ -823,6 +823,96 @@ class TimeSeriesCollection:
 
         return ds
 
+    def get_scenario_data(self, scenario_name):
+        """
+        Extract data for a specific scenario as a DataFrame.
+
+        Args:
+            scenario_name: Name of the scenario to extract
+
+        Returns:
+            DataFrame containing all time series data for the specified scenario
+
+        Raises:
+            ValueError: If scenario_name doesn't exist or collection doesn't have scenarios
+        """
+        if self.scenarios is None:
+            raise ValueError("This TimeSeriesCollection doesn't have scenarios")
+
+        if scenario_name not in self.scenarios:
+            raise ValueError(f"Scenario '{scenario_name}' not found in collection")
+
+        # Create a DataFrame with data from all time series for this scenario
+        data_dict = {}
+        for name, ts in self.time_series_data.items():
+            if hasattr(ts, '_has_scenarios') and ts._has_scenarios:
+                data_dict[name] = ts.select_scenario(scenario_name).values
+            else:
+                # For time series without scenarios, use the same data for all scenarios
+                data_dict[name] = ts.active_data.values
+
+        # Create DataFrame with the right index
+        df = pd.DataFrame(data_dict, index=self.timesteps)
+        return df
+
+    def compare_scenarios(self, scenario1, scenario2, time_series_names=None):
+        """
+        Compare data between two scenarios and return the differences.
+
+        Args:
+            scenario1: First scenario to compare
+            scenario2: Second scenario to compare
+            time_series_names: Optional list of time series names to include (default: all)
+
+        Returns:
+            DataFrame with differences between scenarios
+        """
+        if self.scenarios is None:
+            raise ValueError("This TimeSeriesCollection doesn't have scenarios")
+
+        if scenario1 not in self.scenarios or scenario2 not in self.scenarios:
+            raise ValueError(f'Scenarios must exist in collection')
+
+        # Get DataFrames for each scenario
+        df1 = self.get_scenario_data(scenario1)
+        df2 = self.get_scenario_data(scenario2)
+
+        # Filter to specified time series if provided
+        if time_series_names is not None:
+            df1 = df1[time_series_names]
+            df2 = df2[time_series_names]
+
+        # Calculate differences
+        diff_df = df1 - df2
+        diff_df.name = f'Difference ({scenario1} - {scenario2})'
+
+        return diff_df
+
+    def scenario_summary(self):
+        """
+        Generate a summary of all scenarios in the collection.
+
+        Returns:
+            DataFrame with statistics for each time series by scenario
+        """
+        if self.scenarios is None or len(self.scenarios) <= 1:
+            raise ValueError("This TimeSeriesCollection doesn't have multiple scenarios")
+
+        # Create multi-level columns for the summary
+        index = pd.MultiIndex.from_product([self.time_series_data.keys(), ['mean', 'min', 'max', 'std']])
+        summary = pd.DataFrame(index=self.scenarios, columns=index)
+
+        # Calculate statistics for each time series in each scenario
+        for scenario in self.scenarios:
+            df = self.get_scenario_data(scenario)
+
+            for ts_name in self.time_series_data.keys():
+                if ts_name in df.columns:
+                    summary.loc[scenario, (ts_name, 'mean')] = df[ts_name].mean()
+                    summary.loc[scenario, (ts_name, 'min')] = df[ts_name].min()
+                    summary.loc[scenario, (ts_name, 'max')] = df[ts_name].max()
+                    summary.loc[scenario, (ts_name, 'std')] = df[ts_name].std()
+
     def _update_time_series_active_states(self):
         """Update active timesteps and scenarios for all time series."""
         for ts in self.time_series_data.values():
