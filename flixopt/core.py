@@ -589,7 +589,7 @@ class DataConverter:
             ConversionError: If the DataArray time coordinates aren't compatible with timesteps
         """
         # Ensure the time dimension is compatible
-        if not set(da.coords['time'].values).issubset(set(timesteps)):
+        if not np.array_equal(da.coords['time'].values, timesteps.values):
             raise ConversionError("DataArray time coordinates aren't compatible with timesteps")
 
         # Broadcast to scenarios
