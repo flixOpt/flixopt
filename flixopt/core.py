@@ -1028,12 +1028,12 @@ class TimeSeries:
         return f'TimeSeries "{self.name}":\n{textwrap.indent(self.stats, "  ")}'
 
 
-class TimeSeriesCollection:
+class TimeSeriesAllocator:
     """
-    Collection of TimeSeries objects with shared timestep management.
+    Simplified central manager for time series data with reference tracking.
 
-    TimeSeriesCollection handles multiple TimeSeries objects with synchronized
-    timesteps, provides operations on collections, and manages extra timesteps.
+    Provides a way to store time series data and work with subsets of dimensions
+    that automatically update all references when changed.
     """
 
     def __init__(
@@ -1043,17 +1043,7 @@ class TimeSeriesCollection:
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None,
     ):
-        """
-        Args:
-            timesteps: The timesteps of the Collection.
-            scenarios: The scenarios of the Collection.
-            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
-            hours_of_previous_timesteps: The duration of previous timesteps.
-                If None, the first time increment of time_series is used.
-                This is needed to calculate previous durations (for example consecutive_on_hours).
-                If you use an array, take care that its long enough to cover all previous values!
-        """
-        # Prepare and validate timesteps
+        """Initialize a TimeSeriesAllocator."""
         self._validate_timesteps(timesteps)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
@@ -1064,360 +1054,147 @@ class TimeSeriesCollection:
         self.all_timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
         self.all_hours_per_timestep = self.calculate_hours_per_timestep(self.all_timesteps_extra)
 
-        # Active timestep tracking
-        self._active_timesteps = None
-        self._active_timesteps_extra = None
-        self._active_hours_per_timestep = None
-
-        # Scenarios
         self.all_scenarios = scenarios
-        self._active_scenarios = None
 
-        # Dictionary of time series by name
-        self.time_series_data: Dict[str, TimeSeries] = {}
+        # Storage for all data arrays
+        self._data_arrays: Dict[str, xr.DataArray] = {}
 
-        # Aggregation
-        self.group_weights: Dict[str, float] = {}
-        self.weights: Dict[str, float] = {}
+        # Series that need extra timestep
+        self._has_extra_timestep: Dict[str, bool] = {}
 
-    @classmethod
-    def with_uniform_timesteps(
-        cls, start_time: pd.Timestamp, periods: int, freq: str, hours_per_step: Optional[float] = None
-    ) -> 'TimeSeriesCollection':
-        """Create a collection with uniform timesteps."""
-        timesteps = pd.date_range(start_time, periods=periods, freq=freq, name='time')
-        return cls(timesteps, hours_of_previous_timesteps=hours_per_step)
+        # Active subset selectors
+        self._selection: Dict[str, Any] = {}
 
-    def create_time_series(
-        self, data: Union[NumericData, TimeSeriesData], name: str, needs_extra_timestep: bool = False
-    ) -> TimeSeries:
+    def add_data_array(
+        self,
+        name: str,
+        data: NumericData,
+        needs_extra_timestep: bool = False,
+    ) -> xr.DataArray:
         """
-        Creates a TimeSeries from the given data and adds it to the collection.
+        Add a new data array to the allocator.
 
         Args:
-            data: The data to create the TimeSeries from.
-            name: The name of the TimeSeries.
-            needs_extra_timestep: Whether to create an additional timestep at the end of the timesteps.
+            name: Unique name for the data array
+            data: Data values
+            needs_extra_timestep: Whether this series requires an extra timestep
 
         Returns:
-            The created TimeSeries.
+            Reference to the added data array
         """
-        # Check for duplicate name
-        if name in self.time_series_data:
-            raise ValueError(f"TimeSeries '{name}' already exists in this collection")
-
-        # Determine which timesteps to use
-        timesteps_to_use = self.timesteps_extra if needs_extra_timestep else self.timesteps
-
-        # Create the time series
-        if isinstance(data, TimeSeriesData):
-            time_series = TimeSeries.from_datasource(
-                name=name,
-                data=data.data,
-                timesteps=timesteps_to_use,
-                scenarios=self.scenarios,
-                aggregation_weight=data.agg_weight,
-                aggregation_group=data.agg_group,
-                needs_extra_timestep=needs_extra_timestep,
-            )
-            # Connect the user time series to the created TimeSeries
-            data.label = name
-        else:
-            time_series = TimeSeries.from_datasource(
-                name=name,
-                data=data,
-                timesteps=timesteps_to_use,
-                scenarios=self.scenarios,
-                needs_extra_timestep=needs_extra_timestep,
-            )
-
-        # Add to the collection
-        self.add_time_series(time_series)
-
-        return time_series
-
-    def calculate_aggregation_weights(self) -> Dict[str, float]:
-        """Calculate and return aggregation weights for all time series."""
-        self.group_weights = self._calculate_group_weights()
-        self.weights = self._calculate_weights()
-
-        if np.all(np.isclose(list(self.weights.values()), 1, atol=1e-6)):
-            logger.info('All Aggregation weights were set to 1')
-
-        return self.weights
-
-    def activate_timesteps(  # TODO: rename
-        self, active_timesteps: Optional[pd.DatetimeIndex] = None, active_scenarios: Optional[pd.Index] = None
-    ):
-        """
-        Update active timesteps and scenarios for the collection and all time series.
-        If no arguments are provided, the active states are reset.
-
-        Args:
-            active_timesteps: The active timesteps of the model.
-                If None, all timesteps of the TimeSeriesCollection are taken.
-            active_scenarios: The active scenarios of the model.
-                If None, all scenarios of the TimeSeriesCollection are taken.
-        """
-        if active_timesteps is None and active_scenarios is None:
-            return self.reset()
-
-        # Handle timesteps
-        if active_timesteps is not None:
-            if not np.all(np.isin(active_timesteps, self.all_timesteps)):
-                raise ValueError('active_timesteps must be a subset of the timesteps of the TimeSeriesCollection')
-
-            # Calculate derived timesteps
-            self._active_timesteps = active_timesteps
-            first_ts_index = np.where(self.all_timesteps == active_timesteps[0])[0][0]
-            last_ts_idx = np.where(self.all_timesteps == active_timesteps[-1])[0][0]
-            self._active_timesteps_extra = self.all_timesteps_extra[first_ts_index : last_ts_idx + 2]
-            self._active_hours_per_timestep = self.all_hours_per_timestep.isel(
-                time=slice(first_ts_index, last_ts_idx + 1)
-            )
-
-        # Handle scenarios
-        if active_scenarios is not None:
-            if self.all_scenarios is None:
-                logger.warning('This TimeSeriesCollection does not have scenarios. Ignoring scenarios setting.')
-            else:
-                if not np.all(np.isin(active_scenarios, self.all_scenarios)):
-                    raise ValueError('active_scenarios must be a subset of the scenarios of the TimeSeriesCollection')
-                self._active_scenarios = active_scenarios
-
-        # Update all time series
-        self._update_time_series_active_states()
-
-    def reset(self):
-        """Reset active timesteps and scenarios to defaults for all time series."""
-        self._active_timesteps = None
-        self._active_timesteps_extra = None
-        self._active_hours_per_timestep = None
-        self._active_scenarios = None
-
-        for time_series in self.time_series_data.values():
-            time_series.reset()
-
-    def restore_data(self):
-        """Restore original data for all time series."""
-        for time_series in self.time_series_data.values():
-            time_series.restore_data()
-
-    def add_time_series(self, time_series: TimeSeries):
-        """Add an existing TimeSeries to the collection."""
-        if time_series.name in self.time_series_data:
-            raise ValueError(f"TimeSeries '{time_series.name}' already exists in this collection")
-
-        self.time_series_data[time_series.name] = time_series
-
-    def insert_new_data(self, data: pd.DataFrame, include_extra_timestep: bool = False):
-        """
-        Update time series with new data from a DataFrame.
-
-        Args:
-            data: DataFrame containing new data with timestamps as index
-            include_extra_timestep: Whether the provided data already includes the extra timestep, by default False
-        """
-        if not isinstance(data, pd.DataFrame):
-            raise TypeError(f'data must be a pandas DataFrame, got {type(data).__name__}')
-
-        # Check if the DataFrame index matches the expected timesteps
-        expected_timesteps = self.timesteps_extra if include_extra_timestep else self.timesteps
-        if not data.index.equals(expected_timesteps):
-            raise ValueError(
-                f'DataFrame index must match {"collection timesteps with extra timestep" if include_extra_timestep else "collection timesteps"}'
-            )
-
-        for name, ts in self.time_series_data.items():
-            if name in data.columns:
-                if not ts.needs_extra_timestep:
-                    # For time series without extra timestep
-                    if include_extra_timestep:
-                        # If data includes extra timestep but series doesn't need it, exclude the last point
-                        ts.stored_data = data[name].iloc[:-1]
-                    else:
-                        # Use data as is
-                        ts.stored_data = data[name]
-                else:
-                    # For time series with extra timestep
-                    if include_extra_timestep:
-                        # Data already includes extra timestep
-                        ts.stored_data = data[name]
-                    else:
-                        # Need to add extra timestep - extrapolate from the last value
-                        extra_step_value = data[name].iloc[-1]
-                        extra_step_index = pd.DatetimeIndex([self.timesteps_extra[-1]], name='time')
-                        extra_step_series = pd.Series([extra_step_value], index=extra_step_index)
-
-                        # Combine the regular data with the extra timestep
-                        ts.stored_data = pd.concat([data[name], extra_step_series])
-
-                logger.debug(f'Updated data for {name}')
-
-    def to_dataframe(
-        self, filtered: Literal['all', 'constant', 'non_constant'] = 'non_constant', include_extra_timestep: bool = True
-    ) -> pd.DataFrame:
-        """
-        Convert collection to DataFrame with optional filtering and timestep control.
-
-        Args:
-            filtered: Filter time series by variability, by default 'non_constant'
-            include_extra_timestep: Whether to include the extra timestep in the result, by default True
-
-        Returns:
-            DataFrame representation of the collection
-        """
-        include_constants = filtered != 'non_constant'
-        ds = self.to_dataset(include_constants=include_constants)
-
-        if not include_extra_timestep:
-            ds = ds.isel(time=slice(None, -1))
-
-        df = ds.to_dataframe()
-
-        # Apply filtering
-        if filtered == 'all':
-            return df
-        elif filtered == 'constant':
-            return df.loc[:, df.nunique() == 1]
-        elif filtered == 'non_constant':
-            return df.loc[:, df.nunique() > 1]
-        else:
-            raise ValueError("filtered must be one of: 'all', 'constant', 'non_constant'")
-
-    def to_dataset(self, include_constants: bool = True) -> xr.Dataset:
-        """
-        Combine all time series into a single Dataset with all timesteps.
-
-        Args:
-            include_constants: Whether to include time series with constant values, by default True
-
-        Returns:
-            Dataset containing all selected time series with all timesteps
-        """
-        # Determine which series to include
-        if include_constants:
-            series_to_include = self.time_series_data.values()
-        else:
-            series_to_include = self.non_constants
-
-        # Create individual datasets and merge them
-        ds = xr.merge([ts.active_data.to_dataset(name=ts.name) for ts in series_to_include])
-
-        # Ensure the correct time coordinates
-        ds = ds.reindex(time=self.timesteps_extra)
-
-        # Add scenarios dimension if present
-        if self.scenarios is not None:
-            ds = ds.reindex(scenario=self.scenarios)
-
-        ds.attrs.update(
-            {
-                'timesteps_extra': f'{self.timesteps_extra[0]} ... {self.timesteps_extra[-1]} | len={len(self.timesteps_extra)}',
-                'hours_per_timestep': self._format_stats(self.hours_per_timestep),
-            }
+        data_array = DataConverter.as_dataarray(
+            data,
+            self.all_timesteps_extra if needs_extra_timestep else self.all_timesteps,
+            self.all_scenarios
         )
 
-        return ds
+        # Store the data array
+        self._data_arrays[name] = data_array
+        self._has_extra_timestep[name] = needs_extra_timestep
 
-    def get_scenario_data(self, scenario_name):
+        # Return reference to the stored data
+        return self.get_reference(name)
+
+    def get_reference(self, name: str) -> xr.DataArray:
         """
-        Extract data for a specific scenario as a DataFrame.
+        Get a reference to a data array, applying the active subset.
 
         Args:
-            scenario_name: Name of the scenario to extract
+            name: Name of the data array
 
         Returns:
-            DataFrame containing all time series data for the specified scenario
-
-        Raises:
-            ValueError: If scenario_name doesn't exist or collection doesn't have scenarios
+            DataArray reference with active subset applied
         """
-        if self.scenarios is None:
-            raise ValueError("This TimeSeriesCollection doesn't have scenarios")
+        if name not in self._data_arrays:
+            raise KeyError(f"Data array '{name}' not found in allocator")
 
-        if scenario_name not in self.scenarios:
-            raise ValueError(f"Scenario '{scenario_name}' not found in collection")
+        data_array = self._data_arrays[name]
 
-        # Create a DataFrame with data from all time series for this scenario
-        data_dict = {}
-        for name, ts in self.time_series_data.items():
-            data_dict[name] = ts.active_data.sel(scenario=scenario_name).values
+        # Apply the active subset if any
+        if self._selection:
+            # Filter selector to only include dimensions in this data array
+            valid_selector = {dim: sel for dim, sel in self._selection.items() if dim in data_array.dims}
+            if valid_selector:
+                return data_array.sel(**valid_selector)
 
-        # Create DataFrame with the right index
-        df = pd.DataFrame(data_dict, index=self.timesteps)
-        return df
+        return data_array
 
-    def compare_scenarios(self, scenario1, scenario2, time_series_names=None):
+
+    def set_selection(self, dimension: str, selector: Any):
         """
-        Compare data between two scenarios and return the differences.
+        Set active subset for a specific dimension.
 
         Args:
-            scenario1: First scenario to compare
-            scenario2: Second scenario to compare
-            time_series_names: Optional list of time series names to include (default: all)
+            dimension: Name of dimension to filter
+            selector: Value or slice to select
+        """
+        self._selection[dimension] = selector
+
+    def clear_selection(self, dimension: Optional[str] = None):
+        """
+        Clear active subset for a dimension or all dimensions.
+
+        Args:
+            dimension: Specific dimension to clear, or None to clear all
+        """
+        if dimension is None:
+            self._selection = {}
+        elif dimension in self._selection:
+            del self._selection[dimension]
+
+    def update_data(self, name: str, new_data: NumericData):
+        """
+        Update an existing data array with new values.
+
+        Args:
+            name: Name of the data array to update
+            new_data: New data values
+        """
+        if name not in self._data_arrays:
+            raise KeyError(f"Data array '{name}' not found in allocator")
+
+        # Handle different data types
+        if isinstance(new_data, xr.DataArray):
+            # Check if dimensions match
+            if new_data.dims != self._data_arrays[name].dims:
+                raise ValueError(f'Dimension mismatch: {new_data.dims} != {self._data_arrays[name].dims}')
+
+            # Update values
+            self._data_arrays[name].values = new_data.values
+        else:
+            # For other types, just update the values
+            self._data_arrays[name].values = np.asarray(new_data)
+
+    def activate_timesteps(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
+        """
+        Set active subset for timesteps and scenarios.
+
+        Args:
+            timesteps: Timesteps to activate, or None to clear
+            scenarios: Scenarios to activate, or None to clear
+        """
+        if timesteps is None:
+            self.clear_selection('time')
+        else:
+            self.set_selection('time', timesteps)
+
+        if scenarios is None:
+            self.clear_selection('scenario')
+        else:
+            self.set_selection('scenario', scenarios)
+
+    def __getitem__(self, name: str) -> xr.DataArray:
+        """
+        Get a reference to a data array by name.
+
+        Args:
+            name: Name of the data array
 
         Returns:
-            DataFrame with differences between scenarios
+            DataArray reference with active subset applied
         """
-        if self.scenarios is None:
-            raise ValueError("This TimeSeriesCollection doesn't have scenarios")
+        return self.get_reference(name)
 
-        if scenario1 not in self.scenarios or scenario2 not in self.scenarios:
-            raise ValueError(f'Scenarios must exist in collection')
-
-        # Get DataFrames for each scenario
-        df1 = self.get_scenario_data(scenario1)
-        df2 = self.get_scenario_data(scenario2)
-
-        # Filter to specified time series if provided
-        if time_series_names is not None:
-            df1 = df1[time_series_names]
-            df2 = df2[time_series_names]
-
-        # Calculate differences
-        diff_df = df1 - df2
-        diff_df.name = f'Difference ({scenario1} - {scenario2})'
-
-        return diff_df
-
-    def scenario_summary(self):
-        """
-        Generate a summary of all scenarios in the collection.
-
-        Returns:
-            DataFrame with statistics for each time series by scenario
-        """
-        if self.scenarios is None or len(self.scenarios) <= 1:
-            raise ValueError("This TimeSeriesCollection doesn't have multiple scenarios")
-
-        # Create multi-level columns for the summary
-        index = pd.MultiIndex.from_product([self.time_series_data.keys(), ['mean', 'min', 'max', 'std']])
-        summary = pd.DataFrame(index=self.scenarios, columns=index)
-
-        # Calculate statistics for each time series in each scenario
-        for scenario in self.scenarios:
-            df = self.get_scenario_data(scenario)
-
-            for ts_name in self.time_series_data.keys():
-                if ts_name in df.columns:
-                    summary.loc[scenario, (ts_name, 'mean')] = df[ts_name].mean()
-                    summary.loc[scenario, (ts_name, 'min')] = df[ts_name].min()
-                    summary.loc[scenario, (ts_name, 'max')] = df[ts_name].max()
-                    summary.loc[scenario, (ts_name, 'std')] = df[ts_name].std()
-        return summary
-
-    def _update_time_series_active_states(self):
-        """Update active timesteps and scenarios for all time series."""
-        for ts in self.time_series_data.values():
-            # Set timesteps
-            if ts.needs_extra_timestep:
-                ts.active_timesteps = self.timesteps_extra
-            else:
-                ts.active_timesteps = self.timesteps
-            # Set scenarios
-            if self.scenarios is not None:
-                ts.active_scenarios = self.scenarios
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex):
@@ -1469,127 +1246,6 @@ class TimeSeriesCollection:
         return xr.DataArray(
             data=hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=('time',), name='hours_per_step'
         )
-
-    def _calculate_group_weights(self) -> Dict[str, float]:
-        """Calculate weights for aggregation groups."""
-        # Count series in each group
-        groups = [ts.aggregation_group for ts in self.time_series_data.values() if ts.aggregation_group is not None]
-        group_counts = Counter(groups)
-
-        # Calculate weight for each group (1/count)
-        return {group: 1 / count for group, count in group_counts.items()}
-
-    def _calculate_weights(self) -> Dict[str, float]:
-        """Calculate weights for all time series."""
-        # Calculate weight for each time series
-        weights = {}
-        for name, ts in self.time_series_data.items():
-            if ts.aggregation_group is not None:
-                # Use group weight
-                weights[name] = self.group_weights.get(ts.aggregation_group, 1)
-            else:
-                # Use individual weight or default to 1
-                weights[name] = ts.aggregation_weight or 1
-
-        return weights
-
-    def _format_stats(self, data) -> str:
-        """Format statistics for a data array."""
-        if hasattr(data, 'values'):
-            values = data.values
-        else:
-            values = np.asarray(data)
-
-        mean_val = np.mean(values)
-        min_val = np.min(values)
-        max_val = np.max(values)
-
-        return f'mean: {mean_val:.2f}, min: {min_val:.2f}, max: {max_val:.2f}'
-
-    def __getitem__(self, name: str) -> TimeSeries:
-        """Get a TimeSeries by name."""
-        try:
-            return self.time_series_data[name]
-        except KeyError as e:
-            raise KeyError(f'TimeSeries "{name}" not found in the TimeSeriesCollection') from e
-
-    def __iter__(self) -> Iterator[TimeSeries]:
-        """Iterate through all TimeSeries in the collection."""
-        return iter(self.time_series_data.values())
-
-    def __len__(self) -> int:
-        """Get the number of TimeSeries in the collection."""
-        return len(self.time_series_data)
-
-    def __contains__(self, item: Union[str, TimeSeries]) -> bool:
-        """Check if a TimeSeries exists in the collection."""
-        if isinstance(item, str):
-            return item in self.time_series_data
-        elif isinstance(item, TimeSeries):
-            return item in self.time_series_data.values()
-        return False
-
-    @property
-    def non_constants(self) -> List[TimeSeries]:
-        """Get time series with varying values."""
-        return [ts for ts in self.time_series_data.values() if not ts.all_equal]
-
-    @property
-    def constants(self) -> List[TimeSeries]:
-        """Get time series with constant values."""
-        return [ts for ts in self.time_series_data.values() if ts.all_equal]
-
-    @property
-    def timesteps(self) -> pd.DatetimeIndex:
-        """Get the active timesteps."""
-        return self.all_timesteps if self._active_timesteps is None else self._active_timesteps
-
-    @property
-    def timesteps_extra(self) -> pd.DatetimeIndex:
-        """Get the active timesteps with extra step."""
-        return self.all_timesteps_extra if self._active_timesteps_extra is None else self._active_timesteps_extra
-
-    @property
-    def hours_per_timestep(self) -> xr.DataArray:
-        """Get the duration of each active timestep."""
-        return (
-            self.all_hours_per_timestep if self._active_hours_per_timestep is None else self._active_hours_per_timestep
-        )
-
-    @property
-    def hours_of_last_timestep(self) -> float:
-        """Get the duration of the last timestep."""
-        return float(self.hours_per_timestep[-1].item())
-
-    @property
-    def scenarios(self) -> Optional[pd.Index]:
-        """Get the active scenarios."""
-        return self.all_scenarios if self._active_scenarios is None else self._active_scenarios
-
-    def __repr__(self):
-        return f'TimeSeriesCollection:\n{self.to_dataset()}'
-
-    def __str__(self):
-        """Get a human-readable string representation."""
-        longest_name = max([len(time_series.name) for time_series in self.time_series_data.values()])
-
-        stats_summary = '\n'.join(
-            [
-                f'  - {time_series.name:<{longest_name}}: {get_numeric_stats(time_series.active_data)}'
-                for time_series in self.time_series_data.values()
-            ]
-        )
-
-        return (
-            f'TimeSeriesCollection with {len(self.time_series_data)} series\n'
-            f'  Time Range: {self.timesteps[0]} → {self.timesteps[-1]}\n'
-            f'  No. of timesteps: {len(self.timesteps)} + 1 extra\n'
-            f'  No. of scenarios: {len(self.scenarios) if self.scenarios is not None else "No Scenarios"}\n'
-            f'  Hours per timestep: {get_numeric_stats(self.hours_per_timestep)}\n'
-            f'  Time Series Data:\n'
-            f'{stats_summary}'
-        )
-
 
 def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10, by_scenario: bool = False) -> str:
     """
