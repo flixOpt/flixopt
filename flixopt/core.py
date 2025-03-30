@@ -1048,16 +1048,20 @@ class TimeSeriesAllocator:
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
         )
+        self.timesteps = timesteps
+        self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
+        self.hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra)
 
-        # Set up timesteps and hours
-        self.all_timesteps = timesteps
-        self.all_timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
-        self.all_hours_per_timestep = self.calculate_hours_per_timestep(self.all_timesteps_extra)
-
-        self.all_scenarios = scenarios
+        self.scenarios = scenarios
 
         # Storage for all data arrays
-        self._data_arrays: Dict[str, xr.DataArray] = {}
+        if scenarios is None:
+            self._dataset = xr.Dataset(coords={'time': self.timesteps})
+            self._dataset_extra = xr.Dataset(coords={'time': self.timesteps_extra})  # For series that need extra timestep
+
+        else:
+            self._dataset = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps})
+            self._dataset_extra = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})  # For series that need extra timestep
 
         # Series that need extra timestep
         self._has_extra_timestep: Dict[str, bool] = {}
@@ -1073,99 +1077,63 @@ class TimeSeriesAllocator:
     ) -> xr.DataArray:
         """
         Add a new data array to the allocator.
-
-        Args:
-            name: Unique name for the data array
-            data: Data values
-            needs_extra_timestep: Whether this series requires an extra timestep
-
-        Returns:
-            Reference to the added data array
         """
-        data_array = DataConverter.as_dataarray(
-            data,
-            self.all_timesteps_extra if needs_extra_timestep else self.all_timesteps,
-            self.all_scenarios
-        )
+        if name in self._dataset or name in self._dataset_extra:
+            raise KeyError(f"Data array '{name}' already exists in allocator")
 
-        # Store the data array
-        self._data_arrays[name] = data_array
+        # Choose which dataset to use
+        target_dataset = self._dataset_extra if needs_extra_timestep else self._dataset
+        target_timesteps = self.timesteps_extra if needs_extra_timestep else self.timesteps
+
+        # Convert to DataArray
+        data_array = DataConverter.as_dataarray(data, target_timesteps, self.scenarios)
+
+        # Add to the appropriate dataset
+        target_dataset[name] = data_array
+
+        # Track if it needs extra timestep
         self._has_extra_timestep[name] = needs_extra_timestep
 
-        # Return reference to the stored data
+        # Return reference
         return self.get_reference(name)
 
     def get_reference(self, name: str) -> xr.DataArray:
         """
         Get a reference to a data array, applying the active subset.
-
-        Args:
-            name: Name of the data array
-
-        Returns:
-            DataArray reference with active subset applied
         """
-        if name not in self._data_arrays:
+        # Check which dataset contains this variable
+        if name in self._dataset:
+            dataset = self._dataset
+        elif name in self._dataset_extra:
+            dataset = self._dataset_extra
+        else:
             raise KeyError(f"Data array '{name}' not found in allocator")
-
-        data_array = self._data_arrays[name]
 
         # Apply the active subset if any
         if self._selection:
-            # Filter selector to only include dimensions in this data array
-            valid_selector = {dim: sel for dim, sel in self._selection.items() if dim in data_array.dims}
+            # Filter selector to only include dimensions in this dataset
+            valid_selector = {dim: sel for dim, sel in self._selection.items() if dim in dataset.dims}
             if valid_selector:
-                return data_array.sel(**valid_selector)
+                # Get the subset of the dataset then extract the variable
+                return dataset.sel(**valid_selector)[name]
 
-        return data_array
+        # Return the variable directly
+        return dataset[name]
 
-
-    def set_selection(self, dimension: str, selector: Any):
+    def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
         """
-        Set active subset for a specific dimension.
+        Clear selection for timesteps and/or scenarios.
 
         Args:
-            dimension: Name of dimension to filter
-            selector: Value or slice to select
+            timesteps: Whether to clear timesteps selection
+            scenarios: Whether to clear scenarios selection
         """
-        self._selection[dimension] = selector
+        if timesteps:
+            self._selection['time'] = None
+        if scenarios:
+            self._selection['scenario'] = None
 
-    def clear_selection(self, dimension: Optional[str] = None):
-        """
-        Clear active subset for a dimension or all dimensions.
-
-        Args:
-            dimension: Specific dimension to clear, or None to clear all
-        """
-        if dimension is None:
-            self._selection = {}
-        elif dimension in self._selection:
-            del self._selection[dimension]
-
-    def update_data(self, name: str, new_data: NumericData):
-        """
-        Update an existing data array with new values.
-
-        Args:
-            name: Name of the data array to update
-            new_data: New data values
-        """
-        if name not in self._data_arrays:
-            raise KeyError(f"Data array '{name}' not found in allocator")
-
-        # Handle different data types
-        if isinstance(new_data, xr.DataArray):
-            # Check if dimensions match
-            if new_data.dims != self._data_arrays[name].dims:
-                raise ValueError(f'Dimension mismatch: {new_data.dims} != {self._data_arrays[name].dims}')
-
-            # Update values
-            self._data_arrays[name].values = new_data.values
-        else:
-            # For other types, just update the values
-            self._data_arrays[name].values = np.asarray(new_data)
-
-    def activate_timesteps(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
+    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
         """
         Set active subset for timesteps and scenarios.
 
@@ -1174,14 +1142,14 @@ class TimeSeriesAllocator:
             scenarios: Scenarios to activate, or None to clear
         """
         if timesteps is None:
-            self.clear_selection('time')
+            self.clear_selection(timesteps=True, scenarios=False)
         else:
-            self.set_selection('time', timesteps)
+            self._selection['time'] = timesteps
 
         if scenarios is None:
-            self.clear_selection('scenario')
+            self.clear_selection(timesteps=False, scenarios=True)
         else:
-            self.set_selection('scenario', scenarios)
+            self._selection['scenario'] = scenarios
 
     def __getitem__(self, name: str) -> xr.DataArray:
         """
@@ -1194,7 +1162,6 @@ class TimeSeriesAllocator:
             DataArray reference with active subset applied
         """
         return self.get_reference(name)
-
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex):
@@ -1246,6 +1213,7 @@ class TimeSeriesAllocator:
         return xr.DataArray(
             data=hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=('time',), name='hours_per_step'
         )
+
 
 def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10, by_scenario: bool = False) -> str:
     """
