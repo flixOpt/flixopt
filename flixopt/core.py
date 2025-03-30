@@ -4,10 +4,10 @@ It provides Datatypes, logging functionality, and some functions to transform da
 """
 
 import inspect
-import textwrap
 import json
 import logging
 import pathlib
+import textwrap
 from collections import Counter
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
 
@@ -1057,11 +1057,11 @@ class TimeSeriesAllocator:
         # Storage for all data arrays
         if scenarios is None:
             self._dataset = xr.Dataset(coords={'time': self.timesteps})
-            self._dataset_extra = xr.Dataset(coords={'time': self.timesteps_extra})  # For series that need extra timestep
+            self._dataset_extra = xr.Dataset(coords={'time': self.timesteps_extra})
 
         else:
             self._dataset = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps})
-            self._dataset_extra = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})  # For series that need extra timestep
+            self._dataset_extra = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})
 
         # Series that need extra timestep
         self._has_extra_timestep: Dict[str, bool] = {}
@@ -1095,30 +1095,7 @@ class TimeSeriesAllocator:
         self._has_extra_timestep[name] = needs_extra_timestep
 
         # Return reference
-        return self.get_reference(name)
-
-    def get_reference(self, name: str) -> xr.DataArray:
-        """
-        Get a reference to a data array, applying the active subset.
-        """
-        # Check which dataset contains this variable
-        if name in self._dataset:
-            dataset = self._dataset
-        elif name in self._dataset_extra:
-            dataset = self._dataset_extra
-        else:
-            raise KeyError(f"Data array '{name}' not found in allocator")
-
-        # Apply the active subset if any
-        if self._selection:
-            # Filter selector to only include dimensions in this dataset
-            valid_selector = {dim: sel for dim, sel in self._selection.items() if dim in dataset.dims}
-            if valid_selector:
-                # Get the subset of the dataset then extract the variable
-                return dataset.sel(**valid_selector)[name]
-
-        # Return the variable directly
-        return dataset[name]
+        return self[name]
 
     def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
         """
@@ -1129,9 +1106,9 @@ class TimeSeriesAllocator:
             scenarios: Whether to clear scenarios selection
         """
         if timesteps:
-            self._selection['time'] = None
+            self._selection['time'] = slice(None, None)
         if scenarios:
-            self._selection['scenario'] = None
+            self._selection['scenario'] = slice(None, None)
 
     def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
         """
@@ -1153,7 +1130,7 @@ class TimeSeriesAllocator:
 
     def __getitem__(self, name: str) -> xr.DataArray:
         """
-        Get a reference to a data array by name.
+        Get the selected data of a data array.
 
         Args:
             name: Name of the data array
@@ -1161,7 +1138,23 @@ class TimeSeriesAllocator:
         Returns:
             DataArray reference with active subset applied
         """
-        return self.get_reference(name)
+        if name in self._dataset:
+            dataset = self._dataset
+        elif name in self._dataset_extra:
+            dataset = self._dataset_extra
+        else:
+            raise KeyError(f"Data array '{name}' not found in allocator")
+
+        # Apply the active subset if any
+        if self._selection:
+            # Filter selector to only include dimensions in this dataset
+            valid_selector = {dim: sel for dim, sel in self._selection.items() if dim in dataset.dims}
+            if valid_selector:
+                # Get the subset of the dataset then extract the variable
+                return dataset.sel(**valid_selector)[name]
+
+        # Return the variable directly
+        return dataset[name]
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex):
