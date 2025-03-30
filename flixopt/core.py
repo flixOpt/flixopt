@@ -998,14 +998,48 @@ class TimeSeriesCollection:
         )
 
 
-def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10) -> str:
-    """Calculates the mean, median, min, max, and standard deviation of a numeric DataArray."""
+def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10, by_scenario: bool = False) -> str:
+    """
+    Calculates the mean, median, min, max, and standard deviation of a numeric DataArray.
+
+    Args:
+        data: The DataArray to analyze
+        decimals: Number of decimal places to show
+        padd: Padding for alignment
+        by_scenario: Whether to break down stats by scenario
+
+    Returns:
+        String representation of data statistics
+    """
     format_spec = f'>{padd}.{decimals}f' if padd else f'.{decimals}f'
+
+    # If by_scenario is True and there's a scenario dimension with multiple values
+    if by_scenario and 'scenario' in data.dims and data.sizes['scenario'] > 1:
+        results = []
+        for scenario in data.coords['scenario'].values:
+            scenario_data = data.sel(scenario=scenario)
+            if np.unique(scenario_data).size == 1:
+                results.append(f'  {scenario}: {scenario_data.item():{format_spec}} (constant)')
+            else:
+                mean = scenario_data.mean().item()
+                median = scenario_data.median().item()
+                min_val = scenario_data.min().item()
+                max_val = scenario_data.max().item()
+                std = scenario_data.std().item()
+                results.append(
+                    f'  {scenario}: {mean:{format_spec}} (mean), {median:{format_spec}} (median), '
+                    f'{min_val:{format_spec}} (min), {max_val:{format_spec}} (max), {std:{format_spec}} (std)'
+                )
+        return '\n'.join(['By scenario:'] + results)
+
+    # Standard logic for non-scenario data or aggregated stats
     if np.unique(data).size == 1:
         return f'{data.max().item():{format_spec}} (constant)'
+
     mean = data.mean().item()
     median = data.median().item()
     min_val = data.min().item()
     max_val = data.max().item()
     std = data.std().item()
+
     return f'{mean:{format_spec}} (mean), {median:{format_spec}} (median), {min_val:{format_spec}} (min), {max_val:{format_spec}} (max), {std:{format_spec}} (std)'
