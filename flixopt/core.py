@@ -106,7 +106,16 @@ class DataConverter:
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> None:
-        """Validate that timesteps is a properly named non-empty DatetimeIndex."""
+        """
+        Validate that timesteps is a properly named non-empty DatetimeIndex.
+
+        Args:
+            timesteps: The DatetimeIndex to validate
+
+        Raises:
+            ValueError: If timesteps is not a non-empty DatetimeIndex
+            ConversionError: If timesteps is not named 'time'
+        """
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
             raise ValueError(f'Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}')
         if timesteps.name != 'time':
@@ -114,15 +123,38 @@ class DataConverter:
 
     @staticmethod
     def _validate_scenarios(scenarios: pd.Index) -> None:
-        """Validate that scenarios is a properly named non-empty Index."""
+        """
+        Validate that scenarios is a properly named non-empty Index.
+
+        Args:
+            scenarios: The Index to validate
+
+        Raises:
+            ValueError: If scenarios is not a non-empty Index
+            ConversionError: If scenarios is not named 'scenario'
+        """
         if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
             raise ValueError(f'Scenarios must be a non-empty Index, got {type(scenarios).__name__}')
         if scenarios.name != 'scenario':
             raise ConversionError(f'Scenarios Index must be named "scenario", got {scenarios.name=}')
 
     @staticmethod
-    def _get_dimensions(timesteps: pd.DatetimeIndex, scenarios: Optional[pd.Index] = None):
-        """Create the coordinates, dimensions, and expected shape for the output DataArray."""
+    def _get_dimensions(
+        timesteps: pd.DatetimeIndex, scenarios: Optional[pd.Index] = None
+    ) -> Tuple[Dict[str, pd.Index], Tuple[str, ...], Tuple[int, ...]]:
+        """
+        Create the coordinates, dimensions, and expected shape for the output DataArray.
+
+        Args:
+            timesteps: The time index
+            scenarios: Optional scenario index
+
+        Returns:
+            Tuple containing:
+            - Dict mapping dimension names to coordinate indexes
+            - Tuple of dimension names
+            - Tuple of expected shape
+        """
         if scenarios is not None:
             coords = {'scenario': scenarios, 'time': timesteps}
             dims = ('scenario', 'time')
@@ -135,13 +167,46 @@ class DataConverter:
         return coords, dims, expected_shape
 
     @staticmethod
-    def _convert_scalar(data, coords, dims):
-        """Convert a scalar value to a DataArray."""
+    def _convert_scalar(
+        data: Union[int, float, np.integer, np.floating], coords: Dict[str, pd.Index], dims: Tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Convert a scalar value to a DataArray.
+
+        Args:
+            data: The scalar value to convert
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray with the scalar value broadcast to all coordinates
+        """
         return xr.DataArray(data, coords=coords, dims=dims)
 
     @staticmethod
-    def _convert_dataframe(df, timesteps, scenarios, coords, dims):
-        """Convert a DataFrame to a DataArray."""
+    def _convert_dataframe(
+        df: pd.DataFrame,
+        timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index],
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+    ) -> xr.DataArray:
+        """
+        Convert a DataFrame to a DataArray.
+
+        Args:
+            df: The DataFrame to convert
+            timesteps: The time index
+            scenarios: Optional scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray created from the DataFrame
+
+        Raises:
+            ConversionError: If the DataFrame cannot be converted to the expected dimensions
+        """
         # Case 1: DataFrame with MultiIndex (scenario, time)
         if (
             isinstance(df.index, pd.MultiIndex)
@@ -157,11 +222,32 @@ class DataConverter:
             return DataConverter._convert_standard_dataframe(df, timesteps, scenarios, coords, dims)
 
         else:
-            raise ConversionError('Unsupported DataFrame index structure')
+            raise ConversionError(f'Unsupported DataFrame index structure: {df}')
 
     @staticmethod
-    def _convert_multi_index_dataframe(df, timesteps, scenarios, coords, dims):
-        """Convert a DataFrame with MultiIndex (scenario, time) to a DataArray."""
+    def _convert_multi_index_dataframe(
+        df: pd.DataFrame,
+        timesteps: pd.DatetimeIndex,
+        scenarios: pd.Index,
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+    ) -> xr.DataArray:
+        """
+        Convert a DataFrame with MultiIndex (scenario, time) to a DataArray.
+
+        Args:
+            df: The DataFrame with MultiIndex to convert
+            timesteps: The time index
+            scenarios: The scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray created from the MultiIndex DataFrame
+
+        Raises:
+            ConversionError: If the DataFrame's index doesn't match expected or has multiple columns
+        """
         # Validate that the index contains the expected values
         if not set(df.index.get_level_values('time')).issubset(set(timesteps)):
             raise ConversionError("DataFrame time index doesn't match or isn't a subset of timesteps")
@@ -181,8 +267,29 @@ class DataConverter:
         return xr.DataArray(reshaped, coords=coords, dims=dims)
 
     @staticmethod
-    def _convert_standard_dataframe(df, timesteps, scenarios, coords, dims):
-        """Convert a standard DataFrame with time index to a DataArray."""
+    def _convert_standard_dataframe(
+        df: pd.DataFrame,
+        timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index],
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+    ) -> xr.DataArray:
+        """
+        Convert a standard DataFrame with time index to a DataArray.
+
+        Args:
+            df: The DataFrame to convert
+            timesteps: The time index
+            scenarios: Optional scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray created from the DataFrame
+
+        Raises:
+            ConversionError: If the DataFrame's index doesn't match timesteps or has multiple columns
+        """
         if not df.index.equals(timesteps):
             raise ConversionError("DataFrame index doesn't match timesteps index")
         if len(df.columns) != 1:
@@ -198,8 +305,29 @@ class DataConverter:
         return xr.DataArray(values, coords=coords, dims=dims)
 
     @staticmethod
-    def _convert_series(series, timesteps, scenarios, coords, dims):
-        """Convert a Series to a DataArray."""
+    def _convert_series(
+        series: pd.Series,
+        timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index],
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+    ) -> xr.DataArray:
+        """
+        Convert a Series to a DataArray.
+
+        Args:
+            series: The Series to convert
+            timesteps: The time index
+            scenarios: Optional scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray created from the Series
+
+        Raises:
+            ConversionError: If the Series cannot be converted to the expected dimensions
+        """
         # Case 1: Series with MultiIndex (scenario, time)
         if (
             isinstance(series.index, pd.MultiIndex)
@@ -218,8 +346,29 @@ class DataConverter:
             raise ConversionError('Unsupported Series index structure')
 
     @staticmethod
-    def _convert_multi_index_series(series, timesteps, scenarios, coords, dims):
-        """Convert a Series with MultiIndex (scenario, time) to a DataArray."""
+    def _convert_multi_index_series(
+        series: pd.Series,
+        timesteps: pd.DatetimeIndex,
+        scenarios: pd.Index,
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+    ) -> xr.DataArray:
+        """
+        Convert a Series with MultiIndex (scenario, time) to a DataArray.
+
+        Args:
+            series: The Series with MultiIndex to convert
+            timesteps: The time index
+            scenarios: The scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray created from the MultiIndex Series
+
+        Raises:
+            ConversionError: If the Series' index doesn't match expected
+        """
         # Validate that the index contains the expected values
         if not set(series.index.get_level_values('time')).issubset(set(timesteps)):
             raise ConversionError("Series time index doesn't match or isn't a subset of timesteps")
@@ -235,8 +384,29 @@ class DataConverter:
         return xr.DataArray(reshaped, coords=coords, dims=dims)
 
     @staticmethod
-    def _convert_standard_series(series, timesteps, scenarios, coords, dims):
-        """Convert a standard Series with time index to a DataArray."""
+    def _convert_standard_series(
+        series: pd.Series,
+        timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index],
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+    ) -> xr.DataArray:
+        """
+        Convert a standard Series with time index to a DataArray.
+
+        Args:
+            series: The Series to convert
+            timesteps: The time index
+            scenarios: Optional scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray created from the Series
+
+        Raises:
+            ConversionError: If the Series' index doesn't match timesteps
+        """
         if not series.index.equals(timesteps):
             raise ConversionError("Series index doesn't match timesteps index")
 
@@ -250,8 +420,31 @@ class DataConverter:
         return xr.DataArray(values, coords=coords, dims=dims)
 
     @staticmethod
-    def _convert_ndarray(arr, timesteps, scenarios, coords, dims, expected_shape):
-        """Convert a numpy array to a DataArray."""
+    def _convert_ndarray(
+        arr: np.ndarray,
+        timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index],
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+        expected_shape: Tuple[int, ...],
+    ) -> xr.DataArray:
+        """
+        Convert a numpy array to a DataArray.
+
+        Args:
+            arr: The numpy array to convert
+            timesteps: The time index
+            scenarios: Optional scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+            expected_shape: Expected shape of the resulting array
+
+        Returns:
+            DataArray created from the numpy array
+
+        Raises:
+            ConversionError: If the array cannot be converted to the expected dimensions
+        """
         # Case 1: With scenarios - array can be 1D or 2D
         if scenarios is not None:
             return DataConverter._convert_ndarray_with_scenarios(
@@ -263,8 +456,31 @@ class DataConverter:
             return DataConverter._convert_ndarray_without_scenarios(arr, timesteps, coords, dims)
 
     @staticmethod
-    def _convert_ndarray_with_scenarios(arr, timesteps, scenarios, coords, dims, expected_shape):
-        """Convert a numpy array to a DataArray with scenarios dimension."""
+    def _convert_ndarray_with_scenarios(
+        arr: np.ndarray,
+        timesteps: pd.DatetimeIndex,
+        scenarios: pd.Index,
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+        expected_shape: Tuple[int, ...],
+    ) -> xr.DataArray:
+        """
+        Convert a numpy array to a DataArray with scenarios dimension.
+
+        Args:
+            arr: The numpy array to convert
+            timesteps: The time index
+            scenarios: The scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+            expected_shape: Expected shape (scenarios, timesteps)
+
+        Returns:
+            DataArray created from the numpy array
+
+        Raises:
+            ConversionError: If the array dimensions don't match expected
+        """
         if arr.ndim == 1:
             # 1D array should match timesteps and be broadcast to scenarios
             if arr.shape[0] != len(timesteps):
@@ -283,8 +499,24 @@ class DataConverter:
             raise ConversionError(f'Array must be 1D or 2D, got {arr.ndim}D')
 
     @staticmethod
-    def _convert_ndarray_without_scenarios(arr, timesteps, coords, dims):
-        """Convert a numpy array to a DataArray without scenarios dimension."""
+    def _convert_ndarray_without_scenarios(
+        arr: np.ndarray, timesteps: pd.DatetimeIndex, coords: Dict[str, pd.Index], dims: Tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Convert a numpy array to a DataArray without scenarios dimension.
+
+        Args:
+            arr: The numpy array to convert
+            timesteps: The time index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray created from the numpy array
+
+        Raises:
+            ConversionError: If the array isn't 1D or doesn't match timesteps length
+        """
         if arr.ndim != 1:
             raise ConversionError(f'Without scenarios, array must be 1D, got {arr.ndim}D')
         if arr.shape[0] != len(timesteps):
@@ -292,8 +524,29 @@ class DataConverter:
         return xr.DataArray(arr, coords=coords, dims=dims)
 
     @staticmethod
-    def _convert_dataarray(da, timesteps, scenarios, coords, dims):
-        """Convert an existing DataArray to a new DataArray with the desired dimensions."""
+    def _convert_dataarray(
+        da: xr.DataArray,
+        timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index],
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+    ) -> xr.DataArray:
+        """
+        Convert an existing DataArray to a new DataArray with the desired dimensions.
+
+        Args:
+            da: The DataArray to convert
+            timesteps: The time index
+            scenarios: Optional scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            New DataArray with the specified coordinates and dimensions
+
+        Raises:
+            ConversionError: If the DataArray dimensions don't match expected
+        """
         # Case 1: DataArray with only time dimension when scenarios are provided
         if scenarios is not None and set(da.dims) == {'time'}:
             return DataConverter._broadcast_time_only_dataarray(da, timesteps, scenarios, coords, dims)
@@ -314,8 +567,29 @@ class DataConverter:
         return result
 
     @staticmethod
-    def _broadcast_time_only_dataarray(da, timesteps, scenarios, coords, dims):
-        """Broadcast a time-only DataArray to include the scenarios dimension."""
+    def _broadcast_time_only_dataarray(
+        da: xr.DataArray,
+        timesteps: pd.DatetimeIndex,
+        scenarios: pd.Index,
+        coords: Dict[str, pd.Index],
+        dims: Tuple[str, ...],
+    ) -> xr.DataArray:
+        """
+        Broadcast a time-only DataArray to include the scenarios dimension.
+
+        Args:
+            da: The DataArray with only time dimension
+            timesteps: The time index
+            scenarios: The scenario index
+            coords: Dictionary mapping dimension names to coordinate indexes
+            dims: Tuple of dimension names
+
+        Returns:
+            DataArray with the data broadcast to include scenarios dimension
+
+        Raises:
+            ConversionError: If the DataArray time coordinates aren't compatible with timesteps
+        """
         # Ensure the time dimension is compatible
         if not set(da.coords['time'].values).issubset(set(timesteps)):
             raise ConversionError("DataArray time coordinates aren't compatible with timesteps")
