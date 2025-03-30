@@ -325,7 +325,7 @@ class TimeSeries:
         Returns:
             String representation of data statistics
         """
-        return get_numeric_stats(self.active_data, padd=0)
+        return get_numeric_stats(self.active_data, padd=0, by_scenario=(self._has_scenarios and len(self.active_scenarios) > 1))
 
     def _update_active_data(self):
         """
