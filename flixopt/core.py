@@ -53,6 +53,8 @@ class DataConverter:
     - Existing DataArrays
     """
 
+    #TODO: Allow DataFrame with scenarios as columns
+
     @staticmethod
     def as_dataarray(
         data: NumericData, timesteps: pd.DatetimeIndex, scenarios: Optional[pd.Index] = None

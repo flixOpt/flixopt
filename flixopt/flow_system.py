@@ -35,12 +35,14 @@ class FlowSystem:
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index] = None,
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
     ):
         """
         Args:
             timesteps: The timesteps of the model.
+            scenarios: The scenarios of the model.
             hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
             hours_of_previous_timesteps: The duration of previous timesteps.
                 If None, the first time increment of time_series is used.
@@ -49,6 +51,7 @@ class FlowSystem:
         """
         self.time_series_collection = TimeSeriesCollection(
             timesteps=timesteps,
+            scenarios=scenarios,
             hours_of_last_timestep=hours_of_last_timestep,
             hours_of_previous_timesteps=hours_of_previous_timesteps,
         )
