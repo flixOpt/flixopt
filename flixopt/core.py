@@ -46,16 +46,27 @@ class DataConverter:
     """
 
     @staticmethod
-    def as_dataarray(data: NumericData, timesteps: pd.DatetimeIndex) -> xr.DataArray:
+    def as_dataarray(data: NumericData, timesteps: pd.DatetimeIndex, scenarios: Optional[pd.Index] = None) -> xr.DataArray:
         """Convert data to xarray.DataArray with specified timesteps index."""
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
             raise ValueError(f'Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}')
         if not timesteps.name == 'time':
             raise ConversionError(f'DatetimeIndex is not named correctly. Must be named "time", got {timesteps.name=}')
 
-        coords = [timesteps]
-        dims = ['time']
-        expected_shape = (len(timesteps),)
+        if scenarios is not None:
+            if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
+                raise ValueError(f'Scenarios must be a non-empty Index, got {type(scenarios).__name__}')
+            if not scenarios.name == 'scenario':
+                raise ConversionError(f'Scenarios Index is not named correctly. Must be named "scenario", got {scenarios.name=}')
+
+        if scenarios is not None:
+            coords = [scenarios, timesteps]
+            dims = ['scenario', 'time']
+            expected_shape = (len(scenarios), len(timesteps))
+        else:
+            coords = [timesteps]
+            dims = ['time']
+            expected_shape = (len(timesteps),)
 
         try:
             if isinstance(data, (int, float, np.integer, np.floating)):
@@ -155,6 +166,7 @@ class TimeSeries:
         data: NumericData,
         name: str,
         timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index] = None,
         aggregation_weight: Optional[float] = None,
         aggregation_group: Optional[str] = None,
         needs_extra_timestep: bool = False,
@@ -166,6 +178,7 @@ class TimeSeries:
             data: The time series data
             name: The name of the TimeSeries
             timesteps: The timesteps of the TimeSeries
+            scenarios: The scenarios of the TimeSeries
             aggregation_weight: The weight in aggregation calculations
             aggregation_group: Group this TimeSeries belongs to for aggregation weight sharing
             needs_extra_timestep: Whether this series requires an extra timestep
@@ -174,7 +187,7 @@ class TimeSeries:
             A new TimeSeries instance
         """
         return cls(
-            DataConverter.as_dataarray(data, timesteps),
+            DataConverter.as_dataarray(data, timesteps, scenarios),
             name,
             aggregation_weight,
             aggregation_group,
@@ -478,12 +491,14 @@ class TimeSeriesCollection:
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index] = None,
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None,
     ):
         """
         Args:
             timesteps: The timesteps of the Collection.
+            scenarios: The scenarios of the Collection.
             hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
             hours_of_previous_timesteps: The duration of previous timesteps.
                 If None, the first time increment of time_series is used.
@@ -505,6 +520,10 @@ class TimeSeriesCollection:
         self._active_timesteps = None
         self._active_timesteps_extra = None
         self._active_hours_per_timestep = None
+
+        # Scenarios
+        self.all_scenarios = scenarios
+        self._active_scenarios = None
 
         # Dictionary of time series by name
         self.time_series_data: Dict[str, TimeSeries] = {}
