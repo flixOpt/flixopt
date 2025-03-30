@@ -73,7 +73,7 @@ class TestTimeSeries:
         multi_dim_data = xr.DataArray(
             [[1, 2, 3], [4, 5, 6]], coords={'dim1': [0, 1], 'time': sample_timesteps[:3]}, dims=['dim1', 'time']
         )
-        with pytest.raises(ValueError, match='dimensions of DataArray must be 1'):
+        with pytest.raises(ValueError, match='DataArray dimensions must be subset of'):
             TimeSeries(multi_dim_data, name='Multi-dim Series')
 
     def test_active_timesteps_getter_setter(self, sample_timeseries, sample_timesteps):
