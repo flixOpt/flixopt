@@ -819,7 +819,7 @@ class TimeSeries:
         Returns:
             String representation of data statistics
         """
-        return get_numeric_stats(self.active_data, padd=0, by_scenario=(self._has_scenarios and len(self.active_scenarios) > 1))
+        return get_numeric_stats(self.active_data, padd=0, by_scenario=True)
 
     def _update_active_data(self):
         """
@@ -1612,7 +1612,7 @@ def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10, by_
         for scenario in data.coords['scenario'].values:
             scenario_data = data.sel(scenario=scenario)
             if np.unique(scenario_data).size == 1:
-                results.append(f'  {scenario}: {scenario_data.item():{format_spec}} (constant)')
+                results.append(f'  {scenario}: {scenario_data.max().item():{format_spec}} (constant)')
             else:
                 mean = scenario_data.mean().item()
                 median = scenario_data.median().item()
