@@ -1340,11 +1340,7 @@ class TimeSeriesCollection:
         # Create a DataFrame with data from all time series for this scenario
         data_dict = {}
         for name, ts in self.time_series_data.items():
-            if hasattr(ts, '_has_scenarios') and ts._has_scenarios:
-                data_dict[name] = ts.select_scenario(scenario_name).values
-            else:
-                # For time series without scenarios, use the same data for all scenarios
-                data_dict[name] = ts.active_data.values
+            data_dict[name] = ts.active_data.sel(scenario=scenario_name).values
 
         # Create DataFrame with the right index
         df = pd.DataFrame(data_dict, index=self.timesteps)
@@ -1407,6 +1403,7 @@ class TimeSeriesCollection:
                     summary.loc[scenario, (ts_name, 'min')] = df[ts_name].min()
                     summary.loc[scenario, (ts_name, 'max')] = df[ts_name].max()
                     summary.loc[scenario, (ts_name, 'std')] = df[ts_name].std()
+        return summary
 
     def _update_time_series_active_states(self):
         """Update active timesteps and scenarios for all time series."""
