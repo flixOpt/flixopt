@@ -247,12 +247,14 @@ class TimeSeries:
             needs_extra_timestep: Whether this series requires an extra timestep
 
         Raises:
-            ValueError: If data doesn't have a 'time' index or has more than 1 dimension
+            ValueError: If data doesn't have a 'time' index or has unsupported dimensions
         """
         if 'time' not in data.indexes:
             raise ValueError(f'DataArray must have a "time" index. Got {data.indexes}')
-        if data.ndim > 1:
-            raise ValueError(f'Number of dimensions of DataArray must be 1. Got {data.ndim}')
+
+        allowed_dims = {'time', 'scenario'}
+        if not set(data.dims).issubset(allowed_dims):
+            raise ValueError(f'DataArray dimensions must be subset of {allowed_dims}. Got {data.dims}')
 
         self.name = name
         self.aggregation_weight = aggregation_weight
@@ -263,14 +265,21 @@ class TimeSeries:
         self._stored_data = data.copy(deep=True)
         self._backup = self._stored_data.copy(deep=True)
         self._active_timesteps = self._stored_data.indexes['time']
+
+        # Handle scenarios if present
+        self._has_scenarios = 'scenario' in data.dims
+        self._active_scenarios = self._stored_data.indexes.get('scenario', None)
+
         self._active_data = None
         self._update_active_data()
 
     def reset(self):
         """
-        Reset active timesteps to the full set of stored timesteps.
+        Reset active timesteps and scenarios to the full set of stored data.
         """
         self.active_timesteps = None
+        if self._has_scenarios:
+            self.active_scenarios = None
 
     def restore_data(self):
         """
@@ -320,9 +329,12 @@ class TimeSeries:
 
     def _update_active_data(self):
         """
-        Update the active data based on active_timesteps.
+        Update the active data based on active_timesteps and active_scenarios.
         """
-        self._active_data = self._stored_data.sel(time=self.active_timesteps)
+        if self._has_scenarios and self._active_scenarios is not None:
+            self._active_data = self._stored_data.sel(time=self.active_timesteps, scenario=self._active_scenarios)
+        else:
+            self._active_data = self._stored_data.sel(time=self.active_timesteps)
 
     @property
     def all_equal(self) -> bool:
@@ -351,6 +363,38 @@ class TimeSeries:
             self._active_timesteps = timesteps
         else:
             raise TypeError('active_timesteps must be a pandas DatetimeIndex or None')
+
+        self._update_active_data()
+
+    @property
+    def active_scenarios(self) -> Optional[pd.Index]:
+        """Get the current active scenarios."""
+        return self._active_scenarios
+
+    @active_scenarios.setter
+    def active_scenarios(self, scenarios: Optional[pd.Index]):
+        """
+        Set active_scenarios and refresh active_data.
+
+        Args:
+            scenarios: New scenarios to activate, or None to use all stored scenarios
+
+        Raises:
+            TypeError: If scenarios is not a pandas Index or None
+            ValueError: If scenarios is not a subset of stored scenarios
+        """
+        if not self._has_scenarios:
+            logger.warning('This TimeSeries does not have scenarios dimension. Ignoring scenarios setting.')
+            return
+
+        if scenarios is None:
+            self._active_scenarios = self.stored_data.indexes.get('scenario', None)
+        elif isinstance(scenarios, pd.Index):
+            if not scenarios.isin(self.stored_data.indexes['scenario']).all():
+                raise ValueError('active_scenarios must be a subset of the stored scenarios')
+            self._active_scenarios = scenarios
+        else:
+            raise TypeError('active_scenarios must be a pandas Index or None')
 
         self._update_active_data()
 
