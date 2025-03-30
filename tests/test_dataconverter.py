@@ -7,65 +7,69 @@ from flixopt.core import ConversionError, DataConverter  # Adjust this import to
 
 
 @pytest.fixture
-def sample_time_index(request):
-    index = pd.date_range('2024-01-01', periods=5, freq='D', name='time')
-    return index
+def sample_time_index():
+    return pd.date_range('2024-01-01', periods=5, freq='D', name='time')
 
 
-def test_scalar_conversion(sample_time_index):
-    # Test scalar conversion
-    result = DataConverter.as_dataarray(42, sample_time_index)
-    assert isinstance(result, xr.DataArray)
-    assert result.shape == (len(sample_time_index),)
-    assert result.dims == ('time',)
-    assert np.all(result.values == 42)
 
 
-def test_series_conversion(sample_time_index):
-    series = pd.Series([1, 2, 3, 4, 5], index=sample_time_index)
+class TestSingleDimensionConversion:
+    """Tests for converting data without scenarios (1D: time only)"""
 
-    # Test Series conversion
-    result = DataConverter.as_dataarray(series, sample_time_index)
-    assert isinstance(result, xr.DataArray)
-    assert result.shape == (5,)
-    assert result.dims == ('time',)
-    assert np.array_equal(result.values, series.values)
+    def test_scalar_conversion(self, sample_time_index):
+        # Test scalar conversion
+        result = DataConverter.as_dataarray(42, sample_time_index)
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == (len(sample_time_index),)
+        assert result.dims == ('time',)
+        assert np.all(result.values == 42)
 
+    def test_series_conversion(self, sample_time_index):
+        series = pd.Series([1, 2, 3, 4, 5], index=sample_time_index)
 
-def test_dataframe_conversion(sample_time_index):
-    # Create a single-column DataFrame
-    df = pd.DataFrame({'A': [1, 2, 3, 4, 5]}, index=sample_time_index)
+        # Test Series conversion
+        result = DataConverter.as_dataarray(series, sample_time_index)
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values, series.values)
 
-    # Test DataFrame conversion
-    result = DataConverter.as_dataarray(df, sample_time_index)
-    assert isinstance(result, xr.DataArray)
-    assert result.shape == (5,)
-    assert result.dims == ('time',)
-    assert np.array_equal(result.values.flatten(), df['A'].values)
+    def test_dataframe_conversion(self, sample_time_index):
+        # Create a single-column DataFrame
+        df = pd.DataFrame({'A': [1, 2, 3, 4, 5]}, index=sample_time_index)
 
+        # Test DataFrame conversion
+        result = DataConverter.as_dataarray(df, sample_time_index)
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values.flatten(), df['A'].values)
 
-def test_ndarray_conversion(sample_time_index):
-    # Test 1D array conversion
-    arr_1d = np.array([1, 2, 3, 4, 5])
-    result = DataConverter.as_dataarray(arr_1d, sample_time_index)
-    assert result.shape == (5,)
-    assert result.dims == ('time',)
-    assert np.array_equal(result.values, arr_1d)
+    def test_ndarray_conversion(self, sample_time_index):
+        # Test 1D array conversion
+        arr_1d = np.array([1, 2, 3, 4, 5])
+        result = DataConverter.as_dataarray(arr_1d, sample_time_index)
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values, arr_1d)
 
+    def test_dataarray_conversion(self, sample_time_index):
+        # Create a DataArray
+        original = xr.DataArray(
+            data=np.array([1, 2, 3, 4, 5]),
+            coords={'time': sample_time_index},
+            dims=['time']
+        )
 
-def test_dataarray_conversion(sample_time_index):
-    # Create a DataArray
-    original = xr.DataArray(data=np.array([1, 2, 3, 4, 5]), coords={'time': sample_time_index}, dims=['time'])
+        # Test DataArray conversion
+        result = DataConverter.as_dataarray(original, sample_time_index)
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values, original.values)
 
-    # Test DataArray conversion
-    result = DataConverter.as_dataarray(original, sample_time_index)
-    assert result.shape == (5,)
-    assert result.dims == ('time',)
-    assert np.array_equal(result.values, original.values)
-
-    # Ensure it's a copy
-    result[0] = 999
-    assert original[0].item() == 1  # Original should be unchanged
+        # Ensure it's a copy
+        result[0] = 999
+        assert original[0].item() == 1  # Original should be unchanged
 
 
 def test_invalid_inputs(sample_time_index):
