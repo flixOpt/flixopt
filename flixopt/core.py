@@ -557,13 +557,11 @@ class DataConverter:
 
         # Validate dimensions sizes
         for dim in dims:
-            if dim in da.dims and da.sizes[dim] != len(coords[dim]):
-                raise ConversionError(
-                    f"DataArray dimension '{dim}' length {da.sizes[dim]} doesn't match expected {len(coords[dim])}"
-                )
+            if not np.array_equal(da.coords[dim].values, coords[dim].values):
+                raise ConversionError(f"DataArray dimension '{dim}' doesn't match expected {coords[dim]}")
 
         # Create a new DataArray with our coordinates to ensure consistency
-        result = xr.DataArray(da.values, coords=coords, dims=dims)
+        result = xr.DataArray(da.values.copy(), coords=coords, dims=dims)
         return result
 
     @staticmethod
@@ -595,7 +593,7 @@ class DataConverter:
             raise ConversionError("DataArray time coordinates aren't compatible with timesteps")
 
         # Broadcast to scenarios
-        values = np.tile(da.values, (len(scenarios), 1))
+        values = np.tile(da.values.copy(), (len(scenarios), 1))
         return xr.DataArray(values, coords=coords, dims=dims)
 
 
