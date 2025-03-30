@@ -511,6 +511,13 @@ class TimeSeries:
             'shape': self.active_data.shape,
             'time_range': f'{self.active_timesteps[0]} to {self.active_timesteps[-1]}',
         }
+
+        # Add scenario information if present
+        if self._has_scenarios:
+            attrs['scenarios'] = f'{len(self.active_scenarios)} scenarios'
+        else:
+            attrs['scenarios'] = 'No scenarios'
+
         attr_str = ', '.join(f'{k}={repr(v)}' for k, v in attrs.items())
         return f'TimeSeries({attr_str})'
 
@@ -979,12 +986,13 @@ class TimeSeriesCollection:
         return f'TimeSeriesCollection:\n{self.to_dataset()}'
 
     def __str__(self):
-        longest_name = max([time_series.name for time_series in self.time_series_data], key=len)
+        """Get a human-readable string representation."""
+        longest_name = max([len(time_series.name) for time_series in self.time_series_data.values()])
 
         stats_summary = '\n'.join(
             [
-                f'  - {time_series.name:<{len(longest_name)}}: {get_numeric_stats(time_series.active_data)}'
-                for time_series in self.time_series_data
+                f'  - {time_series.name:<{longest_name}}: {get_numeric_stats(time_series.active_data)}'
+                for time_series in self.time_series_data.values()
             ]
         )
 
@@ -992,6 +1000,7 @@ class TimeSeriesCollection:
             f'TimeSeriesCollection with {len(self.time_series_data)} series\n'
             f'  Time Range: {self.timesteps[0]} → {self.timesteps[-1]}\n'
             f'  No. of timesteps: {len(self.timesteps)} + 1 extra\n'
+            f'  No. of scenarios: {len(self.scenarios) if self.scenarios is not None else "No Scenarios"}\n'
             f'  Hours per timestep: {get_numeric_stats(self.hours_per_timestep)}\n'
             f'  Time Series Data:\n'
             f'{stats_summary}'
