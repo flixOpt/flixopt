@@ -910,7 +910,7 @@ class TimeSeries:
         Args:
             value: New data to store
         """
-        new_data = DataConverter.as_dataarray(value, timesteps=self.active_timesteps)
+        new_data = DataConverter.as_dataarray(value, timesteps=self.active_timesteps, scenarios=self.active_scenarios)
 
         # Skip if data is unchanged to avoid overwriting backup
         if new_data.equals(self._stored_data):
