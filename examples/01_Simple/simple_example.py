@@ -118,3 +118,7 @@ if __name__ == '__main__':
 
     # Save results to file for later usage
     calculation.results.to_file()
+
+    # Launch a dashboard to explore the results
+    calculation.results.launch_dashboard()
+
