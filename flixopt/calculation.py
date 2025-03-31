@@ -183,8 +183,8 @@ class FullCalculation(Calculation):
 
     def _activate_time_series(self):
         self.flow_system.transform_data()
-        self.flow_system.time_series_allocator.activate_timesteps(
-            active_timesteps=self.active_timesteps,
+        self.flow_system.time_series_allocator.set_selection(
+            timesteps=self.active_timesteps
         )
 
 

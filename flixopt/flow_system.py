@@ -187,7 +187,7 @@ class FlowSystem:
         Args:
             constants_in_dataset: If True, constants are included as Dataset variables.
         """
-        ds = self.time_series_allocator.to_dataset(include_constants=constants_in_dataset)
+        ds = self.time_series_allocator.as_dataset()
         ds.attrs = self.as_dict(data_mode='name')
         return ds
 
@@ -293,10 +293,10 @@ class FlowSystem:
             data.restore_data()
             if data in self.time_series_allocator:
                 return data
-            return self.time_series_allocator.create_time_series(
+            return self.time_series_allocator.add_time_series(
                 data=data.active_data, name=name, needs_extra_timestep=needs_extra_timestep
             )
-        return self.time_series_allocator.create_time_series(
+        return self.time_series_allocator.add_time_series(
             data=data, name=name, needs_extra_timestep=needs_extra_timestep
         )
 
