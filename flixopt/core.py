@@ -1157,8 +1157,10 @@ class TimeSeriesAllocator:
         if timesteps is None:
             self.clear_selection(timesteps=True, scenarios=False)
         else:
+            self._validate_timesteps(timesteps, self._full_timesteps)
+
             self._selected_timesteps = timesteps
-            self._selected_hours_per_timestep = self._full_hours_per_timestep.isel(time=timesteps)
+            self._selected_hours_per_timestep = self._full_hours_per_timestep.sel(time=timesteps)
             self._selected_timesteps_extra = self._create_timesteps_with_extra(
                 timesteps, self._selected_hours_per_timestep.isel(time=-1).max().item()
             )
@@ -1266,8 +1268,21 @@ class TimeSeriesAllocator:
         return ts
 
     @staticmethod
-    def _validate_timesteps(timesteps: pd.DatetimeIndex):
-        """Validate timesteps format and rename if needed."""
+    def _validate_timesteps(timesteps: pd.DatetimeIndex, present_timesteps: Optional[pd.DatetimeIndex] = None):
+        """
+        Validate timesteps format and rename if needed.
+        Args:
+            timesteps: The timesteps to validate
+            present_timesteps: The timesteps that are present in the dataset
+
+        Raises:
+            ValueError: If timesteps is not a pandas DatetimeIndex
+            ValueError: If timesteps is not at least 2 timestamps
+            ValueError: If timesteps has a different name than 'time'
+            ValueError: If timesteps is not sorted
+            ValueError: If timesteps contains duplicates
+            ValueError: If timesteps is not a subset of present_timesteps
+        """
         if not isinstance(timesteps, pd.DatetimeIndex):
             raise TypeError('timesteps must be a pandas DatetimeIndex')
 
@@ -1278,6 +1293,18 @@ class TimeSeriesAllocator:
         if timesteps.name != 'time':
             logger.warning('Renamed timesteps to "time" (was "%s")', timesteps.name)
             timesteps.name = 'time'
+
+        # Ensure timesteps is sorted
+        if not timesteps.is_monotonic_increasing:
+            raise ValueError('timesteps must be sorted')
+
+        # Ensure timesteps has no duplicates
+        if len(timesteps) != len(timesteps.drop_duplicates()):
+            raise ValueError('timesteps must not contain duplicates')
+
+        # Ensure timesteps is a subset of present_timesteps
+        if present_timesteps is not None and not set(timesteps).issubset(set(present_timesteps)):
+            raise ValueError('timesteps must be a subset of present_timesteps')
 
     @staticmethod
     def _create_timesteps_with_extra(
