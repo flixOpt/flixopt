@@ -1270,6 +1270,33 @@ class TimeSeriesAllocator:
 
         return ts
 
+    def calculate_aggregation_weights(self) -> Dict[str, float]:
+        """Calculate and return aggregation weights for all time series."""
+        group_weights = self._calculate_group_weights()
+
+        weights = {}
+        for name, ts in self._time_series.items():
+            if ts.aggregation_group is not None:
+                # Use group weight
+                weights[name] = group_weights.get(ts.aggregation_group, 1)
+            else:
+                # Use individual weight or default to 1
+                weights[name] = ts.aggregation_weight or 1
+
+        if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
+            logger.info('All Aggregation weights were set to 1')
+
+        return weights
+
+    def _calculate_group_weights(self) -> Dict[str, float]:
+        """Calculate weights for aggregation groups."""
+        # Count series in each group
+        groups = [ts.aggregation_group for ts in self._time_series.values() if ts.aggregation_group is not None]
+        group_counts = Counter(groups)
+
+        # Calculate weight for each group (1/count)
+        return {group: 1 / count for group, count in group_counts.items()}
+
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex, present_timesteps: Optional[pd.DatetimeIndex] = None):
         """

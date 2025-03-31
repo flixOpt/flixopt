@@ -217,6 +217,8 @@ class AggregatedCalculation(FullCalculation):
                 list with indices, which should be used for calculation. If None, then all timesteps are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
+        if flow_system.time_series_allocator.scenarios is not None:
+            raise ValueError('Aggregation is not supported for scenarios yet. Please use FullCalculation instead.')
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize
@@ -272,9 +274,7 @@ class AggregatedCalculation(FullCalculation):
 
         # Aggregation - creation of aggregated timeseries:
         self.aggregation = Aggregation(
-            original_data=self.flow_system.time_series_allocator.to_dataframe(
-                include_extra_timestep=False
-            ),  # Exclude last row (NaN)
+            original_data=self.flow_system.time_series_allocator.as_dataset(without_extra_timestep=True).to_dataframe(),
             hours_per_time_step=float(dt_min),
             hours_per_period=self.aggregation_parameters.hours_per_period,
             nr_of_periods=self.aggregation_parameters.nr_of_periods,
@@ -286,9 +286,11 @@ class AggregatedCalculation(FullCalculation):
         self.aggregation.cluster()
         self.aggregation.plot(show=True, save=self.folder / 'aggregation.html')
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
-            self.flow_system.time_series_allocator.insert_new_data(
-                self.aggregation.aggregated_data, include_extra_timestep=False
-            )
+            for col in self.aggregation.aggregated_data.columns:
+                data = self.aggregation.aggregated_data[col].values
+                if col in self.flow_system.time_series_allocator._has_extra_timestep:
+                    data = np.append(data, data[-1])
+                self.flow_system.time_series_allocator.update_time_series(col, data)
         self.durations['aggregation'] = round(timeit.default_timer() - t_start_agg, 2)
 
 
@@ -327,8 +329,8 @@ class SegmentedCalculation(Calculation):
         self.nr_of_previous_values = nr_of_previous_values
         self.sub_calculations: List[FullCalculation] = []
 
-        self.all_timesteps = self.flow_system.time_series_allocator.all_timesteps
-        self.all_timesteps_extra = self.flow_system.time_series_allocator.all_timesteps_extra
+        self.all_timesteps = self.flow_system.time_series_allocator._full_timesteps
+        self.all_timesteps_extra = self.flow_system.time_series_allocator._full_timesteps_extra
 
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
