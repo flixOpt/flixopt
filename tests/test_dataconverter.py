@@ -3,7 +3,11 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt.core import ConversionError, DataConverter, TimeSeries  # Adjust this import to match your project structure
+from flixopt.core import (  # Adjust this import to match your project structure
+    ConversionError,
+    DataConverter,
+    TimeSeries,
+)
 
 
 @pytest.fixture
@@ -821,7 +825,7 @@ class TestScenarioReindexing:
 
         # Create values - order should match the source index
         values = []
-        for i, scenario in enumerate(source_scenarios):
+        for i, _ in enumerate(source_scenarios):
             values.extend([i * 10 + j for j in range(1, len(sample_time_index) + 1)])
 
         # Create Series

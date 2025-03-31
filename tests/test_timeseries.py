@@ -709,7 +709,7 @@ class TestTimeSeriesAllocatorWithScenarios:
         """Test __contains__ and __iter__ methods."""
         # Add some time series
         ts1 = sample_scenario_allocator.add_time_series('series1', 42)
-        ts2 = sample_scenario_allocator.add_time_series('series2', 10)
+        sample_scenario_allocator.add_time_series('series2', 10)
 
         # Test __contains__
         assert 'series1' in sample_scenario_allocator
@@ -718,7 +718,7 @@ class TestTimeSeriesAllocatorWithScenarios:
 
         # Test behavior with invalid type
         with pytest.raises(TypeError):
-            42 in sample_scenario_allocator
+            assert 42 in sample_scenario_allocator
 
     def test_update_time_series_with_scenarios(self, sample_scenario_allocator, sample_scenario_index):
         """Test updating a time series with scenarios."""
