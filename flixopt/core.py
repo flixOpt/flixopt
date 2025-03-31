@@ -836,11 +836,27 @@ class TimeSeries:
         return self._stored_data.sel(**self._valid_selector)
 
     @property
+    def active_timesteps(self) -> pd.DatetimeIndex:
+        """Get the current active timesteps."""
+        if self._selected_timesteps is None:
+            return self._stored_data.indexes['time']
+        return self._selected_timesteps
+
+    @property
+    def active_scenarios(self) -> Optional[pd.Index]:
+        """Get the current active scenarios."""
+        if not self._has_scenarios:
+            return None
+        if self._selected_scenarios is None:
+            return self._stored_data.indexes['scenario']
+        return self._selected_scenarios
+
+    @property
     def stored_data(self) -> xr.DataArray:
         """Get a copy of the full stored data."""
         return self._stored_data.copy()
 
-    def update_stored_data(self, value: NumericData):
+    def update_stored_data(self, value: xr.DataArray) -> None:
         """
         Update stored_data and refresh selected_data.
 
