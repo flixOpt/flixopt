@@ -762,8 +762,9 @@ class TimeSeries:
         self._stored_data = data.copy(deep=True)
         self._backup = self._stored_data.copy(deep=True)
 
-        # Selection state - use dictionaries for consistency with TimeSeriesAllocator
-        self._selection = {}
+        # Selection state
+        self._selected_timesteps: Optional[pd.DatetimeIndex] = None
+        self._selected_scenarios: Optional[pd.Index] = None
 
         # Flag for whether this series has scenarios
         self._has_scenarios = 'scenario' in data.dims
@@ -827,39 +828,12 @@ class TimeSeries:
         return np.unique(self.active_data.values).size == 1
 
     @property
-    def active_timesteps(self) -> pd.DatetimeIndex:
-        """Get the current active timesteps."""
-        # If no selection is active, return all timesteps
-        if 'time' not in self._selection:
-            return self._stored_data.indexes['time']
-        return self._selection['time']
-
-    @property
-    def active_scenarios(self) -> Optional[pd.Index]:
-        """Get the current active scenarios."""
-        if not self._has_scenarios:
-            return None
-
-        # If no selection is active, return all scenarios
-        if 'scenario' not in self._selection:
-            return self._stored_data.indexes.get('scenario', None)
-        return self._selection['scenario']
-
-    @property
     def active_data(self) -> xr.DataArray:
         """
         Get a view of stored_data based on current selections.
         This computes the view dynamically based on the current selection state.
         """
-        # Start with stored data
-        result = self._stored_data
-
-        # Apply selections if they exist
-        valid_selector = {dim: sel for dim, sel in self._selection.items() if dim in result.dims}
-        if valid_selector:
-            result = result.sel(**valid_selector)
-
-        return result
+        return self._stored_data.sel(**self._valid_selector)
 
     @property
     def stored_data(self) -> xr.DataArray:
@@ -886,38 +860,22 @@ class TimeSeries:
         self._stored_data = new_data
         self.clear_selection()  # Reset selections to full dataset
 
-    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
-        """
-        Set active subset for timesteps and scenarios.
+    def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
+        if timesteps:
+            self._selected_timesteps = None
+        if scenarios:
+            self._selected_scenarios = None
 
-        Args:
-            timesteps: Timesteps to activate, or None to clear
-            scenarios: Scenarios to activate, or None to clear
-        """
+    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
         if timesteps is None:
             self.clear_selection(timesteps=True, scenarios=False)
         else:
-            self._selection['time'] = timesteps
+            self._selected_timesteps = timesteps
 
         if scenarios is None:
             self.clear_selection(timesteps=False, scenarios=True)
         else:
-            self._selection['scenario'] = scenarios
-
-    def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
-        """
-        Clear selection for timesteps and/or scenarios.
-
-        Args:
-            timesteps: Whether to clear timesteps selection
-            scenarios: Whether to clear scenarios selection
-
-        This method follows the same API as TimeSeriesAllocator for consistency.
-        """
-        if timesteps:
-            self._selection['time'] = slice(None, None)
-        if scenarios:
-            self._selection['scenario'] = slice(None, None)
+            self._selected_scenarios = scenarios
 
     @property
     def sel(self):
@@ -928,6 +886,13 @@ class TimeSeries:
     def isel(self):
         """Direct access to the active_data's isel method for convenience."""
         return self.active_data.isel
+
+    @property
+    def _valid_selector(self) -> Dict[str, pd.Index]:
+        """Get the current selection as a dictionary."""
+        full_selection = {'time': self._selected_timesteps, 'scenario': self._selected_scenarios}
+        return {dim: sel for dim, sel in full_selection.items() if dim in self._stored_data.dims and sel is not None}
+
 
     def _apply_operation(self, other, op):
         """Apply an operation between this TimeSeries and another object."""
@@ -1035,7 +1000,6 @@ class TimeSeriesAllocator:
     Provides a way to store time series data and work with subsets of dimensions
     that automatically update all references when changed.
     """
-
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
