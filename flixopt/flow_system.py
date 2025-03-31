@@ -297,7 +297,7 @@ class FlowSystem:
                 data=data.selected_data, name=name, has_extra_timestep=has_extra_timestep
             )
         elif isinstance(data, TimeSeriesData):
-            data.name = name
+            data.label = name
             return self.time_series_allocator.add_time_series(
                 data=data.data,
                 name=name,
