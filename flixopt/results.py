@@ -14,7 +14,7 @@ import yaml
 
 from . import io as fx_io
 from . import plotting
-from .core import TimeSeriesAllocator
+from .core import TimeSeriesCollection
 
 if TYPE_CHECKING:
     import pyvis
@@ -160,7 +160,7 @@ class CalculationResults:
         }
 
         self.timesteps_extra = self.solution.indexes['time']
-        self.hours_per_timestep = TimeSeriesAllocator.calculate_hours_per_timestep(self.timesteps_extra)
+        self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
@@ -684,7 +684,7 @@ class SegmentedCalculationResults:
         self.overlap_timesteps = overlap_timesteps
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.hours_per_timestep = TimeSeriesAllocator.calculate_hours_per_timestep(self.all_timesteps)
+        self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
 
     @property
     def meta_data(self) -> Dict[str, Union[int, List[str]]]:

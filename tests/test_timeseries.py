@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt.core import ConversionError, DataConverter, TimeSeries, TimeSeriesAllocator
+from flixopt.core import ConversionError, DataConverter, TimeSeries, TimeSeriesCollection
 
 
 @pytest.fixture
@@ -331,14 +331,14 @@ def sample_scenario_timeseries(simple_scenario_dataarray):
 
 @pytest.fixture
 def sample_allocator(sample_timesteps):
-    """Create a sample TimeSeriesAllocator."""
-    return TimeSeriesAllocator(sample_timesteps)
+    """Create a sample TimeSeriesCollection."""
+    return TimeSeriesCollection(sample_timesteps)
 
 
 @pytest.fixture
 def sample_scenario_allocator(sample_timesteps, sample_scenario_index):
-    """Create a sample TimeSeriesAllocator with scenarios."""
-    return TimeSeriesAllocator(sample_timesteps, scenarios=sample_scenario_index)
+    """Create a sample TimeSeriesCollection with scenarios."""
+    return TimeSeriesCollection(sample_timesteps, scenarios=sample_scenario_index)
 
 
 class TestTimeSeriesWithScenarios:
@@ -454,11 +454,11 @@ class TestTimeSeriesWithScenarios:
 
 
 class TestTimeSeriesAllocator:
-    """Test suite for TimeSeriesAllocator class."""
+    """Test suite for TimeSeriesCollection class."""
 
     def test_initialization(self, sample_timesteps):
         """Test basic initialization."""
-        allocator = TimeSeriesAllocator(sample_timesteps)
+        allocator = TimeSeriesCollection(sample_timesteps)
 
         assert allocator.timesteps.equals(sample_timesteps)
         assert len(allocator.timesteps_extra) == len(sample_timesteps) + 1
@@ -469,7 +469,7 @@ class TestTimeSeriesAllocator:
         """Test initialization with custom hour settings."""
         # Test with last timestep duration
         last_timestep_hours = 12
-        allocator = TimeSeriesAllocator(sample_timesteps, hours_of_last_timestep=last_timestep_hours)
+        allocator = TimeSeriesCollection(sample_timesteps, hours_of_last_timestep=last_timestep_hours)
 
         # Verify the last timestep duration
         extra_step_delta = allocator.timesteps_extra[-1] - allocator.timesteps_extra[-2]
@@ -477,7 +477,7 @@ class TestTimeSeriesAllocator:
 
         # Test with previous timestep duration
         hours_per_step = 8
-        allocator2 = TimeSeriesAllocator(sample_timesteps, hours_of_previous_timesteps=hours_per_step)
+        allocator2 = TimeSeriesCollection(sample_timesteps, hours_of_previous_timesteps=hours_per_step)
 
         assert allocator2.hours_of_previous_timesteps == hours_per_step
 
@@ -595,11 +595,11 @@ class TestTimeSeriesAllocator:
 
 
 class TestTimeSeriesAllocatorWithScenarios:
-    """Test suite for TimeSeriesAllocator with scenarios."""
+    """Test suite for TimeSeriesCollection with scenarios."""
 
     def test_initialization_with_scenarios(self, sample_timesteps, sample_scenario_index):
         """Test initialization with scenarios."""
-        allocator = TimeSeriesAllocator(sample_timesteps, scenarios=sample_scenario_index)
+        allocator = TimeSeriesCollection(sample_timesteps, scenarios=sample_scenario_index)
 
         assert allocator.timesteps.equals(sample_timesteps)
         assert allocator.scenarios.equals(sample_scenario_index)

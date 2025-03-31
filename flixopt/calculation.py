@@ -119,7 +119,7 @@ class Calculation:
     def summary(self):
         return {
             'Name': self.name,
-            'Number of timesteps': len(self.flow_system.time_series_allocator.timesteps),
+            'Number of timesteps': len(self.flow_system.time_series_collection.timesteps),
             'Calculation Type': self.__class__.__name__,
             'Constraints': self.model.constraints.ncons,
             'Variables': self.model.variables.nvars,
@@ -183,7 +183,7 @@ class FullCalculation(Calculation):
 
     def _activate_time_series(self):
         self.flow_system.transform_data()
-        self.flow_system.time_series_allocator.set_selection(
+        self.flow_system.time_series_collection.set_selection(
             timesteps=self.active_timesteps
         )
 
@@ -217,7 +217,7 @@ class AggregatedCalculation(FullCalculation):
                 list with indices, which should be used for calculation. If None, then all timesteps are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
-        if flow_system.time_series_allocator.scenarios is not None:
+        if flow_system.time_series_collection.scenarios is not None:
             raise ValueError('Aggregation is not supported for scenarios yet. Please use FullCalculation instead.')
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
@@ -247,8 +247,8 @@ class AggregatedCalculation(FullCalculation):
 
         # Validation
         dt_min, dt_max = (
-            np.min(self.flow_system.time_series_allocator.hours_per_timestep),
-            np.max(self.flow_system.time_series_allocator.hours_per_timestep),
+            np.min(self.flow_system.time_series_collection.hours_per_timestep),
+            np.max(self.flow_system.time_series_collection.hours_per_timestep),
         )
         if not dt_min == dt_max:
             raise ValueError(
@@ -257,11 +257,11 @@ class AggregatedCalculation(FullCalculation):
             )
         steps_per_period = (
             self.aggregation_parameters.hours_per_period
-            / self.flow_system.time_series_allocator.hours_per_timestep.max()
+            / self.flow_system.time_series_collection.hours_per_timestep.max()
         )
         is_integer = (
             self.aggregation_parameters.hours_per_period
-            % self.flow_system.time_series_allocator.hours_per_timestep.max()
+            % self.flow_system.time_series_collection.hours_per_timestep.max()
         ).item() == 0
         if not (steps_per_period.size == 1 and is_integer):
             raise ValueError(
@@ -274,13 +274,13 @@ class AggregatedCalculation(FullCalculation):
 
         # Aggregation - creation of aggregated timeseries:
         self.aggregation = Aggregation(
-            original_data=self.flow_system.time_series_allocator.as_dataset(
+            original_data=self.flow_system.time_series_collection.as_dataset(
                 with_extra_timestep=False, with_constants=False
             ).to_dataframe(),
             hours_per_time_step=float(dt_min),
             hours_per_period=self.aggregation_parameters.hours_per_period,
             nr_of_periods=self.aggregation_parameters.nr_of_periods,
-            weights=self.flow_system.time_series_allocator.calculate_aggregation_weights(),
+            weights=self.flow_system.time_series_collection.calculate_aggregation_weights(),
             time_series_for_high_peaks=self.aggregation_parameters.labels_for_high_peaks,
             time_series_for_low_peaks=self.aggregation_parameters.labels_for_low_peaks,
         )
@@ -290,9 +290,9 @@ class AggregatedCalculation(FullCalculation):
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
             for col in self.aggregation.aggregated_data.columns:
                 data = self.aggregation.aggregated_data[col].values
-                if col in self.flow_system.time_series_allocator._has_extra_timestep:
+                if col in self.flow_system.time_series_collection._has_extra_timestep:
                     data = np.append(data, data[-1])
-                self.flow_system.time_series_allocator.update_time_series(col, data)
+                self.flow_system.time_series_collection.update_time_series(col, data)
         self.durations['aggregation'] = round(timeit.default_timer() - t_start_agg, 2)
 
 
@@ -331,8 +331,8 @@ class SegmentedCalculation(Calculation):
         self.nr_of_previous_values = nr_of_previous_values
         self.sub_calculations: List[FullCalculation] = []
 
-        self.all_timesteps = self.flow_system.time_series_allocator._full_timesteps
-        self.all_timesteps_extra = self.flow_system.time_series_allocator._full_timesteps_extra
+        self.all_timesteps = self.flow_system.time_series_collection._full_timesteps
+        self.all_timesteps_extra = self.flow_system.time_series_collection._full_timesteps_extra
 
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))

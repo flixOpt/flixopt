@@ -290,8 +290,8 @@ def flow_system_segments_of_flows_2(flow_system_complex) -> fx.FlowSystem:
                 {
                     'P_el': fx.Piecewise(
                         [
-                            fx.Piece(np.linspace(5, 6, len(flow_system.time_series_allocator.timesteps)), 30),
-                            fx.Piece(40, np.linspace(60, 70, len(flow_system.time_series_allocator.timesteps))),
+                            fx.Piece(np.linspace(5, 6, len(flow_system.time_series_collection.timesteps)), 30),
+                            fx.Piece(40, np.linspace(60, 70, len(flow_system.time_series_collection.timesteps))),
                         ]
                     ),
                     'Q_th': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),

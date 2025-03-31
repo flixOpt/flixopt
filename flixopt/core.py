@@ -1000,7 +1000,7 @@ class TimeSeries:
         return f'TimeSeries "{self.name}":\n{textwrap.indent(self.stats, "  ")}'
 
 
-class TimeSeriesAllocator:
+class TimeSeriesCollection:
     """
     Simplified central manager for time series data with reference tracking.
 
@@ -1014,7 +1014,7 @@ class TimeSeriesAllocator:
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None,
     ):
-        """Initialize a TimeSeriesAllocator."""
+        """Initialize a TimeSeriesCollection."""
         self._validate_timesteps(timesteps)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
@@ -1159,7 +1159,7 @@ class TimeSeriesAllocator:
 
     def as_dataset(self, with_extra_timestep: bool = True, with_constants: bool = True) -> xr.Dataset:
         """
-        Convert the TimeSeriesAllocator to a xarray Dataset, containing the data of each TimeSeries.
+        Convert the TimeSeriesCollection to a xarray Dataset, containing the data of each TimeSeries.
 
         Args:
             with_extra_timestep: Whether to exclude the extra timesteps.
