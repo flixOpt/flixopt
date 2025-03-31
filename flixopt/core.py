@@ -970,15 +970,7 @@ class TimeSeries:
             'aggregation_group': self.aggregation_group,
             'needs_extra_timestep': self.needs_extra_timestep,
             'shape': self.active_data.shape,
-            'time_range': f'{self.active_timesteps[0]} to {self.active_timesteps[-1]}',
         }
-
-        # Add scenario information if present
-        if self._has_scenarios:
-            scenarios = self.active_scenarios
-            attrs['scenarios'] = f'{len(scenarios)} scenarios' if scenarios is not None else 'All scenarios'
-        else:
-            attrs['scenarios'] = 'No scenarios'
 
         attr_str = ', '.join(f'{k}={repr(v)}' for k, v in attrs.items())
         return f'TimeSeries({attr_str})'
@@ -1020,7 +1012,7 @@ class TimeSeriesAllocator:
         self._full_scenarios = scenarios
 
         # Series that need extra timestep
-        self._has_extra_timestep: Dict[str, bool] = {}
+        self._has_extra_timestep: set = set()
 
         # Storage for TimeSeries objects
         self._time_series: Dict[str, TimeSeries] = {}
@@ -1089,7 +1081,8 @@ class TimeSeriesAllocator:
         self._time_series[name] = time_series
 
         # Track if it needs extra timestep
-        self._has_extra_timestep[name] = needs_extra_timestep
+        if needs_extra_timestep:
+            self._has_extra_timestep.add(name)
 
         # Return the TimeSeries object
         return time_series
@@ -1103,7 +1096,7 @@ class TimeSeriesAllocator:
             scenarios: Whether to clear scenarios selection
         """
         if timesteps:
-            self._selected_timesteps = None
+            self._update_selected_timesteps(timesteps=None)
         if scenarios:
             self._selected_scenarios = None
 
@@ -1121,13 +1114,7 @@ class TimeSeriesAllocator:
         if timesteps is None:
             self.clear_selection(timesteps=True, scenarios=False)
         else:
-            self._validate_timesteps(timesteps, self._full_timesteps)
-
-            self._selected_timesteps = timesteps
-            self._selected_hours_per_timestep = self._full_hours_per_timestep.sel(time=timesteps)
-            self._selected_timesteps_extra = self._create_timesteps_with_extra(
-                timesteps, self._selected_hours_per_timestep.isel(time=-1).max().item()
-            )
+            self._update_selected_timesteps(timesteps)
 
         if scenarios is None:
             self.clear_selection(timesteps=False, scenarios=True)
@@ -1136,6 +1123,24 @@ class TimeSeriesAllocator:
 
         # Apply the selection to all TimeSeries objects
         self._propagate_selection_to_time_series()
+
+    def _update_selected_timesteps(self, timesteps: Optional[pd.DatetimeIndex]):
+        """
+        Updates the timestep and related metrics (timesteps_extra, hours_per_timestep) based on the current selection.
+        """
+        if timesteps is None:
+            self._selected_timesteps = None
+            self._selected_timesteps_extra = None
+            self._selected_hours_per_timestep = None
+            return
+
+        self._validate_timesteps(timesteps, self._full_timesteps)
+
+        self._selected_timesteps = timesteps
+        self._selected_hours_per_timestep = self._full_hours_per_timestep.sel(time=timesteps)
+        self._selected_timesteps_extra = self._create_timesteps_with_extra(
+            timesteps, self._selected_hours_per_timestep.isel(time=-1).max().item()
+        )
 
     def as_dataset(self) -> xr.Dataset:
         """
@@ -1161,9 +1166,9 @@ class TimeSeriesAllocator:
     @property
     def timesteps_extra(self) -> pd.DatetimeIndex:
         """Get the current active timesteps with extra timestep."""
-        if self._selected_timesteps is None:
+        if self._selected_timesteps_extra is None:
             return self._full_timesteps_extra
-        return self._selected_timesteps
+        return self._selected_timesteps_extra
 
     @property
     def hours_per_timestep(self) -> xr.DataArray:
@@ -1181,8 +1186,12 @@ class TimeSeriesAllocator:
 
     def _propagate_selection_to_time_series(self):
         """Apply the current selection to all TimeSeries objects."""
-        for ts in self._time_series.values():
-            ts.set_selection(timesteps=self._selected_timesteps, scenarios=self._selected_scenarios)
+        for ts_name, ts in self._time_series.items():
+            timesteps = self._selected_timesteps_extra if ts_name in self._has_extra_timestep else self._selected_timesteps
+            ts.set_selection(
+                timesteps=timesteps,
+                scenarios=self._selected_scenarios
+            )
 
     def __getitem__(self, name: str) -> TimeSeries:
         """
@@ -1199,6 +1208,13 @@ class TimeSeriesAllocator:
             # Return the TimeSeries object (it will handle selection internally)
             return self._time_series[name]
         raise ValueError(f'No TimeSeries named "{name}" found')
+
+    def __contains__(self, value):
+        if isinstance(value, str):
+            return value in self._time_series
+        elif isinstance(value, TimeSeries):
+            return value.name in self._time_series
+        raise TypeError(f'Invalid type for __contains__ of {self.__class__.__name__}: {type(value)}')
 
     def update_time_series(self, name: str, data: NumericData) -> TimeSeries:
         """
@@ -1220,11 +1236,12 @@ class TimeSeriesAllocator:
         # Get the TimeSeries
         ts = self._time_series[name]
 
-        # Choose appropriate timesteps
-        target_timesteps = self.timesteps_extra if self._has_extra_timestep[name] else self.timesteps
-
         # Convert data to proper format
-        data_array = DataConverter.as_dataarray(data, target_timesteps, self.scenarios)
+        data_array = DataConverter.as_dataarray(
+            data,
+            self.timesteps_extra if name in self._has_extra_timestep else self.timesteps,
+            self.scenarios
+        )
 
         # Update the TimeSeries
         ts.update_stored_data(data_array)
