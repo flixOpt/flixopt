@@ -1062,7 +1062,7 @@ class TimeSeriesAllocator:
         self._time_series: Dict[str, TimeSeries] = {}
 
         # Active subset selectors
-        self._selection: Dict[str, Any] = {'time': slice(None, None), 'scenario': slice(None, None)}
+        self._selection: Dict[str, Any] = {'time': None, 'scenario': None}
 
     def add_time_series(
         self,
@@ -1136,9 +1136,9 @@ class TimeSeriesAllocator:
             scenarios: Whether to clear scenarios selection
         """
         if timesteps:
-            self._selection['time'] = slice(None, None)
+            self._selection['time'] = None
         if scenarios:
-            self._selection['scenario'] = slice(None, None)
+            self._selection['scenario'] = None
 
         # Apply the selection to all TimeSeries objects
         self._propagate_selection_to_time_series()
@@ -1182,9 +1182,9 @@ class TimeSeriesAllocator:
     def timesteps(self) -> pd.DatetimeIndex:
         """Get the current active timesteps."""
         time_sel = self._selection['time']
-        if isinstance(time_sel, slice) and time_sel == slice(None, None):
+        if time_sel is None:
             return self._full_timesteps
-        return self._full_timesteps[self._selection['time']]
+        return self._full_timesteps[time_sel]
 
     @property
     def timesteps_extra(self) -> pd.DatetimeIndex:
@@ -1223,10 +1223,8 @@ class TimeSeriesAllocator:
 
     def _propagate_selection_to_time_series(self):
         """Apply the current selection to all TimeSeries objects."""
-        timesteps = self._selection['time']
-        scenarios = self._selection['scenario']
         for ts in self._time_series.values():
-            ts.set_selection(timesteps=timesteps, scenarios=scenarios)
+            ts.set_selection(timesteps=self._selection['time'], scenarios=self._selection['scenario'])
 
     def __getitem__(self, name: str) -> TimeSeries:
         """
