@@ -1062,7 +1062,10 @@ class TimeSeriesAllocator:
         self._time_series: Dict[str, TimeSeries] = {}
 
         # Active subset selectors
-        self._selection: Dict[str, Any] = {'time': None, 'scenario': None}
+        self._selected_timesteps: Optional[pd.DatetimeIndex] = None
+        self._selected_scenarios: Optional[pd.Index] = None
+        self._selected_timesteps_extra: Optional[pd.DatetimeIndex] = None
+        self._selected_hours_per_timestep: Optional[xr.DataArray] = None
 
     def add_time_series(
         self,
@@ -1136,9 +1139,9 @@ class TimeSeriesAllocator:
             scenarios: Whether to clear scenarios selection
         """
         if timesteps:
-            self._selection['time'] = None
+            self._selected_timesteps = None
         if scenarios:
-            self._selection['scenario'] = None
+            self._selected_scenarios = None
 
         # Apply the selection to all TimeSeries objects
         self._propagate_selection_to_time_series()
@@ -1154,12 +1157,16 @@ class TimeSeriesAllocator:
         if timesteps is None:
             self.clear_selection(timesteps=True, scenarios=False)
         else:
-            self._selection['time'] = timesteps
+            self._selected_timesteps = timesteps
+            self._selected_hours_per_timestep = self._full_hours_per_timestep.isel(time=timesteps)
+            self._selected_timesteps_extra = self._create_timesteps_with_extra(
+                timesteps, self._selected_hours_per_timestep.isel(time=-1).max().item()
+            )
 
         if scenarios is None:
             self.clear_selection(timesteps=False, scenarios=True)
         else:
-            self._selection['scenario'] = scenarios
+            self._selected_scenarios = scenarios
 
         # Apply the selection to all TimeSeries objects
         self._propagate_selection_to_time_series()
@@ -1181,50 +1188,35 @@ class TimeSeriesAllocator:
     @property
     def timesteps(self) -> pd.DatetimeIndex:
         """Get the current active timesteps."""
-        time_sel = self._selection['time']
-        if time_sel is None:
+        if self._selected_timesteps is None:
             return self._full_timesteps
-        return self._full_timesteps[time_sel]
+        return self._selected_timesteps
 
     @property
     def timesteps_extra(self) -> pd.DatetimeIndex:
         """Get the current active timesteps with extra timestep."""
-        # Handle the extra timestep appropriately when selection is applied
-        if isinstance(self._selection['time'], slice) and self._selection['time'] == slice(None, None):
+        if self._selected_timesteps is None:
             return self._full_timesteps_extra
-
-        # If there's a timestep selection, we need to include the extra timestep properly
-        selected_timesteps = self._full_timesteps[self._selection['time']]
-        if selected_timesteps[-1] == self._full_timesteps[-1]:
-            # Include the extra timestep if selection includes the last regular timestep
-            return pd.DatetimeIndex(list(selected_timesteps) + [self._full_timesteps_extra[-1]], name='time')
-        return selected_timesteps
+        return self._selected_timesteps
 
     @property
     def hours_per_timestep(self) -> xr.DataArray:
         """Get the current active hours per timestep."""
-        time_sel = self._selection['time']
-        if isinstance(time_sel, slice) and time_sel == slice(None, None):
+        if self._selected_hours_per_timestep is None:
             return self._full_hours_per_timestep
-
-        # Select the corresponding hours per timestep
-        indices = np.where(np.isin(self._full_timesteps, self.timesteps))[0]
-        return self._full_hours_per_timestep.isel(time=indices)
+        return self._selected_hours_per_timestep
 
     @property
-    def scenarios(self):
+    def scenarios(self) -> Optional[pd.Index]:
         """Get the current active scenarios."""
-        if self._full_scenarios is None:
-            return None
-        scenario_sel = self._selection['scenario']
-        if isinstance(scenario_sel, slice) and scenario_sel == slice(None, None):
+        if self._selected_scenarios is None:
             return self._full_scenarios
-        return self._full_scenarios[self._selection['scenario']]
+        return self._selected_scenarios
 
     def _propagate_selection_to_time_series(self):
         """Apply the current selection to all TimeSeries objects."""
         for ts in self._time_series.values():
-            ts.set_selection(timesteps=self._selection['time'], scenarios=self._selection['scenario'])
+            ts.set_selection(timesteps=self._selected_timesteps, scenarios=self._selected_scenarios)
 
     def __getitem__(self, name: str) -> TimeSeries:
         """
@@ -1272,10 +1264,6 @@ class TimeSeriesAllocator:
         ts.update_stored_data(data_array)
 
         return ts
-
-    def _update_internal_dataset(self):
-        """Update the internal dataset with the index data"""
-
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex):
