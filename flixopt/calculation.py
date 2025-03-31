@@ -274,7 +274,9 @@ class AggregatedCalculation(FullCalculation):
 
         # Aggregation - creation of aggregated timeseries:
         self.aggregation = Aggregation(
-            original_data=self.flow_system.time_series_allocator.as_dataset(without_extra_timestep=True).to_dataframe(),
+            original_data=self.flow_system.time_series_allocator.as_dataset(
+                with_extra_timestep=False, with_constants=False
+            ).to_dataframe(),
             hours_per_time_step=float(dt_min),
             hours_per_period=self.aggregation_parameters.hours_per_period,
             nr_of_periods=self.aggregation_parameters.nr_of_periods,

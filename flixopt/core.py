@@ -1157,9 +1157,14 @@ class TimeSeriesAllocator:
             timesteps, self._selected_hours_per_timestep.isel(time=-1).max().item()
         )
 
-    def as_dataset(self, without_extra_timestep: bool = False) -> xr.Dataset:
+    def as_dataset(self, with_extra_timestep: bool = False, with_constants: bool = True) -> xr.Dataset:
         """
         Convert the TimeSeriesAllocator to a xarray Dataset, containing the data of each TimeSeries.
+
+        Args:
+            with_extra_timestep: Whether to exclude the extra timesteps.
+                Effectively, this removes the last timestep for certain TImeSeries, but mitigates the presence of NANs in others.
+            with_constants: Whether to exclude TimeSeries with a constant value from the dataset.
         """
         if self.scenarios is None:
             ds = xr.Dataset(coords={'time': self.timesteps_extra})
@@ -1167,9 +1172,11 @@ class TimeSeriesAllocator:
             ds = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})
 
         for ts in self._time_series.values():
+            if not with_constants and ts.all_equal:
+                continue
             ds[ts.name] = ts.selected_data
 
-        if without_extra_timestep:
+        if not with_extra_timestep:
             return ds.sel(time=self.timesteps)
 
         return ds
