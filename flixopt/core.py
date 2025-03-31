@@ -1224,12 +1224,16 @@ class TimeSeriesAllocator:
             return self._time_series[name]
         raise ValueError(f'No TimeSeries named "{name}" found')
 
-    def __contains__(self, value):
+    def __contains__(self, value) -> bool:
         if isinstance(value, str):
             return value in self._time_series
         elif isinstance(value, TimeSeries):
             return value.name in self._time_series
         raise TypeError(f'Invalid type for __contains__ of {self.__class__.__name__}: {type(value)}')
+
+    def __iter__(self) -> Iterator[TimeSeries]:
+        """Iterate over TimeSeries objects."""
+        return iter(self._time_series.values())
 
     def update_time_series(self, name: str, data: NumericData) -> TimeSeries:
         """
