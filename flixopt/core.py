@@ -866,19 +866,18 @@ class TimeSeries:
         """Get a copy of the full stored data."""
         return self._stored_data.copy()
 
-    @stored_data.setter
-    def stored_data(self, value: NumericData):
+    def update_stored_data(self, value: NumericData):
         """
         Update stored_data and refresh active_data.
 
         Args:
             value: New data to store
         """
-        # Get current timesteps and scenarios
-        timesteps = self.active_timesteps
-        scenarios = self.active_scenarios if self._has_scenarios else None
-
-        new_data = DataConverter.as_dataarray(value, timesteps=timesteps, scenarios=scenarios)
+        new_data = DataConverter.as_dataarray(
+            value,
+            timesteps=self.active_timesteps,
+            scenarios=self.active_scenarios if self._has_scenarios else None
+        )
 
         # Skip if data is unchanged to avoid overwriting backup
         if new_data.equals(self._stored_data):
