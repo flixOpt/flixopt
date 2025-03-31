@@ -769,14 +769,14 @@ class TimeSeries:
         # Flag for whether this series has scenarios
         self._has_scenarios = 'scenario' in data.dims
 
-    def reset(self):
+    def reset(self) -> None:
         """
         Reset selections to include all timesteps and scenarios.
         This is equivalent to clearing all selections.
         """
         self.clear_selection()
 
-    def restore_data(self):
+    def restore_data(self) -> None:
         """
         Restore stored_data from the backup and reset active timesteps.
         """
@@ -876,13 +876,13 @@ class TimeSeries:
         self._stored_data = new_data
         self.clear_selection()  # Reset selections to full dataset
 
-    def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
+    def clear_selection(self, timesteps: bool = True, scenarios: bool = True) -> None:
         if timesteps:
             self._selected_timesteps = None
         if scenarios:
             self._selected_scenarios = None
 
-    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
+    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
         if timesteps is None:
             self.clear_selection(timesteps=True, scenarios=False)
         else:
@@ -1102,7 +1102,7 @@ class TimeSeriesAllocator:
         # Return the TimeSeries object
         return time_series
 
-    def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
+    def clear_selection(self, timesteps: bool = True, scenarios: bool = True) -> None:
         """
         Clear selection for timesteps and/or scenarios.
 
@@ -1118,7 +1118,7 @@ class TimeSeriesAllocator:
         # Apply the selection to all TimeSeries objects
         self._propagate_selection_to_time_series()
 
-    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
+    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
         """
         Set active subset for timesteps and scenarios.
 
@@ -1139,7 +1139,7 @@ class TimeSeriesAllocator:
         # Apply the selection to all TimeSeries objects
         self._propagate_selection_to_time_series()
 
-    def _update_selected_timesteps(self, timesteps: Optional[pd.DatetimeIndex]):
+    def _update_selected_timesteps(self, timesteps: Optional[pd.DatetimeIndex]) -> None:
         """
         Updates the timestep and related metrics (timesteps_extra, hours_per_timestep) based on the current selection.
         """
@@ -1199,7 +1199,7 @@ class TimeSeriesAllocator:
             return self._full_scenarios
         return self._selected_scenarios
 
-    def _propagate_selection_to_time_series(self):
+    def _propagate_selection_to_time_series(self) -> None:
         """Apply the current selection to all TimeSeries objects."""
         for ts_name, ts in self._time_series.items():
             timesteps = self._selected_timesteps_extra if ts_name in self._has_extra_timestep else self._selected_timesteps
