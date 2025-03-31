@@ -1058,7 +1058,6 @@ class TimeSeriesAllocator:
         if scenarios is None:
             self._dataset = xr.Dataset(coords={'time': self.timesteps})
             self._dataset_extra = xr.Dataset(coords={'time': self.timesteps_extra})
-
         else:
             self._dataset = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps})
             self._dataset_extra = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})
@@ -1066,36 +1065,80 @@ class TimeSeriesAllocator:
         # Series that need extra timestep
         self._has_extra_timestep: Dict[str, bool] = {}
 
-        # Active subset selectors
-        self._selection: Dict[str, Any] = {}
+        # Storage for TimeSeries objects
+        self._time_series: Dict[str, TimeSeries] = {}
 
-    def add_data_array(
+        # Active subset selectors
+        self._selection: Dict[str, Any] = {'time': slice(None, None), 'scenario': slice(None, None)}
+
+    def add_time_series(
         self,
         name: str,
-        data: NumericData,
+        data: Union[NumericData, TimeSeries],
+        aggregation_weight: Optional[float] = None,
+        aggregation_group: Optional[str] = None,
         needs_extra_timestep: bool = False,
-    ) -> xr.DataArray:
+    ) -> TimeSeries:
         """
-        Add a new data array to the allocator.
-        """
-        if name in self._dataset or name in self._dataset_extra:
-            raise KeyError(f"Data array '{name}' already exists in allocator")
+        Add a new TimeSeries to the allocator.
 
-        # Choose which dataset to use
-        target_dataset = self._dataset_extra if needs_extra_timestep else self._dataset
+        Args:
+            name: Name of the time series
+            data: Data for the time series (can be raw data or an existing TimeSeries)
+            aggregation_weight: Weight used for aggregation
+            aggregation_group: Group name for shared aggregation weighting
+            needs_extra_timestep: Whether this series needs an extra timestep
+
+        Returns:
+            The created TimeSeries object
+        """
+        if name in self._time_series:
+            raise KeyError(f"TimeSeries '{name}' already exists in allocator")
+
+        # Choose which timesteps to use
         target_timesteps = self.timesteps_extra if needs_extra_timestep else self.timesteps
 
-        # Convert to DataArray
-        data_array = DataConverter.as_dataarray(data, target_timesteps, self.scenarios)
+        # Create or adapt the TimeSeries object
+        if isinstance(data, TimeSeries):
+            # Use the existing TimeSeries but update its parameters
+            time_series = data
+            # Update the stored data to use our timesteps and scenarios
+            data_array = DataConverter.as_dataarray(
+                time_series.stored_data, timesteps=target_timesteps, scenarios=self.scenarios
+            )
+            time_series = TimeSeries(
+                data=data_array,
+                name=name,
+                aggregation_weight=aggregation_weight or time_series.aggregation_weight,
+                aggregation_group=aggregation_group or time_series.aggregation_group,
+                needs_extra_timestep=needs_extra_timestep or time_series.needs_extra_timestep,
+            )
+        else:
+            # Create a new TimeSeries from raw data
+            time_series = TimeSeries.from_datasource(
+                data=data,
+                name=name,
+                timesteps=target_timesteps,
+                scenarios=self.scenarios,
+                aggregation_weight=aggregation_weight,
+                aggregation_group=aggregation_group,
+                needs_extra_timestep=needs_extra_timestep,
+            )
 
-        # Add to the appropriate dataset
-        target_dataset[name] = data_array
+        # Add to storage
+        self._time_series[name] = time_series
+
+        # Also add to internal dataset for selection management
+        if needs_extra_timestep:
+            self._dataset_extra[name] = time_series.stored_data
+        else:
+            self._dataset[name] = time_series.stored_data
 
         # Track if it needs extra timestep
         self._has_extra_timestep[name] = needs_extra_timestep
 
-        # Return reference
-        return self[name]
+        # Return the TimeSeries object
+        return time_series
 
     def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
         """
@@ -1109,6 +1152,9 @@ class TimeSeriesAllocator:
             self._selection['time'] = slice(None, None)
         if scenarios:
             self._selection['scenario'] = slice(None, None)
+
+        # Apply the selection to all TimeSeries objects
+        self._propagate_selection_to_time_series()
 
     def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
         """
@@ -1128,33 +1174,62 @@ class TimeSeriesAllocator:
         else:
             self._selection['scenario'] = scenarios
 
-    def __getitem__(self, name: str) -> xr.DataArray:
+        # Apply the selection to all TimeSeries objects
+        self._propagate_selection_to_time_series()
+
+    def _propagate_selection_to_time_series(self):
+        """Apply the current selection to all TimeSeries objects."""
+        timesteps = self._selection['time']
+        scenarios = self._selection['scenario']
+        for ts in self._time_series.values():
+            ts.set_selection(timesteps=timesteps, scenarios=scenarios)
+
+    def __getitem__(self, name: str) -> TimeSeries:
         """
-        Get the selected data of a data array.
+        Get a reference to a time series or data array.
 
         Args:
-            name: Name of the data array
+            name: Name of the data array or time series
 
         Returns:
-            DataArray reference with active subset applied
+            TimeSeries object if it exists, otherwise DataArray with current selection applied
         """
-        if name in self._dataset:
-            dataset = self._dataset
-        elif name in self._dataset_extra:
-            dataset = self._dataset_extra
-        else:
-            raise KeyError(f"Data array '{name}' not found in allocator")
+        # First check if this is a TimeSeries
+        if name in self._time_series:
+            # Return the TimeSeries object (it will handle selection internally)
+            return self._time_series[name]
+        raise ValueError(f'No TimeSeries named "{name}" found')
 
-        # Apply the active subset if any
-        if self._selection:
-            # Filter selector to only include dimensions in this dataset
-            valid_selector = {dim: sel for dim, sel in self._selection.items() if dim in dataset.dims}
-            if valid_selector:
-                # Get the subset of the dataset then extract the variable
-                return dataset.sel(**valid_selector)[name]
+    def update_time_series(self, name: str, data: NumericData) -> TimeSeries:
+        """
+        Update an existing TimeSeries with new data.
 
-        # Return the variable directly
-        return dataset[name]
+        Args:
+            name: Name of the TimeSeries to update
+            data: New data to assign
+
+        Returns:
+            The updated TimeSeries
+
+        Raises:
+            KeyError: If no TimeSeries with the given name exists
+        """
+        if name not in self._time_series:
+            raise KeyError(f"No TimeSeries named '{name}' found")
+
+        # Get the TimeSeries
+        ts = self._time_series[name]
+
+        # Choose appropriate timesteps
+        target_timesteps = self.timesteps_extra if self._has_extra_timestep[name] else self.timesteps
+
+        # Convert data to proper format
+        data_array = DataConverter.as_dataarray(data, target_timesteps, self.scenarios)
+
+        # Update the TimeSeries
+        ts.update_stored_data(data_array)
+
+        return ts
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex):
