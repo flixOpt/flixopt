@@ -23,7 +23,7 @@ def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
         return [replace_timeseries(v, mode) for v in obj]
     elif isinstance(obj, TimeSeries):  # Adjust this based on the actual class
         if obj.all_equal:
-            return obj.active_data.values[0].item()
+            return obj.selected_data.values[0].item()
         elif mode == 'name':
             return f'::::{obj.name}'
         elif mode == 'stats':

@@ -534,7 +534,7 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
             return copy_and_convert_datatypes(data.tolist(), use_numpy, use_element_label)
 
     elif isinstance(data, TimeSeries):
-        return copy_and_convert_datatypes(data.active_data, use_numpy, use_element_label)
+        return copy_and_convert_datatypes(data.selected_data, use_numpy, use_element_label)
     elif isinstance(data, TimeSeriesData):
         return copy_and_convert_datatypes(data.data, use_numpy, use_element_label)
 

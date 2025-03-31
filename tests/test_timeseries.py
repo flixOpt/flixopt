@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt.core import ConversionError, DataConverter, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from flixopt.core import ConversionError, DataConverter, TimeSeries, TimeSeriesCollection
 
 
 @pytest.fixture
@@ -44,13 +44,13 @@ class TestTimeSeries:
         # Check data initialization
         assert isinstance(ts.stored_data, xr.DataArray)
         assert ts.stored_data.equals(simple_dataarray)
-        assert ts.active_data.equals(simple_dataarray)
+        assert ts.selected_data.equals(simple_dataarray)
 
         # Check backup was created
         assert ts._backup.equals(simple_dataarray)
 
         # Check active timesteps
-        assert ts.active_timesteps.equals(simple_dataarray.indexes['time'])
+        assert ts._valid_selector == {}  # No selections initially
 
     def test_initialization_with_aggregation_params(self, simple_dataarray):
         """Test initialization with aggregation parameters."""
@@ -73,53 +73,51 @@ class TestTimeSeries:
         multi_dim_data = xr.DataArray(
             [[1, 2, 3], [4, 5, 6]], coords={'dim1': [0, 1], 'time': sample_timesteps[:3]}, dims=['dim1', 'time']
         )
-        with pytest.raises(ValueError, match='dimensions of DataArray must be 1'):
+        with pytest.raises(ValueError, match='DataArray dimensions must be subset of'):
             TimeSeries(multi_dim_data, name='Multi-dim Series')
 
-    def test_active_timesteps_getter_setter(self, sample_timeseries, sample_timesteps):
-        """Test active_timesteps getter and setter."""
-        # Initial state should use all timesteps
-        assert sample_timeseries.active_timesteps.equals(sample_timesteps)
+    def test_selection_methods(self, sample_timeseries, sample_timesteps):
+        """Test selection methods."""
+        # Initial state should have no selections
+        assert sample_timeseries._selected_timesteps is None
+        assert sample_timeseries._selected_scenarios is None
 
         # Set to a subset
         subset_index = sample_timesteps[1:3]
-        sample_timeseries.active_timesteps = subset_index
-        assert sample_timeseries.active_timesteps.equals(subset_index)
+        sample_timeseries.set_selection(timesteps=subset_index)
+        assert sample_timeseries._selected_timesteps.equals(subset_index)
 
         # Active data should reflect the subset
-        assert sample_timeseries.active_data.equals(sample_timeseries.stored_data.sel(time=subset_index))
+        assert sample_timeseries.selected_data.equals(sample_timeseries.stored_data.sel(time=subset_index))
 
-        # Reset to full index
-        sample_timeseries.active_timesteps = None
-        assert sample_timeseries.active_timesteps.equals(sample_timesteps)
-
-        # Test invalid type
-        with pytest.raises(TypeError, match='must be a pandas DatetimeIndex'):
-            sample_timeseries.active_timesteps = 'invalid'
+        # Clear selection
+        sample_timeseries.clear_selection()
+        assert sample_timeseries._selected_timesteps is None
+        assert sample_timeseries.selected_data.equals(sample_timeseries.stored_data)
 
     def test_reset(self, sample_timeseries, sample_timesteps):
         """Test reset method."""
         # Set to subset first
         subset_index = sample_timesteps[1:3]
-        sample_timeseries.active_timesteps = subset_index
+        sample_timeseries.set_selection(timesteps=subset_index)
 
         # Reset
         sample_timeseries.reset()
 
-        # Should be back to full index
-        assert sample_timeseries.active_timesteps.equals(sample_timesteps)
-        assert sample_timeseries.active_data.equals(sample_timeseries.stored_data)
+        # Should be back to full index (all selections cleared)
+        assert sample_timeseries._selected_timesteps is None
+        assert sample_timeseries.selected_data.equals(sample_timeseries.stored_data)
 
     def test_restore_data(self, sample_timeseries, simple_dataarray):
         """Test restore_data method."""
         # Modify the stored data
-        new_data = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.active_timesteps}, dims=['time'])
+        new_data = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time'])
 
         # Store original data for comparison
         original_data = sample_timeseries.stored_data
 
-        # Set new data
-        sample_timeseries.stored_data = new_data
+        # Update data
+        sample_timeseries.update_stored_data(new_data)
         assert sample_timeseries.stored_data.equals(new_data)
 
         # Restore from backup
@@ -127,42 +125,42 @@ class TestTimeSeries:
 
         # Should be back to original data
         assert sample_timeseries.stored_data.equals(original_data)
-        assert sample_timeseries.active_data.equals(original_data)
+        assert sample_timeseries.selected_data.equals(original_data)
 
-    def test_stored_data_setter(self, sample_timeseries, sample_timesteps):
-        """Test stored_data setter with different data types."""
+    def test_update_stored_data(self, sample_timeseries, sample_timesteps):
+        """Test update_stored_data method with different data types."""
         # Test with a Series
         series_data = pd.Series([5, 6, 7, 8, 9], index=sample_timesteps)
-        sample_timeseries.stored_data = series_data
+        sample_timeseries.update_stored_data(series_data)
         assert np.array_equal(sample_timeseries.stored_data.values, series_data.values)
 
         # Test with a single-column DataFrame
         df_data = pd.DataFrame({'col1': [15, 16, 17, 18, 19]}, index=sample_timesteps)
-        sample_timeseries.stored_data = df_data
+        sample_timeseries.update_stored_data(df_data)
         assert np.array_equal(sample_timeseries.stored_data.values, df_data['col1'].values)
 
         # Test with a NumPy array
         array_data = np.array([25, 26, 27, 28, 29])
-        sample_timeseries.stored_data = array_data
+        sample_timeseries.update_stored_data(array_data)
         assert np.array_equal(sample_timeseries.stored_data.values, array_data)
 
         # Test with a scalar
-        sample_timeseries.stored_data = 42
+        sample_timeseries.update_stored_data(42)
         assert np.all(sample_timeseries.stored_data.values == 42)
 
         # Test with another DataArray
         another_dataarray = xr.DataArray([30, 31, 32, 33, 34], coords={'time': sample_timesteps}, dims=['time'])
-        sample_timeseries.stored_data = another_dataarray
+        sample_timeseries.update_stored_data(another_dataarray)
         assert sample_timeseries.stored_data.equals(another_dataarray)
 
     def test_stored_data_setter_no_change(self, sample_timeseries):
-        """Test stored_data setter when data doesn't change."""
+        """Test update_stored_data method when data doesn't change."""
         # Get current data
         current_data = sample_timeseries.stored_data
         current_backup = sample_timeseries._backup
 
         # Set the same data
-        sample_timeseries.stored_data = current_data
+        sample_timeseries.update_stored_data(current_data)
 
         # Backup shouldn't change
         assert sample_timeseries._backup is current_backup  # Should be the same object
@@ -229,35 +227,35 @@ class TestTimeSeries:
     def test_arithmetic_operations(self, sample_timeseries):
         """Test arithmetic operations."""
         # Create a second TimeSeries for testing
-        data2 = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.active_timesteps}, dims=['time'])
+        data2 = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time'])
         ts2 = TimeSeries(data2, 'Second Series')
 
         # Test operations between two TimeSeries objects
         assert np.array_equal(
-            (sample_timeseries + ts2).values, sample_timeseries.active_data.values + ts2.active_data.values
+            (sample_timeseries + ts2).values, sample_timeseries.selected_data.values + ts2.selected_data.values
         )
         assert np.array_equal(
-            (sample_timeseries - ts2).values, sample_timeseries.active_data.values - ts2.active_data.values
+            (sample_timeseries - ts2).values, sample_timeseries.selected_data.values - ts2.selected_data.values
         )
         assert np.array_equal(
-            (sample_timeseries * ts2).values, sample_timeseries.active_data.values * ts2.active_data.values
+            (sample_timeseries * ts2).values, sample_timeseries.selected_data.values * ts2.selected_data.values
         )
         assert np.array_equal(
-            (sample_timeseries / ts2).values, sample_timeseries.active_data.values / ts2.active_data.values
+            (sample_timeseries / ts2).values, sample_timeseries.selected_data.values / ts2.selected_data.values
         )
 
         # Test operations with DataArrays
-        assert np.array_equal((sample_timeseries + data2).values, sample_timeseries.active_data.values + data2.values)
-        assert np.array_equal((data2 + sample_timeseries).values, data2.values + sample_timeseries.active_data.values)
+        assert np.array_equal((sample_timeseries + data2).values, sample_timeseries.selected_data.values + data2.values)
+        assert np.array_equal((data2 + sample_timeseries).values, data2.values + sample_timeseries.selected_data.values)
 
         # Test operations with scalars
-        assert np.array_equal((sample_timeseries + 5).values, sample_timeseries.active_data.values + 5)
-        assert np.array_equal((5 + sample_timeseries).values, 5 + sample_timeseries.active_data.values)
+        assert np.array_equal((sample_timeseries + 5).values, sample_timeseries.selected_data.values + 5)
+        assert np.array_equal((5 + sample_timeseries).values, 5 + sample_timeseries.selected_data.values)
 
         # Test unary operations
-        assert np.array_equal((-sample_timeseries).values, -sample_timeseries.active_data.values)
-        assert np.array_equal((+sample_timeseries).values, +sample_timeseries.active_data.values)
-        assert np.array_equal((abs(sample_timeseries)).values, abs(sample_timeseries.active_data.values))
+        assert np.array_equal((-sample_timeseries).values, -sample_timeseries.selected_data.values)
+        assert np.array_equal((+sample_timeseries).values, +sample_timeseries.selected_data.values)
+        assert np.array_equal((abs(sample_timeseries)).values, abs(sample_timeseries.selected_data.values))
 
     def test_comparison_operations(self, sample_timesteps):
         """Test comparison operations."""
@@ -279,327 +277,473 @@ class TestTimeSeries:
     def test_numpy_ufunc(self, sample_timeseries):
         """Test numpy ufunc compatibility."""
         # Test basic numpy functions
-        assert np.array_equal(np.add(sample_timeseries, 5).values, np.add(sample_timeseries.active_data, 5).values)
+        assert np.array_equal(np.add(sample_timeseries, 5).values, np.add(sample_timeseries.selected_data, 5).values)
 
         assert np.array_equal(
-            np.multiply(sample_timeseries, 2).values, np.multiply(sample_timeseries.active_data, 2).values
+            np.multiply(sample_timeseries, 2).values, np.multiply(sample_timeseries.selected_data, 2).values
         )
 
         # Test with two TimeSeries objects
-        data2 = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.active_timesteps}, dims=['time'])
+        data2 = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time'])
         ts2 = TimeSeries(data2, 'Second Series')
 
         assert np.array_equal(
-            np.add(sample_timeseries, ts2).values, np.add(sample_timeseries.active_data, ts2.active_data).values
+            np.add(sample_timeseries, ts2).values, np.add(sample_timeseries.selected_data, ts2.selected_data).values
         )
 
     def test_sel_and_isel_properties(self, sample_timeseries):
         """Test sel and isel properties."""
         # Test that sel property works
-        selected = sample_timeseries.sel(time=sample_timeseries.active_timesteps[0])
-        assert selected.item() == sample_timeseries.active_data.values[0]
+        selected = sample_timeseries.sel(time=sample_timeseries.stored_data.coords['time'][0])
+        assert selected.item() == sample_timeseries.selected_data.values[0]
 
         # Test that isel property works
         indexed = sample_timeseries.isel(time=0)
-        assert indexed.item() == sample_timeseries.active_data.values[0]
+        assert indexed.item() == sample_timeseries.selected_data.values[0]
 
 
 @pytest.fixture
-def sample_collection(sample_timesteps):
+def sample_scenario_index():
+    """Create a sample scenario index with the required 'scenario' name."""
+    return pd.Index(['baseline', 'high_demand', 'low_price'], name='scenario')
+
+
+@pytest.fixture
+def simple_scenario_dataarray(sample_timesteps, sample_scenario_index):
+    """Create a DataArray with both scenario and time dimensions."""
+    data = np.array([
+        [10, 20, 30, 40, 50],    # baseline
+        [15, 25, 35, 45, 55],    # high_demand
+        [5, 15, 25, 35, 45]      # low_price
+    ])
+    return xr.DataArray(
+        data=data,
+        coords={'scenario': sample_scenario_index, 'time': sample_timesteps},
+        dims=['scenario', 'time']
+    )
+
+
+@pytest.fixture
+def sample_scenario_timeseries(simple_scenario_dataarray):
+    """Create a sample TimeSeries object with scenario dimension."""
+    return TimeSeries(simple_scenario_dataarray, name='Test Scenario Series')
+
+
+@pytest.fixture
+def sample_allocator(sample_timesteps):
     """Create a sample TimeSeriesCollection."""
     return TimeSeriesCollection(sample_timesteps)
 
 
 @pytest.fixture
-def populated_collection(sample_collection):
-    """Create a TimeSeriesCollection with test data."""
-    # Add a constant time series
-    sample_collection.create_time_series(42, 'constant_series')
-
-    # Add a varying time series
-    varying_data = np.array([10, 20, 30, 40, 50])
-    sample_collection.create_time_series(varying_data, 'varying_series')
-
-    # Add a time series with extra timestep
-    sample_collection.create_time_series(
-        np.array([1, 2, 3, 4, 5, 6]), 'extra_timestep_series', needs_extra_timestep=True
-    )
-
-    # Add series with aggregation settings
-    sample_collection.create_time_series(
-        TimeSeriesData(np.array([5, 5, 5, 5, 5]), agg_group='group1'), 'group1_series1'
-    )
-    sample_collection.create_time_series(
-        TimeSeriesData(np.array([6, 6, 6, 6, 6]), agg_group='group1'), 'group1_series2'
-    )
-    sample_collection.create_time_series(
-        TimeSeriesData(np.array([10, 10, 10, 10, 10]), agg_weight=0.5), 'weighted_series'
-    )
-
-    return sample_collection
+def sample_scenario_allocator(sample_timesteps, sample_scenario_index):
+    """Create a sample TimeSeriesCollection with scenarios."""
+    return TimeSeriesCollection(sample_timesteps, scenarios=sample_scenario_index)
 
 
-class TestTimeSeriesCollection:
-    """Test suite for TimeSeriesCollection."""
+class TestTimeSeriesWithScenarios:
+    """Test suite for TimeSeries class with scenarios."""
+
+    def test_initialization_with_scenarios(self, simple_scenario_dataarray):
+        """Test initialization of TimeSeries with scenario dimension."""
+        ts = TimeSeries(simple_scenario_dataarray, name='Scenario Series')
+
+        # Check basic properties
+        assert ts.name == 'Scenario Series'
+        assert ts._has_scenarios is True
+        assert ts._selected_scenarios is None  # No selection initially
+
+        # Check data initialization
+        assert isinstance(ts.stored_data, xr.DataArray)
+        assert ts.stored_data.equals(simple_scenario_dataarray)
+        assert ts.selected_data.equals(simple_scenario_dataarray)
+
+        # Check backup was created
+        assert ts._backup.equals(simple_scenario_dataarray)
+
+    def test_reset_with_scenarios(self, sample_scenario_timeseries, simple_scenario_dataarray):
+        """Test reset method with scenarios."""
+        # Get original full indexes
+        full_timesteps = simple_scenario_dataarray.coords['time']
+        full_scenarios = simple_scenario_dataarray.coords['scenario']
+
+        # Set to subset timesteps and scenarios
+        subset_timesteps = full_timesteps[1:3]
+        subset_scenarios = full_scenarios[:2]
+
+        sample_scenario_timeseries.set_selection(timesteps=subset_timesteps, scenarios=subset_scenarios)
+
+        # Verify subsets were set
+        assert sample_scenario_timeseries._selected_timesteps.equals(subset_timesteps)
+        assert sample_scenario_timeseries._selected_scenarios.equals(subset_scenarios)
+        assert sample_scenario_timeseries.selected_data.shape == (len(subset_scenarios), len(subset_timesteps))
+
+        # Reset
+        sample_scenario_timeseries.reset()
+
+        # Should be back to full indexes
+        assert sample_scenario_timeseries._selected_timesteps is None
+        assert sample_scenario_timeseries._selected_scenarios is None
+        assert sample_scenario_timeseries.selected_data.shape == (len(full_scenarios), len(full_timesteps))
+
+    def test_scenario_selection(self, sample_scenario_timeseries, sample_scenario_index):
+        """Test scenario selection."""
+        # Initial state should use all scenarios
+        assert sample_scenario_timeseries._selected_scenarios is None
+
+        # Set to a subset
+        subset_index = sample_scenario_index[:2]  # First two scenarios
+        sample_scenario_timeseries.set_selection(scenarios=subset_index)
+        assert sample_scenario_timeseries._selected_scenarios.equals(subset_index)
+
+        # Active data should reflect the subset
+        assert sample_scenario_timeseries.selected_data.equals(
+            sample_scenario_timeseries.stored_data.sel(scenario=subset_index)
+        )
+
+        # Clear selection
+        sample_scenario_timeseries.clear_selection(timesteps=False, scenarios=True)
+        assert sample_scenario_timeseries._selected_scenarios is None
+
+    def test_all_equal_with_scenarios(self, sample_timesteps, sample_scenario_index):
+        """Test all_equal property with scenarios."""
+        # All values equal across all scenarios
+        equal_data = np.full((3, 5), 5)  # All values are 5
+        equal_dataarray = xr.DataArray(
+            data=equal_data,
+            coords={'scenario': sample_scenario_index, 'time': sample_timesteps},
+            dims=['scenario', 'time']
+        )
+        ts_equal = TimeSeries(equal_dataarray, 'Equal Scenario Series')
+        assert ts_equal.all_equal is True
+
+        # Equal within each scenario but different between scenarios
+        per_scenario_equal = np.array([
+            [5, 5, 5, 5, 5],    # baseline - all 5
+            [10, 10, 10, 10, 10], # high_demand - all 10
+            [15, 15, 15, 15, 15]  # low_price - all 15
+        ])
+        per_scenario_dataarray = xr.DataArray(
+            data=per_scenario_equal,
+            coords={'scenario': sample_scenario_index, 'time': sample_timesteps},
+            dims=['scenario', 'time']
+        )
+        ts_per_scenario = TimeSeries(per_scenario_dataarray, 'Per-Scenario Equal Series')
+        assert ts_per_scenario.all_equal is False
+
+    def test_arithmetic_with_scenarios(self, sample_scenario_timeseries, sample_timesteps, sample_scenario_index):
+        """Test arithmetic operations with scenarios."""
+        # Create a second TimeSeries with scenarios
+        data2 = np.ones((3, 5))  # All ones
+        second_dataarray = xr.DataArray(
+            data=data2,
+            coords={'scenario': sample_scenario_index, 'time': sample_timesteps},
+            dims=['scenario', 'time']
+        )
+        ts2 = TimeSeries(second_dataarray, 'Second Series')
+
+        # Test operations between two scenario TimeSeries objects
+        result = sample_scenario_timeseries + ts2
+        assert result.shape == (3, 5)
+        assert result.dims == ('scenario', 'time')
+
+        # First scenario values should be increased by 1
+        baseline_original = sample_scenario_timeseries.sel(scenario='baseline').values
+        baseline_result = result.sel(scenario='baseline').values
+        assert np.array_equal(baseline_result, baseline_original + 1)
+
+
+class TestTimeSeriesAllocator:
+    """Test suite for TimeSeriesCollection class."""
 
     def test_initialization(self, sample_timesteps):
         """Test basic initialization."""
-        collection = TimeSeriesCollection(sample_timesteps)
+        allocator = TimeSeriesCollection(sample_timesteps)
 
-        assert collection.all_timesteps.equals(sample_timesteps)
-        assert len(collection.all_timesteps_extra) == len(sample_timesteps) + 1
-        assert isinstance(collection.all_hours_per_timestep, xr.DataArray)
-        assert len(collection) == 0
+        assert allocator.timesteps.equals(sample_timesteps)
+        assert len(allocator.timesteps_extra) == len(sample_timesteps) + 1
+        assert isinstance(allocator.hours_per_timestep, xr.DataArray)
+        assert len(allocator._time_series) == 0
 
     def test_initialization_with_custom_hours(self, sample_timesteps):
         """Test initialization with custom hour settings."""
         # Test with last timestep duration
         last_timestep_hours = 12
-        collection = TimeSeriesCollection(sample_timesteps, hours_of_last_timestep=last_timestep_hours)
+        allocator = TimeSeriesCollection(sample_timesteps, hours_of_last_timestep=last_timestep_hours)
 
         # Verify the last timestep duration
-        extra_step_delta = collection.all_timesteps_extra[-1] - collection.all_timesteps_extra[-2]
+        extra_step_delta = allocator.timesteps_extra[-1] - allocator.timesteps_extra[-2]
         assert extra_step_delta == pd.Timedelta(hours=last_timestep_hours)
 
         # Test with previous timestep duration
         hours_per_step = 8
-        collection2 = TimeSeriesCollection(sample_timesteps, hours_of_previous_timesteps=hours_per_step)
+        allocator2 = TimeSeriesCollection(sample_timesteps, hours_of_previous_timesteps=hours_per_step)
 
-        assert collection2.hours_of_previous_timesteps == hours_per_step
+        assert allocator2.hours_of_previous_timesteps == hours_per_step
 
-    def test_create_time_series(self, sample_collection):
-        """Test creating time series."""
+    def test_add_time_series(self, sample_allocator, sample_timesteps):
+        """Test adding time series."""
         # Test scalar
-        ts1 = sample_collection.create_time_series(42, 'scalar_series')
+        ts1 = sample_allocator.add_time_series('scalar_series', 42)
         assert ts1.name == 'scalar_series'
-        assert np.all(ts1.active_data.values == 42)
+        assert np.all(ts1.selected_data.values == 42)
 
         # Test numpy array
         data = np.array([1, 2, 3, 4, 5])
-        ts2 = sample_collection.create_time_series(data, 'array_series')
-        assert np.array_equal(ts2.active_data.values, data)
+        ts2 = sample_allocator.add_time_series('array_series', data)
+        assert np.array_equal(ts2.selected_data.values, data)
 
-        # Test with TimeSeriesData
-        ts3 = sample_collection.create_time_series(TimeSeriesData(10, agg_weight=0.7), 'weighted_series')
-        assert ts3.aggregation_weight == 0.7
+        # Test with existing TimeSeries
+        existing_ts = TimeSeries.from_datasource(10, 'original_name', sample_timesteps, aggregation_weight=0.7)
+        ts3 = sample_allocator.add_time_series('weighted_series', existing_ts)
+        assert ts3.name == 'weighted_series'  # Name changed
+        assert ts3.aggregation_weight == 0.7  # Weight preserved
 
         # Test with extra timestep
-        ts4 = sample_collection.create_time_series(5, 'extra_series', needs_extra_timestep=True)
-        assert ts4.needs_extra_timestep
-        assert len(ts4.active_data) == len(sample_collection.timesteps_extra)
+        ts4 = sample_allocator.add_time_series('extra_series', 5, has_extra_timestep=True)
+        assert ts4.name == 'extra_series'
+        assert ts4.has_extra_timestep
+        assert len(ts4.selected_data) == len(sample_allocator.timesteps_extra)
 
         # Test duplicate name
-        with pytest.raises(ValueError, match='already exists'):
-            sample_collection.create_time_series(1, 'scalar_series')
+        with pytest.raises(KeyError, match='already exists'):
+            sample_allocator.add_time_series('scalar_series', 1)
 
-    def test_access_time_series(self, populated_collection):
+    def test_access_time_series(self, sample_allocator):
         """Test accessing time series."""
+        # Add a few time series
+        sample_allocator.add_time_series('series1', 42)
+        sample_allocator.add_time_series('series2', np.array([1, 2, 3, 4, 5]))
+
         # Test __getitem__
-        ts = populated_collection['varying_series']
-        assert ts.name == 'varying_series'
+        ts = sample_allocator['series1']
+        assert ts.name == 'series1'
 
         # Test __contains__ with string
-        assert 'constant_series' in populated_collection
-        assert 'nonexistent_series' not in populated_collection
+        assert 'series1' in sample_allocator
+        assert 'nonexistent_series' not in sample_allocator
 
         # Test __contains__ with TimeSeries object
-        assert populated_collection['varying_series'] in populated_collection
-
-        # Test __iter__
-        names = [ts.name for ts in populated_collection]
-        assert len(names) == 6
-        assert 'varying_series' in names
+        assert sample_allocator['series2'] in sample_allocator
 
         # Test access to non-existent series
-        with pytest.raises(KeyError):
-            populated_collection['nonexistent_series']
-
-    def test_constants_and_non_constants(self, populated_collection):
-        """Test constants and non_constants properties."""
-        # Test constants
-        constants = populated_collection.constants
-        assert len(constants) == 4  # constant_series, group1_series1, group1_series2, weighted_series
-        assert all(ts.all_equal for ts in constants)
-
-        # Test non_constants
-        non_constants = populated_collection.non_constants
-        assert len(non_constants) == 2  # varying_series, extra_timestep_series
-        assert all(not ts.all_equal for ts in non_constants)
-
-        # Test modifying a series changes the results
-        populated_collection['constant_series'].stored_data = np.array([1, 2, 3, 4, 5])
-        updated_constants = populated_collection.constants
-        assert len(updated_constants) == 3  # One less constant
-        assert 'constant_series' not in [ts.name for ts in updated_constants]
-
-    def test_timesteps_properties(self, populated_collection, sample_timesteps):
-        """Test timestep-related properties."""
-        # Test default (all) timesteps
-        assert populated_collection.timesteps.equals(sample_timesteps)
-        assert len(populated_collection.timesteps_extra) == len(sample_timesteps) + 1
-
-        # Test activating a subset
-        subset = sample_timesteps[1:3]
-        populated_collection.activate_timesteps(subset)
-
-        assert populated_collection.timesteps.equals(subset)
-        assert len(populated_collection.timesteps_extra) == len(subset) + 1
-
-        # Check that time series were updated
-        assert populated_collection['varying_series'].active_timesteps.equals(subset)
-        assert populated_collection['extra_timestep_series'].active_timesteps.equals(
-            populated_collection.timesteps_extra
-        )
-
-        # Test reset
-        populated_collection.reset()
-        assert populated_collection.timesteps.equals(sample_timesteps)
-
-    def test_to_dataframe_and_dataset(self, populated_collection):
-        """Test conversion to DataFrame and Dataset."""
-        # Test to_dataset
-        ds = populated_collection.to_dataset()
-        assert isinstance(ds, xr.Dataset)
-        assert len(ds.data_vars) == 6
-
-        # Test to_dataframe with different filters
-        df_all = populated_collection.to_dataframe(filtered='all')
-        assert len(df_all.columns) == 6
-
-        df_constant = populated_collection.to_dataframe(filtered='constant')
-        assert len(df_constant.columns) == 4
-
-        df_non_constant = populated_collection.to_dataframe(filtered='non_constant')
-        assert len(df_non_constant.columns) == 2
-
-        # Test invalid filter
         with pytest.raises(ValueError):
-            populated_collection.to_dataframe(filtered='invalid')
+            sample_allocator['nonexistent_series']
 
-    def test_calculate_aggregation_weights(self, populated_collection):
-        """Test aggregation weight calculation."""
-        weights = populated_collection.calculate_aggregation_weights()
+    def test_selection_propagation(self, sample_allocator, sample_timesteps):
+        """Test that selections propagate to TimeSeries."""
+        # Add a few time series
+        ts1 = sample_allocator.add_time_series('series1', 42)
+        ts2 = sample_allocator.add_time_series('series2', np.array([1, 2, 3, 4, 5]))
+        ts3 = sample_allocator.add_time_series('series3', 5, has_extra_timestep=True)
 
-        # Group weights should be 0.5 each (1/2)
-        assert populated_collection.group_weights['group1'] == 0.5
+        # Initially no selections
+        assert ts1._selected_timesteps is None
+        assert ts2._selected_timesteps is None
+        assert ts3._selected_timesteps is None
 
-        # Series in group1 should have weight 0.5
-        assert weights['group1_series1'] == 0.5
-        assert weights['group1_series2'] == 0.5
+        # Apply selection
+        subset_timesteps = sample_timesteps[1:3]
+        sample_allocator.set_selection(timesteps=subset_timesteps)
 
-        # Series with explicit weight should have that weight
-        assert weights['weighted_series'] == 0.5
+        # Check selection propagated to regular time series
+        assert ts1._selected_timesteps.equals(subset_timesteps)
+        assert ts2._selected_timesteps.equals(subset_timesteps)
 
-        # Series without group or weight should have weight 1
-        assert weights['constant_series'] == 1
+        # Check selection with extra timestep
+        assert ts3._selected_timesteps is not None
+        assert len(ts3._selected_timesteps) == len(subset_timesteps) + 1
 
-    def test_insert_new_data(self, populated_collection, sample_timesteps):
-        """Test inserting new data."""
-        # Create new data
-        new_data = pd.DataFrame(
-            {
-                'constant_series': [100, 100, 100, 100, 100],
-                'varying_series': [5, 10, 15, 20, 25],
-                # extra_timestep_series is omitted to test partial updates
-            },
-            index=sample_timesteps,
+        # Clear selection
+        sample_allocator.clear_selection()
+
+        # Check selection cleared
+        assert ts1._selected_timesteps is None
+        assert ts2._selected_timesteps is None
+        assert ts3._selected_timesteps is None
+
+    def test_update_time_series(self, sample_allocator):
+        """Test updating a time series."""
+        # Add a time series
+        ts = sample_allocator.add_time_series('series', 42)
+
+        # Update it
+        sample_allocator.update_time_series('series', np.array([1, 2, 3, 4, 5]))
+
+        # Check update was applied
+        assert np.array_equal(ts.selected_data.values, np.array([1, 2, 3, 4, 5]))
+
+        # Test updating non-existent series
+        with pytest.raises(KeyError):
+            sample_allocator.update_time_series('nonexistent', 42)
+
+    def test_as_dataset(self, sample_allocator):
+        """Test as_dataset method."""
+        # Add some time series
+        sample_allocator.add_time_series('series1', 42)
+        sample_allocator.add_time_series('series2', np.array([1, 2, 3, 4, 5]))
+
+        # Get dataset
+        ds = sample_allocator.as_dataset(with_extra_timestep=False)
+
+        # Check dataset contents
+        assert isinstance(ds, xr.Dataset)
+        assert 'series1' in ds
+        assert 'series2' in ds
+        assert np.all(ds['series1'].values == 42)
+        assert np.array_equal(ds['series2'].values, np.array([1, 2, 3, 4, 5]))
+
+
+class TestTimeSeriesAllocatorWithScenarios:
+    """Test suite for TimeSeriesCollection with scenarios."""
+
+    def test_initialization_with_scenarios(self, sample_timesteps, sample_scenario_index):
+        """Test initialization with scenarios."""
+        allocator = TimeSeriesCollection(sample_timesteps, scenarios=sample_scenario_index)
+
+        assert allocator.timesteps.equals(sample_timesteps)
+        assert allocator.scenarios.equals(sample_scenario_index)
+        assert len(allocator._time_series) == 0
+
+    def test_add_time_series_with_scenarios(self, sample_scenario_allocator):
+        """Test creating time series with scenarios."""
+        # Test scalar (broadcasts to all scenarios)
+        ts1 = sample_scenario_allocator.add_time_series('scalar_series', 42)
+        assert ts1._has_scenarios
+        assert ts1.name == 'scalar_series'
+        assert ts1.selected_data.shape == (3, 5)  # 3 scenarios, 5 timesteps
+        assert np.all(ts1.selected_data.values == 42)
+
+        # Test 1D array (broadcasts to all scenarios)
+        data = np.array([1, 2, 3, 4, 5])
+        ts2 = sample_scenario_allocator.add_time_series('array_series', data)
+        assert ts2._has_scenarios
+        assert ts2.selected_data.shape == (3, 5)
+        # Each scenario should have the same values
+        for scenario in sample_scenario_allocator.scenarios:
+            assert np.array_equal(ts2.sel(scenario=scenario).values, data)
+
+        # Test 2D array (one row per scenario)
+        data_2d = np.array([
+            [10, 20, 30, 40, 50],
+            [15, 25, 35, 45, 55],
+            [5, 15, 25, 35, 45]
+        ])
+        ts3 = sample_scenario_allocator.add_time_series('scenario_specific_series', data_2d)
+        assert ts3._has_scenarios
+        assert ts3.selected_data.shape == (3, 5)
+        # Each scenario should have its own values
+        assert np.array_equal(ts3.sel(scenario='baseline').values, data_2d[0])
+        assert np.array_equal(ts3.sel(scenario='high_demand').values, data_2d[1])
+        assert np.array_equal(ts3.sel(scenario='low_price').values, data_2d[2])
+
+    def test_selection_propagation_with_scenarios(self, sample_scenario_allocator, sample_timesteps, sample_scenario_index):
+        """Test scenario selection propagation."""
+        # Add some time series
+        ts1 = sample_scenario_allocator.add_time_series('series1', 42)
+        ts2 = sample_scenario_allocator.add_time_series('series2', np.array([1, 2, 3, 4, 5]))
+
+        # Initial state - no selections
+        assert ts1._selected_scenarios is None
+        assert ts2._selected_scenarios is None
+
+        # Select scenarios
+        subset_scenarios = sample_scenario_index[:2]
+        sample_scenario_allocator.set_selection(scenarios=subset_scenarios)
+
+        # Check selections propagated
+        assert ts1._selected_scenarios.equals(subset_scenarios)
+        assert ts2._selected_scenarios.equals(subset_scenarios)
+
+        # Check data is filtered
+        assert ts1.selected_data.shape == (2, 5)  # 2 scenarios, 5 timesteps
+        assert ts2.selected_data.shape == (2, 5)
+
+        # Apply combined selection
+        subset_timesteps = sample_timesteps[1:3]
+        sample_scenario_allocator.set_selection(timesteps=subset_timesteps, scenarios=subset_scenarios)
+
+        # Check combined selection applied
+        assert ts1._selected_timesteps.equals(subset_timesteps)
+        assert ts1._selected_scenarios.equals(subset_scenarios)
+        assert ts1.selected_data.shape == (2, 2)  # 2 scenarios, 2 timesteps
+
+        # Clear selections
+        sample_scenario_allocator.clear_selection()
+        assert ts1._selected_timesteps is None
+        assert ts1._selected_scenarios is None
+        assert ts1.selected_data.shape == (3, 5)  # Back to full shape
+
+    def test_as_dataset_with_scenarios(self, sample_scenario_allocator):
+        """Test as_dataset method with scenarios."""
+        # Add some time series
+        sample_scenario_allocator.add_time_series('scalar_series', 42)
+        sample_scenario_allocator.add_time_series(
+            'varying_series',
+            np.array([
+                [10, 20, 30, 40, 50],
+                [15, 25, 35, 45, 55],
+                [5, 15, 25, 35, 45]
+            ])
         )
 
-        # Insert data
-        populated_collection.insert_new_data(new_data)
+        # Get dataset
+        ds = sample_scenario_allocator.as_dataset(with_extra_timestep=False)
 
-        # Verify updates
-        assert np.all(populated_collection['constant_series'].active_data.values == 100)
-        assert np.array_equal(populated_collection['varying_series'].active_data.values, np.array([5, 10, 15, 20, 25]))
+        # Check dataset dimensions
+        assert 'scenario' in ds.dims
+        assert 'time' in ds.dims
+        assert ds.dims['scenario'] == 3
+        assert ds.dims['time'] == 5
 
-        # Series not in the DataFrame should be unchanged
-        assert np.array_equal(
-            populated_collection['extra_timestep_series'].active_data.values[:-1], np.array([1, 2, 3, 4, 5])
-        )
+        # Check dataset variables
+        assert 'scalar_series' in ds
+        assert 'varying_series' in ds
 
-        # Test with mismatched index
-        bad_index = pd.date_range('2023-02-01', periods=5, freq='D', name='time')
-        bad_data = pd.DataFrame({'constant_series': [1, 1, 1, 1, 1]}, index=bad_index)
+        # Check values
+        assert np.all(ds['scalar_series'].values == 42)
+        baseline_values = ds['varying_series'].sel(scenario='baseline').values
+        assert np.array_equal(baseline_values, np.array([10, 20, 30, 40, 50]))
 
-        with pytest.raises(ValueError, match='must match collection timesteps'):
-            populated_collection.insert_new_data(bad_data)
+    def test_contains_and_iteration(self, sample_scenario_allocator):
+        """Test __contains__ and __iter__ methods."""
+        # Add some time series
+        ts1 = sample_scenario_allocator.add_time_series('series1', 42)
+        sample_scenario_allocator.add_time_series('series2', 10)
 
-    def test_restore_data(self, populated_collection):
-        """Test restoring original data."""
-        # Capture original data
-        original_values = {name: ts.stored_data.copy() for name, ts in populated_collection.time_series_data.items()}
+        # Test __contains__
+        assert 'series1' in sample_scenario_allocator
+        assert ts1 in sample_scenario_allocator
+        assert 'nonexistent' not in sample_scenario_allocator
 
-        # Modify data
-        new_data = pd.DataFrame(
-            {
-                name: np.ones(len(populated_collection.timesteps)) * 999
-                for name in populated_collection.time_series_data
-                if not populated_collection[name].needs_extra_timestep
-            },
-            index=populated_collection.timesteps,
-        )
+        # Test behavior with invalid type
+        with pytest.raises(TypeError):
+            assert 42 in sample_scenario_allocator
 
-        populated_collection.insert_new_data(new_data)
+    def test_update_time_series_with_scenarios(self, sample_scenario_allocator, sample_scenario_index):
+        """Test updating a time series with scenarios."""
+        # Add a time series
+        ts = sample_scenario_allocator.add_time_series('series', 42)
+        assert ts._has_scenarios
+        assert np.all(ts.selected_data.values == 42)
 
-        # Verify data was changed
-        assert np.all(populated_collection['constant_series'].active_data.values == 999)
+        # Update with scenario-specific data
+        new_data = np.array([
+            [1, 2, 3, 4, 5],
+            [6, 7, 8, 9, 10],
+            [11, 12, 13, 14, 15]
+        ])
+        sample_scenario_allocator.update_time_series('series', new_data)
 
-        # Restore data
-        populated_collection.restore_data()
+        # Check update was applied
+        assert np.array_equal(ts.selected_data.values, new_data)
+        assert ts._has_scenarios
 
-        # Verify data was restored
-        for name, original in original_values.items():
-            restored = populated_collection[name].stored_data
-            assert np.array_equal(restored.values, original.values)
+        # Check scenario-specific values
+        assert np.array_equal(ts.sel(scenario='baseline').values, new_data[0])
+        assert np.array_equal(ts.sel(scenario='high_demand').values, new_data[1])
+        assert np.array_equal(ts.sel(scenario='low_price').values, new_data[2])
 
-    def test_class_method_with_uniform_timesteps(self):
-        """Test the with_uniform_timesteps class method."""
-        collection = TimeSeriesCollection.with_uniform_timesteps(
-            start_time=pd.Timestamp('2023-01-01'), periods=24, freq='H', hours_per_step=1
-        )
 
-        assert len(collection.timesteps) == 24
-        assert collection.hours_of_previous_timesteps == 1
-        assert (collection.timesteps[1] - collection.timesteps[0]) == pd.Timedelta(hours=1)
-
-    def test_hours_per_timestep(self, populated_collection):
-        """Test hours_per_timestep calculation."""
-        # Standard case - uniform timesteps
-        hours = populated_collection.hours_per_timestep.values
-        assert np.allclose(hours, 24)  # Default is daily timesteps
-
-        # Create non-uniform timesteps
-        non_uniform_times = pd.DatetimeIndex(
-            [
-                pd.Timestamp('2023-01-01'),
-                pd.Timestamp('2023-01-02'),
-                pd.Timestamp('2023-01-03 12:00:00'),  # 1.5 days from previous
-                pd.Timestamp('2023-01-04'),  # 0.5 days from previous
-                pd.Timestamp('2023-01-06'),  # 2 days from previous
-            ],
-            name='time',
-        )
-
-        collection = TimeSeriesCollection(non_uniform_times)
-        hours = collection.hours_per_timestep.values
-
-        # Expected hours between timestamps
-        expected = np.array([24, 36, 12, 48, 48])
-        assert np.allclose(hours, expected)
-
-    def test_validation_and_errors(self, sample_timesteps):
-        """Test validation and error handling."""
-        # Test non-DatetimeIndex
-        with pytest.raises(TypeError, match='must be a pandas DatetimeIndex'):
-            TimeSeriesCollection(pd.Index([1, 2, 3, 4, 5]))
-
-        # Test too few timesteps
-        with pytest.raises(ValueError, match='must contain at least 2 timestamps'):
-            TimeSeriesCollection(pd.DatetimeIndex([pd.Timestamp('2023-01-01')], name='time'))
-
-        # Test invalid active_timesteps
-        collection = TimeSeriesCollection(sample_timesteps)
-        invalid_timesteps = pd.date_range('2024-01-01', periods=3, freq='D', name='time')
-
-        with pytest.raises(ValueError, match='must be a subset'):
-            collection.activate_timesteps(invalid_timesteps)
+if __name__ == '__main__':
+    pytest.main()
