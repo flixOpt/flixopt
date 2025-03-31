@@ -194,12 +194,12 @@ class Storage(Component):
         self.relative_minimum_charge_state = flow_system.create_time_series(
             f'{self.label_full}|relative_minimum_charge_state',
             self.relative_minimum_charge_state,
-            needs_extra_timestep=True,
+            has_extra_timestep=True,
         )
         self.relative_maximum_charge_state = flow_system.create_time_series(
             f'{self.label_full}|relative_maximum_charge_state',
             self.relative_maximum_charge_state,
-            needs_extra_timestep=True,
+            has_extra_timestep=True,
         )
         self.eta_charge = flow_system.create_time_series(f'{self.label_full}|eta_charge', self.eta_charge)
         self.eta_discharge = flow_system.create_time_series(f'{self.label_full}|eta_discharge', self.eta_discharge)

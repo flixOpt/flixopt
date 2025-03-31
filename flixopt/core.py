@@ -654,7 +654,7 @@ class TimeSeries:
         name (str): The name of the time series
         aggregation_weight (Optional[float]): Weight used for aggregation
         aggregation_group (Optional[str]): Group name for shared aggregation weighting
-        needs_extra_timestep (bool): Whether this series needs an extra timestep
+        has_extra_timestep (bool): Whether this series needs an extra timestep
     """
 
     @classmethod
@@ -666,7 +666,7 @@ class TimeSeries:
         scenarios: Optional[pd.Index] = None,
         aggregation_weight: Optional[float] = None,
         aggregation_group: Optional[str] = None,
-        needs_extra_timestep: bool = False,
+        has_extra_timestep: bool = False,
     ) -> 'TimeSeries':
         """
         Initialize the TimeSeries from multiple data sources.
@@ -678,7 +678,7 @@ class TimeSeries:
             scenarios: The scenarios of the TimeSeries
             aggregation_weight: The weight in aggregation calculations
             aggregation_group: Group this TimeSeries belongs to for aggregation weight sharing
-            needs_extra_timestep: Whether this series requires an extra timestep
+            has_extra_timestep: Whether this series requires an extra timestep
 
         Returns:
             A new TimeSeries instance
@@ -688,7 +688,7 @@ class TimeSeries:
             name,
             aggregation_weight,
             aggregation_group,
-            needs_extra_timestep,
+            has_extra_timestep,
         )
 
     @classmethod
@@ -722,7 +722,7 @@ class TimeSeries:
             name=data['name'],
             aggregation_weight=data['aggregation_weight'],
             aggregation_group=data['aggregation_group'],
-            needs_extra_timestep=data['needs_extra_timestep'],
+            has_extra_timestep=data['has_extra_timestep'],
         )
 
     def __init__(
@@ -731,7 +731,7 @@ class TimeSeries:
         name: str,
         aggregation_weight: Optional[float] = None,
         aggregation_group: Optional[str] = None,
-        needs_extra_timestep: bool = False,
+        has_extra_timestep: bool = False,
     ):
         """
         Initialize a TimeSeries with a DataArray.
@@ -741,7 +741,7 @@ class TimeSeries:
             name: The name of the TimeSeries
             aggregation_weight: The weight in aggregation calculations
             aggregation_group: Group this TimeSeries belongs to for weight sharing
-            needs_extra_timestep: Whether this series requires an extra timestep
+            has_extra_timestep: Whether this series requires an extra timestep
 
         Raises:
             ValueError: If data doesn't have a 'time' index or has unsupported dimensions
@@ -756,7 +756,7 @@ class TimeSeries:
         self.name = name
         self.aggregation_weight = aggregation_weight
         self.aggregation_group = aggregation_group
-        self.needs_extra_timestep = needs_extra_timestep
+        self.has_extra_timestep = has_extra_timestep
 
         # Data management
         self._stored_data = data.copy(deep=True)
@@ -797,7 +797,7 @@ class TimeSeries:
             'name': self.name,
             'aggregation_weight': self.aggregation_weight,
             'aggregation_group': self.aggregation_group,
-            'needs_extra_timestep': self.needs_extra_timestep,
+            'has_extra_timestep': self.has_extra_timestep,
             'data': self.selected_data.to_dict(),
         }
 
@@ -983,7 +983,7 @@ class TimeSeries:
             'name': self.name,
             'aggregation_weight': self.aggregation_weight,
             'aggregation_group': self.aggregation_group,
-            'needs_extra_timestep': self.needs_extra_timestep,
+            'has_extra_timestep': self.has_extra_timestep,
             'shape': self.selected_data.shape,
         }
 
@@ -1044,7 +1044,7 @@ class TimeSeriesAllocator:
         data: Union[NumericData, TimeSeries],
         aggregation_weight: Optional[float] = None,
         aggregation_group: Optional[str] = None,
-        needs_extra_timestep: bool = False,
+        has_extra_timestep: bool = False,
     ) -> TimeSeries:
         """
         Add a new TimeSeries to the allocator.
@@ -1054,7 +1054,7 @@ class TimeSeriesAllocator:
             data: Data for the time series (can be raw data or an existing TimeSeries)
             aggregation_weight: Weight used for aggregation
             aggregation_group: Group name for shared aggregation weighting
-            needs_extra_timestep: Whether this series needs an extra timestep
+            has_extra_timestep: Whether this series needs an extra timestep
 
         Returns:
             The created TimeSeries object
@@ -1063,7 +1063,7 @@ class TimeSeriesAllocator:
             raise KeyError(f"TimeSeries '{name}' already exists in allocator")
 
         # Choose which timesteps to use
-        target_timesteps = self.timesteps_extra if needs_extra_timestep else self.timesteps
+        target_timesteps = self.timesteps_extra if has_extra_timestep else self.timesteps
 
         # Create or adapt the TimeSeries object
         if isinstance(data, TimeSeries):
@@ -1078,7 +1078,7 @@ class TimeSeriesAllocator:
                 name=name,
                 aggregation_weight=aggregation_weight or time_series.aggregation_weight,
                 aggregation_group=aggregation_group or time_series.aggregation_group,
-                needs_extra_timestep=needs_extra_timestep or time_series.needs_extra_timestep,
+                has_extra_timestep=has_extra_timestep or time_series.has_extra_timestep,
             )
         else:
             # Create a new TimeSeries from raw data
@@ -1089,14 +1089,14 @@ class TimeSeriesAllocator:
                 scenarios=self.scenarios,
                 aggregation_weight=aggregation_weight,
                 aggregation_group=aggregation_group,
-                needs_extra_timestep=needs_extra_timestep,
+                has_extra_timestep=has_extra_timestep,
             )
 
         # Add to storage
         self._time_series[name] = time_series
 
         # Track if it needs extra timestep
-        if needs_extra_timestep:
+        if has_extra_timestep:
             self._has_extra_timestep.add(name)
 
         # Return the TimeSeries object

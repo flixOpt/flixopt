@@ -278,7 +278,7 @@ class FlowSystem:
         self,
         name: str,
         data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
-        needs_extra_timestep: bool = False,
+        has_extra_timestep: bool = False,
     ) -> Optional[TimeSeries]:
         """
         Tries to create a TimeSeries from NumericData Data and adds it to the time_series_allocator
@@ -294,10 +294,10 @@ class FlowSystem:
             if data in self.time_series_allocator:
                 return data
             return self.time_series_allocator.add_time_series(
-                data=data.selected_data, name=name, needs_extra_timestep=needs_extra_timestep
+                data=data.selected_data, name=name, has_extra_timestep=has_extra_timestep
             )
         return self.time_series_allocator.add_time_series(
-            data=data, name=name, needs_extra_timestep=needs_extra_timestep
+            data=data, name=name, has_extra_timestep=has_extra_timestep
         )
 
     def create_effect_time_series(

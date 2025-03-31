@@ -128,7 +128,7 @@ def main():
 
     # Example 4: Add data with extra timestep
     forecast_values = np.random.normal(size=(len(scenarios), len(timesteps) + 1)) * 10 + 100
-    forecast_da = allocator.add_data_array("forecast", forecast_values, needs_extra_timestep=True)
+    forecast_da = allocator.add_data_array("forecast", forecast_values, has_extra_timestep=True)
     print("  Added 'forecast' (with extra timestep)")
     print(f"    Shape: {forecast_da.shape}")
     print(f"    Last regular timestep: {timesteps[-1]}")
