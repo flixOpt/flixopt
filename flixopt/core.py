@@ -888,43 +888,21 @@ class TimeSeries:
 
     def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
         """
-        Set active subset for timesteps and/or scenarios.
+        Set active subset for timesteps and scenarios.
 
         Args:
-            timesteps: Timesteps to activate, or None to clear timestep selection
-            scenarios: Scenarios to activate, or None to clear scenario selection
-
-        This method follows the same API as TimeSeriesAllocator for consistency.
+            timesteps: Timesteps to activate, or None to clear
+            scenarios: Scenarios to activate, or None to clear
         """
-        # Handle timesteps selection
         if timesteps is None:
-            # Clear timestep selection
-            if 'time' in self._selection:
-                del self._selection['time']
+            self.clear_selection(timesteps=True, scenarios=False)
         else:
-            # Validate and set timestep selection
-            if not isinstance(timesteps, pd.DatetimeIndex):
-                raise TypeError('timesteps must be a pandas DatetimeIndex')
             self._selection['time'] = timesteps
 
-        # Handle scenarios selection
         if scenarios is None:
-            # Clear scenario selection
-            if 'scenario' in self._selection:
-                del self._selection['scenario']
-        elif self._has_scenarios:
-            # Validate and set scenario selection
-            if not isinstance(scenarios, pd.Index):
-                raise TypeError('scenarios must be a pandas Index')
-
-            # Check if scenarios are valid
-            stored_scenarios = self._stored_data.indexes['scenario']
-            if not scenarios.isin(stored_scenarios).all():
-                raise ValueError('scenarios must be a subset of the stored scenarios')
-
+            self.clear_selection(timesteps=False, scenarios=True)
+        else:
             self._selection['scenario'] = scenarios
-        elif scenarios is not None and not self._has_scenarios:
-            logger.warning('This TimeSeries does not have scenarios dimension. Ignoring scenarios selection.')
 
     def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
         """
@@ -936,11 +914,10 @@ class TimeSeries:
 
         This method follows the same API as TimeSeriesAllocator for consistency.
         """
-        if timesteps and 'time' in self._selection:
-            del self._selection['time']
-
-        if scenarios and 'scenario' in self._selection and self._has_scenarios:
-            del self._selection['scenario']
+        if timesteps:
+            self._selection['time'] = slice(None, None)
+        if scenarios:
+            self._selection['scenario'] = slice(None, None)
 
     @property
     def sel(self):
