@@ -761,22 +761,19 @@ class TimeSeries:
         # Data management
         self._stored_data = data.copy(deep=True)
         self._backup = self._stored_data.copy(deep=True)
-        self._active_timesteps = self._stored_data.indexes['time']
 
-        # Handle scenarios if present
+        # Selection state - use dictionaries for consistency with TimeSeriesAllocator
+        self._selection = {}
+
+        # Flag for whether this series has scenarios
         self._has_scenarios = 'scenario' in data.dims
-        self._active_scenarios = self._stored_data.indexes.get('scenario', None)
-
-        self._active_data = None
-        self._update_active_data()
 
     def reset(self):
         """
-        Reset active timesteps and scenarios to the full set of stored data.
+        Reset selections to include all timesteps and scenarios.
+        This is equivalent to clearing all selections.
         """
-        self.active_timesteps = None
-        if self._has_scenarios:
-            self.active_scenarios = None
+        self.clear_selection()
 
     def restore_data(self):
         """
@@ -824,15 +821,6 @@ class TimeSeries:
         """
         return get_numeric_stats(self.active_data, padd=0, by_scenario=True)
 
-    def _update_active_data(self):
-        """
-        Update the active data based on active_timesteps and active_scenarios.
-        """
-        if self._has_scenarios and self._active_scenarios is not None:
-            self._active_data = self._stored_data.sel(time=self.active_timesteps, scenario=self._active_scenarios)
-        else:
-            self._active_data = self._stored_data.sel(time=self.active_timesteps)
-
     @property
     def all_equal(self) -> bool:
         """Check if all values in the series are equal."""
@@ -841,64 +829,37 @@ class TimeSeries:
     @property
     def active_timesteps(self) -> pd.DatetimeIndex:
         """Get the current active timesteps."""
-        return self._active_timesteps
-
-    @active_timesteps.setter
-    def active_timesteps(self, timesteps: Optional[pd.DatetimeIndex]):
-        """
-        Set active_timesteps and refresh active_data.
-
-        Args:
-            timesteps: New timesteps to activate, or None to use all stored timesteps
-
-        Raises:
-            TypeError: If timesteps is not a pandas DatetimeIndex or None
-        """
-        if timesteps is None:
-            self._active_timesteps = self.stored_data.indexes['time']
-        elif isinstance(timesteps, pd.DatetimeIndex):
-            self._active_timesteps = timesteps
-        else:
-            raise TypeError('active_timesteps must be a pandas DatetimeIndex or None')
-
-        self._update_active_data()
+        # If no selection is active, return all timesteps
+        if 'time' not in self._selection:
+            return self._stored_data.indexes['time']
+        return self._selection['time']
 
     @property
     def active_scenarios(self) -> Optional[pd.Index]:
         """Get the current active scenarios."""
-        return self._active_scenarios
-
-    @active_scenarios.setter
-    def active_scenarios(self, scenarios: Optional[pd.Index]):
-        """
-        Set active_scenarios and refresh active_data.
-
-        Args:
-            scenarios: New scenarios to activate, or None to use all stored scenarios
-
-        Raises:
-            TypeError: If scenarios is not a pandas Index or None
-            ValueError: If scenarios is not a subset of stored scenarios
-        """
         if not self._has_scenarios:
-            logger.warning('This TimeSeries does not have scenarios dimension. Ignoring scenarios setting.')
-            return
+            return None
 
-        if scenarios is None:
-            self._active_scenarios = self.stored_data.indexes.get('scenario', None)
-        elif isinstance(scenarios, pd.Index):
-            if not scenarios.isin(self.stored_data.indexes['scenario']).all():
-                raise ValueError('active_scenarios must be a subset of the stored scenarios')
-            self._active_scenarios = scenarios
-        else:
-            raise TypeError('active_scenarios must be a pandas Index or None')
-
-        self._update_active_data()
+        # If no selection is active, return all scenarios
+        if 'scenario' not in self._selection:
+            return self._stored_data.indexes.get('scenario', None)
+        return self._selection['scenario']
 
     @property
     def active_data(self) -> xr.DataArray:
-        """Get a view of stored_data based on active_timesteps."""
-        return self._active_data
+        """
+        Get a view of stored_data based on current selections.
+        This computes the view dynamically based on the current selection state.
+        """
+        # Start with stored data
+        result = self._stored_data
+
+        # Apply selections if they exist
+        valid_selector = {dim: sel for dim, sel in self._selection.items() if dim in result.dims}
+        if valid_selector:
+            result = result.sel(**valid_selector)
+
+        return result
 
     @property
     def stored_data(self) -> xr.DataArray:
@@ -913,21 +874,83 @@ class TimeSeries:
         Args:
             value: New data to store
         """
-        new_data = DataConverter.as_dataarray(value, timesteps=self.active_timesteps, scenarios=self.active_scenarios)
+        # Get current timesteps and scenarios
+        timesteps = self.active_timesteps
+        scenarios = self.active_scenarios if self._has_scenarios else None
+
+        new_data = DataConverter.as_dataarray(value, timesteps=timesteps, scenarios=scenarios)
 
         # Skip if data is unchanged to avoid overwriting backup
         if new_data.equals(self._stored_data):
             return
 
         self._stored_data = new_data
-        self.active_timesteps = None  # Reset to full timeline
+        self.clear_selection()  # Reset selections to full dataset
+
+    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None):
+        """
+        Set active subset for timesteps and/or scenarios.
+
+        Args:
+            timesteps: Timesteps to activate, or None to clear timestep selection
+            scenarios: Scenarios to activate, or None to clear scenario selection
+
+        This method follows the same API as TimeSeriesAllocator for consistency.
+        """
+        # Handle timesteps selection
+        if timesteps is None:
+            # Clear timestep selection
+            if 'time' in self._selection:
+                del self._selection['time']
+        else:
+            # Validate and set timestep selection
+            if not isinstance(timesteps, pd.DatetimeIndex):
+                raise TypeError('timesteps must be a pandas DatetimeIndex')
+            self._selection['time'] = timesteps
+
+        # Handle scenarios selection
+        if scenarios is None:
+            # Clear scenario selection
+            if 'scenario' in self._selection:
+                del self._selection['scenario']
+        elif self._has_scenarios:
+            # Validate and set scenario selection
+            if not isinstance(scenarios, pd.Index):
+                raise TypeError('scenarios must be a pandas Index')
+
+            # Check if scenarios are valid
+            stored_scenarios = self._stored_data.indexes['scenario']
+            if not scenarios.isin(stored_scenarios).all():
+                raise ValueError('scenarios must be a subset of the stored scenarios')
+
+            self._selection['scenario'] = scenarios
+        elif scenarios is not None and not self._has_scenarios:
+            logger.warning('This TimeSeries does not have scenarios dimension. Ignoring scenarios selection.')
+
+    def clear_selection(self, timesteps: bool = True, scenarios: bool = True):
+        """
+        Clear selection for timesteps and/or scenarios.
+
+        Args:
+            timesteps: Whether to clear timesteps selection
+            scenarios: Whether to clear scenarios selection
+
+        This method follows the same API as TimeSeriesAllocator for consistency.
+        """
+        if timesteps and 'time' in self._selection:
+            del self._selection['time']
+
+        if scenarios and 'scenario' in self._selection and self._has_scenarios:
+            del self._selection['scenario']
 
     @property
     def sel(self):
+        """Direct access to the active_data's sel method for convenience."""
         return self.active_data.sel
 
     @property
     def isel(self):
+        """Direct access to the active_data's isel method for convenience."""
         return self.active_data.isel
 
     def _apply_operation(self, other, op):
@@ -1011,7 +1034,8 @@ class TimeSeries:
 
         # Add scenario information if present
         if self._has_scenarios:
-            attrs['scenarios'] = f'{len(self.active_scenarios)} scenarios'
+            scenarios = self.active_scenarios
+            attrs['scenarios'] = f'{len(scenarios)} scenarios' if scenarios is not None else 'All scenarios'
         else:
             attrs['scenarios'] = 'No scenarios'
 
