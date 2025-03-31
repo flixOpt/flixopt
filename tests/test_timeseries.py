@@ -688,7 +688,7 @@ class TestTimeSeriesAllocatorWithScenarios:
         )
 
         # Get dataset
-        ds = sample_scenario_allocator.as_dataset()
+        ds = sample_scenario_allocator.as_dataset(without_extra_timestep=True)
 
         # Check dataset dimensions
         assert 'scenario' in ds.dims
