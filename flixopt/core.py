@@ -1054,14 +1054,6 @@ class TimeSeriesAllocator:
 
         self.scenarios = scenarios
 
-        # Storage for all data arrays
-        if scenarios is None:
-            self._dataset = xr.Dataset(coords={'time': self.timesteps})
-            self._dataset_extra = xr.Dataset(coords={'time': self.timesteps_extra})
-        else:
-            self._dataset = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps})
-            self._dataset_extra = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})
-
         # Series that need extra timestep
         self._has_extra_timestep: Dict[str, bool] = {}
 
@@ -1128,12 +1120,6 @@ class TimeSeriesAllocator:
         # Add to storage
         self._time_series[name] = time_series
 
-        # Also add to internal dataset for selection management
-        if needs_extra_timestep:
-            self._dataset_extra[name] = time_series.stored_data
-        else:
-            self._dataset[name] = time_series.stored_data
-
         # Track if it needs extra timestep
         self._has_extra_timestep[name] = needs_extra_timestep
 
@@ -1176,6 +1162,20 @@ class TimeSeriesAllocator:
 
         # Apply the selection to all TimeSeries objects
         self._propagate_selection_to_time_series()
+
+    def as_dataset(self) -> xr.Dataset:
+        """
+        Convert the TimeSeriesAllocator to a xarray Dataset, containing the data of each TimeSeries.
+        """
+        if self.scenarios is None:
+            ds = xr.Dataset(coords={'time': self.timesteps_extra})
+        else:
+            ds = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})
+
+        for ts in self._time_series.values():
+            ds[ts.name] = ts.active_data
+
+        return ds
 
     def _propagate_selection_to_time_series(self):
         """Apply the current selection to all TimeSeries objects."""
