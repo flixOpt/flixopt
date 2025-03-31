@@ -296,6 +296,15 @@ class FlowSystem:
             return self.time_series_allocator.add_time_series(
                 data=data.selected_data, name=name, has_extra_timestep=has_extra_timestep
             )
+        elif isinstance(data, TimeSeriesData):
+            data.name = name
+            return self.time_series_allocator.add_time_series(
+                data=data.data,
+                name=name,
+                has_extra_timestep=has_extra_timestep,
+                aggregation_weight=data.agg_weight,
+                aggregation_group=data.agg_group
+            )
         return self.time_series_allocator.add_time_series(
             data=data, name=name, has_extra_timestep=has_extra_timestep
         )

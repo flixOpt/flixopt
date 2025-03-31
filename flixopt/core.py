@@ -660,7 +660,7 @@ class TimeSeries:
     @classmethod
     def from_datasource(
         cls,
-        data: NumericData,
+        data: NumericDataTS,
         name: str,
         timesteps: pd.DatetimeIndex,
         scenarios: Optional[pd.Index] = None,
@@ -1041,7 +1041,7 @@ class TimeSeriesAllocator:
     def add_time_series(
         self,
         name: str,
-        data: Union[NumericData, TimeSeries],
+        data: Union[NumericDataTS, TimeSeries],
         aggregation_weight: Optional[float] = None,
         aggregation_group: Optional[str] = None,
         has_extra_timestep: bool = False,
