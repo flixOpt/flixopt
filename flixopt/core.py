@@ -1045,9 +1045,9 @@ class TimeSeriesAllocator:
     ):
         """Initialize a TimeSeriesAllocator."""
         self._validate_timesteps(timesteps)
-        self._original_hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
+        self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
-        )
+        ) #TODO: Make dynamic
 
         self._full_timesteps = timesteps
         self._full_timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
@@ -1179,7 +1179,7 @@ class TimeSeriesAllocator:
         return ds
 
     @property
-    def timesteps(self):
+    def timesteps(self) -> pd.DatetimeIndex:
         """Get the current active timesteps."""
         time_sel = self._selection['time']
         if isinstance(time_sel, slice) and time_sel == slice(None, None):
@@ -1187,7 +1187,7 @@ class TimeSeriesAllocator:
         return self._full_timesteps[self._selection['time']]
 
     @property
-    def timesteps_extra(self):
+    def timesteps_extra(self) -> pd.DatetimeIndex:
         """Get the current active timesteps with extra timestep."""
         # Handle the extra timestep appropriately when selection is applied
         if isinstance(self._selection['time'], slice) and self._selection['time'] == slice(None, None):
@@ -1201,7 +1201,7 @@ class TimeSeriesAllocator:
         return selected_timesteps
 
     @property
-    def hours_per_timestep(self):
+    def hours_per_timestep(self) -> xr.DataArray:
         """Get the current active hours per timestep."""
         time_sel = self._selection['time']
         if isinstance(time_sel, slice) and time_sel == slice(None, None):
@@ -1210,27 +1210,6 @@ class TimeSeriesAllocator:
         # Select the corresponding hours per timestep
         indices = np.where(np.isin(self._full_timesteps, self.timesteps))[0]
         return self._full_hours_per_timestep.isel(time=indices)
-
-    @property
-    def hours_of_previous_timesteps(self):
-        """
-        Get the duration of previous timesteps.
-
-        When no selection is active, returns the original hours of previous timesteps.
-        When a selection is active, returns the hours per timestep for the time period
-        right before the first timestep in the selection.
-        """
-        time_sel = self._selection['time']
-
-        # If no selection or default selection, return the original value
-        if isinstance(time_sel, slice) and time_sel == slice(None, None):
-            return self._original_hours_of_previous_timesteps
-
-        # Find the index of the first selected timestep
-        first_selected_idx = np.where(self._full_timesteps == self._full_timesteps[time_sel][0])[0][0]
-
-        # Return the hours per timestep for the timestep right before the first selected one
-        return self._full_hours_per_timestep.sel(time=self._full_timesteps[first_selected_idx - 1]).item()
 
     @property
     def scenarios(self):
