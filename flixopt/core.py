@@ -92,7 +92,7 @@ class DataConverter:
             Validated time index
         """
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
-            raise ConversionError(f'Timesteps must be a non-empty DatetimeIndex')
+            raise ConversionError('Timesteps must be a non-empty DatetimeIndex')
 
         if not timesteps.name == 'time':
             raise ConversionError(f'Scenarios must be named "time", got "{timesteps.name}"')
@@ -108,7 +108,7 @@ class DataConverter:
             scenarios: The scenario index to validate
         """
         if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
-            raise ConversionError(f'Scenarios must be a non-empty Index')
+            raise ConversionError('Scenarios must be a non-empty Index')
 
         if not scenarios.name == 'scenario':
             raise ConversionError(f'Scenarios must be named "scenario", got "{scenarios.name}"')
