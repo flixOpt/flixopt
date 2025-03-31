@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import NumericData, NumericDataTS, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import NumericData, NumericDataTS, TimeSeries, TimeSeriesAllocator, TimeSeriesData
 from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
 from .elements import Bus, Component, Flow
 from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation
@@ -49,7 +49,7 @@ class FlowSystem:
                 This is needed to calculate previous durations (for example consecutive_on_hours).
                 If you use an array, take care that its long enough to cover all previous values!
         """
-        self.time_series_collection = TimeSeriesCollection(
+        self.time_series_allocator = TimeSeriesAllocator(
             timesteps=timesteps,
             scenarios=scenarios,
             hours_of_last_timestep=hours_of_last_timestep,
@@ -67,7 +67,7 @@ class FlowSystem:
     @classmethod
     def from_dataset(cls, ds: xr.Dataset):
         timesteps_extra = pd.DatetimeIndex(ds.attrs['timesteps_extra'], name='time')
-        hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
+        hours_of_last_timestep = TimeSeriesAllocator.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
 
         flow_system = FlowSystem(
             timesteps=timesteps_extra[:-1],
@@ -92,7 +92,7 @@ class FlowSystem:
             data: Dictionary containing the FlowSystem data.
         """
         timesteps_extra = pd.DatetimeIndex(data['timesteps_extra'], name='time')
-        hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
+        hours_of_last_timestep = TimeSeriesAllocator.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
 
         flow_system = FlowSystem(
             timesteps=timesteps_extra[:-1],
@@ -171,8 +171,8 @@ class FlowSystem:
                 effect.label: effect.to_dict()
                 for effect in sorted(self.effects, key=lambda effect: effect.label.upper())
             },
-            'timesteps_extra': [date.isoformat() for date in self.time_series_collection.timesteps_extra],
-            'hours_of_previous_timesteps': self.time_series_collection.hours_of_previous_timesteps,
+            'timesteps_extra': [date.isoformat() for date in self.time_series_allocator.timesteps_extra],
+            'hours_of_previous_timesteps': self.time_series_allocator.hours_of_previous_timesteps,
         }
         if data_mode == 'data':
             return fx_io.replace_timeseries(data, 'data')
@@ -187,7 +187,7 @@ class FlowSystem:
         Args:
             constants_in_dataset: If True, constants are included as Dataset variables.
         """
-        ds = self.time_series_collection.to_dataset(include_constants=constants_in_dataset)
+        ds = self.time_series_allocator.to_dataset(include_constants=constants_in_dataset)
         ds.attrs = self.as_dict(data_mode='name')
         return ds
 
@@ -281,7 +281,7 @@ class FlowSystem:
         needs_extra_timestep: bool = False,
     ) -> Optional[TimeSeries]:
         """
-        Tries to create a TimeSeries from NumericData Data and adds it to the time_series_collection
+        Tries to create a TimeSeries from NumericData Data and adds it to the time_series_allocator
         If the data already is a TimeSeries, nothing happens and the TimeSeries gets reset and returned
         If the data is a TimeSeriesData, it is converted to a TimeSeries, and the aggregation weights are applied.
         If the data is None, nothing happens.
@@ -291,12 +291,12 @@ class FlowSystem:
             return None
         elif isinstance(data, TimeSeries):
             data.restore_data()
-            if data in self.time_series_collection:
+            if data in self.time_series_allocator:
                 return data
-            return self.time_series_collection.create_time_series(
+            return self.time_series_allocator.create_time_series(
                 data=data.active_data, name=name, needs_extra_timestep=needs_extra_timestep
             )
-        return self.time_series_collection.create_time_series(
+        return self.time_series_allocator.create_time_series(
             data=data, name=name, needs_extra_timestep=needs_extra_timestep
         )
 

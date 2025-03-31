@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import NumericData, Scalar, TimeSeries, TimeSeriesAllocator, TimeSeriesData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -56,7 +56,7 @@ class SystemModel(linopy.Model):
         """
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
-        self.time_series_collection = flow_system.time_series_collection
+        self.time_series_allocator = flow_system.time_series_allocator
         self.effects: Optional[EffectCollectionModel] = None
 
     def do_modeling(self):
@@ -88,23 +88,23 @@ class SystemModel(linopy.Model):
                 for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
             },
         }
-        return solution.reindex(time=self.time_series_collection.timesteps_extra)
+        return solution.reindex(time=self.time_series_allocator.timesteps_extra)
 
     @property
     def hours_per_step(self):
-        return self.time_series_collection.hours_per_timestep
+        return self.time_series_allocator.hours_per_timestep
 
     @property
     def hours_of_previous_timesteps(self):
-        return self.time_series_collection.hours_of_previous_timesteps
+        return self.time_series_allocator.hours_of_previous_timesteps
 
     @property
     def coords(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps,)
+        return (self.time_series_allocator.timesteps,)
 
     @property
     def coords_extra(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps_extra,)
+        return (self.time_series_allocator.timesteps_extra,)
 
 
 class Interface:
