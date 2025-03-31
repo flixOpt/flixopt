@@ -441,7 +441,7 @@ class OnOffModel(Model):
 
             if previous_duration + self._model.hours_per_step[0] > first_step_max:
                 logger.warning(
-                    f'The maximum duration of "{variable_name}" is set to {maximum_duration.active_data}h, '
+                    f'The maximum duration of "{variable_name}" is set to {maximum_duration.selected_data}h, '
                     f'but the consecutive_duration previous to this model is {previous_duration}h. '
                     f'This forces "{binary_variable.name} = 0" in the first time step '
                     f'(dt={self._model.hours_per_step[0]}h)!'
@@ -450,7 +450,7 @@ class OnOffModel(Model):
         duration_in_hours = self.add(
             self._model.add_variables(
                 lower=0,
-                upper=maximum_duration.active_data if maximum_duration is not None else mega,
+                upper=maximum_duration.selected_data if maximum_duration is not None else mega,
                 coords=self._model.coords,
                 name=f'{self.label_full}|{variable_name}',
             ),

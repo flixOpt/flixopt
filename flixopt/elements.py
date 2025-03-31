@@ -374,7 +374,7 @@ class FlowModel(ElementModel):
             self._model.effects.add_share_to_effects(
                 name=self.label_full,  # Use the full label of the element
                 expressions={
-                    effect: self.flow_rate * self._model.hours_per_step * factor.active_data
+                    effect: self.flow_rate * self._model.hours_per_step * factor.selected_data
                     for effect, factor in self.element.effects_per_flow_hour.items()
                 },
                 target='operation',
@@ -429,8 +429,8 @@ class FlowModel(ElementModel):
         """Returns relative flow rate bounds."""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_minimum.active_data, self.element.relative_maximum.active_data
-        return fixed_profile.active_data, fixed_profile.active_data
+            return self.element.relative_minimum.selected_data, self.element.relative_maximum.selected_data
+        return fixed_profile.selected_data, fixed_profile.selected_data
 
 
 class BusModel(ElementModel):
@@ -451,7 +451,7 @@ class BusModel(ElementModel):
         # Fehlerplus/-minus:
         if self.element.with_excess:
             excess_penalty = np.multiply(
-                self._model.hours_per_step, self.element.excess_penalty_per_flow_hour.active_data
+                self._model.hours_per_step, self.element.excess_penalty_per_flow_hour.selected_data
             )
             self.excess_input = self.add(
                 self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_input'),

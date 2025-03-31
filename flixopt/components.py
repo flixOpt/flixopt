@@ -342,7 +342,7 @@ class TransmissionModel(ComponentModel):
     def do_modeling(self):
         """Initiates all FlowModels"""
         # Force On Variable if absolute losses are present
-        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses.active_data != 0):
+        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses.selected_data != 0):
             for flow in self.element.inputs + self.element.outputs:
                 if flow.on_off_parameters is None:
                     flow.on_off_parameters = OnOffParameters()
@@ -379,14 +379,14 @@ class TransmissionModel(ComponentModel):
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
         con_transmission = self.add(
             self._model.add_constraints(
-                out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses.active_data - 1),
+                out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses.selected_data - 1),
                 name=f'{self.label_full}|{name}',
             ),
             name,
         )
 
         if self.element.absolute_losses is not None:
-            con_transmission.lhs += in_flow.model.on_off.on * self.element.absolute_losses.active_data
+            con_transmission.lhs += in_flow.model.on_off.on * self.element.absolute_losses.selected_data
 
         return con_transmission
 
@@ -413,8 +413,8 @@ class LinearConverterModel(ComponentModel):
 
                 self.add(
                     self._model.add_constraints(
-                        sum([flow.model.flow_rate * conv_factors[flow.label].active_data for flow in used_inputs])
-                        == sum([flow.model.flow_rate * conv_factors[flow.label].active_data for flow in used_outputs]),
+                        sum([flow.model.flow_rate * conv_factors[flow.label].selected_data for flow in used_inputs])
+                        == sum([flow.model.flow_rate * conv_factors[flow.label].selected_data for flow in used_outputs]),
                         name=f'{self.label_full}|conversion_{i}',
                     )
                 )
@@ -474,12 +474,12 @@ class StorageModel(ComponentModel):
         )
 
         charge_state = self.charge_state
-        rel_loss = self.element.relative_loss_per_hour.active_data
+        rel_loss = self.element.relative_loss_per_hour.selected_data
         hours_per_step = self._model.hours_per_step
         charge_rate = self.element.charging.model.flow_rate
         discharge_rate = self.element.discharging.model.flow_rate
-        eff_charge = self.element.eta_charge.active_data
-        eff_discharge = self.element.eta_discharge.active_data
+        eff_charge = self.element.eta_charge.selected_data
+        eff_discharge = self.element.eta_discharge.selected_data
 
         self.add(
             self._model.add_constraints(
@@ -565,8 +565,8 @@ class StorageModel(ComponentModel):
     @property
     def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
         return (
-            self.element.relative_minimum_charge_state.active_data,
-            self.element.relative_maximum_charge_state.active_data,
+            self.element.relative_minimum_charge_state.selected_data,
+            self.element.relative_maximum_charge_state.selected_data,
         )
 
 

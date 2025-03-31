@@ -44,7 +44,7 @@ class TestTimeSeries:
         # Check data initialization
         assert isinstance(ts.stored_data, xr.DataArray)
         assert ts.stored_data.equals(simple_dataarray)
-        assert ts.active_data.equals(simple_dataarray)
+        assert ts.selected_data.equals(simple_dataarray)
 
         # Check backup was created
         assert ts._backup.equals(simple_dataarray)
@@ -87,7 +87,7 @@ class TestTimeSeries:
         assert sample_timeseries.active_timesteps.equals(subset_index)
 
         # Active data should reflect the subset
-        assert sample_timeseries.active_data.equals(sample_timeseries.stored_data.sel(time=subset_index))
+        assert sample_timeseries.selected_data.equals(sample_timeseries.stored_data.sel(time=subset_index))
 
         # Reset to full index
         sample_timeseries.active_timesteps = None
@@ -108,7 +108,7 @@ class TestTimeSeries:
 
         # Should be back to full index
         assert sample_timeseries.active_timesteps.equals(sample_timesteps)
-        assert sample_timeseries.active_data.equals(sample_timeseries.stored_data)
+        assert sample_timeseries.selected_data.equals(sample_timeseries.stored_data)
 
     def test_restore_data(self, sample_timeseries, simple_dataarray):
         """Test restore_data method."""
@@ -127,7 +127,7 @@ class TestTimeSeries:
 
         # Should be back to original data
         assert sample_timeseries.stored_data.equals(original_data)
-        assert sample_timeseries.active_data.equals(original_data)
+        assert sample_timeseries.selected_data.equals(original_data)
 
     def test_stored_data_setter(self, sample_timeseries, sample_timesteps):
         """Test stored_data setter with different data types."""
@@ -234,30 +234,30 @@ class TestTimeSeries:
 
         # Test operations between two TimeSeries objects
         assert np.array_equal(
-            (sample_timeseries + ts2).values, sample_timeseries.active_data.values + ts2.active_data.values
+            (sample_timeseries + ts2).values, sample_timeseries.selected_data.values + ts2.selected_data.values
         )
         assert np.array_equal(
-            (sample_timeseries - ts2).values, sample_timeseries.active_data.values - ts2.active_data.values
+            (sample_timeseries - ts2).values, sample_timeseries.selected_data.values - ts2.selected_data.values
         )
         assert np.array_equal(
-            (sample_timeseries * ts2).values, sample_timeseries.active_data.values * ts2.active_data.values
+            (sample_timeseries * ts2).values, sample_timeseries.selected_data.values * ts2.selected_data.values
         )
         assert np.array_equal(
-            (sample_timeseries / ts2).values, sample_timeseries.active_data.values / ts2.active_data.values
+            (sample_timeseries / ts2).values, sample_timeseries.selected_data.values / ts2.selected_data.values
         )
 
         # Test operations with DataArrays
-        assert np.array_equal((sample_timeseries + data2).values, sample_timeseries.active_data.values + data2.values)
-        assert np.array_equal((data2 + sample_timeseries).values, data2.values + sample_timeseries.active_data.values)
+        assert np.array_equal((sample_timeseries + data2).values, sample_timeseries.selected_data.values + data2.values)
+        assert np.array_equal((data2 + sample_timeseries).values, data2.values + sample_timeseries.selected_data.values)
 
         # Test operations with scalars
-        assert np.array_equal((sample_timeseries + 5).values, sample_timeseries.active_data.values + 5)
-        assert np.array_equal((5 + sample_timeseries).values, 5 + sample_timeseries.active_data.values)
+        assert np.array_equal((sample_timeseries + 5).values, sample_timeseries.selected_data.values + 5)
+        assert np.array_equal((5 + sample_timeseries).values, 5 + sample_timeseries.selected_data.values)
 
         # Test unary operations
-        assert np.array_equal((-sample_timeseries).values, -sample_timeseries.active_data.values)
-        assert np.array_equal((+sample_timeseries).values, +sample_timeseries.active_data.values)
-        assert np.array_equal((abs(sample_timeseries)).values, abs(sample_timeseries.active_data.values))
+        assert np.array_equal((-sample_timeseries).values, -sample_timeseries.selected_data.values)
+        assert np.array_equal((+sample_timeseries).values, +sample_timeseries.selected_data.values)
+        assert np.array_equal((abs(sample_timeseries)).values, abs(sample_timeseries.selected_data.values))
 
     def test_comparison_operations(self, sample_timesteps):
         """Test comparison operations."""
@@ -279,10 +279,10 @@ class TestTimeSeries:
     def test_numpy_ufunc(self, sample_timeseries):
         """Test numpy ufunc compatibility."""
         # Test basic numpy functions
-        assert np.array_equal(np.add(sample_timeseries, 5).values, np.add(sample_timeseries.active_data, 5).values)
+        assert np.array_equal(np.add(sample_timeseries, 5).values, np.add(sample_timeseries.selected_data, 5).values)
 
         assert np.array_equal(
-            np.multiply(sample_timeseries, 2).values, np.multiply(sample_timeseries.active_data, 2).values
+            np.multiply(sample_timeseries, 2).values, np.multiply(sample_timeseries.selected_data, 2).values
         )
 
         # Test with two TimeSeries objects
@@ -290,18 +290,18 @@ class TestTimeSeries:
         ts2 = TimeSeries(data2, 'Second Series')
 
         assert np.array_equal(
-            np.add(sample_timeseries, ts2).values, np.add(sample_timeseries.active_data, ts2.active_data).values
+            np.add(sample_timeseries, ts2).values, np.add(sample_timeseries.selected_data, ts2.selected_data).values
         )
 
     def test_sel_and_isel_properties(self, sample_timeseries):
         """Test sel and isel properties."""
         # Test that sel property works
         selected = sample_timeseries.sel(time=sample_timeseries.active_timesteps[0])
-        assert selected.item() == sample_timeseries.active_data.values[0]
+        assert selected.item() == sample_timeseries.selected_data.values[0]
 
         # Test that isel property works
         indexed = sample_timeseries.isel(time=0)
-        assert indexed.item() == sample_timeseries.active_data.values[0]
+        assert indexed.item() == sample_timeseries.selected_data.values[0]
 
 
 @pytest.fixture
@@ -372,12 +372,12 @@ class TestTimeSeriesCollection:
         # Test scalar
         ts1 = sample_collection.create_time_series(42, 'scalar_series')
         assert ts1.name == 'scalar_series'
-        assert np.all(ts1.active_data.values == 42)
+        assert np.all(ts1.selected_data.values == 42)
 
         # Test numpy array
         data = np.array([1, 2, 3, 4, 5])
         ts2 = sample_collection.create_time_series(data, 'array_series')
-        assert np.array_equal(ts2.active_data.values, data)
+        assert np.array_equal(ts2.selected_data.values, data)
 
         # Test with TimeSeriesData
         ts3 = sample_collection.create_time_series(TimeSeriesData(10, agg_weight=0.7), 'weighted_series')
@@ -386,7 +386,7 @@ class TestTimeSeriesCollection:
         # Test with extra timestep
         ts4 = sample_collection.create_time_series(5, 'extra_series', needs_extra_timestep=True)
         assert ts4.needs_extra_timestep
-        assert len(ts4.active_data) == len(sample_collection.timesteps_extra)
+        assert len(ts4.selected_data) == len(sample_collection.timesteps_extra)
 
         # Test duplicate name
         with pytest.raises(ValueError, match='already exists'):
@@ -509,12 +509,12 @@ class TestTimeSeriesCollection:
         populated_collection.insert_new_data(new_data)
 
         # Verify updates
-        assert np.all(populated_collection['constant_series'].active_data.values == 100)
-        assert np.array_equal(populated_collection['varying_series'].active_data.values, np.array([5, 10, 15, 20, 25]))
+        assert np.all(populated_collection['constant_series'].selected_data.values == 100)
+        assert np.array_equal(populated_collection['varying_series'].selected_data.values, np.array([5, 10, 15, 20, 25]))
 
         # Series not in the DataFrame should be unchanged
         assert np.array_equal(
-            populated_collection['extra_timestep_series'].active_data.values[:-1], np.array([1, 2, 3, 4, 5])
+            populated_collection['extra_timestep_series'].selected_data.values[:-1], np.array([1, 2, 3, 4, 5])
         )
 
         # Test with mismatched index
@@ -542,7 +542,7 @@ class TestTimeSeriesCollection:
         populated_collection.insert_new_data(new_data)
 
         # Verify data was changed
-        assert np.all(populated_collection['constant_series'].active_data.values == 999)
+        assert np.all(populated_collection['constant_series'].selected_data.values == 999)
 
         # Restore data
         populated_collection.restore_data()
@@ -664,7 +664,7 @@ class TestTimeSeriesWithScenarios:
         # Check data initialization
         assert isinstance(ts.stored_data, xr.DataArray)
         assert ts.stored_data.equals(simple_scenario_dataarray)
-        assert ts.active_data.equals(simple_scenario_dataarray)
+        assert ts.selected_data.equals(simple_scenario_dataarray)
 
         # Check backup was created
         assert ts._backup.equals(simple_scenario_dataarray)
@@ -689,7 +689,7 @@ class TestTimeSeriesWithScenarios:
         # Verify subsets were set
         assert sample_scenario_timeseries.active_timesteps.equals(subset_timesteps)
         assert sample_scenario_timeseries.active_scenarios.equals(subset_scenarios)
-        assert sample_scenario_timeseries.active_data.shape == (len(subset_scenarios), len(subset_timesteps))
+        assert sample_scenario_timeseries.selected_data.shape == (len(subset_scenarios), len(subset_timesteps))
 
         # Reset
         sample_scenario_timeseries.reset()
@@ -697,7 +697,7 @@ class TestTimeSeriesWithScenarios:
         # Should be back to full indexes
         assert sample_scenario_timeseries.active_timesteps.equals(full_timesteps)
         assert sample_scenario_timeseries.active_scenarios.equals(full_scenarios)
-        assert sample_scenario_timeseries.active_data.shape == (len(full_scenarios), len(full_timesteps))
+        assert sample_scenario_timeseries.selected_data.shape == (len(full_scenarios), len(full_timesteps))
 
     def test_active_scenarios_getter_setter(self, sample_scenario_timeseries, sample_scenario_index):
         """Test active_scenarios getter and setter."""
@@ -710,7 +710,7 @@ class TestTimeSeriesWithScenarios:
         assert sample_scenario_timeseries.active_scenarios.equals(subset_index)
 
         # Active data should reflect the subset
-        assert sample_scenario_timeseries.active_data.equals(
+        assert sample_scenario_timeseries.selected_data.equals(
             sample_scenario_timeseries.stored_data.sel(scenario=subset_index)
         )
 
@@ -974,14 +974,14 @@ class TestTimeSeriesCollectionWithScenarios:
         ts1 = sample_scenario_collection.create_time_series(42, 'scalar_series')
         assert ts1._has_scenarios
         assert ts1.name == 'scalar_series'
-        assert ts1.active_data.shape == (3, 5)  # 3 scenarios, 5 timesteps
-        assert np.all(ts1.active_data.values == 42)
+        assert ts1.selected_data.shape == (3, 5)  # 3 scenarios, 5 timesteps
+        assert np.all(ts1.selected_data.values == 42)
 
         # Test 1D array (broadcasts to all scenarios)
         data = np.array([1, 2, 3, 4, 5])
         ts2 = sample_scenario_collection.create_time_series(data, 'array_series')
         assert ts2._has_scenarios
-        assert ts2.active_data.shape == (3, 5)
+        assert ts2.selected_data.shape == (3, 5)
         # Each scenario should have the same values
         for scenario in sample_scenario_collection.scenarios:
             assert np.array_equal(ts2.sel(scenario=scenario).values, data)
@@ -994,7 +994,7 @@ class TestTimeSeriesCollectionWithScenarios:
         ])
         ts3 = sample_scenario_collection.create_time_series(data_2d, 'scenario_specific_series')
         assert ts3._has_scenarios
-        assert ts3.active_data.shape == (3, 5)
+        assert ts3.selected_data.shape == (3, 5)
         # Each scenario should have its own values
         assert np.array_equal(ts3.sel(scenario='baseline').values, data_2d[0])
         assert np.array_equal(ts3.sel(scenario='high_demand').values, data_2d[1])
@@ -1025,7 +1025,7 @@ class TestTimeSeriesCollectionWithScenarios:
         assert sample_scenario_collection['array_series'].active_scenarios.equals(subset_scenarios)
 
         # Active data should reflect the subset
-        assert sample_scenario_collection['array_series'].active_data.shape == (2, 5)  # 2 scenarios, 5 timesteps
+        assert sample_scenario_collection['array_series'].selected_data.shape == (2, 5)  # 2 scenarios, 5 timesteps
 
         # Reset scenarios
         sample_scenario_collection.reset()

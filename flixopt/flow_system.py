@@ -294,7 +294,7 @@ class FlowSystem:
             if data in self.time_series_allocator:
                 return data
             return self.time_series_allocator.add_time_series(
-                data=data.active_data, name=name, needs_extra_timestep=needs_extra_timestep
+                data=data.selected_data, name=name, needs_extra_timestep=needs_extra_timestep
             )
         return self.time_series_allocator.add_time_series(
             data=data, name=name, needs_extra_timestep=needs_extra_timestep

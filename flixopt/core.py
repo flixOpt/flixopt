@@ -798,7 +798,7 @@ class TimeSeries:
             'aggregation_weight': self.aggregation_weight,
             'aggregation_group': self.aggregation_group,
             'needs_extra_timestep': self.needs_extra_timestep,
-            'data': self.active_data.to_dict(),
+            'data': self.selected_data.to_dict(),
         }
 
         # Convert datetime objects to ISO strings
@@ -820,15 +820,15 @@ class TimeSeries:
         Returns:
             String representation of data statistics
         """
-        return get_numeric_stats(self.active_data, padd=0, by_scenario=True)
+        return get_numeric_stats(self.selected_data, padd=0, by_scenario=True)
 
     @property
     def all_equal(self) -> bool:
         """Check if all values in the series are equal."""
-        return np.unique(self.active_data.values).size == 1
+        return np.unique(self.selected_data.values).size == 1
 
     @property
-    def active_data(self) -> xr.DataArray:
+    def selected_data(self) -> xr.DataArray:
         """
         Get a view of stored_data based on current selections.
         This computes the view dynamically based on the current selection state.
@@ -842,7 +842,7 @@ class TimeSeries:
 
     def update_stored_data(self, value: NumericData):
         """
-        Update stored_data and refresh active_data.
+        Update stored_data and refresh selected_data.
 
         Args:
             value: New data to store
@@ -879,13 +879,13 @@ class TimeSeries:
 
     @property
     def sel(self):
-        """Direct access to the active_data's sel method for convenience."""
-        return self.active_data.sel
+        """Direct access to the selected_data's sel method for convenience."""
+        return self.selected_data.sel
 
     @property
     def isel(self):
-        """Direct access to the active_data's isel method for convenience."""
-        return self.active_data.isel
+        """Direct access to the selected_data's isel method for convenience."""
+        return self.selected_data.isel
 
     @property
     def _valid_selector(self) -> Dict[str, pd.Index]:
@@ -893,12 +893,11 @@ class TimeSeries:
         full_selection = {'time': self._selected_timesteps, 'scenario': self._selected_scenarios}
         return {dim: sel for dim, sel in full_selection.items() if dim in self._stored_data.dims and sel is not None}
 
-
     def _apply_operation(self, other, op):
         """Apply an operation between this TimeSeries and another object."""
         if isinstance(other, TimeSeries):
-            other = other.active_data
-        return op(self.active_data, other)
+            other = other.selected_data
+        return op(self.selected_data, other)
 
     def __add__(self, other):
         return self._apply_operation(other, lambda x, y: x + y)
@@ -913,25 +912,25 @@ class TimeSeries:
         return self._apply_operation(other, lambda x, y: x / y)
 
     def __radd__(self, other):
-        return other + self.active_data
+        return other + self.selected_data
 
     def __rsub__(self, other):
-        return other - self.active_data
+        return other - self.selected_data
 
     def __rmul__(self, other):
-        return other * self.active_data
+        return other * self.selected_data
 
     def __rtruediv__(self, other):
-        return other / self.active_data
+        return other / self.selected_data
 
     def __neg__(self) -> xr.DataArray:
-        return -self.active_data
+        return -self.selected_data
 
     def __pos__(self) -> xr.DataArray:
-        return +self.active_data
+        return +self.selected_data
 
     def __abs__(self) -> xr.DataArray:
-        return abs(self.active_data)
+        return abs(self.selected_data)
 
     def __gt__(self, other):
         """
@@ -944,7 +943,7 @@ class TimeSeries:
             True if all values in this TimeSeries are greater than other
         """
         if isinstance(other, TimeSeries):
-            return (self.active_data > other.active_data).all().item()
+            return (self.selected_data > other.selected_data).all().item()
         return NotImplemented
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
@@ -953,8 +952,8 @@ class TimeSeries:
 
         This allows NumPy functions to work with TimeSeries objects.
         """
-        # Convert any TimeSeries inputs to their active_data
-        inputs = [x.active_data if isinstance(x, TimeSeries) else x for x in inputs]
+        # Convert any TimeSeries inputs to their selected_data
+        inputs = [x.selected_data if isinstance(x, TimeSeries) else x for x in inputs]
         return getattr(ufunc, method)(*inputs, **kwargs)
 
     def __repr__(self):
@@ -969,7 +968,7 @@ class TimeSeries:
             'aggregation_weight': self.aggregation_weight,
             'aggregation_group': self.aggregation_group,
             'needs_extra_timestep': self.needs_extra_timestep,
-            'shape': self.active_data.shape,
+            'shape': self.selected_data.shape,
         }
 
         attr_str = ', '.join(f'{k}={repr(v)}' for k, v in attrs.items())
@@ -1152,7 +1151,7 @@ class TimeSeriesAllocator:
             ds = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})
 
         for ts in self._time_series.values():
-            ds[ts.name] = ts.active_data
+            ds[ts.name] = ts.selected_data
 
         return ds
 
