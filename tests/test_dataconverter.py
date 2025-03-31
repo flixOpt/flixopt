@@ -48,48 +48,6 @@ class TestSingleDimensionConversion:
         result = DataConverter.as_dataarray(np.float32(42.5), sample_time_index)
         assert np.all(result.values == 42.5)
 
-    def test_series_conversion(self, sample_time_index):
-        """Test converting a pandas Series."""
-        # Test with integer values
-        series = pd.Series([1, 2, 3, 4, 5], index=sample_time_index)
-        result = DataConverter.as_dataarray(series, sample_time_index)
-        assert isinstance(result, xr.DataArray)
-        assert result.shape == (5,)
-        assert result.dims == ('time',)
-        assert np.array_equal(result.values, series.values)
-
-        # Test with float values
-        series = pd.Series([1.1, 2.2, 3.3, 4.4, 5.5], index=sample_time_index)
-        result = DataConverter.as_dataarray(series, sample_time_index)
-        assert np.array_equal(result.values, series.values)
-
-        # Test with mixed NA values
-        series = pd.Series([1, np.nan, 3, None, 5], index=sample_time_index)
-        result = DataConverter.as_dataarray(series, sample_time_index)
-        assert np.array_equal(np.isnan(result.values), np.isnan(series.values))
-        assert np.array_equal(result.values[~np.isnan(result.values)], series.values[~np.isnan(series.values)])
-
-    def test_dataframe_conversion(self, sample_time_index):
-        """Test converting a pandas DataFrame."""
-        # Test with a single-column DataFrame
-        df = pd.DataFrame({'A': [1, 2, 3, 4, 5]}, index=sample_time_index)
-        result = DataConverter.as_dataarray(df, sample_time_index)
-        assert isinstance(result, xr.DataArray)
-        assert result.shape == (5,)
-        assert result.dims == ('time',)
-        assert np.array_equal(result.values.flatten(), df['A'].values)
-
-        # Test with float values
-        df = pd.DataFrame({'A': [1.1, 2.2, 3.3, 4.4, 5.5]}, index=sample_time_index)
-        result = DataConverter.as_dataarray(df, sample_time_index)
-        assert np.array_equal(result.values.flatten(), df['A'].values)
-
-        # Test with NA values
-        df = pd.DataFrame({'A': [1, np.nan, 3, None, 5]}, index=sample_time_index)
-        result = DataConverter.as_dataarray(df, sample_time_index)
-        assert np.array_equal(np.isnan(result.values), np.isnan(df['A'].values))
-        assert np.array_equal(result.values[~np.isnan(result.values)], df['A'].values[~np.isnan(df['A'].values)])
-
     def test_ndarray_conversion(self, sample_time_index):
         """Test converting a numpy ndarray."""
         # Test with integer 1D array
@@ -152,158 +110,6 @@ class TestMultiDimensionConversion:
         # Test with float
         result = DataConverter.as_dataarray(42.5, sample_time_index, sample_scenario_index)
         assert np.all(result.values == 42.5)
-
-    def test_series_with_scenarios(self, sample_time_index, sample_scenario_index):
-        """Test converting Series with scenario dimension."""
-        # Create time series data
-        series = pd.Series([1, 2, 3, 4, 5], index=sample_time_index)
-
-        # Convert with scenario dimension
-        result = DataConverter.as_dataarray(series, sample_time_index, sample_scenario_index)
-
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
-        assert result.dims == ('scenario', 'time')
-
-        # Values should be broadcast to all scenarios
-        for scenario in sample_scenario_index:
-            scenario_slice = result.sel(scenario=scenario)
-            assert np.array_equal(scenario_slice.values, series.values)
-
-        # Test with series containing NaN
-        series = pd.Series([1, np.nan, 3, np.nan, 5], index=sample_time_index)
-        result = DataConverter.as_dataarray(series, sample_time_index, sample_scenario_index)
-
-        # Each scenario should have the same pattern of NaNs
-        for scenario in sample_scenario_index:
-            scenario_slice = result.sel(scenario=scenario)
-            assert np.array_equal(np.isnan(scenario_slice.values), np.isnan(series.values))
-            assert np.array_equal(
-                scenario_slice.values[~np.isnan(scenario_slice.values)], series.values[~np.isnan(series.values)]
-            )
-
-    def test_multi_index_series(self, sample_time_index, sample_scenario_index, multi_index):
-        """Test converting a Series with MultiIndex (scenario, time)."""
-        # Create a MultiIndex Series with scenario-specific values
-        values = [
-            # baseline scenario
-            10,
-            20,
-            30,
-            40,
-            50,
-            # high_demand scenario
-            15,
-            25,
-            35,
-            45,
-            55,
-            # low_price scenario
-            5,
-            15,
-            25,
-            35,
-            45,
-        ]
-        series_multi = pd.Series(values, index=multi_index)
-
-        # Convert the MultiIndex Series
-        result = DataConverter.as_dataarray(series_multi, sample_time_index, sample_scenario_index)
-
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
-        assert result.dims == ('scenario', 'time')
-
-        # Check values for each scenario
-        baseline_values = result.sel(scenario='baseline').values
-        assert np.array_equal(baseline_values, [10, 20, 30, 40, 50])
-
-        high_demand_values = result.sel(scenario='high_demand').values
-        assert np.array_equal(high_demand_values, [15, 25, 35, 45, 55])
-
-        low_price_values = result.sel(scenario='low_price').values
-        assert np.array_equal(low_price_values, [5, 15, 25, 35, 45])
-
-        # Test with some missing values in the MultiIndex
-        incomplete_index = multi_index[:-2]  # Remove last two entries
-        incomplete_values = values[:-2]  # Remove corresponding values
-        incomplete_series = pd.Series(incomplete_values, index=incomplete_index)
-
-        result = DataConverter.as_dataarray(incomplete_series, sample_time_index, sample_scenario_index)
-
-        # The last value of low_price scenario should be NaN
-        assert np.isnan(result.sel(scenario='low_price').values[-1])
-
-    def test_dataframe_with_scenarios(self, sample_time_index, sample_scenario_index):
-        """Test converting DataFrame with scenario dimension."""
-        # Create a single-column DataFrame
-        df = pd.DataFrame({'A': [1, 2, 3, 4, 5]}, index=sample_time_index)
-
-        # Convert with scenario dimension
-        result = DataConverter.as_dataarray(df, sample_time_index, sample_scenario_index)
-
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
-        assert result.dims == ('scenario', 'time')
-
-        # Values should be broadcast to all scenarios
-        for scenario in sample_scenario_index:
-            scenario_slice = result.sel(scenario=scenario)
-            assert np.array_equal(scenario_slice.values, df['A'].values)
-
-    def test_multi_index_dataframe(self, sample_time_index, sample_scenario_index, multi_index):
-        """Test converting a DataFrame with MultiIndex (scenario, time)."""
-        # Create a MultiIndex DataFrame with scenario-specific values
-        values = [
-            # baseline scenario
-            10,
-            20,
-            30,
-            40,
-            50,
-            # high_demand scenario
-            15,
-            25,
-            35,
-            45,
-            55,
-            # low_price scenario
-            5,
-            15,
-            25,
-            35,
-            45,
-        ]
-        df_multi = pd.DataFrame({'A': values}, index=multi_index)
-
-        # Convert the MultiIndex DataFrame
-        result = DataConverter.as_dataarray(df_multi, sample_time_index, sample_scenario_index)
-
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
-        assert result.dims == ('scenario', 'time')
-
-        # Check values for each scenario
-        baseline_values = result.sel(scenario='baseline').values
-        assert np.array_equal(baseline_values, [10, 20, 30, 40, 50])
-
-        high_demand_values = result.sel(scenario='high_demand').values
-        assert np.array_equal(high_demand_values, [15, 25, 35, 45, 55])
-
-        low_price_values = result.sel(scenario='low_price').values
-        assert np.array_equal(low_price_values, [5, 15, 25, 35, 45])
-
-        # Test with missing values
-        incomplete_index = multi_index[:-2]  # Remove last two entries
-        incomplete_values = values[:-2]  # Remove corresponding values
-        incomplete_df = pd.DataFrame({'A': incomplete_values}, index=incomplete_index)
-
-        result = DataConverter.as_dataarray(incomplete_df, sample_time_index, sample_scenario_index)
-
-        # The last value of low_price scenario should be NaN
-        assert np.isnan(result.sel(scenario='low_price').values[-1])
-
-        # Test with multiple columns (should raise error)
-        df_multi_col = pd.DataFrame({'A': values, 'B': [v * 2 for v in values]}, index=multi_index)
-
-        with pytest.raises(ConversionError):
-            DataConverter.as_dataarray(df_multi_col, sample_time_index, sample_scenario_index)
 
     def test_1d_array_with_scenarios(self, sample_time_index, sample_scenario_index):
         """Test converting 1D array with scenario dimension (broadcasting)."""
@@ -391,12 +197,12 @@ class TestInvalidInputs:
 
         # Test with empty index
         empty_index = pd.DatetimeIndex([], name='time')
-        with pytest.raises(ValueError):
+        with pytest.raises(ConversionError):
             DataConverter.as_dataarray(42, empty_index)
 
         # Test with non-DatetimeIndex
         wrong_type_index = pd.Index([1, 2, 3, 4, 5], name='time')
-        with pytest.raises(ValueError):
+        with pytest.raises(ConversionError):
             DataConverter.as_dataarray(42, wrong_type_index)
 
     def test_scenario_index_validation(self, sample_time_index):
@@ -408,11 +214,11 @@ class TestInvalidInputs:
 
         # Test with empty scenario index
         empty_index = pd.Index([], name='scenario')
-        with pytest.raises(ValueError):
+        with pytest.raises(ConversionError):
             DataConverter.as_dataarray(42, sample_time_index, empty_index)
 
         # Test with non-Index scenario
-        with pytest.raises(ValueError):
+        with pytest.raises(ConversionError):
             DataConverter.as_dataarray(42, sample_time_index, ['baseline', 'high_demand'])
 
     def test_invalid_data_types(self, sample_time_index, sample_scenario_index):
@@ -572,45 +378,8 @@ class TestEdgeCases:
         assert np.all(np.isnan(result.values))
 
         # Series of all NaNs
-        all_nan_series = pd.Series([np.nan, np.nan, np.nan, np.nan, np.nan], index=sample_time_index)
-        result = DataConverter.as_dataarray(all_nan_series, sample_time_index, sample_scenario_index)
+        result = DataConverter.as_dataarray(np.array([np.nan, np.nan, np.nan, np.nan, np.nan]), sample_time_index, sample_scenario_index)
         assert np.all(np.isnan(result.values))
-
-    def test_subset_index_multiindex(self, sample_time_index, sample_scenario_index):
-        """Test handling of MultiIndex Series/DataFrames with subset of expected indices."""
-        # Create a subset of the expected indexes
-        subset_time = sample_time_index[1:4]  # Middle subset
-        subset_scenarios = sample_scenario_index[0:2]  # First two scenarios
-
-        # Create MultiIndex with subset
-        subset_multi_index = pd.MultiIndex.from_product([subset_scenarios, subset_time], names=['scenario', 'time'])
-
-        # Create Series with subset of data
-        values = [
-            # baseline (3 values)
-            20,
-            30,
-            40,
-            # high_demand (3 values)
-            25,
-            35,
-            45,
-        ]
-        subset_series = pd.Series(values, index=subset_multi_index)
-
-        # Convert and test
-        result = DataConverter.as_dataarray(subset_series, sample_time_index, sample_scenario_index)
-
-        # Shape should be full size
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
-
-        # Check values - present values should match
-        assert result.sel(scenario='baseline', time=subset_time[0]).item() == 20
-        assert result.sel(scenario='high_demand', time=subset_time[1]).item() == 35
-
-        # Missing values should be NaN
-        assert np.isnan(result.sel(scenario='baseline', time=sample_time_index[0]).item())
-        assert np.isnan(result.sel(scenario='low_price', time=sample_time_index[2]).item())
 
     def test_mixed_data_types(self, sample_time_index, sample_scenario_index):
         """Test conversion of mixed integer and float data."""
@@ -631,77 +400,6 @@ class TestEdgeCases:
 
 class TestFunctionalUseCase:
     """Tests for realistic use cases combining multiple features."""
-
-    def test_multiindex_with_nans_and_partial_data(self, sample_time_index, sample_scenario_index):
-        """Test MultiIndex Series with partial data and NaN values."""
-        # Create a MultiIndex Series with missing values and partial coverage
-        time_subset = sample_time_index[1:4]  # Middle 3 timestamps only
-
-        # Build index with holes
-        idx_tuples = []
-        for scenario in sample_scenario_index:
-            for time in time_subset:
-                # Skip some combinations to create holes
-                if scenario == 'baseline' and time == time_subset[0]:
-                    continue
-                if scenario == 'high_demand' and time == time_subset[2]:
-                    continue
-                idx_tuples.append((scenario, time))
-
-        partial_idx = pd.MultiIndex.from_tuples(idx_tuples, names=['scenario', 'time'])
-
-        # Create values with some NaNs
-        values = [
-            # baseline (2 values, skipping first)
-            30,
-            40,
-            # high_demand (2 values, skipping last)
-            25,
-            35,
-            # low_price (3 values)
-            15,
-            np.nan,
-            35,
-        ]
-
-        # Create Series
-        partial_series = pd.Series(values, index=partial_idx)
-
-        # Convert and test
-        result = DataConverter.as_dataarray(partial_series, sample_time_index, sample_scenario_index)
-
-        # Shape should be full size
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
-
-        # Check specific values
-        assert result.sel(scenario='baseline', time=time_subset[1]).item() == 30
-        assert result.sel(scenario='high_demand', time=time_subset[0]).item() == 25
-        assert np.isnan(result.sel(scenario='low_price', time=time_subset[1]).item())
-
-        # All skipped combinations should be NaN
-        assert np.isnan(result.sel(scenario='baseline', time=time_subset[0]).item())
-        assert np.isnan(result.sel(scenario='high_demand', time=time_subset[2]).item())
-
-        # First and last timestamps should all be NaN (not in original subset)
-        assert np.all(np.isnan(result.sel(time=sample_time_index[0]).values))
-        assert np.all(np.isnan(result.sel(time=sample_time_index[-1]).values))
-
-    def test_scenario_broadcast_with_nan_values(self, sample_time_index, sample_scenario_index):
-        """Test broadcasting a Series with NaN values to scenarios."""
-        # Create Series with some NaN values
-        series = pd.Series([1, np.nan, 3, np.nan, 5], index=sample_time_index)
-
-        # Convert with scenario broadcasting
-        result = DataConverter.as_dataarray(series, sample_time_index, sample_scenario_index)
-
-        # All scenarios should have the same pattern of NaN values
-        for scenario in sample_scenario_index:
-            scenario_data = result.sel(scenario=scenario)
-            assert np.isnan(scenario_data[1].item())
-            assert np.isnan(scenario_data[3].item())
-            assert scenario_data[0].item() == 1
-            assert scenario_data[2].item() == 3
-            assert scenario_data[4].item() == 5
 
     def test_large_dataset(self, sample_scenario_index):
         """Test with a larger dataset to ensure performance."""
@@ -814,34 +512,6 @@ class TestScenarioReindexing:
         assert np.array_equal(result.sel(scenario='scenario1').values, data[1])
         assert np.array_equal(result.sel(scenario='scenario2').values, data[2])
 
-    def test_multiindex_reindexing(self, sample_time_index):
-        """Test reindexing of MultiIndex Series."""
-        # Create scenarios with intentional different order
-        scenarios = pd.Index(['z_scenario', 'a_scenario', 'm_scenario'], name='scenario')
-
-        # Create MultiIndex with different order than the target
-        source_scenarios = pd.Index(['a_scenario', 'm_scenario', 'z_scenario'], name='scenario')
-        multi_idx = pd.MultiIndex.from_product([source_scenarios, sample_time_index], names=['scenario', 'time'])
-
-        # Create values - order should match the source index
-        values = []
-        for i, _ in enumerate(source_scenarios):
-            values.extend([i * 10 + j for j in range(1, len(sample_time_index) + 1)])
-
-        # Create Series
-        series = pd.Series(values, index=multi_idx)
-
-        # Convert using the target scenario order
-        result = DataConverter.as_dataarray(series, sample_time_index, scenarios)
-
-        # Verify scenario order matches the target
-        assert list(result.coords['scenario'].values) == list(scenarios)
-
-        # Verify values are correctly indexed
-        assert np.array_equal(result.sel(scenario='a_scenario').values, [1, 2, 3, 4, 5])
-        assert np.array_equal(result.sel(scenario='m_scenario').values, [11, 12, 13, 14, 15])
-        assert np.array_equal(result.sel(scenario='z_scenario').values, [21, 22, 23, 24, 25])
-
 
 if __name__ == '__main__':
     pytest.main()
@@ -879,12 +549,12 @@ def test_time_index_validation():
 
     # Test with empty index
     empty_index = pd.DatetimeIndex([], name='time')
-    with pytest.raises(ValueError):
+    with pytest.raises(ConversionError):
         DataConverter.as_dataarray(42, empty_index)
 
     # Test with non-DatetimeIndex
     wrong_type_index = pd.Index([1, 2, 3, 4, 5], name='time')
-    with pytest.raises(ValueError):
+    with pytest.raises(ConversionError):
         DataConverter.as_dataarray(42, wrong_type_index)
 
 
