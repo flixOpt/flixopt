@@ -1157,7 +1157,7 @@ class TimeSeriesAllocator:
             timesteps, self._selected_hours_per_timestep.isel(time=-1).max().item()
         )
 
-    def as_dataset(self) -> xr.Dataset:
+    def as_dataset(self, without_extra_timestep: bool = False) -> xr.Dataset:
         """
         Convert the TimeSeriesAllocator to a xarray Dataset, containing the data of each TimeSeries.
         """
@@ -1168,6 +1168,9 @@ class TimeSeriesAllocator:
 
         for ts in self._time_series.values():
             ds[ts.name] = ts.selected_data
+
+        if without_extra_timestep:
+            return ds.sel(time=self.timesteps)
 
         return ds
 
