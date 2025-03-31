@@ -1,7 +1,7 @@
 """
 FlixOpt Results Explorer
 
-A module for launching a Streamlit app to explore flixOpt calculation results.
+A module for launching a Streamlit app to explore flixopt calculation results.
 """
 
 import os
@@ -30,7 +30,7 @@ def explore_results(self, port=8501):
     if not os.path.exists(explorer_script):
         raise FileNotFoundError(
             f'Explorer app not found at {explorer_script}. '
-            'Please ensure the explorer_app.py file is in the flixOpt package directory.'
+            'Please ensure the explorer_app.py file is in the flixopt package directory.'
         )
 
     # Run the Streamlit app - the port argument needs to be separate from the script arguments

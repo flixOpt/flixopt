@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from flixOpt import plotting
+from flixopt import plotting
 
 
 # Helper function to capture plotly figures
@@ -334,7 +334,7 @@ def run_explorer_from_file(folder, name):
             try:
                 from flixopt.results import CalculationResults
             except ImportError:
-                from flixOpt.results import CalculationResults
+                from flixopt.results import CalculationResults
         except ImportError:
             # Add potential module paths
             for path in [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]:
@@ -345,7 +345,7 @@ def run_explorer_from_file(folder, name):
             try:
                 from flixopt.results import CalculationResults
             except ImportError:
-                from flixOpt.results import CalculationResults
+                from flixopt.results import CalculationResults
 
         # Load from file
         results = CalculationResults.from_file(folder, name)
