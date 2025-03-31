@@ -584,7 +584,7 @@ class TestTimeSeriesAllocator:
         sample_allocator.add_time_series('series2', np.array([1, 2, 3, 4, 5]))
 
         # Get dataset
-        ds = sample_allocator.as_dataset(without_extra_timestep=True)
+        ds = sample_allocator.as_dataset(with_extra_timestep=False)
 
         # Check dataset contents
         assert isinstance(ds, xr.Dataset)
@@ -688,7 +688,7 @@ class TestTimeSeriesAllocatorWithScenarios:
         )
 
         # Get dataset
-        ds = sample_scenario_allocator.as_dataset(without_extra_timestep=True)
+        ds = sample_scenario_allocator.as_dataset(with_extra_timestep=False)
 
         # Check dataset dimensions
         assert 'scenario' in ds.dims
