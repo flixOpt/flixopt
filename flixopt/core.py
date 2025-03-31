@@ -1065,6 +1065,8 @@ class TimeSeriesCollection:
         self,
         name: str,
         data: Union[NumericDataTS, TimeSeries],
+        has_time_dim: bool = True,
+        has_scenario_dim: bool = True,
         aggregation_weight: Optional[float] = None,
         aggregation_group: Optional[str] = None,
         has_extra_timestep: bool = False,
@@ -1075,6 +1077,8 @@ class TimeSeriesCollection:
         Args:
             name: Name of the time series
             data: Data for the time series (can be raw data or an existing TimeSeries)
+            has_time_dim: Whether the TimeSeries has a time dimension
+            has_scenario_dim: Whether the TimeSeries has a scenario dimension
             aggregation_weight: Weight used for aggregation
             aggregation_group: Group name for shared aggregation weighting
             has_extra_timestep: Whether this series needs an extra timestep
@@ -1084,9 +1088,16 @@ class TimeSeriesCollection:
         """
         if name in self._time_series:
             raise KeyError(f"TimeSeries '{name}' already exists in allocator")
+        if not has_time_dim and has_extra_timestep:
+            raise ValueError('A not time-indexed TimeSeries cannot have an extra timestep')
 
         # Choose which timesteps to use
-        target_timesteps = self.timesteps_extra if has_extra_timestep else self.timesteps
+        if has_time_dim:
+            target_timesteps = self.timesteps_extra if has_extra_timestep else self.timesteps
+        else:
+            target_timesteps = None
+
+        target_scenarios = self.scenarios if has_scenario_dim else None
 
         # Create or adapt the TimeSeries object
         if isinstance(data, TimeSeries):
@@ -1094,7 +1105,7 @@ class TimeSeriesCollection:
             time_series = data
             # Update the stored data to use our timesteps and scenarios
             data_array = DataConverter.as_dataarray(
-                time_series.stored_data, timesteps=target_timesteps, scenarios=self.scenarios
+                time_series.stored_data, timesteps=target_timesteps, scenarios=target_scenarios
             )
             time_series = TimeSeries(
                 data=data_array,
@@ -1109,7 +1120,7 @@ class TimeSeriesCollection:
                 data=data,
                 name=name,
                 timesteps=target_timesteps,
-                scenarios=self.scenarios,
+                scenarios=target_scenarios,
                 aggregation_weight=aggregation_weight,
                 aggregation_group=aggregation_group,
                 has_extra_timestep=has_extra_timestep,
@@ -1186,7 +1197,7 @@ class TimeSeriesCollection:
 
         Args:
             with_extra_timestep: Whether to exclude the extra timesteps.
-                Effectively, this removes the last timestep for certain TImeSeries, but mitigates the presence of NANs in others.
+                Effectively, this removes the last timestep for certain TimeSeries, but mitigates the presence of NANs in others.
             with_constants: Whether to exclude TimeSeries with a constant value from the dataset.
         """
         if self.scenarios is None:
@@ -1235,10 +1246,16 @@ class TimeSeriesCollection:
     def _propagate_selection_to_time_series(self) -> None:
         """Apply the current selection to all TimeSeries objects."""
         for ts_name, ts in self._time_series.items():
-            timesteps = self._selected_timesteps_extra if ts_name in self._has_extra_timestep else self._selected_timesteps
+            if ts.has_time_dim:
+                timesteps = (
+                    self.timesteps_extra if ts_name in self._has_extra_timestep else self.timesteps
+                )
+            else:
+                timesteps = None
+
             ts.set_selection(
                 timesteps=timesteps,
-                scenarios=self._selected_scenarios
+                scenarios=self.scenarios if ts.has_scenario_dim else None
             )
 
     def __getitem__(self, name: str) -> TimeSeries:
@@ -1288,11 +1305,17 @@ class TimeSeriesCollection:
         # Get the TimeSeries
         ts = self._time_series[name]
 
+        # Determine which timesteps to use if the series has a time dimension
+        if ts.has_time_dim:
+            target_timesteps = self.timesteps_extra if name in self._has_extra_timestep else self.timesteps
+        else:
+            target_timesteps = None
+
         # Convert data to proper format
         data_array = DataConverter.as_dataarray(
             data,
-            self.timesteps_extra if name in self._has_extra_timestep else self.timesteps,
-            self.scenarios
+            timesteps=target_timesteps,
+            scenarios=self.scenarios if ts.has_scenario_dim else None
         )
 
         # Update the TimeSeries
