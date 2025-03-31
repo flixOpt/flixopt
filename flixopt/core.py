@@ -41,133 +41,116 @@ class ConversionError(Exception):
 
 class DataConverter:
     """
-    Converts various data types into xarray.DataArray with timesteps and optional scenarios dimensions.
+    Converts various data types into xarray.DataArray with optional time and scenario dimension.
 
-    Supports:
-    - Scalar values (broadcast to all timesteps/scenarios)
-    - 1D arrays (mapped to timesteps, broadcast to scenarios if provided)
-    - 2D arrays (mapped to scenarios × timesteps if dimensions match)
-    - Series with time index (broadcast to scenarios if provided)
-    - DataFrames with time index and a single column (broadcast to scenarios if provided)
-    - Series/DataFrames with MultiIndex (scenario, time)
-    - Existing DataArrays
+    Current implementation handles:
+    - Scalar values
+    - NumPy arrays
+    - xarray.DataArray
     """
-
-    #TODO: Allow DataFrame with scenarios as columns
 
     @staticmethod
     def as_dataarray(
-        data: NumericData, timesteps: pd.DatetimeIndex, scenarios: Optional[pd.Index] = None
+        data: NumericData, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None
     ) -> xr.DataArray:
         """
-        Convert data to xarray.DataArray with specified timesteps and optional scenarios dimensions.
+        Convert data to xarray.DataArray with specified dimensions.
 
         Args:
-            data: The data to convert (scalar, array, Series, DataFrame, or DataArray)
-            timesteps: DatetimeIndex representing the time dimension (must be named 'time')
-            scenarios: Optional Index representing scenarios (must be named 'scenario')
+            data: The data to convert (scalar, array, or DataArray)
+            timesteps: Optional DatetimeIndex for time dimension
+            scenarios: Optional Index for scenario dimension
 
         Returns:
             DataArray with the converted data
-
-        Raises:
-            ValueError: If timesteps or scenarios are invalid
-            ConversionError: If the data cannot be converted to the expected dimensions
         """
-        # Validate inputs
-        DataConverter._validate_timesteps(timesteps)
-        if scenarios is not None:
-            DataConverter._validate_scenarios(scenarios)
+        # Prepare dimensions and coordinates
+        coords, dims = DataConverter._prepare_dimensions(timesteps, scenarios)
 
-        # Determine dimensions and coordinates
-        coords, dims, expected_shape = DataConverter._get_dimensions(timesteps, scenarios)
+        # Select appropriate converter based on data type
+        if isinstance(data, (int, float, np.integer, np.floating)):
+            return DataConverter._convert_scalar(data, coords, dims)
 
-        try:
-            # Convert different data types using specialized methods
-            if isinstance(data, (int, float, np.integer, np.floating)):
-                return DataConverter._convert_scalar(data, coords, dims)
+        elif isinstance(data, xr.DataArray):
+            return DataConverter._convert_dataarray(data, coords, dims)
 
-            elif isinstance(data, pd.DataFrame):
-                return DataConverter._convert_dataframe(data, timesteps, scenarios, coords, dims)
+        elif isinstance(data, np.ndarray):
+            return DataConverter._convert_ndarray(data, coords, dims)
 
-            elif isinstance(data, pd.Series):
-                return DataConverter._convert_series(data, timesteps, scenarios, coords, dims)
-
-            elif isinstance(data, np.ndarray):
-                return DataConverter._convert_ndarray(data, timesteps, scenarios, coords, dims, expected_shape)
-
-            elif isinstance(data, xr.DataArray):
-                return DataConverter._convert_dataarray(data, timesteps, scenarios, coords, dims)
-
-            else:
-                raise ConversionError(f'Unsupported type: {type(data).__name__}')
-
-        except Exception as e:
-            if isinstance(e, ConversionError):
-                raise
-            raise ConversionError(f'Converting {type(data)} to DataArray raised an error: {str(e)}') from e
+        else:
+            raise ValueError(f'Unsupported data type: {type(data).__name__}')
 
     @staticmethod
-    def _validate_timesteps(timesteps: pd.DatetimeIndex) -> None:
+    def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
         """
-        Validate that timesteps is a properly named non-empty DatetimeIndex.
+        Validate and prepare time index.
 
         Args:
-            timesteps: The DatetimeIndex to validate
+            timesteps: The time index to validate
 
-        Raises:
-            ValueError: If timesteps is not a non-empty DatetimeIndex
-            ConversionError: If timesteps is not named 'time'
+        Returns:
+            Validated time index
         """
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
-            raise ValueError(f'Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}')
+            raise ValueError(f'Timesteps must be a non-empty DatetimeIndex')
+
+        # Rename index if needed
         if timesteps.name != 'time':
-            raise ConversionError(f'DatetimeIndex must be named "time", got {timesteps.name=}')
+            timesteps = timesteps.rename('time')
+
+        return timesteps
 
     @staticmethod
-    def _validate_scenarios(scenarios: pd.Index) -> None:
+    def _validate_scenarios(scenarios: pd.Index) -> pd.Index:
         """
-        Validate that scenarios is a properly named non-empty Index.
+        Validate and prepare scenario index.
 
         Args:
-            scenarios: The Index to validate
-
-        Raises:
-            ValueError: If scenarios is not a non-empty Index
-            ConversionError: If scenarios is not named 'scenario'
+            scenarios: The scenario index to validate
         """
         if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
-            raise ValueError(f'Scenarios must be a non-empty Index, got {type(scenarios).__name__}')
+            raise ValueError(f'Scenarios must be a non-empty Index')
+
+        # Rename index if needed
         if scenarios.name != 'scenario':
-            raise ConversionError(f'Scenarios Index must be named "scenario", got {scenarios.name=}')
+            scenarios = scenarios.rename('scenario')
+
+        return scenarios
 
     @staticmethod
-    def _get_dimensions(
-        timesteps: pd.DatetimeIndex, scenarios: Optional[pd.Index] = None
-    ) -> Tuple[Dict[str, pd.Index], Tuple[str, ...], Tuple[int, ...]]:
+    def _prepare_dimensions(
+        timesteps: Optional[pd.DatetimeIndex], scenarios: Optional[pd.Index]
+    ) -> Tuple[Dict[str, pd.Index], Tuple[str, ...]]:
         """
-        Create the coordinates, dimensions, and expected shape for the output DataArray.
+        Prepare coordinates and dimensions for the DataArray.
 
         Args:
-            timesteps: The time index
+            timesteps: Optional time index
             scenarios: Optional scenario index
 
         Returns:
-            Tuple containing:
-            - Dict mapping dimension names to coordinate indexes
-            - Tuple of dimension names
-            - Tuple of expected shape
+            Tuple of (coordinates dict, dimensions tuple)
         """
-        if scenarios is not None:
-            coords = {'scenario': scenarios, 'time': timesteps}
-            dims = ('scenario', 'time')
-            expected_shape = (len(scenarios), len(timesteps))
-        else:
-            coords = {'time': timesteps}
-            dims = ('time',)
-            expected_shape = (len(timesteps),)
+        # Validate inputs if provided
+        if timesteps is not None:
+            timesteps = DataConverter._validate_timesteps(timesteps)
 
-        return coords, dims, expected_shape
+        if scenarios is not None:
+            scenarios = DataConverter._validate_scenarios(scenarios)
+
+        # Build coordinates and dimensions
+        coords = {}
+        dims = []
+
+        if scenarios is not None:
+            coords['scenario'] = scenarios
+            dims.append('scenario')
+
+        if timesteps is not None:
+            coords['time'] = timesteps
+            dims.append('time')
+
+        return coords, tuple(dims)
 
     @staticmethod
     def _convert_scalar(
