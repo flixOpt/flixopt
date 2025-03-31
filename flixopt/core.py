@@ -766,8 +766,9 @@ class TimeSeries:
         self._selected_timesteps: Optional[pd.DatetimeIndex] = None
         self._selected_scenarios: Optional[pd.Index] = None
 
-        # Flag for whether this series has scenarios
-        self._has_scenarios = 'scenario' in data.dims
+        # Flag for whether this series has various dimensions
+        self.has_time_dim = 'time' in data.dims
+        self.has_scenario_dim = 'scenario' in data.dims
 
     def reset(self) -> None:
         """
@@ -836,16 +837,18 @@ class TimeSeries:
         return self._stored_data.sel(**self._valid_selector)
 
     @property
-    def active_timesteps(self) -> pd.DatetimeIndex:
-        """Get the current active timesteps."""
+    def active_timesteps(self) -> Optional[pd.DatetimeIndex]:
+        """Get the current active timesteps, or None if no time dimension."""
+        if not self.has_time_dim:
+            return None
         if self._selected_timesteps is None:
             return self._stored_data.indexes['time']
         return self._selected_timesteps
 
     @property
     def active_scenarios(self) -> Optional[pd.Index]:
-        """Get the current active scenarios."""
-        if not self._has_scenarios:
+        """Get the current active scenarios, or None if no scenario dimension."""
+        if not self.has_scenario_dim:
             return None
         if self._selected_scenarios is None:
             return self._stored_data.indexes['scenario']
@@ -883,15 +886,26 @@ class TimeSeries:
             self._selected_scenarios = None
 
     def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
-        if timesteps is None:
-            self.clear_selection(timesteps=True, scenarios=False)
-        else:
-            self._selected_timesteps = timesteps
+        """
+        Set active subset for timesteps and scenarios.
 
-        if scenarios is None:
-            self.clear_selection(timesteps=False, scenarios=True)
-        else:
-            self._selected_scenarios = scenarios
+        Args:
+            timesteps: Timesteps to activate, or None to clear. Ignored if series has no time dimension.
+            scenarios: Scenarios to activate, or None to clear. Ignored if series has no scenario dimension.
+        """
+        # Only update timesteps if the series has time dimension
+        if self.has_time_dim:
+            if timesteps is None:
+                self.clear_selection(timesteps=True, scenarios=False)
+            else:
+                self._selected_timesteps = timesteps
+
+        # Only update scenarios if the series has scenario dimension
+        if self.has_scenario_dim:
+            if scenarios is None:
+                self.clear_selection(timesteps=False, scenarios=True)
+            else:
+                self._selected_scenarios = scenarios
 
     @property
     def sel(self):
@@ -906,8 +920,17 @@ class TimeSeries:
     @property
     def _valid_selector(self) -> Dict[str, pd.Index]:
         """Get the current selection as a dictionary."""
-        full_selection = {'time': self._selected_timesteps, 'scenario': self._selected_scenarios}
-        return {dim: sel for dim, sel in full_selection.items() if dim in self._stored_data.dims and sel is not None}
+        selector = {}
+
+        # Only include time in selector if series has time dimension
+        if self.has_time_dim and self._selected_timesteps is not None:
+            selector['time'] = self._selected_timesteps
+
+        # Only include scenario in selector if series has scenario dimension
+        if self.has_scenario_dim and self._selected_scenarios is not None:
+            selector['scenario'] = self._selected_scenarios
+
+        return selector
 
     def _apply_operation(self, other, op):
         """Apply an operation between this TimeSeries and another object."""
