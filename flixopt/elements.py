@@ -321,7 +321,7 @@ class FlowModel(ElementModel):
             self._model.add_variables(
                 lower=self.absolute_flow_rate_bounds[0] if self.element.on_off_parameters is None else 0,
                 upper=self.absolute_flow_rate_bounds[1],
-                coords=self._model.coords,
+                coords=self._model.get_coords(),
                 name=f'{self.label_full}|flow_rate',
             ),
             'flow_rate',
@@ -467,11 +467,11 @@ class BusModel(ElementModel):
                 self._model.hours_per_step, self.element.excess_penalty_per_flow_hour.selected_data
             )
             self.excess_input = self.add(
-                self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_input'),
+                self._model.add_variables(lower=0, coords=self._model.get_coords(), name=f'{self.label_full}|excess_input'),
                 'excess_input',
             )
             self.excess_output = self.add(
-                self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_output'),
+                self._model.add_variables(lower=0, coords=self._model.get_coords(), name=f'{self.label_full}|excess_output'),
                 'excess_output',
             )
             eq_bus_balance.lhs -= -self.excess_input + self.excess_output

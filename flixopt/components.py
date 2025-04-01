@@ -466,12 +466,12 @@ class StorageModel(ComponentModel):
         lb, ub = self.absolute_charge_state_bounds
         self.charge_state = self.add(
             self._model.add_variables(
-                lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|charge_state'
+                lower=lb, upper=ub, coords=self._model.get_coords(extra_timestep=True), name=f'{self.label_full}|charge_state'
             ),
             'charge_state',
         )
         self.netto_discharge = self.add(
-            self._model.add_variables(coords=self._model.coords, name=f'{self.label_full}|netto_discharge'),
+            self._model.add_variables(coords=self._model.get_coords(), name=f'{self.label_full}|netto_discharge'),
             'netto_discharge',
         )
         # netto_discharge:

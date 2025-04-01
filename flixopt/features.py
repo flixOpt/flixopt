@@ -246,7 +246,7 @@ class OnOffModel(Model):
             self._model.add_variables(
                 name=f'{self.label_full}|on',
                 binary=True,
-                coords=self._model.coords,
+                coords=self._model.get_coords(),
             ),
             'on',
         )
@@ -275,7 +275,7 @@ class OnOffModel(Model):
                 self._model.add_variables(
                     name=f'{self.label_full}|off',
                     binary=True,
-                    coords=self._model.coords,
+                    coords=self._model.get_coords(),
                 ),
                 'off',
             )
@@ -303,12 +303,12 @@ class OnOffModel(Model):
 
         if self.parameters.use_switch_on:
             self.switch_on = self.add(
-                self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.coords),
+                self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.get_coords()),
                 'switch_on',
             )
 
             self.switch_off = self.add(
-                self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.coords),
+                self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.get_coords()),
                 'switch_off',
             )
 
@@ -451,7 +451,7 @@ class OnOffModel(Model):
             self._model.add_variables(
                 lower=0,
                 upper=maximum_duration.selected_data if maximum_duration is not None else mega,
-                coords=self._model.coords,
+                coords=self._model.get_coords(),
                 name=f'{self.label_full}|{variable_name}',
             ),
             variable_name,
@@ -716,7 +716,7 @@ class PieceModel(Model):
             self._model.add_variables(
                 binary=True,
                 name=f'{self.label_full}|inside_piece',
-                coords=self._model.coords if self._as_time_series else None,
+                coords=self._model.get_coords(time_dim=self._as_time_series),
             ),
             'inside_piece',
         )
@@ -726,7 +726,7 @@ class PieceModel(Model):
                 lower=0,
                 upper=1,
                 name=f'{self.label_full}|lambda0',
-                coords=self._model.coords if self._as_time_series else None,
+                coords=self._model.get_coords(time_dim=self._as_time_series),
             ),
             'lambda0',
         )
@@ -736,7 +736,7 @@ class PieceModel(Model):
                 lower=0,
                 upper=1,
                 name=f'{self.label_full}|lambda1',
-                coords=self._model.coords if self._as_time_series else None,
+                coords=self._model.get_coords(time_dim=self._as_time_series),
             ),
             'lambda1',
         )
@@ -820,7 +820,7 @@ class PiecewiseModel(Model):
             elif self._zero_point is True:
                 self.zero_point = self.add(
                     self._model.add_variables(
-                        coords=self._model.coords, binary=True, name=f'{self.label_full}|zero_point'
+                        coords=self._model.get_coords(), binary=True, name=f'{self.label_full}|zero_point'
                     ),
                     'zero_point',
                 )
@@ -891,7 +891,7 @@ class ShareAllocationModel(Model):
                     upper=np.inf
                     if (self._max_per_hour is None)
                     else np.multiply(self._max_per_hour, self._model.hours_per_step),
-                    coords=self._model.coords,
+                    coords=self._model.get_coords(),
                     name=f'{self.label_full}|total_per_timestep',
                 ),
                 'total_per_timestep',
@@ -929,7 +929,7 @@ class ShareAllocationModel(Model):
                     if isinstance(expression, linopy.LinearExpression)
                     and expression.ndim == 0
                     or not isinstance(expression, linopy.LinearExpression)
-                    else self._model.coords,
+                    else self._model.get_coords(),  #TODO: Add logic on what coords to use
                     name=f'{name}->{self.label_full}',
                 ),
                 name,

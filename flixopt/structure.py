@@ -98,7 +98,7 @@ class SystemModel(linopy.Model):
     def hours_of_previous_timesteps(self):
         return self.time_series_collection.hours_of_previous_timesteps
 
-    def coords(
+    def get_coords(
             self,
             scenario_dim = True,
             time_dim = True,
