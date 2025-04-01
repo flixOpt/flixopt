@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import TimestepData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -98,13 +98,32 @@ class SystemModel(linopy.Model):
     def hours_of_previous_timesteps(self):
         return self.time_series_collection.hours_of_previous_timesteps
 
-    @property
-    def coords(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps,)
+    def get_coords(
+            self,
+            scenario_dim = True,
+            time_dim = True,
+            extra_timestep = False
+    ) -> Optional[Union[Tuple[pd.Index], Tuple[pd.Index, pd.Index]]]:
+        """
+        Returns the coordinates of the model
 
-    @property
-    def coords_extra(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps_extra,)
+        Args:
+            scenario_dim: If True, the scenario dimension is included in the coordinates
+            time_dim: If True, the time dimension is included in the coordinates
+            extra_timestep: If True, the extra timesteps are used instead of the regular timesteps
+
+        Returns:
+            The coordinates of the model. Might also be None if no scenarios are present and time_dim is False
+        """
+        scenarios = self.time_series_collection.scenarios
+        timesteps = self.time_series_collection.timesteps if not extra_timestep else self.time_series_collection.timesteps_extra
+        if scenarios is None:
+            if time_dim:
+                return (timesteps,)
+            return None
+        if scenario_dim and not time_dim:
+            return (scenarios,)
+        return scenarios, timesteps
 
 
 class Interface:
