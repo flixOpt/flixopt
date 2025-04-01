@@ -873,7 +873,10 @@ class ShareAllocationModel(Model):
     def do_modeling(self):
         self.total = self.add(
             self._model.add_variables(
-                lower=self._total_min, upper=self._total_max, coords=None, name=f'{self.label_full}|total'
+                lower=self._total_min,
+                upper=self._total_max,
+                coords=self._model.get_coords(time_dim=False),
+                name=f'{self.label_full}|total'
             ),
             'total',
         )
@@ -887,10 +890,10 @@ class ShareAllocationModel(Model):
                 self._model.add_variables(
                     lower=-np.inf
                     if (self._min_per_hour is None)
-                    else np.multiply(self._min_per_hour, self._model.hours_per_step),
+                    else self._min_per_hour * self._model.hours_per_step,
                     upper=np.inf
                     if (self._max_per_hour is None)
-                    else np.multiply(self._max_per_hour, self._model.hours_per_step),
+                    else self._max_per_hour * self._model.hours_per_step,
                     coords=self._model.get_coords(),
                     name=f'{self.label_full}|total_per_timestep',
                 ),
@@ -903,7 +906,7 @@ class ShareAllocationModel(Model):
             )
 
             # Add it to the total
-            self._eq_total.lhs -= self.total_per_timestep.sum()
+            self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')
 
     def add_share(
         self,
