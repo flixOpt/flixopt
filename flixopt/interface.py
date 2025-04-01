@@ -223,7 +223,6 @@ class InvestParameters(Interface):
             self.piecewise_effects.has_time_dim=False
             self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
-
     @property
     def minimum_size(self):
         return self.fixed_size or self._minimum_size
@@ -297,6 +296,15 @@ class OnOffParameters(Interface):
         )
         self.consecutive_off_hours_max = flow_system.create_time_series(
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
+        )
+        self.on_hours_total_max = flow_system.create_time_series(
+            f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, has_time_dim=False
+        )
+        self.on_hours_total_min = flow_system.create_time_series(
+            f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, has_time_dim=False
+        )
+        self.switch_on_total_max = flow_system.create_time_series(
+            f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, has_time_dim=False
         )
 
     @property
