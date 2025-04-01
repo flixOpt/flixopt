@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
 
 from .config import CONFIG
-from .core import TimestepData, NumericDataTS, Scalar
+from .core import TimestepData, NumericDataTS, Scalar, ScenarioData
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -154,9 +154,9 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: Optional[Union[int, float]] = None,
-        minimum_size: Union[int, float] = 0,  # TODO: Use EPSILON?
-        maximum_size: Optional[Union[int, float]] = None,
+        fixed_size: Optional[Scalar] = None,
+        minimum_size: Scalar = 0,  # TODO: Use EPSILON?
+        maximum_size: Optional[Scalar] = None,
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScenario'] = None,
         specific_effects: Optional['EffectValuesUserScenario'] = None,  # costs per Flow-Unit/Storage-Size/...
@@ -238,13 +238,13 @@ class OnOffParameters(Interface):
         self,
         effects_per_switch_on: Optional['EffectValuesUserTimestep'] = None,
         effects_per_running_hour: Optional['EffectValuesUserTimestep'] = None,
-        on_hours_total_min: Optional[int] = None,
-        on_hours_total_max: Optional[int] = None,
+        on_hours_total_min: Optional[ScenarioData] = None,
+        on_hours_total_max: Optional[ScenarioData] = None,
         consecutive_on_hours_min: Optional[TimestepData] = None,
         consecutive_on_hours_max: Optional[TimestepData] = None,
         consecutive_off_hours_min: Optional[TimestepData] = None,
         consecutive_off_hours_max: Optional[TimestepData] = None,
-        switch_on_total_max: Optional[int] = None,
+        switch_on_total_max: Optional[ScenarioData] = None,
         force_switch_on: bool = False,
     ):
         """
