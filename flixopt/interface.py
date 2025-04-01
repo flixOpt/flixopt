@@ -96,6 +96,7 @@ class PiecewiseConversion(Interface):
         """
         self.piecewises = piecewises
         self._has_time_dim = True
+        self.has_time_dim = True  # Inital propagation
 
     @property
     def has_time_dim(self):
@@ -104,7 +105,7 @@ class PiecewiseConversion(Interface):
     @has_time_dim.setter
     def has_time_dim(self, value):
         self._has_time_dim = value
-        for piecewise in self.piecewises:
+        for piecewise in self.piecewises.values():
             piecewise.has_time_dim = value
 
     def items(self):
@@ -127,7 +128,8 @@ class PiecewiseEffects(Interface):
         """
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
-        self._has_time_dim = True
+        self._has_time_dim = False
+        self.has_time_dim = False  # Inital propagation
 
     @property
     def has_time_dim(self):

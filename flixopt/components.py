@@ -92,6 +92,7 @@ class LinearConverter(Component):
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
         if self.piecewise_conversion:
+            self.piecewise_conversion.has_time_dim = True
             self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
     def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, TimeSeries]]:
