@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
+from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, ScenarioData
 from .effects import EffectValuesUserTimestep
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
@@ -148,16 +148,16 @@ class Flow(Element):
         label: str,
         bus: str,
         size: Union[Scalar, InvestParameters] = None,
-        fixed_relative_profile: Optional[NumericDataTS] = None,
-        relative_minimum: NumericDataTS = 0,
-        relative_maximum: NumericDataTS = 1,
+        fixed_relative_profile: Optional[TimestepData] = None,
+        relative_minimum: TimestepData = 0,
+        relative_maximum: TimestepData = 1,
         effects_per_flow_hour: Optional[EffectValuesUserTimestep] = None,
         on_off_parameters: Optional[OnOffParameters] = None,
-        flow_hours_total_max: Optional[Scalar] = None,
-        flow_hours_total_min: Optional[Scalar] = None,
-        load_factor_min: Optional[Scalar] = None,
-        load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[TimestepData] = None,
+        flow_hours_total_max: Optional[ScenarioData] = None,
+        flow_hours_total_min: Optional[ScenarioData] = None,
+        load_factor_min: Optional[ScenarioData] = None,
+        load_factor_max: Optional[ScenarioData] = None,
+        previous_flow_rate: Optional[ScenarioData] = None,
         meta_data: Optional[Dict] = None,
     ):
         r"""
@@ -240,6 +240,19 @@ class Flow(Element):
         self.effects_per_flow_hour = flow_system.create_effect_time_series(
             self.label_full, self.effects_per_flow_hour, 'per_flow_hour'
         )
+        self.flow_hours_total_max = flow_system.create_time_series(
+            f'{self.label_full}|flow_hours_total_max', self.flow_hours_total_max, has_time_dim=False
+        )
+        self.flow_hours_total_min = flow_system.create_time_series(
+            f'{self.label_full}|flow_hours_total_min', self.flow_hours_total_min, has_time_dim=False
+        )
+        self.load_factor_max = flow_system.create_time_series(
+            f'{self.label_full}|load_factor_max', self.load_factor_max, has_time_dim=False
+        )
+        self.load_factor_min = flow_system.create_time_series(
+            f'{self.label_full}|load_factor_min', self.load_factor_min, has_time_dim=False
+        )
+
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
         if isinstance(self.size, InvestParameters):
