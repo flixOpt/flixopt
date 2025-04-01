@@ -26,6 +26,12 @@ NumericData = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, 
 NumericDataTS = Union[NumericData, 'TimeSeriesData']
 """Represents either standard numeric data or TimeSeriesData."""
 
+TimestepData = NumericData
+"""Represents any form of numeric data that corresponds to timesteps."""
+
+ScenarioData = NumericData
+"""Represents any form of numeric data that corresponds to scenarios."""
+
 
 class PlausibilityError(Exception):
     """Error for a failing Plausibility check."""

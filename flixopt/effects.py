@@ -13,7 +13,7 @@ import linopy
 import numpy as np
 import pandas as pd
 
-from .core import NumericData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection
+from .core import NumericData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection, ScenarioData, TimestepData
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 
@@ -176,6 +176,12 @@ EffectValuesUser = Union[NumericDataTS, Dict[str, NumericDataTS]]  # User-specif
 
 EffectValuesUserScalar = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
 """ This datatype is used to define the share to an effect by a certain attribute. Only scalars are allowed. """
+
+EffectValuesUserScenario = Union[ScenarioData, Dict[str, ScenarioData]]
+""" This datatype is used to define the share to an effect for every scenario. """
+
+EffectValuesUserTimestep = Union[TimestepData, Dict[str, TimestepData]]
+""" This datatype is used to define the share to an effect for every timestep. """
 
 
 class EffectCollection:
