@@ -154,7 +154,7 @@ class EffectModel(ElementModel):
             self._model.add_variables(
                 lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
                 upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
-                coords=None,
+                coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|total',
             ),
             'total',
@@ -162,7 +162,7 @@ class EffectModel(ElementModel):
 
         self.add(
             self._model.add_constraints(
-                self.total == self.operation.total.sum() + self.invest.total.sum(), name=f'{self.label_full}|total'
+                self.total == self.operation.total + self.invest.total, name=f'{self.label_full}|total'
             ),
             'total',
         )
