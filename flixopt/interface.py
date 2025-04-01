@@ -33,8 +33,18 @@ class Piece(Interface):
         self.has_time_dim = False
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
-        self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
+        self.start = flow_system.create_time_series(
+            name=f'{name_prefix}|start',
+            data=self.start,
+            has_time_dim=self.has_time_dim,
+            has_scenario_dim=True
+        )
+        self.end = flow_system.create_time_series(
+            name=f'{name_prefix}|end',
+            data=self.end,
+            has_time_dim=self.has_time_dim,
+            has_scenario_dim=True
+        )
 
 
 @register_class_for_io
@@ -85,14 +95,13 @@ class PiecewiseConversion(Interface):
             piecewises: Dict of Piecewises defining the conversion factors. flow labels as keys, piecewise as values
         """
         self.piecewises = piecewises
-        for piecewise in self.piecewises.values():
-            piecewise.has_time_dim = True
 
     def items(self):
         return self.piecewises.items()
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         for name, piecewise in self.piecewises.items():
+            piecewise.has_time_dim = True
             piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
 
@@ -109,15 +118,12 @@ class PiecewiseEffects(Interface):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
 
-        self.piecewise_origin.has_time_dim = True
-        for piecewise in self.piecewise_shares.values():
-            piecewise.has_time_dim = True
-
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
-        # self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
-        # for name, piecewise in self.piecewise_shares.items():
-        #    piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{name}')
+        self.piecewise_origin.has_time_dim = False
+        self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
+        for effect, piecewise in self.piecewise_shares.items():
+            piecewise.has_time_dim = False
+            piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
 
 
 @register_class_for_io
@@ -171,10 +177,31 @@ class InvestParameters(Interface):
         self._minimum_size = minimum_size
         self._maximum_size = maximum_size or CONFIG.modeling.BIG  # default maximum
 
-    def transform_data(self, flow_system: 'FlowSystem'):
-        self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)
-        self.divest_effects = flow_system.effects.create_effect_values_dict(self.divest_effects)
-        self.specific_effects = flow_system.effects.create_effect_values_dict(self.specific_effects)
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        self.fix_effects = flow_system.create_effect_time_series(
+            label_prefix=name_prefix,
+            effect_values=self.fix_effects,
+            label_suffix='fix_effects',
+            has_time_dim=False,
+            has_scenario_dim=True,
+        )
+        self.divest_effects = flow_system.create_effect_time_series(
+            label_prefix=name_prefix,
+            effect_values=self.divest_effects,
+            label_suffix='divest_effects',
+            has_time_dim=False,
+            has_scenario_dim=True,
+        )
+        self.specific_effects = flow_system.create_effect_time_series(
+            label_prefix=name_prefix,
+            effect_values=self.specific_effects,
+            label_suffix='specific_effects',
+            has_time_dim=False,
+            has_scenario_dim=True,
+        )
+        if self.piecewise_effects is not None:
+            self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
+
 
     @property
     def minimum_size(self):
