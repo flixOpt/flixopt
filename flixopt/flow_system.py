@@ -278,6 +278,8 @@ class FlowSystem:
         self,
         name: str,
         data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
+        has_time_dim: bool = True,
+        has_scenario_dim: bool = True,
         has_extra_timestep: bool = False,
     ) -> Optional[TimeSeries]:
         """
@@ -285,6 +287,13 @@ class FlowSystem:
         If the data already is a TimeSeries, nothing happens and the TimeSeries gets reset and returned
         If the data is a TimeSeriesData, it is converted to a TimeSeries, and the aggregation weights are applied.
         If the data is None, nothing happens.
+
+        Args:
+            name: The name of the TimeSeries
+            data: The data to create a TimeSeries from
+            has_time_dim: Whether the data has a time dimension
+            has_scenario_dim: Whether the data has a scenario dimension
+            has_extra_timestep: Whether the data has an extra timestep
         """
 
         if data is None:
@@ -294,19 +303,29 @@ class FlowSystem:
             if data in self.time_series_collection:
                 return data
             return self.time_series_collection.add_time_series(
-                data=data.selected_data, name=name, has_extra_timestep=has_extra_timestep
+                data=data.selected_data,
+                name=name,
+                has_time_dim=has_time_dim,
+                has_scenario_dim=has_scenario_dim,
+                has_extra_timestep=has_extra_timestep,
             )
         elif isinstance(data, TimeSeriesData):
             data.label = name
             return self.time_series_collection.add_time_series(
                 data=data.data,
                 name=name,
+                has_time_dim=has_time_dim,
+                has_scenario_dim=has_scenario_dim,
                 has_extra_timestep=has_extra_timestep,
                 aggregation_weight=data.agg_weight,
                 aggregation_group=data.agg_group
             )
         return self.time_series_collection.add_time_series(
-            data=data, name=name, has_extra_timestep=has_extra_timestep
+            data=data,
+            name=name,
+            has_time_dim=has_time_dim,
+            has_scenario_dim=has_scenario_dim,
+            has_extra_timestep=has_extra_timestep,
         )
 
     def create_effect_time_series(
@@ -314,6 +333,8 @@ class FlowSystem:
         label_prefix: Optional[str],
         effect_values: EffectValuesUser,
         label_suffix: Optional[str] = None,
+        has_time_dim: bool = True,
+        has_scenario_dim: bool = True,
     ) -> Optional[EffectTimeSeries]:
         """
         Transform EffectValues to EffectTimeSeries.
@@ -322,13 +343,25 @@ class FlowSystem:
         The resulting label of the TimeSeries is the label of the parent_element,
         followed by the label of the Effect in the nested_values and the label_suffix.
         If the key in the EffectValues is None, the alias 'Standard_Effect' is used
+
+        Args:
+            label_prefix: Prefix for the TimeSeries name
+            effect_values: Dictionary of EffectValues
+            label_suffix: Suffix for the TimeSeries name
+            has_time_dim: Whether the data has a time dimension
+            has_scenario_dim: Whether the data has a scenario dimension
         """
         effect_values: Optional[EffectValuesDict] = self.effects.create_effect_values_dict(effect_values)
         if effect_values is None:
             return None
 
         return {
-            effect: self.create_time_series('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
+            effect: self.create_time_series(
+                name='|'.join(filter(None, [label_prefix, effect, label_suffix])),
+                data=value,
+                has_time_dim=has_time_dim,
+                has_scenario_dim=has_scenario_dim,
+            )
             for effect, value in effect_values.items()
         }
 
