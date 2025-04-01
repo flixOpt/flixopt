@@ -11,7 +11,7 @@ from .core import TimestepData, NumericDataTS, Scalar
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from .effects import EffectValuesUser, EffectValuesUserScalar
+    from .effects import EffectValuesUserScenario, EffectValuesUserTimestep
     from .flow_system import FlowSystem
 
 
@@ -114,10 +114,10 @@ class InvestParameters(Interface):
         minimum_size: Union[int, float] = 0,  # TODO: Use EPSILON?
         maximum_size: Optional[Union[int, float]] = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: Optional['EffectValuesUserScalar'] = None,
-        specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
+        fix_effects: Optional['EffectValuesUserScenario'] = None,
+        specific_effects: Optional['EffectValuesUserScenario'] = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: Optional[PiecewiseEffects] = None,
-        divest_effects: Optional['EffectValuesUserScalar'] = None,
+        divest_effects: Optional['EffectValuesUserScenario'] = None,
     ):
         """
         Args:
@@ -144,11 +144,11 @@ class InvestParameters(Interface):
             minimum_size: Min nominal value (only if: size_is_fixed = False).
             maximum_size: Max nominal value (only if: size_is_fixed = False).
         """
-        self.fix_effects: EffectValuesUser = fix_effects or {}
-        self.divest_effects: EffectValuesUser = divest_effects or {}
+        self.fix_effects: EffectValuesUserScenario = fix_effects or {}
+        self.divest_effects: EffectValuesUserScenario = divest_effects or {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: EffectValuesUser = specific_effects or {}
+        self.specific_effects: EffectValuesUserScenario = specific_effects or {}
         self.piecewise_effects = piecewise_effects
         self._minimum_size = minimum_size
         self._maximum_size = maximum_size or CONFIG.modeling.BIG  # default maximum
@@ -171,8 +171,8 @@ class InvestParameters(Interface):
 class OnOffParameters(Interface):
     def __init__(
         self,
-        effects_per_switch_on: Optional['EffectValuesUser'] = None,
-        effects_per_running_hour: Optional['EffectValuesUser'] = None,
+        effects_per_switch_on: Optional['EffectValuesUserTimestep'] = None,
+        effects_per_running_hour: Optional['EffectValuesUserTimestep'] = None,
         on_hours_total_min: Optional[int] = None,
         on_hours_total_max: Optional[int] = None,
         consecutive_on_hours_min: Optional[TimestepData] = None,
@@ -202,8 +202,8 @@ class OnOffParameters(Interface):
             switch_on_total_max: max nr of switchOn operations
             force_switch_on: force creation of switch on variable, even if there is no switch_on_total_max
         """
-        self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}
-        self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}
+        self.effects_per_switch_on: EffectValuesUserTimestep = effects_per_switch_on or {}
+        self.effects_per_running_hour: EffectValuesUserTimestep = effects_per_running_hour or {}
         self.on_hours_total_min: Scalar = on_hours_total_min
         self.on_hours_total_max: Scalar = on_hours_total_max
         self.consecutive_on_hours_min: NumericDataTS = consecutive_on_hours_min

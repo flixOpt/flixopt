@@ -11,7 +11,7 @@ import numpy as np
 
 from .config import CONFIG
 from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
-from .effects import EffectValuesUser
+from .effects import EffectValuesUserTimestep
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, SystemModel, register_class_for_io
@@ -151,7 +151,7 @@ class Flow(Element):
         fixed_relative_profile: Optional[NumericDataTS] = None,
         relative_minimum: NumericDataTS = 0,
         relative_maximum: NumericDataTS = 1,
-        effects_per_flow_hour: Optional[EffectValuesUser] = None,
+        effects_per_flow_hour: Optional[EffectValuesUserTimestep] = None,
         on_off_parameters: Optional[OnOffParameters] = None,
         flow_hours_total_max: Optional[Scalar] = None,
         flow_hours_total_min: Optional[Scalar] = None,

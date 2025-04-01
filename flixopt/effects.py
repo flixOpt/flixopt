@@ -38,16 +38,16 @@ class Effect(Element):
         meta_data: Optional[Dict] = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        specific_share_to_other_effects_operation: Optional['EffectValuesUser'] = None,
-        specific_share_to_other_effects_invest: Optional['EffectValuesUser'] = None,
-        minimum_operation: Optional[Scalar] = None,
-        maximum_operation: Optional[Scalar] = None,
-        minimum_invest: Optional[Scalar] = None,
-        maximum_invest: Optional[Scalar] = None,
+        specific_share_to_other_effects_operation: Optional['EffectValuesUserTimestep'] = None,
+        specific_share_to_other_effects_invest: Optional['EffectValuesUserScenario'] = None,
+        minimum_operation: Optional[ScenarioData] = None,
+        maximum_operation: Optional[ScenarioData] = None,
+        minimum_invest: Optional[ScenarioData] = None,
+        maximum_invest: Optional[ScenarioData] = None,
         minimum_operation_per_hour: Optional[NumericDataTS] = None,
         maximum_operation_per_hour: Optional[NumericDataTS] = None,
-        minimum_total: Optional[Scalar] = None,
-        maximum_total: Optional[Scalar] = None,
+        minimum_total: Optional[ScenarioData] = None,
+        maximum_total: Optional[ScenarioData] = None,
     ):
         """
         Args:
@@ -76,10 +76,10 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.specific_share_to_other_effects_operation: EffectValuesUser = (
+        self.specific_share_to_other_effects_operation: EffectValuesUserTimestep = (
             specific_share_to_other_effects_operation or {}
         )
-        self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
+        self.specific_share_to_other_effects_invest: EffectValuesUserTimestep = specific_share_to_other_effects_invest or {}
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
         self.minimum_operation_per_hour: NumericDataTS = minimum_operation_per_hour
@@ -173,9 +173,6 @@ EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
 EffectValuesDict = Dict[str, NumericDataTS]  # How effect values are stored
 EffectValuesUser = Union[NumericDataTS, Dict[str, NumericDataTS]]  # User-specified Shares to Effects
 """ This datatype is used to define the share to an effect by a certain attribute. """
-
-EffectValuesUserScalar = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
-""" This datatype is used to define the share to an effect by a certain attribute. Only scalars are allowed. """
 
 EffectValuesUserScenario = Union[ScenarioData, Dict[str, ScenarioData]]
 """ This datatype is used to define the share to an effect for every scenario. """
