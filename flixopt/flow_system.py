@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import TimestepData, NumericDataTS, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import TimestepData, TimeSeries, TimeSeriesCollection, TimeSeriesData, Scalar
 from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUserScenario, EffectValuesUserTimestep
 from .elements import Bus, Component, Flow
 from .structure import CLASS_REGISTRY, Element, SystemModel
@@ -281,7 +281,7 @@ class FlowSystem:
         has_time_dim: bool = True,
         has_scenario_dim: bool = True,
         has_extra_timestep: bool = False,
-    ) -> Optional[TimeSeries]:
+    ) -> Optional[Scalar, TimeSeries]:
         """
         Tries to create a TimeSeries from NumericData Data and adds it to the time_series_collection
         If the data already is a TimeSeries, nothing happens and the TimeSeries gets reset and returned
@@ -301,7 +301,7 @@ class FlowSystem:
         if data is None:
             return None
 
-        if self.time_series_collection.scenarios is None and not has_time_dim:
+        if not has_time_dim and self.time_series_collection.scenarios is None:
             return data
 
         if isinstance(data, TimeSeries):
