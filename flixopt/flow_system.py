@@ -17,9 +17,9 @@ from rich.pretty import Pretty
 
 from . import io as fx_io
 from .core import TimestepData, NumericDataTS, TimeSeries, TimeSeriesCollection, TimeSeriesData
-from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
+from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUserScenario, EffectValuesUserTimestep
 from .elements import Bus, Component, Flow
-from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation
+from .structure import CLASS_REGISTRY, Element, SystemModel
 
 if TYPE_CHECKING:
     import pyvis
@@ -331,7 +331,7 @@ class FlowSystem:
     def create_effect_time_series(
         self,
         label_prefix: Optional[str],
-        effect_values: EffectValuesUser,
+        effect_values: Union[EffectValuesUserScenario, EffectValuesUserTimestep],
         label_suffix: Optional[str] = None,
         has_time_dim: bool = True,
         has_scenario_dim: bool = True,

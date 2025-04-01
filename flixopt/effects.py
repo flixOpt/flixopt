@@ -171,8 +171,6 @@ class EffectModel(ElementModel):
 EffectValuesExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
 EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
 EffectValuesDict = Dict[str, NumericDataTS]  # How effect values are stored
-EffectValuesUser = Union[NumericDataTS, Dict[str, NumericDataTS]]  # User-specified Shares to Effects
-""" This datatype is used to define the share to an effect by a certain attribute. """
 
 EffectValuesUserScenario = Union[ScenarioData, Dict[str, ScenarioData]]
 """ This datatype is used to define the share to an effect for every scenario. """
@@ -210,7 +208,10 @@ class EffectCollection:
             self._effects[effect.label] = effect
             logger.info(f'Registered new Effect: {effect.label}')
 
-    def create_effect_values_dict(self, effect_values_user: EffectValuesUser) -> Optional[EffectValuesDict]:
+    def create_effect_values_dict(
+        self,
+        effect_values_user: Union[EffectValuesUserScenario, EffectValuesUserTimestep]
+    ) -> Optional[EffectValuesDict]:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
