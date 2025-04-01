@@ -9,7 +9,7 @@ import linopy
 import numpy as np
 
 from . import utils
-from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
+from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, TimeSeries, ScenarioData
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -126,9 +126,9 @@ class Storage(Component):
         capacity_in_flow_hours: Union[Scalar, InvestParameters],
         relative_minimum_charge_state: TimestepData = 0,
         relative_maximum_charge_state: TimestepData = 1,
-        initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
-        minimal_final_charge_state: Optional[Scalar] = None,
-        maximal_final_charge_state: Optional[Scalar] = None,
+        initial_charge_state: Union[ScenarioData, Literal['lastValueOfSim']] = 0,
+        minimal_final_charge_state: Optional[ScenarioData] = None,
+        maximal_final_charge_state: Optional[ScenarioData] = None,
         eta_charge: TimestepData = 1,
         eta_discharge: TimestepData = 1,
         relative_loss_per_hour: TimestepData = 0,
@@ -206,8 +206,18 @@ class Storage(Component):
         self.relative_loss_per_hour = flow_system.create_time_series(
             f'{self.label_full}|relative_loss_per_hour', self.relative_loss_per_hour
         )
+        if self.initial_charge_state is not 'lastValueOfSim':
+            self.initial_charge_state = flow_system.create_time_series(
+                f'{self.label_full}|initial_charge_state', self.initial_charge_state, has_time_dim=False
+            )
+        self.minimal_final_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|minimal_final_charge_state', self.minimal_final_charge_state, has_time_dim=False
+        )
+        self.maximal_final_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|maximal_final_charge_state', self.maximal_final_charge_state, has_time_dim=False
+        )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(flow_system)
+            self.capacity_in_flow_hours.transform_data(flow_system, f'{self.label_full}|InvestParameters')
 
     def _plausibility_checks(self) -> None:
         """
