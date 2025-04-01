@@ -281,7 +281,7 @@ class FlowSystem:
         has_time_dim: bool = True,
         has_scenario_dim: bool = True,
         has_extra_timestep: bool = False,
-    ) -> Optional[Scalar, TimeSeries]:
+    ) -> Optional[Union[Scalar, TimeSeries]]:
         """
         Tries to create a TimeSeries from NumericData Data and adds it to the time_series_collection
         If the data already is a TimeSeries, nothing happens and the TimeSeries gets reset and returned
