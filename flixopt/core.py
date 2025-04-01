@@ -619,8 +619,8 @@ class TimeSeries:
         """
         new_data = DataConverter.as_dataarray(
             value,
-            timesteps=self.active_timesteps,
-            scenarios=self.active_scenarios if self._has_scenarios else None
+            timesteps=self.active_timesteps if self.has_time_dim else None,
+            scenarios=self.active_scenarios if self.has_scenario_dim else None,
         )
 
         # Skip if data is unchanged to avoid overwriting backup
