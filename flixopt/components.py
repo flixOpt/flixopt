@@ -244,13 +244,14 @@ class Storage(Component):
             minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
             # initial capacity <= allowed max for minimum_size:
             maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
+            #TODO: index=1 ??? I think index 0
 
-            if self.initial_charge_state > maximum_inital_capacity:
+            if (self.initial_charge_state > maximum_inital_capacity).any():
                 raise ValueError(
                     f'{self.label_full}: {self.initial_charge_state=} '
                     f'is above allowed maximum charge_state {maximum_inital_capacity}'
                 )
-            if self.initial_charge_state < minimum_inital_capacity:
+            if (self.initial_charge_state < minimum_inital_capacity).any():
                 raise ValueError(
                     f'{self.label_full}: {self.initial_charge_state=} '
                     f'is below allowed minimum charge_state {minimum_inital_capacity}'
