@@ -914,6 +914,8 @@ class ShareAllocationModel(Model):
         self,
         name: str,
         expression: linopy.LinearExpression,
+        has_time_time_dim: bool,
+        has_scenario_dim: bool,
     ):
         """
         Add a share to the share allocation model. If the share already exists, the expression is added to the existing share.
@@ -925,16 +927,17 @@ class ShareAllocationModel(Model):
             name: The name of the share.
             expression: The expression of the share. Added to the right hand side of the constraint.
         """
+        if has_time_time_dim and not self._has_time_dim:
+            raise ValueError('Cannot add share with time_dim=True to a model without time_dim')
+        if has_scenario_dim and not self._has_scenario_dim:
+            raise ValueError('Cannot add share with scenario_dim=True to a model without scenario_dim')
+
         if name in self.shares:
             self.share_constraints[name].lhs -= expression
         else:
             self.shares[name] = self.add(
                 self._model.add_variables(
-                    coords=None
-                    if isinstance(expression, linopy.LinearExpression)
-                    and expression.ndim == 0
-                    or not isinstance(expression, linopy.LinearExpression)
-                    else self._model.get_coords(),  #TODO: Add logic on what coords to use
+                    coords=self._model.get_coords(time_dim=has_time_time_dim, scenario_dim=has_scenario_dim),
                     name=f'{name}->{self.label_full}',
                 ),
                 name,
