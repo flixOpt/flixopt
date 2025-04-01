@@ -9,7 +9,7 @@ import linopy
 import numpy as np
 
 from . import utils
-from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, TimeSeries, ScenarioData
+from .core import TimestepData, PlausibilityError, Scalar, TimeSeries, ScenarioData
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -34,7 +34,7 @@ class LinearConverter(Component):
         inputs: List[Flow],
         outputs: List[Flow],
         on_off_parameters: OnOffParameters = None,
-        conversion_factors: List[Dict[str, NumericDataTS]] = None,
+        conversion_factors: List[Dict[str, TimestepData]] = None,
         piecewise_conversion: Optional[PiecewiseConversion] = None,
         meta_data: Optional[Dict] = None,
     ):
@@ -172,16 +172,16 @@ class Storage(Component):
         self.charging = charging
         self.discharging = discharging
         self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: NumericDataTS = relative_minimum_charge_state
-        self.relative_maximum_charge_state: NumericDataTS = relative_maximum_charge_state
+        self.relative_minimum_charge_state: TimestepData = relative_minimum_charge_state
+        self.relative_maximum_charge_state: TimestepData = relative_maximum_charge_state
 
         self.initial_charge_state = initial_charge_state
         self.minimal_final_charge_state = minimal_final_charge_state
         self.maximal_final_charge_state = maximal_final_charge_state
 
-        self.eta_charge: NumericDataTS = eta_charge
-        self.eta_discharge: NumericDataTS = eta_discharge
-        self.relative_loss_per_hour: NumericDataTS = relative_loss_per_hour
+        self.eta_charge: TimestepData = eta_charge
+        self.eta_discharge: TimestepData = eta_discharge
+        self.relative_loss_per_hour: TimestepData = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
 
     def create_model(self, model: SystemModel) -> 'StorageModel':
@@ -269,8 +269,8 @@ class Transmission(Component):
         out1: Flow,
         in2: Optional[Flow] = None,
         out2: Optional[Flow] = None,
-        relative_losses: Optional[NumericDataTS] = None,
-        absolute_losses: Optional[NumericDataTS] = None,
+        relative_losses: Optional[TimestepData] = None,
+        absolute_losses: Optional[TimestepData] = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         meta_data: Optional[Dict] = None,
