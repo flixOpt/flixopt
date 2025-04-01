@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
+from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
 from .effects import EffectValuesUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
@@ -157,7 +157,7 @@ class Flow(Element):
         flow_hours_total_min: Optional[Scalar] = None,
         load_factor_min: Optional[Scalar] = None,
         load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[NumericData] = None,
+        previous_flow_rate: Optional[TimestepData] = None,
         meta_data: Optional[Dict] = None,
     ):
         r"""
@@ -414,7 +414,7 @@ class FlowModel(ElementModel):
                 )
 
     @property
-    def absolute_flow_rate_bounds(self) -> Tuple[NumericData, NumericData]:
+    def absolute_flow_rate_bounds(self) -> Tuple[TimestepData, TimestepData]:
         """Returns absolute flow rate bounds. Important for OnOffModel"""
         relative_minimum, relative_maximum = self.relative_flow_rate_bounds
         size = self.element.size
@@ -425,7 +425,7 @@ class FlowModel(ElementModel):
         return relative_minimum * size.minimum_size, relative_maximum * size.maximum_size
 
     @property
-    def relative_flow_rate_bounds(self) -> Tuple[NumericData, NumericData]:
+    def relative_flow_rate_bounds(self) -> Tuple[TimestepData, TimestepData]:
         """Returns relative flow rate bounds."""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:

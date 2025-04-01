@@ -57,7 +57,7 @@ class DataConverter:
 
     @staticmethod
     def as_dataarray(
-        data: NumericData, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None
+        data: TimestepData, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None
     ) -> xr.DataArray:
         """
         Convert data to xarray.DataArray with specified dimensions.
@@ -362,7 +362,7 @@ class DataConverter:
 
 class TimeSeriesData:
     # TODO: Move to Interface.py
-    def __init__(self, data: NumericData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
+    def __init__(self, data: TimestepData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
         """
         timeseries class for transmit timeseries AND special characteristics of timeseries,
         i.g. to define weights needed in calculation_type 'aggregated'
@@ -1042,7 +1042,7 @@ class TimeSeriesCollection:
         """Iterate over TimeSeries objects."""
         return iter(self._time_series.values())
 
-    def update_time_series(self, name: str, data: NumericData) -> TimeSeries:
+    def update_time_series(self, name: str, data: TimestepData) -> TimeSeries:
         """
         Update an existing TimeSeries with new data.
 

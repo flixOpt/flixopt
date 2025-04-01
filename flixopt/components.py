@@ -9,7 +9,7 @@ import linopy
 import numpy as np
 
 from . import utils
-from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
+from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -124,14 +124,14 @@ class Storage(Component):
         charging: Flow,
         discharging: Flow,
         capacity_in_flow_hours: Union[Scalar, InvestParameters],
-        relative_minimum_charge_state: NumericData = 0,
-        relative_maximum_charge_state: NumericData = 1,
+        relative_minimum_charge_state: TimestepData = 0,
+        relative_maximum_charge_state: TimestepData = 1,
         initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
         minimal_final_charge_state: Optional[Scalar] = None,
         maximal_final_charge_state: Optional[Scalar] = None,
-        eta_charge: NumericData = 1,
-        eta_discharge: NumericData = 1,
-        relative_loss_per_hour: NumericData = 0,
+        eta_charge: TimestepData = 1,
+        eta_discharge: TimestepData = 1,
+        relative_loss_per_hour: TimestepData = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
         meta_data: Optional[Dict] = None,
     ):
@@ -549,7 +549,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+    def absolute_charge_state_bounds(self) -> Tuple[TimestepData, TimestepData]:
         relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (
@@ -563,7 +563,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+    def relative_charge_state_bounds(self) -> Tuple[TimestepData, TimestepData]:
         return (
             self.element.relative_minimum_charge_state.selected_data,
             self.element.relative_maximum_charge_state.selected_data,

@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, Scalar
+from .core import TimestepData, NumericDataTS, Scalar
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -20,7 +20,7 @@ logger = logging.getLogger('flixopt')
 
 @register_class_for_io
 class Piece(Interface):
-    def __init__(self, start: NumericData, end: NumericData):
+    def __init__(self, start: TimestepData, end: TimestepData):
         """
         Define a Piece, which is part of a Piecewise object.
 
@@ -175,10 +175,10 @@ class OnOffParameters(Interface):
         effects_per_running_hour: Optional['EffectValuesUser'] = None,
         on_hours_total_min: Optional[int] = None,
         on_hours_total_max: Optional[int] = None,
-        consecutive_on_hours_min: Optional[NumericData] = None,
-        consecutive_on_hours_max: Optional[NumericData] = None,
-        consecutive_off_hours_min: Optional[NumericData] = None,
-        consecutive_off_hours_max: Optional[NumericData] = None,
+        consecutive_on_hours_min: Optional[TimestepData] = None,
+        consecutive_on_hours_max: Optional[TimestepData] = None,
+        consecutive_off_hours_min: Optional[TimestepData] = None,
+        consecutive_off_hours_max: Optional[TimestepData] = None,
         switch_on_total_max: Optional[int] = None,
         force_switch_on: bool = False,
     ):

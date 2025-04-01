@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import NumericData, NumericDataTS, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import TimestepData, NumericDataTS, TimeSeries, TimeSeriesCollection, TimeSeriesData
 from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
 from .elements import Bus, Component, Flow
 from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation
@@ -277,7 +277,7 @@ class FlowSystem:
     def create_time_series(
         self,
         name: str,
-        data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
+        data: Optional[Union[TimestepData, TimeSeriesData, TimeSeries]],
         has_time_dim: bool = True,
         has_scenario_dim: bool = True,
         has_extra_timestep: bool = False,

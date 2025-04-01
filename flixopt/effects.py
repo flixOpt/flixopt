@@ -13,7 +13,7 @@ import linopy
 import numpy as np
 import pandas as pd
 
-from .core import NumericData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection, ScenarioData, TimestepData
+from .core import TimestepData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection, ScenarioData, TimestepData
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 

@@ -11,7 +11,7 @@ import numpy as np
 
 from . import utils
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries
+from .core import TimestepData, Scalar, TimeSeries
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
 
@@ -27,7 +27,7 @@ class InvestmentModel(Model):
         label_of_element: str,
         parameters: InvestParameters,
         defining_variable: [linopy.Variable],
-        relative_bounds_of_defining_variable: Tuple[NumericData, NumericData],
+        relative_bounds_of_defining_variable: Tuple[TimestepData, TimestepData],
         label: Optional[str] = None,
         on_variable: Optional[linopy.Variable] = None,
     ):
@@ -205,8 +205,8 @@ class OnOffModel(Model):
         on_off_parameters: OnOffParameters,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[NumericData, NumericData]],
-        previous_values: List[Optional[NumericData]],
+        defining_bounds: List[Tuple[TimestepData, TimestepData]],
+        previous_values: List[Optional[TimestepData]],
         label: Optional[str] = None,
     ):
         """
@@ -623,7 +623,7 @@ class OnOffModel(Model):
         return self.compute_consecutive_duration(self.previous_off_values, self._model.hours_per_step)
 
     @staticmethod
-    def compute_previous_on_states(previous_values: List[Optional[NumericData]], epsilon: float = 1e-5) -> np.ndarray:
+    def compute_previous_on_states(previous_values: List[Optional[TimestepData]], epsilon: float = 1e-5) -> np.ndarray:
         """
         Computes the previous 'on' states {0, 1} of defining variables as a binary array from their previous values.
 
@@ -647,7 +647,7 @@ class OnOffModel(Model):
 
     @staticmethod
     def compute_consecutive_duration(
-        binary_values: NumericData, hours_per_timestep: Union[int, float, np.ndarray]
+        binary_values: TimestepData, hours_per_timestep: Union[int, float, np.ndarray]
     ) -> Scalar:
         """
         Computes the final consecutive duration in State 'on' (=1) in hours, from a binary.
@@ -847,8 +847,8 @@ class ShareAllocationModel(Model):
         label_full: Optional[str] = None,
         total_max: Optional[Scalar] = None,
         total_min: Optional[Scalar] = None,
-        max_per_hour: Optional[NumericData] = None,
-        min_per_hour: Optional[NumericData] = None,
+        max_per_hour: Optional[TimestepData] = None,
+        min_per_hour: Optional[TimestepData] = None,
     ):
         super().__init__(model, label_of_element=label_of_element, label=label, label_full=label_full)
         if not shares_are_time_series:  # If the condition is True
