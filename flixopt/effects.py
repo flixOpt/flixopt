@@ -372,7 +372,7 @@ class EffectCollectionModel(Model):
 
         self._add_share_between_effects()
 
-        self._model.add_objective(self.effects.objective_effect.model.total + self.penalty.total)
+        self._model.add_objective(self.effects.objective_effect.model.total.sum() + self.penalty.total.sum())
 
     def _add_share_between_effects(self):
         for origin_effect in self.effects:
