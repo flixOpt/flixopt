@@ -300,7 +300,11 @@ class FlowSystem:
 
         if data is None:
             return None
-        elif isinstance(data, TimeSeries):
+
+        if self.time_series_collection.scenarios is None and not has_time_dim:
+            return data
+
+        if isinstance(data, TimeSeries):
             data.restore_data()
             if data in self.time_series_collection:
                 return data
