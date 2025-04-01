@@ -30,6 +30,7 @@ class Piece(Interface):
         """
         self.start = start
         self.end = end
+        self.has_time_dim = False
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
@@ -46,6 +47,17 @@ class Piecewise(Interface):
             pieces: The pieces of the piecewise.
         """
         self.pieces = pieces
+        self._has_time_dim = False
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        for piece in self.pieces:
+            piece.has_time_dim = value
 
     def __len__(self):
         return len(self.pieces)
@@ -73,6 +85,8 @@ class PiecewiseConversion(Interface):
             piecewises: Dict of Piecewises defining the conversion factors. flow labels as keys, piecewise as values
         """
         self.piecewises = piecewises
+        for piecewise in self.piecewises.values():
+            piecewise.has_time_dim = True
 
     def items(self):
         return self.piecewises.items()
@@ -94,6 +108,10 @@ class PiecewiseEffects(Interface):
         """
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
+
+        self.piecewise_origin.has_time_dim = True
+        for piecewise in self.piecewise_shares.values():
+            piecewise.has_time_dim = True
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
