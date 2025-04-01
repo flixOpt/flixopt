@@ -95,13 +95,23 @@ class PiecewiseConversion(Interface):
             piecewises: Dict of Piecewises defining the conversion factors. flow labels as keys, piecewise as values
         """
         self.piecewises = piecewises
+        self._has_time_dim = True
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        for piecewise in self.piecewises:
+            piecewise.has_time_dim = value
 
     def items(self):
         return self.piecewises.items()
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         for name, piecewise in self.piecewises.items():
-            piecewise.has_time_dim = True
             piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
 
@@ -117,12 +127,22 @@ class PiecewiseEffects(Interface):
         """
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
+        self._has_time_dim = True
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        self.piecewise_origin.has_time_dim = value
+        for piecewise in self.piecewise_shares.values():
+            piecewise.has_time_dim = value
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.piecewise_origin.has_time_dim = False
         self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
         for effect, piecewise in self.piecewise_shares.items():
-            piecewise.has_time_dim = False
             piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
 
 
@@ -200,6 +220,7 @@ class InvestParameters(Interface):
             has_scenario_dim=True,
         )
         if self.piecewise_effects is not None:
+            self.piecewise_effects.has_time_dim=False
             self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
 
