@@ -841,7 +841,8 @@ class ShareAllocationModel(Model):
     def __init__(
         self,
         model: SystemModel,
-        shares_are_time_series: bool,
+        has_time_dim: bool,
+        has_scenario_dim: bool,
         label_of_element: Optional[str] = None,
         label: Optional[str] = None,
         label_full: Optional[str] = None,
@@ -851,9 +852,9 @@ class ShareAllocationModel(Model):
         min_per_hour: Optional[TimestepData] = None,
     ):
         super().__init__(model, label_of_element=label_of_element, label=label, label_full=label_full)
-        if not shares_are_time_series:  # If the condition is True
+        if not has_time_dim:  # If the condition is True
             assert max_per_hour is None and min_per_hour is None, (
-                'Both max_per_hour and min_per_hour cannot be used when shares_are_time_series is False'
+                'Both max_per_hour and min_per_hour cannot be used when has_time_dim is False'
             )
         self.total_per_timestep: Optional[linopy.Variable] = None
         self.total: Optional[linopy.Variable] = None
@@ -864,7 +865,8 @@ class ShareAllocationModel(Model):
         self._eq_total: Optional[linopy.Constraint] = None
 
         # Parameters
-        self._shares_are_time_series = shares_are_time_series
+        self._has_time_dim = has_time_dim
+        self._has_scenario_dim = has_scenario_dim
         self._total_max = total_max if total_min is not None else np.inf
         self._total_min = total_min if total_min is not None else -np.inf
         self._max_per_hour = max_per_hour if max_per_hour is not None else np.inf
@@ -875,7 +877,7 @@ class ShareAllocationModel(Model):
             self._model.add_variables(
                 lower=self._total_min,
                 upper=self._total_max,
-                coords=self._model.get_coords(time_dim=False),
+                coords=self._model.get_coords(time_dim=False, scenario_dim=self._has_scenario_dim),
                 name=f'{self.label_full}|total'
             ),
             'total',
@@ -885,7 +887,7 @@ class ShareAllocationModel(Model):
             self._model.add_constraints(self.total == 0, name=f'{self.label_full}|total'), 'total'
         )
 
-        if self._shares_are_time_series:
+        if self._has_time_dim:
             self.total_per_timestep = self.add(
                 self._model.add_variables(
                     lower=-np.inf
@@ -894,7 +896,7 @@ class ShareAllocationModel(Model):
                     upper=np.inf
                     if (self._max_per_hour is None)
                     else self._max_per_hour * self._model.hours_per_step,
-                    coords=self._model.get_coords(),
+                    coords=self._model.get_coords(time_dim=True, scenario_dim=self._has_scenario_dim),
                     name=f'{self.label_full}|total_per_timestep',
                 ),
                 'total_per_timestep',
