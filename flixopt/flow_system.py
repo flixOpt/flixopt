@@ -295,6 +295,8 @@ class FlowSystem:
             has_scenario_dim: Whether the data has a scenario dimension
             has_extra_timestep: Whether the data has an extra timestep
         """
+        if has_time_dim + has_scenario_dim == 0:
+            raise ValueError("At least one of the dimensions must be present")
 
         if data is None:
             return None
@@ -335,7 +337,7 @@ class FlowSystem:
         label_suffix: Optional[str] = None,
         has_time_dim: bool = True,
         has_scenario_dim: bool = True,
-    ) -> Optional[EffectTimeSeries]:
+    ) -> Optional[Union[EffectTimeSeries, EffectValuesDict]]:
         """
         Transform EffectValues to EffectTimeSeries.
         Creates a TimeSeries for each key in the nested_values dictionary, using the value as the data.
@@ -351,6 +353,9 @@ class FlowSystem:
             has_time_dim: Whether the data has a time dimension
             has_scenario_dim: Whether the data has a scenario dimension
         """
+        if has_time_dim + has_scenario_dim == 0:
+            raise ValueError("At least one of the dimensions must be present")
+
         effect_values: Optional[EffectValuesDict] = self.effects.create_effect_values_dict(effect_values)
         if effect_values is None:
             return None
