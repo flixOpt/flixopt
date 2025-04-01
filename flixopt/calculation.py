@@ -76,41 +76,41 @@ class Calculation:
 
         return {
             'Objective': self.model.objective.value,
-            'Penalty': float(self.model.effects.penalty.total.solution.values),
+            'Penalty': self.model.effects.penalty.total.solution.values,
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
-                    'operation': float(effect.model.operation.total.solution.values),
-                    'invest': float(effect.model.invest.total.solution.values),
-                    'total': float(effect.model.total.solution.values),
+                    'operation': effect.model.operation.total.solution.values,
+                    'invest': effect.model.invest.total.solution.values,
+                    'total': effect.model.total.solution.values,
                 }
                 for effect in self.flow_system.effects
             },
             'Invest-Decisions': {
                 'Invested': {
-                    model.label_of_element: float(model.size.solution)
+                    model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.model.all_sub_models
-                    if isinstance(model, InvestmentModel) and float(model.size.solution) >= CONFIG.modeling.EPSILON
+                    if isinstance(model, InvestmentModel) and model.size.solution >= CONFIG.modeling.EPSILON
                 },
                 'Not invested': {
-                    model.label_of_element: float(model.size.solution)
+                    model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.model.all_sub_models
-                    if isinstance(model, InvestmentModel) and float(model.size.solution) < CONFIG.modeling.EPSILON
+                    if isinstance(model, InvestmentModel) and model.size.solution < CONFIG.modeling.EPSILON
                 },
             },
             'Buses with excess': [
                 {
                     bus.label_full: {
-                        'input': float(np.sum(bus.model.excess_input.solution.values)),
-                        'output': float(np.sum(bus.model.excess_output.solution.values)),
+                        'input': np.sum(bus.model.excess_input.solution.values),
+                        'output': np.sum(bus.model.excess_output.solution.values),
                     }
                 }
                 for bus in self.flow_system.buses.values()
                 if bus.with_excess
                 and (
-                    float(np.sum(bus.model.excess_input.solution.values)) > 1e-3
-                    or float(np.sum(bus.model.excess_output.solution.values)) > 1e-3
+                    np.sum(bus.model.excess_input.solution.values) > 1e-3
+                    or np.sum(bus.model.excess_output.solution.values) > 1e-3
                 )
             ],
         }

@@ -19,6 +19,12 @@ def round_floats(obj, decimals=2):
         return [round_floats(v, decimals) for v in obj]
     elif isinstance(obj, float):
         return round(obj, decimals)
+    elif isinstance(obj, int):
+        return obj
+    elif isinstance(obj, np.ndarray):
+        return np.round(obj, decimals).tolist()
+    elif isinstance(obj, xr.DataArray):
+        return obj.round(decimals).values.tolist()
     return obj
 
 
