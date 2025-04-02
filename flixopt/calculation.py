@@ -76,6 +76,7 @@ class Calculation:
     @property
     def main_results(self) -> Dict[str, Union[Scalar, Dict]]:
         from flixopt.features import InvestmentModel
+
         main_results = {
             'Objective': self.model.objective.value,
             'Penalty': self.model.effects.penalty.total.solution.values,

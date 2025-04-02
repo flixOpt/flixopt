@@ -16,8 +16,15 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import TimestepData, TimeSeries, TimeSeriesCollection, TimeSeriesData, Scalar
-from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUserScenario, EffectValuesUserTimestep
+from .core import Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData
+from .effects import (
+    Effect,
+    EffectCollection,
+    EffectTimeSeries,
+    EffectValuesDict,
+    EffectValuesUserScenario,
+    EffectValuesUserTimestep,
+)
 from .elements import Bus, Component, Flow
 from .structure import CLASS_REGISTRY, Element, SystemModel
 
@@ -296,7 +303,7 @@ class FlowSystem:
             has_extra_timestep: Whether the data has an extra timestep
         """
         if not has_time_dim and not has_scenario_dim:
-            raise ValueError("At least one of the dimensions must be present")
+            raise ValueError('At least one of the dimensions must be present')
 
         if data is None:
             return None
@@ -324,7 +331,7 @@ class FlowSystem:
                 has_scenario_dim=has_scenario_dim,
                 has_extra_timestep=has_extra_timestep,
                 aggregation_weight=data.agg_weight,
-                aggregation_group=data.agg_group
+                aggregation_group=data.agg_group,
             )
         return self.time_series_collection.add_time_series(
             data=data,
@@ -358,7 +365,7 @@ class FlowSystem:
             has_scenario_dim: Whether the data has a scenario dimension
         """
         if not has_time_dim and not has_scenario_dim:
-            raise ValueError("At least one of the dimensions must be present")
+            raise ValueError('At least one of the dimensions must be present')
 
         effect_values: Optional[EffectValuesDict] = self.effects.create_effect_values_dict(effect_values)
         if effect_values is None:

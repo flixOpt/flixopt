@@ -11,9 +11,8 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
 import linopy
 import numpy as np
-import pandas as pd
 
-from .core import TimestepData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection, ScenarioData, TimestepData
+from .core import NumericDataTS, ScenarioData, TimeSeries, TimeSeriesCollection, TimestepData
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 
@@ -79,7 +78,9 @@ class Effect(Element):
         self.specific_share_to_other_effects_operation: EffectValuesUserTimestep = (
             specific_share_to_other_effects_operation or {}
         )
-        self.specific_share_to_other_effects_invest: EffectValuesUserTimestep = specific_share_to_other_effects_invest or {}
+        self.specific_share_to_other_effects_invest: EffectValuesUserTimestep = (
+            specific_share_to_other_effects_invest or {}
+        )
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
         self.minimum_operation_per_hour: NumericDataTS = minimum_operation_per_hour
@@ -211,8 +212,7 @@ class EffectCollection:
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
-        self,
-        effect_values_user: Union[EffectValuesUserScenario, EffectValuesUserTimestep]
+        self, effect_values_user: Union[EffectValuesUserScenario, EffectValuesUserTimestep]
     ) -> Optional[EffectValuesDict]:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
@@ -383,7 +383,11 @@ class EffectCollectionModel(Model):
             model.do_modeling()
 
         self._add_share_between_effects()
-        scaling_factor = len(self._model.time_series_collection.scenarios) if self._model.time_series_collection.scenarios is not None else 1
+        scaling_factor = (
+            len(self._model.time_series_collection.scenarios)
+            if self._model.time_series_collection.scenarios is not None
+            else 1
+        )
         self._model.add_objective(
             (self.effects.objective_effect.model.total / scaling_factor).sum()
             + (self.penalty.total / scaling_factor).sum()

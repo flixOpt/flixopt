@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
 
 from .config import CONFIG
-from .core import TimestepData, NumericDataTS, Scalar, ScenarioData
+from .core import NumericDataTS, Scalar, ScenarioData, TimestepData
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -34,16 +34,10 @@ class Piece(Interface):
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         self.start = flow_system.create_time_series(
-            name=f'{name_prefix}|start',
-            data=self.start,
-            has_time_dim=self.has_time_dim,
-            has_scenario_dim=True
+            name=f'{name_prefix}|start', data=self.start, has_time_dim=self.has_time_dim, has_scenario_dim=True
         )
         self.end = flow_system.create_time_series(
-            name=f'{name_prefix}|end',
-            data=self.end,
-            has_time_dim=self.has_time_dim,
-            has_scenario_dim=True
+            name=f'{name_prefix}|end', data=self.end, has_time_dim=self.has_time_dim, has_scenario_dim=True
         )
 
 
@@ -222,7 +216,7 @@ class InvestParameters(Interface):
             has_scenario_dim=True,
         )
         if self.piecewise_effects is not None:
-            self.piecewise_effects.has_time_dim=False
+            self.piecewise_effects.has_time_dim = False
             self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
     @property

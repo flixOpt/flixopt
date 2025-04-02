@@ -378,7 +378,9 @@ class TestEdgeCases:
         assert np.all(np.isnan(result.values))
 
         # Series of all NaNs
-        result = DataConverter.as_dataarray(np.array([np.nan, np.nan, np.nan, np.nan, np.nan]), sample_time_index, sample_scenario_index)
+        result = DataConverter.as_dataarray(
+            np.array([np.nan, np.nan, np.nan, np.nan, np.nan]), sample_time_index, sample_scenario_index
+        )
         assert np.all(np.isnan(result.values))
 
     def test_mixed_data_types(self, sample_time_index, sample_scenario_index):

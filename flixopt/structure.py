@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from .config import CONFIG
-from .core import TimestepData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -99,10 +99,7 @@ class SystemModel(linopy.Model):
         return self.time_series_collection.hours_of_previous_timesteps
 
     def get_coords(
-            self,
-            scenario_dim = True,
-            time_dim = True,
-            extra_timestep = False
+        self, scenario_dim=True, time_dim=True, extra_timestep=False
     ) -> Optional[Union[Tuple[pd.Index], Tuple[pd.Index, pd.Index]]]:
         """
         Returns the coordinates of the model
@@ -118,7 +115,9 @@ class SystemModel(linopy.Model):
         if not scenario_dim and not time_dim:
             return None
         scenarios = self.time_series_collection.scenarios
-        timesteps = self.time_series_collection.timesteps if not extra_timestep else self.time_series_collection.timesteps_extra
+        timesteps = (
+            self.time_series_collection.timesteps if not extra_timestep else self.time_series_collection.timesteps_extra
+        )
 
         if scenario_dim and time_dim:
             if scenarios is None:

@@ -9,7 +9,7 @@ import linopy
 import numpy as np
 
 from . import utils
-from .core import TimestepData, PlausibilityError, Scalar, TimeSeries, ScenarioData
+from .core import PlausibilityError, Scalar, ScenarioData, TimeSeries, TimestepData
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -225,9 +225,7 @@ class Storage(Component):
         Check for infeasible or uncommon combinations of parameters
         """
         if isinstance(self.initial_charge_state, str) and not self.initial_charge_state == 'lastValueOfSim':
-            raise PlausibilityError(
-                f'initial_charge_state has undefined value: {self.initial_charge_state}'
-            )
+            raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
         else:
             if isinstance(self.capacity_in_flow_hours, InvestParameters):
                 if self.capacity_in_flow_hours.fixed_size is None:
@@ -244,7 +242,7 @@ class Storage(Component):
             minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
             # initial capacity <= allowed max for minimum_size:
             maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
-            #TODO: index=1 ??? I think index 0
+            # TODO: index=1 ??? I think index 0
 
             if (self.initial_charge_state > maximum_inital_capacity).any():
                 raise ValueError(
@@ -256,6 +254,7 @@ class Storage(Component):
                     f'{self.label_full}: {self.initial_charge_state=} '
                     f'is below allowed minimum charge_state {minimum_inital_capacity}'
                 )
+
 
 @register_class_for_io
 class Transmission(Component):
@@ -427,7 +426,9 @@ class LinearConverterModel(ComponentModel):
                 self.add(
                     self._model.add_constraints(
                         sum([flow.model.flow_rate * conv_factors[flow.label].selected_data for flow in used_inputs])
-                        == sum([flow.model.flow_rate * conv_factors[flow.label].selected_data for flow in used_outputs]),
+                        == sum(
+                            [flow.model.flow_rate * conv_factors[flow.label].selected_data for flow in used_outputs]
+                        ),
                         name=f'{self.label_full}|conversion_{i}',
                     )
                 )
@@ -467,7 +468,10 @@ class StorageModel(ComponentModel):
         lb, ub = self.absolute_charge_state_bounds
         self.charge_state = self.add(
             self._model.add_variables(
-                lower=lb, upper=ub, coords=self._model.get_coords(extra_timestep=True), name=f'{self.label_full}|charge_state'
+                lower=lb,
+                upper=ub,
+                coords=self._model.get_coords(extra_timestep=True),
+                name=f'{self.label_full}|charge_state',
             ),
             'charge_state',
         )

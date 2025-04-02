@@ -11,7 +11,6 @@ import xarray as xr
 logger = logging.getLogger('flixopt')
 
 
-
 def round_floats(obj, decimals=2):
     if isinstance(obj, dict):
         return {k: round_floats(v, decimals) for k, v in obj.items()}

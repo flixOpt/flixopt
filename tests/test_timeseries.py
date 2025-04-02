@@ -111,7 +111,9 @@ class TestTimeSeries:
     def test_restore_data(self, sample_timeseries, simple_dataarray):
         """Test restore_data method."""
         # Modify the stored data
-        new_data = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time'])
+        new_data = xr.DataArray(
+            [1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time']
+        )
 
         # Store original data for comparison
         original_data = sample_timeseries.stored_data
@@ -227,7 +229,9 @@ class TestTimeSeries:
     def test_arithmetic_operations(self, sample_timeseries):
         """Test arithmetic operations."""
         # Create a second TimeSeries for testing
-        data2 = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time'])
+        data2 = xr.DataArray(
+            [1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time']
+        )
         ts2 = TimeSeries(data2, 'Second Series')
 
         # Test operations between two TimeSeries objects
@@ -284,7 +288,9 @@ class TestTimeSeries:
         )
 
         # Test with two TimeSeries objects
-        data2 = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time'])
+        data2 = xr.DataArray(
+            [1, 2, 3, 4, 5], coords={'time': sample_timeseries.stored_data.coords['time']}, dims=['time']
+        )
         ts2 = TimeSeries(data2, 'Second Series')
 
         assert np.array_equal(
@@ -311,15 +317,15 @@ def sample_scenario_index():
 @pytest.fixture
 def simple_scenario_dataarray(sample_timesteps, sample_scenario_index):
     """Create a DataArray with both scenario and time dimensions."""
-    data = np.array([
-        [10, 20, 30, 40, 50],    # baseline
-        [15, 25, 35, 45, 55],    # high_demand
-        [5, 15, 25, 35, 45]      # low_price
-    ])
+    data = np.array(
+        [
+            [10, 20, 30, 40, 50],  # baseline
+            [15, 25, 35, 45, 55],  # high_demand
+            [5, 15, 25, 35, 45],  # low_price
+        ]
+    )
     return xr.DataArray(
-        data=data,
-        coords={'scenario': sample_scenario_index, 'time': sample_timesteps},
-        dims=['scenario', 'time']
+        data=data, coords={'scenario': sample_scenario_index, 'time': sample_timesteps}, dims=['scenario', 'time']
     )
 
 
@@ -412,21 +418,23 @@ class TestTimeSeriesWithScenarios:
         equal_dataarray = xr.DataArray(
             data=equal_data,
             coords={'scenario': sample_scenario_index, 'time': sample_timesteps},
-            dims=['scenario', 'time']
+            dims=['scenario', 'time'],
         )
         ts_equal = TimeSeries(equal_dataarray, 'Equal Scenario Series')
         assert ts_equal.all_equal is True
 
         # Equal within each scenario but different between scenarios
-        per_scenario_equal = np.array([
-            [5, 5, 5, 5, 5],    # baseline - all 5
-            [10, 10, 10, 10, 10], # high_demand - all 10
-            [15, 15, 15, 15, 15]  # low_price - all 15
-        ])
+        per_scenario_equal = np.array(
+            [
+                [5, 5, 5, 5, 5],  # baseline - all 5
+                [10, 10, 10, 10, 10],  # high_demand - all 10
+                [15, 15, 15, 15, 15],  # low_price - all 15
+            ]
+        )
         per_scenario_dataarray = xr.DataArray(
             data=per_scenario_equal,
             coords={'scenario': sample_scenario_index, 'time': sample_timesteps},
-            dims=['scenario', 'time']
+            dims=['scenario', 'time'],
         )
         ts_per_scenario = TimeSeries(per_scenario_dataarray, 'Per-Scenario Equal Series')
         assert ts_per_scenario.all_equal is False
@@ -436,9 +444,7 @@ class TestTimeSeriesWithScenarios:
         # Create a second TimeSeries with scenarios
         data2 = np.ones((3, 5))  # All ones
         second_dataarray = xr.DataArray(
-            data=data2,
-            coords={'scenario': sample_scenario_index, 'time': sample_timesteps},
-            dims=['scenario', 'time']
+            data=data2, coords={'scenario': sample_scenario_index, 'time': sample_timesteps}, dims=['scenario', 'time']
         )
         ts2 = TimeSeries(second_dataarray, 'Second Series')
 
@@ -624,11 +630,7 @@ class TestTimeSeriesAllocatorWithScenarios:
             assert np.array_equal(ts2.sel(scenario=scenario).values, data)
 
         # Test 2D array (one row per scenario)
-        data_2d = np.array([
-            [10, 20, 30, 40, 50],
-            [15, 25, 35, 45, 55],
-            [5, 15, 25, 35, 45]
-        ])
+        data_2d = np.array([[10, 20, 30, 40, 50], [15, 25, 35, 45, 55], [5, 15, 25, 35, 45]])
         ts3 = sample_scenario_allocator.add_time_series('scenario_specific_series', data_2d)
         assert ts3._has_scenarios
         assert ts3.selected_data.shape == (3, 5)
@@ -637,7 +639,9 @@ class TestTimeSeriesAllocatorWithScenarios:
         assert np.array_equal(ts3.sel(scenario='high_demand').values, data_2d[1])
         assert np.array_equal(ts3.sel(scenario='low_price').values, data_2d[2])
 
-    def test_selection_propagation_with_scenarios(self, sample_scenario_allocator, sample_timesteps, sample_scenario_index):
+    def test_selection_propagation_with_scenarios(
+        self, sample_scenario_allocator, sample_timesteps, sample_scenario_index
+    ):
         """Test scenario selection propagation."""
         # Add some time series
         ts1 = sample_scenario_allocator.add_time_series('series1', 42)
@@ -679,12 +683,7 @@ class TestTimeSeriesAllocatorWithScenarios:
         # Add some time series
         sample_scenario_allocator.add_time_series('scalar_series', 42)
         sample_scenario_allocator.add_time_series(
-            'varying_series',
-            np.array([
-                [10, 20, 30, 40, 50],
-                [15, 25, 35, 45, 55],
-                [5, 15, 25, 35, 45]
-            ])
+            'varying_series', np.array([[10, 20, 30, 40, 50], [15, 25, 35, 45, 55], [5, 15, 25, 35, 45]])
         )
 
         # Get dataset
@@ -728,11 +727,7 @@ class TestTimeSeriesAllocatorWithScenarios:
         assert np.all(ts.selected_data.values == 42)
 
         # Update with scenario-specific data
-        new_data = np.array([
-            [1, 2, 3, 4, 5],
-            [6, 7, 8, 9, 10],
-            [11, 12, 13, 14, 15]
-        ])
+        new_data = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15]])
         sample_scenario_allocator.update_time_series('series', new_data)
 
         # Check update was applied

@@ -9,9 +9,8 @@ from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 import linopy
 import numpy as np
 
-from . import utils
 from .config import CONFIG
-from .core import TimestepData, Scalar, TimeSeries
+from .core import Scalar, TimeSeries, TimestepData
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 from .structure import Model, SystemModel
 
@@ -303,12 +302,16 @@ class OnOffModel(Model):
 
         if self.parameters.use_switch_on:
             self.switch_on = self.add(
-                self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.get_coords()),
+                self._model.add_variables(
+                    binary=True, name=f'{self.label_full}|switch_on', coords=self._model.get_coords()
+                ),
                 'switch_on',
             )
 
             self.switch_off = self.add(
-                self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.get_coords()),
+                self._model.add_variables(
+                    binary=True, name=f'{self.label_full}|switch_off', coords=self._model.get_coords()
+                ),
                 'switch_off',
             )
 
@@ -878,7 +881,7 @@ class ShareAllocationModel(Model):
                 lower=self._total_min,
                 upper=self._total_max,
                 coords=self._model.get_coords(time_dim=False, scenario_dim=self._has_scenario_dim),
-                name=f'{self.label_full}|total'
+                name=f'{self.label_full}|total',
             ),
             'total',
         )
@@ -890,12 +893,8 @@ class ShareAllocationModel(Model):
         if self._has_time_dim:
             self.total_per_timestep = self.add(
                 self._model.add_variables(
-                    lower=-np.inf
-                    if (self._min_per_hour is None)
-                    else self._min_per_hour * self._model.hours_per_step,
-                    upper=np.inf
-                    if (self._max_per_hour is None)
-                    else self._max_per_hour * self._model.hours_per_step,
+                    lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.hours_per_step,
+                    upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.hours_per_step,
                     coords=self._model.get_coords(time_dim=True, scenario_dim=self._has_scenario_dim),
                     name=f'{self.label_full}|total_per_timestep',
                 ),

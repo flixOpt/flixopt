@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import TimestepData, NumericDataTS, PlausibilityError, Scalar, ScenarioData
+from .core import NumericDataTS, PlausibilityError, Scalar, ScenarioData, TimestepData
 from .effects import EffectValuesUserTimestep
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
@@ -467,11 +467,15 @@ class BusModel(ElementModel):
                 self._model.hours_per_step, self.element.excess_penalty_per_flow_hour.selected_data
             )
             self.excess_input = self.add(
-                self._model.add_variables(lower=0, coords=self._model.get_coords(), name=f'{self.label_full}|excess_input'),
+                self._model.add_variables(
+                    lower=0, coords=self._model.get_coords(), name=f'{self.label_full}|excess_input'
+                ),
                 'excess_input',
             )
             self.excess_output = self.add(
-                self._model.add_variables(lower=0, coords=self._model.get_coords(), name=f'{self.label_full}|excess_output'),
+                self._model.add_variables(
+                    lower=0, coords=self._model.get_coords(), name=f'{self.label_full}|excess_output'
+                ),
                 'excess_output',
             )
             eq_bus_balance.lhs -= -self.excess_input + self.excess_output
