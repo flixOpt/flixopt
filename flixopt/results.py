@@ -964,13 +964,12 @@ def filter_dataset(
     Args:
         ds: The dataset to filter.
         variable_dims: The dimension of which to get variables from.
-            - 'scalar': Get scalar variables
-            - 'time': Get time-dependent variables (means, they ONLY depend on time)
-            - 'scenario': Get scenario-dependent variables (means, they ONLY depend on scenario)
-            - 'time+scenario': Get time- and scenario-dependent variables (means, they depend on time AND scenario)
+            - 'scalar': Get scalar variables (no dimensions)
+            - 'time': Get time-dependent variables (have a time dimension)
+            - 'scenario': Get scenario-dependent variables (ONLY have a scenario dimension)
+            - 'timeonly': Get time-dependent variables (have ONLY a time dimension)
         time_indexes: Optional time indexes to select.
         scenario_indexes: Optional scenario indexes to select.
-                variable_dims: Deprecated. Use scalar_dim, time_dim, and scenario_dim instead.
 
     Returns:
         Filtered dataset with specified variables and indexes.
@@ -979,15 +978,15 @@ def filter_dataset(
     if variable_dims is None:
         pass
     elif variable_dims == 'scalar':
-        ds = ds[[v for v in ds.data_vars if len(ds[v].dims) == 0]]
+        ds = ds[[v for v in ds.data_vars if not ds[v].dims]]
     elif variable_dims == 'time':
-        ds = ds[[v for v in ds.data_vars if len(ds[v].dims) == 1 and 'time' in ds[v].dims]]
+        ds = ds[[v for v in ds.data_vars if 'time' in ds[v].dims]]
     elif variable_dims == 'scenario':
-        ds = ds[[v for v in ds.data_vars if len(ds[v].dims) == 1 and 'scenario' in ds[v].dims]]
-    elif variable_dims == 'time+scenario':
-        ds = ds[[v for v in ds.data_vars if len(ds[v].dims) == 2 and 'time' in ds[v].dims and 'scenario' in ds[v].dims]]
+        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('scenario',)]]
+    elif variable_dims == 'timeonly':
+        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('time',)]]
     else:
-        raise ValueError(f'Unknown variable_dims {variable_dims}')
+        raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
 
     # First handle dimension selection if needed
     if time_indexes is not None and 'time' in ds.dims:
