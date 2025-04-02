@@ -355,14 +355,14 @@ class EffectCollectionModel(Model):
                 self.effects[effect].model.operation.add_share(
                     name,
                     expression,
-                    has_time_time_dim=True,
+                    has_time_dim=True,
                     has_scenario_dim=True,
                 )
             elif target == 'invest':
                 self.effects[effect].model.invest.add_share(
                     name,
                     expression,
-                    has_time_time_dim=False,
+                    has_time_dim=False,
                     has_scenario_dim=True,
                 )
             else:
@@ -371,7 +371,7 @@ class EffectCollectionModel(Model):
     def add_share_to_penalty(self, name: str, expression: linopy.LinearExpression) -> None:
         if expression.ndim != 0:
             raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
-        self.penalty.add_share(name, expression, has_time_time_dim=False, has_scenario_dim=False)
+        self.penalty.add_share(name, expression, has_time_dim=False, has_scenario_dim=False)
 
     def do_modeling(self):
         for effect in self.effects:
@@ -393,7 +393,7 @@ class EffectCollectionModel(Model):
                 self.effects[target_effect].model.operation.add_share(
                     origin_effect.model.operation.label_full,
                     origin_effect.model.operation.total_per_timestep * time_series.selected_data,
-                    has_time_time_dim=True,
+                    has_time_dim=True,
                     has_scenario_dim=True,
                 )
             # 2. invest:    -> hier ist es Scalar (share)
@@ -401,6 +401,6 @@ class EffectCollectionModel(Model):
                 self.effects[target_effect].model.invest.add_share(
                     origin_effect.model.invest.label_full,
                     origin_effect.model.invest.total * factor,
-                    has_time_time_dim=False,
+                    has_time_dim=False,
                     has_scenario_dim=True,
                 )
