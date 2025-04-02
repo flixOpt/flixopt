@@ -250,7 +250,7 @@ class CalculationResults:
         if 'scenario' in dataarray.indexes:
             chosen_scenario = scenario or self.scenarios[0]
             dataarray = dataarray.sel(scenario=chosen_scenario).drop_vars('scenario')
-            scenario_suffix = f' {{{chosen_scenario}}}'
+            scenario_suffix = f'--{chosen_scenario}'
 
         return plot_heatmap(
             dataarray=dataarray,
@@ -447,7 +447,7 @@ class _NodeResults(_ElementResults):
         if 'scenario' in ds.indexes:
             chosen_scenario = scenario or self._calculation_results.scenarios[0]
             ds = ds.sel(scenario=chosen_scenario).drop_vars('scenario')
-            scenario_suffix = f' {{{chosen_scenario}}}'
+            scenario_suffix = f'--{chosen_scenario}'
 
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
@@ -523,7 +523,7 @@ class _NodeResults(_ElementResults):
             chosen_scenario = scenario or self._calculation_results.scenarios[0]
             inputs = inputs.sel(scenario=chosen_scenario).drop_vars('scenario')
             outputs = outputs.sel(scenario=chosen_scenario).drop_vars('scenario')
-            scenario_suffix = f' {{{chosen_scenario}}}'
+            scenario_suffix = f'--{chosen_scenario}'
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -642,7 +642,7 @@ class ComponentResults(_NodeResults):
             chosen_scenario = scenario or self._calculation_results.scenarios[0]
             ds = ds.sel(scenario=chosen_scenario).drop_vars('scenario')
             charge_state = charge_state.sel(scenario=chosen_scenario).drop_vars('scenario')
-            scenario_suffix = f' {{{chosen_scenario}}}'
+            scenario_suffix = f'--{chosen_scenario}'
 
         fig = plotting.with_plotly(
             ds.to_dataframe(),
