@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -98,13 +98,40 @@ class SystemModel(linopy.Model):
     def hours_of_previous_timesteps(self):
         return self.time_series_collection.hours_of_previous_timesteps
 
-    @property
-    def coords(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps,)
+    def get_coords(
+        self, scenario_dim=True, time_dim=True, extra_timestep=False
+    ) -> Optional[Union[Tuple[pd.Index], Tuple[pd.Index, pd.Index]]]:
+        """
+        Returns the coordinates of the model
 
-    @property
-    def coords_extra(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps_extra,)
+        Args:
+            scenario_dim: If True, the scenario dimension is included in the coordinates
+            time_dim: If True, the time dimension is included in the coordinates
+            extra_timestep: If True, the extra timesteps are used instead of the regular timesteps
+
+        Returns:
+            The coordinates of the model. Might also be None if no scenarios are present and time_dim is False
+        """
+        if not scenario_dim and not time_dim:
+            return None
+        scenarios = self.time_series_collection.scenarios
+        timesteps = (
+            self.time_series_collection.timesteps if not extra_timestep else self.time_series_collection.timesteps_extra
+        )
+
+        if scenario_dim and time_dim:
+            if scenarios is None:
+                return (timesteps,)
+            return scenarios, timesteps
+
+        if scenario_dim and not time_dim:
+            if scenarios is None:
+                return None
+            return (scenarios,)
+        if time_dim and not scenario_dim:
+            return (timesteps,)
+
+        raise ValueError(f'Cannot get coordinates with both {scenario_dim=} and {time_dim=}')
 
 
 class Interface:
@@ -534,7 +561,7 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
             return copy_and_convert_datatypes(data.tolist(), use_numpy, use_element_label)
 
     elif isinstance(data, TimeSeries):
-        return copy_and_convert_datatypes(data.active_data, use_numpy, use_element_label)
+        return copy_and_convert_datatypes(data.selected_data, use_numpy, use_element_label)
     elif isinstance(data, TimeSeriesData):
         return copy_and_convert_datatypes(data.data, use_numpy, use_element_label)
 

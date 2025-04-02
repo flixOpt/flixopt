@@ -44,19 +44,22 @@ class Calculation:
         name: str,
         flow_system: FlowSystem,
         active_timesteps: Optional[pd.DatetimeIndex] = None,
+        selected_scenarios: Optional[pd.Index] = None,
         folder: Optional[pathlib.Path] = None,
     ):
         """
         Args:
             name: name of calculation
             flow_system: flow_system which should be calculated
-            active_timesteps: list with indices, which should be used for calculation. If None, then all timesteps are used.
+            active_timesteps: timesteps which should be used for calculation. If None, then all timesteps are used.
+            selected_scenarios: scenarios which should be used for calculation. If None, then all scenarios are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
         self.name = name
         self.flow_system = flow_system
         self.model: Optional[SystemModel] = None
         self.active_timesteps = active_timesteps
+        self.selected_scenarios = selected_scenarios
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
@@ -74,46 +77,48 @@ class Calculation:
     def main_results(self) -> Dict[str, Union[Scalar, Dict]]:
         from flixopt.features import InvestmentModel
 
-        return {
+        main_results = {
             'Objective': self.model.objective.value,
-            'Penalty': float(self.model.effects.penalty.total.solution.values),
+            'Penalty': self.model.effects.penalty.total.solution.values,
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
-                    'operation': float(effect.model.operation.total.solution.values),
-                    'invest': float(effect.model.invest.total.solution.values),
-                    'total': float(effect.model.total.solution.values),
+                    'operation': effect.model.operation.total.solution.values,
+                    'invest': effect.model.invest.total.solution.values,
+                    'total': effect.model.total.solution.values,
                 }
                 for effect in self.flow_system.effects
             },
             'Invest-Decisions': {
                 'Invested': {
-                    model.label_of_element: float(model.size.solution)
+                    model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.model.all_sub_models
-                    if isinstance(model, InvestmentModel) and float(model.size.solution) >= CONFIG.modeling.EPSILON
+                    if isinstance(model, InvestmentModel) and model.size.solution >= CONFIG.modeling.EPSILON
                 },
                 'Not invested': {
-                    model.label_of_element: float(model.size.solution)
+                    model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.model.all_sub_models
-                    if isinstance(model, InvestmentModel) and float(model.size.solution) < CONFIG.modeling.EPSILON
+                    if isinstance(model, InvestmentModel) and model.size.solution < CONFIG.modeling.EPSILON
                 },
             },
             'Buses with excess': [
                 {
                     bus.label_full: {
-                        'input': float(np.sum(bus.model.excess_input.solution.values)),
-                        'output': float(np.sum(bus.model.excess_output.solution.values)),
+                        'input': np.sum(bus.model.excess_input.solution.values),
+                        'output': np.sum(bus.model.excess_output.solution.values),
                     }
                 }
                 for bus in self.flow_system.buses.values()
                 if bus.with_excess
                 and (
-                    float(np.sum(bus.model.excess_input.solution.values)) > 1e-3
-                    or float(np.sum(bus.model.excess_output.solution.values)) > 1e-3
+                    np.sum(bus.model.excess_input.solution.values) > 1e-3
+                    or np.sum(bus.model.excess_output.solution.values) > 1e-3
                 )
             ],
         }
+
+        return utils.round_floats(main_results)
 
     @property
     def summary(self):
@@ -183,8 +188,8 @@ class FullCalculation(Calculation):
 
     def _activate_time_series(self):
         self.flow_system.transform_data()
-        self.flow_system.time_series_collection.activate_timesteps(
-            active_timesteps=self.active_timesteps,
+        self.flow_system.time_series_collection.set_selection(
+            timesteps=self.active_timesteps, scenarios=self.selected_scenarios
         )
 
 
@@ -217,6 +222,8 @@ class AggregatedCalculation(FullCalculation):
                 list with indices, which should be used for calculation. If None, then all timesteps are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
+        if flow_system.time_series_collection.scenarios is not None:
+            raise ValueError('Aggregation is not supported for scenarios yet. Please use FullCalculation instead.')
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize
@@ -272,9 +279,9 @@ class AggregatedCalculation(FullCalculation):
 
         # Aggregation - creation of aggregated timeseries:
         self.aggregation = Aggregation(
-            original_data=self.flow_system.time_series_collection.to_dataframe(
-                include_extra_timestep=False
-            ),  # Exclude last row (NaN)
+            original_data=self.flow_system.time_series_collection.as_dataset(
+                with_extra_timestep=False, with_constants=False
+            ).to_dataframe(),
             hours_per_time_step=float(dt_min),
             hours_per_period=self.aggregation_parameters.hours_per_period,
             nr_of_periods=self.aggregation_parameters.nr_of_periods,
@@ -286,9 +293,11 @@ class AggregatedCalculation(FullCalculation):
         self.aggregation.cluster()
         self.aggregation.plot(show=True, save=self.folder / 'aggregation.html')
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
-            self.flow_system.time_series_collection.insert_new_data(
-                self.aggregation.aggregated_data, include_extra_timestep=False
-            )
+            for col in self.aggregation.aggregated_data.columns:
+                data = self.aggregation.aggregated_data[col].values
+                if col in self.flow_system.time_series_collection._has_extra_timestep:
+                    data = np.append(data, data[-1])
+                self.flow_system.time_series_collection.update_time_series(col, data)
         self.durations['aggregation'] = round(timeit.default_timer() - t_start_agg, 2)
 
 
@@ -327,8 +336,8 @@ class SegmentedCalculation(Calculation):
         self.nr_of_previous_values = nr_of_previous_values
         self.sub_calculations: List[FullCalculation] = []
 
-        self.all_timesteps = self.flow_system.time_series_collection.all_timesteps
-        self.all_timesteps_extra = self.flow_system.time_series_collection.all_timesteps_extra
+        self.all_timesteps = self.flow_system.time_series_collection._full_timesteps
+        self.all_timesteps_extra = self.flow_system.time_series_collection._full_timesteps_extra
 
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
