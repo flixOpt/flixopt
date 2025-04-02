@@ -801,7 +801,10 @@ class TimeSeriesCollection:
         ) #TODO: Make dynamic
 
         self._full_timesteps = timesteps
-        self._full_timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
+        self._full_timesteps_extra = self._create_timesteps_with_extra(
+            self._full_timesteps,
+            self._calculate_hours_of_final_timestep(self._full_timesteps, hours_of_final_timestep=hours_of_last_timestep)
+        )
         self._full_hours_per_timestep = self.calculate_hours_per_timestep(self._full_timesteps_extra)
 
         self._full_scenarios = scenarios
@@ -943,10 +946,11 @@ class TimeSeriesCollection:
         self._validate_timesteps(timesteps, self._full_timesteps)
 
         self._selected_timesteps = timesteps
-        self._selected_hours_per_timestep = self._full_hours_per_timestep.sel(time=timesteps)
         self._selected_timesteps_extra = self._create_timesteps_with_extra(
-            timesteps, self._selected_hours_per_timestep.isel(time=-1).max().item()
+            timesteps,
+            self._calculate_hours_of_final_timestep(timesteps, self._full_timesteps)
         )
+        self._selected_hours_per_timestep = self.calculate_hours_per_timestep(self._selected_timesteps_extra)
 
     def as_dataset(self, with_extra_timestep: bool = True, with_constants: bool = True) -> xr.Dataset:
         """
@@ -1148,17 +1152,11 @@ class TimeSeriesCollection:
 
     @staticmethod
     def _create_timesteps_with_extra(
-        timesteps: pd.DatetimeIndex, hours_of_last_timestep: Optional[float]
+        timesteps: pd.DatetimeIndex,
+        hours_of_last_timestep: float
     ) -> pd.DatetimeIndex:
         """Create timesteps with an extra step at the end."""
-        if hours_of_last_timestep is not None:
-            # Create the extra timestep using the specified duration
-            last_date = pd.DatetimeIndex([timesteps[-1] + pd.Timedelta(hours=hours_of_last_timestep)], name='time')
-        else:
-            # Use the last interval as the extra timestep duration
-            last_date = pd.DatetimeIndex([timesteps[-1] + (timesteps[-1] - timesteps[-2])], name='time')
-
-        # Combine with original timesteps
+        last_date = pd.DatetimeIndex([timesteps[-1] + pd.Timedelta(hours=hours_of_last_timestep)], name='time')
         return pd.DatetimeIndex(timesteps.append(last_date), name='time')
 
     @staticmethod
@@ -1172,6 +1170,48 @@ class TimeSeriesCollection:
         # Calculate from the first interval
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
+
+    @staticmethod
+    def _calculate_hours_of_final_timestep(
+        timesteps: pd.DatetimeIndex,
+        timesteps_superset: Optional[pd.DatetimeIndex] = None,
+        hours_of_final_timestep: Optional[float] = None,
+    ) -> float:
+        """
+        Calculate duration of the final timestep.
+        If timesteps_subset is provided, the final timestep is calculated for this subset.
+        The hours_of_final_timestep is only used if the final timestep cant be determined from the timesteps.
+
+        Args:
+            timesteps: The full timesteps
+            timesteps_subset: The subset of timesteps
+            hours_of_final_timestep: The duration of the final timestep, if already known
+
+        Returns:
+            The duration of the final timestep in hours
+
+        Raises:
+            ValueError: If the provided timesteps_subset does not end before the timesteps superset
+        """
+        if timesteps_superset is None:
+            if hours_of_final_timestep is not None:
+                return hours_of_final_timestep
+            return (timesteps[-1] - timesteps[-2]) / pd.Timedelta(hours=1)
+
+        final_timestep = timesteps[-1]
+
+        if timesteps_superset[-1] == final_timestep:
+            if hours_of_final_timestep is not None:
+                return hours_of_final_timestep
+            return (timesteps_superset[-1] - timesteps_superset[-2]) / pd.Timedelta(hours=1)
+
+        elif timesteps_superset[-1] <= final_timestep:
+            raise ValueError(f'The provided timesteps ({timesteps}) end '
+                             f'after the provided timesteps_superset ({timesteps_superset})')
+        else:
+            # Get the first timestep in the superset that is after the final timestep of the subset
+            extra_timestep = timesteps_superset[timesteps_superset > final_timestep].min()
+            return (extra_timestep - final_timestep) / pd.Timedelta(hours=1)
 
     @staticmethod
     def calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
