@@ -115,15 +115,24 @@ class SystemModel(linopy.Model):
         Returns:
             The coordinates of the model. Might also be None if no scenarios are present and time_dim is False
         """
+        if not scenario_dim and not time_dim:
+            return None
         scenarios = self.time_series_collection.scenarios
         timesteps = self.time_series_collection.timesteps if not extra_timestep else self.time_series_collection.timesteps_extra
-        if scenarios is None:
-            if time_dim:
+
+        if scenario_dim and time_dim:
+            if scenarios is None:
                 return (timesteps,)
-            return None
+            return scenarios, timesteps
+
         if scenario_dim and not time_dim:
+            if scenarios is None:
+                return None
             return (scenarios,)
-        return scenarios, timesteps
+        if time_dim and not scenario_dim:
+            return (timesteps,)
+
+        raise ValueError(f'Cannot get coordinates with both {scenario_dim=} and {time_dim=}')
 
 
 class Interface:
