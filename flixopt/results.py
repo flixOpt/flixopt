@@ -198,26 +198,36 @@ class CalculationResults:
 
     def filter_solution(
         self,
-        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'time+scenario']] = None,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
         element: Optional[str] = None,
-        time_indexes: Optional[pd.DatetimeIndex] = None,
-        scenario_indexes: Optional[pd.Index] = None,
+        timesteps: Optional[pd.DatetimeIndex] = None,
+        scenarios: Optional[pd.Index] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
         If no element is specified, all elements are included.
 
         Args:
-            variable_dims: The dimension of the variables to filter for.
+            variable_dims: The dimension of which to get variables from.
+                - 'scalar': Get scalar variables (without dimensions)
+                - 'time': Get time-dependent variables (with a time dimension)
+                - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+                - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
             element: The element to filter for.
-            time_indexes: Optional time indexes to select.
-            scenario_indexes: Optional scenario indexes to select.
+            timesteps: Optional time indexes to select. Can be:
+                - pd.DatetimeIndex: Multiple timesteps
+                - str/pd.Timestamp: Single timestep
+                Defaults to all available timesteps.
+            scenarios: Optional scenario indexes to select. Can be:
+                - pd.Index: Multiple scenarios
+                - str/int: Single scenario (int is treated as a label, not an index position)
+                Defaults to all available scenarios.
         """
         return filter_dataset(
             self.solution if element is None else self[element].solution,
             variable_dims=variable_dims,
-            time_indexes=time_indexes,
-            scenario_indexes=scenario_indexes,
+            timesteps=timesteps,
+            scenarios=scenarios,
         )
 
     def plot_heatmap(
@@ -379,24 +389,34 @@ class _ElementResults:
 
     def filter_solution(
         self,
-        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'time+scenario']] = None,
-        time_indexes: Optional[pd.DatetimeIndex] = None,
-        scenario_indexes: Optional[pd.Index] = None,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
+        timesteps: Optional[pd.DatetimeIndex] = None,
+        scenarios: Optional[pd.Index] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
         If no element is specified, all elements are included.
 
         Args:
-            variable_dims: The dimension of the variables to filter for.
-            time_indexes: Optional time indexes to select.
-            scenario_indexes: Optional scenario indexes to select.
+            variable_dims: The dimension of which to get variables from.
+                - 'scalar': Get scalar variables (without dimensions)
+                - 'time': Get time-dependent variables (with a time dimension)
+                - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+                - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+            timesteps: Optional time indexes to select. Can be:
+                - pd.DatetimeIndex: Multiple timesteps
+                - str/pd.Timestamp: Single timestep
+                Defaults to all available timesteps.
+            scenarios: Optional scenario indexes to select. Can be:
+                - pd.Index: Multiple scenarios
+                - str/int: Single scenario (int is treated as a label, not an index position)
+                Defaults to all available scenarios.
         """
         return filter_dataset(
             self.solution,
             variable_dims=variable_dims,
-            time_indexes=time_indexes,
-            scenario_indexes=scenario_indexes,
+            timesteps=timesteps,
+            scenarios=scenarios,
         )
 
 
@@ -954,9 +974,9 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
-    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'time+scenario']] = None,
-    time_indexes: Optional[pd.DatetimeIndex] = None,
-    scenario_indexes: Optional[pd.Index] = None,
+    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
+    timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
+    scenarios: Optional[Union[pd.Index, str, int]] = None,
 ) -> xr.Dataset:
     """
     Filters a dataset by its dimensions and optionally selects specific indexes.
@@ -964,12 +984,18 @@ def filter_dataset(
     Args:
         ds: The dataset to filter.
         variable_dims: The dimension of which to get variables from.
-            - 'scalar': Get scalar variables (no dimensions)
-            - 'time': Get time-dependent variables (have a time dimension)
-            - 'scenario': Get scenario-dependent variables (ONLY have a scenario dimension)
-            - 'timeonly': Get time-dependent variables (have ONLY a time dimension)
-        time_indexes: Optional time indexes to select.
-        scenario_indexes: Optional scenario indexes to select.
+            - 'scalar': Get scalar variables (without dimensions)
+            - 'time': Get time-dependent variables (with a time dimension)
+            - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+            - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+        timesteps: Optional time indexes to select. Can be:
+            - pd.DatetimeIndex: Multiple timesteps
+            - str/pd.Timestamp: Single timestep
+            Defaults to all available timesteps.
+        scenarios: Optional scenario indexes to select. Can be:
+            - pd.Index: Multiple scenarios
+            - str/int: Single scenario (int is treated as a label, not an index position)
+            Defaults to all available scenarios.
 
     Returns:
         Filtered dataset with specified variables and indexes.
@@ -988,17 +1014,24 @@ def filter_dataset(
     else:
         raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
 
-    # First handle dimension selection if needed
-    if time_indexes is not None and 'time' in ds.dims:
-        if set(time_indexes).issubset(set(ds.indexes['time'])):
-            ds = ds.sel(time=time_indexes)
-        else:
-            raise ValueError(f'Not all timesteps {time_indexes} not found in dataset. {ds.indexes["time"]}')
+    # Handle time selection if needed
+    if timesteps is not None and 'time' in ds.dims:
+        try:
+            ds = ds.sel(time=timesteps)
+        except KeyError:
+            available_times = set(ds.indexes['time'])
+            requested_times = set([timesteps]) if not isinstance(timesteps, pd.Index) else set(timesteps)
+            missing_times = requested_times - available_times
+            raise ValueError(f'Timesteps not found in dataset: {missing_times}. Available times: {available_times}')
 
-    if scenario_indexes is not None and 'scenario' in ds.dims:
-        if set(scenario_indexes).issubset(set(ds.indexes['scenario'])):
-            ds = ds.sel(scenario=scenario_indexes)
-        else:
-            raise ValueError(f'Not all scenarios {scenario_indexes} not found in dataset. {ds.indexes["scenario"]}')
+    # Handle scenario selection if needed
+    if scenarios is not None and 'scenario' in ds.dims:
+        try:
+            ds = ds.sel(scenario=scenarios)
+        except KeyError:
+            available_scenarios = set(ds.indexes['scenario'])
+            requested_scenarios = set([scenarios]) if not isinstance(scenarios, pd.Index) else set(scenarios)
+            missing_scenarios = requested_scenarios - available_scenarios
+            raise ValueError(f'Scenarios not found in dataset: {missing_scenarios}. Available scenarios: {available_scenarios}')
 
     return ds
