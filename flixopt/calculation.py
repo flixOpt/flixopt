@@ -44,19 +44,22 @@ class Calculation:
         name: str,
         flow_system: FlowSystem,
         active_timesteps: Optional[pd.DatetimeIndex] = None,
+        selected_scenarios: Optional[pd.Index] = None,
         folder: Optional[pathlib.Path] = None,
     ):
         """
         Args:
             name: name of calculation
             flow_system: flow_system which should be calculated
-            active_timesteps: list with indices, which should be used for calculation. If None, then all timesteps are used.
+            active_timesteps: timesteps which should be used for calculation. If None, then all timesteps are used.
+            selected_scenarios: scenarios which should be used for calculation. If None, then all scenarios are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
         self.name = name
         self.flow_system = flow_system
         self.model: Optional[SystemModel] = None
         self.active_timesteps = active_timesteps
+        self.selected_scenarios = selected_scenarios
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
@@ -185,7 +188,7 @@ class FullCalculation(Calculation):
     def _activate_time_series(self):
         self.flow_system.transform_data()
         self.flow_system.time_series_collection.set_selection(
-            timesteps=self.active_timesteps
+            timesteps=self.active_timesteps, scenarios=self.selected_scenarios
         )
 
 
