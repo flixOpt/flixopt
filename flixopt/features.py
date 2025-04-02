@@ -254,6 +254,7 @@ class OnOffModel(Model):
             self._model.add_variables(
                 lower=self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
                 upper=self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
+                coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|on_hours_total',
             ),
             'on_hours_total',
@@ -261,7 +262,7 @@ class OnOffModel(Model):
 
         self.add(
             self._model.add_constraints(
-                self.total_on_hours == (self.on * self._model.hours_per_step).sum(),
+                self.total_on_hours == (self.on * self._model.hours_per_step).sum('time'),
                 name=f'{self.label_full}|on_hours_total',
             ),
             'on_hours_total',
@@ -437,7 +438,7 @@ class OnOffModel(Model):
         """
         assert binary_variable is not None, f'Duration Variable of {self.label_full} must be defined to add constraints'
 
-        mega = self._model.hours_per_step.sum() + previous_duration
+        mega = self._model.hours_per_step.sum('time') + previous_duration
 
         if maximum_duration is not None:
             first_step_max: Scalar = maximum_duration.isel(time=0)
@@ -582,7 +583,7 @@ class OnOffModel(Model):
         # eq: nrSwitchOn = sum(SwitchOn(t))
         self.add(
             self._model.add_constraints(
-                self.switch_on_nr == self.switch_on.sum(), name=f'{self.label_full}|switch_on_nr'
+                self.switch_on_nr == self.switch_on.sum('time'), name=f'{self.label_full}|switch_on_nr'
             ),
             'switch_on_nr',
         )
@@ -973,7 +974,12 @@ class PiecewiseEffectsModel(Model):
 
     def do_modeling(self):
         self.shares = {
-            effect: self.add(self._model.add_variables(coords=None, name=f'{self.label_full}|{effect}'), f'{effect}')
+            effect: self.add(
+                self._model.add_variables(
+                    coords=self._model.get_coords(time_dim=False),
+                    name=f'{self.label_full}|{effect}'
+                ),
+                f'{effect}')
             for effect in self._piecewise_shares
         }
 

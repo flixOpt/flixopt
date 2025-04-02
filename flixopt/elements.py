@@ -361,7 +361,7 @@ class FlowModel(ElementModel):
             self._model.add_variables(
                 lower=self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else -np.inf,
                 upper=self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else np.inf,
-                coords=None,
+                coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|total_flow_hours',
             ),
             'total_flow_hours',
@@ -369,7 +369,7 @@ class FlowModel(ElementModel):
 
         self.add(
             self._model.add_constraints(
-                self.total_flow_hours == (self.flow_rate * self._model.hours_per_step).sum(),
+                self.total_flow_hours == (self.flow_rate * self._model.hours_per_step).sum('time'),
                 name=f'{self.label_full}|total_flow_hours',
             ),
             'total_flow_hours',
@@ -399,7 +399,7 @@ class FlowModel(ElementModel):
         # eq: var_sumFlowHours <= size * dt_tot * load_factor_max
         if self.element.load_factor_max is not None:
             name_short = 'load_factor_max'
-            flow_hours_per_size_max = self._model.hours_per_step.sum() * self.element.load_factor_max
+            flow_hours_per_size_max = self._model.hours_per_step.sum('time') * self.element.load_factor_max
             size = self.element.size if self._investment is None else self._investment.size
 
             if self._investment is not None:
@@ -414,7 +414,7 @@ class FlowModel(ElementModel):
         #  eq: size * sum(dt)* load_factor_min <= var_sumFlowHours
         if self.element.load_factor_min is not None:
             name_short = 'load_factor_min'
-            flow_hours_per_size_min = self._model.hours_per_step.sum() * self.element.load_factor_min
+            flow_hours_per_size_min = self._model.hours_per_step.sum('time') * self.element.load_factor_min
             size = self.element.size if self._investment is None else self._investment.size
 
             if self._investment is not None:
