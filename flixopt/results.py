@@ -878,21 +878,64 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
+    time_dim: bool = True,
+    scenario_dim: bool = True,
+    scalar_dim: bool = True,
+    time_indexes: Optional[pd.DatetimeIndex] = None,
+    scenario_indexes: Optional[pd.Index] = None,
     variable_dims: Optional[Literal['scalar', 'time']] = None,
 ) -> xr.Dataset:
     """
-    Filters a dataset by its dimensions.
+    Filters a dataset by its dimensions and optionally selects specific indexes.
 
     Args:
         ds: The dataset to filter.
-        variable_dims: The dimension of the variables to filter for.
+        time_dim: Whether to include time-dependent variables.
+        scenario_dim: Whether to include scenario-dependent variables.
+        scalar_dim: Whether to include scalar variables.
+        time_indexes: Optional time indexes to select.
+        scenario_indexes: Optional scenario indexes to select.
+                variable_dims: Deprecated. Use scalar_dim, time_dim, and scenario_dim instead.
+
+    Returns:
+        Filtered dataset with specified variables and indexes.
     """
-    if variable_dims is None:
+    if variable_dims is not None:
+        logger.warning('variable_dims is deprecated. Use scalar_dim, time_dim, and scenario_dim instead.')
+
+        if variable_dims == 'scalar':
+            return ds[[name for name, da in ds.data_vars.items() if len(da.dims) == 0]]
+        elif variable_dims == 'time':
+            return ds[[name for name, da in ds.data_vars.items() if 'time' in da.dims]]
+        else:
+            raise ValueError(f'Not allowed value for "filter_dataset()": {variable_dims=}')
+
+    # First handle dimension selection if needed
+    if time_indexes is not None and 'time' in ds.dims:
+        if set(time_indexes).issubset(set(ds.indexes['time'])):
+            ds = ds.sel(time=time_indexes)
+        else:
+            raise ValueError(f'Not all timesteps {time_indexes} not found in dataset. {ds.indexes["time"]}')
+
+    if scenario_indexes is not None and 'scenario' in ds.dims:
+        if set(scenario_indexes).issubset(set(ds.indexes['scenario'])):
+            ds = ds.sel(scenario=scenario_indexes)
+        else:
+            raise ValueError(f'Not all scenarios {scenario_indexes} not found in dataset. {ds.indexes["scenario"]}')
+
+    # Return the full dataset if all dimension types are included
+    if scalar_dim and time_dim and scenario_dim:
         return ds
 
-    if variable_dims == 'scalar':
-        return ds[[name for name, da in ds.data_vars.items() if len(da.dims) == 0]]
-    elif variable_dims == 'time':
-        return ds[[name for name, da in ds.data_vars.items() if 'time' in da.dims]]
-    else:
-        raise ValueError(f'Not allowed value for "filter_dataset()": {variable_dims=}')
+    # Filter variables by dimension type
+    names = []
+    for name, da in ds.data_vars.items():
+        # Check each condition and add the variable name if any condition is met
+        if (
+            (scalar_dim and len(da.dims) == 0)
+            or (time_dim and 'time' in da.dims)
+            or (scenario_dim and 'scenario' in da.dims)
+        ):
+            names.append(name)
+
+    return ds[names]
