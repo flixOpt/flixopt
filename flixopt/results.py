@@ -196,7 +196,11 @@ class CalculationResults:
         return self.model.constraints
 
     def filter_solution(
-        self, variable_dims: Optional[Literal['scalar', 'time']] = None, element: Optional[str] = None
+        self,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'time+scenario']] = None,
+        element: Optional[str] = None,
+        time_indexes: Optional[pd.DatetimeIndex] = None,
+        scenario_indexes: Optional[pd.Index] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -205,10 +209,15 @@ class CalculationResults:
         Args:
             variable_dims: The dimension of the variables to filter for.
             element: The element to filter for.
+            time_indexes: Optional time indexes to select.
+            scenario_indexes: Optional scenario indexes to select.
         """
-        if element is not None:
-            return filter_dataset(self[element].solution, variable_dims)
-        return filter_dataset(self.solution, variable_dims)
+        return filter_dataset(
+            self.solution if element is None else self[element].solution,
+            variable_dims=variable_dims,
+            time_indexes=time_indexes,
+            scenario_indexes=scenario_indexes,
+        )
 
     def plot_heatmap(
         self,
@@ -345,14 +354,27 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._variable_names]
 
-    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'time']] = None) -> xr.Dataset:
+    def filter_solution(
+        self,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'time+scenario']] = None,
+        time_indexes: Optional[pd.DatetimeIndex] = None,
+        scenario_indexes: Optional[pd.Index] = None,
+    ) -> xr.Dataset:
         """
-        Filter the solution of the element by dimension.
+        Filter the solution to a specific variable dimension and element.
+        If no element is specified, all elements are included.
 
         Args:
             variable_dims: The dimension of the variables to filter for.
+            time_indexes: Optional time indexes to select.
+            scenario_indexes: Optional scenario indexes to select.
         """
-        return filter_dataset(self.solution, variable_dims)
+        return filter_dataset(
+            self.solution,
+            variable_dims=variable_dims,
+            time_indexes=time_indexes,
+            scenario_indexes=scenario_indexes,
+        )
 
 
 class _NodeResults(_ElementResults):
@@ -878,21 +900,20 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
-    time_dim: bool = True,
-    scenario_dim: bool = True,
-    scalar_dim: bool = True,
+    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'time+scenario']] = None,
     time_indexes: Optional[pd.DatetimeIndex] = None,
     scenario_indexes: Optional[pd.Index] = None,
-    variable_dims: Optional[Literal['scalar', 'time']] = None,
 ) -> xr.Dataset:
     """
     Filters a dataset by its dimensions and optionally selects specific indexes.
 
     Args:
         ds: The dataset to filter.
-        time_dim: Whether to include time-dependent variables.
-        scenario_dim: Whether to include scenario-dependent variables.
-        scalar_dim: Whether to include scalar variables.
+        variable_dims: The dimension of which to get variables from.
+            - 'scalar': Get scalar variables
+            - 'time': Get time-dependent variables (means, they ONLY depend on time)
+            - 'scenario': Get scenario-dependent variables (means, they ONLY depend on scenario)
+            - 'time+scenario': Get time- and scenario-dependent variables (means, they depend on time AND scenario)
         time_indexes: Optional time indexes to select.
         scenario_indexes: Optional scenario indexes to select.
                 variable_dims: Deprecated. Use scalar_dim, time_dim, and scenario_dim instead.
@@ -900,15 +921,19 @@ def filter_dataset(
     Returns:
         Filtered dataset with specified variables and indexes.
     """
-    if variable_dims is not None:
-        logger.warning('variable_dims is deprecated. Use scalar_dim, time_dim, and scenario_dim instead.')
-
-        if variable_dims == 'scalar':
-            return ds[[name for name, da in ds.data_vars.items() if len(da.dims) == 0]]
-        elif variable_dims == 'time':
-            return ds[[name for name, da in ds.data_vars.items() if 'time' in da.dims]]
-        else:
-            raise ValueError(f'Not allowed value for "filter_dataset()": {variable_dims=}')
+    # Return the full dataset if all dimension types are included
+    if variable_dims is None:
+        ds = ds.copy()
+    elif variable_dims == 'scalar':
+        ds = ds[[v for v in ds.data_vars if len(ds[v].dims) == 0]]
+    elif variable_dims == 'time':
+        ds = ds[[v for v in ds.data_vars if len(ds[v].dims) == 1 and 'time' in ds[v].dims]]
+    elif variable_dims == 'scenario':
+        ds = ds[[v for v in ds.data_vars if len(ds[v].dims) == 1 and 'scenario' in ds[v].dims]]
+    elif variable_dims == 'time+scenario':
+        ds = ds[[v for v in ds.data_vars if len(ds[v].dims) == 2 and 'time' in ds[v].dims and 'scenario' in ds[v].dims]]
+    else:
+        raise ValueError(f'Unknown variable_dims {variable_dims}')
 
     # First handle dimension selection if needed
     if time_indexes is not None and 'time' in ds.dims:
@@ -923,19 +948,4 @@ def filter_dataset(
         else:
             raise ValueError(f'Not all scenarios {scenario_indexes} not found in dataset. {ds.indexes["scenario"]}')
 
-    # Return the full dataset if all dimension types are included
-    if scalar_dim and time_dim and scenario_dim:
-        return ds
-
-    # Filter variables by dimension type
-    names = []
-    for name, da in ds.data_vars.items():
-        # Check each condition and add the variable name if any condition is met
-        if (
-            (scalar_dim and len(da.dims) == 0)
-            or (time_dim and 'time' in da.dims)
-            or (scenario_dim and 'scenario' in da.dims)
-        ):
-            names.append(name)
-
-    return ds[names]
+    return ds
