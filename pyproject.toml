@@ -7,7 +7,7 @@ name = "flixopt"
 dynamic = ["version"]
 description = "Vector based energy and material flow optimization framework in Python."
 readme = "README.md"
-requires-python = ">=3.10, <3.13"
+requires-python = ">=3.10"
 license = { text = "MIT License" }
 authors = [
     { name = "Chair of Building Energy Systems and Heat Supply, TU Dresden", email = "peter.stange@tu-dresden.de" },
@@ -26,13 +26,14 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
-    "numpy >= 1.21.5, < 2",
+    "numpy >= 1.21.5",
     "PyYAML >= 6.0",
     "linopy >= 0.5.1",
     "netcdf4 >= 1.6.1",
