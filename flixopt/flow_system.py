@@ -72,7 +72,16 @@ class FlowSystem:
         self._connected = False
 
     @classmethod
-    def from_dataset(cls, ds: xr.Dataset):
+    def from_dataset(cls, ds: xr.Dataset) -> 'FlowSystem':
+        """
+        Create a FlowSystem from a dataset.
+
+        Args:
+            ds: The dataset to create the FlowSystem from.
+
+        Returns:
+            A new FlowSystem instance.
+        """
         timesteps_extra = pd.DatetimeIndex(ds.attrs['timesteps_extra'], name='time')
         hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
 
@@ -120,9 +129,12 @@ class FlowSystem:
         return flow_system
 
     @classmethod
-    def from_netcdf(cls, path: Union[str, pathlib.Path]):
+    def from_netcdf(cls, path: Union[str, pathlib.Path]) -> 'FlowSystem':
         """
         Load a FlowSystem from a netcdf file
+
+        Args:
+            path: The path to the netcdf file.
         """
         return cls.from_dataset(fx_io.load_dataset_from_netcdf(path))
 
