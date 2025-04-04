@@ -29,11 +29,16 @@ class CalculationResults:
     """Results container for Calculation results.
 
     This class is used to collect the results of a Calculation.
-    It provides access to component, bus, and effect
-    results, and includes methods for filtering, plotting, and saving results.
+    It provides access to component, bus, and effect results, and includes methods for filtering, plotting,
+    and saving results.
 
     The recommended way to create instances is through the class methods
     `from_file()` or `from_calculation()`, rather than direct initialization.
+
+    The results are stored in a xarray.Dataset, which can be accessed through the `solution` attribute.
+    Subsets of the results can be filtered using the `filter_solution` method, or by acessing the
+    `components`, `buses`, and `effects` attributes, which contain a subset of the results for each element.
+
 
     Attributes:
         solution (xr.Dataset): Dataset containing optimization results.
