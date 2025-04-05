@@ -44,7 +44,7 @@ def insert_dataarray(obj, ds: xr.Dataset):
         return [insert_dataarray(v, ds) for v in obj]
     elif isinstance(obj, str) and obj.startswith('::::'):
         da = ds[obj[4:]]
-        if da.isel(time=-1).isnull():
+        if 'time' in da.dims and da.isel(time=-1).isnull().any().item():
             return da.isel(time=slice(0, -1))
         return da
     else:
