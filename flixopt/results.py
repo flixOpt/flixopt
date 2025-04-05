@@ -470,7 +470,7 @@ class _NodeResults(_ElementResults):
         """
         ds = self.node_balance(with_last_timestep=True, mode=mode, drop_suffix=drop_suffix)
 
-        title = f'Flow rates of {self.label}' if mode == 'flow_rate' else f'Flow hours of {self.label}'
+        title = f'{self.label} (flow rates)' if mode == 'flow_rate' else f'{self.label} (flow hours)'
 
         if 'scenario' in ds.indexes:
             chosen_scenario = scenario or self._calculation_results.scenarios[0]
