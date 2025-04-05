@@ -198,7 +198,7 @@ class CalculationResults:
 
     def filter_solution(
         self,
-        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
         element: Optional[str] = None,
         timesteps: Optional[pd.DatetimeIndex] = None,
         scenarios: Optional[pd.Index] = None,
@@ -213,6 +213,7 @@ class CalculationResults:
                 - 'time': Get time-dependent variables (with a time dimension)
                 - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
                 - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+                - 'scenarioonly': Get scenario-dependent variables (with ONLY a scenario dimension)
             element: The element to filter for.
             timesteps: Optional time indexes to select. Can be:
                 - pd.DatetimeIndex: Multiple timesteps
@@ -389,7 +390,7 @@ class _ElementResults:
 
     def filter_solution(
         self,
-        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
         timesteps: Optional[pd.DatetimeIndex] = None,
         scenarios: Optional[pd.Index] = None,
     ) -> xr.Dataset:
@@ -403,6 +404,7 @@ class _ElementResults:
                 - 'time': Get time-dependent variables (with a time dimension)
                 - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
                 - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+                - 'scenarioonly': Get scenario-dependent variables (with ONLY a scenario dimension)
             timesteps: Optional time indexes to select. Can be:
                 - pd.DatetimeIndex: Multiple timesteps
                 - str/pd.Timestamp: Single timestep
@@ -558,6 +560,13 @@ class _NodeResults(_ElementResults):
         else:
             inputs = inputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in inputs})
             outputs = outputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in outputs})
+
+        scenario_suffix = ''
+        if 'scenario' in inputs.indexes:
+            chosen_scenario = scenario or self._calculation_results.scenarios[0]
+            inputs = inputs.sel(scenario=chosen_scenario).drop_vars('scenario')
+            outputs = outputs.sel(scenario=chosen_scenario).drop_vars('scenario')
+            scenario_suffix = f'--{chosen_scenario}'
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -1008,7 +1017,7 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
-    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
+    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
     timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
     scenarios: Optional[Union[pd.Index, str, int]] = None,
 ) -> xr.Dataset:
@@ -1022,6 +1031,7 @@ def filter_dataset(
             - 'time': Get time-dependent variables (with a time dimension)
             - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
             - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+            - 'scenarioonly': Get scenario-dependent variables (with ONLY a scenario dimension)
         timesteps: Optional time indexes to select. Can be:
             - pd.DatetimeIndex: Multiple timesteps
             - str/pd.Timestamp: Single timestep
@@ -1042,9 +1052,11 @@ def filter_dataset(
     elif variable_dims == 'time':
         ds = ds[[v for v in ds.data_vars if 'time' in ds[v].dims]]
     elif variable_dims == 'scenario':
-        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('scenario',)]]
+        ds = ds[[v for v in ds.data_vars if 'scenario' in ds[v].dims]]
     elif variable_dims == 'timeonly':
         ds = ds[[v for v in ds.data_vars if ds[v].dims == ('time',)]]
+    elif variable_dims == 'scenarioonly':
+        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('scenario',)]]
     else:
         raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
 

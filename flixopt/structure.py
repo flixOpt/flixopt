@@ -122,7 +122,7 @@ class SystemModel(linopy.Model):
         if scenario_dim and time_dim:
             if scenarios is None:
                 return (timesteps,)
-            return scenarios, timesteps
+            return timesteps, scenarios
 
         if scenario_dim and not time_dim:
             if scenarios is None:
