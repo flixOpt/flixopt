@@ -146,13 +146,13 @@ class DataConverter:
         coords = {}
         dims = []
 
-        if scenarios is not None:
-            coords['scenario'] = scenarios
-            dims.append('scenario')
-
         if timesteps is not None:
             coords['time'] = timesteps
             dims.append('time')
+
+        if scenarios is not None:
+            coords['scenario'] = scenarios
+            dims.append('scenario')
 
         return coords, tuple(dims)
 
@@ -340,18 +340,18 @@ class DataConverter:
             # For 1D array, create 2D array based on which dimension it matches
             if data.shape[0] == time_length:
                 # Broadcast across scenarios
-                values = np.tile(data, (scenario_length, 1))
+                values = np.repeat(data[:, np.newaxis], scenario_length, axis=1)
                 return xr.DataArray(values, coords=coords, dims=dims)
             elif data.shape[0] == scenario_length:
                 # Broadcast across time
-                values = np.repeat(data[:, np.newaxis], time_length, axis=1)
+                values = np.tile(data, (time_length, 1))
                 return xr.DataArray(values, coords=coords, dims=dims)
             else:
                 raise ConversionError(f"1D array length {data.shape[0]} doesn't match either dimension")
 
         elif data.ndim == 2:
             # For 2D array, shape must match dimensions
-            expected_shape = (scenario_length, time_length)
+            expected_shape = (time_length, scenario_length)
             if data.shape != expected_shape:
                 raise ConversionError(f"2D array shape {data.shape} doesn't match expected shape {expected_shape}")
             return xr.DataArray(data, coords=coords, dims=dims)

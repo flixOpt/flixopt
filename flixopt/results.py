@@ -161,6 +161,7 @@ class CalculationResults:
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
+        self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
@@ -196,19 +197,38 @@ class CalculationResults:
         return self.model.constraints
 
     def filter_solution(
-        self, variable_dims: Optional[Literal['scalar', 'time']] = None, element: Optional[str] = None
+        self,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
+        element: Optional[str] = None,
+        timesteps: Optional[pd.DatetimeIndex] = None,
+        scenarios: Optional[pd.Index] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
         If no element is specified, all elements are included.
 
         Args:
-            variable_dims: The dimension of the variables to filter for.
+            variable_dims: The dimension of which to get variables from.
+                - 'scalar': Get scalar variables (without dimensions)
+                - 'time': Get time-dependent variables (with a time dimension)
+                - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+                - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
             element: The element to filter for.
+            timesteps: Optional time indexes to select. Can be:
+                - pd.DatetimeIndex: Multiple timesteps
+                - str/pd.Timestamp: Single timestep
+                Defaults to all available timesteps.
+            scenarios: Optional scenario indexes to select. Can be:
+                - pd.Index: Multiple scenarios
+                - str/int: Single scenario (int is treated as a label, not an index position)
+                Defaults to all available scenarios.
         """
-        if element is not None:
-            return filter_dataset(self[element].solution, variable_dims)
-        return filter_dataset(self.solution, variable_dims)
+        return filter_dataset(
+            self.solution if element is None else self[element].solution,
+            variable_dims=variable_dims,
+            timesteps=timesteps,
+            scenarios=scenarios,
+        )
 
     def plot_heatmap(
         self,
@@ -219,10 +239,32 @@ class CalculationResults:
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
+        scenario: Optional[Union[str, int]] = None,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+        """
+        Plots a heatmap of the solution of a variable.
+
+        Args:
+            variable_name: The name of the variable to plot.
+            heatmap_timeframes: The timeframes to use for the heatmap.
+            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
+            color_map: The color map to use for the heatmap.
+            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+            show: Whether to show the plot or not.
+            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+            scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
+        """
+        dataarray = self.solution[variable_name]
+
+        scenario_suffix = ''
+        if 'scenario' in dataarray.indexes:
+            chosen_scenario = scenario or self.scenarios[0]
+            dataarray = dataarray.sel(scenario=chosen_scenario).drop_vars('scenario')
+            scenario_suffix = f'--{chosen_scenario}'
+
         return plot_heatmap(
-            dataarray=self.solution[variable_name],
-            name=variable_name,
+            dataarray=dataarray,
+            name=f'{variable_name}{scenario_suffix}',
             folder=self.folder,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
@@ -345,14 +387,37 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._variable_names]
 
-    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'time']] = None) -> xr.Dataset:
+    def filter_solution(
+        self,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
+        timesteps: Optional[pd.DatetimeIndex] = None,
+        scenarios: Optional[pd.Index] = None,
+    ) -> xr.Dataset:
         """
-        Filter the solution of the element by dimension.
+        Filter the solution to a specific variable dimension and element.
+        If no element is specified, all elements are included.
 
         Args:
-            variable_dims: The dimension of the variables to filter for.
+            variable_dims: The dimension of which to get variables from.
+                - 'scalar': Get scalar variables (without dimensions)
+                - 'time': Get time-dependent variables (with a time dimension)
+                - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+                - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+            timesteps: Optional time indexes to select. Can be:
+                - pd.DatetimeIndex: Multiple timesteps
+                - str/pd.Timestamp: Single timestep
+                Defaults to all available timesteps.
+            scenarios: Optional scenario indexes to select. Can be:
+                - pd.Index: Multiple scenarios
+                - str/int: Single scenario (int is treated as a label, not an index position)
+                Defaults to all available scenarios.
         """
-        return filter_dataset(self.solution, variable_dims)
+        return filter_dataset(
+            self.solution,
+            variable_dims=variable_dims,
+            timesteps=timesteps,
+            scenarios=scenarios,
+        )
 
 
 class _NodeResults(_ElementResults):
@@ -386,6 +451,7 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
+        scenario: Optional[Union[str, int]] = None,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
         Plots the node balance of the Component or Bus.
@@ -393,21 +459,30 @@ class _NodeResults(_ElementResults):
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+            scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
         """
+        ds = self.node_balance(with_last_timestep=True)
+
+        scenario_suffix = ''
+        if 'scenario' in ds.indexes:
+            chosen_scenario = scenario or self._calculation_results.scenarios[0]
+            ds = ds.sel(scenario=chosen_scenario).drop_vars('scenario')
+            scenario_suffix = f'--{chosen_scenario}'
+
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
-                self.node_balance(with_last_timestep=True).to_dataframe(),
+                ds.to_dataframe(),
                 colors=colors,
                 mode='area',
-                title=f'Flow rates of {self.label}',
+                title=f'Flow rates of {self.label}{scenario_suffix}',
             )
             default_filetype = '.html'
         elif engine == 'matplotlib':
             figure_like = plotting.with_matplotlib(
-                self.node_balance(with_last_timestep=True).to_dataframe(),
+                ds.to_dataframe(),
                 colors=colors,
                 mode='bar',
-                title=f'Flow rates of {self.label}',
+                title=f'Flow rates of {self.label}{scenario_suffix}',
             )
             default_filetype = '.png'
         else:
@@ -415,7 +490,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / f'{self.label} (flow rates)',
+            default_path=self._calculation_results.folder / f'{self.label} (flow rates){scenario_suffix}',
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -430,6 +505,7 @@ class _NodeResults(_ElementResults):
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
+        scenario: Optional[Union[str, int]] = None,
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -441,6 +517,7 @@ class _NodeResults(_ElementResults):
             save: Whether to save the figure.
             show: Whether to show the figure.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
+            scenario: If scenarios are present: The scenario to plot. If None, the first scenario is used.
         """
         inputs = (
             sanitize_dataset(
@@ -461,12 +538,19 @@ class _NodeResults(_ElementResults):
             * self._calculation_results.hours_per_timestep
         )
 
+        scenario_suffix = ''
+        if 'scenario' in inputs.indexes:
+            chosen_scenario = scenario or self._calculation_results.scenarios[0]
+            inputs = inputs.sel(scenario=chosen_scenario).drop_vars('scenario')
+            outputs = outputs.sel(scenario=chosen_scenario).drop_vars('scenario')
+            scenario_suffix = f'--{chosen_scenario}'
+
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
                 inputs.to_dataframe().sum(),
                 outputs.to_dataframe().sum(),
                 colors=colors,
-                title=f'Flow hours of {self.label}',
+                title=f'Flow hours of {self.label}{scenario_suffix}',
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -479,7 +563,7 @@ class _NodeResults(_ElementResults):
                 inputs.to_dataframe().sum(),
                 outputs.to_dataframe().sum(),
                 colors=colors,
-                title=f'Total flow hours of {self.label}',
+                title=f'Total flow hours of {self.label}{scenario_suffix}',
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
                 lower_percentage_group=lower_percentage_group,
@@ -490,7 +574,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / f'{self.label} (total flow hours)',
+            default_path=self._calculation_results.folder / f'{self.label} (total flow hours){scenario_suffix}',
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -548,6 +632,7 @@ class ComponentResults(_NodeResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
+        scenario: Optional[Union[str, int]] = None,
     ) -> plotly.graph_objs.Figure:
         """
         Plots the charge state of a Storage.
@@ -556,6 +641,7 @@ class ComponentResults(_NodeResults):
             show: Whether to show the plot or not.
             colors: The c
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
+            scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
 
         Raises:
             ValueError: If the Component is not a Storage.
@@ -568,16 +654,26 @@ class ComponentResults(_NodeResults):
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
+        ds = self.node_balance(with_last_timestep=True)
+        charge_state = self.charge_state
+
+        scenario_suffix = ''
+        if 'scenario' in ds.indexes:
+            chosen_scenario = scenario or self._calculation_results.scenarios[0]
+            ds = ds.sel(scenario=chosen_scenario).drop_vars('scenario')
+            charge_state = charge_state.sel(scenario=chosen_scenario).drop_vars('scenario')
+            scenario_suffix = f'--{chosen_scenario}'
+
         fig = plotting.with_plotly(
-            self.node_balance(with_last_timestep=True).to_dataframe(),
+            ds.to_dataframe(),
             colors=colors,
             mode='area',
-            title=f'Operation Balance of {self.label}',
+            title=f'Operation Balance of {self.label}{scenario_suffix}',
         )
 
         # TODO: Use colors for charge state?
 
-        charge_state = self.charge_state.to_dataframe()
+        charge_state = charge_state.to_dataframe()
         fig.add_trace(
             plotly.graph_objs.Scatter(
                 x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
@@ -586,7 +682,7 @@ class ComponentResults(_NodeResults):
 
         return plotting.export_figure(
             fig,
-            default_path=self._calculation_results.folder / f'{self.label} (charge state)',
+            default_path=self._calculation_results.folder / f'{self.label} (charge state){scenario_suffix}',
             default_filetype='.html',
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -878,21 +974,64 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
-    variable_dims: Optional[Literal['scalar', 'time']] = None,
+    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly']] = None,
+    timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
+    scenarios: Optional[Union[pd.Index, str, int]] = None,
 ) -> xr.Dataset:
     """
-    Filters a dataset by its dimensions.
+    Filters a dataset by its dimensions and optionally selects specific indexes.
 
     Args:
         ds: The dataset to filter.
-        variable_dims: The dimension of the variables to filter for.
-    """
-    if variable_dims is None:
-        return ds
+        variable_dims: The dimension of which to get variables from.
+            - 'scalar': Get scalar variables (without dimensions)
+            - 'time': Get time-dependent variables (with a time dimension)
+            - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+            - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+        timesteps: Optional time indexes to select. Can be:
+            - pd.DatetimeIndex: Multiple timesteps
+            - str/pd.Timestamp: Single timestep
+            Defaults to all available timesteps.
+        scenarios: Optional scenario indexes to select. Can be:
+            - pd.Index: Multiple scenarios
+            - str/int: Single scenario (int is treated as a label, not an index position)
+            Defaults to all available scenarios.
 
-    if variable_dims == 'scalar':
-        return ds[[name for name, da in ds.data_vars.items() if len(da.dims) == 0]]
+    Returns:
+        Filtered dataset with specified variables and indexes.
+    """
+    # Return the full dataset if all dimension types are included
+    if variable_dims is None:
+        pass
+    elif variable_dims == 'scalar':
+        ds = ds[[v for v in ds.data_vars if not ds[v].dims]]
     elif variable_dims == 'time':
-        return ds[[name for name, da in ds.data_vars.items() if 'time' in da.dims]]
+        ds = ds[[v for v in ds.data_vars if 'time' in ds[v].dims]]
+    elif variable_dims == 'scenario':
+        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('scenario',)]]
+    elif variable_dims == 'timeonly':
+        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('time',)]]
     else:
-        raise ValueError(f'Not allowed value for "filter_dataset()": {variable_dims=}')
+        raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
+
+    # Handle time selection if needed
+    if timesteps is not None and 'time' in ds.dims:
+        try:
+            ds = ds.sel(time=timesteps)
+        except KeyError:
+            available_times = set(ds.indexes['time'])
+            requested_times = set([timesteps]) if not isinstance(timesteps, pd.Index) else set(timesteps)
+            missing_times = requested_times - available_times
+            raise ValueError(f'Timesteps not found in dataset: {missing_times}. Available times: {available_times}')
+
+    # Handle scenario selection if needed
+    if scenarios is not None and 'scenario' in ds.dims:
+        try:
+            ds = ds.sel(scenario=scenarios)
+        except KeyError:
+            available_scenarios = set(ds.indexes['scenario'])
+            requested_scenarios = set([scenarios]) if not isinstance(scenarios, pd.Index) else set(scenarios)
+            missing_scenarios = requested_scenarios - available_scenarios
+            raise ValueError(f'Scenarios not found in dataset: {missing_scenarios}. Available scenarios: {available_scenarios}')
+
+    return ds
