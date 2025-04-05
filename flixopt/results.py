@@ -452,29 +452,37 @@ class _NodeResults(_ElementResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         scenario: Optional[Union[str, int]] = None,
+        mode: Literal["flow_rate", "flow_hours"] = 'flow_rate',
+        drop_suffix: bool = True,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
         Plots the node balance of the Component or Bus.
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
+            colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
+            mode: The mode to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
+                - 'flow_rate': Returns the flow_rates of the Node.
+                - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
+            drop_suffix: Whether to drop the suffix from the variable names.
         """
-        ds = self.node_balance(with_last_timestep=True)
+        ds = self.node_balance(with_last_timestep=True, mode=mode, drop_suffix=drop_suffix)
 
-        scenario_suffix = ''
+        title = f'{self.label} (flow rates)' if mode == 'flow_rate' else f'{self.label} (flow hours)'
+
         if 'scenario' in ds.indexes:
             chosen_scenario = scenario or self._calculation_results.scenarios[0]
             ds = ds.sel(scenario=chosen_scenario).drop_vars('scenario')
-            scenario_suffix = f'--{chosen_scenario}'
+            title = f'{title} - {chosen_scenario}'
 
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
                 mode='area',
-                title=f'Flow rates of {self.label}{scenario_suffix}',
+                title=title,
             )
             default_filetype = '.html'
         elif engine == 'matplotlib':
@@ -482,7 +490,7 @@ class _NodeResults(_ElementResults):
                 ds.to_dataframe(),
                 colors=colors,
                 mode='bar',
-                title=f'Flow rates of {self.label}{scenario_suffix}',
+                title=title,
             )
             default_filetype = '.png'
         else:
@@ -490,7 +498,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / f'{self.label} (flow rates){scenario_suffix}',
+            default_path=self._calculation_results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -506,6 +514,7 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
         scenario: Optional[Union[str, int]] = None,
+        drop_suffix: bool = True,
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -518,25 +527,37 @@ class _NodeResults(_ElementResults):
             show: Whether to show the figure.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             scenario: If scenarios are present: The scenario to plot. If None, the first scenario is used.
+            drop_suffix: Whether to drop the suffix from the variable names.
         """
-        inputs = (
-            sanitize_dataset(
-                ds=self.solution[self.inputs],
-                threshold=1e-5,
-                drop_small_vars=True,
-                zero_small_values=True,
-            )
-            * self._calculation_results.hours_per_timestep
+        inputs = sanitize_dataset(
+            ds=self.solution[self.inputs],
+            threshold=1e-5,
+            drop_small_vars=True,
+            zero_small_values=True,
         )
-        outputs = (
-            sanitize_dataset(
-                ds=self.solution[self.outputs],
-                threshold=1e-5,
-                drop_small_vars=True,
-                zero_small_values=True,
-            )
-            * self._calculation_results.hours_per_timestep
+        outputs = sanitize_dataset(
+            ds=self.solution[self.outputs],
+            threshold=1e-5,
+            drop_small_vars=True,
+            zero_small_values=True,
         )
+        inputs = inputs.sum('time')
+        outputs = outputs.sum('time')
+
+        title = f'{self.label} (total flow hours)'
+
+        if 'scenario' in inputs.indexes:
+            chosen_scenario = scenario or self._calculation_results.scenarios[0]
+            inputs = inputs.sel(scenario=chosen_scenario).drop_vars('scenario')
+            outputs = outputs.sel(scenario=chosen_scenario).drop_vars('scenario')
+            title = f'{title} - {chosen_scenario}'
+
+        if drop_suffix:
+            inputs = inputs.rename_vars({var: var.split('|flow_rate')[0] for var in inputs})
+            outputs = outputs.rename_vars({var: var.split('|flow_rate')[0] for var in outputs})
+        else:
+            inputs = inputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in inputs})
+            outputs = outputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in outputs})
 
         scenario_suffix = ''
         if 'scenario' in inputs.indexes:
@@ -547,10 +568,10 @@ class _NodeResults(_ElementResults):
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
-                inputs.to_dataframe().sum(),
-                outputs.to_dataframe().sum(),
+                data_left=inputs.to_pandas(),
+                data_right=outputs.to_pandas(),
                 colors=colors,
-                title=f'Flow hours of {self.label}{scenario_suffix}',
+                title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -560,10 +581,10 @@ class _NodeResults(_ElementResults):
         elif engine == 'matplotlib':
             logger.debug('Parameter text_info is not supported for matplotlib')
             figure_like = plotting.dual_pie_with_matplotlib(
-                inputs.to_dataframe().sum(),
-                outputs.to_dataframe().sum(),
+                data_left=inputs.to_pandas(),
+                data_right=outputs.to_pandas(),
                 colors=colors,
-                title=f'Total flow hours of {self.label}{scenario_suffix}',
+                title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
                 lower_percentage_group=lower_percentage_group,
@@ -574,7 +595,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / f'{self.label} (total flow hours){scenario_suffix}',
+            default_path=self._calculation_results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -587,9 +608,29 @@ class _NodeResults(_ElementResults):
         negate_outputs: bool = False,
         threshold: Optional[float] = 1e-5,
         with_last_timestep: bool = False,
+        mode: Literal["flow_rate", "flow_hours"] = 'flow_rate',
+        drop_suffix: bool = False,
     ) -> xr.Dataset:
+        """
+        Returns a dataset with the node balance of the Component or Bus.
+        Args:
+            negate_inputs: Whether to negate the input flow_rates of the Node.
+            negate_outputs: Whether to negate the output flow_rates of the Node.
+            threshold: The threshold for small values. Variables with all values below the threshold are dropped.
+            with_last_timestep: Whether to include the last timestep in the dataset.
+            mode: The mode to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
+                - 'flow_rate': Returns the flow_rates of the Node.
+                - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
+            drop_suffix: Whether to drop the suffix from the variable names.
+        """
+        ds = self.solution[self.inputs + self.outputs]
+        if drop_suffix:
+            ds = ds.rename_vars({var: var.split('|flow_hours')[0] for var in ds.data_vars})
+        if mode == 'flow_hours':
+            ds = ds * self._calculation_results.hours_per_timestep
+            ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
         return sanitize_dataset(
-            ds=self.solution[self.inputs + self.outputs],
+            ds=ds,
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
             negate=(
