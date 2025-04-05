@@ -976,10 +976,10 @@ class PiecewiseEffectsModel(Model):
         self.shares = {
             effect: self.add(
                 self._model.add_variables(
-                    coords=self._model.get_coords(time_dim=False),
-                    name=f'{self.label_full}|{effect}'
+                    coords=self._model.get_coords(time_dim=False), name=f'{self.label_full}|{effect}'
                 ),
-                f'{effect}')
+                f'{effect}',
+            )
             for effect in self._piecewise_shares
         }
 

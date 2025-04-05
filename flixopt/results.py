@@ -452,7 +452,7 @@ class _NodeResults(_ElementResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         scenario: Optional[Union[str, int]] = None,
-        mode: Literal["flow_rate", "flow_hours"] = 'flow_rate',
+        mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = True,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
@@ -601,7 +601,7 @@ class _NodeResults(_ElementResults):
         negate_outputs: bool = False,
         threshold: Optional[float] = 1e-5,
         with_last_timestep: bool = False,
-        mode: Literal["flow_rate", "flow_hours"] = 'flow_rate',
+        mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
     ) -> xr.Dataset:
         """
@@ -1052,20 +1052,24 @@ def filter_dataset(
     if timesteps is not None and 'time' in ds.dims:
         try:
             ds = ds.sel(time=timesteps)
-        except KeyError:
+        except KeyError as e:
             available_times = set(ds.indexes['time'])
             requested_times = set([timesteps]) if not isinstance(timesteps, pd.Index) else set(timesteps)
             missing_times = requested_times - available_times
-            raise ValueError(f'Timesteps not found in dataset: {missing_times}. Available times: {available_times}')
+            raise ValueError(
+                f'Timesteps not found in dataset: {missing_times}. Available times: {available_times}'
+            ) from e
 
     # Handle scenario selection if needed
     if scenarios is not None and 'scenario' in ds.dims:
         try:
             ds = ds.sel(scenario=scenarios)
-        except KeyError:
+        except KeyError as e:
             available_scenarios = set(ds.indexes['scenario'])
             requested_scenarios = set([scenarios]) if not isinstance(scenarios, pd.Index) else set(scenarios)
             missing_scenarios = requested_scenarios - available_scenarios
-            raise ValueError(f'Scenarios not found in dataset: {missing_scenarios}. Available scenarios: {available_scenarios}')
+            raise ValueError(
+                f'Scenarios not found in dataset: {missing_scenarios}. Available scenarios: {available_scenarios}'
+            ) from e
 
     return ds
