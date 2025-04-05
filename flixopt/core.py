@@ -913,8 +913,8 @@ class TimeSeriesCollection:
         if scenarios:
             self._selected_scenarios = None
 
-        # Apply the selection to all TimeSeries objects
-        self._propagate_selection_to_time_series()
+        for ts in self._time_series.values():
+            ts.clear_selection(timesteps=timesteps, scenarios=scenarios)
 
     def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
         """
