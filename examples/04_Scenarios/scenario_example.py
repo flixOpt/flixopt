@@ -13,7 +13,7 @@ if __name__ == '__main__':
     # Heat demand profile (e.g., kW) over time and corresponding power prices
     heat_demand_per_h = np.array([[30, 0, 90, 110, 110, 20, 20, 20, 20],
                                   [30, 0, 100, 118, 125, 20, 20, 20, 20]]).T
-    power_prices = np.ones(9) * 0.08
+    power_prices = np.array([0.08, 0.09])
 
     # Create datetime array starting from '2020-01-01' for the given time period
     timesteps = pd.date_range('2020-01-01', periods=9, freq='h')
