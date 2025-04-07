@@ -658,7 +658,7 @@ class OnOffModel(Model):
             on_hours_total_min=self.parameters.on_hours_total_min,
             on_hours_total_max=self.parameters.on_hours_total_max,
             effects_per_running_hour=self.parameters.effects_per_running_hour,
-            label=f'OnOff',
+            label='State',
         )
         self.add(self.state_model)
         self.state_model.do_modeling()
@@ -672,7 +672,7 @@ class OnOffModel(Model):
                 previous_state=self.state_model.previous_on_states[-1],
                 switch_on_max=self.parameters.switch_on_total_max,
                 effects_per_switch_on=self.parameters.effects_per_switch_on,
-                label=f'{self.label_full}|switch',
+                label=f'SwitchState',
             )
             self.add(self.switch_state_model)
             self.switch_state_model.do_modeling()
@@ -686,7 +686,7 @@ class OnOffModel(Model):
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
                 previous_states=self.state_model.previous_on_states,
-                label=f'{self.label_full}|ConsecutiveOn',
+                label=f'ConsecutiveOn',
             )
             self.add(self.consecutive_on_model)
             self.consecutive_on_model.do_modeling()
@@ -706,7 +706,7 @@ class OnOffModel(Model):
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
                 previous_states=self.state_model.previous_off_states,
-                label=f'{self.label_full}|ConsecutiveOff',
+                label=f'ConsecutiveOff',
             )
             self.add(self.consecutive_off_model)
             self.consecutive_off_model.do_modeling()
