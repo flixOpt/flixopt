@@ -284,8 +284,6 @@ class StateModel(Model):
             # Constraint: on + off = 1
             self.add(self._model.add_constraints(self.on + self.off == 1, name=f'{self.label_full}|off'), 'off')
 
-        self._create_shares()
-
         return self
 
     def _add_defining_constraints(self):
@@ -332,17 +330,6 @@ class StateModel(Model):
                 'on_con2',
             )
 
-    def _create_shares(self):
-        if self._effects_per_running_hour:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.on * factor * self._model.hours_per_step
-                    for effect, factor in self._effects_per_running_hour.items()
-                },
-                target='operation',
-            )
-
     @property
     def previous_states(self) -> np.ndarray:
         """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
@@ -377,14 +364,12 @@ class SwitchStateModel(Model):
         state_variable: linopy.Variable,
         previous_state=0,
         switch_on_max: Optional[Scalar] = None,
-        effects_per_switch_on: Dict[str, TimestepData] = None,
         label: Optional[str] = None,
     ):
         super().__init__(model, label_of_element, label)
         self._state_variable = state_variable
         self.previous_state = previous_state
         self._switch_on_max = switch_on_max if switch_on_max is not None else np.inf
-        self._effects_per_switch_on = effects_per_switch_on or {}
 
         self.switch_on = None
         self.switch_off = None
@@ -447,19 +432,7 @@ class SwitchStateModel(Model):
             'switch_on_nr',
         )
 
-        self._create_shares()
-
         return self
-
-    def _create_shares(self):
-        if self._effects_per_switch_on:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.switch_on * factor for effect, factor in self._effects_per_switch_on.items()
-                },
-                target='operation',
-            )
 
 
 class ConsecutiveStateModel(Model):
@@ -477,6 +450,18 @@ class ConsecutiveStateModel(Model):
         previous_states: Optional[TimestepData] = None,
         label: Optional[str] = None,
     ):
+        """
+        Model and constraint the consecutive duration of a state variable.
+
+        Args:
+            model: The SystemModel that is used to create the model.
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            state_variable: The state variable that is used to model the duration. state = {0, 1}
+            minimum_duration: The minimum duration of the state variable.
+            maximum_duration: The maximum duration of the state variable.
+            previous_states: The previous states of the state variable.
+            label: The label of the model. Used to construct the full label of the model.
+        """
         super().__init__(model, label_of_element, label)
         self._state_variable = state_variable
         self._previous_states = previous_states
@@ -671,7 +656,6 @@ class OnOffModel(Model):
                 state_variable=self.state_model.on,
                 previous_state=self.state_model.previous_on_states[-1],
                 switch_on_max=self.parameters.switch_on_total_max,
-                effects_per_switch_on=self.parameters.effects_per_switch_on,
                 label=f'SwitchState',
             )
             self.add(self.switch_state_model)
@@ -710,6 +694,29 @@ class OnOffModel(Model):
             )
             self.add(self.consecutive_off_model)
             self.consecutive_off_model.do_modeling()
+
+            self._create_shares()
+
+    def _create_shares(self):
+        if self.parameters.effects_per_running_hour:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.state_model.on * factor * self._model.hours_per_step
+                    for effect, factor in self.parameters.effects_per_running_hour.items()
+                },
+                target='operation',
+            )
+
+        if self.parameters.effects_per_switch_on:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.switch_state_model.switch_on * factor
+                    for effect, factor in self.parameters.effects_per_switch_on.items()
+                },
+                target='operation',
+            )
 
     @property
     def on(self):
