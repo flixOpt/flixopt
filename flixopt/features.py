@@ -4,15 +4,15 @@ Features extend the functionality of Elements.
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import linopy
 import numpy as np
 
 from . import utils
 from .config import CONFIG
-from .core import Scalar, TimeSeries, NumericData, Scalar
-from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
+from .core import Scalar, TimestepData
+from .interface import InvestParameters, Piecewise
 from .structure import Model, SystemModel
 
 logger = logging.getLogger('flixopt')
@@ -203,24 +203,27 @@ class BinaryStateComponent(Model):
         model: SystemModel,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[NumericData, NumericData]],
+        defining_bounds: List[Tuple[TimestepData, TimestepData]],
+        previous_values: List[Optional[TimestepData]] = None,
         use_off: bool = True,
-        on_hours_total_min: Optional[NumericData] = 0,
-        on_hours_total_max: Optional[NumericData] = np.inf,
+        on_hours_total_min: Optional[TimestepData] = 0,
+        on_hours_total_max: Optional[TimestepData] = np.inf,
+        effects_per_running_hour: Dict[str, TimestepData] = None,
         label: Optional[str] = None,
     ):
         super().__init__(model, label_of_element, label)
         assert len(defining_variables) == len(defining_bounds), 'Every defining Variable needs bounds to Model OnOff'
         self._defining_variables = defining_variables
         self._defining_bounds = defining_bounds
+        self._previous_values = previous_values or []
         self._on_hours_total_min = on_hours_total_min
         self._on_hours_total_max = on_hours_total_max
         self._use_off = use_off
+        self._effects_per_running_hour = effects_per_running_hour or {}
 
         self.on = None
         self.total_on_hours: Optional[linopy.Variable] = None
         self.off = None
-
 
     def do_modeling(self):
         self.on = self.add(
@@ -265,6 +268,8 @@ class BinaryStateComponent(Model):
 
             # Constraint: on + off = 1
             self.add(self._model.add_constraints(self.on + self.off == 1, name=f'{self.label}|off'), 'off')
+
+        self._create_shares()
 
         return self
 
@@ -312,6 +317,47 @@ class BinaryStateComponent(Model):
                 'on_con2',
             )
 
+    def _create_shares(self):
+        if self._effects_per_running_hour:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.on * factor * self._model.hours_per_step
+                    for effect, factor in self._effects_per_running_hour.items()
+                },
+                target='operation',
+            )
+
+    @property
+    def previous_on_values(self):
+        return self.compute_previous_on_states(self._previous_values)
+
+    @property
+    def previous_off_values(self):
+        return 1 - self.previous_on_values
+
+    @staticmethod
+    def compute_previous_on_states(previous_values: List[Optional[TimestepData]], epsilon: float = 1e-5) -> np.ndarray:
+        """
+        Computes the previous 'on' states {0, 1} of defining variables as a binary array from their previous values.
+
+        Args:
+            previous_values: List of previous values of the defining variables. In Range [0, inf] or None (ignored)
+            epsilon: Tolerance for equality to determine "off" state, default is 1e-5.
+
+        Returns:
+            A binary array (0 and 1) indicating the previous on/off states of the variables.
+            Returns `array([0])` if no previous values are available.
+        """
+        if not previous_values or all([val is None for val in previous_values]):
+            return np.array([0])
+        else:  # Convert to 2D-array and compute binary on/off states
+            previous_values = np.array([values for values in previous_values if values is not None])  # Filter out None
+            if previous_values.ndim > 1:
+                return np.any(~np.isclose(previous_values, 0, atol=epsilon), axis=0).astype(int)
+            else:
+                return (~np.isclose(previous_values, 0, atol=epsilon)).astype(int)
+
 
 class SwitchBinaryModel(Model):
     """
@@ -325,12 +371,14 @@ class SwitchBinaryModel(Model):
         state_variable: linopy.Variable,
         previous_value=0,
         switch_on_max: Scalar = np.inf,
+        effects_per_switch_on: Dict[str, TimestepData] = None,
         label: Optional[str] = None,
     ):
         super().__init__(model, label_of_element, label)
         self._state_variable = state_variable
         self.previous_value = previous_value
         self._switch_on_max = switch_on_max
+        self._effects_per_switch_on = effects_per_switch_on or {}
 
         self.switch_on = None
         self.switch_off = None
@@ -373,8 +421,7 @@ class SwitchBinaryModel(Model):
         self.add(
             self._model.add_constraints(
                 self.switch_on.isel(time=0) - self.switch_off.isel(time=0)
-                ==
-                self._state_variable.isel(time=0) - self.previous_value,
+                == self._state_variable.isel(time=0) - self.previous_value,
                 name=f'{self.label}|initial_switch_con',
             ),
             'initial_switch_con',
@@ -394,7 +441,19 @@ class SwitchBinaryModel(Model):
             'switch_on_nr',
         )
 
+        self._create_shares()
+
         return self
+
+    def _create_shares(self):
+        if self._effects_per_switch_on:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.switch_on * factor for effect, factor in self._effects_per_switch_on.items()
+                },
+                target='operation',
+            )
 
 
 class ConsecutiveBinaryModel(Model):
@@ -407,11 +466,12 @@ class ConsecutiveBinaryModel(Model):
         model: SystemModel,
         label_of_element: str,
         state_variable: linopy.Variable,
-        minimum_duration: NumericData = 0,
-        maximum_duration: Optional[NumericData] = None,
-        previous_duration=0
+        minimum_duration: Optional[TimestepData] = None,
+        maximum_duration: Optional[TimestepData] = None,
+        previous_duration=0,
+        label: Optional[str] = None,
     ):
-        super().__init__(model, label_of_element)
+        super().__init__(model, label_of_element, label)
         self._state_variable = state_variable
         self._previous_duration = previous_duration
         self._minimum_duration = minimum_duration
@@ -473,7 +533,9 @@ class ConsecutiveBinaryModel(Model):
             self.add(
                 self._model.add_constraints(
                     self.duration
-                    >= (self._state_variable.isel(time=slice(None, -1)) - self._state_variable.isel(time=slice(1, None)))
+                    >= (
+                        self._state_variable.isel(time=slice(None, -1)) - self._state_variable.isel(time=slice(1, None))
+                    )
                     * self._minimum_duration.isel(time=slice(None, -1)),
                     name=f'{self.label_full}|consecutive_minimum',
                 ),
@@ -484,8 +546,7 @@ class ConsecutiveBinaryModel(Model):
             if 0 < self._previous_duration < self._minimum_duration.isel(time=0):
                 self.add(
                     self._model.add_constraints(
-                        self._state_variable.isel(time=0) == 1,
-                        name=f'{self.label_full}|consecutive_minimum_initial'
+                        self._state_variable.isel(time=0) == 1, name=f'{self.label_full}|consecutive_minimum_initial'
                     ),
                     f'consecutive_minimum_initial',
                 )
@@ -500,6 +561,47 @@ class ConsecutiveBinaryModel(Model):
         )
 
         return self
+
+    @staticmethod
+    def compute_consecutive_duration(
+        binary_values: TimestepData, hours_per_timestep: Union[int, float, np.ndarray]
+    ) -> Scalar:
+        """
+        Computes the final consecutive duration in State 'on' (=1) in hours, from a binary.
+
+        hours_per_timestep is handled in a way, that maximizes compatability.
+        Its length must only be as long as the last consecutive duration in binary_values.
+
+        Args:
+            binary_values: An int or 1D binary array containing only `0`s and `1`s.
+            hours_per_timestep: The duration of each timestep in hours.
+
+        Returns:
+            The duration of the binary variable in hours.
+        """
+        if np.isscalar(binary_values) and np.isscalar(hours_per_timestep):
+            return binary_values * hours_per_timestep
+        elif np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
+            return binary_values * hours_per_timestep[-1]
+
+        # Find the indexes where value=`0` in a 1D-array
+        zero_indices = np.where(np.isclose(binary_values, 0, atol=CONFIG.modeling.EPSILON))[0]
+        length_of_last_duration = zero_indices[-1] + 1 if zero_indices.size > 0 else len(binary_values)
+
+        if not np.isscalar(binary_values) and np.isscalar(hours_per_timestep):
+            return np.sum(binary_values[-length_of_last_duration:] * hours_per_timestep)
+        elif not np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
+            if length_of_last_duration > len(hours_per_timestep):  # check that lengths are compatible
+                raise TypeError(
+                    f'When trying to calculate the consecutive duration, the length of the last duration '
+                    f'({length_of_last_duration}) is longer than the hours_per_timestep ({len(hours_per_timestep)})'
+                )
+            return np.sum(binary_values[-length_of_last_duration:] * hours_per_timestep[-length_of_last_duration:])
+        else:
+            raise Exception(
+                f'Unexpected state reached in function compute_consecutive_duration(). binary_values={binary_values}; '
+                f'hours_per_timestep={hours_per_timestep}'
+            )
 
 
 class PieceModel(Model):
