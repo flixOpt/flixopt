@@ -677,12 +677,6 @@ class OnOffModel(Model):
 
         # Create consecutive off hours component if needed
         if self.parameters.use_consecutive_off_hours:
-            if not self.parameters.use_off:
-                logger.warning(
-                    f'In {self.label_full}, consecutive_off_hours are requested, but use_off=False. '
-                    f'Setting use_off=True automatically.'
-                )
-
             self.consecutive_off_model = ConsecutiveStateModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
