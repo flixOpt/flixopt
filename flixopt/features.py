@@ -644,7 +644,6 @@ class OnOffModel(Model):
             on_hours_total_min=self.parameters.on_hours_total_min,
             on_hours_total_max=self.parameters.on_hours_total_max,
             effects_per_running_hour=self.parameters.effects_per_running_hour,
-            label='State',
         )
         self.add(self.state_model)
         self.state_model.do_modeling()
@@ -657,7 +656,6 @@ class OnOffModel(Model):
                 state_variable=self.state_model.on,
                 previous_state=self.state_model.previous_on_states[-1],
                 switch_on_max=self.parameters.switch_on_total_max,
-                label=f'SwitchState',
             )
             self.add(self.switch_state_model)
             self.switch_state_model.do_modeling()
