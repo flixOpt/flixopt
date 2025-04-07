@@ -529,7 +529,7 @@ class OnOffModel(Model):
             self.add(
                 self._model.add_constraints(
                     duration_in_hours.isel(time=0)
-                    == self._model.hours_per_step.isel(time=0) * binary_variable.isel(time=0),
+                    == (self._model.hours_per_step.isel(time=0) + previous_duration) * binary_variable.isel(time=0),
                     name=f'{self.label_full}|{variable_name}_initial',
                 ),
                 f'{variable_name}_initial',
