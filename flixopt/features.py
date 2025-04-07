@@ -695,7 +695,7 @@ class OnOffModel(Model):
             self.add(self.consecutive_off_model)
             self.consecutive_off_model.do_modeling()
 
-            self._create_shares()
+        self._create_shares()
 
     def _create_shares(self):
         if self.parameters.effects_per_running_hour:
