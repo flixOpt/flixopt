@@ -45,7 +45,8 @@ class InvestmentModel(Model):
         if self.parameters.fixed_size and not self.parameters.optional:
             self.size = self.add(
                 self._model.add_variables(
-                    lower=self.parameters.fixed_size, upper=self.parameters.fixed_size, name=f'{self.label_full}|size'
+                    lower=self.parameters.fixed_size, upper=self.parameters.fixed_size, name=f'{self.label_full}|size',
+                    coords=self._model.get_coords(time_dim=False),
                 ),
                 'size',
             )
@@ -55,6 +56,7 @@ class InvestmentModel(Model):
                     lower=0 if self.parameters.optional else self.parameters.minimum_size,
                     upper=self.parameters.maximum_size,
                     name=f'{self.label_full}|size',
+                    coords=self._model.get_coords(time_dim=False),
                 ),
                 'size',
             )
@@ -62,7 +64,12 @@ class InvestmentModel(Model):
         # Optional
         if self.parameters.optional:
             self.is_invested = self.add(
-                self._model.add_variables(binary=True, name=f'{self.label_full}|is_invested'), 'is_invested'
+                self._model.add_variables(
+                    binary=True,
+                    name=f'{self.label_full}|is_invested',
+                    coords=self._model.get_coords(time_dim=False),
+                ),
+                'is_invested',
             )
 
             self._create_bounds_for_optional_investment()
