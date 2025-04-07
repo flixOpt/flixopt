@@ -550,7 +550,8 @@ class ConsecutiveStateModel(Model):
         # Set initial value
         self.add(
             self._model.add_constraints(
-                self.duration.isel(time=0) == hours_per_step.isel(time=0) * self._state_variable.isel(time=0),
+                self.duration.isel(time=0) ==
+                (hours_per_step.isel(time=0) + self.previous_duration) * self._state_variable.isel(time=0),
                 name=f'{self.label_full}|consecutive_initial',
             ),
             f'consecutive_initial',
