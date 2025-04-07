@@ -722,6 +722,30 @@ class OnOffModel(Model):
     def on(self):
         return self.state_model.on
 
+    @property
+    def off(self):
+        return self.state_model.off
+
+    @property
+    def switch_on(self):
+        return self.switch_state_model.switch_on
+
+    @property
+    def switch_off(self):
+        return self.switch_state_model.switch_off
+
+    @property
+    def switch_on_nr(self):
+        return self.switch_state_model.switch_on_nr
+
+    @property
+    def consecutive_on_hours(self):
+        return self.consecutive_on_model.duration
+
+    @property
+    def consecutive_off_hours(self):
+        return self.consecutive_off_model.duration
+
 
 class PieceModel(Model):
     """Class for modeling a linear piece of one or more variables in parallel"""
