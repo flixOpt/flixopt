@@ -277,6 +277,13 @@ class Flow(Element):
                 f'if you want to allow flows to be switched on and off.'
             )
 
+        if (self.relative_minimum > 0).any() and self.on_off_parameters is None:
+            logger.warning(
+                f'Flow {self.label} has a relative_minimum of {self.relative_minimum.active_data} and no on_off_parameters. '
+                f'This prevents the flow_rate from switching off (flow_rate = 0). '
+                f'Consider using on_off_parameters to allow the flow to be switched on and off.'
+            )
+
     @property
     def label_full(self) -> str:
         return f'{self.component}({self.label})'
