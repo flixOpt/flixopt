@@ -4,7 +4,7 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union, Literal
 
 from .config import CONFIG
 from .core import NumericDataTS, Scalar, ScenarioData, TimestepData
@@ -158,7 +158,7 @@ class InvestParameters(Interface):
         specific_effects: Optional['EffectValuesUserScenario'] = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: Optional[PiecewiseEffects] = None,
         divest_effects: Optional['EffectValuesUserScenario'] = None,
-        size_per_scenario: bool = False,
+        size_per_scenario: Literal['equal', 'individual', 'increment_once'] = 'equal',
     ):
         """
         Args:
@@ -172,7 +172,11 @@ class InvestParameters(Interface):
             piecewise_effects: Define the effects of the investment as a piecewise function of the size of the investment.
             minimum_size: Minimum possible size of the investment.
             maximum_size: Maximum possible size of the investment.
-            size_per_scenario: optimize the size per scenario individually (only if scenarios are defined)
+            size_per_scenario: How to treat the size in each scenario
+                - 'equal': Equalize the size of all scenarios
+                - 'individual': Optimize the size of each scenario individually
+                - 'increment_once': Allow the size to increase only once. This is useful if the scenarios are related to
+                    different periods (years, months). Tune the timing by setting the maximum size to 0 in the first scenarios.
         """
         self.fix_effects: EffectValuesUserScenario = fix_effects if fix_effects is not None else {}
         self.divest_effects: EffectValuesUserScenario = divest_effects if divest_effects is not None else {}

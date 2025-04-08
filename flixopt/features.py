@@ -33,6 +33,7 @@ class InvestmentModel(Model):
         super().__init__(model, label_of_element, label)
         self.size: Optional[Union[Scalar, linopy.Variable]] = None
         self.is_invested: Optional[linopy.Variable] = None
+        self.scenario_of_investment: Optional[linopy.Variable] = None
 
         self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
 
@@ -73,6 +74,9 @@ class InvestmentModel(Model):
             )
 
             self._create_bounds_for_optional_investment()
+
+        if self._model.time_series_collection.scenarios is not None:
+            self._create_bounds_for_scenarios()
 
         # Bounds for defining variable
         self._create_bounds_for_defining_variable()
@@ -197,6 +201,73 @@ class InvestmentModel(Model):
                 f'lb_{variable.name}',
             )
             # anmerkung: Glg bei Spezialfall relative_minimum = 0 redundant zu OnOff ??
+
+    def _create_bounds_for_scenarios(self):
+        if self.parameters.size_per_scenario == 'equal':
+            self.add(
+                self._model.add_constraints(
+                    self.size.isel(scenario=slice(None, -1)) == self.size.isel(scenario=slice(1, None)),
+                    name=f'{self.label_full}|equalize_size_per_scenario',
+                ),
+                'equalize_size_per_scenario',
+            )
+        elif self.parameters.size_per_scenario == 'increment_once':
+            if not self.parameters.optional:
+                raise ValueError('Increment once can only be used if the Investment is optional')
+
+            self.scenario_of_investment = self.add(
+                self._model.add_variables(
+                    binary=True,
+                    name=f'{self.label_full}|scenario_of_investment',
+                    coords=self._model.get_coords(time_dim=False),
+                ),
+                'scenario_of_investment',
+            )
+
+            # eq: scenario_of_investment(t) = is_invested(t) - is_invested(t-1)
+            self.add(
+                self._model.add_constraints(
+                    self.scenario_of_investment.isel(scenario=slice(1, None))
+                    == self.is_invested.isel(scenario=slice(1, None)) - self.is_invested.isel(scenario=slice(None, -1)),
+                    name=f'{self.label_full}|scenario_of_investment',
+                ),
+                'scenario_of_investment',
+            )
+
+            # eq: scenario_of_investment(t=0) = is_invested(t=0)
+            self.add(
+                self._model.add_constraints(
+                    self.scenario_of_investment.isel(scenario=0)
+                    == self.is_invested.isel(scenario=0),
+                    name=f'{self.label_full}|initial_scenario_of_investment',
+                ),
+                'initial_scenario_of_investment',
+            )
+
+            big_m = self.parameters.maximum_size.isel(scenario=slice(1, None))
+
+            self.add(
+                self._model.add_constraints(
+                    self.size.isel(scenario=slice(1, None)) - self.size.isel(scenario=slice(None, -1))
+                    <= self.scenario_of_investment.isel(scenario=slice(1, None)) * big_m,
+                    name=f'{self.label_full}|invest_once_1a',
+                ),
+                'invest_once_1a',
+            )
+
+            self.add(
+                self._model.add_constraints(
+                    self.size.isel(scenario=slice(1, None)) - self.size.isel(scenario=slice(None, -1))
+                    >= self.scenario_of_investment.isel(scenario=slice(1, None)) * big_m,
+                    name=f'{self.label_full}|invest_once_1b',
+                ),
+                'invest_once_1b',
+            )
+
+        elif self.parameters.size_per_scenario == 'individual':
+            pass
+        else:
+            raise ValueError(f'Invalid value for size_per_scenario: {self.parameters.size_per_scenario}')
 
 
 class OnOffModel(Model):
