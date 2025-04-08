@@ -578,8 +578,8 @@ class StorageModel(ComponentModel):
     @property
     def relative_charge_state_bounds(self) -> Tuple[TimestepData, TimestepData]:
         return (
-            self.element.relative_minimum_charge_state.selected_data,
-            self.element.relative_maximum_charge_state.selected_data,
+            self.element.relative_minimum_charge_state,
+            self.element.relative_maximum_charge_state,
         )
 
 

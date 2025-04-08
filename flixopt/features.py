@@ -53,8 +53,8 @@ class InvestmentModel(Model):
         else:
             self.size = self.add(
                 self._model.add_variables(
-                    lower=0 if self.parameters.optional else self.parameters.minimum_size,
-                    upper=self.parameters.maximum_size,
+                    lower=0 if self.parameters.optional else self.parameters.minimum_size*1,
+                    upper=self.parameters.maximum_size.selected_data,
                     name=f'{self.label_full}|size',
                     coords=self._model.get_coords(time_dim=False),
                 ),
@@ -188,7 +188,7 @@ class InvestmentModel(Model):
             #     ... mit mega = relative_maximum * maximum_size
             # äquivalent zu:.
             # eq: - defining_variable(t) + mega * On(t) + size * relative_minimum(t) <= + mega
-            mega = lb_relative * self.parameters.maximum_size
+            mega = self.parameters.maximum_size * lb_relative
             on = self._on_variable
             self.add(
                 self._model.add_constraints(

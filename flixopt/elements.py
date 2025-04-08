@@ -434,8 +434,8 @@ class FlowModel(ElementModel):
         if not isinstance(size, InvestParameters):
             return relative_minimum * size, relative_maximum * size
         if size.fixed_size is not None:
-            return relative_minimum * size.fixed_size, relative_maximum * size.fixed_size
-        return relative_minimum * size.minimum_size, relative_maximum * size.maximum_size
+            return size.fixed_size * relative_minimum, size.fixed_size * relative_maximum
+        return size.minimum_size * relative_minimum, size.maximum_size * relative_maximum
 
     @property
     def relative_flow_rate_bounds(self) -> Tuple[TimestepData, TimestepData]:
