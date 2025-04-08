@@ -1311,6 +1311,7 @@ def export_figure(
         TypeError: If the figure type is not supported.
     """
     filename = user_path or default_path
+    filename = filename.with_name(filename.name.replace('|', '__'))
     if filename.suffix == '':
         if default_filetype is None:
             raise ValueError('No default filetype provided')
