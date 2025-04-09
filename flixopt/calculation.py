@@ -105,15 +105,15 @@ class Calculation:
             'Buses with excess': [
                 {
                     bus.label_full: {
-                        'input': np.sum(bus.model.excess_input.solution.values),
-                        'output': np.sum(bus.model.excess_output.solution.values),
+                        'input': bus.model.excess_input.solution.sum('time'),
+                        'output': bus.model.excess_output.solution.sum('time'),
                     }
                 }
                 for bus in self.flow_system.buses.values()
                 if bus.with_excess
                 and (
-                    np.sum(bus.model.excess_input.solution.values) > 1e-3
-                    or np.sum(bus.model.excess_output.solution.values) > 1e-3
+                    bus.model.excess_input.solution.sum() > 1e-3
+                    or bus.model.excess_output.solution.sum() > 1e-3
                 )
             ],
         }
