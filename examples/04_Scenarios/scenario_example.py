@@ -9,15 +9,16 @@ from rich.pretty import pprint  # Used for pretty printing
 import flixopt as fx
 
 if __name__ == '__main__':
-    # --- Create Time Series Data ---
-    # Heat demand profile (e.g., kW) over time and corresponding power prices
-    heat_demand_per_h = np.array([[30, 0, 90, 110, 110, 20, 20, 20, 20],
-                                  [30, 0, 100, 118, 125, 20, 20, 20, 20]]).T
-    power_prices = np.array([0.08, 0.09])
-
     # Create datetime array starting from '2020-01-01' for the given time period
     timesteps = pd.date_range('2020-01-01', periods=9, freq='h')
     scenarios = pd.Index(['Base Case', 'High Demand'])
+
+    # --- Create Time Series Data ---
+    # Heat demand profile (e.g., kW) over time and corresponding power prices
+    heat_demand_per_h = pd.DataFrame({'Base Case':[30, 0, 90, 110, 110, 20, 20, 20, 20],
+                                      'High Demand':[30, 0, 100, 118, 125, 20, 20, 20, 20]}, index=timesteps)
+    power_prices = np.array([0.08, 0.09])
+
     flow_system = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
 
     # --- Define Energy Buses ---
