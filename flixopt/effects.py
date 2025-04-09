@@ -383,14 +383,10 @@ class EffectCollectionModel(Model):
             model.do_modeling()
 
         self._add_share_between_effects()
-        scaling_factor = (
-            len(self._model.time_series_collection.scenarios)
-            if self._model.time_series_collection.scenarios is not None
-            else 1
-        )
+
         self._model.add_objective(
-            (self.effects.objective_effect.model.total / scaling_factor).sum()
-            + (self.penalty.total / scaling_factor).sum()
+            (self.effects.objective_effect.model.total * self._model.scenario_weights).sum()
+            + self.penalty.total.sum()
         )
 
     def _add_share_between_effects(self):
