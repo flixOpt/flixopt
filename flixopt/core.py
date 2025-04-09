@@ -177,6 +177,8 @@ class DataConverter:
         Returns:
             DataArray with the scalar value
         """
+        if isinstance(data, (np.integer, np.floating)):
+            data = data.item()
         return xr.DataArray(data, coords=coords, dims=dims)
 
     @staticmethod
@@ -198,7 +200,7 @@ class DataConverter:
                 raise ConversionError('When converting to dimensionless DataArray, source must be scalar')
             return xr.DataArray(data.values.item())
 
-        # Check if data already has matching dimensions
+        # Check if data already has matching dimensions and coordinates
         if set(data.dims) == set(dims):
             # Check if coordinates match
             is_compatible = True
@@ -208,8 +210,13 @@ class DataConverter:
                     break
 
             if is_compatible:
-                # Return existing DataArray if compatible
-                return data.copy(deep=True)
+                # Ensure dimensions are in the correct order
+                if data.dims != dims:
+                    # Transpose to get dimensions in the right order
+                    return data.transpose(*dims).copy(deep=True)
+                else:
+                    # Return existing DataArray if compatible and order is correct
+                    return data.copy(deep=True)
 
         # Handle dimension broadcasting
         if len(data.dims) == 1 and len(dims) == 2:
@@ -222,8 +229,9 @@ class DataConverter:
                 # Broadcast scenario dimension to include time
                 return DataConverter._broadcast_scenario_to_time(data, coords, dims)
 
-        raise ConversionError(f'Cannot convert {data.dims} to {dims}')
-
+        raise ConversionError(
+            f'Cannot convert {data.dims} to {dims}. Source coordinates: {data.coords}, Target coordinates: {coords}'
+        )
     @staticmethod
     def _broadcast_time_to_scenarios(
         data: xr.DataArray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]
