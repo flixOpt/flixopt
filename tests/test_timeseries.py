@@ -66,7 +66,7 @@ class TestTimeSeries:
         """Test validation during initialization."""
         # Test missing time dimension
         invalid_data = xr.DataArray([1, 2, 3], dims=['invalid_dim'])
-        with pytest.raises(ValueError, match='must have a "time" index'):
+        with pytest.raises(ValueError, match='DataArray dimensions must be subset of'):
             TimeSeries(invalid_data, name='Invalid Series')
 
         # Test multi-dimensional data
@@ -356,7 +356,7 @@ class TestTimeSeriesWithScenarios:
 
         # Check basic properties
         assert ts.name == 'Scenario Series'
-        assert ts._has_scenarios is True
+        assert ts.has_scenario_dim is True
         assert ts._selected_scenarios is None  # No selection initially
 
         # Check data initialization
@@ -615,29 +615,29 @@ class TestTimeSeriesAllocatorWithScenarios:
         """Test creating time series with scenarios."""
         # Test scalar (broadcasts to all scenarios)
         ts1 = sample_scenario_allocator.add_time_series('scalar_series', 42)
-        assert ts1._has_scenarios
+        assert ts1.has_scenario_dim
         assert ts1.name == 'scalar_series'
-        assert ts1.selected_data.shape == (3, 5)  # 3 scenarios, 5 timesteps
+        assert ts1.selected_data.shape == (5, 3)  # 5 timesteps, 3 scenarios
         assert np.all(ts1.selected_data.values == 42)
 
         # Test 1D array (broadcasts to all scenarios)
         data = np.array([1, 2, 3, 4, 5])
         ts2 = sample_scenario_allocator.add_time_series('array_series', data)
-        assert ts2._has_scenarios
-        assert ts2.selected_data.shape == (3, 5)
+        assert ts2.has_scenario_dim
+        assert ts2.selected_data.shape == (5, 3)
         # Each scenario should have the same values
         for scenario in sample_scenario_allocator.scenarios:
             assert np.array_equal(ts2.sel(scenario=scenario).values, data)
 
         # Test 2D array (one row per scenario)
-        data_2d = np.array([[10, 20, 30, 40, 50], [15, 25, 35, 45, 55], [5, 15, 25, 35, 45]])
+        data_2d = np.array([[10, 20, 30, 40, 50], [15, 25, 35, 45, 55], [5, 15, 25, 35, 45]]).T
         ts3 = sample_scenario_allocator.add_time_series('scenario_specific_series', data_2d)
-        assert ts3._has_scenarios
-        assert ts3.selected_data.shape == (3, 5)
+        assert ts3.has_scenario_dim
+        assert ts3.selected_data.shape == (5, 3)
         # Each scenario should have its own values
-        assert np.array_equal(ts3.sel(scenario='baseline').values, data_2d[0])
-        assert np.array_equal(ts3.sel(scenario='high_demand').values, data_2d[1])
-        assert np.array_equal(ts3.sel(scenario='low_price').values, data_2d[2])
+        assert np.array_equal(ts3.sel(scenario='baseline').values, data_2d[:,0])
+        assert np.array_equal(ts3.sel(scenario='high_demand').values, data_2d[:,1])
+        assert np.array_equal(ts3.sel(scenario='low_price').values, data_2d[:,2])
 
     def test_selection_propagation_with_scenarios(
         self, sample_scenario_allocator, sample_timesteps, sample_scenario_index
@@ -660,8 +660,8 @@ class TestTimeSeriesAllocatorWithScenarios:
         assert ts2._selected_scenarios.equals(subset_scenarios)
 
         # Check data is filtered
-        assert ts1.selected_data.shape == (2, 5)  # 2 scenarios, 5 timesteps
-        assert ts2.selected_data.shape == (2, 5)
+        assert ts1.selected_data.shape == (5, 2)  # 5 timesteps, 2 scenarios
+        assert ts2.selected_data.shape == (5, 2)
 
         # Apply combined selection
         subset_timesteps = sample_timesteps[1:3]
@@ -670,20 +670,22 @@ class TestTimeSeriesAllocatorWithScenarios:
         # Check combined selection applied
         assert ts1._selected_timesteps.equals(subset_timesteps)
         assert ts1._selected_scenarios.equals(subset_scenarios)
-        assert ts1.selected_data.shape == (2, 2)  # 2 scenarios, 2 timesteps
+        assert ts1.selected_data.shape == (2, 2)  # 2 timesteps, 2 scenarios
 
         # Clear selections
         sample_scenario_allocator.clear_selection()
         assert ts1._selected_timesteps is None
+        assert ts1.active_timesteps.equals(sample_scenario_allocator.timesteps)
         assert ts1._selected_scenarios is None
-        assert ts1.selected_data.shape == (3, 5)  # Back to full shape
+        assert ts1.active_scenarios.equals(sample_scenario_allocator.scenarios)
+        assert ts1.selected_data.shape == (5, 3)  # Back to full shape
 
     def test_as_dataset_with_scenarios(self, sample_scenario_allocator):
         """Test as_dataset method with scenarios."""
         # Add some time series
         sample_scenario_allocator.add_time_series('scalar_series', 42)
         sample_scenario_allocator.add_time_series(
-            'varying_series', np.array([[10, 20, 30, 40, 50], [15, 25, 35, 45, 55], [5, 15, 25, 35, 45]])
+            'varying_series', np.array([[10, 20, 30, 40, 50], [15, 25, 35, 45, 55], [5, 15, 25, 35, 45]]).T
         )
 
         # Get dataset
@@ -723,21 +725,21 @@ class TestTimeSeriesAllocatorWithScenarios:
         """Test updating a time series with scenarios."""
         # Add a time series
         ts = sample_scenario_allocator.add_time_series('series', 42)
-        assert ts._has_scenarios
+        assert ts.has_scenario_dim
         assert np.all(ts.selected_data.values == 42)
 
         # Update with scenario-specific data
-        new_data = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15]])
+        new_data = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15]]).T
         sample_scenario_allocator.update_time_series('series', new_data)
 
         # Check update was applied
         assert np.array_equal(ts.selected_data.values, new_data)
-        assert ts._has_scenarios
+        assert ts.has_scenario_dim
 
         # Check scenario-specific values
-        assert np.array_equal(ts.sel(scenario='baseline').values, new_data[0])
-        assert np.array_equal(ts.sel(scenario='high_demand').values, new_data[1])
-        assert np.array_equal(ts.sel(scenario='low_price').values, new_data[2])
+        assert np.array_equal(ts.sel(scenario='baseline').values, new_data[:,0])
+        assert np.array_equal(ts.sel(scenario='high_demand').values, new_data[:,1])
+        assert np.array_equal(ts.sel(scenario='low_price').values, new_data[:,2])
 
 
 if __name__ == '__main__':

@@ -83,6 +83,12 @@ class DataConverter:
         elif isinstance(data, np.ndarray):
             return DataConverter._convert_ndarray(data, coords, dims)
 
+        elif isinstance(data, pd.Series):
+            return DataConverter._convert_series(data, coords, dims)
+
+        elif isinstance(data, pd.DataFrame):
+            return DataConverter._convert_dataframe(data, coords, dims)
+
         else:
             raise ConversionError(f'Unsupported data type: {type(data).__name__}')
 
@@ -171,6 +177,8 @@ class DataConverter:
         Returns:
             DataArray with the scalar value
         """
+        if isinstance(data, (np.integer, np.floating)):
+            data = data.item()
         return xr.DataArray(data, coords=coords, dims=dims)
 
     @staticmethod
@@ -192,7 +200,7 @@ class DataConverter:
                 raise ConversionError('When converting to dimensionless DataArray, source must be scalar')
             return xr.DataArray(data.values.item())
 
-        # Check if data already has matching dimensions
+        # Check if data already has matching dimensions and coordinates
         if set(data.dims) == set(dims):
             # Check if coordinates match
             is_compatible = True
@@ -202,8 +210,13 @@ class DataConverter:
                     break
 
             if is_compatible:
-                # Return existing DataArray if compatible
-                return data.copy(deep=True)
+                # Ensure dimensions are in the correct order
+                if data.dims != dims:
+                    # Transpose to get dimensions in the right order
+                    return data.transpose(*dims).copy(deep=True)
+                else:
+                    # Return existing DataArray if compatible and order is correct
+                    return data.copy(deep=True)
 
         # Handle dimension broadcasting
         if len(data.dims) == 1 and len(dims) == 2:
@@ -216,8 +229,9 @@ class DataConverter:
                 # Broadcast scenario dimension to include time
                 return DataConverter._broadcast_scenario_to_time(data, coords, dims)
 
-        raise ConversionError(f'Cannot convert {data.dims} to {dims}')
-
+        raise ConversionError(
+            f'Cannot convert {data.dims} to {dims}. Source coordinates: {data.coords}, Target coordinates: {coords}'
+        )
     @staticmethod
     def _broadcast_time_to_scenarios(
         data: xr.DataArray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]
@@ -239,7 +253,7 @@ class DataConverter:
 
         # Broadcast values
         values = np.tile(data.values, (len(coords['scenario']), 1))
-        return xr.DataArray(values, coords=coords, dims=dims)
+        return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
     @staticmethod
     def _broadcast_scenario_to_time(
@@ -262,7 +276,7 @@ class DataConverter:
 
         # Broadcast values
         values = np.repeat(data.values[:, np.newaxis], len(coords['time']), axis=1)
-        return xr.DataArray(values, coords=coords, dims=dims)
+        return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
     @staticmethod
     def _convert_ndarray(data: np.ndarray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
@@ -358,6 +372,113 @@ class DataConverter:
 
         else:
             raise ConversionError(f'Expected 1D or 2D array for two dimensions, got {data.ndim}D')
+
+    @staticmethod
+    def _convert_series(data: pd.Series, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert pandas Series to xarray DataArray.
+
+        Args:
+            data: pandas Series to convert
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray from the pandas Series
+        """
+        # Handle single dimension case
+        if len(dims) == 1:
+            dim_name = dims[0]
+
+            # Check if series index matches the dimension
+            if data.index.equals(coords[dim_name]):
+                return xr.DataArray(data.values.copy(), coords=coords, dims=dims)
+            else:
+                raise ConversionError(
+                    f"Series index doesn't match {dim_name} coordinates.\n"
+                    f'Series index: {data.index}\n'
+                    f'Target {dim_name} coordinates: {coords[dim_name]}'
+                )
+
+        # Handle two dimensions case
+        elif len(dims) == 2:
+            # Check if dimensions are time and scenario
+            if dims != ('time', 'scenario'):
+                raise ConversionError(
+                    f'Two-dimensional conversion only supports time and scenario dimensions, got {dims}'
+                )
+
+            # Case 1: Series is indexed by time
+            if data.index.equals(coords['time']):
+                # Broadcast across scenarios
+                values = np.tile(data.values[:, np.newaxis], (1, len(coords['scenario'])))
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
+            # Case 2: Series is indexed by scenario
+            elif data.index.equals(coords['scenario']):
+                # Broadcast across time
+                values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
+            else:
+                raise ConversionError(
+                    "Series index must match either 'time' or 'scenario' coordinates.\n"
+                    f'Series index: {data.index}\n'
+                    f'Target time coordinates: {coords["time"]}\n'
+                    f'Target scenario coordinates: {coords["scenario"]}'
+                )
+
+        else:
+            raise ConversionError(f'Maximum 2 dimensions supported, got {len(dims)}')
+
+    @staticmethod
+    def _convert_dataframe(data: pd.DataFrame, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert pandas DataFrame to xarray DataArray.
+        Only allows time as index and scenarios as columns.
+
+        Args:
+            data: pandas DataFrame to convert
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray from the pandas DataFrame
+        """
+        # Single dimension case
+        if len(dims) == 1:
+            # If DataFrame has one column, treat it like a Series
+            if len(data.columns) == 1:
+                series = data.iloc[:, 0]
+                return DataConverter._convert_series(series, coords, dims)
+
+            raise ConversionError(
+                f'When converting DataFrame to single-dimension DataArray, DataFrame must have exactly one column, got {len(data.columns)}'
+            )
+
+        # Two dimensions case
+        elif len(dims) == 2:
+            # Check if dimensions are time and scenario
+            if dims != ('time', 'scenario'):
+                raise ConversionError(
+                    f'Two-dimensional conversion only supports time and scenario dimensions, got {dims}'
+                )
+
+            # DataFrame must have time as index and scenarios as columns
+            if data.index.equals(coords['time']) and data.columns.equals(coords['scenario']):
+                # Create DataArray with proper dimension order
+                return xr.DataArray(data.values.copy(), coords=coords, dims=dims)
+            else:
+                raise ConversionError(
+                    'DataFrame must have time as index and scenarios as columns.\n'
+                    f'DataFrame index: {data.index}\n'
+                    f'DataFrame columns: {data.columns}\n'
+                    f'Target time coordinates: {coords["time"]}\n'
+                    f'Target scenario coordinates: {coords["scenario"]}'
+                )
+
+        else:
+            raise ConversionError(f'Maximum 2 dimensions supported, got {len(dims)}')
 
 
 class TimeSeriesData:
@@ -913,8 +1034,8 @@ class TimeSeriesCollection:
         if scenarios:
             self._selected_scenarios = None
 
-        # Apply the selection to all TimeSeries objects
-        self._propagate_selection_to_time_series()
+        for ts in self._time_series.values():
+            ts.clear_selection(timesteps=timesteps, scenarios=scenarios)
 
     def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
         """

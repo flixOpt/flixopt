@@ -583,6 +583,9 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
         return copy_and_convert_datatypes(data.selected_data, use_numpy, use_element_label)
     elif isinstance(data, TimeSeriesData):
         return copy_and_convert_datatypes(data.data, use_numpy, use_element_label)
+    elif isinstance(data, (pd.Series, pd.DataFrame)):
+        #TODO: This can be improved
+        return copy_and_convert_datatypes(data.values, use_numpy, use_element_label)
 
     elif isinstance(data, Interface):
         if use_element_label and isinstance(data, Element):
