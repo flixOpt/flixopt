@@ -253,7 +253,7 @@ class DataConverter:
 
         # Broadcast values
         values = np.tile(data.values, (len(coords['scenario']), 1))
-        return xr.DataArray(values, coords=coords, dims=dims)
+        return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
     @staticmethod
     def _broadcast_scenario_to_time(
@@ -276,7 +276,7 @@ class DataConverter:
 
         # Broadcast values
         values = np.repeat(data.values[:, np.newaxis], len(coords['time']), axis=1)
-        return xr.DataArray(values, coords=coords, dims=dims)
+        return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
     @staticmethod
     def _convert_ndarray(data: np.ndarray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
@@ -392,7 +392,7 @@ class DataConverter:
 
             # Check if series index matches the dimension
             if data.index.equals(coords[dim_name]):
-                return xr.DataArray(data.values, coords=coords, dims=dims)
+                return xr.DataArray(data.values.copy(), coords=coords, dims=dims)
             else:
                 raise ConversionError(
                     f"Series index doesn't match {dim_name} coordinates.\n"
@@ -403,7 +403,7 @@ class DataConverter:
         # Handle two dimensions case
         elif len(dims) == 2:
             # Check if dimensions are time and scenario
-            if set(dims) != {'time', 'scenario'}:
+            if dims != ('time', 'scenario'):
                 raise ConversionError(
                     f'Two-dimensional conversion only supports time and scenario dimensions, got {dims}'
                 )
@@ -412,13 +412,13 @@ class DataConverter:
             if data.index.equals(coords['time']):
                 # Broadcast across scenarios
                 values = np.tile(data.values[:, np.newaxis], (1, len(coords['scenario'])))
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
             # Case 2: Series is indexed by scenario
             elif data.index.equals(coords['scenario']):
                 # Broadcast across time
                 values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
             else:
                 raise ConversionError(
@@ -447,8 +447,6 @@ class DataConverter:
         """
         # Single dimension case
         if len(dims) == 1:
-            dim_name = dims[0]
-
             # If DataFrame has one column, treat it like a Series
             if len(data.columns) == 1:
                 series = data.iloc[:, 0]
@@ -461,22 +459,15 @@ class DataConverter:
         # Two dimensions case
         elif len(dims) == 2:
             # Check if dimensions are time and scenario
-            if set(dims) != {'time', 'scenario'}:
+            if dims != ('time', 'scenario'):
                 raise ConversionError(
                     f'Two-dimensional conversion only supports time and scenario dimensions, got {dims}'
                 )
 
-            time_idx = dims.index('time')
-            scenario_idx = dims.index('scenario')
-
             # DataFrame must have time as index and scenarios as columns
             if data.index.equals(coords['time']) and data.columns.equals(coords['scenario']):
                 # Create DataArray with proper dimension order
-                values = data.values
-                if time_idx > scenario_idx:  # If scenario dimension comes before time dimension
-                    values = values.T
-
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(data.values.copy(), coords=coords, dims=dims)
             else:
                 raise ConversionError(
                     'DataFrame must have time as index and scenarios as columns.\n'
