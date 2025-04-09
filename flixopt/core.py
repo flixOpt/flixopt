@@ -83,6 +83,12 @@ class DataConverter:
         elif isinstance(data, np.ndarray):
             return DataConverter._convert_ndarray(data, coords, dims)
 
+        elif isinstance(data, pd.Series):
+            return DataConverter._convert_series(data, coords, dims)
+
+        elif isinstance(data, pd.DataFrame):
+            return DataConverter._convert_dataframe(data, coords, dims)
+
         else:
             raise ConversionError(f'Unsupported data type: {type(data).__name__}')
 
