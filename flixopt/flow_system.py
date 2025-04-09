@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData
+from .core import Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData, ScenarioData
 from .effects import (
     Effect,
     EffectCollection,
@@ -45,6 +45,7 @@ class FlowSystem:
         scenarios: Optional[pd.Index] = None,
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
+        scenario_weights: Optional[ScenarioData] = None,
     ):
         """
         Args:
@@ -55,6 +56,7 @@ class FlowSystem:
                 If None, the first time increment of time_series is used.
                 This is needed to calculate previous durations (for example consecutive_on_hours).
                 If you use an array, take care that its long enough to cover all previous values!
+            scenario_weights: The weights of the scenarios. If None, all scenarios have the same weight. All weights are normalized to 1.
         """
         self.time_series_collection = TimeSeriesCollection(
             timesteps=timesteps,
@@ -62,6 +64,7 @@ class FlowSystem:
             hours_of_last_timestep=hours_of_last_timestep,
             hours_of_previous_timesteps=hours_of_previous_timesteps,
         )
+        self.scenario_weights = scenario_weights
 
         # defaults:
         self.components: Dict[str, Component] = {}
@@ -278,6 +281,9 @@ class FlowSystem:
     def transform_data(self):
         if not self._connected:
             self._connect_network()
+        self.scenario_weights = self.create_time_series(
+            'scenario_weights', self.scenario_weights, has_time_dim=False, has_scenario_dim=True
+        )
         for element in self.all_elements.values():
             element.transform_data(self)
 

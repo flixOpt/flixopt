@@ -43,24 +43,15 @@ class InvestmentModel(Model):
         self.parameters = parameters
 
     def do_modeling(self):
-        if self.parameters.fixed_size and not self.parameters.optional:
-            self.size = self.add(
-                self._model.add_variables(
-                    lower=self.parameters.fixed_size, upper=self.parameters.fixed_size, name=f'{self.label_full}|size',
-                    coords=self._model.get_coords(time_dim=False),
-                ),
-                'size',
-            )
-        else:
-            self.size = self.add(
-                self._model.add_variables(
-                    lower=0 if self.parameters.optional else self.parameters.minimum_size*1,
-                    upper=self.parameters.maximum_size*1,
-                    name=f'{self.label_full}|size',
-                    coords=self._model.get_coords(time_dim=False),
-                ),
-                'size',
-            )
+        self.size = self.add(
+            self._model.add_variables(
+                lower=0 if self.parameters.optional else self.parameters.minimum_size*1,
+                upper=self.parameters.maximum_size*1,
+                name=f'{self.label_full}|size',
+                coords=self._model.get_coords(time_dim=False),
+            ),
+            'size',
+        )
 
         # Optional
         if self.parameters.optional:
