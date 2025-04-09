@@ -359,6 +359,112 @@ class DataConverter:
         else:
             raise ConversionError(f'Expected 1D or 2D array for two dimensions, got {data.ndim}D')
 
+    @staticmethod
+    def _convert_series(data: pd.Series, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert pandas Series to xarray DataArray.
+
+        Args:
+            data: pandas Series to convert
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray from the pandas Series
+        """
+        # Handle single dimension case
+        if len(dims) == 1:
+            dim_name = dims[0]
+
+            # Check if series index matches the dimension
+            if data.index.equals(coords[dim_name]):
+                return xr.DataArray(data.values, coords=coords, dims=dims)
+            else:
+                raise ConversionError(f"Series index doesn't match {dim_name} coordinates")
+
+        # Handle two dimensions case
+        elif len(dims) == 2:
+            # Check if dimensions are time and scenario
+            if set(dims) != {'time', 'scenario'}:
+                raise ConversionError('Two-dimensional conversion only supports time and scenario dimensions')
+
+            # Case 1: Series is indexed by time
+            if data.index.equals(coords['time']):
+                # Broadcast across scenarios
+                values = np.tile(data.values[:, np.newaxis], (1, len(coords['scenario'])))
+                return xr.DataArray(values, coords=coords, dims=dims)
+
+            # Case 2: Series is indexed by scenario
+            elif data.index.equals(coords['scenario']):
+                # Broadcast across time
+                values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
+                return xr.DataArray(values, coords=coords, dims=dims)
+
+            else:
+                raise ConversionError("Series index must match either 'time' or 'scenario' coordinates")
+
+        else:
+            raise ConversionError('Maximum 2 dimensions supported')
+
+    @staticmethod
+    def _convert_dataframe(data: pd.DataFrame, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert pandas DataFrame to xarray DataArray.
+
+        Args:
+            data: pandas DataFrame to convert
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray from the pandas DataFrame
+        """
+        # Single dimension case
+        if len(dims) == 1:
+            dim_name = dims[0]
+
+            # If DataFrame has one column, treat it like a Series
+            if len(data.columns) == 1:
+                series = data.iloc[:, 0]
+                if data.index.equals(coords[dim_name]):
+                    return xr.DataArray(series.values, coords=coords, dims=dims)
+
+            raise ConversionError(
+                'When converting DataFrame to single-dimension DataArray, DataFrame must have exactly one column with matching index'
+            )
+
+        # Two dimensions case
+        elif len(dims) == 2:
+            # Check if dimensions are time and scenario
+            if set(dims) != {'time', 'scenario'}:
+                raise ConversionError('Two-dimensional conversion only supports time and scenario dimensions')
+
+            time_idx = dims.index('time')
+            scenario_idx = dims.index('scenario')
+
+            # Case 1: DataFrame is indexed by time, columns are scenarios
+            if data.index.equals(coords['time']) and data.columns.equals(coords['scenario']):
+                # Create DataArray with proper dimension order
+                values = data.values
+                if time_idx > scenario_idx:  # If scenario dimension comes before time dimension
+                    values = values.T
+
+                return xr.DataArray(values, coords=coords, dims=dims)
+
+            # Case 2: DataFrame is indexed by scenario, columns are times
+            elif data.index.equals(coords['scenario']) and data.columns.equals(coords['time']):
+                # Create DataArray with proper dimension order
+                values = data.values
+                if scenario_idx > time_idx:  # If time dimension comes before scenario dimension
+                    values = values.T
+
+                return xr.DataArray(values, coords=coords, dims=dims)
+
+            else:
+                raise ConversionError("DataFrame indices must match 'time' and 'scenario' coordinates")
+
+        else:
+            raise ConversionError('Maximum 2 dimensions supported')
 
 class TimeSeriesData:
     # TODO: Move to Interface.py
