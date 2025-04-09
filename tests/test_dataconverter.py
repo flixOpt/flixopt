@@ -234,7 +234,7 @@ class TestSeriesConversion:
         assert result.dims == ('time', 'scenario')
 
         # Check broadcasting - each time should have the same scenario values
-        for i, time in enumerate(sample_time_index):
+        for time in sample_time_index:
             time_slice = result.sel(time=time)
             assert np.array_equal(time_slice.values, series.values)
 

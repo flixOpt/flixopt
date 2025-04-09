@@ -4,7 +4,7 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union, Literal
+from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
 from .config import CONFIG
 from .core import NumericDataTS, Scalar, ScenarioData, TimestepData

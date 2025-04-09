@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData, ScenarioData
+from .core import Scalar, ScenarioData, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData
 from .effects import (
     Effect,
     EffectCollection,
