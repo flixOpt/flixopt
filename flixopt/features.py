@@ -55,7 +55,7 @@ class InvestmentModel(Model):
             self.size = self.add(
                 self._model.add_variables(
                     lower=0 if self.parameters.optional else self.parameters.minimum_size*1,
-                    upper=self.parameters.maximum_size.selected_data,
+                    upper=self.parameters.maximum_size*1,
                     name=f'{self.label_full}|size',
                     coords=self._model.get_coords(time_dim=False),
                 ),
