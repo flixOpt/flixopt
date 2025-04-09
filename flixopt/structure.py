@@ -58,6 +58,7 @@ class SystemModel(linopy.Model):
         self.flow_system = flow_system
         self.time_series_collection = flow_system.time_series_collection
         self.effects: Optional[EffectCollectionModel] = None
+        self.scenario_weights = self._calculate_scenario_weights(flow_system.scenario_weights)
 
     def do_modeling(self):
         self.effects = self.flow_system.effects.create_model(self)
@@ -68,6 +69,24 @@ class SystemModel(linopy.Model):
             component_model.do_modeling()
         for bus_model in bus_models:  # Buses after Components, because FlowModels are created in ComponentModels
             bus_model.do_modeling()
+
+    def _calculate_scenario_weights(self, weights: Optional[TimeSeries] = None) -> xr.DataArray:
+        """Calculates the weights of the scenarios. If None, all scenarios have the same weight. All weights are normalized to 1.
+        If no scenarios are present, s single weight of 1 is returned.
+        """
+        if weights is not None and not isinstance(weights, TimeSeries):
+            raise TypeError(f'Weights must be a TimeSeries or None, got {type(weights)}')
+        if self.time_series_collection.scenarios is None:
+            return xr.DataArray(1)
+        if weights is None:
+            weights = xr.DataArray(
+                np.ones(len(self.time_series_collection.scenarios)),
+                coords={'scenario': self.time_series_collection.scenarios}
+            )
+        elif isinstance(weights, TimeSeries):
+            weights = weights.selected_data
+
+        return weights / weights.sum()
 
     @property
     def solution(self):
