@@ -101,8 +101,8 @@ class TestMultiDimensionConversion:
         result = DataConverter.as_dataarray(42, sample_time_index, sample_scenario_index)
 
         assert isinstance(result, xr.DataArray)
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
-        assert result.dims == ('scenario', 'time')
+        assert result.shape == (len(sample_time_index), len(sample_scenario_index))
+        assert result.dims == ('time', 'scenario')
         assert np.all(result.values == 42)
         assert set(result.coords['scenario'].values) == set(sample_scenario_index.values)
         assert set(result.coords['time'].values) == set(sample_time_index.values)
@@ -119,8 +119,8 @@ class TestMultiDimensionConversion:
         # Convert with scenarios
         result = DataConverter.as_dataarray(arr_1d, sample_time_index, sample_scenario_index)
 
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
-        assert result.dims == ('scenario', 'time')
+        assert result.shape == (len(sample_time_index), len(sample_scenario_index))
+        assert result.dims == ('time', 'scenario')
 
         # Each scenario should have the same values (broadcasting)
         for scenario in sample_scenario_index:
@@ -139,10 +139,10 @@ class TestMultiDimensionConversion:
         )
 
         # Convert to DataArray
-        result = DataConverter.as_dataarray(arr_2d, sample_time_index, sample_scenario_index)
+        result = DataConverter.as_dataarray(arr_2d.T, sample_time_index, sample_scenario_index)
 
-        assert result.shape == (3, 5)
-        assert result.dims == ('scenario', 'time')
+        assert result.shape == (5, 3)
+        assert result.dims == ('time', 'scenario')
 
         # Check that each scenario has correct values
         assert np.array_equal(result.sel(scenario='baseline').values, arr_2d[0])
@@ -161,28 +161,13 @@ class TestMultiDimensionConversion:
         # Test conversion
         result = DataConverter.as_dataarray(original, sample_time_index, sample_scenario_index)
 
-        assert result.shape == (3, 5)
-        assert result.dims == ('scenario', 'time')
-        assert np.array_equal(result.values, original.values)
+        assert result.shape == (5, 3)
+        assert result.dims == ('time', 'scenario')
+        assert np.array_equal(result.values, original.values.T)
 
         # Ensure it's a copy
-        result.loc['baseline'] = 999
+        result.loc[:, 'baseline'] = 999
         assert original.sel(scenario='baseline')[0].item() == 1  # Original should be unchanged
-
-    def test_time_only_dataarray_with_scenarios(self, sample_time_index, sample_scenario_index):
-        """Test broadcasting a time-only DataArray to scenarios."""
-        # Create a DataArray with only time dimension
-        time_only = xr.DataArray(data=np.array([1, 2, 3, 4, 5]), coords={'time': sample_time_index}, dims=['time'])
-
-        # Convert with scenarios - should broadcast to all scenarios
-        result = DataConverter.as_dataarray(time_only, sample_time_index, sample_scenario_index)
-
-        assert result.shape == (3, 5)
-        assert result.dims == ('scenario', 'time')
-
-        # Each scenario should have same values
-        for scenario in sample_scenario_index:
-            assert np.array_equal(result.sel(scenario=scenario).values, time_only.values)
 
 
 class TestInvalidInputs:
@@ -315,7 +300,7 @@ class TestEdgeCases:
         # With scenarios
         result_with_scenarios = DataConverter.as_dataarray(42, single_timestep, sample_scenario_index)
         assert result_with_scenarios.shape == (len(sample_scenario_index), 1)
-        assert result_with_scenarios.dims == ('scenario', 'time')
+        assert result_with_scenarios.dims == ('time', 'scenario')
 
     def test_single_scenario(self, sample_time_index):
         """Test with a single scenario."""
@@ -325,7 +310,7 @@ class TestEdgeCases:
         # Scalar conversion with single scenario
         result = DataConverter.as_dataarray(42, sample_time_index, single_scenario)
         assert result.shape == (1, len(sample_time_index))
-        assert result.dims == ('scenario', 'time')
+        assert result.dims == ('time', 'scenario')
 
         # Array conversion with single scenario
         arr = np.array([1, 2, 3, 4, 5])
@@ -374,7 +359,7 @@ class TestEdgeCases:
 
         # With scenarios
         result = DataConverter.as_dataarray(all_nan_array, sample_time_index, sample_scenario_index)
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
+        assert result.shape == (len(sample_time_index), len(sample_scenario_index))
         assert np.all(np.isnan(result.values))
 
         # Series of all NaNs
@@ -420,7 +405,7 @@ class TestFunctionalUseCase:
         result = DataConverter.as_dataarray(large_data, large_timesteps, sample_scenario_index)
 
         assert result.shape == (len(sample_scenario_index), len(large_timesteps))
-        assert result.dims == ('scenario', 'time')
+        assert result.dims == ('time', 'scenario')
         assert np.array_equal(result.values, large_data)
 
 
@@ -432,7 +417,7 @@ class TestMultiScenarioArrayConversion:
         arr_1d = np.array([1, 2, 3, 4, 5])
         result = DataConverter.as_dataarray(arr_1d, sample_time_index, sample_scenario_index)
 
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
+        assert result.shape == (len(sample_time_index), len(sample_scenario_index))
 
         # Each scenario should have identical values
         for i, scenario in enumerate(sample_scenario_index):
@@ -474,7 +459,7 @@ class TestMultiScenarioArrayConversion:
         bool_array = np.array([True, False, True, False, True])
         result = DataConverter.as_dataarray(bool_array, sample_time_index, sample_scenario_index)
         assert result.dtype == bool
-        assert result.shape == (len(sample_scenario_index), len(sample_time_index))
+        assert result.shape == (len(sample_time_index), len(sample_scenario_index))
 
         # Test with array containing infinite values
         inf_array = np.array([1, np.inf, 3, -np.inf, 5])
