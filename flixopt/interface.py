@@ -4,7 +4,7 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union, Literal
 
 from .config import CONFIG
 from .core import NumericDataTS, Scalar, ScenarioData, TimestepData
@@ -150,14 +150,15 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: Optional[Scalar] = None,
-        minimum_size: Scalar = 0,  # TODO: Use EPSILON?
-        maximum_size: Optional[Scalar] = None,
+        fixed_size: Optional[ScenarioData] = None,
+        minimum_size: ScenarioData = 0,  # TODO: Use EPSILON?
+        maximum_size: Optional[ScenarioData] = None,
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScenario'] = None,
         specific_effects: Optional['EffectValuesUserScenario'] = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: Optional[PiecewiseEffects] = None,
         divest_effects: Optional['EffectValuesUserScenario'] = None,
+        size_per_scenario: Literal['equal', 'individual', 'increment_once'] = 'equal',
     ):
         """
         Args:
@@ -168,30 +169,24 @@ class InvestParameters(Interface):
             specific_effects: Specific costs, e.g., in €/kW_nominal or €/m²_nominal.
                 Example: {costs: 3, CO2: 0.3} with costs and CO2 representing an Object of class Effect
                 (Attention: Annualize costs to chosen period!)
-            piecewise_effects: Linear piecewise relation [invest_pieces, cost_pieces].
-                Example 1:
-                    [           [5, 25, 25, 100],       # size in kW
-                     {costs:    [50,250,250,800],       # €
-                      PE:       [5, 25, 25, 100]        # kWh_PrimaryEnergy
-                      }
-                    ]
-                Example 2 (if only standard-effect):
-                    [   [5, 25, 25, 100],  # kW # size in kW
-                        [50,250,250,800]        # value for standart effect, typically €
-                     ]  # €
-                (Attention: Annualize costs to chosen period!)
-                (Args 'specific_effects' and 'fix_effects' can be used in parallel to Investsizepieces)
-            minimum_size: Min nominal value (only if: size_is_fixed = False).
-            maximum_size: Max nominal value (only if: size_is_fixed = False).
+            piecewise_effects: Define the effects of the investment as a piecewise function of the size of the investment.
+            minimum_size: Minimum possible size of the investment.
+            maximum_size: Maximum possible size of the investment.
+            size_per_scenario: How to treat the size in each scenario
+                - 'equal': Equalize the size of all scenarios
+                - 'individual': Optimize the size of each scenario individually
+                - 'increment_once': Allow the size to increase only once. This is useful if the scenarios are related to
+                    different periods (years, months). Tune the timing by setting the maximum size to 0 in the first scenarios.
         """
-        self.fix_effects: EffectValuesUserScenario = fix_effects or {}
-        self.divest_effects: EffectValuesUserScenario = divest_effects or {}
+        self.fix_effects: EffectValuesUserScenario = fix_effects if fix_effects is not None else {}
+        self.divest_effects: EffectValuesUserScenario = divest_effects if divest_effects is not None else {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: EffectValuesUserScenario = specific_effects or {}
+        self.specific_effects: EffectValuesUserScenario = specific_effects if specific_effects is not None else {}
         self.piecewise_effects = piecewise_effects
         self._minimum_size = minimum_size
-        self._maximum_size = maximum_size or CONFIG.modeling.BIG  # default maximum
+        self._maximum_size = CONFIG.modeling.BIG if maximum_size is None else maximum_size  # default maximum
+        self.size_per_scenario = size_per_scenario
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         self.fix_effects = flow_system.create_effect_time_series(
@@ -219,13 +214,24 @@ class InvestParameters(Interface):
             self.piecewise_effects.has_time_dim = False
             self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
+        self._minimum_size = flow_system.create_time_series(
+            f'{name_prefix}|minimum_size', self.minimum_size, has_time_dim=False, has_scenario_dim=True
+        )
+        self._maximum_size = flow_system.create_time_series(
+            f'{name_prefix}|maximum_size', self.maximum_size, has_time_dim=False, has_scenario_dim=True
+        )
+        if self.fixed_size is not None:
+            self.fixed_size = flow_system.create_time_series(
+                f'{name_prefix}|fixed_size', self.fixed_size, has_time_dim=False, has_scenario_dim=True
+            )
+
     @property
     def minimum_size(self):
-        return self.fixed_size or self._minimum_size
+        return self.fixed_size if self.fixed_size is not None else self._minimum_size
 
     @property
     def maximum_size(self):
-        return self.fixed_size or self._maximum_size
+        return self.fixed_size if self.fixed_size is not None else self._maximum_size
 
 
 @register_class_for_io
