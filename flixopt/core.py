@@ -380,13 +380,19 @@ class DataConverter:
             if data.index.equals(coords[dim_name]):
                 return xr.DataArray(data.values, coords=coords, dims=dims)
             else:
-                raise ConversionError(f"Series index doesn't match {dim_name} coordinates")
+                raise ConversionError(
+                    f"Series index doesn't match {dim_name} coordinates.\n"
+                    f'Series index: {data.index}\n'
+                    f'Target {dim_name} coordinates: {coords[dim_name]}'
+                )
 
         # Handle two dimensions case
         elif len(dims) == 2:
             # Check if dimensions are time and scenario
             if set(dims) != {'time', 'scenario'}:
-                raise ConversionError('Two-dimensional conversion only supports time and scenario dimensions')
+                raise ConversionError(
+                    f'Two-dimensional conversion only supports time and scenario dimensions, got {dims}'
+                )
 
             # Case 1: Series is indexed by time
             if data.index.equals(coords['time']):
@@ -401,10 +407,15 @@ class DataConverter:
                 return xr.DataArray(values, coords=coords, dims=dims)
 
             else:
-                raise ConversionError("Series index must match either 'time' or 'scenario' coordinates")
+                raise ConversionError(
+                    "Series index must match either 'time' or 'scenario' coordinates.\n"
+                    f'Series index: {data.index}\n'
+                    f'Target time coordinates: {coords["time"]}\n'
+                    f'Target scenario coordinates: {coords["scenario"]}'
+                )
 
         else:
-            raise ConversionError('Maximum 2 dimensions supported')
+            raise ConversionError(f'Maximum 2 dimensions supported, got {len(dims)}')
 
     @staticmethod
     def _convert_dataframe(data: pd.DataFrame, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
@@ -428,16 +439,24 @@ class DataConverter:
                 series = data.iloc[:, 0]
                 if data.index.equals(coords[dim_name]):
                     return xr.DataArray(series.values, coords=coords, dims=dims)
+                else:
+                    raise ConversionError(
+                        f"DataFrame index doesn't match {dim_name} coordinates.\n"
+                        f'DataFrame index: {data.index}\n'
+                        f'Target {dim_name} coordinates: {coords[dim_name]}'
+                    )
 
             raise ConversionError(
-                'When converting DataFrame to single-dimension DataArray, DataFrame must have exactly one column with matching index'
+                f'When converting DataFrame to single-dimension DataArray, DataFrame must have exactly one column, got {len(data.columns)}'
             )
 
         # Two dimensions case
         elif len(dims) == 2:
             # Check if dimensions are time and scenario
             if set(dims) != {'time', 'scenario'}:
-                raise ConversionError('Two-dimensional conversion only supports time and scenario dimensions')
+                raise ConversionError(
+                    f'Two-dimensional conversion only supports time and scenario dimensions, got {dims}'
+                )
 
             time_idx = dims.index('time')
             scenario_idx = dims.index('scenario')
@@ -461,10 +480,16 @@ class DataConverter:
                 return xr.DataArray(values, coords=coords, dims=dims)
 
             else:
-                raise ConversionError("DataFrame indices must match 'time' and 'scenario' coordinates")
+                raise ConversionError(
+                    "DataFrame indices must match 'time' and 'scenario' coordinates.\n"
+                    f'DataFrame index: {data.index}\n'
+                    f'DataFrame columns: {data.columns}\n'
+                    f'Target time coordinates: {coords["time"]}\n'
+                    f'Target scenario coordinates: {coords["scenario"]}'
+                )
 
         else:
-            raise ConversionError('Maximum 2 dimensions supported')
+            raise ConversionError(f'Maximum 2 dimensions supported, got {len(dims)}')
 
 class TimeSeriesData:
     # TODO: Move to Interface.py
