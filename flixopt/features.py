@@ -90,7 +90,7 @@ class InvestmentModel(Model):
             # share: divest_effects - isInvested * divest_effects
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={effect: -self.is_invested * factor + factor for effect, factor in fix_effects.items()},
+                expressions={effect: -self.is_invested * factor + factor for effect, factor in self.parameters.divest_effects.items()},
                 target='invest',
             )
 
