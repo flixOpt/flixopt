@@ -314,6 +314,7 @@ class OnOffModel(Model):
 
             self.switch_on_nr = self.add(
                 self._model.add_variables(
+                    lower=0,
                     upper=self.parameters.switch_on_total_max
                     if self.parameters.switch_on_total_max is not None
                     else np.inf,
