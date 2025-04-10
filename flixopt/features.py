@@ -11,7 +11,7 @@ import numpy as np
 
 from . import utils
 from .config import CONFIG
-from .core import Scalar, TimestepData, TimeSeries
+from .core import Scalar, NumericData, TimeSeries
 from .interface import InvestParameters, Piecewise, OnOffParameters
 from .structure import Model, SystemModel
 
@@ -203,12 +203,12 @@ class StateModel(Model):
         model: SystemModel,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[TimestepData, TimestepData]],
-        previous_values: List[Optional[TimestepData]] = None,
+        defining_bounds: List[Tuple[NumericData, NumericData]],
+        previous_values: List[Optional[NumericData]] = None,
         use_off: bool = True,
-        on_hours_total_min: Optional[TimestepData] = 0,
-        on_hours_total_max: Optional[TimestepData] = None,
-        effects_per_running_hour: Dict[str, TimestepData] = None,
+        on_hours_total_min: Optional[NumericData] = 0,
+        on_hours_total_max: Optional[NumericData] = None,
+        effects_per_running_hour: Dict[str, NumericData] = None,
         label: Optional[str] = None,
     ):
         """
@@ -254,7 +254,7 @@ class StateModel(Model):
             self._model.add_variables(
                 lower=self._on_hours_total_min,
                 upper=self._on_hours_total_max,
-                coords=self._model.get_coords(time_dim=False),
+                coords=None,
                 name=f'{self.label_full}|on_hours_total',
             ),
             'on_hours_total',
@@ -380,12 +380,12 @@ class SwitchStateModel(Model):
 
         # Create switch variables
         self.switch_on = self.add(
-            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.get_coords()),
+            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.coords),
             'switch_on',
         )
 
         self.switch_off = self.add(
-            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.get_coords()),
+            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.coords),
             'switch_off',
         )
 
@@ -445,9 +445,9 @@ class ConsecutiveStateModel(Model):
         model: SystemModel,
         label_of_element: str,
         state_variable: linopy.Variable,
-        minimum_duration: Optional[TimestepData] = None,
-        maximum_duration: Optional[TimestepData] = None,
-        previous_states: Optional[TimestepData] = None,
+        minimum_duration: Optional[NumericData] = None,
+        maximum_duration: Optional[NumericData] = None,
+        previous_states: Optional[NumericData] = None,
         label: Optional[str] = None,
     ):
         """
@@ -469,9 +469,9 @@ class ConsecutiveStateModel(Model):
         self._maximum_duration = maximum_duration
 
         if isinstance(self._minimum_duration, TimeSeries):
-            self._minimum_duration = self._minimum_duration.selected_data
+            self._minimum_duration = self._minimum_duration.active_data
         if isinstance(self._maximum_duration, TimeSeries):
-            self._maximum_duration = self._maximum_duration.selected_data
+            self._maximum_duration = self._maximum_duration.active_data
 
         self.duration = None
 
@@ -486,7 +486,7 @@ class ConsecutiveStateModel(Model):
             self._model.add_variables(
                 lower=0,
                 upper=self._maximum_duration if self._maximum_duration is not None else mega,
-                coords=self._model.get_coords(),
+                coords=self._model.coords,
                 name=f'{self.label_full}|consecutive',
             ),
             f'consecutive',
@@ -603,8 +603,8 @@ class OnOffModel(Model):
         on_off_parameters: OnOffParameters,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[TimestepData, TimestepData]],
-        previous_values: List[Optional[TimestepData]],
+        defining_bounds: List[Tuple[NumericData, NumericData]],
+        previous_values: List[Optional[NumericData]],
         label: Optional[str] = None,
     ):
         """
