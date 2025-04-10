@@ -268,13 +268,13 @@ class TestTimeSeries:
         ts2 = TimeSeries(data2, 'Series 2')
 
         # Test __gt__ method
-        assert (ts1 > ts2) is True  # All values in ts1 are greater than ts2
+        assert (ts1 > ts2).all().item()
 
         # Test with mixed values
         data3 = xr.DataArray([5, 25, 15, 45, 25], coords={'time': sample_timesteps}, dims=['time'])
         ts3 = TimeSeries(data3, 'Series 3')
 
-        assert (ts1 > ts3) is False  # Not all values in ts1 are greater than ts3
+        assert not (ts1 > ts3).all().item()  # Not all values in ts1 are greater than ts3
 
     def test_numpy_ufunc(self, sample_timeseries):
         """Test numpy ufunc compatibility."""
