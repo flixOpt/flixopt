@@ -14,7 +14,7 @@ import pytest
 
 from flixopt import plotting
 
-
+@pytest.mark.slow
 class TestPlots(unittest.TestCase):
     def setUp(self):
         np.random.seed(72)
