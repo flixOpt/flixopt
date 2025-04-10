@@ -426,8 +426,64 @@ class TimeSeries:
             True if all values in this TimeSeries are greater than other
         """
         if isinstance(other, TimeSeries):
-            return (self.active_data > other.active_data).all().item()
-        return NotImplemented
+            return self.active_data > other.active_data
+        return self.active_data > other
+
+    def __ge__(self, other):
+        """
+        Compare if this TimeSeries is greater than or equal to another.
+
+        Args:
+            other: Another TimeSeries to compare with
+
+        Returns:
+            True if all values in this TimeSeries are greater than or equal to other
+        """
+        if isinstance(other, TimeSeries):
+            return self.active_data >= other.active_data
+        return self.active_data >= other
+
+    def __lt__(self, other):
+        """
+        Compare if this TimeSeries is less than another.
+
+        Args:
+            other: Another TimeSeries to compare with
+
+        Returns:
+            True if all values in this TimeSeries are less than other
+        """
+        if isinstance(other, TimeSeries):
+            return self.active_data < other.active_data
+        return self.active_data < other
+
+    def __le__(self, other):
+        """
+        Compare if this TimeSeries is less than or equal to another.
+
+        Args:
+            other: Another TimeSeries to compare with
+
+        Returns:
+            True if all values in this TimeSeries are less than or equal to other
+        """
+        if isinstance(other, TimeSeries):
+            return self.active_data <= other.active_data
+        return self.active_data <= other
+
+    def __eq__(self, other):
+        """
+        Compare if this TimeSeries is equal to another.
+
+        Args:
+            other: Another TimeSeries to compare with
+
+        Returns:
+            True if all values in this TimeSeries are equal to other
+        """
+        if isinstance(other, TimeSeries):
+            return self.active_data == other.active_data
+        return self.active_data == other
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
         """
@@ -843,7 +899,7 @@ class TimeSeriesCollection:
         if isinstance(item, str):
             return item in self.time_series_data
         elif isinstance(item, TimeSeries):
-            return item in self.time_series_data.values()
+            return any([item is ts for ts in self.time_series_data.values()])
         return False
 
     @property

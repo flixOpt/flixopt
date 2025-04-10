@@ -115,7 +115,7 @@ class Bus(Element):
         )
 
     def _plausibility_checks(self) -> None:
-        if self.excess_penalty_per_flow_hour == 0:
+        if self.excess_penalty_per_flow_hour is not None and (self.excess_penalty_per_flow_hour == 0).all():
             logger.warning(f'In Bus {self.label}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.')
 
     @property
@@ -275,6 +275,13 @@ class Flow(Element):
                 f'Flow {self.label} has both a fixed_relative_profile and an on_off_parameters. This is not supported. '
                 f'Use relative_minimum and relative_maximum instead, '
                 f'if you want to allow flows to be switched on and off.'
+            )
+
+        if (self.relative_minimum > 0).any() and self.on_off_parameters is None:
+            logger.warning(
+                f'Flow {self.label} has a relative_minimum of {self.relative_minimum.active_data} and no on_off_parameters. '
+                f'This prevents the flow_rate from switching off (flow_rate = 0). '
+                f'Consider using on_off_parameters to allow the flow to be switched on and off.'
             )
 
     @property
