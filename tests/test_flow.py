@@ -1,11 +1,11 @@
 import numpy as np
-import pytest
 import pandas as pd
+import pytest
 import xarray as xr
 
 import flixopt as fx
 
-from .conftest import basic_flow_system_linopy, create_linopy_model, assert_var_equal, assert_conequal
+from .conftest import assert_conequal, assert_var_equal, create_linopy_model
 
 
 class TestFlowModel:
@@ -583,7 +583,6 @@ class TestFlowOnModel:
     def test_switch_on_constraints(self, basic_flow_system_linopy):
         """Test flow with constraints on the number of startups."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
 
         flow = fx.Flow(
             'Wärme',
@@ -633,7 +632,6 @@ class TestFlowOnModel:
     def test_on_hours_limits(self, basic_flow_system_linopy):
         """Test flow with limits on total on hours."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
 
         flow = fx.Flow(
             'Wärme',

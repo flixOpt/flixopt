@@ -6,11 +6,11 @@ It helps avoid redundancy and centralizes reusable test logic.
 
 import os
 
+import linopy.testing
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
-import linopy.testing
 
 import flixopt as fx
 from flixopt.structure import SystemModel
@@ -455,17 +455,17 @@ def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):
     try:
         linopy.testing.assert_linequal(actual.lhs, desired.lhs)
     except AssertionError as e:
-        raise AssertionError(f"{name} left-hand sides don't match:\n{e}")
+        raise AssertionError(f"{name} left-hand sides don't match:\n{e}") from e
 
     try:
         linopy.testing.assert_linequal(actual.rhs, desired.rhs)
     except AssertionError as e:
-        raise AssertionError(f"{name} right-hand sides don't match:\n{e}")
+        raise AssertionError(f"{name} right-hand sides don't match:\n{e}") from e
 
     try:
         xr.testing.assert_equal(actual.sign, desired.sign)
-    except AssertionError:
-        raise AssertionError(f"{name} signs don't match:\nActual: {actual.sign}\nExpected: {desired.sign}")
+    except AssertionError as e:
+        raise AssertionError(f"{name} signs don't match:\nActual: {actual.sign}\nExpected: {desired.sign}") from e
 
 
 def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
@@ -473,13 +473,13 @@ def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
     name = actual.name
     try:
         xr.testing.assert_equal(actual.lower, desired.lower)
-    except AssertionError:
-        raise AssertionError(f"{name} lower bounds don't match:\nActual: {actual.lower}\nExpected: {desired.lower}")
+    except AssertionError as e:
+        raise AssertionError(f"{name} lower bounds don't match:\nActual: {actual.lower}\nExpected: {desired.lower}") from e
 
     try:
         xr.testing.assert_equal(actual.upper, desired.upper)
-    except AssertionError:
-        raise AssertionError(f"{name} upper bounds don't match:\nActual: {actual.upper}\nExpected: {desired.upper}")
+    except AssertionError as e:
+        raise AssertionError(f"{name} upper bounds don't match:\nActual: {actual.upper}\nExpected: {desired.upper}") from e
 
     if actual.type != desired.type:
         raise AssertionError(f"{name} types don't match: {actual.type} != {desired.type}")
@@ -492,8 +492,8 @@ def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
 
     try:
         xr.testing.assert_equal(actual.coords, desired.coords)
-    except AssertionError:
-        raise AssertionError(f"{name} coordinates don't match:\nActual: {actual.coords}\nExpected: {desired.coords}")
+    except AssertionError as e:
+        raise AssertionError(f"{name} coordinates don't match:\nActual: {actual.coords}\nExpected: {desired.coords}") from e
 
     if actual.coord_dims != desired.coord_dims:
         raise AssertionError(f"{name} coordinate dimensions don't match: {actual.coord_dims} != {desired.coord_dims}")

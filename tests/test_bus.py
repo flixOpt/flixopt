@@ -5,7 +5,7 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import basic_flow_system_linopy, create_linopy_model, assert_var_equal, assert_conequal
+from .conftest import assert_conequal, assert_var_equal, create_linopy_model
 
 
 class TestBusModel:

@@ -5,7 +5,7 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import basic_flow_system_linopy, create_linopy_model, assert_var_equal, assert_conequal
+from .conftest import assert_conequal, assert_var_equal, create_linopy_model
 
 
 class TestBusModel:
@@ -85,7 +85,6 @@ class TestBusModel:
 
     def test_shares(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
         effect1 = fx.Effect('Effect1', '€', 'Testing Effect',
                            specific_share_to_other_effects_operation={
                                'Effect2': 1.1,
