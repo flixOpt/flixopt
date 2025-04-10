@@ -541,7 +541,7 @@ class ComponentModel(ElementModel):
                     self.element.on_off_parameters,
                     self.label_of_element,
                     defining_variables=[flow.model.flow_rate for flow in all_flows],
-                    defining_bounds=[flow.model.bounds_for_on for flow in all_flows],
+                    defining_bounds=[flow.model.flow_rate_bounds_on for flow in all_flows],
                     previous_values=[flow.previous_flow_rate for flow in all_flows],
                 )
             )
