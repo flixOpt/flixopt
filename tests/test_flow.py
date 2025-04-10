@@ -493,11 +493,6 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|consecutive_on_hours_initial'],
-            model.variables['Sink(Wärme)|consecutive_on_hours'].isel(time=0) == model.variables['Sink(Wärme)|on'].isel(time=0) * model.hours_per_step.isel(time=0)
-        )
-
-        assert_conequal(
-            model.constraints['Sink(Wärme)|consecutive_on_hours_initial'],
             model.variables['Sink(Wärme)|consecutive_on_hours'].isel(time=0)
             == model.variables['Sink(Wärme)|on'].isel(time=0) * model.hours_per_step.isel(time=0),
         )
@@ -561,11 +556,6 @@ class TestFlowOnModel:
             >= model.variables['Sink(Wärme)|consecutive_off_hours'].isel(time=slice(None, -1))
             + model.hours_per_step.isel(time=slice(None, -1))
             + (model.variables['Sink(Wärme)|off'].isel(time=slice(1, None)) - 1) * mega
-        )
-
-        assert_conequal(
-            model.constraints['Sink(Wärme)|consecutive_off_hours_initial'],
-            model.variables['Sink(Wärme)|consecutive_off_hours'].isel(time=0) == model.variables['Sink(Wärme)|off'].isel(time=0) * model.hours_per_step.isel(time=0)
         )
 
         assert_conequal(
