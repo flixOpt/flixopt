@@ -9,8 +9,11 @@ import os
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
+import linopy.testing
 
 import flixopt as fx
+from flixopt.structure import SystemModel
 
 
 @pytest.fixture()
@@ -403,8 +406,94 @@ def flow_system_long():
     }
 
 
-def create_calculation_and_solve(flow_system: fx.FlowSystem, solver, name: str) -> fx.FullCalculation:
+def create_calculation_and_solve(flow_system: fx.FlowSystem, solver, name: str, allow_infeasible: bool=False) -> fx.FullCalculation:
     calculation = fx.FullCalculation(name, flow_system)
     calculation.do_modeling()
-    calculation.solve(solver)
+    try:
+        calculation.solve(solver)
+    except RuntimeError as e:
+        if allow_infeasible:
+            pass
+        else:
+            raise RuntimeError from e
     return calculation
+
+
+def create_linopy_model(flow_system: fx.FlowSystem) -> SystemModel:
+    calculation = fx.FullCalculation('GenericName', flow_system)
+    calculation.do_modeling()
+    return calculation.model
+
+@pytest.fixture(params=['h', '3h'])
+def timesteps_linopy(request):
+    return pd.date_range('2020-01-01', periods=10, freq=request.param, name='time')
+
+
+@pytest.fixture
+def basic_flow_system_linopy(timesteps_linopy) -> fx.FlowSystem:
+    """Create basic elements for component testing"""
+    flow_system = fx.FlowSystem(pd.date_range('2020-01-01', periods=10, freq='h', name='time'))
+    thermal_load = np.array([np.random.random() for _ in range(10)]) * 180
+    p_el = (np.array([np.random.random() for _ in range(10)]) + 0.5) / 1.5 * 50
+
+    flow_system.add_elements(
+        fx.Bus('Strom'),
+        fx.Bus('Fernwärme'),
+        fx.Bus('Gas'),
+        fx.Effect('Costs', '€', 'Kosten', is_standard=True, is_objective=True),
+        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)),
+        fx.Source('Gastarif', source=fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour=0.04)),
+        fx.Sink('Einspeisung', sink=fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * p_el)),
+    )
+
+    return flow_system
+
+def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):
+    """Assert that two constraints are equal with detailed error messages."""
+    name = actual.name
+
+    try:
+        linopy.testing.assert_linequal(actual.lhs, desired.lhs)
+    except AssertionError as e:
+        raise AssertionError(f"{name} left-hand sides don't match:\n{e}")
+
+    try:
+        linopy.testing.assert_linequal(actual.rhs, desired.rhs)
+    except AssertionError as e:
+        raise AssertionError(f"{name} right-hand sides don't match:\n{e}")
+
+    try:
+        xr.testing.assert_equal(actual.sign, desired.sign)
+    except AssertionError:
+        raise AssertionError(f"{name} signs don't match:\nActual: {actual.sign}\nExpected: {desired.sign}")
+
+
+def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
+    """Assert that two variables are equal with detailed error messages."""
+    name = actual.name
+    try:
+        xr.testing.assert_equal(actual.lower, desired.lower)
+    except AssertionError:
+        raise AssertionError(f"{name} lower bounds don't match:\nActual: {actual.lower}\nExpected: {desired.lower}")
+
+    try:
+        xr.testing.assert_equal(actual.upper, desired.upper)
+    except AssertionError:
+        raise AssertionError(f"{name} upper bounds don't match:\nActual: {actual.upper}\nExpected: {desired.upper}")
+
+    if actual.type != desired.type:
+        raise AssertionError(f"{name} types don't match: {actual.type} != {desired.type}")
+
+    if actual.size != desired.size:
+        raise AssertionError(f"{name} sizes don't match: {actual.size} != {desired.size}")
+
+    if actual.shape != desired.shape:
+        raise AssertionError(f"{name} shapes don't match: {actual.shape} != {desired.shape}")
+
+    try:
+        xr.testing.assert_equal(actual.coords, desired.coords)
+    except AssertionError:
+        raise AssertionError(f"{name} coordinates don't match:\nActual: {actual.coords}\nExpected: {desired.coords}")
+
+    if actual.coord_dims != desired.coord_dims:
+        raise AssertionError(f"{name} coordinate dimensions don't match: {actual.coord_dims} != {desired.coord_dims}")
