@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from flixopt.features import OnOffModel, StateModel
+from flixopt.features import ConsecutiveStateModel, StateModel
 
 
 class TestComputeConsecutiveDuration:
@@ -31,7 +31,7 @@ class TestComputeConsecutiveDuration:
     ])
     def test_compute_duration(self, binary_values, hours_per_timestep, expected):
         """Test compute_consecutive_duration with various inputs."""
-        result = OnOffModel.compute_consecutive_duration(binary_values, hours_per_timestep)
+        result = ConsecutiveStateModel.compute_consecutive_hours_in_state(binary_values, hours_per_timestep)
         assert np.isclose(result, expected)
 
     @pytest.mark.parametrize("binary_values, hours_per_timestep", [
@@ -41,7 +41,7 @@ class TestComputeConsecutiveDuration:
     def test_compute_duration_raises_error(self, binary_values, hours_per_timestep):
         """Test error conditions."""
         with pytest.raises(TypeError):
-            OnOffModel.compute_consecutive_duration(binary_values, hours_per_timestep)
+            ConsecutiveStateModel.compute_consecutive_hours_in_state(binary_values, hours_per_timestep)
 
 
 class TestComputePreviousOnStates:

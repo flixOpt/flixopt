@@ -357,7 +357,6 @@ class StateModel(Model):
         return (~np.isclose(previous_values, 0, atol=epsilon)).astype(int)
 
 
-
 class SwitchStateModel(Model):
     """
     Handles switch on/off transitions
@@ -569,33 +568,58 @@ class ConsecutiveStateModel(Model):
     @property
     def previous_duration(self) -> Scalar:
         """Computes the previous duration of the state variable"""
-        if not self._previous_states:
+        #TODO: Allow for other/dynamic timestep resolutions
+        return ConsecutiveStateModel.compute_consecutive_hours_in_state(
+            self._previous_states, self._model.hours_per_step.isel(time=0).item()
+        )
+
+    @staticmethod
+    def compute_consecutive_hours_in_state(
+        binary_values: NumericData, hours_per_timestep: Union[int, float, np.ndarray]
+    ) -> Scalar:
+        """
+        Computes the final consecutive duration in state 'on' (=1) in hours, from a binary array.
+
+        Args:
+            binary_values: An int or 1D binary array containing only `0`s and `1`s.
+            hours_per_timestep: The duration of each timestep in hours.
+                If a scalar is provided, it is used for all timesteps.
+                If an array is provided, it must be as long as the last consecutive duration in binary_values.
+
+        Returns:
+            The duration of the binary variable in hours.
+
+        Raises
+        ------
+        TypeError
+            If the length of binary_values and dt_in_hours is not equal, but None is a scalar.
+        """
+        if np.isscalar(binary_values) and np.isscalar(hours_per_timestep):
+            return binary_values * hours_per_timestep
+        elif np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
+            return binary_values * hours_per_timestep[-1]
+
+        if np.isclose(binary_values[-1], 0, atol=CONFIG.modeling.EPSILON):
             return 0
 
-        if np.isscalar(self._previous_states) and np.isscalar(self._model.hours_per_step):
-            return self._previous_states * self._model.hours_per_step
+        if np.isscalar(hours_per_timestep):
+            hours_per_timestep = np.ones(len(binary_values)) * hours_per_timestep
+        hours_per_timestep: np.ndarray
 
-        elif np.isscalar(self._previous_states) and not np.isscalar(self._model.hours_per_step):
-            return self._previous_states * self._model.hours_per_step[-1]
-
-        # Find the indexes where value=`0` in a 1D-array
-        zero_indices = np.where(np.isclose(self._previous_states, 0, atol=CONFIG.modeling.EPSILON))[0]
-        length_of_last_duration = zero_indices[-1] + 1 if zero_indices.size > 0 else len(self._previous_states)
-
-        if not np.isscalar(self._previous_states) and np.isscalar(self._model.hours_per_step):
-            return np.sum(self._previous_states[-length_of_last_duration:] * self._model.hours_per_step)
-        elif not np.isscalar(self._previous_states) and not np.isscalar(self._model.hours_per_step):
-            if length_of_last_duration > len(self._model.hours_per_step):  # check that lengths are compatible
-                raise TypeError(
-                    f'When trying to calculate the consecutive duration, the length of the last duration '
-                    f'({length_of_last_duration}) is longer than the hours_per_timestep ({len(self._model.hours_per_step)})'
-                )
-            return np.sum(self._previous_states[-length_of_last_duration:] * self._model.hours_per_step[-length_of_last_duration:])
+        indexes_with_zero_values = np.where(np.isclose(binary_values, 0, atol=CONFIG.modeling.EPSILON))[0]
+        if len(indexes_with_zero_values) == 0:
+            nr_of_indexes_with_consecutive_ones = len(binary_values)
         else:
-            raise Exception(
-                f'Unexpected state reached in function compute_consecutive_duration(). binary_values={self._previous_states}; '
-                f'hours_per_timestep={self._model.hours_per_step}'
+            nr_of_indexes_with_consecutive_ones = len(binary_values) - indexes_with_zero_values[-1] - 1
+
+        if len(hours_per_timestep) < nr_of_indexes_with_consecutive_ones:
+            raise ValueError(
+                f'When trying to calculate the consecutive duration, the length of the last duration '
+                f'({len(nr_of_indexes_with_consecutive_ones)}) is longer than the provided hours_per_timestep ({len(hours_per_timestep)}), '
+                f'as {binary_values=}'
             )
+
+        return np.sum(binary_values[-nr_of_indexes_with_consecutive_ones:] * hours_per_timestep[-nr_of_indexes_with_consecutive_ones:])
 
 
 class OnOffModel(Model):
