@@ -636,6 +636,9 @@ class OnOffModel(Model):
             A binary array (0 and 1) indicating the previous on/off states of the variables.
             Returns `array([0])` if no previous values are available.
         """
+        for arr in previous_values:
+            if isinstance(arr, np.ndarray) and arr.ndim > 1:
+                raise ValueError('Only 1D arrays or None values are supported for previous_values')
 
         if not previous_values or all([val is None for val in previous_values]):
             return np.array([0])
