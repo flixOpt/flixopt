@@ -899,7 +899,7 @@ class TimeSeriesCollection:
         if isinstance(item, str):
             return item in self.time_series_data
         elif isinstance(item, TimeSeries):
-            return item in self.time_series_data.values()
+            return any([item is ts for ts in self.time_series_data.values()])
         return False
 
     @property
