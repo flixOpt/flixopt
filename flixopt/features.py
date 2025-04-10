@@ -487,9 +487,9 @@ class ConsecutiveStateModel(Model):
                 lower=0,
                 upper=self._maximum_duration if self._maximum_duration is not None else mega,
                 coords=self._model.coords,
-                name=f'{self.label_full}|consecutive',
+                name=f'{self.label_full}|hours',
             ),
-            f'consecutive',
+            f'hours',
         )
 
         # Add constraints
@@ -497,9 +497,9 @@ class ConsecutiveStateModel(Model):
         # Upper bound constraint
         self.add(
             self._model.add_constraints(
-                self.duration <= self._state_variable * mega, name=f'{self.label_full}|consecutive_con1'
+                self.duration <= self._state_variable * mega, name=f'{self.label_full}|con1'
             ),
-            f'consecutive_con1',
+            f'con1',
         )
 
         # Forward constraint
@@ -507,9 +507,9 @@ class ConsecutiveStateModel(Model):
             self._model.add_constraints(
                 self.duration.isel(time=slice(1, None))
                 <= self.duration.isel(time=slice(None, -1)) + hours_per_step.isel(time=slice(None, -1)),
-                name=f'{self.label_full}|consecutive_con2a',
+                name=f'{self.label_full}|con2a',
             ),
-            f'consecutive_con2a',
+            f'con2a',
         )
 
         # Backward constraint
@@ -519,9 +519,9 @@ class ConsecutiveStateModel(Model):
                 >= self.duration.isel(time=slice(None, -1))
                 + hours_per_step.isel(time=slice(None, -1))
                 + (self._state_variable.isel(time=slice(1, None)) - 1) * mega,
-                name=f'{self.label_full}|consecutive_con2b',
+                name=f'{self.label_full}|con2b',
             ),
-            f'consecutive_con2b',
+            f'con2b',
         )
 
         # Add minimum duration constraints if specified
@@ -533,18 +533,18 @@ class ConsecutiveStateModel(Model):
                         self._state_variable.isel(time=slice(None, -1)) - self._state_variable.isel(time=slice(1, None))
                     )
                     * self._minimum_duration.isel(time=slice(None, -1)),
-                    name=f'{self.label_full}|consecutive_minimum',
+                    name=f'{self.label_full}|minimum',
                 ),
-                f'consecutive_minimum',
+                f'minimum',
             )
 
             # Handle initial condition
             if 0 < self.previous_duration < self._minimum_duration.isel(time=0):
                 self.add(
                     self._model.add_constraints(
-                        self._state_variable.isel(time=0) == 1, name=f'{self.label_full}|consecutive_minimum_initial'
+                        self._state_variable.isel(time=0) == 1, name=f'{self.label_full}|initial_minimum'
                     ),
-                    f'consecutive_minimum_initial',
+                    f'initial_minimum',
                 )
 
         # Set initial value
@@ -552,9 +552,9 @@ class ConsecutiveStateModel(Model):
             self._model.add_constraints(
                 self.duration.isel(time=0) ==
                 (hours_per_step.isel(time=0) + self.previous_duration) * self._state_variable.isel(time=0),
-                name=f'{self.label_full}|consecutive_initial',
+                name=f'{self.label_full}|initial',
             ),
-            f'consecutive_initial',
+            f'initial',
         )
 
         return self
