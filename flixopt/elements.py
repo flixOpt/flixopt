@@ -430,16 +430,16 @@ class FlowModel(ElementModel):
         """Returns the lower bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_minimum.selected_data
-        return fixed_profile.selected_data
+            return self.element.relative_minimum.active_data
+        return fixed_profile.active_data
 
     @property
     def flow_rate_upper_bound_relative(self) -> NumericData:
         """ Returns the upper bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_maximum.selected_data
-        return fixed_profile.selected_data
+            return self.element.relative_maximum.active_data
+        return fixed_profile.active_data
 
     @property
     def flow_rate_lower_bound(self) -> NumericData:
