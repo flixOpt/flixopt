@@ -393,6 +393,7 @@ class SwitchStateModel(Model):
         self.switch_on_nr = self.add(
             self._model.add_variables(
                 upper=self._switch_on_max,
+                lower=0,
                 name=f'{self.label_full}|switch_on_nr',
             ),
             'switch_on_nr',
