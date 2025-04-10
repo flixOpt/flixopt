@@ -11,8 +11,8 @@ import numpy as np
 
 from . import utils
 from .config import CONFIG
-from .core import Scalar, NumericData, TimeSeries
-from .interface import InvestParameters, Piecewise, OnOffParameters
+from .core import NumericData, Scalar, TimeSeries
+from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 
 logger = logging.getLogger('flixopt')
@@ -495,7 +495,7 @@ class ConsecutiveStateModel(Model):
                 coords=self._model.coords,
                 name=f'{self.label_full}|hours',
             ),
-            f'hours',
+            'hours',
         )
 
         # Add constraints
@@ -505,7 +505,7 @@ class ConsecutiveStateModel(Model):
             self._model.add_constraints(
                 self.duration <= self._state_variable * mega, name=f'{self.label_full}|con1'
             ),
-            f'con1',
+            'con1',
         )
 
         # Forward constraint
@@ -515,7 +515,7 @@ class ConsecutiveStateModel(Model):
                 <= self.duration.isel(time=slice(None, -1)) + hours_per_step.isel(time=slice(None, -1)),
                 name=f'{self.label_full}|con2a',
             ),
-            f'con2a',
+            'con2a',
         )
 
         # Backward constraint
@@ -527,7 +527,7 @@ class ConsecutiveStateModel(Model):
                 + (self._state_variable.isel(time=slice(1, None)) - 1) * mega,
                 name=f'{self.label_full}|con2b',
             ),
-            f'con2b',
+            'con2b',
         )
 
         # Add minimum duration constraints if specified
@@ -541,7 +541,7 @@ class ConsecutiveStateModel(Model):
                     * self._minimum_duration.isel(time=slice(None, -1)),
                     name=f'{self.label_full}|minimum',
                 ),
-                f'minimum',
+                'minimum',
             )
 
             # Handle initial condition
@@ -550,7 +550,7 @@ class ConsecutiveStateModel(Model):
                     self._model.add_constraints(
                         self._state_variable.isel(time=0) == 1, name=f'{self.label_full}|initial_minimum'
                     ),
-                    f'initial_minimum',
+                    'initial_minimum',
                 )
 
         # Set initial value
@@ -560,7 +560,7 @@ class ConsecutiveStateModel(Model):
                 (hours_per_step.isel(time=0) + self.previous_duration) * self._state_variable.isel(time=0),
                 name=f'{self.label_full}|initial',
             ),
-            f'initial',
+            'initial',
         )
 
         return self
@@ -700,7 +700,7 @@ class OnOffModel(Model):
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
                 previous_states=self.state_model.previous_on_states,
-                label=f'ConsecutiveOn',
+                label='ConsecutiveOn',
             )
             self.add(self.consecutive_on_model)
             self.consecutive_on_model.do_modeling()
@@ -714,7 +714,7 @@ class OnOffModel(Model):
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
                 previous_states=self.state_model.previous_off_states,
-                label=f'ConsecutiveOff',
+                label='ConsecutiveOff',
             )
             self.add(self.consecutive_off_model)
             self.consecutive_off_model.do_modeling()
