@@ -333,15 +333,7 @@ class StateModel(Model):
     @property
     def previous_states(self) -> np.ndarray:
         """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
-        if not self._previous_values or all([val is None for val in self._previous_values]):
-            return np.array([0])
-
-        # Convert to 2D-array and compute binary on/off states
-        previous_values = np.array([values for values in self._previous_values if values is not None])  # Filter out None
-        if previous_values.ndim > 1:
-            return np.any(~np.isclose(previous_values, 0, atol=CONFIG.modeling.EPSILON), axis=0).astype(int)
-
-        return (~np.isclose(previous_values, 0, atol=CONFIG.modeling.EPSILON)).astype(int)
+        return StateModel.compute_previous_states(self._previous_values, epsilon=CONFIG.modeling.EPSILON)
 
     @property
     def previous_on_states(self) -> np.ndarray:
@@ -350,6 +342,20 @@ class StateModel(Model):
     @property
     def previous_off_states(self):
         return 1 - self.previous_states
+
+    @staticmethod
+    def compute_previous_states(previous_values: List[NumericData], epsilon: float = 1e-5) -> np.ndarray:
+        """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
+        if not previous_values or all([val is None for val in previous_values]):
+            return np.array([0])
+
+        # Convert to 2D-array and compute binary on/off states
+        previous_values = np.array([values for values in previous_values if values is not None])  # Filter out None
+        if previous_values.ndim > 1:
+            return np.any(~np.isclose(previous_values, 0, atol=epsilon), axis=0).astype(int)
+
+        return (~np.isclose(previous_values, 0, atol=epsilon)).astype(int)
+
 
 
 class SwitchStateModel(Model):

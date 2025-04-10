@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from flixopt.features import OnOffModel
+from flixopt.features import OnOffModel, StateModel
 
 
 class TestComputeConsecutiveDuration:
@@ -76,7 +76,7 @@ class TestComputePreviousOnStates:
     )
     def test_compute_previous_on_states(self, previous_values, expected):
         """Test compute_previous_on_states with various inputs."""
-        result = OnOffModel.compute_previous_on_states(previous_values)
+        result = StateModel.compute_previous_states(previous_values)
         np.testing.assert_array_equal(result, expected)
 
     @pytest.mark.parametrize("previous_values, epsilon, expected", [
@@ -90,7 +90,7 @@ class TestComputePreviousOnStates:
     ])
     def test_compute_previous_on_states_with_epsilon(self, previous_values, epsilon, expected):
         """Test compute_previous_on_states with custom epsilon values."""
-        result = OnOffModel.compute_previous_on_states(previous_values, epsilon)
+        result = StateModel.compute_previous_states(previous_values, epsilon)
         np.testing.assert_array_equal(result, expected)
 
     @pytest.mark.parametrize("previous_values, expected_shape", [
@@ -101,5 +101,5 @@ class TestComputePreviousOnStates:
     ])
     def test_output_shapes(self, previous_values, expected_shape):
         """Test that output array has the correct shape."""
-        result = OnOffModel.compute_previous_on_states(previous_values)
+        result = StateModel.compute_previous_states(previous_values)
         assert result.shape == expected_shape
