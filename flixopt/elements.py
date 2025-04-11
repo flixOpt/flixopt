@@ -193,7 +193,8 @@ class Flow(Element):
                 (relative_minimum and relative_maximum are ignored)
                 used for fixed load or supply profiles, i.g. heat demand, wind-power, solarthermal
                 If the load-profile is just an upper limit, use relative_maximum instead.
-            previous_flow_rate: previous flow rate of the component.
+            previous_flow_rate: previous flow rate of the flow. Used to determine if and how long the
+                flow is already on / off. If None, the flow is considered to be off for one timestep.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, meta_data=meta_data)
