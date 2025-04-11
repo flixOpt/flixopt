@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from flixopt.features import OnOffModel
+from flixopt.features import ConsecutiveStateModel, StateModel
 
 
 class TestComputeConsecutiveDuration:
@@ -31,7 +31,7 @@ class TestComputeConsecutiveDuration:
     ])
     def test_compute_duration(self, binary_values, hours_per_timestep, expected):
         """Test compute_consecutive_duration with various inputs."""
-        result = OnOffModel.compute_consecutive_duration(binary_values, hours_per_timestep)
+        result = ConsecutiveStateModel.compute_consecutive_hours_in_state(binary_values, hours_per_timestep)
         assert np.isclose(result, expected)
 
     @pytest.mark.parametrize("binary_values, hours_per_timestep", [
@@ -41,7 +41,7 @@ class TestComputeConsecutiveDuration:
     def test_compute_duration_raises_error(self, binary_values, hours_per_timestep):
         """Test error conditions."""
         with pytest.raises(TypeError):
-            OnOffModel.compute_consecutive_duration(binary_values, hours_per_timestep)
+            ConsecutiveStateModel.compute_consecutive_hours_in_state(binary_values, hours_per_timestep)
 
 
 class TestComputePreviousOnStates:
@@ -76,7 +76,7 @@ class TestComputePreviousOnStates:
     )
     def test_compute_previous_on_states(self, previous_values, expected):
         """Test compute_previous_on_states with various inputs."""
-        result = OnOffModel.compute_previous_on_states(previous_values)
+        result = StateModel.compute_previous_states(previous_values)
         np.testing.assert_array_equal(result, expected)
 
     @pytest.mark.parametrize("previous_values, epsilon, expected", [
@@ -90,7 +90,7 @@ class TestComputePreviousOnStates:
     ])
     def test_compute_previous_on_states_with_epsilon(self, previous_values, epsilon, expected):
         """Test compute_previous_on_states with custom epsilon values."""
-        result = OnOffModel.compute_previous_on_states(previous_values, epsilon)
+        result = StateModel.compute_previous_states(previous_values, epsilon)
         np.testing.assert_array_equal(result, expected)
 
     @pytest.mark.parametrize("previous_values, expected_shape", [
@@ -101,5 +101,5 @@ class TestComputePreviousOnStates:
     ])
     def test_output_shapes(self, previous_values, expected_shape):
         """Test that output array has the correct shape."""
-        result = OnOffModel.compute_previous_on_states(previous_values)
+        result = StateModel.compute_previous_states(previous_values)
         assert result.shape == expected_shape
