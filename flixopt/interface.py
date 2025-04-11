@@ -4,14 +4,14 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, Scalar
+from .core import NumericDataTS, Scalar, ScenarioData, TimestepData
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from .effects import EffectValuesUser, EffectValuesUserScalar
+    from .effects import EffectValuesUserScenario, EffectValuesUserTimestep
     from .flow_system import FlowSystem
 
 
@@ -20,7 +20,7 @@ logger = logging.getLogger('flixopt')
 
 @register_class_for_io
 class Piece(Interface):
-    def __init__(self, start: NumericData, end: NumericData):
+    def __init__(self, start: TimestepData, end: TimestepData):
         """
         Define a Piece, which is part of a Piecewise object.
 
@@ -30,10 +30,15 @@ class Piece(Interface):
         """
         self.start = start
         self.end = end
+        self.has_time_dim = False
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
-        self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
+        self.start = flow_system.create_time_series(
+            name=f'{name_prefix}|start', data=self.start, has_time_dim=self.has_time_dim, has_scenario_dim=True
+        )
+        self.end = flow_system.create_time_series(
+            name=f'{name_prefix}|end', data=self.end, has_time_dim=self.has_time_dim, has_scenario_dim=True
+        )
 
 
 @register_class_for_io
@@ -46,6 +51,17 @@ class Piecewise(Interface):
             pieces: The pieces of the piecewise.
         """
         self.pieces = pieces
+        self._has_time_dim = False
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        for piece in self.pieces:
+            piece.has_time_dim = value
 
     def __len__(self):
         return len(self.pieces)
@@ -73,6 +89,18 @@ class PiecewiseConversion(Interface):
             piecewises: Dict of Piecewises defining the conversion factors. flow labels as keys, piecewise as values
         """
         self.piecewises = piecewises
+        self._has_time_dim = True
+        self.has_time_dim = True  # Inital propagation
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        for piecewise in self.piecewises.values():
+            piecewise.has_time_dim = value
 
     def items(self):
         return self.piecewises.items()
@@ -94,12 +122,24 @@ class PiecewiseEffects(Interface):
         """
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
+        self._has_time_dim = False
+        self.has_time_dim = False  # Inital propagation
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        self.piecewise_origin.has_time_dim = value
+        for piecewise in self.piecewise_shares.values():
+            piecewise.has_time_dim = value
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
-        # self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
-        # for name, piecewise in self.piecewise_shares.items():
-        #    piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{name}')
+        self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
+        for effect, piecewise in self.piecewise_shares.items():
+            piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
 
 
 @register_class_for_io
@@ -110,14 +150,15 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: Optional[Union[int, float]] = None,
-        minimum_size: Optional[Union[int, float]] = None,
-        maximum_size: Optional[Union[int, float]] = None,
+        fixed_size: Optional[ScenarioData] = None,
+        minimum_size: Optional[ScenarioData] = None,
+        maximum_size: Optional[ScenarioData] = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: Optional['EffectValuesUserScalar'] = None,
-        specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
+        fix_effects: Optional['EffectValuesUserScenario'] = None,
+        specific_effects: Optional['EffectValuesUserScenario'] = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: Optional[PiecewiseEffects] = None,
-        divest_effects: Optional['EffectValuesUserScalar'] = None,
+        divest_effects: Optional['EffectValuesUserScenario'] = None,
+        size_per_scenario: Literal['equal', 'individual', 'increment_once'] = 'equal',
     ):
         """
         Args:
@@ -128,58 +169,84 @@ class InvestParameters(Interface):
             specific_effects: Specific costs, e.g., in €/kW_nominal or €/m²_nominal.
                 Example: {costs: 3, CO2: 0.3} with costs and CO2 representing an Object of class Effect
                 (Attention: Annualize costs to chosen period!)
-            piecewise_effects: Linear piecewise relation [invest_pieces, cost_pieces].
-                Example 1:
-                    [           [5, 25, 25, 100],       # size in kW
-                     {costs:    [50,250,250,800],       # €
-                      PE:       [5, 25, 25, 100]        # kWh_PrimaryEnergy
-                      }
-                    ]
-                Example 2 (if only standard-effect):
-                    [   [5, 25, 25, 100],  # kW # size in kW
-                        [50,250,250,800]        # value for standart effect, typically €
-                     ]  # €
-                (Attention: Annualize costs to chosen period!)
-                (Args 'specific_effects' and 'fix_effects' can be used in parallel to Investsizepieces)
-            minimum_size: Min nominal value (only if: size_is_fixed = False). Defaults to CONFIG.modeling.EPSILON.
-            maximum_size: Max nominal value (only if: size_is_fixed = False). Defaults to CONFIG.modeling.BIG.
+            piecewise_effects: Define the effects of the investment as a piecewise function of the size of the investment.
+            minimum_size: Minimum possible size of the investment.
+            maximum_size: Maximum possible size of the investment.
+            size_per_scenario: How to treat the size in each scenario
+                - 'equal': Equalize the size of all scenarios
+                - 'individual': Optimize the size of each scenario individually
+                - 'increment_once': Allow the size to increase only once. This is useful if the scenarios are related to
+                    different periods (years, months). Tune the timing by setting the maximum size to 0 in the first scenarios.
         """
-        self.fix_effects: EffectValuesUser = fix_effects or {}
-        self.divest_effects: EffectValuesUser = divest_effects or {}
+        self.fix_effects: EffectValuesUserScenario = fix_effects if fix_effects is not None else {}
+        self.divest_effects: EffectValuesUserScenario = divest_effects if divest_effects is not None else {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: EffectValuesUser = specific_effects or {}
+        self.specific_effects: EffectValuesUserScenario = specific_effects if specific_effects is not None else {}
         self.piecewise_effects = piecewise_effects
         self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
+        self.size_per_scenario = size_per_scenario
 
-    def transform_data(self, flow_system: 'FlowSystem'):
-        self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)
-        self.divest_effects = flow_system.effects.create_effect_values_dict(self.divest_effects)
-        self.specific_effects = flow_system.effects.create_effect_values_dict(self.specific_effects)
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        self.fix_effects = flow_system.create_effect_time_series(
+            label_prefix=name_prefix,
+            effect_values=self.fix_effects,
+            label_suffix='fix_effects',
+            has_time_dim=False,
+            has_scenario_dim=True,
+        )
+        self.divest_effects = flow_system.create_effect_time_series(
+            label_prefix=name_prefix,
+            effect_values=self.divest_effects,
+            label_suffix='divest_effects',
+            has_time_dim=False,
+            has_scenario_dim=True,
+        )
+        self.specific_effects = flow_system.create_effect_time_series(
+            label_prefix=name_prefix,
+            effect_values=self.specific_effects,
+            label_suffix='specific_effects',
+            has_time_dim=False,
+            has_scenario_dim=True,
+        )
+        if self.piecewise_effects is not None:
+            self.piecewise_effects.has_time_dim = False
+            self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
+
+        self._minimum_size = flow_system.create_time_series(
+            f'{name_prefix}|minimum_size', self.minimum_size, has_time_dim=False, has_scenario_dim=True
+        )
+        self._maximum_size = flow_system.create_time_series(
+            f'{name_prefix}|maximum_size', self.maximum_size, has_time_dim=False, has_scenario_dim=True
+        )
+        if self.fixed_size is not None:
+            self.fixed_size = flow_system.create_time_series(
+                f'{name_prefix}|fixed_size', self.fixed_size, has_time_dim=False, has_scenario_dim=True
+            )
 
     @property
     def minimum_size(self):
-        return self.fixed_size or self._minimum_size
+        return self.fixed_size if self.fixed_size is not None else self._minimum_size
 
     @property
     def maximum_size(self):
-        return self.fixed_size or self._maximum_size
+        return self.fixed_size if self.fixed_size is not None else self._maximum_size
 
 
 @register_class_for_io
 class OnOffParameters(Interface):
     def __init__(
         self,
-        effects_per_switch_on: Optional['EffectValuesUser'] = None,
-        effects_per_running_hour: Optional['EffectValuesUser'] = None,
-        on_hours_total_min: Optional[int] = None,
-        on_hours_total_max: Optional[int] = None,
-        consecutive_on_hours_min: Optional[NumericData] = None,
-        consecutive_on_hours_max: Optional[NumericData] = None,
-        consecutive_off_hours_min: Optional[NumericData] = None,
-        consecutive_off_hours_max: Optional[NumericData] = None,
-        switch_on_total_max: Optional[int] = None,
+        effects_per_switch_on: Optional['EffectValuesUserTimestep'] = None,
+        effects_per_running_hour: Optional['EffectValuesUserTimestep'] = None,
+        on_hours_total_min: Optional[ScenarioData] = None,
+        on_hours_total_max: Optional[ScenarioData] = None,
+        consecutive_on_hours_min: Optional[TimestepData] = None,
+        consecutive_on_hours_max: Optional[TimestepData] = None,
+        consecutive_off_hours_min: Optional[TimestepData] = None,
+        consecutive_off_hours_max: Optional[TimestepData] = None,
+        switch_on_total_max: Optional[ScenarioData] = None,
         force_switch_on: bool = False,
     ):
         """
@@ -202,8 +269,8 @@ class OnOffParameters(Interface):
             switch_on_total_max: max nr of switchOn operations
             force_switch_on: force creation of switch on variable, even if there is no switch_on_total_max
         """
-        self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}
-        self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}
+        self.effects_per_switch_on: EffectValuesUserTimestep = effects_per_switch_on or {}
+        self.effects_per_running_hour: EffectValuesUserTimestep = effects_per_running_hour or {}
         self.on_hours_total_min: Scalar = on_hours_total_min
         self.on_hours_total_max: Scalar = on_hours_total_max
         self.consecutive_on_hours_min: NumericDataTS = consecutive_on_hours_min
@@ -231,6 +298,15 @@ class OnOffParameters(Interface):
         )
         self.consecutive_off_hours_max = flow_system.create_time_series(
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
+        )
+        self.on_hours_total_max = flow_system.create_time_series(
+            f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, has_time_dim=False
+        )
+        self.on_hours_total_min = flow_system.create_time_series(
+            f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, has_time_dim=False
+        )
+        self.switch_on_total_max = flow_system.create_time_series(
+            f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, has_time_dim=False
         )
 
     @property

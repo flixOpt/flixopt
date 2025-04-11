@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -58,6 +58,7 @@ class SystemModel(linopy.Model):
         self.flow_system = flow_system
         self.time_series_collection = flow_system.time_series_collection
         self.effects: Optional[EffectCollectionModel] = None
+        self.scenario_weights = self._calculate_scenario_weights(flow_system.scenario_weights)
 
     def do_modeling(self):
         self.effects = self.flow_system.effects.create_model(self)
@@ -68,6 +69,24 @@ class SystemModel(linopy.Model):
             component_model.do_modeling()
         for bus_model in bus_models:  # Buses after Components, because FlowModels are created in ComponentModels
             bus_model.do_modeling()
+
+    def _calculate_scenario_weights(self, weights: Optional[TimeSeries] = None) -> xr.DataArray:
+        """Calculates the weights of the scenarios. If None, all scenarios have the same weight. All weights are normalized to 1.
+        If no scenarios are present, s single weight of 1 is returned.
+        """
+        if weights is not None and not isinstance(weights, TimeSeries):
+            raise TypeError(f'Weights must be a TimeSeries or None, got {type(weights)}')
+        if self.time_series_collection.scenarios is None:
+            return xr.DataArray(1)
+        if weights is None:
+            weights = xr.DataArray(
+                np.ones(len(self.time_series_collection.scenarios)),
+                coords={'scenario': self.time_series_collection.scenarios}
+            )
+        elif isinstance(weights, TimeSeries):
+            weights = weights.selected_data
+
+        return weights / weights.sum()
 
     @property
     def solution(self):
@@ -98,13 +117,40 @@ class SystemModel(linopy.Model):
     def hours_of_previous_timesteps(self):
         return self.time_series_collection.hours_of_previous_timesteps
 
-    @property
-    def coords(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps,)
+    def get_coords(
+        self, scenario_dim=True, time_dim=True, extra_timestep=False
+    ) -> Optional[Union[Tuple[pd.Index], Tuple[pd.Index, pd.Index]]]:
+        """
+        Returns the coordinates of the model
 
-    @property
-    def coords_extra(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps_extra,)
+        Args:
+            scenario_dim: If True, the scenario dimension is included in the coordinates
+            time_dim: If True, the time dimension is included in the coordinates
+            extra_timestep: If True, the extra timesteps are used instead of the regular timesteps
+
+        Returns:
+            The coordinates of the model. Might also be None if no scenarios are present and time_dim is False
+        """
+        if not scenario_dim and not time_dim:
+            return None
+        scenarios = self.time_series_collection.scenarios
+        timesteps = (
+            self.time_series_collection.timesteps if not extra_timestep else self.time_series_collection.timesteps_extra
+        )
+
+        if scenario_dim and time_dim:
+            if scenarios is None:
+                return (timesteps,)
+            return timesteps, scenarios
+
+        if scenario_dim and not time_dim:
+            if scenarios is None:
+                return None
+            return (scenarios,)
+        if time_dim and not scenario_dim:
+            return (timesteps,)
+
+        raise ValueError(f'Cannot get coordinates with both {scenario_dim=} and {time_dim=}')
 
 
 class Interface:
@@ -534,9 +580,12 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
             return copy_and_convert_datatypes(data.tolist(), use_numpy, use_element_label)
 
     elif isinstance(data, TimeSeries):
-        return copy_and_convert_datatypes(data.active_data, use_numpy, use_element_label)
+        return copy_and_convert_datatypes(data.selected_data, use_numpy, use_element_label)
     elif isinstance(data, TimeSeriesData):
         return copy_and_convert_datatypes(data.data, use_numpy, use_element_label)
+    elif isinstance(data, (pd.Series, pd.DataFrame)):
+        #TODO: This can be improved
+        return copy_and_convert_datatypes(data.values, use_numpy, use_element_label)
 
     elif isinstance(data, Interface):
         if use_element_label and isinstance(data, Element):

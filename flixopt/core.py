@@ -7,6 +7,7 @@ import inspect
 import json
 import logging
 import pathlib
+import textwrap
 from collections import Counter
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
 
@@ -25,6 +26,12 @@ NumericData = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, 
 NumericDataTS = Union[NumericData, 'TimeSeriesData']
 """Represents either standard numeric data or TimeSeriesData."""
 
+TimestepData = NumericData
+"""Represents any form of numeric data that corresponds to timesteps."""
+
+ScenarioData = NumericData
+"""Represents any form of numeric data that corresponds to scenarios."""
+
 
 class PlausibilityError(Exception):
     """Error for a failing Plausibility check."""
@@ -40,61 +47,443 @@ class ConversionError(Exception):
 
 class DataConverter:
     """
-    Converts various data types into xarray.DataArray with a timesteps index.
+    Converts various data types into xarray.DataArray with optional time and scenario dimension.
 
-    Supports: scalars, arrays, Series, DataFrames, and DataArrays.
+    Current implementation handles:
+    - Scalar values
+    - NumPy arrays
+    - xarray.DataArray
     """
 
     @staticmethod
-    def as_dataarray(data: NumericData, timesteps: pd.DatetimeIndex) -> xr.DataArray:
-        """Convert data to xarray.DataArray with specified timesteps index."""
+    def as_dataarray(
+        data: TimestepData, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None
+    ) -> xr.DataArray:
+        """
+        Convert data to xarray.DataArray with specified dimensions.
+
+        Args:
+            data: The data to convert (scalar, array, or DataArray)
+            timesteps: Optional DatetimeIndex for time dimension
+            scenarios: Optional Index for scenario dimension
+
+        Returns:
+            DataArray with the converted data
+        """
+        # Prepare dimensions and coordinates
+        coords, dims = DataConverter._prepare_dimensions(timesteps, scenarios)
+
+        # Select appropriate converter based on data type
+        if isinstance(data, (int, float, np.integer, np.floating)):
+            return DataConverter._convert_scalar(data, coords, dims)
+
+        elif isinstance(data, xr.DataArray):
+            return DataConverter._convert_dataarray(data, coords, dims)
+
+        elif isinstance(data, np.ndarray):
+            return DataConverter._convert_ndarray(data, coords, dims)
+
+        elif isinstance(data, pd.Series):
+            return DataConverter._convert_series(data, coords, dims)
+
+        elif isinstance(data, pd.DataFrame):
+            return DataConverter._convert_dataframe(data, coords, dims)
+
+        else:
+            raise ConversionError(f'Unsupported data type: {type(data).__name__}')
+
+    @staticmethod
+    def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
+        """
+        Validate and prepare time index.
+
+        Args:
+            timesteps: The time index to validate
+
+        Returns:
+            Validated time index
+        """
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
-            raise ValueError(f'Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}')
+            raise ConversionError('Timesteps must be a non-empty DatetimeIndex')
+
         if not timesteps.name == 'time':
-            raise ConversionError(f'DatetimeIndex is not named correctly. Must be named "time", got {timesteps.name=}')
+            raise ConversionError(f'Scenarios must be named "time", got "{timesteps.name}"')
 
-        coords = [timesteps]
-        dims = ['time']
-        expected_shape = (len(timesteps),)
+        return timesteps
 
-        try:
-            if isinstance(data, (int, float, np.integer, np.floating)):
-                return xr.DataArray(data, coords=coords, dims=dims)
-            elif isinstance(data, pd.DataFrame):
-                if not data.index.equals(timesteps):
-                    raise ConversionError("DataFrame index doesn't match timesteps index")
-                if not len(data.columns) == 1:
-                    raise ConversionError('DataFrame must have exactly one column')
-                return xr.DataArray(data.values.flatten(), coords=coords, dims=dims)
-            elif isinstance(data, pd.Series):
-                if not data.index.equals(timesteps):
-                    raise ConversionError("Series index doesn't match timesteps index")
-                return xr.DataArray(data.values, coords=coords, dims=dims)
-            elif isinstance(data, np.ndarray):
-                if data.ndim != 1:
-                    raise ConversionError(f'Array must be 1-dimensional, got {data.ndim}')
-                elif data.shape[0] != expected_shape[0]:
-                    raise ConversionError(f"Array shape {data.shape} doesn't match expected {expected_shape}")
-                return xr.DataArray(data, coords=coords, dims=dims)
-            elif isinstance(data, xr.DataArray):
-                if data.dims != tuple(dims):
-                    raise ConversionError(f"DataArray dimensions {data.dims} don't match expected {dims}")
-                if data.sizes[dims[0]] != len(coords[0]):
-                    raise ConversionError(
-                        f"DataArray length {data.sizes[dims[0]]} doesn't match expected {len(coords[0])}"
-                    )
-                return data.copy(deep=True)
+    @staticmethod
+    def _validate_scenarios(scenarios: pd.Index) -> pd.Index:
+        """
+        Validate and prepare scenario index.
+
+        Args:
+            scenarios: The scenario index to validate
+        """
+        if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
+            raise ConversionError('Scenarios must be a non-empty Index')
+
+        if not scenarios.name == 'scenario':
+            raise ConversionError(f'Scenarios must be named "scenario", got "{scenarios.name}"')
+
+        return scenarios
+
+    @staticmethod
+    def _prepare_dimensions(
+        timesteps: Optional[pd.DatetimeIndex], scenarios: Optional[pd.Index]
+    ) -> Tuple[Dict[str, pd.Index], Tuple[str, ...]]:
+        """
+        Prepare coordinates and dimensions for the DataArray.
+
+        Args:
+            timesteps: Optional time index
+            scenarios: Optional scenario index
+
+        Returns:
+            Tuple of (coordinates dict, dimensions tuple)
+        """
+        # Validate inputs if provided
+        if timesteps is not None:
+            timesteps = DataConverter._validate_timesteps(timesteps)
+
+        if scenarios is not None:
+            scenarios = DataConverter._validate_scenarios(scenarios)
+
+        # Build coordinates and dimensions
+        coords = {}
+        dims = []
+
+        if timesteps is not None:
+            coords['time'] = timesteps
+            dims.append('time')
+
+        if scenarios is not None:
+            coords['scenario'] = scenarios
+            dims.append('scenario')
+
+        return coords, tuple(dims)
+
+    @staticmethod
+    def _convert_scalar(
+        data: Union[int, float, np.integer, np.floating], coords: Dict[str, pd.Index], dims: Tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Convert a scalar value to a DataArray.
+
+        Args:
+            data: The scalar value
+            coords: Coordinate dictionary
+            dims: Dimension names
+
+        Returns:
+            DataArray with the scalar value
+        """
+        if isinstance(data, (np.integer, np.floating)):
+            data = data.item()
+        return xr.DataArray(data, coords=coords, dims=dims)
+
+    @staticmethod
+    def _convert_dataarray(data: xr.DataArray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert an existing DataArray to desired dimensions.
+
+        Args:
+            data: The source DataArray
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray with the target dimensions
+        """
+        # No dimensions case
+        if len(dims) == 0:
+            if data.size != 1:
+                raise ConversionError('When converting to dimensionless DataArray, source must be scalar')
+            return xr.DataArray(data.values.item())
+
+        # Check if data already has matching dimensions and coordinates
+        if set(data.dims) == set(dims):
+            # Check if coordinates match
+            is_compatible = True
+            for dim in dims:
+                if dim in data.dims and not np.array_equal(data.coords[dim].values, coords[dim].values):
+                    is_compatible = False
+                    break
+
+            if is_compatible:
+                # Ensure dimensions are in the correct order
+                if data.dims != dims:
+                    # Transpose to get dimensions in the right order
+                    return data.transpose(*dims).copy(deep=True)
+                else:
+                    # Return existing DataArray if compatible and order is correct
+                    return data.copy(deep=True)
+
+        # Handle dimension broadcasting
+        if len(data.dims) == 1 and len(dims) == 2:
+            # Single dimension to two dimensions
+            if data.dims[0] == 'time' and 'scenario' in dims:
+                # Broadcast time dimension to include scenarios
+                return DataConverter._broadcast_time_to_scenarios(data, coords, dims)
+
+            elif data.dims[0] == 'scenario' and 'time' in dims:
+                # Broadcast scenario dimension to include time
+                return DataConverter._broadcast_scenario_to_time(data, coords, dims)
+
+        raise ConversionError(
+            f'Cannot convert {data.dims} to {dims}. Source coordinates: {data.coords}, Target coordinates: {coords}'
+        )
+    @staticmethod
+    def _broadcast_time_to_scenarios(
+        data: xr.DataArray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Broadcast a time-only DataArray to include scenarios.
+
+        Args:
+            data: The time-indexed DataArray
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray with time and scenario dimensions
+        """
+        # Check compatibility
+        if not np.array_equal(data.coords['time'].values, coords['time'].values):
+            raise ConversionError("Source time coordinates don't match target time coordinates")
+
+        # Broadcast values
+        values = np.tile(data.values, (len(coords['scenario']), 1))
+        return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
+    @staticmethod
+    def _broadcast_scenario_to_time(
+        data: xr.DataArray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Broadcast a scenario-only DataArray to include time.
+
+        Args:
+            data: The scenario-indexed DataArray
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray with time and scenario dimensions
+        """
+        # Check compatibility
+        if not np.array_equal(data.coords['scenario'].values, coords['scenario'].values):
+            raise ConversionError("Source scenario coordinates don't match target scenario coordinates")
+
+        # Broadcast values
+        values = np.repeat(data.values[:, np.newaxis], len(coords['time']), axis=1)
+        return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
+    @staticmethod
+    def _convert_ndarray(data: np.ndarray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert a NumPy array to a DataArray.
+
+        Args:
+            data: The NumPy array
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray from the NumPy array
+        """
+        # Handle dimensionless case
+        if len(dims) == 0:
+            if data.size != 1:
+                raise ConversionError('Without dimensions, can only convert scalar arrays')
+            return xr.DataArray(data.item())
+
+        # Handle single dimension
+        elif len(dims) == 1:
+            return DataConverter._convert_ndarray_single_dim(data, coords, dims)
+
+        # Handle two dimensions
+        elif len(dims) == 2:
+            return DataConverter._convert_ndarray_two_dims(data, coords, dims)
+
+        else:
+            raise ConversionError('Maximum 2 dimensions supported')
+
+    @staticmethod
+    def _convert_ndarray_single_dim(
+        data: np.ndarray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Convert a NumPy array to a single-dimension DataArray.
+
+        Args:
+            data: The NumPy array
+            coords: Target coordinates
+            dims: Target dimensions (length 1)
+
+        Returns:
+            DataArray with single dimension
+        """
+        dim_name = dims[0]
+        dim_length = len(coords[dim_name])
+
+        if data.ndim == 1:
+            # 1D array must match dimension length
+            if data.shape[0] != dim_length:
+                raise ConversionError(f"Array length {data.shape[0]} doesn't match {dim_name} length {dim_length}")
+            return xr.DataArray(data, coords=coords, dims=dims)
+        else:
+            raise ConversionError(f'Expected 1D array for single dimension, got {data.ndim}D')
+
+    @staticmethod
+    def _convert_ndarray_two_dims(data: np.ndarray, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert a NumPy array to a two-dimension DataArray.
+
+        Args:
+            data: The NumPy array
+            coords: Target coordinates
+            dims: Target dimensions (length 2)
+
+        Returns:
+            DataArray with two dimensions
+        """
+        scenario_length = len(coords['scenario'])
+        time_length = len(coords['time'])
+
+        if data.ndim == 1:
+            # For 1D array, create 2D array based on which dimension it matches
+            if data.shape[0] == time_length:
+                # Broadcast across scenarios
+                values = np.repeat(data[:, np.newaxis], scenario_length, axis=1)
+                return xr.DataArray(values, coords=coords, dims=dims)
+            elif data.shape[0] == scenario_length:
+                # Broadcast across time
+                values = np.tile(data, (time_length, 1))
+                return xr.DataArray(values, coords=coords, dims=dims)
             else:
-                raise ConversionError(f'Unsupported type: {type(data).__name__}')
-        except Exception as e:
-            if isinstance(e, ConversionError):
-                raise
-            raise ConversionError(f'Converting data {type(data)} to xarray.Dataset raised an error: {str(e)}') from e
+                raise ConversionError(f"1D array length {data.shape[0]} doesn't match either dimension")
+
+        elif data.ndim == 2:
+            # For 2D array, shape must match dimensions
+            expected_shape = (time_length, scenario_length)
+            if data.shape != expected_shape:
+                raise ConversionError(f"2D array shape {data.shape} doesn't match expected shape {expected_shape}")
+            return xr.DataArray(data, coords=coords, dims=dims)
+
+        else:
+            raise ConversionError(f'Expected 1D or 2D array for two dimensions, got {data.ndim}D')
+
+    @staticmethod
+    def _convert_series(data: pd.Series, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert pandas Series to xarray DataArray.
+
+        Args:
+            data: pandas Series to convert
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray from the pandas Series
+        """
+        # Handle single dimension case
+        if len(dims) == 1:
+            dim_name = dims[0]
+
+            # Check if series index matches the dimension
+            if data.index.equals(coords[dim_name]):
+                return xr.DataArray(data.values.copy(), coords=coords, dims=dims)
+            else:
+                raise ConversionError(
+                    f"Series index doesn't match {dim_name} coordinates.\n"
+                    f'Series index: {data.index}\n'
+                    f'Target {dim_name} coordinates: {coords[dim_name]}'
+                )
+
+        # Handle two dimensions case
+        elif len(dims) == 2:
+            # Check if dimensions are time and scenario
+            if dims != ('time', 'scenario'):
+                raise ConversionError(
+                    f'Two-dimensional conversion only supports time and scenario dimensions, got {dims}'
+                )
+
+            # Case 1: Series is indexed by time
+            if data.index.equals(coords['time']):
+                # Broadcast across scenarios
+                values = np.tile(data.values[:, np.newaxis], (1, len(coords['scenario'])))
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
+            # Case 2: Series is indexed by scenario
+            elif data.index.equals(coords['scenario']):
+                # Broadcast across time
+                values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
+            else:
+                raise ConversionError(
+                    "Series index must match either 'time' or 'scenario' coordinates.\n"
+                    f'Series index: {data.index}\n'
+                    f'Target time coordinates: {coords["time"]}\n'
+                    f'Target scenario coordinates: {coords["scenario"]}'
+                )
+
+        else:
+            raise ConversionError(f'Maximum 2 dimensions supported, got {len(dims)}')
+
+    @staticmethod
+    def _convert_dataframe(data: pd.DataFrame, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """
+        Convert pandas DataFrame to xarray DataArray.
+        Only allows time as index and scenarios as columns.
+
+        Args:
+            data: pandas DataFrame to convert
+            coords: Target coordinates
+            dims: Target dimensions
+
+        Returns:
+            DataArray from the pandas DataFrame
+        """
+        # Single dimension case
+        if len(dims) == 1:
+            # If DataFrame has one column, treat it like a Series
+            if len(data.columns) == 1:
+                series = data.iloc[:, 0]
+                return DataConverter._convert_series(series, coords, dims)
+
+            raise ConversionError(
+                f'When converting DataFrame to single-dimension DataArray, DataFrame must have exactly one column, got {len(data.columns)}'
+            )
+
+        # Two dimensions case
+        elif len(dims) == 2:
+            # Check if dimensions are time and scenario
+            if dims != ('time', 'scenario'):
+                raise ConversionError(
+                    f'Two-dimensional conversion only supports time and scenario dimensions, got {dims}'
+                )
+
+            # DataFrame must have time as index and scenarios as columns
+            if data.index.equals(coords['time']) and data.columns.equals(coords['scenario']):
+                # Create DataArray with proper dimension order
+                return xr.DataArray(data.values.copy(), coords=coords, dims=dims)
+            else:
+                raise ConversionError(
+                    'DataFrame must have time as index and scenarios as columns.\n'
+                    f'DataFrame index: {data.index}\n'
+                    f'DataFrame columns: {data.columns}\n'
+                    f'Target time coordinates: {coords["time"]}\n'
+                    f'Target scenario coordinates: {coords["scenario"]}'
+                )
+
+        else:
+            raise ConversionError(f'Maximum 2 dimensions supported, got {len(dims)}')
 
 
 class TimeSeriesData:
     # TODO: Move to Interface.py
-    def __init__(self, data: NumericData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
+    def __init__(self, data: TimestepData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
         """
         timeseries class for transmit timeseries AND special characteristics of timeseries,
         i.g. to define weights needed in calculation_type 'aggregated'
@@ -146,18 +535,19 @@ class TimeSeries:
         name (str): The name of the time series
         aggregation_weight (Optional[float]): Weight used for aggregation
         aggregation_group (Optional[str]): Group name for shared aggregation weighting
-        needs_extra_timestep (bool): Whether this series needs an extra timestep
+        has_extra_timestep (bool): Whether this series needs an extra timestep
     """
 
     @classmethod
     def from_datasource(
         cls,
-        data: NumericData,
+        data: NumericDataTS,
         name: str,
         timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index] = None,
         aggregation_weight: Optional[float] = None,
         aggregation_group: Optional[str] = None,
-        needs_extra_timestep: bool = False,
+        has_extra_timestep: bool = False,
     ) -> 'TimeSeries':
         """
         Initialize the TimeSeries from multiple data sources.
@@ -166,19 +556,20 @@ class TimeSeries:
             data: The time series data
             name: The name of the TimeSeries
             timesteps: The timesteps of the TimeSeries
+            scenarios: The scenarios of the TimeSeries
             aggregation_weight: The weight in aggregation calculations
             aggregation_group: Group this TimeSeries belongs to for aggregation weight sharing
-            needs_extra_timestep: Whether this series requires an extra timestep
+            has_extra_timestep: Whether this series requires an extra timestep
 
         Returns:
             A new TimeSeries instance
         """
         return cls(
-            DataConverter.as_dataarray(data, timesteps),
+            DataConverter.as_dataarray(data, timesteps, scenarios),
             name,
             aggregation_weight,
             aggregation_group,
-            needs_extra_timestep,
+            has_extra_timestep,
         )
 
     @classmethod
@@ -212,7 +603,7 @@ class TimeSeries:
             name=data['name'],
             aggregation_weight=data['aggregation_weight'],
             aggregation_group=data['aggregation_group'],
-            needs_extra_timestep=data['needs_extra_timestep'],
+            has_extra_timestep=data['has_extra_timestep'],
         )
 
     def __init__(
@@ -221,7 +612,7 @@ class TimeSeries:
         name: str,
         aggregation_weight: Optional[float] = None,
         aggregation_group: Optional[str] = None,
-        needs_extra_timestep: bool = False,
+        has_extra_timestep: bool = False,
     ):
         """
         Initialize a TimeSeries with a DataArray.
@@ -231,35 +622,40 @@ class TimeSeries:
             name: The name of the TimeSeries
             aggregation_weight: The weight in aggregation calculations
             aggregation_group: Group this TimeSeries belongs to for weight sharing
-            needs_extra_timestep: Whether this series requires an extra timestep
+            has_extra_timestep: Whether this series requires an extra timestep
 
         Raises:
-            ValueError: If data doesn't have a 'time' index or has more than 1 dimension
+            ValueError: If data has unsupported dimensions
         """
-        if 'time' not in data.indexes:
-            raise ValueError(f'DataArray must have a "time" index. Got {data.indexes}')
-        if data.ndim > 1:
-            raise ValueError(f'Number of dimensions of DataArray must be 1. Got {data.ndim}')
+        allowed_dims = {'time', 'scenario'}
+        if not set(data.dims).issubset(allowed_dims):
+            raise ValueError(f'DataArray dimensions must be subset of {allowed_dims}. Got {data.dims}')
 
         self.name = name
         self.aggregation_weight = aggregation_weight
         self.aggregation_group = aggregation_group
-        self.needs_extra_timestep = needs_extra_timestep
+        self.has_extra_timestep = has_extra_timestep
 
         # Data management
         self._stored_data = data.copy(deep=True)
         self._backup = self._stored_data.copy(deep=True)
-        self._active_timesteps = self._stored_data.indexes['time']
-        self._active_data = None
-        self._update_active_data()
 
-    def reset(self):
-        """
-        Reset active timesteps to the full set of stored timesteps.
-        """
-        self.active_timesteps = None
+        # Selection state
+        self._selected_timesteps: Optional[pd.DatetimeIndex] = None
+        self._selected_scenarios: Optional[pd.Index] = None
 
-    def restore_data(self):
+        # Flag for whether this series has various dimensions
+        self.has_time_dim = 'time' in data.dims
+        self.has_scenario_dim = 'scenario' in data.dims
+
+    def reset(self) -> None:
+        """
+        Reset selections to include all timesteps and scenarios.
+        This is equivalent to clearing all selections.
+        """
+        self.clear_selection()
+
+    def restore_data(self) -> None:
         """
         Restore stored_data from the backup and reset active timesteps.
         """
@@ -280,8 +676,8 @@ class TimeSeries:
             'name': self.name,
             'aggregation_weight': self.aggregation_weight,
             'aggregation_group': self.aggregation_group,
-            'needs_extra_timestep': self.needs_extra_timestep,
-            'data': self.active_data.to_dict(),
+            'has_extra_timestep': self.has_extra_timestep,
+            'data': self.selected_data.to_dict(),
         }
 
         # Convert datetime objects to ISO strings
@@ -303,84 +699,122 @@ class TimeSeries:
         Returns:
             String representation of data statistics
         """
-        return get_numeric_stats(self.active_data, padd=0)
-
-    def _update_active_data(self):
-        """
-        Update the active data based on active_timesteps.
-        """
-        self._active_data = self._stored_data.sel(time=self.active_timesteps)
+        return get_numeric_stats(self.selected_data, padd=0, by_scenario=True)
 
     @property
     def all_equal(self) -> bool:
         """Check if all values in the series are equal."""
-        return np.unique(self.active_data.values).size == 1
+        return np.unique(self.selected_data.values).size == 1
 
     @property
-    def active_timesteps(self) -> pd.DatetimeIndex:
-        """Get the current active timesteps."""
-        return self._active_timesteps
-
-    @active_timesteps.setter
-    def active_timesteps(self, timesteps: Optional[pd.DatetimeIndex]):
+    def selected_data(self) -> xr.DataArray:
         """
-        Set active_timesteps and refresh active_data.
-
-        Args:
-            timesteps: New timesteps to activate, or None to use all stored timesteps
-
-        Raises:
-            TypeError: If timesteps is not a pandas DatetimeIndex or None
+        Get a view of stored_data based on current selections.
+        This computes the view dynamically based on the current selection state.
         """
-        if timesteps is None:
-            self._active_timesteps = self.stored_data.indexes['time']
-        elif isinstance(timesteps, pd.DatetimeIndex):
-            self._active_timesteps = timesteps
-        else:
-            raise TypeError('active_timesteps must be a pandas DatetimeIndex or None')
-
-        self._update_active_data()
+        return self._stored_data.sel(**self._valid_selector)
 
     @property
-    def active_data(self) -> xr.DataArray:
-        """Get a view of stored_data based on active_timesteps."""
-        return self._active_data
+    def active_timesteps(self) -> Optional[pd.DatetimeIndex]:
+        """Get the current active timesteps, or None if no time dimension."""
+        if not self.has_time_dim:
+            return None
+        if self._selected_timesteps is None:
+            return self._stored_data.indexes['time']
+        return self._selected_timesteps
+
+    @property
+    def active_scenarios(self) -> Optional[pd.Index]:
+        """Get the current active scenarios, or None if no scenario dimension."""
+        if not self.has_scenario_dim:
+            return None
+        if self._selected_scenarios is None:
+            return self._stored_data.indexes['scenario']
+        return self._selected_scenarios
 
     @property
     def stored_data(self) -> xr.DataArray:
         """Get a copy of the full stored data."""
         return self._stored_data.copy()
 
-    @stored_data.setter
-    def stored_data(self, value: NumericData):
+    def update_stored_data(self, value: xr.DataArray) -> None:
         """
-        Update stored_data and refresh active_data.
+        Update stored_data and refresh selected_data.
 
         Args:
             value: New data to store
         """
-        new_data = DataConverter.as_dataarray(value, timesteps=self.active_timesteps)
+        new_data = DataConverter.as_dataarray(
+            value,
+            timesteps=self.active_timesteps if self.has_time_dim else None,
+            scenarios=self.active_scenarios if self.has_scenario_dim else None,
+        )
 
         # Skip if data is unchanged to avoid overwriting backup
         if new_data.equals(self._stored_data):
             return
 
         self._stored_data = new_data
-        self.active_timesteps = None  # Reset to full timeline
+        self.clear_selection()  # Reset selections to full dataset
+
+    def clear_selection(self, timesteps: bool = True, scenarios: bool = True) -> None:
+        if timesteps:
+            self._selected_timesteps = None
+        if scenarios:
+            self._selected_scenarios = None
+
+    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
+        """
+        Set active subset for timesteps and scenarios.
+
+        Args:
+            timesteps: Timesteps to activate, or None to clear. Ignored if series has no time dimension.
+            scenarios: Scenarios to activate, or None to clear. Ignored if series has no scenario dimension.
+        """
+        # Only update timesteps if the series has time dimension
+        if self.has_time_dim:
+            if timesteps is None:
+                self.clear_selection(timesteps=True, scenarios=False)
+            else:
+                self._selected_timesteps = timesteps
+
+        # Only update scenarios if the series has scenario dimension
+        if self.has_scenario_dim:
+            if scenarios is None:
+                self.clear_selection(timesteps=False, scenarios=True)
+            else:
+                self._selected_scenarios = scenarios
 
     @property
     def sel(self):
-        return self.active_data.sel
+        """Direct access to the selected_data's sel method for convenience."""
+        return self.selected_data.sel
 
     @property
     def isel(self):
-        return self.active_data.isel
+        """Direct access to the selected_data's isel method for convenience."""
+        return self.selected_data.isel
+
+    @property
+    def _valid_selector(self) -> Dict[str, pd.Index]:
+        """Get the current selection as a dictionary."""
+        selector = {}
+
+        # Only include time in selector if series has time dimension
+        if self.has_time_dim and self._selected_timesteps is not None:
+            selector['time'] = self._selected_timesteps
+
+        # Only include scenario in selector if series has scenario dimension
+        if self.has_scenario_dim and self._selected_scenarios is not None:
+            selector['scenario'] = self._selected_scenarios
+
+        return selector
 
     def _apply_operation(self, other, op):
         """Apply an operation between this TimeSeries and another object."""
         if isinstance(other, TimeSeries):
-            other = other.active_data
-        return op(self.active_data, other)
+            other = other.selected_data
+        return op(self.selected_data, other)
 
     def __add__(self, other):
         return self._apply_operation(other, lambda x, y: x + y)
@@ -395,25 +829,25 @@ class TimeSeries:
         return self._apply_operation(other, lambda x, y: x / y)
 
     def __radd__(self, other):
-        return other + self.active_data
+        return other + self.selected_data
 
     def __rsub__(self, other):
-        return other - self.active_data
+        return other - self.selected_data
 
     def __rmul__(self, other):
-        return other * self.active_data
+        return other * self.selected_data
 
     def __rtruediv__(self, other):
-        return other / self.active_data
+        return other / self.selected_data
 
     def __neg__(self) -> xr.DataArray:
-        return -self.active_data
+        return -self.selected_data
 
     def __pos__(self) -> xr.DataArray:
-        return +self.active_data
+        return +self.selected_data
 
     def __abs__(self) -> xr.DataArray:
-        return abs(self.active_data)
+        return abs(self.selected_data)
 
     def __gt__(self, other):
         """
@@ -426,8 +860,8 @@ class TimeSeries:
             True if all values in this TimeSeries are greater than other
         """
         if isinstance(other, TimeSeries):
-            return self.active_data > other.active_data
-        return self.active_data > other
+            return self.selected_data > other.selected_data
+        return self.selected_data > other
 
     def __ge__(self, other):
         """
@@ -440,8 +874,8 @@ class TimeSeries:
             True if all values in this TimeSeries are greater than or equal to other
         """
         if isinstance(other, TimeSeries):
-            return self.active_data >= other.active_data
-        return self.active_data >= other
+            return self.selected_data >= other.selected_data
+        return self.selected_data >= other
 
     def __lt__(self, other):
         """
@@ -454,8 +888,8 @@ class TimeSeries:
             True if all values in this TimeSeries are less than other
         """
         if isinstance(other, TimeSeries):
-            return self.active_data < other.active_data
-        return self.active_data < other
+            return self.selected_data < other.selected_data
+        return self.selected_data < other
 
     def __le__(self, other):
         """
@@ -468,8 +902,8 @@ class TimeSeries:
             True if all values in this TimeSeries are less than or equal to other
         """
         if isinstance(other, TimeSeries):
-            return self.active_data <= other.active_data
-        return self.active_data <= other
+            return self.selected_data <= other.selected_data
+        return self.selected_data <= other
 
     def __eq__(self, other):
         """
@@ -482,8 +916,8 @@ class TimeSeries:
             True if all values in this TimeSeries are equal to other
         """
         if isinstance(other, TimeSeries):
-            return self.active_data == other.active_data
-        return self.active_data == other
+            return self.selected_data == other.selected_data
+        return self.selected_data == other
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
         """
@@ -491,8 +925,8 @@ class TimeSeries:
 
         This allows NumPy functions to work with TimeSeries objects.
         """
-        # Convert any TimeSeries inputs to their active_data
-        inputs = [x.active_data if isinstance(x, TimeSeries) else x for x in inputs]
+        # Convert any TimeSeries inputs to their selected_data
+        inputs = [x.selected_data if isinstance(x, TimeSeries) else x for x in inputs]
         return getattr(ufunc, method)(*inputs, **kwargs)
 
     def __repr__(self):
@@ -506,10 +940,10 @@ class TimeSeries:
             'name': self.name,
             'aggregation_weight': self.aggregation_weight,
             'aggregation_group': self.aggregation_group,
-            'needs_extra_timestep': self.needs_extra_timestep,
-            'shape': self.active_data.shape,
-            'time_range': f'{self.active_timesteps[0]} to {self.active_timesteps[-1]}',
+            'has_extra_timestep': self.has_extra_timestep,
+            'shape': self.selected_data.shape,
         }
+
         attr_str = ', '.join(f'{k}={repr(v)}' for k, v in attrs.items())
         return f'TimeSeries({attr_str})'
 
@@ -520,281 +954,354 @@ class TimeSeries:
         Returns:
             Descriptive string with statistics
         """
-        return f"TimeSeries '{self.name}': {self.stats}"
+        return f'TimeSeries "{self.name}":\n{textwrap.indent(self.stats, "  ")}'
 
 
 class TimeSeriesCollection:
     """
-    Collection of TimeSeries objects with shared timestep management.
+    Simplified central manager for time series data with reference tracking.
 
-    TimeSeriesCollection handles multiple TimeSeries objects with synchronized
-    timesteps, provides operations on collections, and manages extra timesteps.
+    Provides a way to store time series data and work with subsets of dimensions
+    that automatically update all references when changed.
     """
 
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index] = None,
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None,
     ):
-        """
-        Args:
-            timesteps: The timesteps of the Collection.
-            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
-            hours_of_previous_timesteps: The duration of previous timesteps.
-                If None, the first time increment of time_series is used.
-                This is needed to calculate previous durations (for example consecutive_on_hours).
-                If you use an array, take care that its long enough to cover all previous values!
-        """
-        # Prepare and validate timesteps
-        self._validate_timesteps(timesteps)
+        """Initialize a TimeSeriesCollection."""
+        self._full_timesteps = self._validate_timesteps(timesteps)
+        self._full_scenarios = self._validate_scenarios(scenarios)
+
+        self._full_timesteps_extra = self._create_timesteps_with_extra(
+            self._full_timesteps,
+            self._calculate_hours_of_final_timestep(
+                self._full_timesteps, hours_of_final_timestep=hours_of_last_timestep
+            ),
+        )
+        self._full_hours_per_timestep = self.calculate_hours_per_timestep(
+            self._full_timesteps_extra, self._full_scenarios
+        )
+
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
-        )
+        )  # TODO: Make dynamic
 
-        # Set up timesteps and hours
-        self.all_timesteps = timesteps
-        self.all_timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
-        self.all_hours_per_timestep = self.calculate_hours_per_timestep(self.all_timesteps_extra)
+        # Series that need extra timestep
+        self._has_extra_timestep: set = set()
 
-        # Active timestep tracking
-        self._active_timesteps = None
-        self._active_timesteps_extra = None
-        self._active_hours_per_timestep = None
+        # Storage for TimeSeries objects
+        self._time_series: Dict[str, TimeSeries] = {}
 
-        # Dictionary of time series by name
-        self.time_series_data: Dict[str, TimeSeries] = {}
+        # Active subset selectors
+        self._selected_timesteps: Optional[pd.DatetimeIndex] = None
+        self._selected_scenarios: Optional[pd.Index] = None
+        self._selected_timesteps_extra: Optional[pd.DatetimeIndex] = None
+        self._selected_hours_per_timestep: Optional[xr.DataArray] = None
 
-        # Aggregation
-        self.group_weights: Dict[str, float] = {}
-        self.weights: Dict[str, float] = {}
-
-    @classmethod
-    def with_uniform_timesteps(
-        cls, start_time: pd.Timestamp, periods: int, freq: str, hours_per_step: Optional[float] = None
-    ) -> 'TimeSeriesCollection':
-        """Create a collection with uniform timesteps."""
-        timesteps = pd.date_range(start_time, periods=periods, freq=freq, name='time')
-        return cls(timesteps, hours_of_previous_timesteps=hours_per_step)
-
-    def create_time_series(
-        self, data: Union[NumericData, TimeSeriesData], name: str, needs_extra_timestep: bool = False
+    def add_time_series(
+        self,
+        name: str,
+        data: Union[NumericDataTS, TimeSeries],
+        has_time_dim: bool = True,
+        has_scenario_dim: bool = True,
+        aggregation_weight: Optional[float] = None,
+        aggregation_group: Optional[str] = None,
+        has_extra_timestep: bool = False,
     ) -> TimeSeries:
         """
-        Creates a TimeSeries from the given data and adds it to the collection.
+        Add a new TimeSeries to the allocator.
 
         Args:
-            data: The data to create the TimeSeries from.
-            name: The name of the TimeSeries.
-            needs_extra_timestep: Whether to create an additional timestep at the end of the timesteps.
-            The data to create the TimeSeries from.
+            name: Name of the time series
+            data: Data for the time series (can be raw data or an existing TimeSeries)
+            has_time_dim: Whether the TimeSeries has a time dimension
+            has_scenario_dim: Whether the TimeSeries has a scenario dimension
+            aggregation_weight: Weight used for aggregation
+            aggregation_group: Group name for shared aggregation weighting
+            has_extra_timestep: Whether this series needs an extra timestep
 
         Returns:
-            The created TimeSeries.
-
+            The created TimeSeries object
         """
-        # Check for duplicate name
-        if name in self.time_series_data:
-            raise ValueError(f"TimeSeries '{name}' already exists in this collection")
+        if name in self._time_series:
+            raise KeyError(f"TimeSeries '{name}' already exists in allocator")
+        if not has_time_dim and has_extra_timestep:
+            raise ValueError('A not time-indexed TimeSeries cannot have an extra timestep')
 
-        # Determine which timesteps to use
-        timesteps_to_use = self.timesteps_extra if needs_extra_timestep else self.timesteps
-
-        # Create the time series
-        if isinstance(data, TimeSeriesData):
-            time_series = TimeSeries.from_datasource(
-                name=name,
-                data=data.data,
-                timesteps=timesteps_to_use,
-                aggregation_weight=data.agg_weight,
-                aggregation_group=data.agg_group,
-                needs_extra_timestep=needs_extra_timestep,
-            )
-            # Connect the user time series to the created TimeSeries
-            data.label = name
+        # Choose which timesteps to use
+        if has_time_dim:
+            target_timesteps = self.timesteps_extra if has_extra_timestep else self.timesteps
         else:
+            target_timesteps = None
+
+        target_scenarios = self.scenarios if has_scenario_dim else None
+
+        # Create or adapt the TimeSeries object
+        if isinstance(data, TimeSeries):
+            # Use the existing TimeSeries but update its parameters
+            time_series = data
+            # Update the stored data to use our timesteps and scenarios
+            data_array = DataConverter.as_dataarray(
+                time_series.stored_data, timesteps=target_timesteps, scenarios=target_scenarios
+            )
+            time_series = TimeSeries(
+                data=data_array,
+                name=name,
+                aggregation_weight=aggregation_weight or time_series.aggregation_weight,
+                aggregation_group=aggregation_group or time_series.aggregation_group,
+                has_extra_timestep=has_extra_timestep or time_series.has_extra_timestep,
+            )
+        else:
+            # Create a new TimeSeries from raw data
             time_series = TimeSeries.from_datasource(
-                name=name, data=data, timesteps=timesteps_to_use, needs_extra_timestep=needs_extra_timestep
+                data=data,
+                name=name,
+                timesteps=target_timesteps,
+                scenarios=target_scenarios,
+                aggregation_weight=aggregation_weight,
+                aggregation_group=aggregation_group,
+                has_extra_timestep=has_extra_timestep,
             )
 
-        # Add to the collection
-        self.add_time_series(time_series)
+        # Add to storage
+        self._time_series[name] = time_series
 
+        # Track if it needs extra timestep
+        if has_extra_timestep:
+            self._has_extra_timestep.add(name)
+
+        # Return the TimeSeries object
         return time_series
 
-    def calculate_aggregation_weights(self) -> Dict[str, float]:
-        """Calculate and return aggregation weights for all time series."""
-        self.group_weights = self._calculate_group_weights()
-        self.weights = self._calculate_weights()
-
-        if np.all(np.isclose(list(self.weights.values()), 1, atol=1e-6)):
-            logger.info('All Aggregation weights were set to 1')
-
-        return self.weights
-
-    def activate_timesteps(self, active_timesteps: Optional[pd.DatetimeIndex] = None):
+    def clear_selection(self, timesteps: bool = True, scenarios: bool = True) -> None:
         """
-        Update active timesteps for the collection and all time series.
-        If no arguments are provided, the active timesteps are reset.
+        Clear selection for timesteps and/or scenarios.
 
         Args:
-            active_timesteps: The active timesteps of the model.
-                If None, the all timesteps of the TimeSeriesCollection are taken.
+            timesteps: Whether to clear timesteps selection
+            scenarios: Whether to clear scenarios selection
         """
-        if active_timesteps is None:
-            return self.reset()
+        if timesteps:
+            self._update_selected_timesteps(timesteps=None)
+        if scenarios:
+            self._selected_scenarios = None
 
-        if not np.all(np.isin(active_timesteps, self.all_timesteps)):
-            raise ValueError('active_timesteps must be a subset of the timesteps of the TimeSeriesCollection')
+        for ts in self._time_series.values():
+            ts.clear_selection(timesteps=timesteps, scenarios=scenarios)
 
-        # Calculate derived timesteps
-        self._active_timesteps = active_timesteps
-        first_ts_index = np.where(self.all_timesteps == active_timesteps[0])[0][0]
-        last_ts_idx = np.where(self.all_timesteps == active_timesteps[-1])[0][0]
-        self._active_timesteps_extra = self.all_timesteps_extra[first_ts_index : last_ts_idx + 2]
-        self._active_hours_per_timestep = self.all_hours_per_timestep.isel(time=slice(first_ts_index, last_ts_idx + 1))
-
-        # Update all time series
-        self._update_time_series_timesteps()
-
-    def reset(self):
-        """Reset active timesteps to defaults for all time series."""
-        self._active_timesteps = None
-        self._active_timesteps_extra = None
-        self._active_hours_per_timestep = None
-
-        for time_series in self.time_series_data.values():
-            time_series.reset()
-
-    def restore_data(self):
-        """Restore original data for all time series."""
-        for time_series in self.time_series_data.values():
-            time_series.restore_data()
-
-    def add_time_series(self, time_series: TimeSeries):
-        """Add an existing TimeSeries to the collection."""
-        if time_series.name in self.time_series_data:
-            raise ValueError(f"TimeSeries '{time_series.name}' already exists in this collection")
-
-        self.time_series_data[time_series.name] = time_series
-
-    def insert_new_data(self, data: pd.DataFrame, include_extra_timestep: bool = False):
+    def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
         """
-        Update time series with new data from a DataFrame.
+        Set active subset for timesteps and scenarios.
 
         Args:
-            data: DataFrame containing new data with timestamps as index
-            include_extra_timestep: Whether the provided data already includes the extra timestep, by default False
+            timesteps: Timesteps to activate, or None to clear
+            scenarios: Scenarios to activate, or None to clear
         """
-        if not isinstance(data, pd.DataFrame):
-            raise TypeError(f'data must be a pandas DataFrame, got {type(data).__name__}')
-
-        # Check if the DataFrame index matches the expected timesteps
-        expected_timesteps = self.timesteps_extra if include_extra_timestep else self.timesteps
-        if not data.index.equals(expected_timesteps):
-            raise ValueError(
-                f'DataFrame index must match {"collection timesteps with extra timestep" if include_extra_timestep else "collection timesteps"}'
-            )
-
-        for name, ts in self.time_series_data.items():
-            if name in data.columns:
-                if not ts.needs_extra_timestep:
-                    # For time series without extra timestep
-                    if include_extra_timestep:
-                        # If data includes extra timestep but series doesn't need it, exclude the last point
-                        ts.stored_data = data[name].iloc[:-1]
-                    else:
-                        # Use data as is
-                        ts.stored_data = data[name]
-                else:
-                    # For time series with extra timestep
-                    if include_extra_timestep:
-                        # Data already includes extra timestep
-                        ts.stored_data = data[name]
-                    else:
-                        # Need to add extra timestep - extrapolate from the last value
-                        extra_step_value = data[name].iloc[-1]
-                        extra_step_index = pd.DatetimeIndex([self.timesteps_extra[-1]], name='time')
-                        extra_step_series = pd.Series([extra_step_value], index=extra_step_index)
-
-                        # Combine the regular data with the extra timestep
-                        ts.stored_data = pd.concat([data[name], extra_step_series])
-
-                logger.debug(f'Updated data for {name}')
-
-    def to_dataframe(
-        self, filtered: Literal['all', 'constant', 'non_constant'] = 'non_constant', include_extra_timestep: bool = True
-    ) -> pd.DataFrame:
-        """
-        Convert collection to DataFrame with optional filtering and timestep control.
-
-        Args:
-            filtered: Filter time series by variability, by default 'non_constant'
-            include_extra_timestep: Whether to include the extra timestep in the result, by default True
-
-        Returns:
-            DataFrame representation of the collection
-        """
-        include_constants = filtered != 'non_constant'
-        ds = self.to_dataset(include_constants=include_constants)
-
-        if not include_extra_timestep:
-            ds = ds.isel(time=slice(None, -1))
-
-        df = ds.to_dataframe()
-
-        # Apply filtering
-        if filtered == 'all':
-            return df
-        elif filtered == 'constant':
-            return df.loc[:, df.nunique() == 1]
-        elif filtered == 'non_constant':
-            return df.loc[:, df.nunique() > 1]
+        if timesteps is None:
+            self.clear_selection(timesteps=True, scenarios=False)
         else:
-            raise ValueError("filtered must be one of: 'all', 'constant', 'non_constant'")
+            self._update_selected_timesteps(timesteps)
 
-    def to_dataset(self, include_constants: bool = True) -> xr.Dataset:
-        """
-        Combine all time series into a single Dataset with all timesteps.
-
-        Args:
-            include_constants: Whether to include time series with constant values, by default True
-
-        Returns:
-            Dataset containing all selected time series with all timesteps
-        """
-        # Determine which series to include
-        if include_constants:
-            series_to_include = self.time_series_data.values()
+        if scenarios is None:
+            self.clear_selection(timesteps=False, scenarios=True)
         else:
-            series_to_include = self.non_constants
+            self._selected_scenarios = scenarios
 
-        # Create individual datasets and merge them
-        ds = xr.merge([ts.active_data.to_dataset(name=ts.name) for ts in series_to_include])
+        # Apply the selection to all TimeSeries objects
+        self._propagate_selection_to_time_series()
 
-        # Ensure the correct time coordinates
-        ds = ds.reindex(time=self.timesteps_extra)
+    def _update_selected_timesteps(self, timesteps: Optional[pd.DatetimeIndex]) -> None:
+        """
+        Updates the timestep and related metrics (timesteps_extra, hours_per_timestep) based on the current selection.
+        """
+        if timesteps is None:
+            self._selected_timesteps = None
+            self._selected_timesteps_extra = None
+            self._selected_hours_per_timestep = None
+            return
 
-        ds.attrs.update(
-            {
-                'timesteps_extra': f'{self.timesteps_extra[0]} ... {self.timesteps_extra[-1]} | len={len(self.timesteps_extra)}',
-                'hours_per_timestep': self._format_stats(self.hours_per_timestep),
-            }
+        self._selected_timesteps = self._validate_timesteps(timesteps, self._full_timesteps)
+        self._selected_timesteps_extra = self._create_timesteps_with_extra(
+            timesteps, self._calculate_hours_of_final_timestep(timesteps, self._full_timesteps)
         )
+        self._selected_hours_per_timestep = self.calculate_hours_per_timestep(
+            self._selected_timesteps_extra, self._selected_scenarios
+        )
+
+    def as_dataset(self, with_extra_timestep: bool = True, with_constants: bool = True) -> xr.Dataset:
+        """
+        Convert the TimeSeriesCollection to a xarray Dataset, containing the data of each TimeSeries.
+
+        Args:
+            with_extra_timestep: Whether to exclude the extra timesteps.
+                Effectively, this removes the last timestep for certain TimeSeries, but mitigates the presence of NANs in others.
+            with_constants: Whether to exclude TimeSeries with a constant value from the dataset.
+        """
+        if self.scenarios is None:
+            ds = xr.Dataset(coords={'time': self.timesteps_extra})
+        else:
+            ds = xr.Dataset(coords={'scenario': self.scenarios, 'time': self.timesteps_extra})
+
+        for ts in self._time_series.values():
+            if not with_constants and ts.all_equal:
+                continue
+            ds[ts.name] = ts.selected_data
+
+        if not with_extra_timestep:
+            return ds.sel(time=self.timesteps)
 
         return ds
 
-    def _update_time_series_timesteps(self):
-        """Update active timesteps for all time series."""
-        for ts in self.time_series_data.values():
-            if ts.needs_extra_timestep:
-                ts.active_timesteps = self.timesteps_extra
+    @property
+    def timesteps(self) -> pd.DatetimeIndex:
+        """Get the current active timesteps."""
+        if self._selected_timesteps is None:
+            return self._full_timesteps
+        return self._selected_timesteps
+
+    @property
+    def timesteps_extra(self) -> pd.DatetimeIndex:
+        """Get the current active timesteps with extra timestep."""
+        if self._selected_timesteps_extra is None:
+            return self._full_timesteps_extra
+        return self._selected_timesteps_extra
+
+    @property
+    def hours_per_timestep(self) -> xr.DataArray:
+        """Get the current active hours per timestep."""
+        if self._selected_hours_per_timestep is None:
+            return self._full_hours_per_timestep
+        return self._selected_hours_per_timestep
+
+    @property
+    def scenarios(self) -> Optional[pd.Index]:
+        """Get the current active scenarios."""
+        if self._selected_scenarios is None:
+            return self._full_scenarios
+        return self._selected_scenarios
+
+    def _propagate_selection_to_time_series(self) -> None:
+        """Apply the current selection to all TimeSeries objects."""
+        for ts_name, ts in self._time_series.items():
+            if ts.has_time_dim:
+                timesteps = self.timesteps_extra if ts_name in self._has_extra_timestep else self.timesteps
             else:
-                ts.active_timesteps = self.timesteps
+                timesteps = None
+
+            ts.set_selection(timesteps=timesteps, scenarios=self.scenarios if ts.has_scenario_dim else None)
+
+    def __getitem__(self, name: str) -> TimeSeries:
+        """
+        Get a reference to a time series or data array.
+
+        Args:
+            name: Name of the data array or time series
+
+        Returns:
+            TimeSeries object if it exists, otherwise DataArray with current selection applied
+        """
+        # First check if this is a TimeSeries
+        if name in self._time_series:
+            # Return the TimeSeries object (it will handle selection internally)
+            return self._time_series[name]
+        raise ValueError(f'No TimeSeries named "{name}" found')
+
+    def __contains__(self, value) -> bool:
+        if isinstance(value, str):
+            return value in self._time_series
+        elif isinstance(value, TimeSeries):
+            return value.name in self._time_series
+        raise TypeError(f'Invalid type for __contains__ of {self.__class__.__name__}: {type(value)}')
+
+    def __iter__(self) -> Iterator[TimeSeries]:
+        """Iterate over TimeSeries objects."""
+        return iter(self._time_series.values())
+
+    def update_time_series(self, name: str, data: TimestepData) -> TimeSeries:
+        """
+        Update an existing TimeSeries with new data.
+
+        Args:
+            name: Name of the TimeSeries to update
+            data: New data to assign
+
+        Returns:
+            The updated TimeSeries
+
+        Raises:
+            KeyError: If no TimeSeries with the given name exists
+        """
+        if name not in self._time_series:
+            raise KeyError(f"No TimeSeries named '{name}' found")
+
+        # Get the TimeSeries
+        ts = self._time_series[name]
+
+        # Determine which timesteps to use if the series has a time dimension
+        if ts.has_time_dim:
+            target_timesteps = self.timesteps_extra if name in self._has_extra_timestep else self.timesteps
+        else:
+            target_timesteps = None
+
+        # Convert data to proper format
+        data_array = DataConverter.as_dataarray(
+            data, timesteps=target_timesteps, scenarios=self.scenarios if ts.has_scenario_dim else None
+        )
+
+        # Update the TimeSeries
+        ts.update_stored_data(data_array)
+
+        return ts
+
+    def calculate_aggregation_weights(self) -> Dict[str, float]:
+        """Calculate and return aggregation weights for all time series."""
+        group_weights = self._calculate_group_weights()
+
+        weights = {}
+        for name, ts in self._time_series.items():
+            if ts.aggregation_group is not None:
+                # Use group weight
+                weights[name] = group_weights.get(ts.aggregation_group, 1)
+            else:
+                # Use individual weight or default to 1
+                weights[name] = ts.aggregation_weight or 1
+
+        if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
+            logger.info('All Aggregation weights were set to 1')
+
+        return weights
+
+    def _calculate_group_weights(self) -> Dict[str, float]:
+        """Calculate weights for aggregation groups."""
+        # Count series in each group
+        groups = [ts.aggregation_group for ts in self._time_series.values() if ts.aggregation_group is not None]
+        group_counts = Counter(groups)
+
+        # Calculate weight for each group (1/count)
+        return {group: 1 / count for group, count in group_counts.items()}
 
     @staticmethod
-    def _validate_timesteps(timesteps: pd.DatetimeIndex):
-        """Validate timesteps format and rename if needed."""
+    def _validate_timesteps(
+        timesteps: pd.DatetimeIndex, present_timesteps: Optional[pd.DatetimeIndex] = None
+    ) -> pd.DatetimeIndex:
+        """
+        Validate timesteps format and rename if needed.
+        Args:
+            timesteps: The timesteps to validate
+            present_timesteps: The timesteps that are present in the dataset
+
+        Raises:
+            ValueError: If timesteps is not a pandas DatetimeIndex
+            ValueError: If timesteps is not at least 2 timestamps
+            ValueError: If timesteps has a different name than 'time'
+            ValueError: If timesteps is not sorted
+            ValueError: If timesteps contains duplicates
+            ValueError: If timesteps is not a subset of present_timesteps
+        """
         if not isinstance(timesteps, pd.DatetimeIndex):
             raise TypeError('timesteps must be a pandas DatetimeIndex')
 
@@ -803,22 +1310,65 @@ class TimeSeriesCollection:
 
         # Ensure timesteps has the required name
         if timesteps.name != 'time':
-            logger.warning('Renamed timesteps to "time" (was "%s")', timesteps.name)
+            logger.debug('Renamed timesteps to "time" (was "%s")', timesteps.name)
             timesteps.name = 'time'
 
-    @staticmethod
-    def _create_timesteps_with_extra(
-        timesteps: pd.DatetimeIndex, hours_of_last_timestep: Optional[float]
-    ) -> pd.DatetimeIndex:
-        """Create timesteps with an extra step at the end."""
-        if hours_of_last_timestep is not None:
-            # Create the extra timestep using the specified duration
-            last_date = pd.DatetimeIndex([timesteps[-1] + pd.Timedelta(hours=hours_of_last_timestep)], name='time')
-        else:
-            # Use the last interval as the extra timestep duration
-            last_date = pd.DatetimeIndex([timesteps[-1] + (timesteps[-1] - timesteps[-2])], name='time')
+        # Ensure timesteps is sorted
+        if not timesteps.is_monotonic_increasing:
+            raise ValueError('timesteps must be sorted')
 
-        # Combine with original timesteps
+        # Ensure timesteps has no duplicates
+        if len(timesteps) != len(timesteps.drop_duplicates()):
+            raise ValueError('timesteps must not contain duplicates')
+
+        # Ensure timesteps is a subset of present_timesteps
+        if present_timesteps is not None and not set(timesteps).issubset(set(present_timesteps)):
+            raise ValueError('timesteps must be a subset of present_timesteps')
+
+        return timesteps
+
+    @staticmethod
+    def _validate_scenarios(scenarios: pd.Index, present_scenarios: Optional[pd.Index] = None) -> Optional[pd.Index]:
+        """
+        Validate scenario format and rename if needed.
+        Args:
+            scenarios: The scenarios to validate
+            present_scenarios: The present_scenarios that are present in the dataset
+
+        Raises:
+            ValueError: If timesteps is not a pandas DatetimeIndex
+            ValueError: If timesteps is not at least 2 timestamps
+            ValueError: If timesteps has a different name than 'time'
+            ValueError: If timesteps is not sorted
+            ValueError: If timesteps contains duplicates
+            ValueError: If timesteps is not a subset of present_timesteps
+        """
+        if scenarios is None:
+            return None
+
+        if not isinstance(scenarios, pd.Index):
+            logger.warning('Converting scenarios to pandas.Index')
+            scenarios = pd.Index(scenarios, name='scenario')
+
+        if len(scenarios) < 2:
+            logger.warning('scenarios must contain at least 2 scenarios')
+            raise ValueError('timesteps must contain at least 2 timestamps')
+
+        # Ensure timesteps has the required name
+        if scenarios.name != 'scenario':
+            logger.debug('Renamed scenarios to "scneario" (was "%s")', scenarios.name)
+            scenarios.name = 'scenario'
+
+        # Ensure timesteps is a subset of present_timesteps
+        if present_scenarios is not None and not set(scenarios).issubset(set(present_scenarios)):
+            raise ValueError('scenarios must be a subset of present_scenarios')
+
+        return scenarios
+
+    @staticmethod
+    def _create_timesteps_with_extra(timesteps: pd.DatetimeIndex, hours_of_last_timestep: float) -> pd.DatetimeIndex:
+        """Create timesteps with an extra step at the end."""
+        last_date = pd.DatetimeIndex([timesteps[-1] + pd.Timedelta(hours=hours_of_last_timestep)], name='time')
         return pd.DatetimeIndex(timesteps.append(last_date), name='time')
 
     @staticmethod
@@ -834,137 +1384,105 @@ class TimeSeriesCollection:
         return first_interval.total_seconds() / 3600  # Convert to hours
 
     @staticmethod
-    def calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
+    def _calculate_hours_of_final_timestep(
+        timesteps: pd.DatetimeIndex,
+        timesteps_superset: Optional[pd.DatetimeIndex] = None,
+        hours_of_final_timestep: Optional[float] = None,
+    ) -> float:
+        """
+        Calculate duration of the final timestep.
+        If timesteps_subset is provided, the final timestep is calculated for this subset.
+        The hours_of_final_timestep is only used if the final timestep cant be determined from the timesteps.
+
+        Args:
+            timesteps: The full timesteps
+            timesteps_subset: The subset of timesteps
+            hours_of_final_timestep: The duration of the final timestep, if already known
+
+        Returns:
+            The duration of the final timestep in hours
+
+        Raises:
+            ValueError: If the provided timesteps_subset does not end before the timesteps superset
+        """
+        if timesteps_superset is None:
+            if hours_of_final_timestep is not None:
+                return hours_of_final_timestep
+            return (timesteps[-1] - timesteps[-2]) / pd.Timedelta(hours=1)
+
+        final_timestep = timesteps[-1]
+
+        if timesteps_superset[-1] == final_timestep:
+            if hours_of_final_timestep is not None:
+                return hours_of_final_timestep
+            return (timesteps_superset[-1] - timesteps_superset[-2]) / pd.Timedelta(hours=1)
+
+        elif timesteps_superset[-1] <= final_timestep:
+            raise ValueError(
+                f'The provided timesteps ({timesteps}) end after the provided timesteps_superset ({timesteps_superset})'
+            )
+        else:
+            # Get the first timestep in the superset that is after the final timestep of the subset
+            extra_timestep = timesteps_superset[timesteps_superset > final_timestep].min()
+            return (extra_timestep - final_timestep) / pd.Timedelta(hours=1)
+
+    @staticmethod
+    def calculate_hours_per_timestep(
+        timesteps_extra: pd.DatetimeIndex, scenarios: Optional[pd.Index] = None
+    ) -> xr.DataArray:
         """Calculate duration of each timestep."""
         # Calculate differences between consecutive timestamps
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
 
-        return xr.DataArray(
-            data=hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=('time',), name='hours_per_step'
-        )
-
-    def _calculate_group_weights(self) -> Dict[str, float]:
-        """Calculate weights for aggregation groups."""
-        # Count series in each group
-        groups = [ts.aggregation_group for ts in self.time_series_data.values() if ts.aggregation_group is not None]
-        group_counts = Counter(groups)
-
-        # Calculate weight for each group (1/count)
-        return {group: 1 / count for group, count in group_counts.items()}
-
-    def _calculate_weights(self) -> Dict[str, float]:
-        """Calculate weights for all time series."""
-        # Calculate weight for each time series
-        weights = {}
-        for name, ts in self.time_series_data.items():
-            if ts.aggregation_group is not None:
-                # Use group weight
-                weights[name] = self.group_weights.get(ts.aggregation_group, 1)
-            else:
-                # Use individual weight or default to 1
-                weights[name] = ts.aggregation_weight or 1
-
-        return weights
-
-    def _format_stats(self, data) -> str:
-        """Format statistics for a data array."""
-        if hasattr(data, 'values'):
-            values = data.values
-        else:
-            values = np.asarray(data)
-
-        mean_val = np.mean(values)
-        min_val = np.min(values)
-        max_val = np.max(values)
-
-        return f'mean: {mean_val:.2f}, min: {min_val:.2f}, max: {max_val:.2f}'
-
-    def __getitem__(self, name: str) -> TimeSeries:
-        """Get a TimeSeries by name."""
-        try:
-            return self.time_series_data[name]
-        except KeyError as e:
-            raise KeyError(f'TimeSeries "{name}" not found in the TimeSeriesCollection') from e
-
-    def __iter__(self) -> Iterator[TimeSeries]:
-        """Iterate through all TimeSeries in the collection."""
-        return iter(self.time_series_data.values())
-
-    def __len__(self) -> int:
-        """Get the number of TimeSeries in the collection."""
-        return len(self.time_series_data)
-
-    def __contains__(self, item: Union[str, TimeSeries]) -> bool:
-        """Check if a TimeSeries exists in the collection."""
-        if isinstance(item, str):
-            return item in self.time_series_data
-        elif isinstance(item, TimeSeries):
-            return any([item is ts for ts in self.time_series_data.values()])
-        return False
-
-    @property
-    def non_constants(self) -> List[TimeSeries]:
-        """Get time series with varying values."""
-        return [ts for ts in self.time_series_data.values() if not ts.all_equal]
-
-    @property
-    def constants(self) -> List[TimeSeries]:
-        """Get time series with constant values."""
-        return [ts for ts in self.time_series_data.values() if ts.all_equal]
-
-    @property
-    def timesteps(self) -> pd.DatetimeIndex:
-        """Get the active timesteps."""
-        return self.all_timesteps if self._active_timesteps is None else self._active_timesteps
-
-    @property
-    def timesteps_extra(self) -> pd.DatetimeIndex:
-        """Get the active timesteps with extra step."""
-        return self.all_timesteps_extra if self._active_timesteps_extra is None else self._active_timesteps_extra
-
-    @property
-    def hours_per_timestep(self) -> xr.DataArray:
-        """Get the duration of each active timestep."""
-        return (
-            self.all_hours_per_timestep if self._active_hours_per_timestep is None else self._active_hours_per_timestep
-        )
-
-    @property
-    def hours_of_last_timestep(self) -> float:
-        """Get the duration of the last timestep."""
-        return float(self.hours_per_timestep[-1].item())
-
-    def __repr__(self):
-        return f'TimeSeriesCollection:\n{self.to_dataset()}'
-
-    def __str__(self):
-        longest_name = max([time_series.name for time_series in self.time_series_data], key=len)
-
-        stats_summary = '\n'.join(
-            [
-                f'  - {time_series.name:<{len(longest_name)}}: {get_numeric_stats(time_series.active_data)}'
-                for time_series in self.time_series_data
-            ]
-        )
-
-        return (
-            f'TimeSeriesCollection with {len(self.time_series_data)} series\n'
-            f'  Time Range: {self.timesteps[0]} → {self.timesteps[-1]}\n'
-            f'  No. of timesteps: {len(self.timesteps)} + 1 extra\n'
-            f'  Hours per timestep: {get_numeric_stats(self.hours_per_timestep)}\n'
-            f'  Time Series Data:\n'
-            f'{stats_summary}'
-        )
+        return DataConverter.as_dataarray(
+            hours_per_step,
+            timesteps=timesteps_extra[:-1],
+            scenarios=scenarios,
+        ).rename('hours_per_step')
 
 
-def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10) -> str:
-    """Calculates the mean, median, min, max, and standard deviation of a numeric DataArray."""
+def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10, by_scenario: bool = False) -> str:
+    """
+    Calculates the mean, median, min, max, and standard deviation of a numeric DataArray.
+
+    Args:
+        data: The DataArray to analyze
+        decimals: Number of decimal places to show
+        padd: Padding for alignment
+        by_scenario: Whether to break down stats by scenario
+
+    Returns:
+        String representation of data statistics
+    """
     format_spec = f'>{padd}.{decimals}f' if padd else f'.{decimals}f'
+
+    # If by_scenario is True and there's a scenario dimension with multiple values
+    if by_scenario and 'scenario' in data.dims and data.sizes['scenario'] > 1:
+        results = []
+        for scenario in data.coords['scenario'].values:
+            scenario_data = data.sel(scenario=scenario)
+            if np.unique(scenario_data).size == 1:
+                results.append(f'  {scenario}: {scenario_data.max().item():{format_spec}} (constant)')
+            else:
+                mean = scenario_data.mean().item()
+                median = scenario_data.median().item()
+                min_val = scenario_data.min().item()
+                max_val = scenario_data.max().item()
+                std = scenario_data.std().item()
+                results.append(
+                    f'  {scenario}: {mean:{format_spec}} (mean), {median:{format_spec}} (median), '
+                    f'{min_val:{format_spec}} (min), {max_val:{format_spec}} (max), {std:{format_spec}} (std)'
+                )
+        return '\n'.join(['By scenario:'] + results)
+
+    # Standard logic for non-scenario data or aggregated stats
     if np.unique(data).size == 1:
         return f'{data.max().item():{format_spec}} (constant)'
+
     mean = data.mean().item()
     median = data.median().item()
     min_val = data.min().item()
     max_val = data.max().item()
     std = data.std().item()
+
     return f'{mean:{format_spec}} (mean), {median:{format_spec}} (median), {min_val:{format_spec}} (min), {max_val:{format_spec}} (max), {std:{format_spec}} (std)'

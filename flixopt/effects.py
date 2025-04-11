@@ -11,9 +11,8 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
 import linopy
 import numpy as np
-import pandas as pd
 
-from .core import NumericData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection
+from .core import NumericDataTS, ScenarioData, TimeSeries, TimeSeriesCollection, TimestepData
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 
@@ -38,16 +37,16 @@ class Effect(Element):
         meta_data: Optional[Dict] = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        specific_share_to_other_effects_operation: Optional['EffectValuesUser'] = None,
-        specific_share_to_other_effects_invest: Optional['EffectValuesUser'] = None,
-        minimum_operation: Optional[Scalar] = None,
-        maximum_operation: Optional[Scalar] = None,
-        minimum_invest: Optional[Scalar] = None,
-        maximum_invest: Optional[Scalar] = None,
+        specific_share_to_other_effects_operation: Optional['EffectValuesUserTimestep'] = None,
+        specific_share_to_other_effects_invest: Optional['EffectValuesUserScenario'] = None,
+        minimum_operation: Optional[ScenarioData] = None,
+        maximum_operation: Optional[ScenarioData] = None,
+        minimum_invest: Optional[ScenarioData] = None,
+        maximum_invest: Optional[ScenarioData] = None,
         minimum_operation_per_hour: Optional[NumericDataTS] = None,
         maximum_operation_per_hour: Optional[NumericDataTS] = None,
-        minimum_total: Optional[Scalar] = None,
-        maximum_total: Optional[Scalar] = None,
+        minimum_total: Optional[ScenarioData] = None,
+        maximum_total: Optional[ScenarioData] = None,
     ):
         """
         Args:
@@ -76,10 +75,12 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.specific_share_to_other_effects_operation: EffectValuesUser = (
+        self.specific_share_to_other_effects_operation: EffectValuesUserTimestep = (
             specific_share_to_other_effects_operation or {}
         )
-        self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
+        self.specific_share_to_other_effects_invest: EffectValuesUserTimestep = (
+            specific_share_to_other_effects_invest or {}
+        )
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
         self.minimum_operation_per_hour: NumericDataTS = minimum_operation_per_hour
@@ -118,10 +119,11 @@ class EffectModel(ElementModel):
         self.total: Optional[linopy.Variable] = None
         self.invest: ShareAllocationModel = self.add(
             ShareAllocationModel(
-                self._model,
-                False,
-                self.label_of_element,
-                'invest',
+                model=self._model,
+                has_time_dim=False,
+                has_scenario_dim=True,
+                label_of_element=self.label_of_element,
+                label='invest',
                 label_full=f'{self.label_full}(invest)',
                 total_max=self.element.maximum_invest,
                 total_min=self.element.minimum_invest,
@@ -130,17 +132,18 @@ class EffectModel(ElementModel):
 
         self.operation: ShareAllocationModel = self.add(
             ShareAllocationModel(
-                self._model,
-                True,
-                self.label_of_element,
-                'operation',
+                model=self._model,
+                has_time_dim=True,
+                has_scenario_dim=True,
+                label_of_element=self.label_of_element,
+                label='operation',
                 label_full=f'{self.label_full}(operation)',
                 total_max=self.element.maximum_operation,
                 total_min=self.element.minimum_operation,
-                min_per_hour=self.element.minimum_operation_per_hour.active_data
+                min_per_hour=self.element.minimum_operation_per_hour.selected_data
                 if self.element.minimum_operation_per_hour is not None
                 else None,
-                max_per_hour=self.element.maximum_operation_per_hour.active_data
+                max_per_hour=self.element.maximum_operation_per_hour.selected_data
                 if self.element.maximum_operation_per_hour is not None
                 else None,
             )
@@ -154,7 +157,7 @@ class EffectModel(ElementModel):
             self._model.add_variables(
                 lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
                 upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
-                coords=None,
+                coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|total',
             ),
             'total',
@@ -162,7 +165,7 @@ class EffectModel(ElementModel):
 
         self.add(
             self._model.add_constraints(
-                self.total == self.operation.total.sum() + self.invest.total.sum(), name=f'{self.label_full}|total'
+                self.total == self.operation.total + self.invest.total, name=f'{self.label_full}|total'
             ),
             'total',
         )
@@ -171,11 +174,12 @@ class EffectModel(ElementModel):
 EffectValuesExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
 EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
 EffectValuesDict = Dict[str, NumericDataTS]  # How effect values are stored
-EffectValuesUser = Union[NumericDataTS, Dict[str, NumericDataTS]]  # User-specified Shares to Effects
-""" This datatype is used to define the share to an effect by a certain attribute. """
 
-EffectValuesUserScalar = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
-""" This datatype is used to define the share to an effect by a certain attribute. Only scalars are allowed. """
+EffectValuesUserScenario = Union[ScenarioData, Dict[str, ScenarioData]]
+""" This datatype is used to define the share to an effect for every scenario. """
+
+EffectValuesUserTimestep = Union[TimestepData, Dict[str, TimestepData]]
+""" This datatype is used to define the share to an effect for every timestep. """
 
 
 class EffectCollection:
@@ -207,7 +211,9 @@ class EffectCollection:
             self._effects[effect.label] = effect
             logger.info(f'Registered new Effect: {effect.label}')
 
-    def create_effect_values_dict(self, effect_values_user: EffectValuesUser) -> Optional[EffectValuesDict]:
+    def create_effect_values_dict(
+        self, effect_values_user: Union[EffectValuesUserScenario, EffectValuesUserTimestep]
+    ) -> Optional[EffectValuesDict]:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
@@ -346,29 +352,42 @@ class EffectCollectionModel(Model):
     ) -> None:
         for effect, expression in expressions.items():
             if target == 'operation':
-                self.effects[effect].model.operation.add_share(name, expression)
+                self.effects[effect].model.operation.add_share(
+                    name,
+                    expression,
+                    has_time_dim=True,
+                    has_scenario_dim=True,
+                )
             elif target == 'invest':
-                self.effects[effect].model.invest.add_share(name, expression)
+                self.effects[effect].model.invest.add_share(
+                    name,
+                    expression,
+                    has_time_dim=False,
+                    has_scenario_dim=True,
+                )
             else:
                 raise ValueError(f'Target {target} not supported!')
 
     def add_share_to_penalty(self, name: str, expression: linopy.LinearExpression) -> None:
         if expression.ndim != 0:
             raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
-        self.penalty.add_share(name, expression)
+        self.penalty.add_share(name, expression, has_time_dim=False, has_scenario_dim=False)
 
     def do_modeling(self):
         for effect in self.effects:
             effect.create_model(self._model)
         self.penalty = self.add(
-            ShareAllocationModel(self._model, shares_are_time_series=False, label_of_element='Penalty')
+            ShareAllocationModel(self._model, has_time_dim=False, has_scenario_dim=False, label_of_element='Penalty')
         )
         for model in [effect.model for effect in self.effects] + [self.penalty]:
             model.do_modeling()
 
         self._add_share_between_effects()
 
-        self._model.add_objective(self.effects.objective_effect.model.total + self.penalty.total)
+        self._model.add_objective(
+            (self.effects.objective_effect.model.total * self._model.scenario_weights).sum()
+            + self.penalty.total.sum()
+        )
 
     def _add_share_between_effects(self):
         for origin_effect in self.effects:
@@ -376,11 +395,15 @@ class EffectCollectionModel(Model):
             for target_effect, time_series in origin_effect.specific_share_to_other_effects_operation.items():
                 self.effects[target_effect].model.operation.add_share(
                     origin_effect.model.operation.label_full,
-                    origin_effect.model.operation.total_per_timestep * time_series.active_data,
+                    origin_effect.model.operation.total_per_timestep * time_series.selected_data,
+                    has_time_dim=True,
+                    has_scenario_dim=True,
                 )
             # 2. invest:    -> hier ist es Scalar (share)
             for target_effect, factor in origin_effect.specific_share_to_other_effects_invest.items():
                 self.effects[target_effect].model.invest.add_share(
                     origin_effect.model.invest.label_full,
                     origin_effect.model.invest.total * factor,
+                    has_time_dim=False,
+                    has_scenario_dim=True,
                 )

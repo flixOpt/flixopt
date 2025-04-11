@@ -16,10 +16,17 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import NumericData, NumericDataTS, TimeSeries, TimeSeriesCollection, TimeSeriesData
-from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
+from .core import Scalar, ScenarioData, TimeSeries, TimeSeriesCollection, TimeSeriesData, TimestepData
+from .effects import (
+    Effect,
+    EffectCollection,
+    EffectTimeSeries,
+    EffectValuesDict,
+    EffectValuesUserScenario,
+    EffectValuesUserTimestep,
+)
 from .elements import Bus, Component, Flow
-from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation
+from .structure import CLASS_REGISTRY, Element, SystemModel
 
 if TYPE_CHECKING:
     import pyvis
@@ -35,23 +42,29 @@ class FlowSystem:
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
+        scenarios: Optional[pd.Index] = None,
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
+        scenario_weights: Optional[ScenarioData] = None,
     ):
         """
         Args:
             timesteps: The timesteps of the model.
+            scenarios: The scenarios of the model.
             hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
             hours_of_previous_timesteps: The duration of previous timesteps.
                 If None, the first time increment of time_series is used.
                 This is needed to calculate previous durations (for example consecutive_on_hours).
                 If you use an array, take care that its long enough to cover all previous values!
+            scenario_weights: The weights of the scenarios. If None, all scenarios have the same weight. All weights are normalized to 1.
         """
         self.time_series_collection = TimeSeriesCollection(
             timesteps=timesteps,
+            scenarios=scenarios,
             hours_of_last_timestep=hours_of_last_timestep,
             hours_of_previous_timesteps=hours_of_previous_timesteps,
         )
+        self.scenario_weights = scenario_weights
 
         # defaults:
         self.components: Dict[str, Component] = {}
@@ -184,7 +197,7 @@ class FlowSystem:
         Args:
             constants_in_dataset: If True, constants are included as Dataset variables.
         """
-        ds = self.time_series_collection.to_dataset(include_constants=constants_in_dataset)
+        ds = self.time_series_collection.as_dataset()
         ds.attrs = self.as_dict(data_mode='name')
         return ds
 
@@ -268,41 +281,80 @@ class FlowSystem:
     def transform_data(self):
         if not self._connected:
             self._connect_network()
+        self.scenario_weights = self.create_time_series(
+            'scenario_weights', self.scenario_weights, has_time_dim=False, has_scenario_dim=True
+        )
         for element in self.all_elements.values():
             element.transform_data(self)
 
     def create_time_series(
         self,
         name: str,
-        data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
-        needs_extra_timestep: bool = False,
-    ) -> Optional[TimeSeries]:
+        data: Optional[Union[TimestepData, TimeSeriesData, TimeSeries]],
+        has_time_dim: bool = True,
+        has_scenario_dim: bool = True,
+        has_extra_timestep: bool = False,
+    ) -> Optional[Union[Scalar, TimeSeries]]:
         """
-        Tries to create a TimeSeries from NumericData Data and adds it to the time_series_collection
+        Tries to create a TimeSeries from TimestepData and adds it to the time_series_collection
         If the data already is a TimeSeries, nothing happens and the TimeSeries gets reset and returned
         If the data is a TimeSeriesData, it is converted to a TimeSeries, and the aggregation weights are applied.
         If the data is None, nothing happens.
+
+        Args:
+            name: The name of the TimeSeries
+            data: The data to create a TimeSeries from
+            has_time_dim: Whether the data has a time dimension
+            has_scenario_dim: Whether the data has a scenario dimension
+            has_extra_timestep: Whether the data has an extra timestep
         """
+        if not has_time_dim and not has_scenario_dim:
+            raise ValueError('At least one of the dimensions must be present')
 
         if data is None:
             return None
-        elif isinstance(data, TimeSeries):
+
+        if not has_time_dim and self.time_series_collection.scenarios is None:
+            return data
+
+        if isinstance(data, TimeSeries):
             data.restore_data()
             if data in self.time_series_collection:
                 return data
-            return self.time_series_collection.create_time_series(
-                data=data.active_data, name=name, needs_extra_timestep=needs_extra_timestep
+            return self.time_series_collection.add_time_series(
+                data=data.selected_data,
+                name=name,
+                has_time_dim=has_time_dim,
+                has_scenario_dim=has_scenario_dim,
+                has_extra_timestep=has_extra_timestep,
             )
-        return self.time_series_collection.create_time_series(
-            data=data, name=name, needs_extra_timestep=needs_extra_timestep
+        elif isinstance(data, TimeSeriesData):
+            data.label = name
+            return self.time_series_collection.add_time_series(
+                data=data.data,
+                name=name,
+                has_time_dim=has_time_dim,
+                has_scenario_dim=has_scenario_dim,
+                has_extra_timestep=has_extra_timestep,
+                aggregation_weight=data.agg_weight,
+                aggregation_group=data.agg_group,
+            )
+        return self.time_series_collection.add_time_series(
+            data=data,
+            name=name,
+            has_time_dim=has_time_dim,
+            has_scenario_dim=has_scenario_dim,
+            has_extra_timestep=has_extra_timestep,
         )
 
     def create_effect_time_series(
         self,
         label_prefix: Optional[str],
-        effect_values: EffectValuesUser,
+        effect_values: Union[EffectValuesUserScenario, EffectValuesUserTimestep],
         label_suffix: Optional[str] = None,
-    ) -> Optional[EffectTimeSeries]:
+        has_time_dim: bool = True,
+        has_scenario_dim: bool = True,
+    ) -> Optional[Union[EffectTimeSeries, EffectValuesDict]]:
         """
         Transform EffectValues to EffectTimeSeries.
         Creates a TimeSeries for each key in the nested_values dictionary, using the value as the data.
@@ -310,13 +362,31 @@ class FlowSystem:
         The resulting label of the TimeSeries is the label of the parent_element,
         followed by the label of the Effect in the nested_values and the label_suffix.
         If the key in the EffectValues is None, the alias 'Standard_Effect' is used
+
+        Args:
+            label_prefix: Prefix for the TimeSeries name
+            effect_values: Dictionary of EffectValues
+            label_suffix: Suffix for the TimeSeries name
+            has_time_dim: Whether the data has a time dimension
+            has_scenario_dim: Whether the data has a scenario dimension
         """
+        if not has_time_dim and not has_scenario_dim:
+            raise ValueError('At least one of the dimensions must be present')
+
         effect_values: Optional[EffectValuesDict] = self.effects.create_effect_values_dict(effect_values)
         if effect_values is None:
             return None
 
+        if not has_time_dim and self.time_series_collection.scenarios is None:
+            return effect_values
+
         return {
-            effect: self.create_time_series('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
+            effect: self.create_time_series(
+                name='|'.join(filter(None, [label_prefix, effect, label_suffix])),
+                data=value,
+                has_time_dim=has_time_dim,
+                has_scenario_dim=has_scenario_dim,
+            )
             for effect, value in effect_values.items()
         }
 
