@@ -296,7 +296,7 @@ class FlowSystem:
         has_extra_timestep: bool = False,
     ) -> Optional[Union[Scalar, TimeSeries]]:
         """
-        Tries to create a TimeSeries from NumericData Data and adds it to the time_series_collection
+        Tries to create a TimeSeries from TimestepData and adds it to the time_series_collection
         If the data already is a TimeSeries, nothing happens and the TimeSeries gets reset and returned
         If the data is a TimeSeriesData, it is converted to a TimeSeries, and the aggregation weights are applied.
         If the data is None, nothing happens.

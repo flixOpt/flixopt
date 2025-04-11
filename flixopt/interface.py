@@ -151,7 +151,7 @@ class InvestParameters(Interface):
     def __init__(
         self,
         fixed_size: Optional[ScenarioData] = None,
-        minimum_size: ScenarioData = 0,  # TODO: Use EPSILON?
+        minimum_size: Optional[ScenarioData] = None,
         maximum_size: Optional[ScenarioData] = None,
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScenario'] = None,
@@ -184,8 +184,8 @@ class InvestParameters(Interface):
         self.optional = optional
         self.specific_effects: EffectValuesUserScenario = specific_effects if specific_effects is not None else {}
         self.piecewise_effects = piecewise_effects
-        self._minimum_size = minimum_size
-        self._maximum_size = CONFIG.modeling.BIG if maximum_size is None else maximum_size  # default maximum
+        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
         self.size_per_scenario = size_per_scenario
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):

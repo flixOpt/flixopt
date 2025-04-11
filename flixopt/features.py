@@ -4,14 +4,14 @@ Features extend the functionality of Elements.
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import Scalar, TimeSeries, TimestepData
-from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
+from .core import Scalar, TimeSeries, TimestepData, ScenarioData
+from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 
 logger = logging.getLogger('flixopt')
@@ -91,7 +91,7 @@ class InvestmentModel(Model):
             # share: divest_effects - isInvested * divest_effects
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={effect: -self.is_invested * factor + factor for effect, factor in fix_effects.items()},
+                expressions={effect: -self.is_invested * factor + factor for effect, factor in self.parameters.divest_effects.items()},
                 target='invest',
             )
 
@@ -156,7 +156,7 @@ class InvestmentModel(Model):
             )
             if self._on_variable is not None:
                 raise ValueError(
-                    f'Flow {self.label} has a fixed relative flow rate and an on_variable.'
+                    f'Flow {self.label_full} has a fixed relative flow rate and an on_variable.'
                     f'This combination is currently not supported.'
                 )
             return
@@ -261,10 +261,439 @@ class InvestmentModel(Model):
             raise ValueError(f'Invalid value for size_per_scenario: {self.parameters.size_per_scenario}')
 
 
+class StateModel(Model):
+    """
+    Handles basic on/off binary states for defining variables
+    """
+
+    def __init__(
+        self,
+        model: SystemModel,
+        label_of_element: str,
+        defining_variables: List[linopy.Variable],
+        defining_bounds: List[Tuple[TimestepData, TimestepData]],
+        previous_values: List[Optional[TimestepData]] = None,
+        use_off: bool = True,
+        on_hours_total_min: Optional[ScenarioData] = 0,
+        on_hours_total_max: Optional[ScenarioData] = None,
+        effects_per_running_hour: Dict[str, TimestepData] = None,
+        label: Optional[str] = None,
+    ):
+        """
+        Models binary state variables based on a continous variable.
+
+        Args:
+            model: The SystemModel that is used to create the model.
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            defining_variables: List of Variables that are used to define the state
+            defining_bounds: List of Tuples, defining the absolute bounds of each defining variable
+            previous_values: List of previous values of the defining variables
+            use_off: Whether to use the off state or not
+            on_hours_total_min: min. overall sum of operating hours.
+            on_hours_total_max: max. overall sum of operating hours.
+            effects_per_running_hour: Costs per operating hours
+            label: Label of the OnOffModel
+        """
+        super().__init__(model, label_of_element, label)
+        assert len(defining_variables) == len(defining_bounds), 'Every defining Variable needs bounds to Model OnOff'
+        self._defining_variables = defining_variables
+        self._defining_bounds = defining_bounds
+        self._previous_values = previous_values or []
+        self._on_hours_total_min = on_hours_total_min if on_hours_total_min is not None else 0
+        self._on_hours_total_max = on_hours_total_max if on_hours_total_max is not None else np.inf
+        self._use_off = use_off
+        self._effects_per_running_hour = effects_per_running_hour or {}
+
+        self.on = None
+        self.total_on_hours: Optional[linopy.Variable] = None
+        self.off = None
+
+    def do_modeling(self):
+        self.on = self.add(
+            self._model.add_variables(
+                name=f'{self.label_full}|on',
+                binary=True,
+                coords=self._model.get_coords(),
+            ),
+            'on',
+        )
+
+        self.total_on_hours = self.add(
+            self._model.add_variables(
+                lower=self._on_hours_total_min,
+                upper=self._on_hours_total_max,
+                coords=self._model.get_coords(time_dim=False),
+                name=f'{self.label_full}|on_hours_total',
+            ),
+            'on_hours_total',
+        )
+
+        self.add(
+            self._model.add_constraints(
+                self.total_on_hours == (self.on * self._model.hours_per_step).sum('time'),
+                name=f'{self.label_full}|on_hours_total',
+            ),
+            'on_hours_total',
+        )
+
+        # Add defining constraints for each variable
+        self._add_defining_constraints()
+
+        if self._use_off:
+            self.off = self.add(
+                self._model.add_variables(
+                    name=f'{self.label_full}|off',
+                    binary=True,
+                    coords=self._model.get_coords(),
+                ),
+                'off',
+            )
+
+            # Constraint: on + off = 1
+            self.add(self._model.add_constraints(self.on + self.off == 1, name=f'{self.label_full}|off'), 'off')
+
+        return self
+
+    def _add_defining_constraints(self):
+        """Add constraints that link defining variables to the on state"""
+        nr_of_def_vars = len(self._defining_variables)
+
+        if nr_of_def_vars == 1:
+            # Case for a single defining variable
+            def_var = self._defining_variables[0]
+            lb, ub = self._defining_bounds[0]
+
+            # Constraint: on * lower_bound <= def_var
+            self.add(
+                self._model.add_constraints(
+                    self.on * np.maximum(CONFIG.modeling.EPSILON, lb) <= def_var, name=f'{self.label_full}|on_con1'
+                ),
+                'on_con1',
+            )
+
+            # Constraint: on * upper_bound >= def_var
+            self.add(
+                self._model.add_constraints(self.on * ub >= def_var, name=f'{self.label_full}|on_con2'), 'on_con2'
+            )
+        else:
+            # Case for multiple defining variables
+            ub = sum(bound[1] for bound in self._defining_bounds) / nr_of_def_vars
+            lb = CONFIG.modeling.EPSILON  #TODO: Can this be a bigger value? (maybe the smallest bound?)
+
+            # Constraint: on * epsilon <= sum(all_defining_variables)
+            self.add(
+                self._model.add_constraints(
+                    self.on * lb <= sum(self._defining_variables), name=f'{self.label_full}|on_con1'
+                ),
+                'on_con1',
+            )
+
+            # Constraint to ensure all variables are zero when off.
+            # Divide by nr_of_def_vars to improve numerical stability (smaller factors)
+            self.add(
+                self._model.add_constraints(
+                    self.on * ub >= sum([def_var / nr_of_def_vars for def_var in self._defining_variables]),
+                    name=f'{self.label_full}|on_con2',
+                ),
+                'on_con2',
+            )
+
+    @property
+    def previous_states(self) -> np.ndarray:
+        """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
+        return StateModel.compute_previous_states(self._previous_values, epsilon=CONFIG.modeling.EPSILON)
+
+    @property
+    def previous_on_states(self) -> np.ndarray:
+        return self.previous_states
+
+    @property
+    def previous_off_states(self):
+        return 1 - self.previous_states
+
+    @staticmethod
+    def compute_previous_states(previous_values: List[TimestepData], epsilon: float = 1e-5) -> np.ndarray:
+        """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
+        if not previous_values or all([val is None for val in previous_values]):
+            return np.array([0])
+
+        # Convert to 2D-array and compute binary on/off states
+        previous_values = np.array([values for values in previous_values if values is not None])  # Filter out None
+        if previous_values.ndim > 1:
+            return np.any(~np.isclose(previous_values, 0, atol=epsilon), axis=0).astype(int)
+
+        return (~np.isclose(previous_values, 0, atol=epsilon)).astype(int)
+
+
+class SwitchStateModel(Model):
+    """
+    Handles switch on/off transitions
+    """
+
+    def __init__(
+        self,
+        model: SystemModel,
+        label_of_element: str,
+        state_variable: linopy.Variable,
+        previous_state=0,
+        switch_on_max: Optional[Scalar] = None,
+        label: Optional[str] = None,
+    ):
+        super().__init__(model, label_of_element, label)
+        self._state_variable = state_variable
+        self.previous_state = previous_state
+        self._switch_on_max = switch_on_max if switch_on_max is not None else np.inf
+
+        self.switch_on = None
+        self.switch_off = None
+        self.switch_on_nr = None
+
+    def do_modeling(self):
+        """Create switch variables and constraints"""
+
+        # Create switch variables
+        self.switch_on = self.add(
+            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.get_coords()),
+            'switch_on',
+        )
+
+        self.switch_off = self.add(
+            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.get_coords()),
+            'switch_off',
+        )
+
+        # Create count variable for number of switches
+        self.switch_on_nr = self.add(
+            self._model.add_variables(
+                upper=self._switch_on_max,
+                lower=0,
+                name=f'{self.label_full}|switch_on_nr',
+            ),
+            'switch_on_nr',
+        )
+
+        # Add switch constraints for all entries after the first timestep
+        self.add(
+            self._model.add_constraints(
+                self.switch_on.isel(time=slice(1, None)) - self.switch_off.isel(time=slice(1, None))
+                == self._state_variable.isel(time=slice(1, None)) - self._state_variable.isel(time=slice(None, -1)),
+                name=f'{self.label_full}|switch_con',
+            ),
+            'switch_con',
+        )
+
+        # Initial switch constraint
+        self.add(
+            self._model.add_constraints(
+                self.switch_on.isel(time=0) - self.switch_off.isel(time=0)
+                == self._state_variable.isel(time=0) - self.previous_state,
+                name=f'{self.label_full}|initial_switch_con',
+            ),
+            'initial_switch_con',
+        )
+
+        # Mutual exclusivity constraint
+        self.add(
+            self._model.add_constraints(self.switch_on + self.switch_off <= 1.1, name=f'{self.label_full}|switch_on_or_off'),
+            'switch_on_or_off',
+        )
+
+        # Total switch-on count constraint
+        self.add(
+            self._model.add_constraints(
+                self.switch_on_nr == self.switch_on.sum('time'), name=f'{self.label_full}|switch_on_nr'
+            ),
+            'switch_on_nr',
+        )
+
+        return self
+
+
+class ConsecutiveStateModel(Model):
+    """
+    Handles tracking consecutive durations in a state
+    """
+
+    def __init__(
+        self,
+        model: SystemModel,
+        label_of_element: str,
+        state_variable: linopy.Variable,
+        minimum_duration: Optional[TimestepData] = None,
+        maximum_duration: Optional[TimestepData] = None,
+        previous_states: Optional[TimestepData] = None,
+        label: Optional[str] = None,
+    ):
+        """
+        Model and constraint the consecutive duration of a state variable.
+
+        Args:
+            model: The SystemModel that is used to create the model.
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            state_variable: The state variable that is used to model the duration. state = {0, 1}
+            minimum_duration: The minimum duration of the state variable.
+            maximum_duration: The maximum duration of the state variable.
+            previous_states: The previous states of the state variable.
+            label: The label of the model. Used to construct the full label of the model.
+        """
+        super().__init__(model, label_of_element, label)
+        self._state_variable = state_variable
+        self._previous_states = previous_states
+        self._minimum_duration = minimum_duration
+        self._maximum_duration = maximum_duration
+
+        if isinstance(self._minimum_duration, TimeSeries):
+            self._minimum_duration = self._minimum_duration.selected_data
+        if isinstance(self._maximum_duration, TimeSeries):
+            self._maximum_duration = self._maximum_duration.selected_data
+
+        self.duration = None
+
+    def do_modeling(self):
+        """Create consecutive duration variables and constraints"""
+        # Get the hours per step
+        hours_per_step = self._model.hours_per_step
+        mega = hours_per_step.sum('time') + self.previous_duration
+
+        # Create the duration variable
+        self.duration = self.add(
+            self._model.add_variables(
+                lower=0,
+                upper=self._maximum_duration if self._maximum_duration is not None else mega,
+                coords=self._model.get_coords(),
+                name=f'{self.label_full}|hours',
+            ),
+            'hours',
+        )
+
+        # Add constraints
+
+        # Upper bound constraint
+        self.add(
+            self._model.add_constraints(
+                self.duration <= self._state_variable * mega, name=f'{self.label_full}|con1'
+            ),
+            'con1',
+        )
+
+        # Forward constraint
+        self.add(
+            self._model.add_constraints(
+                self.duration.isel(time=slice(1, None))
+                <= self.duration.isel(time=slice(None, -1)) + hours_per_step.isel(time=slice(None, -1)),
+                name=f'{self.label_full}|con2a',
+            ),
+            'con2a',
+        )
+
+        # Backward constraint
+        self.add(
+            self._model.add_constraints(
+                self.duration.isel(time=slice(1, None))
+                >= self.duration.isel(time=slice(None, -1))
+                + hours_per_step.isel(time=slice(None, -1))
+                + (self._state_variable.isel(time=slice(1, None)) - 1) * mega,
+                name=f'{self.label_full}|con2b',
+            ),
+            'con2b',
+        )
+
+        # Add minimum duration constraints if specified
+        if self._minimum_duration is not None:
+            self.add(
+                self._model.add_constraints(
+                    self.duration
+                    >= (
+                        self._state_variable.isel(time=slice(None, -1)) - self._state_variable.isel(time=slice(1, None))
+                    )
+                    * self._minimum_duration.isel(time=slice(None, -1)),
+                    name=f'{self.label_full}|minimum',
+                ),
+                'minimum',
+            )
+
+            # Handle initial condition
+            if 0 < self.previous_duration < self._minimum_duration.isel(time=0):
+                self.add(
+                    self._model.add_constraints(
+                        self._state_variable.isel(time=0) == 1, name=f'{self.label_full}|initial_minimum'
+                    ),
+                    'initial_minimum',
+                )
+
+        # Set initial value
+        self.add(
+            self._model.add_constraints(
+                self.duration.isel(time=0) ==
+                (hours_per_step.isel(time=0) + self.previous_duration) * self._state_variable.isel(time=0),
+                name=f'{self.label_full}|initial',
+            ),
+            'initial',
+        )
+
+        return self
+
+    @property
+    def previous_duration(self) -> Scalar:
+        """Computes the previous duration of the state variable"""
+        #TODO: Allow for other/dynamic timestep resolutions
+        return ConsecutiveStateModel.compute_consecutive_hours_in_state(
+            self._previous_states, self._model.hours_per_step.isel(time=0).item()
+        )
+
+    @staticmethod
+    def compute_consecutive_hours_in_state(
+        binary_values: TimestepData, hours_per_timestep: Union[int, float, np.ndarray]
+    ) -> Scalar:
+        """
+        Computes the final consecutive duration in state 'on' (=1) in hours, from a binary array.
+
+        Args:
+            binary_values: An int or 1D binary array containing only `0`s and `1`s.
+            hours_per_timestep: The duration of each timestep in hours.
+                If a scalar is provided, it is used for all timesteps.
+                If an array is provided, it must be as long as the last consecutive duration in binary_values.
+
+        Returns:
+            The duration of the binary variable in hours.
+
+        Raises
+        ------
+        TypeError
+            If the length of binary_values and dt_in_hours is not equal, but None is a scalar.
+        """
+        if np.isscalar(binary_values) and np.isscalar(hours_per_timestep):
+            return binary_values * hours_per_timestep
+        elif np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
+            return binary_values * hours_per_timestep[-1]
+
+        if np.isclose(binary_values[-1], 0, atol=CONFIG.modeling.EPSILON):
+            return 0
+
+        if np.isscalar(hours_per_timestep):
+            hours_per_timestep = np.ones(len(binary_values)) * hours_per_timestep
+        hours_per_timestep: np.ndarray
+
+        indexes_with_zero_values = np.where(np.isclose(binary_values, 0, atol=CONFIG.modeling.EPSILON))[0]
+        if len(indexes_with_zero_values) == 0:
+            nr_of_indexes_with_consecutive_ones = len(binary_values)
+        else:
+            nr_of_indexes_with_consecutive_ones = len(binary_values) - indexes_with_zero_values[-1] - 1
+
+        if len(hours_per_timestep) < nr_of_indexes_with_consecutive_ones:
+            raise ValueError(
+                f'When trying to calculate the consecutive duration, the length of the last duration '
+                f'({len(nr_of_indexes_with_consecutive_ones)}) is longer than the provided hours_per_timestep ({len(hours_per_timestep)}), '
+                f'as {binary_values=}'
+            )
+
+        return np.sum(binary_values[-nr_of_indexes_with_consecutive_ones:] * hours_per_timestep[-nr_of_indexes_with_consecutive_ones:])
+
+
 class OnOffModel(Model):
     """
     Class for modeling the on and off state of a variable
-    If defining_bounds are given, creates sufficient lower bounds
+    Uses component models to create a modular implementation
     """
 
     def __init__(
@@ -290,482 +719,124 @@ class OnOffModel(Model):
             label: Label of the OnOffModel
         """
         super().__init__(model, label_of_element, label)
-        assert len(defining_variables) == len(defining_bounds), 'Every defining Variable needs bounds to Model OnOff'
         self.parameters = on_off_parameters
         self._defining_variables = defining_variables
-        # Ensure that no lower bound is below a certain threshold
-        self._defining_bounds = [(np.maximum(lb, CONFIG.modeling.EPSILON), ub) for lb, ub in defining_bounds]
+        self._defining_bounds = defining_bounds
         self._previous_values = previous_values
 
-        self.on: Optional[linopy.Variable] = None
-        self.total_on_hours: Optional[linopy.Variable] = None
-
-        self.consecutive_on_hours: Optional[linopy.Variable] = None
-        self.consecutive_off_hours: Optional[linopy.Variable] = None
-
-        self.off: Optional[linopy.Variable] = None
-
-        self.switch_on: Optional[linopy.Variable] = None
-        self.switch_off: Optional[linopy.Variable] = None
-        self.switch_on_nr: Optional[linopy.Variable] = None
+        self.state_model = None
+        self.switch_state_model = None
+        self.consecutive_on_model = None
+        self.consecutive_off_model = None
 
     def do_modeling(self):
-        self.on = self.add(
-            self._model.add_variables(
-                name=f'{self.label_full}|on',
-                binary=True,
-                coords=self._model.get_coords(),
-            ),
-            'on',
+        """Create all variables and constraints for the OnOffModel"""
+
+        # Create binary state component
+        self.state_model = StateModel(
+            model=self._model,
+            label_of_element=self.label_of_element,
+            defining_variables=self._defining_variables,
+            defining_bounds=self._defining_bounds,
+            previous_values=self._previous_values,
+            use_off=self.parameters.use_off,
+            on_hours_total_min=self.parameters.on_hours_total_min,
+            on_hours_total_max=self.parameters.on_hours_total_max,
+            effects_per_running_hour=self.parameters.effects_per_running_hour,
         )
+        self.add(self.state_model)
+        self.state_model.do_modeling()
 
-        self.total_on_hours = self.add(
-            self._model.add_variables(
-                lower=self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
-                upper=self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
-                coords=self._model.get_coords(time_dim=False),
-                name=f'{self.label_full}|on_hours_total',
-            ),
-            'on_hours_total',
-        )
-
-        self.add(
-            self._model.add_constraints(
-                self.total_on_hours == (self.on * self._model.hours_per_step).sum('time'),
-                name=f'{self.label_full}|on_hours_total',
-            ),
-            'on_hours_total',
-        )
-
-        self._add_on_constraints()
-
-        if self.parameters.use_off:
-            self.off = self.add(
-                self._model.add_variables(
-                    name=f'{self.label_full}|off',
-                    binary=True,
-                    coords=self._model.get_coords(),
-                ),
-                'off',
-            )
-
-            # eq: var_on(t) + var_off(t) = 1
-            self.add(self._model.add_constraints(self.on + self.off == 1, name=f'{self.label_full}|off'), 'off')
-
-        if self.parameters.use_consecutive_on_hours:
-            self.consecutive_on_hours = self._get_duration_in_hours(
-                'consecutive_on_hours',
-                self.on,
-                self.previous_consecutive_on_hours,
-                self.parameters.consecutive_on_hours_min,
-                self.parameters.consecutive_on_hours_max,
-            )
-
-        if self.parameters.use_consecutive_off_hours:
-            self.consecutive_off_hours = self._get_duration_in_hours(
-                'consecutive_off_hours',
-                self.off,
-                self.previous_consecutive_off_hours,
-                self.parameters.consecutive_off_hours_min,
-                self.parameters.consecutive_off_hours_max,
-            )
-
+        # Create switch component if needed
         if self.parameters.use_switch_on:
-            self.switch_on = self.add(
-                self._model.add_variables(
-                    binary=True, name=f'{self.label_full}|switch_on', coords=self._model.get_coords()
-                ),
-                'switch_on',
+            self.switch_state_model = SwitchStateModel(
+                model=self._model,
+                label_of_element=self.label_of_element,
+                state_variable=self.state_model.on,
+                previous_state=self.state_model.previous_on_states[-1],
+                switch_on_max=self.parameters.switch_on_total_max,
             )
+            self.add(self.switch_state_model)
+            self.switch_state_model.do_modeling()
 
-            self.switch_off = self.add(
-                self._model.add_variables(
-                    binary=True, name=f'{self.label_full}|switch_off', coords=self._model.get_coords()
-                ),
-                'switch_off',
+        # Create consecutive on hours component if needed
+        if self.parameters.use_consecutive_on_hours:
+            self.consecutive_on_model = ConsecutiveStateModel(
+                model=self._model,
+                label_of_element=self.label_of_element,
+                state_variable=self.state_model.on,
+                minimum_duration=self.parameters.consecutive_on_hours_min,
+                maximum_duration=self.parameters.consecutive_on_hours_max,
+                previous_states=self.state_model.previous_on_states,
+                label='ConsecutiveOn',
             )
+            self.add(self.consecutive_on_model)
+            self.consecutive_on_model.do_modeling()
 
-            self.switch_on_nr = self.add(
-                self._model.add_variables(
-                    upper=self.parameters.switch_on_total_max
-                    if self.parameters.switch_on_total_max is not None
-                    else np.inf,
-                    name=f'{self.label_full}|switch_on_nr',
-                ),
-                'switch_on_nr',
+        # Create consecutive off hours component if needed
+        if self.parameters.use_consecutive_off_hours:
+            self.consecutive_off_model = ConsecutiveStateModel(
+                model=self._model,
+                label_of_element=self.label_of_element,
+                state_variable=self.state_model.off,
+                minimum_duration=self.parameters.consecutive_off_hours_min,
+                maximum_duration=self.parameters.consecutive_off_hours_max,
+                previous_states=self.state_model.previous_off_states,
+                label='ConsecutiveOff',
             )
-
-            self._add_switch_constraints()
+            self.add(self.consecutive_off_model)
+            self.consecutive_off_model.do_modeling()
 
         self._create_shares()
 
-    def _add_on_constraints(self):
-        assert self.on is not None, f'On variable of {self.label_full} must be defined to add constraints'
-        # % Bedingungen 1) und 2) müssen erfüllt sein:
-
-        # % Anmerkung: Falls "abschnittsweise linear" gewählt, dann ist eigentlich nur Bedingung 1) noch notwendig
-        # %            (und dann auch nur wenn erstes Piece bei Q_th=0 beginnt. Dann soll bei Q_th=0 (d.h. die Maschine ist Aus) On = 0 und segment1.onSeg = 0):)
-        # %            Fazit: Wenn kein Performance-Verlust durch mehr Gleichungen, dann egal!
-
-        nr_of_def_vars = len(self._defining_variables)
-        assert nr_of_def_vars > 0, 'Achtung: mindestens 1 Flow notwendig'
-
-        if nr_of_def_vars == 1:
-            def_var = self._defining_variables[0]
-            lb, ub = self._defining_bounds[0]
-
-            # eq: On(t) * max(epsilon, lower_bound) <= Q_th(t)
-            self.add(
-                self._model.add_constraints(
-                    self.on * np.maximum(CONFIG.modeling.EPSILON, lb) <= def_var, name=f'{self.label_full}|on_con1'
-                ),
-                'on_con1',
-            )
-
-            # eq: Q_th(t) <= Q_th_max * On(t)
-            self.add(
-                self._model.add_constraints(
-                    self.on * np.maximum(CONFIG.modeling.EPSILON, ub) >= def_var, name=f'{self.label_full}|on_con2'
-                ),
-                'on_con2',
-            )
-
-        else:  # Bei mehreren Leistungsvariablen:
-            ub = sum(bound[1] for bound in self._defining_bounds)
-            lb = CONFIG.modeling.EPSILON
-
-            # When all defining variables are 0, On is 0
-            # eq: On(t) * Epsilon <= sum(alle Leistungen(t))
-            self.add(
-                self._model.add_constraints(
-                    self.on * lb <= sum(self._defining_variables), name=f'{self.label_full}|on_con1'
-                ),
-                'on_con1',
-            )
-
-            ## sum(alle Leistung) >0 -> On = 1|On=0 -> sum(Leistung)=0
-            #  eq: sum( Leistung(t,i))              - sum(Leistung_max(i))             * On(t) <= 0
-            #  --> damit Gleichungswerte nicht zu groß werden, noch durch nr_of_flows geteilt:
-            #  eq: sum( Leistung(t,i) / nr_of_flows ) - sum(Leistung_max(i)) / nr_of_flows * On(t) <= 0
-            self.add(
-                self._model.add_constraints(
-                    self.on * ub >= sum([def_var / nr_of_def_vars for def_var in self._defining_variables]),
-                    name=f'{self.label_full}|on_con2',
-                ),
-                'on_con2',
-            )
-
-        if np.max(ub) > CONFIG.modeling.BIG_BINARY_BOUND:
-            logger.warning(
-                f'In "{self.label_full}", a binary definition was created with a big upper bound '
-                f'({np.max(ub)}). This can lead to wrong results regarding the on and off variables. '
-                f'Avoid this warning by reducing the size of {self.label_full} '
-                f'(or the maximum_size of the corresponding InvestParameters). '
-                f'If its a Component, you might need to adjust the sizes of all of its flows.'
-            )
-
-    def _get_duration_in_hours(
-        self,
-        variable_name: str,
-        binary_variable: linopy.Variable,
-        previous_duration: Scalar,
-        minimum_duration: Optional[TimeSeries],
-        maximum_duration: Optional[TimeSeries],
-    ) -> linopy.Variable:
-        """
-        creates duration variable and adds constraints to a time-series variable to enforce duration limits based on
-        binary activity.
-        The minimum duration in the last time step is not restricted.
-        Previous values before t=0 are not recognised!
-
-        Args:
-            variable_name: Label for the duration variable to be created.
-            binary_variable: Time-series binary variable (e.g., [0, 0, 1, 1, 1, 0, ...]) representing activity states.
-            minimum_duration: Minimum duration the activity must remain active once started.
-                If None, no minimum duration constraint is applied.
-            maximum_duration: Maximum duration the activity can remain active.
-                If None, the maximum duration is set to the total available time.
-
-        Returns:
-            The created duration variable representing consecutive active durations.
-
-        Example:
-            binary_variable: [0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, ...]
-            duration_in_hours: [0, 0, 1, 2, 3, 4, 0, 1, 2, 3, 0, ...] (only if dt_in_hours=1)
-
-            Here, duration_in_hours increments while binary_variable is 1. Minimum and maximum durations
-            can be enforced to constrain how long the activity remains active.
-
-        Notes:
-            - To count consecutive zeros instead of ones, use a transformed binary variable
-              (e.g., `1 - binary_variable`).
-            - Constraints ensure the duration variable properly resets or increments based on activity.
-
-        Raises:
-            AssertionError: If the binary_variable is None, indicating the duration constraints cannot be applied.
-
-        """
-        assert binary_variable is not None, f'Duration Variable of {self.label_full} must be defined to add constraints'
-
-        mega = self._model.hours_per_step.sum('time') + previous_duration
-
-        if maximum_duration is not None:
-            first_step_max: Scalar = maximum_duration.isel(time=0)
-
-            if previous_duration + self._model.hours_per_step[0] > first_step_max:
-                logger.warning(
-                    f'The maximum duration of "{variable_name}" is set to {maximum_duration.selected_data}h, '
-                    f'but the consecutive_duration previous to this model is {previous_duration}h. '
-                    f'This forces "{binary_variable.name} = 0" in the first time step '
-                    f'(dt={self._model.hours_per_step[0]}h)!'
-                )
-
-        duration_in_hours = self.add(
-            self._model.add_variables(
-                lower=0,
-                upper=maximum_duration.selected_data if maximum_duration is not None else mega,
-                coords=self._model.get_coords(),
-                name=f'{self.label_full}|{variable_name}',
-            ),
-            variable_name,
-        )
-
-        # 1) eq: duration(t) - On(t) * BIG <= 0
-        self.add(
-            self._model.add_constraints(
-                duration_in_hours <= binary_variable * mega, name=f'{self.label_full}|{variable_name}_con1'
-            ),
-            f'{variable_name}_con1',
-        )
-
-        # 2a) eq: duration(t) - duration(t-1) <= dt(t)
-        #    on(t)=1 -> duration(t) - duration(t-1) <= dt(t)
-        #    on(t)=0 -> duration(t-1) >= negat. value
-        self.add(
-            self._model.add_constraints(
-                duration_in_hours.isel(time=slice(1, None))
-                <= duration_in_hours.isel(time=slice(None, -1)) + self._model.hours_per_step.isel(time=slice(None, -1)),
-                name=f'{self.label_full}|{variable_name}_con2a',
-            ),
-            f'{variable_name}_con2a',
-        )
-
-        # 2b) eq: dt(t) - BIG * ( 1-On(t) ) <= duration(t) - duration(t-1)
-        # eq: -duration(t) + duration(t-1) + On(t) * BIG <= -dt(t) + BIG
-        # with BIG = dt_in_hours_total.
-        #   on(t)=1 -> duration(t)- duration(t-1) >= dt(t)
-        #   on(t)=0 -> duration(t)- duration(t-1) >= negat. value
-
-        self.add(
-            self._model.add_constraints(
-                duration_in_hours.isel(time=slice(1, None))
-                >= duration_in_hours.isel(time=slice(None, -1))
-                + self._model.hours_per_step.isel(time=slice(None, -1))
-                + (binary_variable.isel(time=slice(1, None)) - 1) * mega,
-                name=f'{self.label_full}|{variable_name}_con2b',
-            ),
-            f'{variable_name}_con2b',
-        )
-
-        # 3) check minimum_duration before switchOff-step
-
-        if minimum_duration is not None:
-            # Note: switchOff-step is when: On(t) - On(t+1) == 1
-            # Note: (last on-time period (with last timestep of period t=n) is not checked and can be shorter)
-            # Note: (previous values before t=1 are not recognised!)
-            # eq: duration(t) >= minimum_duration(t) * [On(t) - On(t+1)] for t=1..(n-1)
-            # eq: -duration(t) + minimum_duration(t) * On(t) - minimum_duration(t) * On(t+1) <= 0
-            self.add(
-                self._model.add_constraints(
-                    duration_in_hours
-                    >= (binary_variable.isel(time=slice(None, -1)) - binary_variable.isel(time=slice(1, None)))
-                    * minimum_duration.isel(time=slice(None, -1)),
-                    name=f'{self.label_full}|{variable_name}_minimum_duration',
-                ),
-                f'{variable_name}_minimum_duration',
-            )
-
-            if 0 < previous_duration < minimum_duration.isel(time=0):
-                # Force the first step to be = 1, if the minimum_duration is not reached in previous_values
-                # Note: Only if the previous consecutive_duration is smaller than the minimum duration
-                # and the previous_duration is greater 0!
-                # eq: On(t=0) = 1
-                self.add(
-                    self._model.add_constraints(
-                        binary_variable.isel(time=0) == 1, name=f'{self.label_full}|{variable_name}_minimum_inital'
-                    ),
-                    f'{variable_name}_minimum_inital',
-                )
-
-            # 4) first index:
-            # eq: duration(t=0)= dt(0) * On(0)
-            self.add(
-                self._model.add_constraints(
-                    duration_in_hours.isel(time=0)
-                    == self._model.hours_per_step.isel(time=0) * binary_variable.isel(time=0),
-                    name=f'{self.label_full}|{variable_name}_initial',
-                ),
-                f'{variable_name}_initial',
-            )
-
-        return duration_in_hours
-
-    def _add_switch_constraints(self):
-        assert self.switch_on is not None, f'Switch On Variable of {self.label_full} must be defined to add constraints'
-        assert self.switch_off is not None, (
-            f'Switch Off Variable of {self.label_full} must be defined to add constraints'
-        )
-        assert self.switch_on_nr is not None, (
-            f'Nr of Switch On Variable of {self.label_full} must be defined to add constraints'
-        )
-        assert self.on is not None, f'On Variable of {self.label_full} must be defined to add constraints'
-        # % Schaltänderung aus On-Variable
-        # % SwitchOn(t)-SwitchOff(t) = On(t)-On(t-1)
-        self.add(
-            self._model.add_constraints(
-                self.switch_on.isel(time=slice(1, None)) - self.switch_off.isel(time=slice(1, None))
-                == self.on.isel(time=slice(1, None)) - self.on.isel(time=slice(None, -1)),
-                name=f'{self.label_full}|switch_con',
-            ),
-            'switch_con',
-        )
-        # Initital switch on
-        # eq: SwitchOn(t=0)-SwitchOff(t=0) = On(t=0) - On(t=-1)
-        self.add(
-            self._model.add_constraints(
-                self.switch_on.isel(time=0) - self.switch_off.isel(time=0)
-                == self.on.isel(time=0) - self.previous_on_values[-1],
-                name=f'{self.label_full}|initial_switch_con',
-            ),
-            'initial_switch_con',
-        )
-        ## Entweder SwitchOff oder SwitchOn
-        # eq: SwitchOn(t) + SwitchOff(t) <= 1.1
-        self.add(
-            self._model.add_constraints(
-                self.switch_on + self.switch_off <= 1.1, name=f'{self.label_full}|switch_on_or_off'
-            ),
-            'switch_on_or_off',
-        )
-
-        ## Anzahl Starts:
-        # eq: nrSwitchOn = sum(SwitchOn(t))
-        self.add(
-            self._model.add_constraints(
-                self.switch_on_nr == self.switch_on.sum('time'), name=f'{self.label_full}|switch_on_nr'
-            ),
-            'switch_on_nr',
-        )
-
     def _create_shares(self):
-        # Anfahrkosten:
-        effects_per_switch_on = self.parameters.effects_per_switch_on
-        if effects_per_switch_on != {}:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={effect: self.switch_on * factor for effect, factor in effects_per_switch_on.items()},
-                target='operation',
-            )
-
-        # Betriebskosten:
-        effects_per_running_hour = self.parameters.effects_per_running_hour
-        if effects_per_running_hour != {}:
+        if self.parameters.effects_per_running_hour:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.on * factor * self._model.hours_per_step
-                    for effect, factor in effects_per_running_hour.items()
+                    effect: self.state_model.on * factor * self._model.hours_per_step
+                    for effect, factor in self.parameters.effects_per_running_hour.items()
+                },
+                target='operation',
+            )
+
+        if self.parameters.effects_per_switch_on:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.switch_state_model.switch_on * factor
+                    for effect, factor in self.parameters.effects_per_switch_on.items()
                 },
                 target='operation',
             )
 
     @property
-    def previous_on_values(self) -> np.ndarray:
-        return self.compute_previous_on_states(self._previous_values)
+    def on(self):
+        return self.state_model.on
 
     @property
-    def previous_off_values(self) -> np.ndarray:
-        return 1 - self.previous_on_values
+    def off(self):
+        return self.state_model.off
 
     @property
-    def previous_consecutive_on_hours(self) -> Scalar:
-        return self.compute_consecutive_duration(self.previous_on_values, self._model.hours_per_step)
+    def switch_on(self):
+        return self.switch_state_model.switch_on
 
     @property
-    def previous_consecutive_off_hours(self) -> Scalar:
-        return self.compute_consecutive_duration(self.previous_off_values, self._model.hours_per_step)
+    def switch_off(self):
+        return self.switch_state_model.switch_off
 
-    @staticmethod
-    def compute_previous_on_states(previous_values: List[Optional[TimestepData]], epsilon: float = 1e-5) -> np.ndarray:
-        """
-        Computes the previous 'on' states {0, 1} of defining variables as a binary array from their previous values.
+    @property
+    def switch_on_nr(self):
+        return self.switch_state_model.switch_on_nr
 
-        Args:
-            previous_values: List of previous values of the defining variables. In Range [0, inf] or None (ignored)
-            epsilon: Tolerance for equality to determine "off" state, default is 1e-5.
+    @property
+    def consecutive_on_hours(self):
+        return self.consecutive_on_model.duration
 
-        Returns:
-            A binary array (0 and 1) indicating the previous on/off states of the variables.
-            Returns `array([0])` if no previous values are available.
-        """
-
-        if not previous_values or all([val is None for val in previous_values]):
-            return np.array([0])
-        else:  # Convert to 2D-array and compute binary on/off states
-            previous_values = np.array([values for values in previous_values if values is not None])  # Filter out None
-            if previous_values.ndim > 1:
-                return np.any(~np.isclose(previous_values, 0, atol=epsilon), axis=0).astype(int)
-            else:
-                return (~np.isclose(previous_values, 0, atol=epsilon)).astype(int)
-
-    @staticmethod
-    def compute_consecutive_duration(
-        binary_values: TimestepData, hours_per_timestep: Union[int, float, np.ndarray]
-    ) -> Scalar:
-        """
-        Computes the final consecutive duration in State 'on' (=1) in hours, from a binary.
-
-        hours_per_timestep is handled in a way, that maximizes compatability.
-        Its length must only be as long as the last consecutive duration in binary_values.
-
-        Args:
-            binary_values: An int or 1D binary array containing only `0`s and `1`s.
-            hours_per_timestep: The duration of each timestep in hours.
-
-        Returns:
-            The duration of the binary variable in hours.
-
-        Raises
-        ------
-        TypeError
-            If the length of binary_values and dt_in_hours is not equal, but None is a scalar.
-        """
-        if np.isscalar(binary_values) and np.isscalar(hours_per_timestep):
-            return binary_values * hours_per_timestep
-        elif np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
-            return binary_values * hours_per_timestep[-1]
-
-        # Find the indexes where value=`0` in a 1D-array
-        zero_indices = np.where(np.isclose(binary_values, 0, atol=CONFIG.modeling.EPSILON))[0]
-        length_of_last_duration = zero_indices[-1] + 1 if zero_indices.size > 0 else len(binary_values)
-
-        if not np.isscalar(binary_values) and np.isscalar(hours_per_timestep):
-            return np.sum(binary_values[-length_of_last_duration:] * hours_per_timestep)
-
-        elif not np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
-            if length_of_last_duration > len(hours_per_timestep):  # check that lengths are compatible
-                raise TypeError(
-                    f'When trying to calculate the consecutive duration, the length of the last duration '
-                    f'({len(length_of_last_duration)}) is longer than the hours_per_timestep ({len(hours_per_timestep)}), '
-                    f'as {binary_values=}'
-                )
-            return np.sum(binary_values[-length_of_last_duration:] * hours_per_timestep[-length_of_last_duration:])
-
-        else:
-            raise Exception(
-                f'Unexpected state reached in function get_consecutive_duration(). binary_values={binary_values}; '
-                f'hours_per_timestep={hours_per_timestep}'
-            )
+    @property
+    def consecutive_off_hours(self):
+        return self.consecutive_off_model.duration
 
 
 class PieceModel(Model):
@@ -828,10 +899,10 @@ class PiecewiseModel(Model):
         self,
         model: SystemModel,
         label_of_element: str,
-        label: str,
         piecewise_variables: Dict[str, Piecewise],
         zero_point: Optional[Union[bool, linopy.Variable]],
         as_time_series: bool,
+        label: str = '',
     ):
         """
         Modeling a Piecewise relation between miultiple variables.
@@ -880,9 +951,9 @@ class PiecewiseModel(Model):
                             )
                         ]
                     ),
-                    name=f'{self.label_full}|{var_name}_lambda',
+                    name=f'{self.label_full}|{var_name}|lambda',
                 ),
-                f'{var_name}_lambda',
+                f'{var_name}|lambda',
             )
 
             # a) eq: Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 1                Aufenthalt nur in Segmenten erlaubt
@@ -904,9 +975,9 @@ class PiecewiseModel(Model):
             self.add(
                 self._model.add_constraints(
                     sum([piece.inside_piece for piece in self.pieces]) <= rhs,
-                    name=f'{self.label_full}|{variable.name}_single_segment',
+                    name=f'{self.label_full}|{variable.name}|single_segment',
                 ),
-                'single_segment',
+                f'{var_name}|single_segment',
             )
 
 
@@ -1064,10 +1135,10 @@ class PiecewiseEffectsModel(Model):
             PiecewiseModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
-                label=f'{self.label_full}|PiecewiseModel',
                 piecewise_variables=piecewise_variables,
                 zero_point=self._zero_point,
                 as_time_series=False,
+                label='PiecewiseEffects',
             )
         )
 
