@@ -555,7 +555,7 @@ class TestTimeSeriesCollection:
     def test_class_method_with_uniform_timesteps(self):
         """Test the with_uniform_timesteps class method."""
         collection = TimeSeriesCollection.with_uniform_timesteps(
-            start_time=pd.Timestamp('2023-01-01'), periods=24, freq='H', hours_per_step=1
+            start_time=pd.Timestamp('2023-01-01'), periods=24, freq='h', hours_per_step=1
         )
 
         assert len(collection.timesteps) == 24
