@@ -111,7 +111,7 @@ class InvestParameters(Interface):
     def __init__(
         self,
         fixed_size: Optional[Union[int, float]] = None,
-        minimum_size: Union[int, float] = 0,  # TODO: Use EPSILON?
+        minimum_size: Optional[Union[int, float]] = None,
         maximum_size: Optional[Union[int, float]] = None,
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScalar'] = None,
@@ -141,8 +141,8 @@ class InvestParameters(Interface):
                      ]  # €
                 (Attention: Annualize costs to chosen period!)
                 (Args 'specific_effects' and 'fix_effects' can be used in parallel to Investsizepieces)
-            minimum_size: Min nominal value (only if: size_is_fixed = False).
-            maximum_size: Max nominal value (only if: size_is_fixed = False).
+            minimum_size: Min nominal value (only if: size_is_fixed = False). Defaults to CONFIG.modeling.EPSILON.
+            maximum_size: Max nominal value (only if: size_is_fixed = False). Defaults to CONFIG.modeling.BIG.
         """
         self.fix_effects: EffectValuesUser = fix_effects or {}
         self.divest_effects: EffectValuesUser = divest_effects or {}
@@ -150,8 +150,8 @@ class InvestParameters(Interface):
         self.optional = optional
         self.specific_effects: EffectValuesUser = specific_effects or {}
         self.piecewise_effects = piecewise_effects
-        self._minimum_size = minimum_size
-        self._maximum_size = maximum_size or CONFIG.modeling.BIG  # default maximum
+        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
     def transform_data(self, flow_system: 'FlowSystem'):
         self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)
