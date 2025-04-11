@@ -1,8 +1,8 @@
 # FlixOpt: Energy and Material Flow Optimization Framework
 
-[![📚 Documentation](https://img.shields.io/badge/📚_docs-online-brightgreen.svg)](https://flixopt.github.io/flixopt/latest/)
-[![CI](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
-[![PyPI version](https://badge.fury.io/py/flixopt.svg)](https://badge.fury.io/py/flixopt)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://flixopt.github.io/flixopt/latest/)
+[![Build Status](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
+[![PyPI version](https://img.shields.io/pypi/v/flixopt)](https://pypi.org/project/flixopt/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/flixopt.svg)](https://pypi.org/project/flixopt/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
