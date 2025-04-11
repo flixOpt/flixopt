@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import TimestepData, PlausibilityError, Scalar, ScenarioData, TimestepData
+from .core import PlausibilityError, Scalar, ScenarioData, TimestepData
 from .effects import EffectValuesUserTimestep
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
