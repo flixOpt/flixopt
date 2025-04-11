@@ -616,6 +616,73 @@ class TestFlowOnModel:
             >= (model.variables['Sink(Wärme)|on'].isel(time=slice(None, -1)) - model.variables['Sink(Wärme)|on'].isel(time=slice(1, None))) * 2
         )
 
+    def test_consecutive_on_hours_previous(self, basic_flow_system_linopy):
+        """Test flow with minimum and maximum consecutive on hours."""
+        flow_system = basic_flow_system_linopy
+        timesteps = flow_system.time_series_collection.timesteps
+
+        flow = fx.Flow(
+            'Wärme',
+            bus='Fernwärme',
+            size=100,
+            on_off_parameters=fx.OnOffParameters(
+                consecutive_on_hours_min=2,  # Must run for at least 2 hours when turned on
+                consecutive_on_hours_max=8,  # Can't run more than 8 consecutive hours
+            ),
+            previous_flow_rate=np.array([10, 20, 30, 0, 20, 20, 30]) # Previously on for 3 steps
+        )
+
+        flow_system.add_elements( fx.Sink('Sink', sink=flow))
+        model = create_linopy_model(flow_system)
+
+        assert {'Sink(Wärme)|ConsecutiveOn|hours', 'Sink(Wärme)|on'}.issubset(set(flow.model.variables))
+
+        assert {'Sink(Wärme)|ConsecutiveOn|con1',
+         'Sink(Wärme)|ConsecutiveOn|con2a',
+         'Sink(Wärme)|ConsecutiveOn|con2b',
+         'Sink(Wärme)|ConsecutiveOn|initial',
+         'Sink(Wärme)|ConsecutiveOn|minimum',
+        }.issubset(set(flow.model.constraints))
+
+        assert_var_equal(
+            model.variables['Sink(Wärme)|ConsecutiveOn|hours'],
+            model.add_variables(lower=0, upper=8, coords=(timesteps,))
+        )
+
+        mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 3
+
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOn|con1'],
+            model.variables['Sink(Wärme)|ConsecutiveOn|hours'] <= model.variables['Sink(Wärme)|on'] * mega
+        )
+
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOn|con2a'],
+            model.variables['Sink(Wärme)|ConsecutiveOn|hours'].isel(time=slice(1, None))
+            <= model.variables['Sink(Wärme)|ConsecutiveOn|hours'].isel(time=slice(None, -1)) + model.hours_per_step.isel(time=slice(None, -1))
+        )
+
+        # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOn|con2b'],
+            model.variables['Sink(Wärme)|ConsecutiveOn|hours'].isel(time=slice(1, None))
+            >= model.variables['Sink(Wärme)|ConsecutiveOn|hours'].isel(time=slice(None, -1))
+            + model.hours_per_step.isel(time=slice(None, -1))
+            + (model.variables['Sink(Wärme)|on'].isel(time=slice(1, None)) - 1) * mega
+        )
+
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOn|initial'],
+            model.variables['Sink(Wärme)|ConsecutiveOn|hours'].isel(time=0)
+            == model.variables['Sink(Wärme)|on'].isel(time=0) * (model.hours_per_step.isel(time=0) * (1 + 3)),
+        )
+
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOn|minimum'],
+            model.variables['Sink(Wärme)|ConsecutiveOn|hours']
+            >= (model.variables['Sink(Wärme)|on'].isel(time=slice(None, -1)) - model.variables['Sink(Wärme)|on'].isel(time=slice(1, None))) * 2
+        )
+
     def test_consecutive_off_hours(self, basic_flow_system_linopy):
         """Test flow with minimum and maximum consecutive off hours."""
         flow_system = basic_flow_system_linopy
@@ -649,7 +716,7 @@ class TestFlowOnModel:
             model.add_variables(lower=0, upper=12, coords=(timesteps,))
         )
 
-        mega = model.hours_per_step.sum('time') + 1  # previously off for 1h
+        mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 1  # previously off for 1h
 
         assert_conequal(
             model.constraints['Sink(Wärme)|ConsecutiveOff|con1'],
@@ -674,7 +741,75 @@ class TestFlowOnModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|ConsecutiveOff|initial'],
             model.variables['Sink(Wärme)|ConsecutiveOff|hours'].isel(time=0)
-            == model.variables['Sink(Wärme)|off'].isel(time=0) * (model.hours_per_step.isel(time=0)+1),
+            == model.variables['Sink(Wärme)|off'].isel(time=0) * (model.hours_per_step.isel(time=0) * (1 + 1)),
+        )
+
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOff|minimum'],
+            model.variables['Sink(Wärme)|ConsecutiveOff|hours']
+            >= (model.variables['Sink(Wärme)|off'].isel(time=slice(None, -1)) - model.variables['Sink(Wärme)|off'].isel(time=slice(1, None))) * 4
+        )
+
+    def test_consecutive_off_hours_previous(self, basic_flow_system_linopy):
+        """Test flow with minimum and maximum consecutive off hours."""
+        flow_system = basic_flow_system_linopy
+        timesteps = flow_system.time_series_collection.timesteps
+
+        flow = fx.Flow(
+            'Wärme',
+            bus='Fernwärme',
+            size=100,
+            on_off_parameters=fx.OnOffParameters(
+                consecutive_off_hours_min=4,  # Must stay off for at least 4 hours when shut down
+                consecutive_off_hours_max=12,  # Can't be off for more than 12 consecutive hours
+            ),
+            previous_flow_rate=np.array([10, 20, 30, 0, 20, 0, 0]) # Previously off for 2 steps
+        )
+
+        flow_system.add_elements( fx.Sink('Sink', sink=flow))
+        model = create_linopy_model(flow_system)
+
+        assert {'Sink(Wärme)|ConsecutiveOff|hours', 'Sink(Wärme)|off'}.issubset(set(flow.model.variables))
+
+        assert {
+            'Sink(Wärme)|ConsecutiveOff|con1',
+         'Sink(Wärme)|ConsecutiveOff|con2a',
+         'Sink(Wärme)|ConsecutiveOff|con2b',
+         'Sink(Wärme)|ConsecutiveOff|initial',
+         'Sink(Wärme)|ConsecutiveOff|minimum'
+        }.issubset(set(flow.model.constraints))
+
+        assert_var_equal(
+            model.variables['Sink(Wärme)|ConsecutiveOff|hours'],
+            model.add_variables(lower=0, upper=12, coords=(timesteps,))
+        )
+
+        mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 2
+
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOff|con1'],
+            model.variables['Sink(Wärme)|ConsecutiveOff|hours'] <= model.variables['Sink(Wärme)|off'] * mega
+        )
+
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOff|con2a'],
+            model.variables['Sink(Wärme)|ConsecutiveOff|hours'].isel(time=slice(1, None))
+            <= model.variables['Sink(Wärme)|ConsecutiveOff|hours'].isel(time=slice(None, -1)) + model.hours_per_step.isel(time=slice(None, -1))
+        )
+
+        # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOff|con2b'],
+            model.variables['Sink(Wärme)|ConsecutiveOff|hours'].isel(time=slice(1, None))
+            >= model.variables['Sink(Wärme)|ConsecutiveOff|hours'].isel(time=slice(None, -1))
+            + model.hours_per_step.isel(time=slice(None, -1))
+            + (model.variables['Sink(Wärme)|off'].isel(time=slice(1, None)) - 1) * mega
+        )
+
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ConsecutiveOff|initial'],
+            model.variables['Sink(Wärme)|ConsecutiveOff|hours'].isel(time=0)
+            == model.variables['Sink(Wärme)|off'].isel(time=0) * (model.hours_per_step.isel(time=0) * (1+2)),
         )
 
         assert_conequal(

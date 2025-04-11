@@ -43,7 +43,10 @@ class LinearConverter(Component):
             label: The label of the Element. Used to identify it in the FlowSystem
             inputs: The input Flows
             outputs: The output Flows
-            on_off_parameters: Information about on and off states. See class OnOffParameters.
+            on_off_parameters: Information about on and off state of LinearConverter.
+                Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
+                If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
+                See class OnOffParameters.
             conversion_factors: linear relation between flows.
                 Either 'conversion_factors' or 'piecewise_conversion' can be used!
             piecewise_conversion: Define a piecewise linear relation between flow rates of different flows.
