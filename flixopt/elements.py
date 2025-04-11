@@ -47,8 +47,8 @@ class Component(Element):
             inputs: input flows.
             outputs: output flows.
             on_off_parameters: Information about on and off state of Component.
-                Component is On/Off, if all connected Flows are On/Off.
-                Induces On-Variable in all FLows!
+                Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
+                If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
                 See class OnOffParameters.
             prevent_simultaneous_flows: Define a Group of Flows. Only one them can be on at a time.
                 Induces On-Variable in all Flows! If possible, use OnOffParameters in a single Flow instead.
