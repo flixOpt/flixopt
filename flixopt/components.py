@@ -533,7 +533,7 @@ class StorageModel(ComponentModel):
             name_short = 'initial_charge_state'
             name = f'{self.label_full}|{name_short}'
 
-            if self.element.initial_charge_state == 'lastValueOfSim':
+            if isinstance(self.element.initial_charge_state, str):
                 self.add(
                     self._model.add_constraints(
                         self.charge_state.isel(time=0) == self.charge_state.isel(time=-1), name=name
