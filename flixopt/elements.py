@@ -57,6 +57,7 @@ class Component(Element):
         super().__init__(label, meta_data=meta_data)
         self.inputs: List['Flow'] = inputs or []
         self.outputs: List['Flow'] = outputs or []
+        self._check_unique_flow_labels()
         self.on_off_parameters = on_off_parameters
         self.prevent_simultaneous_flows: List['Flow'] = prevent_simultaneous_flows or []
 
@@ -77,9 +78,15 @@ class Component(Element):
         infos['outputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.outputs]
         return infos
 
+    def _check_unique_flow_labels(self):
+        all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
+
+        if len(set(all_flow_labels)) != len(all_flow_labels):
+            duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.label_full}" got 2 or more of: {duplicates}')
+
     def _plausibility_checks(self) -> None:
-        # TODO: Check for plausibility
-        pass
+        self._check_unique_flow_labels()
 
 
 @register_class_for_io

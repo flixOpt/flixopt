@@ -359,8 +359,8 @@ class OnOffModel(Model):
             )
 
         else:  # Bei mehreren Leistungsvariablen:
-            ub = sum(bound[1] for bound in self._defining_bounds)
-            lb = CONFIG.modeling.EPSILON
+            ub = sum(bound[1] for bound in self._defining_bounds) / nr_of_def_vars
+            lb = CONFIG.modeling.EPSILON  #TODO: Can this be a bigger value? (maybe the smallest bound?)
 
             # When all defining variables are 0, On is 0
             # eq: On(t) * Epsilon <= sum(alle Leistungen(t))
@@ -759,10 +759,10 @@ class PiecewiseModel(Model):
         self,
         model: SystemModel,
         label_of_element: str,
-        label: str,
         piecewise_variables: Dict[str, Piecewise],
         zero_point: Optional[Union[bool, linopy.Variable]],
         as_time_series: bool,
+        label: str = '',
     ):
         """
         Modeling a Piecewise relation between miultiple variables.
@@ -811,9 +811,9 @@ class PiecewiseModel(Model):
                             )
                         ]
                     ),
-                    name=f'{self.label_full}|{var_name}_lambda',
+                    name=f'{self.label_full}|{var_name}|lambda',
                 ),
-                f'{var_name}_lambda',
+                f'{var_name}|lambda',
             )
 
             # a) eq: Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 1                Aufenthalt nur in Segmenten erlaubt
@@ -835,9 +835,9 @@ class PiecewiseModel(Model):
             self.add(
                 self._model.add_constraints(
                     sum([piece.inside_piece for piece in self.pieces]) <= rhs,
-                    name=f'{self.label_full}|{variable.name}_single_segment',
+                    name=f'{self.label_full}|{variable.name}|single_segment',
                 ),
-                'single_segment',
+                f'{var_name}|single_segment',
             )
 
 
@@ -986,10 +986,10 @@ class PiecewiseEffectsModel(Model):
             PiecewiseModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
-                label=f'{self.label_full}|PiecewiseModel',
                 piecewise_variables=piecewise_variables,
                 zero_point=self._zero_point,
                 as_time_series=False,
+                label='PiecewiseEffects',
             )
         )
 

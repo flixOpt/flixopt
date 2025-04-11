@@ -304,7 +304,7 @@ class Model:
     """Stores Variables and Constraints."""
 
     def __init__(
-        self, model: SystemModel, label_of_element: str, label: Optional[str] = None, label_full: Optional[str] = None
+        self, model: SystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None
     ):
         """
         Args:
@@ -325,7 +325,7 @@ class Model:
         self._variables_short: Dict[str, str] = {}
         self._constraints_short: Dict[str, str] = {}
         self._sub_models_short: Dict[str, str] = {}
-        logger.debug(f'Created {self.__class__.__name__}  "{self._label}"')
+        logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
 
     def do_modeling(self):
         raise NotImplementedError('Every Model needs a do_modeling() method')
@@ -381,14 +381,14 @@ class Model:
 
     @property
     def label(self) -> str:
-        return self._label if self._label is not None else self.label_of_element
+        return self._label if self._label else self.label_of_element
 
     @property
     def label_full(self) -> str:
         """Used to construct the names of variables and constraints"""
-        if self._label_full is not None:
+        if self._label_full:
             return self._label_full
-        elif self._label is not None:
+        elif self._label:
             return f'{self.label_of_element}|{self.label}'
         return self.label_of_element
 
