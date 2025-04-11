@@ -78,7 +78,7 @@ class TestStorageModel:
         assert_conequal(
             model.constraints['TestStorage|charge_state'],
             charge_state.isel(time=slice(1, None))
-            == charge_state.isel(time=slice(None, -1)) * model.hours_per_step
+            == charge_state.isel(time=slice(None, -1))
             + model.variables['TestStorage(Q_th_in)|flow_rate'] * model.hours_per_step
             - model.variables['TestStorage(Q_th_out)|flow_rate'] *  model.hours_per_step,
         )
