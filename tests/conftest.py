@@ -506,7 +506,7 @@ def timesteps_linopy(request):
 @pytest.fixture
 def basic_flow_system_linopy(timesteps_linopy) -> fx.FlowSystem:
     """Create basic elements for component testing"""
-    flow_system = fx.FlowSystem(pd.date_range('2020-01-01', periods=10, freq='h', name='time'))
+    flow_system = fx.FlowSystem(timesteps_linopy)
     thermal_load = np.array([np.random.random() for _ in range(10)]) * 180
     p_el = (np.array([np.random.random() for _ in range(10)]) + 0.5) / 1.5 * 50
 
