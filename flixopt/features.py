@@ -989,7 +989,7 @@ class PiecewiseEffectsModel(Model):
                 piecewise_variables=piecewise_variables,
                 zero_point=self._zero_point,
                 as_time_series=False,
-                label=f'PiecewiseEffects',
+                label='PiecewiseEffects',
             )
         )
 

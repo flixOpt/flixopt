@@ -15,7 +15,6 @@ class TestLinearConverterModel:
     def test_basic_linear_converter(self, basic_flow_system_linopy):
         """Test basic initialization and modeling of a LinearConverter."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
@@ -95,7 +94,6 @@ class TestLinearConverterModel:
     def test_linear_converter_multiple_factors(self, basic_flow_system_linopy):
         """Test a LinearConverter with multiple conversion factors."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
 
         # Create flows
         input_flow1 = fx.Flow('input1', bus='input_bus1', size=100)
@@ -153,7 +151,6 @@ class TestLinearConverterModel:
     def test_linear_converter_with_on_off(self, basic_flow_system_linopy):
         """Test a LinearConverter with OnOffParameters."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
@@ -213,7 +210,6 @@ class TestLinearConverterModel:
     def test_linear_converter_multidimensional(self, basic_flow_system_linopy):
         """Test LinearConverter with multiple inputs, outputs, and connections between them."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
 
         # Create a more complex setup with multiple flows
         input_flow1 = fx.Flow('fuel', bus='fuel_bus', size=100)
@@ -374,7 +370,7 @@ class TestLinearConverterModel:
         assert len(piecewise_model.pieces) == 2
 
         # Verify that variables were created for each piece
-        for i, piece in enumerate(piecewise_model.pieces):
+        for i, _ in enumerate(piecewise_model.pieces):
             # Each piece should have lambda0, lambda1, and inside_piece variables
             assert f'Converter|Piece_{i}|lambda0' in model.variables
             assert f'Converter|Piece_{i}|lambda1' in model.variables
@@ -396,20 +392,20 @@ class TestLinearConverterModel:
             model.constraints['Converter|Converter(input)|flow_rate|lambda'],
             model.variables['Converter(input)|flow_rate']
             ==
-            model.variables[f'Converter|Piece_0|lambda0'] * 0
-            + model.variables[f'Converter|Piece_0|lambda1'] * 50
-            + model.variables[f'Converter|Piece_1|lambda0'] * 50
-            + model.variables[f'Converter|Piece_1|lambda1'] * 100,
+            model.variables['Converter|Piece_0|lambda0'] * 0
+            + model.variables['Converter|Piece_0|lambda1'] * 50
+            + model.variables['Converter|Piece_1|lambda0'] * 50
+            + model.variables['Converter|Piece_1|lambda1'] * 100,
         )
 
         assert_conequal(
             model.constraints['Converter|Converter(output)|flow_rate|lambda'],
             model.variables['Converter(output)|flow_rate']
             ==
-            model.variables[f'Converter|Piece_0|lambda0'] * 0
-            + model.variables[f'Converter|Piece_0|lambda1'] * 30
-            + model.variables[f'Converter|Piece_1|lambda0'] * 30
-            + model.variables[f'Converter|Piece_1|lambda1'] * 90,
+            model.variables['Converter|Piece_0|lambda0'] * 0
+            + model.variables['Converter|Piece_0|lambda1'] * 30
+            + model.variables['Converter|Piece_1|lambda0'] * 30
+            + model.variables['Converter|Piece_1|lambda1'] * 90,
         )
 
         # Check that we enforce the constraint that only one segment can be active
@@ -491,7 +487,7 @@ class TestLinearConverterModel:
         assert piecewise_model.zero_point is not None  # Should be a variable
 
         # Verify that variables were created for each piece
-        for i, piece in enumerate(piecewise_model.pieces):
+        for i, _ in enumerate(piecewise_model.pieces):
             # Each piece should have lambda0, lambda1, and inside_piece variables
             assert f'Converter|Piece_{i}|lambda0' in model.variables
             assert f'Converter|Piece_{i}|lambda1' in model.variables
@@ -513,20 +509,20 @@ class TestLinearConverterModel:
             model.constraints['Converter|Converter(input)|flow_rate|lambda'],
             model.variables['Converter(input)|flow_rate']
             ==
-            model.variables[f'Converter|Piece_0|lambda0'] * 0
-            + model.variables[f'Converter|Piece_0|lambda1'] * 50
-            + model.variables[f'Converter|Piece_1|lambda0'] * 50
-            + model.variables[f'Converter|Piece_1|lambda1'] * 100,
+            model.variables['Converter|Piece_0|lambda0'] * 0
+            + model.variables['Converter|Piece_0|lambda1'] * 50
+            + model.variables['Converter|Piece_1|lambda0'] * 50
+            + model.variables['Converter|Piece_1|lambda1'] * 100,
         )
 
         assert_conequal(
             model.constraints['Converter|Converter(output)|flow_rate|lambda'],
             model.variables['Converter(output)|flow_rate']
             ==
-            model.variables[f'Converter|Piece_0|lambda0'] * 0
-            + model.variables[f'Converter|Piece_0|lambda1'] * 30
-            + model.variables[f'Converter|Piece_1|lambda0'] * 30
-            + model.variables[f'Converter|Piece_1|lambda1'] * 90,
+            model.variables['Converter|Piece_0|lambda0'] * 0
+            + model.variables['Converter|Piece_0|lambda1'] * 30
+            + model.variables['Converter|Piece_1|lambda0'] * 30
+            + model.variables['Converter|Piece_1|lambda1'] * 90,
         )
 
         # Check that we enforce the constraint that only one segment can be active
@@ -538,10 +534,6 @@ class TestLinearConverterModel:
             sum([model.variables[f'Converter|Piece_{i}|inside_piece']
                  for i in range(len(piecewise_model.pieces))]) <= model.variables['Converter|on']
         )
-
-        # Check that the single_segment constraint now uses the on variable
-        sum_inside_pieces = sum([model.variables[f'Converter|Piece_{i}|inside_piece']
-                                 for i in range(len(piecewise_model.pieces))])
 
         # Also check that the OnOff model is working correctly
         assert 'Converter|on_hours_total' in model.constraints

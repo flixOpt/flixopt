@@ -178,8 +178,6 @@ class TestStorageModel:
     def test_storage_with_investment(self, basic_flow_system_linopy):
         """Test storage with investment parameters."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
-        timesteps_extra = flow_system.time_series_collection.timesteps_extra
 
         # Create storage with investment parameters
         storage = fx.Storage(
