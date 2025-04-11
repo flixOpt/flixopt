@@ -180,7 +180,6 @@ class TestLinearConverterModel:
             fx.Bus('input_bus'),
             fx.Bus('output_bus'),
             converter,
-            fx.Effect('Costs', '€', 'Costs')
         )
 
         # Create model
@@ -211,7 +210,115 @@ class TestLinearConverterModel:
             converter.model.on_off.variables['Converter|on'] * model.hours_per_step * 5
         )
 
-    def test_piecewise_conversion(self, basic_flow_system_linopy, monkeypatch):
+    def test_linear_converter_multidimensional(self, basic_flow_system_linopy):
+        """Test LinearConverter with multiple inputs, outputs, and connections between them."""
+        flow_system = basic_flow_system_linopy
+        timesteps = flow_system.time_series_collection.timesteps
+
+        # Create a more complex setup with multiple flows
+        input_flow1 = fx.Flow('fuel', bus='fuel_bus', size=100)
+        input_flow2 = fx.Flow('electricity', bus='electricity_bus', size=50)
+        output_flow1 = fx.Flow('heat', bus='heat_bus', size=70)
+        output_flow2 = fx.Flow('cooling', bus='cooling_bus', size=30)
+
+        # Create a CHP-like converter with more complex connections
+        converter = fx.LinearConverter(
+            label='MultiConverter',
+            inputs=[input_flow1, input_flow2],
+            outputs=[output_flow1, output_flow2],
+            conversion_factors=[
+                # Fuel to heat (primary)
+                {input_flow1.label: 0.7, output_flow1.label: 1.0},
+                # Electricity to cooling
+                {input_flow2.label: 0.3, output_flow2.label: 1.0},
+                # Fuel also contributes to cooling
+                {input_flow1.label: 0.1, output_flow2.label: 0.5}
+            ]
+        )
+
+        # Add to flow system
+        flow_system.add_elements(
+            fx.Bus('fuel_bus'),
+            fx.Bus('electricity_bus'),
+            fx.Bus('heat_bus'),
+            fx.Bus('cooling_bus'),
+            converter
+        )
+
+        # Create model
+        model = create_linopy_model(flow_system)
+
+        # Check all expected constraints
+        assert 'MultiConverter|conversion_0' in model.constraints
+        assert 'MultiConverter|conversion_1' in model.constraints
+        assert 'MultiConverter|conversion_2' in model.constraints
+
+        # Check the conversion equations
+        assert_conequal(
+            model.constraints['MultiConverter|conversion_0'],
+            input_flow1.model.flow_rate * 0.7 == output_flow1.model.flow_rate * 1.0
+        )
+
+        assert_conequal(
+            model.constraints['MultiConverter|conversion_1'],
+            input_flow2.model.flow_rate * 0.3 == output_flow2.model.flow_rate * 1.0
+        )
+
+        assert_conequal(
+            model.constraints['MultiConverter|conversion_2'],
+            input_flow1.model.flow_rate * 0.1 == output_flow2.model.flow_rate * 0.5
+        )
+
+    def test_edge_case_time_varying_conversion(self, basic_flow_system_linopy):
+        """Test edge case with extreme time-varying conversion factors."""
+        flow_system = basic_flow_system_linopy
+        timesteps = flow_system.time_series_collection.timesteps
+
+        # Create fluctuating conversion efficiency (e.g., for a heat pump)
+        # Values range from very low (0.1) to very high (5.0)
+        fluctuating_cop = np.concatenate([
+            np.linspace(0.1, 1.0, len(timesteps)//3),
+            np.linspace(1.0, 5.0, len(timesteps)//3),
+            np.linspace(5.0, 0.1, len(timesteps)//3 + len(timesteps)%3)
+        ])
+
+        # Create input and output flows
+        input_flow = fx.Flow('electricity', bus='electricity_bus', size=100)
+        output_flow = fx.Flow('heat', bus='heat_bus', size=500)  # Higher maximum to allow for COP of 5
+
+        conversion_factors = [{
+            input_flow.label: fluctuating_cop,
+            output_flow.label: np.ones(len(timesteps))
+        }]
+
+        # Create the converter
+        converter = fx.LinearConverter(
+            label='VariableConverter',
+            inputs=[input_flow],
+            outputs=[output_flow],
+            conversion_factors=conversion_factors
+        )
+
+        # Add to flow system
+        flow_system.add_elements(
+            fx.Bus('electricity_bus'),
+            fx.Bus('heat_bus'),
+            converter
+        )
+
+        # Create model
+        model = create_linopy_model(flow_system)
+
+        # Check that the correct constraint was created
+        assert 'VariableConverter|conversion_0' in model.constraints
+
+        # Verify the constraint has the time-varying coefficient
+        assert_conequal(
+            model.constraints['VariableConverter|conversion_0'],
+            input_flow.model.flow_rate * fluctuating_cop == output_flow.model.flow_rate * 1.0
+        )
+
+    def test_piecewise_conversion(self, basic_flow_system_linopy):
         """Test a LinearConverter with PiecewiseConversion."""
         flow_system = basic_flow_system_linopy
         timesteps = flow_system.time_series_collection.timesteps
@@ -221,25 +328,23 @@ class TestLinearConverterModel:
         output_flow = fx.Flow('output', bus='output_bus', size=100)
 
         # Create pieces for piecewise conversion
-        pieces = [
+        # For input flow: two pieces from 0-50 and 50-100
+        input_pieces = [
             fx.Piece(start=0, end=50),
             fx.Piece(start=50, end=100)
         ]
 
-        # Create piecewise conversion - mocking this since we're testing the model, not the conversion
+        # For output flow: two pieces from 0-30 and 30-90
+        output_pieces = [
+            fx.Piece(start=0, end=30),
+            fx.Piece(start=30, end=90)
+        ]
+
+        # Create piecewise conversion
         piecewise_conversion = fx.PiecewiseConversion({
-            input_flow.label: fx.Piecewise(pieces),
-            output_flow.label: fx.Piecewise([
-                fx.Piece(start=0, end=30),
-                fx.Piece(start=30, end=90)
-            ])
+            input_flow.label: fx.Piecewise(input_pieces),
+            output_flow.label: fx.Piecewise(output_pieces)
         })
-
-        # Mock the transform_data method to avoid actual data transformation
-        def mock_transform_data(self, flow_system, name_prefix):
-            pass
-
-        monkeypatch.setattr(fx.PiecewiseConversion, "transform_data", mock_transform_data)
 
         # Create a linear converter with piecewise conversion
         converter = fx.LinearConverter(
@@ -249,18 +354,6 @@ class TestLinearConverterModel:
             piecewise_conversion=piecewise_conversion
         )
 
-        # Mock PiecewiseModel to avoid full implementation testing
-        class MockPiecewiseModel:
-            def __init__(self, **kwargs):
-                self.initialized = True
-                self.kwargs = kwargs
-
-            def do_modeling(self):
-                pass
-
-        # Patch PiecewiseModel with our mock
-        monkeypatch.setattr(fx.structure, "PiecewiseModel", MockPiecewiseModel)
-
         # Add to flow system
         flow_system.add_elements(
             fx.Bus('input_bus'),
@@ -268,17 +361,203 @@ class TestLinearConverterModel:
             converter
         )
 
-        # Create model - this will use our mocked PiecewiseModel
+        # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify that PiecewiseModel was created with correct arguments
-        assert len(converter.model.sub_models) == 1
-        piecewise_model = converter.model.sub_models[0]
-        assert piecewise_model.initialized
-        assert piecewise_model.kwargs['label_of_element'] == 'Converter'
-        assert piecewise_model.kwargs['label'] == 'Converter'
-        assert piecewise_model.kwargs['as_time_series'] == True
-        assert piecewise_model.kwargs['zero_point'] == False  # No on_off params provided
+        # Verify that PiecewiseModel was created and added as a sub_model
+        assert converter.model.piecewise_conversion is not None
+
+        # Get the PiecewiseModel instance
+        piecewise_model = converter.model.piecewise_conversion
+
+        # Check that we have the expected pieces (2 in this case)
+        assert len(piecewise_model.pieces) == 2
+
+        # Verify that variables were created for each piece
+        for i, piece in enumerate(piecewise_model.pieces):
+            # Each piece should have lambda0, lambda1, and inside_piece variables
+            assert f'Converter|Piece_{i}|lambda0' in model.variables
+            assert f'Converter|Piece_{i}|lambda1' in model.variables
+            assert f'Converter|Piece_{i}|inside_piece' in model.variables
+            lambda0 = model.variables[f'Converter|Piece_{i}|lambda0']
+            lambda1 = model.variables[f'Converter|Piece_{i}|lambda1']
+            inside_piece = model.variables[f'Converter|Piece_{i}|inside_piece']
+
+            assert_var_equal(inside_piece, model.add_variables(binary=True, coords=(timesteps,)))
+            assert_var_equal(lambda0, model.add_variables(lower=0, upper=1, coords=(timesteps,)))
+            assert_var_equal(lambda1, model.add_variables(lower=0, upper=1, coords=(timesteps,)))
+
+            # Check that the inside_piece constraint exists
+            assert f'Converter|Piece_{i}|inside_piece' in model.constraints
+            # Check the relationship between inside_piece and lambdas
+            assert_conequal(model.constraints[f'Converter|Piece_{i}|inside_piece'], inside_piece == lambda0 + lambda1)
+
+        assert_conequal(
+            model.constraints['Converter|Converter(input)|flow_rate|lambda'],
+            model.variables['Converter(input)|flow_rate']
+            ==
+            model.variables[f'Converter|Piece_0|lambda0'] * 0
+            + model.variables[f'Converter|Piece_0|lambda1'] * 50
+            + model.variables[f'Converter|Piece_1|lambda0'] * 50
+            + model.variables[f'Converter|Piece_1|lambda1'] * 100,
+        )
+
+        assert_conequal(
+            model.constraints['Converter|Converter(output)|flow_rate|lambda'],
+            model.variables['Converter(output)|flow_rate']
+            ==
+            model.variables[f'Converter|Piece_0|lambda0'] * 0
+            + model.variables[f'Converter|Piece_0|lambda1'] * 30
+            + model.variables[f'Converter|Piece_1|lambda0'] * 30
+            + model.variables[f'Converter|Piece_1|lambda1'] * 90,
+        )
+
+        # Check that we enforce the constraint that only one segment can be active
+        assert 'Converter|Converter(input)|flow_rate|single_segment' in model.constraints
+
+        # The constraint should enforce that the sum of inside_piece variables is limited
+        # If there's no on_off parameter, the right-hand side should be 1
+        assert_conequal(
+            model.constraints['Converter|Converter(input)|flow_rate|single_segment'],
+            sum([model.variables[f'Converter|Piece_{i}|inside_piece']
+                 for i in range(len(piecewise_model.pieces))]) <= 1
+        )
+
+
+    def test_piecewise_conversion_with_onoff(self, basic_flow_system_linopy):
+        """Test a LinearConverter with PiecewiseConversion and OnOffParameters."""
+        flow_system = basic_flow_system_linopy
+        timesteps = flow_system.time_series_collection.timesteps
+
+        # Create input and output flows
+        input_flow = fx.Flow('input', bus='input_bus', size=100)
+        output_flow = fx.Flow('output', bus='output_bus', size=100)
+
+        # Create pieces for piecewise conversion
+        input_pieces = [
+            fx.Piece(start=0, end=50),
+            fx.Piece(start=50, end=100)
+        ]
+
+        output_pieces = [
+            fx.Piece(start=0, end=30),
+            fx.Piece(start=30, end=90)
+        ]
+
+        # Create piecewise conversion
+        piecewise_conversion = fx.PiecewiseConversion({
+            input_flow.label: fx.Piecewise(input_pieces),
+            output_flow.label: fx.Piecewise(output_pieces)
+        })
+
+        # Create OnOffParameters
+        on_off_params = fx.OnOffParameters(
+            on_hours_total_min=10,
+            on_hours_total_max=40,
+            effects_per_running_hour={'Costs': 5}
+        )
+
+        # Create a linear converter with piecewise conversion and on/off parameters
+        converter = fx.LinearConverter(
+            label='Converter',
+            inputs=[input_flow],
+            outputs=[output_flow],
+            piecewise_conversion=piecewise_conversion,
+            on_off_parameters=on_off_params
+        )
+
+        # Add to flow system
+        flow_system.add_elements(
+            fx.Bus('input_bus'),
+            fx.Bus('output_bus'),
+            converter,
+        )
+
+        # Create model with the piecewise conversion
+        model = create_linopy_model(flow_system)
+
+        # Verify that PiecewiseModel was created and added as a sub_model
+        assert converter.model.piecewise_conversion is not None
+
+        # Get the PiecewiseModel instance
+        piecewise_model = converter.model.piecewise_conversion
+
+        # Check that we have the expected pieces (2 in this case)
+        assert len(piecewise_model.pieces) == 2
+
+        # Verify that the on variable was used as the zero_point for the piecewise model
+        # When using OnOffParameters, the zero_point should be the on variable
+        assert 'Converter|on' in model.variables
+        assert piecewise_model.zero_point is not None  # Should be a variable
+
+        # Verify that variables were created for each piece
+        for i, piece in enumerate(piecewise_model.pieces):
+            # Each piece should have lambda0, lambda1, and inside_piece variables
+            assert f'Converter|Piece_{i}|lambda0' in model.variables
+            assert f'Converter|Piece_{i}|lambda1' in model.variables
+            assert f'Converter|Piece_{i}|inside_piece' in model.variables
+            lambda0 = model.variables[f'Converter|Piece_{i}|lambda0']
+            lambda1 = model.variables[f'Converter|Piece_{i}|lambda1']
+            inside_piece = model.variables[f'Converter|Piece_{i}|inside_piece']
+
+            assert_var_equal(inside_piece, model.add_variables(binary=True, coords=(timesteps,)))
+            assert_var_equal(lambda0, model.add_variables(lower=0, upper=1, coords=(timesteps,)))
+            assert_var_equal(lambda1, model.add_variables(lower=0, upper=1, coords=(timesteps,)))
+
+            # Check that the inside_piece constraint exists
+            assert f'Converter|Piece_{i}|inside_piece' in model.constraints
+            # Check the relationship between inside_piece and lambdas
+            assert_conequal(model.constraints[f'Converter|Piece_{i}|inside_piece'], inside_piece == lambda0 + lambda1)
+
+        assert_conequal(
+            model.constraints['Converter|Converter(input)|flow_rate|lambda'],
+            model.variables['Converter(input)|flow_rate']
+            ==
+            model.variables[f'Converter|Piece_0|lambda0'] * 0
+            + model.variables[f'Converter|Piece_0|lambda1'] * 50
+            + model.variables[f'Converter|Piece_1|lambda0'] * 50
+            + model.variables[f'Converter|Piece_1|lambda1'] * 100,
+        )
+
+        assert_conequal(
+            model.constraints['Converter|Converter(output)|flow_rate|lambda'],
+            model.variables['Converter(output)|flow_rate']
+            ==
+            model.variables[f'Converter|Piece_0|lambda0'] * 0
+            + model.variables[f'Converter|Piece_0|lambda1'] * 30
+            + model.variables[f'Converter|Piece_1|lambda0'] * 30
+            + model.variables[f'Converter|Piece_1|lambda1'] * 90,
+        )
+
+        # Check that we enforce the constraint that only one segment can be active
+        assert 'Converter|Converter(input)|flow_rate|single_segment' in model.constraints
+
+        # The constraint should enforce that the sum of inside_piece variables is limited
+        assert_conequal(
+            model.constraints['Converter|Converter(input)|flow_rate|single_segment'],
+            sum([model.variables[f'Converter|Piece_{i}|inside_piece']
+                 for i in range(len(piecewise_model.pieces))]) <= model.variables['Converter|on']
+        )
+
+        # Check that the single_segment constraint now uses the on variable
+        sum_inside_pieces = sum([model.variables[f'Converter|Piece_{i}|inside_piece']
+                                 for i in range(len(piecewise_model.pieces))])
+
+        # Also check that the OnOff model is working correctly
+        assert 'Converter|on_hours_total' in model.constraints
+        assert_conequal(
+            model.constraints['Converter|on_hours_total'],
+            converter.model.on_off.variables['Converter|on_hours_total'] ==
+            (converter.model.on_off.variables['Converter|on'] * model.hours_per_step).sum()
+        )
+
+        # Verify that the costs effect is applied
+        assert 'Converter->Costs(operation)' in model.constraints
+        assert_conequal(
+            model.constraints['Converter->Costs(operation)'],
+            model.variables['Converter->Costs(operation)'] ==
+            converter.model.on_off.variables['Converter|on'] * model.hours_per_step * 5
+        )
 
 
 if __name__ == '__main__':
