@@ -60,6 +60,7 @@ class LinearConverter(Component):
         return self.model
 
     def _plausibility_checks(self) -> None:
+        super()._plausibility_checks()
         if not self.conversion_factors and not self.piecewise_conversion:
             raise PlausibilityError('Either conversion_factors or piecewise_conversion must be defined!')
         if self.conversion_factors and self.piecewise_conversion:
@@ -213,6 +214,7 @@ class Storage(Component):
         """
         Check for infeasible or uncommon combinations of parameters
         """
+        super()._plausibility_checks()
         if utils.is_number(self.initial_charge_state):
             if isinstance(self.capacity_in_flow_hours, InvestParameters):
                 if self.capacity_in_flow_hours.fixed_size is None:
@@ -301,6 +303,7 @@ class Transmission(Component):
         self.absolute_losses = absolute_losses
 
     def _plausibility_checks(self):
+        super()._plausibility_checks()
         # check buses:
         if self.in2 is not None:
             assert self.in2.bus == self.out1.bus, (
