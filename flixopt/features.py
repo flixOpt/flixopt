@@ -359,8 +359,8 @@ class OnOffModel(Model):
             )
 
         else:  # Bei mehreren Leistungsvariablen:
-            ub = sum(bound[1] for bound in self._defining_bounds)
-            lb = CONFIG.modeling.EPSILON
+            ub = sum(bound[1] for bound in self._defining_bounds) / nr_of_def_vars
+            lb = CONFIG.modeling.EPSILON  #TODO: Can this be a bigger value? (maybe the smallest bound?)
 
             # When all defining variables are 0, On is 0
             # eq: On(t) * Epsilon <= sum(alle Leistungen(t))
