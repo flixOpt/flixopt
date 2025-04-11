@@ -14,7 +14,7 @@ class TestComponentModel:
 
     def test_flow_label_check(self, basic_flow_system_linopy):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
+        _ = basic_flow_system_linopy
         inputs = [
             fx.Flow('Q_th_Last', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
             fx.Flow('Q_Gas', 'Fernwärme', relative_minimum=np.ones(10) * 0.1)
@@ -39,7 +39,7 @@ class TestComponentModel:
         ]
         comp = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
         flow_system.add_elements(comp)
-        model = create_linopy_model(flow_system)
+        _ = create_linopy_model(flow_system)
 
         assert {'TestComponent(In1)|flow_rate',
  'TestComponent(In1)|total_flow_hours',
