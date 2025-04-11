@@ -303,9 +303,9 @@ class StateModel(Model):
                 'on_con1',
             )
 
-            # Constraint: def_var <= on * upper_bound
+            # Constraint: on * upper_bound >= def_var
             self.add(
-                self._model.add_constraints(def_var <= self.on * ub, name=f'{self.label_full}|on_con2'), 'on_con2'
+                self._model.add_constraints(self.on * ub >= def_var, name=f'{self.label_full}|on_con2'), 'on_con2'
             )
         else:
             # Case for multiple defining variables
@@ -320,11 +320,11 @@ class StateModel(Model):
                 'on_con1',
             )
 
-            # Constraint to ensure all variables are zero when off
+            # Constraint to ensure all variables are zero when off.
+            # Divide by nr_of_def_vars to improve numerical stability (smaller factors)
             self.add(
                 self._model.add_constraints(
-                    sum([def_var / nr_of_def_vars for def_var in self._defining_variables])
-                    <= self.on * ub / nr_of_def_vars,
+                    self.on * ub >= sum([def_var / nr_of_def_vars for def_var in self._defining_variables]),
                     name=f'{self.label_full}|on_con2',
                 ),
                 'on_con2',
