@@ -237,6 +237,120 @@ class TestFlowInvestModel:
             flow.model.variables['Sink(Wärme)|size'] >= flow.model.variables['Sink(Wärme)|is_invested'] * 20,
         )
 
+    def test_flow_invest_optional_wo_min_size(self, basic_flow_system_linopy):
+        flow_system = basic_flow_system_linopy
+        timesteps = flow_system.time_series_collection.timesteps
+
+        flow = fx.Flow(
+            'Wärme',
+            bus='Fernwärme',
+            size=fx.InvestParameters(maximum_size=100, optional=True),
+            relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
+            relative_maximum=np.linspace(0.5, 1, timesteps.size),
+        )
+
+        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        model = create_linopy_model(flow_system)
+
+        assert set(flow.model.variables) == set(
+            ['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|is_invested']
+        )
+        assert set(flow.model.constraints) == set(
+            [
+                'Sink(Wärme)|total_flow_hours',
+                'Sink(Wärme)|is_invested_ub',
+                'Sink(Wärme)|is_invested_lb',
+                'Sink(Wärme)|lb_Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|ub_Sink(Wärme)|flow_rate',
+            ]
+        )
+
+        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=0, upper=100))
+
+        assert_var_equal(model['Sink(Wärme)|is_invested'], model.add_variables(binary=True))
+
+        # flow_rate
+        assert_var_equal(
+            flow.model.flow_rate,
+            model.add_variables(
+                lower=0,  # Optional investment
+                upper=np.linspace(0.5, 1, timesteps.size) * 100,
+                coords=(timesteps,),
+            ),
+        )
+        assert_conequal(
+            model.constraints['Sink(Wärme)|lb_Sink(Wärme)|flow_rate'],
+            flow.model.variables['Sink(Wärme)|flow_rate']
+            >= flow.model.variables['Sink(Wärme)|size']
+            * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
+        )
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ub_Sink(Wärme)|flow_rate'],
+            flow.model.variables['Sink(Wärme)|flow_rate']
+            <= flow.model.variables['Sink(Wärme)|size']
+            * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
+        )
+
+        # Is invested
+        assert_conequal(
+            model.constraints['Sink(Wärme)|is_invested_ub'],
+            flow.model.variables['Sink(Wärme)|size'] <= flow.model.variables['Sink(Wärme)|is_invested'] * 100,
+        )
+        assert_conequal(
+            model.constraints['Sink(Wärme)|is_invested_lb'],
+            flow.model.variables['Sink(Wärme)|size'] >= flow.model.variables['Sink(Wärme)|is_invested'] * 1e-5,
+        )
+
+    def test_flow_invest_wo_min_size_non_optional(self, basic_flow_system_linopy):
+        flow_system = basic_flow_system_linopy
+        timesteps = flow_system.time_series_collection.timesteps
+
+        flow = fx.Flow(
+            'Wärme',
+            bus='Fernwärme',
+            size=fx.InvestParameters(maximum_size=100, optional=False),
+            relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
+            relative_maximum=np.linspace(0.5, 1, timesteps.size),
+        )
+
+        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        model = create_linopy_model(flow_system)
+
+        assert set(flow.model.variables) == set(
+            ['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size']
+        )
+        assert set(flow.model.constraints) == set(
+            [
+                'Sink(Wärme)|total_flow_hours',
+                'Sink(Wärme)|lb_Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|ub_Sink(Wärme)|flow_rate',
+            ]
+        )
+
+        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=1e-5, upper=100))
+
+        # flow_rate
+        assert_var_equal(
+            flow.model.flow_rate,
+            model.add_variables(
+                lower=np.linspace(0.1, 0.5, timesteps.size) * 1e-5,
+                upper=np.linspace(0.5, 1, timesteps.size) * 100,
+                coords=(timesteps,),
+            ),
+        )
+        assert_conequal(
+            model.constraints['Sink(Wärme)|lb_Sink(Wärme)|flow_rate'],
+            flow.model.variables['Sink(Wärme)|flow_rate']
+            >= flow.model.variables['Sink(Wärme)|size']
+            * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
+        )
+        assert_conequal(
+            model.constraints['Sink(Wärme)|ub_Sink(Wärme)|flow_rate'],
+            flow.model.variables['Sink(Wärme)|flow_rate']
+            <= flow.model.variables['Sink(Wärme)|size']
+            * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
+        )
+
     def test_flow_invest_fixed_size(self, basic_flow_system_linopy):
         """Test flow with fixed size investment."""
         flow_system = basic_flow_system_linopy

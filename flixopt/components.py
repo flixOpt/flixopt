@@ -60,6 +60,7 @@ class LinearConverter(Component):
         return self.model
 
     def _plausibility_checks(self) -> None:
+        super()._plausibility_checks()
         if not self.conversion_factors and not self.piecewise_conversion:
             raise PlausibilityError('Either conversion_factors or piecewise_conversion must be defined!')
         if self.conversion_factors and self.piecewise_conversion:
@@ -213,6 +214,7 @@ class Storage(Component):
         """
         Check for infeasible or uncommon combinations of parameters
         """
+        super()._plausibility_checks()
         if utils.is_number(self.initial_charge_state):
             if isinstance(self.capacity_in_flow_hours, InvestParameters):
                 if self.capacity_in_flow_hours.fixed_size is None:
@@ -301,6 +303,7 @@ class Transmission(Component):
         self.absolute_losses = absolute_losses
 
     def _plausibility_checks(self):
+        super()._plausibility_checks()
         # check buses:
         if self.in2 is not None:
             assert self.in2.bus == self.out1.bus, (
@@ -396,6 +399,7 @@ class LinearConverterModel(ComponentModel):
         super().__init__(model, element)
         self.element: LinearConverter = element
         self.on_off: Optional[OnOffModel] = None
+        self.piecewise_conversion: Optional[PiecewiseConversion] = None
 
     def do_modeling(self):
         super().do_modeling()
@@ -426,16 +430,16 @@ class LinearConverterModel(ComponentModel):
                 for flow, piecewise in self.element.piecewise_conversion.items()
             }
 
-            piecewise_conversion = PiecewiseModel(
-                model=self._model,
-                label_of_element=self.label_of_element,
-                label=self.label_full,
-                piecewise_variables=piecewise_conversion,
-                zero_point=self.on_off.on if self.on_off is not None else False,
-                as_time_series=True,
+            self.piecewise_conversion = self.add(
+                PiecewiseModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    piecewise_variables=piecewise_conversion,
+                    zero_point=self.on_off.on if self.on_off is not None else False,
+                    as_time_series=True,
+                )
             )
-            piecewise_conversion.do_modeling()
-            self.sub_models.append(piecewise_conversion)
+            self.piecewise_conversion.do_modeling()
 
 
 class StorageModel(ComponentModel):
