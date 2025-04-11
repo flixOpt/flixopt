@@ -49,7 +49,7 @@ if __name__ == '__main__':
     boiler = fx.linear_converters.Boiler(
         label='Boiler',
         eta=0.5,
-        Q_th=fx.Flow(label='Q_th', bus='Fernwärme', size=50, relative_minimum=0.1, relative_maximum=1),
+        Q_th=fx.Flow(label='Q_th', bus='Fernwärme', size=50, relative_minimum=0.1, relative_maximum=1, on_off_parameters=fx.OnOffParameters()),
         Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
     )
 
@@ -58,7 +58,7 @@ if __name__ == '__main__':
         label='CHP',
         eta_th=0.5,
         eta_el=0.4,
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
+        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()),
         Q_th=fx.Flow('Q_th', bus='Fernwärme'),
         Q_fu=fx.Flow('Q_fu', bus='Gas'),
     )
