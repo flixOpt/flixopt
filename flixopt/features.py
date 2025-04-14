@@ -209,7 +209,9 @@ class InvestmentModel(Model):
         if not isinstance(self.parameters.investment_scenarios, list):
             raise ValueError(f'Invalid value for investment_scenarios: {self.parameters.investment_scenarios}')
         if not all(scenario in self._model.time_series_collection.scenarios for scenario in self.parameters.investment_scenarios):
-            raise ValueError(f'Some scenarios in investment_scenarios are not present in the time_series_collection: {self.parameters.investment_scenarios}')
+            raise ValueError(f'Some scenarios in investment_scenarios are not present in the time_series_collection: '
+                             f'{self.parameters.investment_scenarios}. This might be due to selecting a subset of '
+                             f'all scenarios, which is not yet supported.')
 
         investment_scenarios = self._model.time_series_collection.scenarios.intersection(self.parameters.investment_scenarios)
         no_investment_scenarios = self._model.time_series_collection.scenarios.difference(self.parameters.investment_scenarios)
