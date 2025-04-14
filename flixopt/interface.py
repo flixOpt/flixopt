@@ -236,8 +236,8 @@ class InvestParameters(Interface):
             if not self.optional:
                 if self.minimum_size is not None or self.fixed_size is not None:
                     logger.warning(
-                        f'When using investment_scenarios, minimum_size and fixed_size should only ne used if optional is True.'
-                        f'Otherwise the investment cannot be 0 incertain scenarios while being non-zero in others.'
+                        'When using investment_scenarios, minimum_size and fixed_size should only ne used if optional is True.'
+                        'Otherwise the investment cannot be 0 incertain scenarios while being non-zero in others.'
                     )
 
     @property
