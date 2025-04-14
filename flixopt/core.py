@@ -1109,7 +1109,7 @@ class TimeSeriesCollection:
         if scenarios is None:
             self.clear_selection(timesteps=False, scenarios=True)
         else:
-            self._selected_scenarios = scenarios
+            self._selected_scenarios = self._validate_scenarios(scenarios)
 
         # Apply the selection to all TimeSeries objects
         self._propagate_selection_to_time_series()
@@ -1349,10 +1349,6 @@ class TimeSeriesCollection:
         if not isinstance(scenarios, pd.Index):
             logger.warning('Converting scenarios to pandas.Index')
             scenarios = pd.Index(scenarios, name='scenario')
-
-        if len(scenarios) < 2:
-            logger.warning('scenarios must contain at least 2 scenarios')
-            raise ValueError('timesteps must contain at least 2 timestamps')
 
         # Ensure timesteps has the required name
         if scenarios.name != 'scenario':
