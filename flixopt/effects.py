@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 import linopy
 import numpy as np
 
-from .core import NumericDataTS, ScenarioData, TimeSeries, TimeSeriesCollection, TimestepData
+from .core import NumericDataTS, ScenarioData, TimeSeries, TimeSeriesCollection, TimestepData, extract_data
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 
@@ -125,8 +125,8 @@ class EffectModel(ElementModel):
                 label_of_element=self.label_of_element,
                 label='invest',
                 label_full=f'{self.label_full}(invest)',
-                total_max=self.element.maximum_invest,
-                total_min=self.element.minimum_invest,
+                total_max=extract_data(self.element.maximum_invest),
+                total_min=extract_data(self.element.minimum_invest),
             )
         )
 
@@ -138,14 +138,10 @@ class EffectModel(ElementModel):
                 label_of_element=self.label_of_element,
                 label='operation',
                 label_full=f'{self.label_full}(operation)',
-                total_max=self.element.maximum_operation,
-                total_min=self.element.minimum_operation,
-                min_per_hour=self.element.minimum_operation_per_hour.selected_data
-                if self.element.minimum_operation_per_hour is not None
-                else None,
-                max_per_hour=self.element.maximum_operation_per_hour.selected_data
-                if self.element.maximum_operation_per_hour is not None
-                else None,
+                total_max=extract_data(self.element.maximum_operation),
+                total_min=extract_data(self.element.minimum_operation),
+                min_per_hour=extract_data(self.element.minimum_operation_per_hour),
+                max_per_hour=extract_data(self.element.maximum_operation_per_hour),
             )
         )
 
@@ -155,8 +151,8 @@ class EffectModel(ElementModel):
 
         self.total = self.add(
             self._model.add_variables(
-                lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
-                upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
+                lower=extract_data(self.element.minimum_total, if_none=-np.inf),
+                upper=extract_data(self.element.maximum_total, if_none=np.inf),
                 coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|total',
             ),

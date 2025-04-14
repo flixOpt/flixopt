@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import PlausibilityError, Scalar, ScenarioData, TimestepData
+from .core import PlausibilityError, Scalar, ScenarioData, TimestepData, extract_data
 from .effects import EffectValuesUserTimestep
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
@@ -375,8 +375,8 @@ class FlowModel(ElementModel):
 
         self.total_flow_hours = self.add(
             self._model.add_variables(
-                lower=self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else 0,
-                upper=self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else np.inf,
+                lower=extract_data(self.element.flow_hours_total_min, 0),
+                upper=extract_data(self.element.flow_hours_total_max, np.inf),
                 coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|total_flow_hours',
             ),
@@ -456,16 +456,16 @@ class FlowModel(ElementModel):
         """Returns the lower bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_minimum.selected_data
-        return fixed_profile.selected_data
+            return extract_data(self.element.relative_minimum)
+        return extract_data(fixed_profile)
 
     @property
     def flow_rate_upper_bound_relative(self) -> TimestepData:
         """ Returns the upper bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_maximum.selected_data
-        return fixed_profile.selected_data
+            return extract_data(self.element.relative_maximum)
+        return extract_data(fixed_profile)
 
     @property
     def flow_rate_lower_bound(self) -> TimestepData:
@@ -478,8 +478,8 @@ class FlowModel(ElementModel):
         if isinstance(self.element.size, InvestParameters):
             if self.element.size.optional:
                 return 0
-            return self.flow_rate_lower_bound_relative * self.element.size.minimum_size
-        return self.flow_rate_lower_bound_relative * self.element.size
+            return self.flow_rate_lower_bound_relative * extract_data(self.element.size.minimum_size)
+        return self.flow_rate_lower_bound_relative * extract_data(self.element.size)
 
     @property
     def flow_rate_upper_bound(self) -> TimestepData:
@@ -488,8 +488,8 @@ class FlowModel(ElementModel):
         Further constraining might be done in OnOffModel and InvestmentModel
         """
         if isinstance(self.element.size, InvestParameters):
-            return self.flow_rate_upper_bound_relative * self.element.size.maximum_size
-        return self.flow_rate_upper_bound_relative * self.element.size
+            return self.flow_rate_upper_bound_relative * extract_data(self.element.size.maximum_size)
+        return self.flow_rate_upper_bound_relative * extract_data(self.element.size)
 
 
 class BusModel(ElementModel):
