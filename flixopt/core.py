@@ -1486,3 +1486,28 @@ def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10, by_
     std = data.std().item()
 
     return f'{mean:{format_spec}} (mean), {median:{format_spec}} (median), {min_val:{format_spec}} (min), {max_val:{format_spec}} (max), {std:{format_spec}} (std)'
+
+
+def extract_data(
+    data: Union[int, float, xr.DataArray, TimeSeries],
+    if_none: Any = None
+) -> Optional[xr.DataArray]:
+    """
+    Convert data to xr.DataArray.
+
+    Args:
+        data: The data to convert (scalar, array, or DataArray)
+        if_none: The value to return if data is None
+
+    Returns:
+        DataArray with the converted data, or the value specified by if_none
+    """
+    if data is None:
+        return if_none
+    if isinstance(data, TimeSeries):
+        return data.selected_data
+    if isinstance(data, xr.DataArray):
+        return data
+    if isinstance(data, (int, float, np.integer, np.floating)):
+        return xr.DataArray(data)
+    raise TypeError(f'Unsupported data type: {type(data).__name__}')
