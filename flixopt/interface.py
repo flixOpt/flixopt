@@ -158,7 +158,7 @@ class InvestParameters(Interface):
         specific_effects: Optional['EffectValuesUserScenario'] = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: Optional[PiecewiseEffects] = None,
         divest_effects: Optional['EffectValuesUserScenario'] = None,
-        size_per_scenario: Literal['equal', 'individual', 'increment_once'] = 'equal',
+        investment_scenarios: Optional[Union[Literal['individual'], List[Union[int, str]]]] = None,
     ):
         """
         Args:
@@ -172,11 +172,10 @@ class InvestParameters(Interface):
             piecewise_effects: Define the effects of the investment as a piecewise function of the size of the investment.
             minimum_size: Minimum possible size of the investment.
             maximum_size: Maximum possible size of the investment.
-            size_per_scenario: How to treat the size in each scenario
-                - 'equal': Equalize the size of all scenarios
+            investment_scenarios: For which scenarios to optimize the size for.
                 - 'individual': Optimize the size of each scenario individually
-                - 'increment_once': Allow the size to increase only once. This is useful if the scenarios are related to
-                    different periods (years, months). Tune the timing by setting the maximum size to 0 in the first scenarios.
+                - List of scenario names: Optimize the size for the passed scenario names (equal size in all). All other scenarios will have the size 0.
+                - None: Equals to a list of all scenarios (default)
         """
         self.fix_effects: EffectValuesUserScenario = fix_effects if fix_effects is not None else {}
         self.divest_effects: EffectValuesUserScenario = divest_effects if divest_effects is not None else {}
@@ -186,9 +185,10 @@ class InvestParameters(Interface):
         self.piecewise_effects = piecewise_effects
         self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
-        self.size_per_scenario = size_per_scenario
+        self.investment_scenarios = investment_scenarios
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        self._plausibility_checks(flow_system)
         self.fix_effects = flow_system.create_effect_time_series(
             label_prefix=name_prefix,
             effect_values=self.fix_effects,
@@ -224,6 +224,21 @@ class InvestParameters(Interface):
             self.fixed_size = flow_system.create_time_series(
                 f'{name_prefix}|fixed_size', self.fixed_size, has_time_dim=False, has_scenario_dim=True
             )
+
+    def _plausibility_checks(self, flow_system):
+        if isinstance(self.investment_scenarios, list):
+            if not set(self.investment_scenarios).issubset(flow_system.time_series_collection.scenarios):
+                raise ValueError(
+                    f'Some scenarios in investment_scenarios are not present in the time_series_collection: '
+                    f'{set(self.investment_scenarios) - set(flow_system.time_series_collection.scenarios)}'
+                )
+        if self.investment_scenarios is not None:
+            if not self.optional:
+                if self.minimum_size is not None or self.fixed_size is not None:
+                    logger.warning(
+                        f'When using investment_scenarios, minimum_size and fixed_size should only ne used if optional is True.'
+                        f'Otherwise the investment cannot be 0 incertain scenarios while being non-zero in others.'
+                    )
 
     @property
     def minimum_size(self):
