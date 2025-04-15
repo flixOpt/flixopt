@@ -310,3 +310,24 @@ def test_io_persistance(flow_system_piecewise_conversion_scenarios):
 
     np.testing.assert_allclose(calc.results.objective, calc_2.results.objective, rtol=0.001)
 
+
+def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
+    flow_system = flow_system_piecewise_conversion_scenarios
+    scenarios = flow_system_piecewise_conversion_scenarios.time_series_collection.scenarios
+    weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
+    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
+    calc = fx.FullCalculation(flow_system=flow_system_piecewise_conversion_scenarios,
+                              selected_scenarios=flow_system.time_series_collection.scenarios[0:2],
+                              name='test_full_scenario')
+    calc.do_modeling()
+    calc.solve(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
+
+    calc.results.to_file()
+    flow_system_2 = fx.FlowSystem.from_dataset(calc.results.flow_system)
+
+    assert calc.results.solution.indexes['scenario'].equals(flow_system.time_series_collection.scenarios[0:2])
+
+    assert flow_system_2.time_series_collection.scenarios.equals(flow_system.time_series_collection.scenarios[0:2])
+
+    np.testing.assert_allclose(flow_system_2.scenario_weights.selected_data.values, weights[0:2])
+
