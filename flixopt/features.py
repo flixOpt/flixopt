@@ -194,8 +194,10 @@ class InvestmentModel(Model):
             # anmerkung: Glg bei Spezialfall relative_minimum = 0 redundant zu OnOff ??
 
     def _create_bounds_for_scenarios(self):
-        if self.parameters.investment_scenarios == 'individual':
-            return
+        if isinstance(self.parameters.investment_scenarios, str):
+            if self.parameters.investment_scenarios == 'individual':
+                return
+            raise ValueError(f'Invalid value for investment_scenarios: {self.parameters.investment_scenarios}')
 
         if self.parameters.investment_scenarios is None:
             self.add(
