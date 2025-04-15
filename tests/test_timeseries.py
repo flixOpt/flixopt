@@ -91,7 +91,7 @@ class TestTimeSeries:
         assert sample_timeseries.selected_data.equals(sample_timeseries.stored_data.sel(time=subset_index))
 
         # Clear selection
-        sample_timeseries.clear_selection()
+        sample_timeseries.set_selection()
         assert sample_timeseries._selected_timesteps is None
         assert sample_timeseries.selected_data.equals(sample_timeseries.stored_data)
 
@@ -408,7 +408,7 @@ class TestTimeSeriesWithScenarios:
         )
 
         # Clear selection
-        sample_scenario_timeseries.clear_selection(timesteps=False, scenarios=True)
+        sample_scenario_timeseries.set_selection()
         assert sample_scenario_timeseries._selected_scenarios is None
 
     def test_all_equal_with_scenarios(self, sample_timesteps, sample_scenario_index):
@@ -561,7 +561,7 @@ class TestTimeSeriesAllocator:
         assert len(ts3._selected_timesteps) == len(subset_timesteps) + 1
 
         # Clear selection
-        sample_allocator.clear_selection()
+        sample_allocator.set_selection()
 
         # Check selection cleared
         assert ts1._selected_timesteps is None
@@ -673,7 +673,7 @@ class TestTimeSeriesAllocatorWithScenarios:
         assert ts1.selected_data.shape == (2, 2)  # 2 timesteps, 2 scenarios
 
         # Clear selections
-        sample_scenario_allocator.clear_selection()
+        sample_scenario_allocator.set_selection()
         assert ts1._selected_timesteps is None
         assert ts1.active_timesteps.equals(sample_scenario_allocator.timesteps)
         assert ts1._selected_scenarios is None

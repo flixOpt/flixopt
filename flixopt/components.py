@@ -211,7 +211,7 @@ class Storage(Component):
         self.relative_loss_per_hour = flow_system.create_time_series(
             f'{self.label_full}|relative_loss_per_hour', self.relative_loss_per_hour
         )
-        if self.initial_charge_state != 'lastValueOfSim':
+        if not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = flow_system.create_time_series(
                 f'{self.label_full}|initial_charge_state', self.initial_charge_state, has_time_dim=False
             )
