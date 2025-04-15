@@ -1,16 +1,16 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from linopy.testing import assert_linequal
-import xarray as xr
 import pytest
-import flixopt as fx
+import xarray as xr
+from linopy.testing import assert_linequal
 
+import flixopt as fx
 from flixopt.commons import Effect, FullCalculation, InvestParameters, Sink, Source, Storage, TimeSeriesData, solvers
 from flixopt.elements import Bus, Flow
 from flixopt.flow_system import FlowSystem
 
-from .conftest import create_linopy_model, create_calculation_and_solve
+from .conftest import create_calculation_and_solve, create_linopy_model
 
 
 @pytest.fixture
