@@ -613,7 +613,7 @@ class ConsecutiveStateModel(Model):
             )
 
             # Handle initial condition
-            if (0 < self.previous_duration < self._minimum_duration.isel(time=0)).all():
+            if 0 < self.previous_duration < self._minimum_duration.isel(time=0).max():
                 self.add(
                     self._model.add_constraints(
                         self._state_variable.isel(time=0) == 1, name=f'{self.label_full}|initial_minimum'
@@ -634,11 +634,11 @@ class ConsecutiveStateModel(Model):
         return self
 
     @property
-    def previous_duration(self) -> ScenarioData:
+    def previous_duration(self) -> Scalar:
         """Computes the previous duration of the state variable"""
         #TODO: Allow for other/dynamic timestep resolutions
         return ConsecutiveStateModel.compute_consecutive_hours_in_state(
-            self._previous_states, self._model.hours_per_step.isel(time=0)
+            self._previous_states, self._model.hours_per_step.isel(time=0).values.flatten()[0]
         )
 
     @staticmethod
