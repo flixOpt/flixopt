@@ -653,7 +653,7 @@ class TimeSeries:
         Reset selections to include all timesteps and scenarios.
         This is equivalent to clearing all selections.
         """
-        self.clear_selection()
+        self.set_selection(None, None)
 
     def restore_data(self) -> None:
         """
@@ -755,13 +755,7 @@ class TimeSeries:
             return
 
         self._stored_data = new_data
-        self.clear_selection()  # Reset selections to full dataset
-
-    def clear_selection(self, timesteps: bool = True, scenarios: bool = True) -> None:
-        if timesteps:
-            self._selected_timesteps = None
-        if scenarios:
-            self._selected_scenarios = None
+        self.set_selection(None, None)  # Reset selections to full dataset
 
     def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
         """
@@ -773,15 +767,15 @@ class TimeSeries:
         """
         # Only update timesteps if the series has time dimension
         if self.has_time_dim:
-            if timesteps is None:
-                self.clear_selection(timesteps=True, scenarios=False)
+            if timesteps is None or timesteps.equals(self._stored_data.indexes['time']):
+                self._selected_timesteps = None
             else:
                 self._selected_timesteps = timesteps
 
         # Only update scenarios if the series has scenario dimension
         if self.has_scenario_dim:
-            if scenarios is None:
-                self.clear_selection(timesteps=False, scenarios=True)
+            if scenarios is None or scenarios.equals(self._stored_data.indexes['scenario']):
+                self._selected_scenarios = None
             else:
                 self._selected_scenarios = scenarios
 
@@ -1077,22 +1071,6 @@ class TimeSeriesCollection:
         # Return the TimeSeries object
         return time_series
 
-    def clear_selection(self, timesteps: bool = True, scenarios: bool = True) -> None:
-        """
-        Clear selection for timesteps and/or scenarios.
-
-        Args:
-            timesteps: Whether to clear timesteps selection
-            scenarios: Whether to clear scenarios selection
-        """
-        if timesteps:
-            self._update_selected_timesteps(timesteps=None)
-        if scenarios:
-            self._selected_scenarios = None
-
-        for ts in self._time_series.values():
-            ts.clear_selection(timesteps=timesteps, scenarios=scenarios)
-
     def set_selection(self, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None) -> None:
         """
         Set active subset for timesteps and scenarios.
@@ -1102,35 +1080,30 @@ class TimeSeriesCollection:
             scenarios: Scenarios to activate, or None to clear
         """
         if timesteps is None:
-            self.clear_selection(timesteps=True, scenarios=False)
-        else:
-            self._update_selected_timesteps(timesteps)
-
-        if scenarios is None:
-            self.clear_selection(timesteps=False, scenarios=True)
-        else:
-            self._selected_scenarios = scenarios
-
-        # Apply the selection to all TimeSeries objects
-        self._propagate_selection_to_time_series()
-
-    def _update_selected_timesteps(self, timesteps: Optional[pd.DatetimeIndex]) -> None:
-        """
-        Updates the timestep and related metrics (timesteps_extra, hours_per_timestep) based on the current selection.
-        """
-        if timesteps is None:
             self._selected_timesteps = None
             self._selected_timesteps_extra = None
-            self._selected_hours_per_timestep = None
-            return
+        else:
+            self._selected_timesteps = self._validate_timesteps(timesteps, self._full_timesteps)
+            self._selected_timesteps_extra = self._create_timesteps_with_extra(
+                timesteps, self._calculate_hours_of_final_timestep(timesteps, self._full_timesteps)
+            )
 
-        self._selected_timesteps = self._validate_timesteps(timesteps, self._full_timesteps)
-        self._selected_timesteps_extra = self._create_timesteps_with_extra(
-            timesteps, self._calculate_hours_of_final_timestep(timesteps, self._full_timesteps)
-        )
-        self._selected_hours_per_timestep = self.calculate_hours_per_timestep(
-            self._selected_timesteps_extra, self._selected_scenarios
-        )
+        if scenarios is None:
+            self._selected_scenarios = None
+        else:
+            self._selected_scenarios = self._validate_scenarios(scenarios, self._full_scenarios)
+
+        self._selected_hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra, self.scenarios)
+
+        # Apply the selection to all TimeSeries objects
+        for ts_name, ts in self._time_series.items():
+            if ts.has_time_dim:
+                timesteps = self.timesteps_extra if ts_name in self._has_extra_timestep else self.timesteps
+            else:
+                timesteps = None
+
+            ts.set_selection(timesteps=timesteps, scenarios=self.scenarios if ts.has_scenario_dim else None)
+        self._propagate_selection_to_time_series()
 
     def as_dataset(self, with_extra_timestep: bool = True, with_constants: bool = True) -> xr.Dataset:
         """
@@ -1188,7 +1161,7 @@ class TimeSeriesCollection:
         """Apply the current selection to all TimeSeries objects."""
         for ts_name, ts in self._time_series.items():
             if ts.has_time_dim:
-                timesteps = self.timesteps_extra if ts_name in self._has_extra_timestep else self.timesteps
+                    timesteps = self.timesteps_extra if ts_name in self._has_extra_timestep else self.timesteps
             else:
                 timesteps = None
 
