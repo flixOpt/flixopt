@@ -64,7 +64,9 @@ class FlowSystem:
             hours_of_last_timestep=hours_of_last_timestep,
             hours_of_previous_timesteps=hours_of_previous_timesteps,
         )
-        self.scenario_weights = scenario_weights
+        self.scenario_weights = self.create_time_series(
+            'scenario_weights', scenario_weights, has_time_dim=False, has_scenario_dim=True
+        )
 
         # defaults:
         self.components: Dict[str, Component] = {}
@@ -80,7 +82,7 @@ class FlowSystem:
         hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
 
         scenarios = pd.Index(ds.attrs['scenarios'], name='scenario') if ds.attrs.get('scenarios') is not None else None
-        scenario_weights = fx_io.insert_dataarray(ds.attrs.get('scenario_weights', None), ds)
+        scenario_weights = fx_io.insert_dataarray(ds.attrs['scenario_weights'], ds)
 
         flow_system = FlowSystem(
             timesteps=timesteps_extra[:-1],
@@ -108,13 +110,15 @@ class FlowSystem:
         """
         timesteps_extra = pd.DatetimeIndex(data['timesteps_extra'], name='time')
         hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
+        scenarios = pd.Index(data['scenarios'], name='scenario') if data.get('scenarios') is not None else None
+        scenario_weights = data.get('scenario_weights').selected_data if data.get('scenario_weights') is not None else None
 
         flow_system = FlowSystem(
             timesteps=timesteps_extra[:-1],
             hours_of_last_timestep=hours_of_last_timestep,
             hours_of_previous_timesteps=data['hours_of_previous_timesteps'],
-            scenarios=pd.Index(data['scenarios'], name='scenario') if data['scenarios'] is not None else None,
-            scenario_weights=data.get('scenario_weights', None),
+            scenarios=scenarios,
+            scenario_weights=scenario_weights,
         )
 
         flow_system.add_elements(*[Bus.from_dict(bus) for bus in data['buses'].values()])
@@ -190,7 +194,7 @@ class FlowSystem:
             },
             'timesteps_extra': [date.isoformat() for date in self.time_series_collection.timesteps_extra],
             'hours_of_previous_timesteps': self.time_series_collection.hours_of_previous_timesteps,
-            'scenarios': self.time_series_collection.scenarios.tolist() if self.scenario_weights is not None else None,
+            'scenarios': self.time_series_collection.scenarios.tolist() if self.time_series_collection.scenarios is not None else None,
             'scenario_weights': self.scenario_weights,
         }
         if data_mode == 'data':
