@@ -1458,9 +1458,9 @@ def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10, by_
 
 
 def extract_data(
-    data: Union[int, float, xr.DataArray, TimeSeries],
+    data: Optional[Union[int, float, xr.DataArray, TimeSeries]],
     if_none: Any = None
-) -> Optional[xr.DataArray]:
+) -> Any:
     """
     Convert data to xr.DataArray.
 

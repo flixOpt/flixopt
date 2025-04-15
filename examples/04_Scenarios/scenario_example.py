@@ -19,7 +19,7 @@ if __name__ == '__main__':
                                       'High Demand':[30, 0, 100, 118, 125, 20, 20, 20, 20]}, index=timesteps)
     power_prices = np.array([0.08, 0.09])
 
-    flow_system = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+    flow_system = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_weights=np.array([0.5, 0.6]))
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)
