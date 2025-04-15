@@ -194,7 +194,10 @@ class InvestmentModel(Model):
             # anmerkung: Glg bei Spezialfall relative_minimum = 0 redundant zu OnOff ??
 
     def _create_bounds_for_scenarios(self):
-        if self.parameters.size_per_scenario == 'equal':
+        if self.parameters.investment_scenarios == 'individual':
+            return
+
+        if self.parameters.investment_scenarios is None:
             self.add(
                 self._model.add_constraints(
                     self.size.isel(scenario=slice(None, -1)) == self.size.isel(scenario=slice(1, None)),
@@ -202,63 +205,35 @@ class InvestmentModel(Model):
                 ),
                 'equalize_size_per_scenario',
             )
-        elif self.parameters.size_per_scenario == 'increment_once':
-            if not self.parameters.optional:
-                raise ValueError('Increment once can only be used if the Investment is optional')
+            return
+        if not isinstance(self.parameters.investment_scenarios, list):
+            raise ValueError(f'Invalid value for investment_scenarios: {self.parameters.investment_scenarios}')
+        if not all(scenario in self._model.time_series_collection.scenarios for scenario in self.parameters.investment_scenarios):
+            raise ValueError(f'Some scenarios in investment_scenarios are not present in the time_series_collection: '
+                             f'{self.parameters.investment_scenarios}. This might be due to selecting a subset of '
+                             f'all scenarios, which is not yet supported.')
 
-            self.scenario_of_investment = self.add(
-                self._model.add_variables(
-                    binary=True,
-                    name=f'{self.label_full}|scenario_of_investment',
-                    coords=self._model.get_coords(time_dim=False),
-                ),
-                'scenario_of_investment',
-            )
+        investment_scenarios = self._model.time_series_collection.scenarios.intersection(self.parameters.investment_scenarios)
+        no_investment_scenarios = self._model.time_series_collection.scenarios.difference(self.parameters.investment_scenarios)
 
-            # eq: scenario_of_investment(t) = is_invested(t) - is_invested(t-1)
+        # eq: size(s) = size(s')    for s, s' in investment_scenarios
+        if len(investment_scenarios) > 1:
             self.add(
                 self._model.add_constraints(
-                    self.scenario_of_investment.isel(scenario=slice(1, None))
-                    == self.is_invested.isel(scenario=slice(1, None)) - self.is_invested.isel(scenario=slice(None, -1)),
-                    name=f'{self.label_full}|scenario_of_investment',
-                ),
-                'scenario_of_investment',
+                    self.size.sel(scenario=investment_scenarios[:-1]) == self.size.sel(scenario=investment_scenarios[1:]),
+                    name=f'{self.label_full}|investment_scenarios',
+                    ),
+                'investment_scenarios',
             )
 
-            # eq: scenario_of_investment(t=0) = is_invested(t=0)
+        if len(no_investment_scenarios) >= 1:
             self.add(
                 self._model.add_constraints(
-                    self.scenario_of_investment.isel(scenario=0)
-                    == self.is_invested.isel(scenario=0),
-                    name=f'{self.label_full}|initial_scenario_of_investment',
-                ),
-                'initial_scenario_of_investment',
+                    self.size.sel(scenario=no_investment_scenarios) == 0,
+                    name=f'{self.label_full}|no_investment_scenarios',
+                    ),
+                'no_investment_scenarios',
             )
-
-            big_m = self.parameters.maximum_size.isel(scenario=slice(1, None))
-
-            self.add(
-                self._model.add_constraints(
-                    self.size.isel(scenario=slice(1, None)) - self.size.isel(scenario=slice(None, -1))
-                    <= self.scenario_of_investment.isel(scenario=slice(1, None)) * big_m,
-                    name=f'{self.label_full}|invest_once_1a',
-                ),
-                'invest_once_1a',
-            )
-
-            self.add(
-                self._model.add_constraints(
-                    self.size.isel(scenario=slice(1, None)) - self.size.isel(scenario=slice(None, -1))
-                    >= self.scenario_of_investment.isel(scenario=slice(1, None)) * big_m,
-                    name=f'{self.label_full}|invest_once_1b',
-                ),
-                'invest_once_1b',
-            )
-
-        elif self.parameters.size_per_scenario == 'individual':
-            pass
-        else:
-            raise ValueError(f'Invalid value for size_per_scenario: {self.parameters.size_per_scenario}')
 
 
 class StateModel(Model):

@@ -1323,10 +1323,6 @@ class TimeSeriesCollection:
             logger.warning('Converting scenarios to pandas.Index')
             scenarios = pd.Index(scenarios, name='scenario')
 
-        if len(scenarios) < 2:
-            logger.warning('scenarios must contain at least 2 scenarios')
-            raise ValueError('timesteps must contain at least 2 timestamps')
-
         # Ensure timesteps has the required name
         if scenarios.name != 'scenario':
             logger.debug('Renamed scenarios to "scneario" (was "%s")', scenarios.name)
