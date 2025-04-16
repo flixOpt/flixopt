@@ -111,7 +111,7 @@ class InvestParameters(Interface):
     def __init__(
         self,
         fixed_size: Optional[Union[int, float]] = None,
-        minimum_size: Optional[Union[int, float]] = None,
+        minimum_size: Optional[Union[int, float]] = 0,
         maximum_size: Optional[Union[int, float]] = None,
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScalar'] = None,
@@ -150,7 +150,7 @@ class InvestParameters(Interface):
         self.optional = optional
         self.specific_effects: EffectValuesUser = specific_effects or {}
         self.piecewise_effects = piecewise_effects
-        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self._minimum_size = minimum_size
         self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
     def transform_data(self, flow_system: 'FlowSystem'):
