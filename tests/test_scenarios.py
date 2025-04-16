@@ -289,7 +289,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
         name='test_full_scenario',
     )
 
-@pytest.skip
+@pytest.mark.skip(reason="This test is taking too long with highs and is too big for gurobipy free")
 def test_io_persistance(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.time_series_collection.scenarios
@@ -330,4 +330,3 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     assert flow_system_2.time_series_collection.scenarios.equals(flow_system.time_series_collection.scenarios[0:2])
 
     np.testing.assert_allclose(flow_system_2.scenario_weights.selected_data.values, weights[0:2])
-
