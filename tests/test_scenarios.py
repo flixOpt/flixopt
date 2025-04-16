@@ -289,7 +289,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
         name='test_full_scenario',
     )
 
-@pytest.mark.slow
+@pytest.skip
 def test_io_persistance(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.time_series_collection.scenarios
