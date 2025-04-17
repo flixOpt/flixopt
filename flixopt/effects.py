@@ -101,6 +101,12 @@ class Effect(Element):
             f'{self.label_full}|operation->', self.specific_share_to_other_effects_operation, 'operation'
         )
 
+        self.minimum_operation = flow_system.create_time_series(
+            f'{self.label_full}|minimum_operation', self.minimum_operation, has_time_dim=False
+        )
+        self.maximum_operation = flow_system.create_time_series(
+            f'{self.label_full}|maximum_operation', self.maximum_operation, has_time_dim=False
+        )
         self.minimum_invest = flow_system.create_time_series(
             f'{self.label_full}|minimum_invest', self.minimum_invest, has_time_dim=False
         )
