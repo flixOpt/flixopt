@@ -97,9 +97,25 @@ class Effect(Element):
         self.maximum_operation_per_hour = flow_system.create_time_series(
             f'{self.label_full}|maximum_operation_per_hour', self.maximum_operation_per_hour, flow_system
         )
-
         self.specific_share_to_other_effects_operation = flow_system.create_effect_time_series(
             f'{self.label_full}|operation->', self.specific_share_to_other_effects_operation, 'operation'
+        )
+
+        self.minimum_invest = flow_system.create_time_series(
+            f'{self.label_full}|minimum_invest', self.minimum_invest, has_time_dim=False
+        )
+        self.maximum_invest = flow_system.create_time_series(
+            f'{self.label_full}|maximum_invest', self.maximum_invest, has_time_dim=False
+        )
+        self.minimum_total = flow_system.create_time_series(
+            f'{self.label_full}|minimum_total', self.minimum_total, has_time_dim=False,
+        )
+        self.maximum_total = flow_system.create_time_series(
+            f'{self.label_full}|maximum_total', self.maximum_total, has_time_dim=False
+        )
+        self.specific_share_to_other_effects_invest = flow_system.create_effect_time_series(
+            f'{self.label_full}|invest->', self.specific_share_to_other_effects_invest, 'invest',
+            has_time_dim=False
         )
 
     def create_model(self, model: SystemModel) -> 'EffectModel':
