@@ -11,10 +11,11 @@ from .conftest import (
     flow_system_long,
     flow_system_segments_of_flows_2,
     simple_flow_system,
+    simple_flow_system_scenarios,
 )
 
 
-@pytest.fixture(params=[flow_system_base, flow_system_segments_of_flows_2, simple_flow_system, flow_system_long])
+@pytest.fixture(params=[flow_system_base, simple_flow_system_scenarios, flow_system_segments_of_flows_2, simple_flow_system, flow_system_long])
 def flow_system(request):
     fs = request.getfixturevalue(request.param.__name__)
     if isinstance(fs, fx.FlowSystem):
