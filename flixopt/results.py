@@ -532,13 +532,13 @@ class _NodeResults(_ElementResults):
             drop_suffix: Whether to drop the suffix from the variable names.
         """
         inputs = sanitize_dataset(
-            ds=self.solution[self.inputs],
+            ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
         )
         outputs = sanitize_dataset(
-            ds=self.solution[self.outputs],
+            ds=self.solution[self.outputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
