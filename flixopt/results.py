@@ -1013,9 +1013,15 @@ def filter_dataset(
     variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
     timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
     scenarios: Optional[Union[pd.Index, str, int]] = None,
+    component: Optional[Union[str, List[str], re.Pattern]] = None,
+    property_type: Optional[Union[str, List[str], re.Pattern]] = None,
+    attribute: Optional[Union[str, List[str], re.Pattern]] = None,
+    connection: Optional[Union[str, List[str], re.Pattern]] = None,
+    var_names: Optional[Union[str, re.Pattern, List[str]]] = None,
+    regex: bool = False,
 ) -> xr.Dataset:
     """
-    Filters a dataset by its dimensions and optionally selects specific indexes.
+    Filters a dataset by its dimensions, indexes, and variable names with dedicated parameters for energy system data.
 
     Args:
         ds: The dataset to filter.
@@ -1025,40 +1031,150 @@ def filter_dataset(
             - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
             - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
             - 'scenarioonly': Get scenario-dependent variables (with ONLY a scenario dimension)
-        timesteps: Optional time indexes to select. Can be:
-            - pd.DatetimeIndex: Multiple timesteps
-            - str/pd.Timestamp: Single timestep
-            Defaults to all available timesteps.
-        scenarios: Optional scenario indexes to select. Can be:
-            - pd.Index: Multiple scenarios
-            - str/int: Single scenario (int is treated as a label, not an index position)
-            Defaults to all available scenarios.
+        timesteps: Optional time indexes to select.
+        scenarios: Optional scenario indexes to select.
+
+        # Energy system specific filters
+        component: Filter by component name (part before parenthesis).
+            Examples: "KWK Flex", "Boiler H2", "Kessel Nord"
+        property_type: Filter by property type (part in parentheses).
+            Examples: "(Qfu)", "(P_el)", "(charging)"
+        attribute: Filter by attribute (part after pipe |).
+            Examples: "|flow_rate", "|size", "|total_flow_hours"
+        connection: Filter by connections (arrows ->).
+            Examples: "->Kosten(invest)", "->CO2(operation)"
+
+        # General filtering
+        var_names: Optional variable name filter (exact match or regex).
+        regex: If True, treat string filters as regex patterns.
 
     Returns:
         Filtered dataset with specified variables and indexes.
     """
-    # Return the full dataset if all dimension types are included
-    if variable_dims is None:
-        pass
-    elif variable_dims == 'scalar':
-        ds = ds[[v for v in ds.data_vars if not ds[v].dims]]
-    elif variable_dims == 'time':
-        ds = ds[[v for v in ds.data_vars if 'time' in ds[v].dims]]
-    elif variable_dims == 'scenario':
-        ds = ds[[v for v in ds.data_vars if 'scenario' in ds[v].dims]]
-    elif variable_dims == 'timeonly':
-        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('time',)]]
-    elif variable_dims == 'scenarioonly':
-        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('scenario',)]]
-    else:
-        raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
+    import re
+    from typing import List, Optional, Union, Literal
+    import pandas as pd
+    import xarray as xr
+
+    # First filter by dimensions
+    filtered_ds = ds.copy()
+    if variable_dims is not None:
+        if variable_dims == 'scalar':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if not filtered_ds[v].dims]]
+        elif variable_dims == 'time':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if 'time' in filtered_ds[v].dims]]
+        elif variable_dims == 'scenario':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if 'scenario' in filtered_ds[v].dims]]
+        elif variable_dims == 'timeonly':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if filtered_ds[v].dims == ('time',)]]
+        elif variable_dims == 'scenarioonly':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if filtered_ds[v].dims == ('scenario',)]]
+        else:
+            raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
+
+    # Function to match string or regex
+    def match_pattern(name, pattern, use_regex=regex):
+        if pattern is None:
+            return True
+
+        if isinstance(pattern, str):
+            if use_regex:
+                return bool(re.search(pattern, name))
+            else:
+                return pattern == name
+        elif isinstance(pattern, re.Pattern):
+            return bool(pattern.search(name))
+        elif isinstance(pattern, list):
+            if use_regex:
+                return any(bool(re.search(p, name)) for p in pattern)
+            else:
+                return name in pattern
+        return False
+
+    # Filter variables based on component structure
+    if any(param is not None for param in [component, property_type, attribute, connection]):
+        selected_vars = []
+
+        for var_name in filtered_ds.data_vars:
+            # Parse variable name into components
+            component_match = None
+            property_match = None
+            attribute_match = None
+            connection_match = None
+
+            # Extract component and property (part before |)
+            main_part = var_name.split('|')[0] if '|' in var_name else var_name
+
+            # Check for connection (->)
+            if '->' in var_name:
+                main_parts = main_part.split('->')
+                source_part = main_parts[0]
+                target_part = '->'.join(main_parts[1:])
+                connection_match = target_part
+                main_part = source_part
+
+            # Extract component and property
+            if '(' in main_part and ')' in main_part:
+                component_match = main_part.split('(')[0].strip()
+                property_match = '(' + main_part.split('(', 1)[1]
+            else:
+                component_match = main_part
+
+            # Extract attribute (part after |)
+            if '|' in var_name:
+                attribute_match = '|' + var_name.split('|', 1)[1]
+
+            # Check if all specified filters match
+            if (
+                match_pattern(component_match, component)
+                and match_pattern(property_match, property_type)
+                and match_pattern(attribute_match, attribute)
+                and match_pattern(connection_match, connection)
+            ):
+                selected_vars.append(var_name)
+
+        if selected_vars:
+            filtered_ds = filtered_ds[selected_vars]
+        else:
+            # Return empty dataset if no matches
+            filtered_ds = filtered_ds[[]]
+
+    # Filter by general variable names if specified
+    if var_names is not None:
+        # Handle different types of var_names inputs
+        if isinstance(var_names, str):
+            if regex:
+                # Use regex pattern for matching
+                pattern = re.compile(var_names)
+                filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if pattern.search(v)]]
+            else:
+                # Exact matching
+                if var_names in filtered_ds.data_vars:
+                    filtered_ds = filtered_ds[[var_names]]
+                else:
+                    filtered_ds = filtered_ds[[]]  # Empty dataset if no match
+
+        elif isinstance(var_names, re.Pattern):
+            # Already a compiled regex pattern
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if var_names.search(v)]]
+
+        elif isinstance(var_names, list):
+            # List of variable names to include
+            valid_vars = [v for v in var_names if v in filtered_ds.data_vars]
+            if valid_vars:
+                filtered_ds = filtered_ds[valid_vars]
+            else:
+                filtered_ds = filtered_ds[[]]  # Empty dataset if no matches
+
+        else:
+            raise TypeError(f'var_names must be a string, regex pattern, or list of strings, got {type(var_names)}')
 
     # Handle time selection if needed
-    if timesteps is not None and 'time' in ds.dims:
+    if timesteps is not None and 'time' in filtered_ds.dims:
         try:
-            ds = ds.sel(time=timesteps)
+            filtered_ds = filtered_ds.sel(time=timesteps)
         except KeyError as e:
-            available_times = set(ds.indexes['time'])
+            available_times = set(filtered_ds.indexes['time'])
             requested_times = set([timesteps]) if not isinstance(timesteps, pd.Index) else set(timesteps)
             missing_times = requested_times - available_times
             raise ValueError(
@@ -1066,15 +1182,15 @@ def filter_dataset(
             ) from e
 
     # Handle scenario selection if needed
-    if scenarios is not None and 'scenario' in ds.dims:
+    if scenarios is not None and 'scenario' in filtered_ds.dims:
         try:
-            ds = ds.sel(scenario=scenarios)
+            filtered_ds = filtered_ds.sel(scenario=scenarios)
         except KeyError as e:
-            available_scenarios = set(ds.indexes['scenario'])
+            available_scenarios = set(filtered_ds.indexes['scenario'])
             requested_scenarios = set([scenarios]) if not isinstance(scenarios, pd.Index) else set(scenarios)
             missing_scenarios = requested_scenarios - available_scenarios
             raise ValueError(
                 f'Scenarios not found in dataset: {missing_scenarios}. Available scenarios: {available_scenarios}'
             ) from e
 
-    return ds
+    return filtered_ds
