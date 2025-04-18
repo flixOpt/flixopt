@@ -202,6 +202,8 @@ class CalculationResults:
         element: Optional[str] = None,
         timesteps: Optional[pd.DatetimeIndex] = None,
         scenarios: Optional[pd.Index] = None,
+        contains: Optional[Union[str, List[str]]] = None,
+        startswith: Optional[Union[str, List[str]]] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -223,12 +225,18 @@ class CalculationResults:
                 - pd.Index: Multiple scenarios
                 - str/int: Single scenario (int is treated as a label, not an index position)
                 Defaults to all available scenarios.
+            contains: Filter variables that contain this string or strings.
+                If a list is provided, variables must contain ALL strings in the list.
+            startswith: Filter variables that start with this string or strings.
+                If a list is provided, variables must start with ANY of the strings in the list.
         """
         return filter_dataset(
             self.solution if element is None else self[element].solution,
             variable_dims=variable_dims,
             timesteps=timesteps,
             scenarios=scenarios,
+            contains=contains,
+            startswith=startswith,
         )
 
     def plot_heatmap(
@@ -393,6 +401,8 @@ class _ElementResults:
         variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
         timesteps: Optional[pd.DatetimeIndex] = None,
         scenarios: Optional[pd.Index] = None,
+        contains: Optional[Union[str, List[str]]] = None,
+        startswith: Optional[Union[str, List[str]]] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -413,12 +423,18 @@ class _ElementResults:
                 - pd.Index: Multiple scenarios
                 - str/int: Single scenario (int is treated as a label, not an index position)
                 Defaults to all available scenarios.
+            contains: Filter variables that contain this string or strings.
+                If a list is provided, variables must contain ALL strings in the list.
+            startswith: Filter variables that start with this string or strings.
+                If a list is provided, variables must start with ANY of the strings in the list.
         """
         return filter_dataset(
             self.solution,
             variable_dims=variable_dims,
             timesteps=timesteps,
             scenarios=scenarios,
+            contains=contains,
+            startswith=startswith,
         )
 
 
