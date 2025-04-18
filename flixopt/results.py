@@ -1014,9 +1014,10 @@ def filter_dataset(
     timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
     scenarios: Optional[Union[pd.Index, str, int]] = None,
     contains: Optional[Union[str, List[str]]] = None,
+    startswith: Optional[Union[str, List[str]]] = None,
 ) -> xr.Dataset:
     """
-    Filters a dataset by its dimensions, indexes, and with a simple 'contains' filter for variable names.
+    Filters a dataset by its dimensions, indexes, and with string filters for variable names.
 
     Args:
         ds: The dataset to filter.
@@ -1036,6 +1037,8 @@ def filter_dataset(
             Defaults to all available scenarios.
         contains: Filter variables that contain this string or strings.
             If a list is provided, variables must contain ALL strings in the list.
+        startswith: Filter variables that start with this string or strings.
+            If a list is provided, variables must start with ANY of the strings in the list.
 
     Returns:
         Filtered dataset with specified variables and indexes.
@@ -1066,6 +1069,17 @@ def filter_dataset(
             filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if all(s in v for s in contains)]]
         else:
             raise TypeError(f"'contains' must be a string or list of strings, got {type(contains)}")
+
+    # Filter by 'startswith' parameter
+    if startswith is not None:
+        if isinstance(startswith, str):
+            # Single string - keep variables that start with this string
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if v.startswith(startswith)]]
+        elif isinstance(startswith, list) and all(isinstance(s, str) for s in startswith):
+            # List of strings - keep variables that start with ANY of the strings in the list
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if any(v.startswith(s) for s in startswith)]]
+        else:
+            raise TypeError(f"'startswith' must be a string or list of strings, got {type(startswith)}")
 
     # Handle time selection if needed
     if timesteps is not None and 'time' in filtered_ds.dims:
