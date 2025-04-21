@@ -209,7 +209,7 @@ class ColorProcessor:
 
 def with_plotly(
     data: pd.DataFrame,
-    mode: Literal['bar', 'line', 'area'] = 'area',
+    mode: Literal['stacked_bar', 'line', 'area'] = 'area',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
@@ -222,7 +222,7 @@ def with_plotly(
     Args:
         data: A DataFrame containing the data to plot, where the index represents time (e.g., hours),
               and each column represents a separate data series.
-        mode: The plotting mode. Use 'bar' for stacked bar charts, 'line' for stepped lines,
+        mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines,
               or 'area' for stacked area charts.
         colors: Color specification, can be:
             - A string with a colorscale name (e.g., 'viridis', 'plasma')
@@ -235,7 +235,7 @@ def with_plotly(
     Returns:
         A Plotly figure object containing the generated plot.
     """
-    assert mode in ['bar', 'line', 'area'], f"'mode' must be one of {['bar', 'line', 'area']}"
+    assert mode in ['stacked_bar', 'line', 'area'], f"'mode' must be one of {['stacked_bar', 'line', 'area']}"
     if data.empty:
         return go.Figure()
 
@@ -243,7 +243,7 @@ def with_plotly(
 
     fig = fig if fig is not None else go.Figure()
 
-    if mode == 'bar':
+    if mode == 'stacked_bar':
         for i, column in enumerate(data.columns):
             fig.add_trace(
                 go.Bar(
@@ -255,7 +255,7 @@ def with_plotly(
             )
 
         fig.update_layout(
-            barmode='relative' if mode == 'bar' else None,
+            barmode='relative' if mode == 'stacked_bar' else None,
             bargap=0,  # No space between bars
             bargroupgap=0,  # No space between groups of bars
         )
@@ -345,7 +345,7 @@ def with_plotly(
 
 def with_matplotlib(
     data: pd.DataFrame,
-    mode: Literal['bar', 'line'] = 'bar',
+    mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
@@ -360,7 +360,7 @@ def with_matplotlib(
     Args:
         data: A DataFrame containing the data to plot. The index should represent time (e.g., hours),
               and each column represents a separate data series.
-        mode: Plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
+        mode: Plotting mode. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification, can be:
             - A string with a colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
@@ -376,19 +376,19 @@ def with_matplotlib(
         A tuple containing the Matplotlib figure and axes objects used for the plot.
 
     Notes:
-        - If `mode` is 'bar', bars are stacked for both positive and negative values.
+        - If `mode` is 'stacked_bar', bars are stacked for both positive and negative values.
           Negative values are stacked separately without extra labels in the legend.
         - If `mode` is 'line', stepped lines are drawn for each data series.
         - The legend is placed below the plot to accommodate multiple data series.
     """
-    assert mode in ['bar', 'line'], f"'mode' must be one of {['bar', 'line']} for matplotlib"
+    assert mode in ['stacked_bar', 'line'], f"'mode' must be one of {['stacked_bar', 'line']} for matplotlib"
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
     processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
 
-    if mode == 'bar':
+    if mode == 'stacked_bar':
         cumulative_positive = np.zeros(len(data))
         cumulative_negative = np.zeros(len(data))
         width = data.index.to_series().diff().dropna().min()  # Minimum time difference
