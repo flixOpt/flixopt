@@ -555,8 +555,8 @@ class _NodeResults(_ElementResults):
             title = f'{title} - {chosen_scenario}'
 
         if drop_suffix:
-            inputs = inputs.rename_vars({var: var.split('|flow_rate')[0] for var in inputs})
-            outputs = outputs.rename_vars({var: var.split('|flow_rate')[0] for var in outputs})
+            inputs = inputs.rename_vars({var: var.split('|')[0] for var in inputs})
+            outputs = outputs.rename_vars({var: var.split('|')[0] for var in outputs})
         else:
             inputs = inputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in inputs})
             outputs = outputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in outputs})
@@ -620,7 +620,7 @@ class _NodeResults(_ElementResults):
         """
         ds = self.solution[self.inputs + self.outputs]
         if drop_suffix:
-            ds = ds.rename_vars({var: var.split('|flow_hours')[0] for var in ds.data_vars})
+            ds = ds.rename_vars({var: var.split('|')[0] for var in ds.data_vars})
         if mode == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
             ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
