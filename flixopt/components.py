@@ -86,8 +86,8 @@ class LinearConverter(Component):
         if self.piecewise_conversion:
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
-                    raise PlausibilityError(
-                        f'piecewise_conversion (in {self.label_full}) and variable size '
+                    logger.warning(
+                        f'Piecewise_conversion (in {self.label_full}) and variable size '
                         f'(in flow {flow.label_full}) do not make sense together!'
                     )
 
