@@ -549,7 +549,7 @@ class StorageModel(ComponentModel):
         if self.element.balanced:
             self.add(
                 self._model.add_constraints(
-                    self.element.charging.size == self.element.discharging.size,
+                    self.element.charging.model._investment.size * 1 == self.element.discharging.model._investment.size * 1,
                     name=f'{self.label_full}|balanced_sizes',
                 ),
                 'balanced_sizes'
