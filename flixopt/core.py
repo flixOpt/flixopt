@@ -251,6 +251,9 @@ class DataConverter:
         if not np.array_equal(data.coords['time'].values, coords['time'].values):
             raise ConversionError("Source time coordinates don't match target time coordinates")
 
+        if len(coords['scenario']) <= 1:
+            return data.copy(deep=True)
+
         # Broadcast values
         values = np.tile(data.values, (len(coords['scenario']), 1))
         return xr.DataArray(values.copy(), coords=coords, dims=dims)
