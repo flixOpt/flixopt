@@ -471,6 +471,7 @@ class _NodeResults(_ElementResults):
         engine: plotting.PlottingEngine = 'plotly',
         scenario: Optional[Union[str, int]] = None,
         mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
@@ -499,7 +500,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
-                mode='area',
+                style=style,
                 title=title,
             )
             default_filetype = '.html'
@@ -507,7 +508,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
-                mode='bar',
+                style=style,
                 title=title,
             )
             default_filetype = '.png'
@@ -679,6 +680,7 @@ class ComponentResults(_NodeResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
+        style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         scenario: Optional[Union[str, int]] = None,
     ) -> plotly.graph_objs.Figure:
         """
@@ -688,16 +690,12 @@ class ComponentResults(_NodeResults):
             show: Whether to show the plot or not.
             colors: The c
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
+            style: The plotting mode for the flow_rate
             scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
 
         Raises:
             ValueError: If the Component is not a Storage.
         """
-        if engine != 'plotly':
-            raise NotImplementedError(
-                f'Plotting engine "{engine}" not implemented for ComponentResults.plot_charge_state.'
-            )
-
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
@@ -710,22 +708,34 @@ class ComponentResults(_NodeResults):
             ds = ds.sel(scenario=chosen_scenario).drop_vars('scenario')
             charge_state = charge_state.sel(scenario=chosen_scenario).drop_vars('scenario')
             scenario_suffix = f'--{chosen_scenario}'
-
-        fig = plotting.with_plotly(
-            ds.to_dataframe(),
-            colors=colors,
-            mode='area',
-            title=f'Operation Balance of {self.label}{scenario_suffix}',
-        )
-
-        # TODO: Use colors for charge state?
-
-        charge_state = charge_state.to_dataframe()
-        fig.add_trace(
-            plotly.graph_objs.Scatter(
-                x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
+        if engine == 'plotly':
+            fig = plotting.with_plotly(
+                ds.to_dataframe(),
+                colors=colors,
+                style=style,
+                title=f'Operation Balance of {self.label}{scenario_suffix}',
             )
-        )
+
+            # TODO: Use colors for charge state?
+
+            charge_state = charge_state.to_dataframe()
+            fig.add_trace(
+                plotly.graph_objs.Scatter(
+                    x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
+                )
+            )
+        elif engine=='matplotlib':
+            fig, ax = plotting.with_matplotlib(
+                ds.to_dataframe(),
+                colors=colors,
+                style=style,
+                title=f'Operation Balance of {self.label}{scenario_suffix}',
+            )
+
+            charge_state = charge_state.to_dataframe()
+            ax.plot(charge_state.index, charge_state.values.flatten(), label=self._charge_state)
+            fig.tight_layout()
+            fig = fig, ax
 
         return plotting.export_figure(
             fig,
