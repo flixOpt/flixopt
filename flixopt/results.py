@@ -484,7 +484,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
-                mode=style,
+                style=style,
                 title=title,
             )
             default_filetype = '.html'
@@ -492,7 +492,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
-                mode=style,
+                style=style,
                 title=title,
             )
             default_filetype = '.png'
@@ -701,7 +701,7 @@ class ComponentResults(_NodeResults):
             fig = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
-                mode=style,
+                style=style,
                 title=f'Operation Balance of {self.label}{scenario_suffix}',
             )
 
@@ -717,7 +717,7 @@ class ComponentResults(_NodeResults):
             fig, ax = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
-                mode=style,
+                style=style,
                 title=f'Operation Balance of {self.label}{scenario_suffix}',
             )
 
