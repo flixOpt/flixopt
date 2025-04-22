@@ -202,6 +202,8 @@ class CalculationResults:
         element: Optional[str] = None,
         timesteps: Optional[pd.DatetimeIndex] = None,
         scenarios: Optional[pd.Index] = None,
+        contains: Optional[Union[str, List[str]]] = None,
+        startswith: Optional[Union[str, List[str]]] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -223,12 +225,18 @@ class CalculationResults:
                 - pd.Index: Multiple scenarios
                 - str/int: Single scenario (int is treated as a label, not an index position)
                 Defaults to all available scenarios.
+            contains: Filter variables that contain this string or strings.
+                If a list is provided, variables must contain ALL strings in the list.
+            startswith: Filter variables that start with this string or strings.
+                If a list is provided, variables must start with ANY of the strings in the list.
         """
         return filter_dataset(
             self.solution if element is None else self[element].solution,
             variable_dims=variable_dims,
             timesteps=timesteps,
             scenarios=scenarios,
+            contains=contains,
+            startswith=startswith,
         )
 
     def plot_heatmap(
@@ -393,6 +401,8 @@ class _ElementResults:
         variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
         timesteps: Optional[pd.DatetimeIndex] = None,
         scenarios: Optional[pd.Index] = None,
+        contains: Optional[Union[str, List[str]]] = None,
+        startswith: Optional[Union[str, List[str]]] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -413,12 +423,18 @@ class _ElementResults:
                 - pd.Index: Multiple scenarios
                 - str/int: Single scenario (int is treated as a label, not an index position)
                 Defaults to all available scenarios.
+            contains: Filter variables that contain this string or strings.
+                If a list is provided, variables must contain ALL strings in the list.
+            startswith: Filter variables that start with this string or strings.
+                If a list is provided, variables must start with ANY of the strings in the list.
         """
         return filter_dataset(
             self.solution,
             variable_dims=variable_dims,
             timesteps=timesteps,
             scenarios=scenarios,
+            contains=contains,
+            startswith=startswith,
         )
 
 
@@ -516,7 +532,6 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
         scenario: Optional[Union[str, int]] = None,
-        drop_suffix: bool = True,
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -536,12 +551,14 @@ class _NodeResults(_ElementResults):
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
+            drop_suffix='|',
         )
         outputs = sanitize_dataset(
             ds=self.solution[self.outputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
+            drop_suffix='|',
         )
         inputs = inputs.sum('time')
         outputs = outputs.sum('time')
@@ -553,13 +570,6 @@ class _NodeResults(_ElementResults):
             inputs = inputs.sel(scenario=chosen_scenario).drop_vars('scenario')
             outputs = outputs.sel(scenario=chosen_scenario).drop_vars('scenario')
             title = f'{title} - {chosen_scenario}'
-
-        if drop_suffix:
-            inputs = inputs.rename_vars({var: var.split('|')[0] for var in inputs})
-            outputs = outputs.rename_vars({var: var.split('|')[0] for var in outputs})
-        else:
-            inputs = inputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in inputs})
-            outputs = outputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in outputs})
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -619,11 +629,11 @@ class _NodeResults(_ElementResults):
             drop_suffix: Whether to drop the suffix from the variable names.
         """
         ds = self.solution[self.inputs + self.outputs]
-        if drop_suffix:
-            ds = ds.rename_vars({var: var.split('|')[0] for var in ds.data_vars})
+
         if mode == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
             ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
+
         return sanitize_dataset(
             ds=ds,
             threshold=threshold,
@@ -637,6 +647,7 @@ class _NodeResults(_ElementResults):
                 if negate_inputs
                 else None
             ),
+            drop_suffix='|' if drop_suffix else None,
         )
 
 
@@ -956,6 +967,7 @@ def sanitize_dataset(
     negate: Optional[List[str]] = None,
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
+    drop_suffix: Optional[str] = None,
 ) -> xr.Dataset:
     """
     Sanitizes a dataset by handling small values (dropping or zeroing) and optionally reindexing the time axis.
@@ -967,6 +979,7 @@ def sanitize_dataset(
         negate: The variables to negate. If None, no variables are negated.
         drop_small_vars: If True, drops variables where all values are below threshold.
         zero_small_values: If True, sets values below threshold to zero.
+        drop_suffix: Drop suffix of data var names. Split by the provided str.
 
     Returns:
         xr.Dataset: The sanitized dataset.
@@ -1005,6 +1018,20 @@ def sanitize_dataset(
     if timesteps is not None and not ds.indexes['time'].equals(timesteps):
         ds = ds.reindex({'time': timesteps}, fill_value=np.nan)
 
+    if drop_suffix is not None:
+        if not isinstance(drop_suffix, str):
+            raise ValueError(f'Only pass str values to drop suffixes. Got {drop_suffix}')
+        unique_dict = {}
+        for var in ds.data_vars:
+            new_name = var.split(drop_suffix)[0]
+
+            # If name already exists, keep original name
+            if new_name in unique_dict.values():
+                unique_dict[var] = var
+            else:
+                unique_dict[var] = new_name
+        ds = ds.rename(unique_dict)
+
     return ds
 
 
@@ -1013,9 +1040,11 @@ def filter_dataset(
     variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
     timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
     scenarios: Optional[Union[pd.Index, str, int]] = None,
+    contains: Optional[Union[str, List[str]]] = None,
+    startswith: Optional[Union[str, List[str]]] = None,
 ) -> xr.Dataset:
     """
-    Filters a dataset by its dimensions and optionally selects specific indexes.
+    Filters a dataset by its dimensions, indexes, and with string filters for variable names.
 
     Args:
         ds: The dataset to filter.
@@ -1033,32 +1062,58 @@ def filter_dataset(
             - pd.Index: Multiple scenarios
             - str/int: Single scenario (int is treated as a label, not an index position)
             Defaults to all available scenarios.
+        contains: Filter variables that contain this string or strings.
+            If a list is provided, variables must contain ALL strings in the list.
+        startswith: Filter variables that start with this string or strings.
+            If a list is provided, variables must start with ANY of the strings in the list.
 
     Returns:
         Filtered dataset with specified variables and indexes.
     """
-    # Return the full dataset if all dimension types are included
-    if variable_dims is None:
-        pass
-    elif variable_dims == 'scalar':
-        ds = ds[[v for v in ds.data_vars if not ds[v].dims]]
-    elif variable_dims == 'time':
-        ds = ds[[v for v in ds.data_vars if 'time' in ds[v].dims]]
-    elif variable_dims == 'scenario':
-        ds = ds[[v for v in ds.data_vars if 'scenario' in ds[v].dims]]
-    elif variable_dims == 'timeonly':
-        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('time',)]]
-    elif variable_dims == 'scenarioonly':
-        ds = ds[[v for v in ds.data_vars if ds[v].dims == ('scenario',)]]
-    else:
-        raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
+    # First filter by dimensions
+    filtered_ds = ds.copy()
+    if variable_dims is not None:
+        if variable_dims == 'scalar':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if not filtered_ds[v].dims]]
+        elif variable_dims == 'time':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if 'time' in filtered_ds[v].dims]]
+        elif variable_dims == 'scenario':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if 'scenario' in filtered_ds[v].dims]]
+        elif variable_dims == 'timeonly':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if filtered_ds[v].dims == ('time',)]]
+        elif variable_dims == 'scenarioonly':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if filtered_ds[v].dims == ('scenario',)]]
+        else:
+            raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
+
+    # Filter by 'contains' parameter
+    if contains is not None:
+        if isinstance(contains, str):
+            # Single string - keep variables that contain this string
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if contains in v]]
+        elif isinstance(contains, list) and all(isinstance(s, str) for s in contains):
+            # List of strings - keep variables that contain ALL strings in the list
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if all(s in v for s in contains)]]
+        else:
+            raise TypeError(f"'contains' must be a string or list of strings, got {type(contains)}")
+
+    # Filter by 'startswith' parameter
+    if startswith is not None:
+        if isinstance(startswith, str):
+            # Single string - keep variables that start with this string
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if v.startswith(startswith)]]
+        elif isinstance(startswith, list) and all(isinstance(s, str) for s in startswith):
+            # List of strings - keep variables that start with ANY of the strings in the list
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if any(v.startswith(s) for s in startswith)]]
+        else:
+            raise TypeError(f"'startswith' must be a string or list of strings, got {type(startswith)}")
 
     # Handle time selection if needed
-    if timesteps is not None and 'time' in ds.dims:
+    if timesteps is not None and 'time' in filtered_ds.dims:
         try:
-            ds = ds.sel(time=timesteps)
+            filtered_ds = filtered_ds.sel(time=timesteps)
         except KeyError as e:
-            available_times = set(ds.indexes['time'])
+            available_times = set(filtered_ds.indexes['time'])
             requested_times = set([timesteps]) if not isinstance(timesteps, pd.Index) else set(timesteps)
             missing_times = requested_times - available_times
             raise ValueError(
@@ -1066,15 +1121,15 @@ def filter_dataset(
             ) from e
 
     # Handle scenario selection if needed
-    if scenarios is not None and 'scenario' in ds.dims:
+    if scenarios is not None and 'scenario' in filtered_ds.dims:
         try:
-            ds = ds.sel(scenario=scenarios)
+            filtered_ds = filtered_ds.sel(scenario=scenarios)
         except KeyError as e:
-            available_scenarios = set(ds.indexes['scenario'])
+            available_scenarios = set(filtered_ds.indexes['scenario'])
             requested_scenarios = set([scenarios]) if not isinstance(scenarios, pd.Index) else set(scenarios)
             missing_scenarios = requested_scenarios - available_scenarios
             raise ValueError(
                 f'Scenarios not found in dataset: {missing_scenarios}. Available scenarios: {available_scenarios}'
             ) from e
 
-    return ds
+    return filtered_ds
