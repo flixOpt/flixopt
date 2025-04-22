@@ -532,7 +532,6 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
         scenario: Optional[Union[str, int]] = None,
-        drop_suffix: bool = True,
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -552,12 +551,14 @@ class _NodeResults(_ElementResults):
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
+            drop_suffix='|',
         )
         outputs = sanitize_dataset(
             ds=self.solution[self.outputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
+            drop_suffix='|',
         )
         inputs = inputs.sum('time')
         outputs = outputs.sum('time')
@@ -569,13 +570,6 @@ class _NodeResults(_ElementResults):
             inputs = inputs.sel(scenario=chosen_scenario).drop_vars('scenario')
             outputs = outputs.sel(scenario=chosen_scenario).drop_vars('scenario')
             title = f'{title} - {chosen_scenario}'
-
-        if drop_suffix:
-            inputs = inputs.rename_vars({var: var.split('|flow_rate')[0] for var in inputs})
-            outputs = outputs.rename_vars({var: var.split('|flow_rate')[0] for var in outputs})
-        else:
-            inputs = inputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in inputs})
-            outputs = outputs.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in outputs})
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -635,10 +629,12 @@ class _NodeResults(_ElementResults):
             drop_suffix: Whether to drop the suffix from the variable names.
         """
         ds = self.solution[self.inputs + self.outputs]
-        if drop_suffix:
-            ds = ds.rename_vars({var: var.split('|flow_hours')[0] for var in ds.data_vars})
 
-        ds = sanitize_dataset(
+        if mode == 'flow_hours':
+            ds = ds * self._calculation_results.hours_per_timestep
+            ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
+
+        return sanitize_dataset(
             ds=ds,
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
@@ -651,13 +647,8 @@ class _NodeResults(_ElementResults):
                 if negate_inputs
                 else None
             ),
+            drop_suffix='|' if drop_suffix else None,
         )
-
-        if mode == 'flow_hours':
-            ds = ds * self._calculation_results.hours_per_timestep
-            ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
-
-        return ds
 
 
 class BusResults(_NodeResults):
@@ -976,6 +967,7 @@ def sanitize_dataset(
     negate: Optional[List[str]] = None,
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
+    drop_suffix: Optional[str] = None,
 ) -> xr.Dataset:
     """
     Sanitizes a dataset by handling small values (dropping or zeroing) and optionally reindexing the time axis.
@@ -987,6 +979,7 @@ def sanitize_dataset(
         negate: The variables to negate. If None, no variables are negated.
         drop_small_vars: If True, drops variables where all values are below threshold.
         zero_small_values: If True, sets values below threshold to zero.
+        drop_suffix: Drop suffix of data var names. Split by the provided str.
 
     Returns:
         xr.Dataset: The sanitized dataset.
@@ -1024,6 +1017,20 @@ def sanitize_dataset(
     # Step 3: Reindex to specified timesteps if needed
     if timesteps is not None and not ds.indexes['time'].equals(timesteps):
         ds = ds.reindex({'time': timesteps}, fill_value=np.nan)
+
+    if drop_suffix is not None:
+        if not isinstance(drop_suffix, str):
+            raise ValueError(f'Only pass str values to drop suffixes. Got {drop_suffix}')
+        unique_dict = {}
+        for var in ds.data_vars:
+            new_name = var.split(drop_suffix)[0]
+
+            # If name already exists, keep original name
+            if new_name in unique_dict.values():
+                unique_dict[var] = var
+            else:
+                unique_dict[var] = new_name
+        ds = ds.rename(unique_dict)
 
     return ds
 
