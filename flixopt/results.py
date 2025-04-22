@@ -455,7 +455,7 @@ class _NodeResults(_ElementResults):
         engine: plotting.PlottingEngine = 'plotly',
         scenario: Optional[Union[str, int]] = None,
         mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        plot_mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
+        style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
@@ -484,7 +484,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
-                mode=plot_mode,
+                mode=style,
                 title=title,
             )
             default_filetype = '.html'
@@ -492,7 +492,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
-                mode=plot_mode,
+                mode=style,
                 title=title,
             )
             default_filetype = '.png'
@@ -669,7 +669,7 @@ class ComponentResults(_NodeResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        plot_mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
+        style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         scenario: Optional[Union[str, int]] = None,
     ) -> plotly.graph_objs.Figure:
         """
@@ -679,7 +679,7 @@ class ComponentResults(_NodeResults):
             show: Whether to show the plot or not.
             colors: The c
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
-            plot_mode: The plotting mode for the flow_rate
+            style: The plotting mode for the flow_rate
             scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
 
         Raises:
@@ -701,7 +701,7 @@ class ComponentResults(_NodeResults):
             fig = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
-                mode=plot_mode,
+                mode=style,
                 title=f'Operation Balance of {self.label}{scenario_suffix}',
             )
 
@@ -717,7 +717,7 @@ class ComponentResults(_NodeResults):
             fig, ax = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
-                mode=plot_mode,
+                mode=style,
                 title=f'Operation Balance of {self.label}{scenario_suffix}',
             )
 
