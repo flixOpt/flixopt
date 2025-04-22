@@ -58,12 +58,7 @@ def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
     )
 
     results['Speicher'].plot_node_balance_pie(engine=plotting_engine, save=save, show=show, colors=color_spec)
-
-    if plotting_engine == 'matplotlib':
-        with pytest.raises(NotImplementedError):
-            results['Speicher'].plot_charge_state(engine=plotting_engine)
-    else:
-        results['Speicher'].plot_charge_state(engine=plotting_engine)
+    results['Speicher'].plot_charge_state(engine=plotting_engine)
 
     plt.close('all')
 

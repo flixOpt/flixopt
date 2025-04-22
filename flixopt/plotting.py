@@ -265,7 +265,7 @@ def with_plotly(
                 go.Scatter(
                     x=data.index,
                     y=data[column],
-                    style='lines',
+                    mode='lines',
                     name=column,
                     line=dict(shape='hv', color=processed_colors[i]),
                 )
@@ -293,7 +293,7 @@ def with_plotly(
                 go.Scatter(
                     x=data.index,
                     y=data[column],
-                    style='lines',
+                    mode='lines',
                     name=column,
                     line=dict(shape='hv', color=colors_stacked[column]),
                     fill='tonexty',
@@ -306,7 +306,7 @@ def with_plotly(
                 go.Scatter(
                     x=data.index,
                     y=data[column],
-                    style='lines',
+                    mode='lines',
                     name=column,
                     line=dict(shape='hv', color=colors_stacked[column], dash='dash'),
                 )
