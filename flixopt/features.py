@@ -155,9 +155,10 @@ class InvestmentModel(Model):
                 f'fix_{variable.name}',
             )
             if self._on_variable is not None:
-                raise ValueError(
-                    f'Flow {self.label_full} has a fixed relative flow rate and an on_variable.'
-                    f'This combination is currently not supported.'
+                logger.warning(
+                    f'Flow {self.label_full} has a fixed relative flow rate (or equal relative_minimum and '
+                    f'relative_maximum and an on_variable. This will allow the flow_rate to be 0 instead of the '
+                    f'specified fixed rate.'
                 )
             return
 
