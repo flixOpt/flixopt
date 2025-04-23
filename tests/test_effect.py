@@ -8,7 +8,7 @@ import flixopt as fx
 from .conftest import assert_conequal, assert_var_equal, create_linopy_model
 
 
-class TestBusModel:
+class TestEffectModel:
     """Test the FlowModel class."""
 
     def test_minimal(self, basic_flow_system_linopy):
