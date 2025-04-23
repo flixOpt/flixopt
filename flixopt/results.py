@@ -164,9 +164,7 @@ class CalculationResults:
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
 
         self._effect_share_factors = None
-        self._effects_per_component_total = None
-        self._effects_per_component_operation = None
-        self._effects_per_component_invest = None
+        self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
@@ -255,140 +253,20 @@ class CalculationResults:
             startswith=startswith,
         )
 
-    def plot_heatmap(
-        self,
-        variable_name: str,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-        color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
-        show: bool = True,
-        engine: plotting.PlottingEngine = 'plotly',
-        scenario: Optional[Union[str, int]] = None,
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
-        """
-        Plots a heatmap of the solution of a variable.
+    def get_effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+        """Returns a dataset containing effect totals for each components (including their flows).
 
         Args:
-            variable_name: The name of the variable to plot.
-            heatmap_timeframes: The timeframes to use for the heatmap.
-            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
-            color_map: The color map to use for the heatmap.
-            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
-            show: Whether to show the plot or not.
-            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
+            mode: Which effects to contain. (operation, invest, total)
+
+        Returns:
+            An xarray Dataset with an additional component dimension and effects as variables.
         """
-        dataarray = self.solution[variable_name]
-
-        scenario_suffix = ''
-        if 'scenario' in dataarray.indexes:
-            chosen_scenario = scenario or self.scenarios[0]
-            dataarray = dataarray.sel(scenario=chosen_scenario).drop_vars('scenario')
-            scenario_suffix = f'--{chosen_scenario}'
-
-        return plot_heatmap(
-            dataarray=dataarray,
-            name=f'{variable_name}{scenario_suffix}',
-            folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
-            save=save,
-            show=show,
-            engine=engine,
-        )
-
-    def plot_network(
-        self,
-        controls: Union[
-            bool,
-            List[
-                Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-            ],
-        ] = True,
-        path: Optional[pathlib.Path] = None,
-        show: bool = False,
-    ) -> 'pyvis.network.Network':
-        """See flixopt.flow_system.FlowSystem.plot_network"""
-        try:
-            from .flow_system import FlowSystem
-
-            flow_system = FlowSystem.from_dataset(self.flow_system)
-        except Exception as e:
-            logger.critical(f'Could not reconstruct the flow_system from dataset: {e}')
-            return None
-        if path is None:
-            path = self.folder / f'{self.name}--network.html'
-        return flow_system.plot_network(controls=controls, path=path, show=show)
-
-    def to_file(
-        self,
-        folder: Optional[Union[str, pathlib.Path]] = None,
-        name: Optional[str] = None,
-        compression: int = 5,
-        document_model: bool = True,
-        save_linopy_model: bool = False,
-    ):
-        """
-        Save the results to a file
-        Args:
-            folder: The folder where the results should be saved. Defaults to the folder of the calculation.
-            name: The name of the results file. If not provided, Defaults to the name of the calculation.
-            compression: The compression level to use when saving the solution file (0-9). 0 means no compression.
-            document_model: Wether to document the mathematical formulations in the model.
-            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc4 file.
-                The model file size is rougly 100 times larger than the solution file.
-        """
-        folder = self.folder if folder is None else pathlib.Path(folder)
-        name = self.name if name is None else name
-        if not folder.exists():
-            try:
-                folder.mkdir(parents=False)
-            except FileNotFoundError as e:
-                raise FileNotFoundError(
-                    f'Folder {folder} and its parent do not exist. Please create them first.'
-                ) from e
-
-        paths = fx_io.CalculationResultsPaths(folder, name)
-
-        fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
-        fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
-
-        with open(paths.summary, 'w', encoding='utf-8') as f:
-            yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
-
-        if save_linopy_model:
-            if self.model is None:
-                logger.critical('No model in the CalculationResults. Saving the model is not possible.')
-            else:
-                self.model.to_netcdf(paths.linopy_model)
-
-        if document_model:
-            if self.model is None:
-                logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
-            else:
-                fx_io.document_linopy_model(self.model, path=paths.model_documentation)
-
-        logger.info(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
-
-    @property
-    def effects_per_component_total(self) -> xr.Dataset:
-        if self._effects_per_component_total is None:
-            self._effects_per_component_total = self._create_effects_dataset(mode='total')
-        return self._effects_per_component_total
-
-    @property
-    def effects_per_component_operation(self) -> xr.Dataset:
-        if self._effects_per_component_operation is None:
-            self._effects_per_component_operation = self._create_effects_dataset(mode='operation')
-        return self._effects_per_component_operation
-
-    @property
-    def effects_per_component_invest(self) -> xr.Dataset:
-        if self._effects_per_component_invest is None:
-            self._effects_per_component_invest = self._create_effects_dataset(mode='invest')
-        return self._effects_per_component_invest
+        if mode not in ['operation', 'invest', 'total']:
+            raise ValueError(f'Invalid mode {mode}')
+        if self._effects_per_component[mode] is None:
+            self._effects_per_component[mode] = self._create_effects_dataset(mode)
+        return self._effects_per_component[mode]
 
     def get_effect_shares(
         self,
@@ -516,14 +394,13 @@ class CalculationResults:
             An xarray Dataset with components as a dimension and effects as variables.
         """
         data_vars = {}
-        component_list = list(self.components)
 
         for effect in self.effects:
             # Create a list of DataArrays, one for each component
             effect_arrays = [
                 self.get_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
                 .expand_dims(component=[component])  # Add component dimension to each array
-                for component in component_list
+                for component in list(self.components)
             ]
 
             # Combine all components into one DataArray for this effect
@@ -531,6 +408,123 @@ class CalculationResults:
                 data_vars[effect] = xr.concat(effect_arrays, dim="component", coords='minimal')
 
         return xr.Dataset(data_vars)
+
+    def plot_heatmap(
+        self,
+        variable_name: str,
+        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
+        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
+        color_map: str = 'portland',
+        save: Union[bool, pathlib.Path] = False,
+        show: bool = True,
+        engine: plotting.PlottingEngine = 'plotly',
+        scenario: Optional[Union[str, int]] = None,
+    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+        """
+        Plots a heatmap of the solution of a variable.
+
+        Args:
+            variable_name: The name of the variable to plot.
+            heatmap_timeframes: The timeframes to use for the heatmap.
+            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
+            color_map: The color map to use for the heatmap.
+            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+            show: Whether to show the plot or not.
+            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+            scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
+        """
+        dataarray = self.solution[variable_name]
+
+        scenario_suffix = ''
+        if 'scenario' in dataarray.indexes:
+            chosen_scenario = scenario or self.scenarios[0]
+            dataarray = dataarray.sel(scenario=chosen_scenario).drop_vars('scenario')
+            scenario_suffix = f'--{chosen_scenario}'
+
+        return plot_heatmap(
+            dataarray=dataarray,
+            name=f'{variable_name}{scenario_suffix}',
+            folder=self.folder,
+            heatmap_timeframes=heatmap_timeframes,
+            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
+            color_map=color_map,
+            save=save,
+            show=show,
+            engine=engine,
+        )
+
+    def plot_network(
+        self,
+        controls: Union[
+            bool,
+            List[
+                Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
+            ],
+        ] = True,
+        path: Optional[pathlib.Path] = None,
+        show: bool = False,
+    ) -> 'pyvis.network.Network':
+        """See flixopt.flow_system.FlowSystem.plot_network"""
+        try:
+            from .flow_system import FlowSystem
+
+            flow_system = FlowSystem.from_dataset(self.flow_system)
+        except Exception as e:
+            logger.critical(f'Could not reconstruct the flow_system from dataset: {e}')
+            return None
+        if path is None:
+            path = self.folder / f'{self.name}--network.html'
+        return flow_system.plot_network(controls=controls, path=path, show=show)
+
+    def to_file(
+        self,
+        folder: Optional[Union[str, pathlib.Path]] = None,
+        name: Optional[str] = None,
+        compression: int = 5,
+        document_model: bool = True,
+        save_linopy_model: bool = False,
+    ):
+        """
+        Save the results to a file
+        Args:
+            folder: The folder where the results should be saved. Defaults to the folder of the calculation.
+            name: The name of the results file. If not provided, Defaults to the name of the calculation.
+            compression: The compression level to use when saving the solution file (0-9). 0 means no compression.
+            document_model: Wether to document the mathematical formulations in the model.
+            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc4 file.
+                The model file size is rougly 100 times larger than the solution file.
+        """
+        folder = self.folder if folder is None else pathlib.Path(folder)
+        name = self.name if name is None else name
+        if not folder.exists():
+            try:
+                folder.mkdir(parents=False)
+            except FileNotFoundError as e:
+                raise FileNotFoundError(
+                    f'Folder {folder} and its parent do not exist. Please create them first.'
+                ) from e
+
+        paths = fx_io.CalculationResultsPaths(folder, name)
+
+        fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
+
+        with open(paths.summary, 'w', encoding='utf-8') as f:
+            yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
+
+        if save_linopy_model:
+            if self.model is None:
+                logger.critical('No model in the CalculationResults. Saving the model is not possible.')
+            else:
+                self.model.to_netcdf(paths.linopy_model)
+
+        if document_model:
+            if self.model is None:
+                logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
+            else:
+                fx_io.document_linopy_model(self.model, path=paths.model_documentation)
+
+        logger.info(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
 
 class _ElementResults:
