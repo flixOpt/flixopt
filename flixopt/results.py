@@ -163,6 +163,8 @@ class CalculationResults:
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
 
+        self._effect_share_factors = None
+
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
             return self.components[key]
@@ -195,6 +197,17 @@ class CalculationResults:
         if self.model is None:
             raise ValueError('The linopy model is not available.')
         return self.model.constraints
+
+    @property
+    def effect_share_factors(self):
+        if self._effect_share_factors is None:
+            from .flow_system import FlowSystem
+            fs = FlowSystem.from_dataset(self.flow_system)
+            fs.transform_data()
+            effect_share_factors = fs.effects.calculate_effect_share_factors()
+            self._effect_share_factors = {'operation': effect_share_factors[0],
+                                          'invest': effect_share_factors[1]}
+        return self._effect_share_factors
 
     def filter_solution(
         self,
@@ -356,6 +369,99 @@ class CalculationResults:
 
         logger.info(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
+    def get_effect_shares(self, element: str, effect: str, mode: Optional[Literal['operation', 'invest']] = None,
+                          include_flows: bool = False) -> xr.Dataset:
+        """Retrieves individual effect shares for a specific element and effect.
+        Either for operation, investment, or both modes combined.
+
+        Args:
+            element: The element identifier for which to retrieve effect shares.
+            effect: The effect identifier for which to retrieve shares.
+            mode: Optional. The mode to retrieve shares for. Can be 'operation', 'invest',
+                or None to retrieve both. Defaults to None.
+
+        Returns:
+            An xarray Dataset containing the requested effect shares. If mode is None,
+            returns a merged Dataset containing both operation and investment shares.
+
+        Raises:
+            ValueError: If the specified effect is not available or if mode is invalid.
+        """
+        if effect not in self.effects:
+            raise ValueError(f'Effect {effect} is not available.')
+
+        if mode is None:
+            return xr.merge([self.get_effect_shares(element=element, effect=effect, mode='operation', include_flows=include_flows),
+                             self.get_effect_shares(element=element, effect=effect, mode='invest', include_flows=include_flows)])
+
+        if mode not in ['operation', 'invest']:
+            raise ValueError(f'Mode {mode} is not available. Choose between "operation" and "invest".')
+
+        ds = xr.Dataset()
+
+        label = f'{element}->{effect}({mode})'
+        if label in self.solution:
+            ds =  xr.Dataset({label: self.solution[label]})
+
+        if include_flows:
+            if element not in self.components:
+                raise ValueError(f'Only use Comonents when retriving Effects with flows. Got {element}')
+            flows = [label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs]
+            return xr.merge(
+                [ds] + [self.get_effect_shares(element=flow, effect=effect, mode=mode, include_flows=False)
+                        for flow in flows]
+            )
+
+        return ds
+
+
+    def get_effect_total(self, element: str, effect: str, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.DataArray:
+        """Calculates the total effect for a specific element and effect.
+
+        This method computes the total direct and indirect effects for a given element
+        and effect, considering the conversion factors between different effects.
+
+        Args:
+            element: The element identifier for which to calculate total effects.
+            effect: The effect identifier to calculate.
+            mode: The calculation mode. Options are:
+                'operation': Returns operation-specific effects.
+                'invest': Returns investment-specific effects.
+                'total': Returns the sum of operation effects (across all timesteps)
+                    and investment effects. Defaults to 'total'.
+
+        Returns:
+            An xarray DataArray containing the total effects, named with pattern
+            '{element}->{effect}' for mode='total' or '{element}->{effect}({mode})'
+            for other modes.
+
+        Raises:
+            ValueError: If the specified effect is not available.
+        """
+        if effect not in self.effects:
+            raise ValueError(f'Effect {effect} is not available.')
+
+        if mode == 'total':
+            operation = self.get_effect_total(element=element, effect=effect, mode='operation')
+            if len(operation.indexes) > 0:
+                operation = operation.sum('time')
+            return (operation + self.get_effect_total(element=element, effect=effect, mode='invest')
+                    ).rename(f'{element}->{effect}')
+
+        total = xr.DataArray(0)
+
+        relevant_conversion_factors = {
+            key[0]: value for key, value in self.effect_share_factors[mode].items() if key[1] == effect
+        }
+        relevant_conversion_factors[effect] = 1  # Share to itself is 1
+
+        for target_effect, conversion_factor in relevant_conversion_factors.items():
+            label = f'{element}->{target_effect}({mode})'
+            if label in self.solution:
+                da = self.solution[label]
+                total = total + da * conversion_factor
+
+        return total.rename(f'{element}->{effect}({mode})')
 
 class _ElementResults:
     @classmethod

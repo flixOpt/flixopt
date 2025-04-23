@@ -7,10 +7,11 @@ which are then transformed into the internal data structure.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union, Tuple
 
 import linopy
 import numpy as np
+import xarray as xr
 
 from .core import NumericDataTS, ScenarioData, TimeSeries, TimeSeriesCollection, TimestepData, extract_data
 from .features import ShareAllocationModel
@@ -351,6 +352,30 @@ class EffectCollection:
             raise ValueError(f'An objective-effect already exists! ({self._objective_effect.label=})')
         self._objective_effect = value
 
+    def calculate_effect_share_factors(self) -> Tuple[
+        Dict[Tuple[str, str], xr.DataArray],
+        Dict[Tuple[str, str], xr.DataArray],
+    ]:
+        shares_invest = {}
+        for name, effect in self.effects.items():
+            if effect.specific_share_to_other_effects_invest:
+                shares_invest[name] = {
+                    target: extract_data(data)
+                    for target, data in effect.specific_share_to_other_effects_invest.items()
+                }
+        shares_invest = calculate_all_conversion_paths(shares_invest)
+
+        shares_operation = {}
+        for name, effect in self.effects.items():
+            if effect.specific_share_to_other_effects_operation:
+                shares_operation[name] = {
+                    target: extract_data(data)
+                    for target, data in effect.specific_share_to_other_effects_operation.items()
+                }
+        shares_operation = calculate_all_conversion_paths(shares_operation)
+
+        return shares_operation, shares_invest
+
 
 class EffectCollectionModel(Model):
     """
@@ -425,3 +450,54 @@ class EffectCollectionModel(Model):
                     has_time_dim=False,
                     has_scenario_dim=True,
                 )
+
+def calculate_all_conversion_paths(
+        conversion_dict: Dict[str, Dict[str, xr.DataArray]],
+) -> Dict[Tuple[str, str], xr.DataArray]:
+    """
+    Calculates all possible direct and indirect conversion factors between units/domains.
+
+    This function uses Breadth-First Search (BFS) to find all possible conversion paths
+    between different units or domains in a conversion graph. It computes both direct
+    conversions (explicitly provided in the input) and indirect conversions (derived
+    through intermediate units).
+
+    Args:
+        conversion_dict: A nested dictionary where:
+            - Outer keys represent origin units/domains
+            - Inner dictionaries map target units/domains to their conversion factors
+            - Conversion factors can be integers, floats, or numpy arrays
+
+    Returns:
+        A dictionary mapping (origin, target) tuples to their respective conversion factors.
+        Each key is a tuple of strings representing the origin and target units/domains.
+        Each value is the conversion factor (int, float, or numpy array) from origin to target.
+    """
+
+    # Initialize the result dictionary with the given conversion factors
+    result = {}
+
+    # Iterate over each domain in the dictionary
+    for origin in conversion_dict:
+        # Initialize a queue for Breadth-First Search (BFS)
+        queue = [(origin, 1)]
+        visited = set()
+
+        # Perform BFS to find all indirect conversion factors
+        while queue:
+            current_domain, factor = queue.pop(0)
+            if current_domain in visited:
+                continue
+            visited.add(current_domain)
+
+            # Iterate over the neighbors of the current domain
+            for target, conversion_factor in conversion_dict.get(current_domain, {}).items():
+                if target not in visited:
+                    # Calculate the indirect conversion factor
+                    indirect_factor = factor * conversion_factor
+                    # Update the result dictionary with the indirect conversion factor
+                    if (origin, target) not in result:
+                        result[(origin, target)] = indirect_factor
+                    queue.append((target, indirect_factor))
+
+    return result
