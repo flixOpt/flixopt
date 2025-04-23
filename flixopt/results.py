@@ -164,6 +164,9 @@ class CalculationResults:
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
 
         self._effect_share_factors = None
+        self._effects_per_component_total = None
+        self._effects_per_component_operation = None
+        self._effects_per_component_invest = None
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
@@ -369,6 +372,24 @@ class CalculationResults:
 
         logger.info(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
+    @property
+    def effects_per_component_total(self) -> xr.Dataset:
+        if self._effects_per_component_total is None:
+            self._effects_per_component_total = self._create_effects_dataset(mode='total')
+        return self._effects_per_component_total
+
+    @property
+    def effects_per_component_operation(self) -> xr.Dataset:
+        if self._effects_per_component_operation is None:
+            self._effects_per_component_operation = self._create_effects_dataset(mode='operation')
+        return self._effects_per_component_operation
+
+    @property
+    def effects_per_component_invest(self) -> xr.Dataset:
+        if self._effects_per_component_invest is None:
+            self._effects_per_component_invest = self._create_effects_dataset(mode='invest')
+        return self._effects_per_component_invest
+
     def get_effect_shares(
         self,
         element: str,
@@ -419,7 +440,6 @@ class CalculationResults:
             )
 
         return ds
-
 
     def get_effect_total(
         self,
@@ -485,6 +505,33 @@ class CalculationResults:
                         total = total + da * conversion_factor
 
         return total.rename(f'{element}->{effect}({mode})')
+
+    def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+        """Creates a dataset containing effect totals for all components (including their flows).
+
+        Args:
+            mode: The calculation mode ('operation', 'invest', or 'total').
+
+        Returns:
+            An xarray Dataset with components as a dimension and effects as variables.
+        """
+        data_vars = {}
+        component_list = list(self.components)
+
+        for effect in self.effects:
+            # Create a list of DataArrays, one for each component
+            effect_arrays = [
+                self.get_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
+                .expand_dims(component=[component])  # Add component dimension to each array
+                for component in component_list
+            ]
+
+            # Combine all components into one DataArray for this effect
+            if effect_arrays:
+                data_vars[effect] = xr.concat(effect_arrays, dim="component", coords='minimal')
+
+        return xr.Dataset(data_vars)
+
 
 class _ElementResults:
     @classmethod
