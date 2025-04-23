@@ -255,7 +255,7 @@ class DataConverter:
             return data.copy(deep=True)
 
         # Broadcast values
-        values = np.tile(data.values, (len(coords['scenario']), 1))
+        values = np.tile(data.values, (len(coords['scenario']), 1)).T  # Tile seems to be faster than repeat()
         return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
     @staticmethod
