@@ -319,7 +319,7 @@ class CalculationResults:
 
         return ds
 
-    def get_effect_total(
+    def _compute_effect_total(
         self,
         element: str,
         effect: str,
@@ -352,10 +352,10 @@ class CalculationResults:
             raise ValueError(f'Effect {effect} is not available.')
 
         if mode == 'total':
-            operation = self.get_effect_total(element=element, effect=effect, mode='operation', include_flows=include_flows)
+            operation = self._compute_effect_total(element=element, effect=effect, mode='operation', include_flows=include_flows)
             if len(operation.indexes) > 0:
                 operation = operation.sum('time')
-            return (operation + self.get_effect_total(element=element, effect=effect, mode='invest', include_flows=include_flows)
+            return (operation + self._compute_effect_total(element=element, effect=effect, mode='invest', include_flows=include_flows)
                     ).rename(f'{element}->{effect}')
 
         total = xr.DataArray(0)
@@ -386,6 +386,7 @@ class CalculationResults:
 
     def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
         """Creates a dataset containing effect totals for all components (including their flows).
+        The dataset does contain the direct as well as the indirect effects of each component.
 
         Args:
             mode: The calculation mode ('operation', 'invest', or 'total').
@@ -398,7 +399,7 @@ class CalculationResults:
         for effect in self.effects:
             # Create a list of DataArrays, one for each component
             effect_arrays = [
-                self.get_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
+                self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
                 .expand_dims(component=[component])  # Add component dimension to each array
                 for component in list(self.components)
             ]
