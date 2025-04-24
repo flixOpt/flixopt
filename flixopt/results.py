@@ -417,7 +417,7 @@ class CalculationResults:
                   }
         for effect in self.effects:
             label = f'{effect}{suffix[mode]}'
-            computed = ds.sum('component')[effect] +1
+            computed = ds.sum('component')[effect]
             found = self.solution[label]
             if not np.allclose(computed.values, found.fillna(0).values):
                 logger.critical(f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n'
