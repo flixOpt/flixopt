@@ -271,16 +271,16 @@ class EffectCollection:
         # Check circular loops in effects:
         operation, invest = self.calculate_effect_share_factors()
 
-        if has_cycles(tuples_to_adjacency_list([key for key in operation])):
-            raise ValueError(f'Error: circular operation-shares')
+        operation_cycles = detect_cycles(tuples_to_adjacency_list([key for key in operation]))
+        invest_cycles = detect_cycles(tuples_to_adjacency_list([key for key in invest]))
 
-        if has_cycles(tuples_to_adjacency_list([key for key in invest])):
-            raise ValueError(f'Error: circular invest-shares')
+        if operation_cycles:
+            cycle_str = "\n".join([" -> ".join(cycle) for cycle in operation_cycles])
+            raise ValueError(f'Error: circular operation-shares detected:\n{cycle_str}')
 
-    def _graph_representation(self) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
-        operation, invest = self.calculate_effect_share_factors()
-        return tuples_to_adjacency_list([key for key in operation]), tuples_to_adjacency_list([key for key in invest])
-
+        if invest_cycles:
+            cycle_str = "\n".join([" -> ".join(cycle) for cycle in invest_cycles])
+            raise ValueError(f'Error: circular invest-shares detected:\n{cycle_str}')
 
     def __getitem__(self, effect: Union[str, Effect]) -> 'Effect':
         """
@@ -512,47 +512,54 @@ def calculate_all_conversion_paths(
     return result
 
 
-def has_cycles(graph: Dict[str, List[str]]) -> bool:
+def detect_cycles(graph: Dict[str, List[str]]) -> List[List[str]]:
     """
-    Checks if a directed graph has any cycles using a simple DFS.
+    Detects cycles in a directed graph using DFS.
 
     Args:
         graph: Adjacency list representation of the graph
 
     Returns:
-        True if cycles are found, False otherwise
+        List of cycles found, where each cycle is a list of nodes
     """
     # Track nodes in current recursion stack
     visiting = set()
     # Track nodes that have been fully explored
     visited = set()
+    # Store all found cycles
+    cycles = []
 
-    def dfs_check_cycle(node):
-        # Add node to current path
+    def dfs_find_cycles(node, path=None):
+        if path is None:
+            path = []
+
+        # Current path to this node
+        current_path = path + [node]
+        # Add node to current recursion stack
         visiting.add(node)
 
         # Check all neighbors
-        for neighbor in graph.get(node, {}):
+        for neighbor in graph.get(node, []):
             # If neighbor is in current path, we found a cycle
             if neighbor in visiting:
-                return True
+                # Get the cycle by extracting the relevant portion of the path
+                cycle_start = current_path.index(neighbor)
+                cycle = current_path[cycle_start:] + [neighbor]
+                cycles.append(cycle)
             # If neighbor hasn't been fully explored, check it
-            if neighbor not in visited:
-                if dfs_check_cycle(neighbor):
-                    return True
+            elif neighbor not in visited:
+                dfs_find_cycles(neighbor, current_path)
 
         # Remove node from current path and mark as fully explored
         visiting.remove(node)
         visited.add(node)
-        return False
 
     # Check each unvisited node
     for node in graph:
         if node not in visited:
-            if dfs_check_cycle(node):
-                return True
+            dfs_find_cycles(node)
 
-    return False
+    return cycles
 
 
 def tuples_to_adjacency_list(edges: List[Tuple[str, str]]) -> Dict[str, List[str]]:
