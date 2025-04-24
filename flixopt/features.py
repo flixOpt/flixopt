@@ -989,7 +989,7 @@ class ShareAllocationModel(Model):
         # Parameters
         self._has_time_dim = has_time_dim
         self._has_scenario_dim = has_scenario_dim
-        self._total_max = total_max if total_min is not None else np.inf
+        self._total_max = total_max if total_max is not None else np.inf
         self._total_min = total_min if total_min is not None else -np.inf
         self._max_per_hour = max_per_hour if max_per_hour is not None else np.inf
         self._min_per_hour = min_per_hour if min_per_hour is not None else -np.inf
