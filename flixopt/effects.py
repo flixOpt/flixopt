@@ -7,7 +7,7 @@ which are then transformed into the internal data structure.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union, Tuple
+from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union, Tuple, Set
 
 import linopy
 import numpy as np
@@ -269,26 +269,18 @@ class EffectCollection:
 
     def _plausibility_checks(self) -> None:
         # Check circular loops in effects:
-        # TODO: Improve checks!! Only most basic case covered...
+        operation, invest = self.calculate_effect_share_factors()
 
-        def error_str(effect_label: str, share_ffect_label: str):
-            return (
-                f'  {effect_label} -> has share in: {share_ffect_label}\n'
-                f'  {share_ffect_label} -> has share in: {effect_label}'
-            )
+        if has_cycles(tuples_to_adjacency_list([key for key in operation])):
+            raise ValueError(f'Error: circular operation-shares')
 
-        for effect in self.effects.values():
-            # Effekt darf nicht selber als Share in seinen ShareEffekten auftauchen:
-            # operation:
-            for target_effect in effect.specific_share_to_other_effects_operation.keys():
-                assert effect not in self[target_effect].specific_share_to_other_effects_operation.keys(), (
-                    f'Error: circular operation-shares \n{error_str(target_effect.label, target_effect.label)}'
-                )
-            # invest:
-            for target_effect in effect.specific_share_to_other_effects_invest.keys():
-                assert effect not in self[target_effect].specific_share_to_other_effects_invest.keys(), (
-                    f'Error: circular invest-shares \n{error_str(target_effect.label, target_effect.label)}'
-                )
+        if has_cycles(tuples_to_adjacency_list([key for key in invest])):
+            raise ValueError(f'Error: circular invest-shares')
+
+    def _graph_representation(self) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+        operation, invest = self.calculate_effect_share_factors()
+        return tuples_to_adjacency_list([key for key in operation]), tuples_to_adjacency_list([key for key in invest])
+
 
     def __getitem__(self, effect: Union[str, Effect]) -> 'Effect':
         """
@@ -518,3 +510,70 @@ def calculate_all_conversion_paths(
                 queue.append((target, indirect_factor, new_path))
 
     return result
+
+
+def has_cycles(graph: Dict[str, List[str]]) -> bool:
+    """
+    Checks if a directed graph has any cycles using a simple DFS.
+
+    Args:
+        graph: Adjacency list representation of the graph
+
+    Returns:
+        True if cycles are found, False otherwise
+    """
+    # Track nodes in current recursion stack
+    visiting = set()
+    # Track nodes that have been fully explored
+    visited = set()
+
+    def dfs_check_cycle(node):
+        # Add node to current path
+        visiting.add(node)
+
+        # Check all neighbors
+        for neighbor in graph.get(node, {}):
+            # If neighbor is in current path, we found a cycle
+            if neighbor in visiting:
+                return True
+            # If neighbor hasn't been fully explored, check it
+            if neighbor not in visited:
+                if dfs_check_cycle(neighbor):
+                    return True
+
+        # Remove node from current path and mark as fully explored
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    # Check each unvisited node
+    for node in graph:
+        if node not in visited:
+            if dfs_check_cycle(node):
+                return True
+
+    return False
+
+
+def tuples_to_adjacency_list(edges: List[Tuple[str, str]]) -> Dict[str, List[str]]:
+    """
+    Converts a list of edge tuples (source, target) to an adjacency list representation.
+
+    Args:
+        edges: List of (source, target) tuples representing directed edges
+
+    Returns:
+        Dictionary mapping each source node to a list of its target nodes
+    """
+    graph = {}
+
+    for source, target in edges:
+        if source not in graph:
+            graph[source] = []
+        graph[source].append(target)
+
+        # Ensure target nodes with no outgoing edges are in the graph
+        if target not in graph:
+            graph[target] = []
+
+    return graph
