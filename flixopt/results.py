@@ -408,7 +408,22 @@ class CalculationResults:
             if effect_arrays:
                 data_vars[effect] = xr.concat(effect_arrays, dim="component", coords='minimal')
 
-        return xr.Dataset(data_vars)
+        ds = xr.Dataset(data_vars)
+
+        # For now include a test to ensure correctness
+        suffix = {'operation': '(operation)|total_per_timestep',
+                  'invest': '(invest)|total',
+                  'total': '|total',
+                  }
+        for effect in self.effects:
+            label = f'{effect}{suffix[mode]}'
+            computed = ds.sum('component')[effect] +1
+            found = self.solution[label]
+            if not np.allclose(computed.values, found.fillna(0).values):
+                logger.critical(f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n'
+                                f'{computed=}\n, {found=}')
+
+        return ds
 
     def plot_heatmap(
         self,
