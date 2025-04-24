@@ -631,11 +631,7 @@ class _NodeResults(_ElementResults):
         """
         ds = self.solution[self.inputs + self.outputs]
 
-        if mode == 'flow_hours':
-            ds = ds * self._calculation_results.hours_per_timestep
-            ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
-
-        return sanitize_dataset(
+        ds = sanitize_dataset(
             ds=ds,
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
@@ -650,6 +646,12 @@ class _NodeResults(_ElementResults):
             ),
             drop_suffix='|' if drop_suffix else None,
         )
+
+        if mode == 'flow_hours':
+            ds = ds * self._calculation_results.hours_per_timestep
+            ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
+
+        return ds
 
 
 class BusResults(_NodeResults):

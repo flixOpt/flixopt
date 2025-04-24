@@ -86,8 +86,8 @@ class LinearConverter(Component):
         if self.piecewise_conversion:
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
-                    raise PlausibilityError(
-                        f'piecewise_conversion (in {self.label_full}) and variable size '
+                    logger.warning(
+                        f'Piecewise_conversion (in {self.label_full}) and variable size '
                         f'(in flow {flow.label_full}) do not make sense together!'
                     )
 
@@ -138,6 +138,7 @@ class Storage(Component):
         eta_discharge: TimestepData = 1,
         relative_loss_per_hour: TimestepData = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
+        balanced: bool = False,
         meta_data: Optional[Dict] = None,
     ):
         """
@@ -163,6 +164,7 @@ class Storage(Component):
             relative_loss_per_hour: loss per chargeState-Unit per hour. The default is 0.
             prevent_simultaneous_charge_and_discharge: If True, loading and unloading at the same time is not possible.
                 Increases the number of binary variables, but is recommended for easier evaluation. The default is True.
+            balanced: Wether to equate the size of the charging and discharging flow. Only if not fixed.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         # TODO: fixed_relative_chargeState implementieren
@@ -188,6 +190,7 @@ class Storage(Component):
         self.eta_discharge: TimestepData = eta_discharge
         self.relative_loss_per_hour: TimestepData = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
+        self.balanced = balanced
 
     def create_model(self, model: SystemModel) -> 'StorageModel':
         self._plausibility_checks()
@@ -260,6 +263,18 @@ class Storage(Component):
                 f'{self.label_full}: {self.initial_charge_state=} '
                 f'is below allowed minimum charge_state {minimum_inital_capacity}'
             )
+
+        if self.balanced:
+            if not isinstance(self.charging.size, InvestParameters) or not isinstance(self.discharging.size, InvestParameters):
+                raise PlausibilityError(
+                    f'Balancing charging and discharging Flows in {self.label_full} '
+                    f'is only possible with Investments.')
+            if (self.charging.size.minimum_size > self.discharging.size.maximum_size or
+                self.charging.size.maximum_size < self.discharging.size.minimum_size):
+                raise PlausibilityError(
+                    f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
+                    f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
+                    f'{self.charging.size.minimum_size=}, {self.charging.size.maximum_size=}.')
 
 
 @register_class_for_io
@@ -530,6 +545,15 @@ class StorageModel(ComponentModel):
 
         # Initial charge state
         self._initial_and_final_charge_state()
+
+        if self.element.balanced:
+            self.add(
+                self._model.add_constraints(
+                    self.element.charging.model._investment.size * 1 == self.element.discharging.model._investment.size * 1,
+                    name=f'{self.label_full}|balanced_sizes',
+                ),
+                'balanced_sizes'
+            )
 
     def _initial_and_final_charge_state(self):
         if self.element.initial_charge_state is not None:

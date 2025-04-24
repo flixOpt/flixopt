@@ -292,10 +292,9 @@ class Flow(Element):
             )
 
         if self.fixed_relative_profile is not None and self.on_off_parameters is not None:
-            raise ValueError(
-                f'Flow {self.label} has both a fixed_relative_profile and an on_off_parameters. This is not supported. '
-                f'Use relative_minimum and relative_maximum instead, '
-                f'if you want to allow flows to be switched on and off.'
+            logger.warning(
+                f'Flow {self.label} has both a fixed_relative_profile and an on_off_parameters.'
+                f'This will allow the flow to be switched on and off, effectively differing from the fixed_flow_rate.'
             )
 
         if (self.relative_minimum > 0).any() and self.on_off_parameters is None:
