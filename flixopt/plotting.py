@@ -209,7 +209,7 @@ class ColorProcessor:
 
 def with_plotly(
     data: pd.DataFrame,
-    style: Literal['stacked_bar', 'line', 'area'] = 'area',
+    style: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
@@ -235,7 +235,8 @@ def with_plotly(
     Returns:
         A Plotly figure object containing the generated plot.
     """
-    assert style in ['stacked_bar', 'line', 'area'], f"'style' must be one of {['stacked_bar', 'line', 'area']}"
+    if style not in ['stacked_bar', 'line', 'area', 'grouped_bar']:
+        raise ValueError(f"'style' must be one of {['stacked_bar', 'line', 'area', 'grouped_bar']}")
     if data.empty:
         return go.Figure()
 
@@ -250,14 +251,31 @@ def with_plotly(
                     x=data.index,
                     y=data[column],
                     name=column,
-                    marker=dict(color=processed_colors[i]),
+                    marker=dict(color=processed_colors[i],
+                                line=dict(width=0, color='rgba(0,0,0,0)')),  #Transparent line with 0 width
                 )
             )
 
         fig.update_layout(
-            barmode='relative' if style == 'stacked_bar' else None,
-            bargap=0,  # No space between bars
-            bargroupgap=0,  # No space between groups of bars
+            barmode='relative',
+            bargap=0.2,  # No space between bars
+            bargroupgap=0,  # No space between grouped bars
+        )
+    if style == 'grouped_bar':
+        for i, column in enumerate(data.columns):
+            fig.add_trace(
+                go.Bar(
+                    x=data.index,
+                    y=data[column],
+                    name=column,
+                    marker=dict(color=processed_colors[i])
+                )
+            )
+
+        fig.update_layout(
+            barmode='group',
+            bargap=0.2,  # No space between bars
+            bargroupgap=0,  # space between grouped bars
         )
     elif style == 'line':
         for i, column in enumerate(data.columns):
