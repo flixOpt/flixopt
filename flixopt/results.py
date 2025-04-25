@@ -777,6 +777,7 @@ class _NodeResults(_ElementResults):
             json_data['constraints'],
             json_data['inputs'],
             json_data['outputs'],
+            json_data['flows'],
         )
 
     def __init__(
@@ -787,10 +788,12 @@ class _NodeResults(_ElementResults):
         constraints: List[str],
         inputs: List[str],
         outputs: List[str],
+        flows: List[str],
     ):
         super().__init__(calculation_results, label, variables, constraints)
         self.inputs = inputs
         self.outputs = outputs
+        self.flows = flows
 
     def plot_node_balance(
         self,
