@@ -300,6 +300,14 @@ class CalculationResults:
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.flow_rates().to_pandas()
+            Get the max or min over time:
+            >>>results.flow_rates().max('time')
+            Sum up the flow rates of flows with the same start and end:
+            >>>results.flow_rates(end='Fernwärme').groupby('start').sum(dim='flow')
         """
         if self._flow_rates is None:
             self._flow_rates = self._create_flow_rates_dataarray()
@@ -316,6 +324,15 @@ class CalculationResults:
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.flow_hours().to_pandas()
+            Sum up the flow hours over time:
+            >>>results.flow_hours().sum('time')
+            Sum up the flow hours of flows with the same start and end:
+            >>>results.flow_hours(end='Fernwärme').groupby('start').sum(dim='flow')
+
         """
         if self._flow_hours is None:
             self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
