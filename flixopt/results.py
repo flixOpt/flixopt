@@ -309,7 +309,7 @@ class CalculationResults:
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
         """
         if self._flow_hours is None:
-            self._flow_hours = self.flow_rates() * self.hours_per_timestep
+            self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
         return filter_edges_dataset(self._flow_hours, start=start, end=end)
 
     def _create_flow_rates_dataarray(self):
@@ -318,7 +318,7 @@ class CalculationResults:
         flow_arrays = []
 
         for flow_name, flow in self.flow_system.flows.items():
-            flow_arrays.append(self.solution[f'{flow_name}|flow_rate'])
+            flow_arrays.append(self.solution[f'{flow_name}|flow_rate'].rename(flow_name))
 
             # Add edge metadata
             edges.append(
@@ -342,7 +342,7 @@ class CalculationResults:
         flow_da = flow_da.assign_coords(
             {'start': ('flow', [e['start'] for e in edges]), 'end': ('flow', [e['end'] for e in edges])}
         )
-        return flow_da
+        return flow_da.rename('flow_rates')
 
     def get_effect_shares(
         self,
