@@ -328,30 +328,19 @@ class CalculationResults:
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
         """
         if self._sizes is None:
-            flow_data = self._get_flow_network_info()
-            for flow_name, flow in self.flow_system.flows.items():
-                variable_name = f'{flow.label_full}|size'
-                if variable_name in self.solution:
-                    flow_data[flow_name]['size'] = self.solution[variable_name].rename(flow_name)
-                else:
-                    flow_data[flow_name]['size'] = xr.DataArray(flow.size).rename(flow_name)
-
-            # Step 2: Combine into one DataArray (preserving all original coords)
-            flow_da = xr.concat(
-                [flow['size'] for flow in flow_data.values()], dim=pd.Index(flow_data.keys(), name='flow')
+            flow_sizes = xr.concat(
+                [flow.size.rename(flow.label) for flow in self.flows.values()], dim=pd.Index(self.flows.keys(), name='flow')
             )
 
-            # Step 3: Add start and end coordinates
-            flow_da = flow_da.assign_coords(
-                {
-                    'start': ('flow', [flow['start'] for flow in flow_data.values()]),
-                    'end': ('flow', [flow['end'] for flow in flow_data.values()]),
-                }
-            )
+            # Add start and end coordinates
+            flow_sizes = flow_sizes.assign_coords({
+                'start': ('flow', [flow.start for flow in self.flows.values()]),
+                'end': ('flow', [flow.end for flow in self.flows.values()]),
+            })
 
-            # Step 4: Ensure flow is the last dimension if needed
-            existing_dims = [d for d in flow_da.dims if d != 'flow']
-            self._sizes = flow_da.transpose(*(existing_dims + ['flow']))
+            # Ensure flow is the last dimension if needed
+            existing_dims = [d for d in flow_sizes.dims if d != 'flow']
+            self._sizes = flow_sizes.transpose(*(existing_dims + ['flow']))
 
         return filter_edges_dataset(self._sizes, start=start, end=end)
 
@@ -361,23 +350,17 @@ class CalculationResults:
         Extracts flow rates from the solution dataset and adds network topology
         information (start/end nodes) as coordinates.
         """
-        # Step 1: Extract all flow rates and their metadata in one loop
-        flow_data = self._get_flow_network_info()
+        # Combine into one DataArray (preserving all original coords)
+        flow_da = xr.concat([flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
+                            dim=pd.Index(self.flows.keys(), name='flow'))
 
-        for flow_name, flow in self.flow_system.flows.items():
-            flow_data[flow_name]['flow_rate'] = self.solution[f'{flow_name}|flow_rate'].rename(flow_name)
-
-        # Step 2: Combine into one DataArray (preserving all original coords)
-        flow_da = xr.concat([flow['flow_rate'] for flow in flow_data.values()],
-                            dim=pd.Index(flow_data.keys(), name='flow'))
-
-        # Step 3: Add start and end coordinates
+        # Add start and end coordinates
         flow_da = flow_da.assign_coords({
-            'start': ('flow', [flow['start'] for flow in flow_data.values()]),
-            'end': ('flow', [flow['end'] for flow in flow_data.values()])
+            'start': ('flow', [flow.start for flow in self.flows.values()]),
+            'end': ('flow', [flow.end for flow in self.flows.values()])
         })
 
-        # Step 4: Ensure flow is the last dimension if needed
+        # Ensure flow is the last dimension if needed
         existing_dims = [d for d in flow_da.dims if d != 'flow']
         flow_da = flow_da.transpose(*(existing_dims + ['flow']))
 
@@ -386,11 +369,11 @@ class CalculationResults:
     def _get_flow_network_info(self) -> Dict[str, Dict[str, str]]:
         flow_network_info = {}
 
-        for flow_label, flow in self.flow_system.flows.items():
-            flow_network_info[flow_label] = {
-                'label': flow.label_full,
-                'start': flow.bus if flow.is_input_in_component else flow.component,
-                'end': flow.component if flow.is_input_in_component else flow.bus,
+        for flow in self.flows.values():
+            flow_network_info[flow.label] = {
+                'label': flow.label,
+                'start': flow.start,
+                'end': flow.end,
             }
         return flow_network_info
 
@@ -1125,7 +1108,7 @@ class FlowResults(_ElementResults):
     def from_json(cls, calculation_results, json_data: Dict) -> 'FlowResults':
         return cls(
             calculation_results,
-            json_data['label'],
+            json_data['label_full'],
             json_data['variables'],
             json_data['constraints'],
             json_data['start'],
@@ -1144,6 +1127,21 @@ class FlowResults(_ElementResults):
         super().__init__(calculation_results, label, variables, constraints)
         self.start = start
         self.end = end
+
+    @property
+    def flow_rate(self) -> xr.DataArray:
+        return self.solution[f'{self.label}|flow_rate']
+
+    @property
+    def flow_hours(self) -> xr.DataArray:
+        return (self.flow_rate * self._calculation_results.hours_per_timestep).rename(f'{self.label}|flow_hours')
+
+    @property
+    def size(self) -> xr.DataArray:
+        name = f'{self.label}|size'
+        if name in self.solution:
+            return self.solution[name]
+        return xr.DataArray(self._calculation_results.flow_system.flows[self.label].size).rename(name)
 
 
 class SegmentedCalculationResults:
