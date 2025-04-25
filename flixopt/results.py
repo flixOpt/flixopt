@@ -92,7 +92,7 @@ class CalculationResults:
 
         return cls(
             solution=fx_io.load_dataset_from_netcdf(paths.solution),
-            flow_system=fx_io.load_dataset_from_netcdf(paths.flow_system),
+            flow_system_data=fx_io.load_dataset_from_netcdf(paths.flow_system),
             name=name,
             folder=folder,
             model=model,
@@ -118,7 +118,7 @@ class CalculationResults:
         """
         return cls(
             solution=calculation.model.solution,
-            flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
+            flow_system_data=calculation.flow_system.as_dataset(constants_in_dataset=True),
             summary=calculation.summary,
             model=calculation.model,
             name=calculation.name,
@@ -128,7 +128,7 @@ class CalculationResults:
     def __init__(
         self,
         solution: xr.Dataset,
-        flow_system: xr.Dataset,
+        flow_system_data: xr.Dataset,
         name: str,
         summary: Dict,
         folder: Optional[pathlib.Path] = None,
@@ -137,14 +137,16 @@ class CalculationResults:
         """
         Args:
             solution: The solution of the optimization.
-            flow_system: The flow_system that was used to create the calculation as a datatset.
+            flow_system_data: The flow_system that was used to create the calculation as a datatset.
             name: The name of the calculation.
             summary: Information about the calculation,
             folder: The folder where the results are saved.
             model: The linopy model that was used to solve the calculation.
+        Deprecated:
+            flow_system: Use flow_system_data instead.
         """
         self.solution = solution
-        self.flow_system = flow_system
+        self.flow_system_data = flow_system_data
         self.summary = summary
         self.name = name
         self.model = model
@@ -164,6 +166,7 @@ class CalculationResults:
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
 
         self._effect_share_factors = None
+        self._flow_system = None
         self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
@@ -202,13 +205,22 @@ class CalculationResults:
     @property
     def effect_share_factors(self):
         if self._effect_share_factors is None:
-            from .flow_system import FlowSystem
-            fs = FlowSystem.from_dataset(self.flow_system)
-            fs.transform_data()
-            effect_share_factors = fs.effects.calculate_effect_share_factors()
+            effect_share_factors = self.flow_system.effects.calculate_effect_share_factors()
             self._effect_share_factors = {'operation': effect_share_factors[0],
                                           'invest': effect_share_factors[1]}
         return self._effect_share_factors
+
+    @property
+    def flow_system(self):
+        """ The restored flow_system that was used to create the calculation.
+        Contains all input parameters."""
+        if self._flow_system is None:
+            from . import FlowSystem
+            current_logger_level = logger.getEffectiveLevel()
+            logger.setLevel(logging.CRITICAL)
+            self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
+            logger.setLevel(current_logger_level)
+        return self._flow_system
 
     def filter_solution(
         self,
@@ -481,16 +493,9 @@ class CalculationResults:
         show: bool = False,
     ) -> 'pyvis.network.Network':
         """See flixopt.flow_system.FlowSystem.plot_network"""
-        try:
-            from .flow_system import FlowSystem
-
-            flow_system = FlowSystem.from_dataset(self.flow_system)
-        except Exception as e:
-            logger.critical(f'Could not reconstruct the flow_system from dataset: {e}')
-            return None
         if path is None:
             path = self.folder / f'{self.name}--network.html'
-        return flow_system.plot_network(controls=controls, path=path, show=show)
+        return self.flow_system.plot_network(controls=controls, path=path, show=show)
 
     def to_file(
         self,
