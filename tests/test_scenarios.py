@@ -282,7 +282,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     calc.results.to_file()
 
     res = fx.results.CalculationResults.from_file('results', 'test_full_scenario')
-    fx.FlowSystem.from_dataset(res.flow_system)
+    fx.FlowSystem.from_dataset(res.flow_system_data)
     calc = create_calculation_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
@@ -301,7 +301,7 @@ def test_io_persistance(flow_system_piecewise_conversion_scenarios):
     calc.results.to_file()
 
     res = fx.results.CalculationResults.from_file('results', 'test_full_scenario')
-    flow_system_2 = fx.FlowSystem.from_dataset(res.flow_system)
+    flow_system_2 = fx.FlowSystem.from_dataset(res.flow_system_data)
     calc_2 = create_calculation_and_solve(
         flow_system_2,
         solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
@@ -323,7 +323,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     calc.solve(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
 
     calc.results.to_file()
-    flow_system_2 = fx.FlowSystem.from_dataset(calc.results.flow_system)
+    flow_system_2 = fx.FlowSystem.from_dataset(calc.results.flow_system_data)
 
     assert calc.results.solution.indexes['scenario'].equals(flow_system.time_series_collection.scenarios[0:2])
 

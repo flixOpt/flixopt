@@ -5,10 +5,10 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_var_equal, create_linopy_model
+from .conftest import assert_conequal, assert_var_equal, create_calculation_and_solve, create_linopy_model
 
 
-class TestBusModel:
+class TestEffectModel:
     """Test the FlowModel class."""
 
     def test_minimal(self, basic_flow_system_linopy):
@@ -139,4 +139,86 @@ class TestBusModel:
             == model.variables['Effect1(invest)|total'] * 2.1,
         )
 
+
+class TestEffectResults:
+    def test_shares(self, basic_flow_system_linopy):
+        flow_system = basic_flow_system_linopy
+        flow_system.effects['Costs'].specific_share_to_other_effects_operation['Effect1'] = 0.5
+        flow_system.add_elements(
+            fx.Effect('Effect1', '€', 'Testing Effect',
+                           specific_share_to_other_effects_operation={
+                               'Effect2': 1.1,
+                               'Effect3': 1.2
+                           },
+                           specific_share_to_other_effects_invest={
+                               'Effect2': 2.1,
+                               'Effect3': 2.2
+                           }
+                           ),
+            fx.Effect('Effect2', '€', 'Testing Effect', specific_share_to_other_effects_operation={'Effect3': 5}),
+            fx.Effect('Effect3', '€', 'Testing Effect'),
+            fx.linear_converters.Boiler(
+            'Boiler', eta=0.5, Q_th=fx.Flow('Q_th', bus='Fernwärme', ),Q_fu=fx.Flow('Q_fu', bus='Gas'),
+            )
+        )
+
+        results = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 60), 'Sim1').results
+
+        effect_share_factors = {
+            'operation': {
+                ('Costs', 'Effect1'): 0.5,
+                ('Costs', 'Effect2'): 0.5 * 1.1,
+                ('Costs', 'Effect3'): 0.5 * 1.1 * 5 + 0.5 * 1.2,  #This is where the issue lies
+                ('Effect1', 'Effect2'): 1.1,
+                ('Effect1', 'Effect3'): 1.2 + 1.1 * 5,
+                ('Effect2', 'Effect3'): 5,
+            },
+            'invest': {
+                ('Effect1', 'Effect2'): 2.1,
+                ('Effect1', 'Effect3'): 2.2,
+            }
+        }
+        for key, value in effect_share_factors['operation'].items():
+            np.testing.assert_allclose(results.effect_share_factors['operation'][key].values, value)
+
+        for key, value in effect_share_factors['invest'].items():
+            np.testing.assert_allclose(results.effect_share_factors['invest'][key].values, value)
+
+        xr.testing.assert_allclose(results.get_effects_per_component('operation').sum('component')['Costs'],
+                                   results.solution['Costs(operation)|total_per_timestep'].fillna(0))
+
+        xr.testing.assert_allclose(results.get_effects_per_component('operation').sum('component')['Effect1'],
+                                   results.solution['Effect1(operation)|total_per_timestep'].fillna(0))
+
+        xr.testing.assert_allclose(results.get_effects_per_component('operation').sum('component')['Effect2'],
+                                   results.solution['Effect2(operation)|total_per_timestep'].fillna(0))
+
+        xr.testing.assert_allclose(results.get_effects_per_component('operation').sum('component')['Effect3'],
+                                   results.solution['Effect3(operation)|total_per_timestep'].fillna(0))
+
+        # Invest mode checks
+        xr.testing.assert_allclose(results.get_effects_per_component('invest').sum('component')['Costs'],
+                                   results.solution['Costs(invest)|total'])
+
+        xr.testing.assert_allclose(results.get_effects_per_component('invest').sum('component')['Effect1'],
+                                   results.solution['Effect1(invest)|total'])
+
+        xr.testing.assert_allclose(results.get_effects_per_component('invest').sum('component')['Effect2'],
+                                   results.solution['Effect2(invest)|total'])
+
+        xr.testing.assert_allclose(results.get_effects_per_component('invest').sum('component')['Effect3'],
+                                   results.solution['Effect3(invest)|total'])
+
+        # Total mode checks
+        xr.testing.assert_allclose(results.get_effects_per_component('total').sum('component')['Costs'],
+                                   results.solution['Costs|total'])
+
+        xr.testing.assert_allclose(results.get_effects_per_component('total').sum('component')['Effect1'],
+                                   results.solution['Effect1|total'])
+
+        xr.testing.assert_allclose(results.get_effects_per_component('total').sum('component')['Effect2'],
+                                   results.solution['Effect2|total'])
+
+        xr.testing.assert_allclose(results.get_effects_per_component('total').sum('component')['Effect3'],
+                                   results.solution['Effect3|total'])
 

@@ -92,7 +92,7 @@ class CalculationResults:
 
         return cls(
             solution=fx_io.load_dataset_from_netcdf(paths.solution),
-            flow_system=fx_io.load_dataset_from_netcdf(paths.flow_system),
+            flow_system_data=fx_io.load_dataset_from_netcdf(paths.flow_system),
             name=name,
             folder=folder,
             model=model,
@@ -118,7 +118,7 @@ class CalculationResults:
         """
         return cls(
             solution=calculation.model.solution,
-            flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
+            flow_system_data=calculation.flow_system.as_dataset(constants_in_dataset=True),
             summary=calculation.summary,
             model=calculation.model,
             name=calculation.name,
@@ -128,7 +128,7 @@ class CalculationResults:
     def __init__(
         self,
         solution: xr.Dataset,
-        flow_system: xr.Dataset,
+        flow_system_data: xr.Dataset,
         name: str,
         summary: Dict,
         folder: Optional[pathlib.Path] = None,
@@ -137,14 +137,16 @@ class CalculationResults:
         """
         Args:
             solution: The solution of the optimization.
-            flow_system: The flow_system that was used to create the calculation as a datatset.
+            flow_system_data: The flow_system that was used to create the calculation as a datatset.
             name: The name of the calculation.
             summary: Information about the calculation,
             folder: The folder where the results are saved.
             model: The linopy model that was used to solve the calculation.
+        Deprecated:
+            flow_system: Use flow_system_data instead.
         """
         self.solution = solution
-        self.flow_system = flow_system
+        self.flow_system_data = flow_system_data
         self.summary = summary
         self.name = name
         self.model = model
@@ -162,6 +164,10 @@ class CalculationResults:
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
+
+        self._effect_share_factors = None
+        self._flow_system = None
+        self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
@@ -195,6 +201,26 @@ class CalculationResults:
         if self.model is None:
             raise ValueError('The linopy model is not available.')
         return self.model.constraints
+
+    @property
+    def effect_share_factors(self):
+        if self._effect_share_factors is None:
+            effect_share_factors = self.flow_system.effects.calculate_effect_share_factors()
+            self._effect_share_factors = {'operation': effect_share_factors[0],
+                                          'invest': effect_share_factors[1]}
+        return self._effect_share_factors
+
+    @property
+    def flow_system(self):
+        """ The restored flow_system that was used to create the calculation.
+        Contains all input parameters."""
+        if self._flow_system is None:
+            from . import FlowSystem
+            current_logger_level = logger.getEffectiveLevel()
+            logger.setLevel(logging.CRITICAL)
+            self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
+            logger.setLevel(current_logger_level)
+        return self._flow_system
 
     def filter_solution(
         self,
@@ -238,6 +264,178 @@ class CalculationResults:
             contains=contains,
             startswith=startswith,
         )
+
+    def get_effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+        """Returns a dataset containing effect totals for each components (including their flows).
+
+        Args:
+            mode: Which effects to contain. (operation, invest, total)
+
+        Returns:
+            An xarray Dataset with an additional component dimension and effects as variables.
+        """
+        if mode not in ['operation', 'invest', 'total']:
+            raise ValueError(f'Invalid mode {mode}')
+        if self._effects_per_component[mode] is None:
+            self._effects_per_component[mode] = self._create_effects_dataset(mode)
+        return self._effects_per_component[mode]
+
+    def get_effect_shares(
+        self,
+        element: str,
+        effect: str,
+        mode: Optional[Literal['operation', 'invest']] = None,
+        include_flows: bool = False
+    ) -> xr.Dataset:
+        """Retrieves individual effect shares for a specific element and effect.
+        Either for operation, investment, or both modes combined.
+        Only includes the direct shares.
+
+        Args:
+            element: The element identifier for which to retrieve effect shares.
+            effect: The effect identifier for which to retrieve shares.
+            mode: Optional. The mode to retrieve shares for. Can be 'operation', 'invest',
+                or None to retrieve both. Defaults to None.
+
+        Returns:
+            An xarray Dataset containing the requested effect shares. If mode is None,
+            returns a merged Dataset containing both operation and investment shares.
+
+        Raises:
+            ValueError: If the specified effect is not available or if mode is invalid.
+        """
+        if effect not in self.effects:
+            raise ValueError(f'Effect {effect} is not available.')
+
+        if mode is None:
+            return xr.merge([self.get_effect_shares(element=element, effect=effect, mode='operation', include_flows=include_flows),
+                             self.get_effect_shares(element=element, effect=effect, mode='invest', include_flows=include_flows)])
+
+        if mode not in ['operation', 'invest']:
+            raise ValueError(f'Mode {mode} is not available. Choose between "operation" and "invest".')
+
+        ds = xr.Dataset()
+
+        label = f'{element}->{effect}({mode})'
+        if label in self.solution:
+            ds =  xr.Dataset({label: self.solution[label]})
+
+        if include_flows:
+            if element not in self.components:
+                raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
+            flows = [label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs]
+            return xr.merge(
+                [ds] + [self.get_effect_shares(element=flow, effect=effect, mode=mode, include_flows=False)
+                        for flow in flows]
+            )
+
+        return ds
+
+    def _compute_effect_total(
+        self,
+        element: str,
+        effect: str,
+        mode: Literal['operation', 'invest', 'total'] = 'total',
+        include_flows: bool = False
+    ) -> xr.DataArray:
+        """Calculates the total effect for a specific element and effect.
+
+        This method computes the total direct and indirect effects for a given element
+        and effect, considering the conversion factors between different effects.
+
+        Args:
+            element: The element identifier for which to calculate total effects.
+            effect: The effect identifier to calculate.
+            mode: The calculation mode. Options are:
+                'operation': Returns operation-specific effects.
+                'invest': Returns investment-specific effects.
+                'total': Returns the sum of operation effects (across all timesteps)
+                    and investment effects. Defaults to 'total'.
+
+        Returns:
+            An xarray DataArray containing the total effects, named with pattern
+            '{element}->{effect}' for mode='total' or '{element}->{effect}({mode})'
+            for other modes.
+
+        Raises:
+            ValueError: If the specified effect is not available.
+        """
+        if effect not in self.effects:
+            raise ValueError(f'Effect {effect} is not available.')
+
+        if mode == 'total':
+            operation = self._compute_effect_total(element=element, effect=effect, mode='operation', include_flows=include_flows)
+            if len(operation.indexes) > 0:
+                operation = operation.sum('time')
+            return (operation + self._compute_effect_total(element=element, effect=effect, mode='invest', include_flows=include_flows)
+                    ).rename(f'{element}->{effect}')
+
+        total = xr.DataArray(0)
+
+        relevant_conversion_factors = {
+            key[0]: value for key, value in self.effect_share_factors[mode].items() if key[1] == effect
+        }
+        relevant_conversion_factors[effect] = 1  # Share to itself is 1
+
+        for target_effect, conversion_factor in relevant_conversion_factors.items():
+            label = f'{element}->{target_effect}({mode})'
+            if label in self.solution:
+                da = self.solution[label]
+                total = total + da * conversion_factor
+
+            if include_flows:
+                if element not in self.components:
+                    raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
+                flows = [label.split('|')[0] for label in
+                         self.components[element].inputs + self.components[element].outputs]
+                for flow in flows:
+                    label = f'{flow}->{target_effect}({mode})'
+                    if label in self.solution:
+                        da = self.solution[label]
+                        total = total + da * conversion_factor
+
+        return total.rename(f'{element}->{effect}({mode})')
+
+    def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+        """Creates a dataset containing effect totals for all components (including their flows).
+        The dataset does contain the direct as well as the indirect effects of each component.
+
+        Args:
+            mode: The calculation mode ('operation', 'invest', or 'total').
+
+        Returns:
+            An xarray Dataset with components as a dimension and effects as variables.
+        """
+        data_vars = {}
+
+        for effect in self.effects:
+            # Create a list of DataArrays, one for each component
+            effect_arrays = [
+                self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
+                .expand_dims(component=[component])  # Add component dimension to each array
+                for component in list(self.components)
+            ]
+
+            # Combine all components into one DataArray for this effect
+            if effect_arrays:
+                data_vars[effect] = xr.concat(effect_arrays, dim="component", coords='minimal')
+
+        ds = xr.Dataset(data_vars)
+
+        # For now include a test to ensure correctness
+        suffix = {'operation': '(operation)|total_per_timestep',
+                  'invest': '(invest)|total',
+                  'total': '|total',
+                  }
+        for effect in self.effects:
+            label = f'{effect}{suffix[mode]}'
+            computed = ds.sum('component')[effect]
+            found = self.solution[label]
+            if not np.allclose(computed.values, found.fillna(0).values):
+                logger.critical(f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n'
+                                f'{computed=}\n, {found=}')
+
+        return ds
 
     def plot_heatmap(
         self,
@@ -295,16 +493,9 @@ class CalculationResults:
         show: bool = False,
     ) -> 'pyvis.network.Network':
         """See flixopt.flow_system.FlowSystem.plot_network"""
-        try:
-            from .flow_system import FlowSystem
-
-            flow_system = FlowSystem.from_dataset(self.flow_system)
-        except Exception as e:
-            logger.critical(f'Could not reconstruct the flow_system from dataset: {e}')
-            return None
         if path is None:
             path = self.folder / f'{self.name}--network.html'
-        return flow_system.plot_network(controls=controls, path=path, show=show)
+        return self.flow_system.plot_network(controls=controls, path=path, show=show)
 
     def to_file(
         self,
@@ -337,7 +528,7 @@ class CalculationResults:
         paths = fx_io.CalculationResultsPaths(folder, name)
 
         fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
-        fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.flow_system_data, paths.flow_system, compression=compression)
 
         with open(paths.summary, 'w', encoding='utf-8') as f:
             yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)

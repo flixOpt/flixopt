@@ -7,10 +7,11 @@ which are then transformed into the internal data structure.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Set, Tuple, Union
 
 import linopy
 import numpy as np
+import xarray as xr
 
 from .core import NumericDataTS, ScenarioData, TimeSeries, TimeSeriesCollection, TimestepData, extract_data
 from .features import ShareAllocationModel
@@ -268,26 +269,18 @@ class EffectCollection:
 
     def _plausibility_checks(self) -> None:
         # Check circular loops in effects:
-        # TODO: Improve checks!! Only most basic case covered...
+        operation, invest = self.calculate_effect_share_factors()
 
-        def error_str(effect_label: str, share_ffect_label: str):
-            return (
-                f'  {effect_label} -> has share in: {share_ffect_label}\n'
-                f'  {share_ffect_label} -> has share in: {effect_label}'
-            )
+        operation_cycles = detect_cycles(tuples_to_adjacency_list([key for key in operation]))
+        invest_cycles = detect_cycles(tuples_to_adjacency_list([key for key in invest]))
 
-        for effect in self.effects.values():
-            # Effekt darf nicht selber als Share in seinen ShareEffekten auftauchen:
-            # operation:
-            for target_effect in effect.specific_share_to_other_effects_operation.keys():
-                assert effect not in self[target_effect].specific_share_to_other_effects_operation.keys(), (
-                    f'Error: circular operation-shares \n{error_str(target_effect.label, target_effect.label)}'
-                )
-            # invest:
-            for target_effect in effect.specific_share_to_other_effects_invest.keys():
-                assert effect not in self[target_effect].specific_share_to_other_effects_invest.keys(), (
-                    f'Error: circular invest-shares \n{error_str(target_effect.label, target_effect.label)}'
-                )
+        if operation_cycles:
+            cycle_str = "\n".join([" -> ".join(cycle) for cycle in operation_cycles])
+            raise ValueError(f'Error: circular operation-shares detected:\n{cycle_str}')
+
+        if invest_cycles:
+            cycle_str = "\n".join([" -> ".join(cycle) for cycle in invest_cycles])
+            raise ValueError(f'Error: circular invest-shares detected:\n{cycle_str}')
 
     def __getitem__(self, effect: Union[str, Effect]) -> 'Effect':
         """
@@ -350,6 +343,30 @@ class EffectCollection:
         if self._objective_effect is not None:
             raise ValueError(f'An objective-effect already exists! ({self._objective_effect.label=})')
         self._objective_effect = value
+
+    def calculate_effect_share_factors(self) -> Tuple[
+        Dict[Tuple[str, str], xr.DataArray],
+        Dict[Tuple[str, str], xr.DataArray],
+    ]:
+        shares_invest = {}
+        for name, effect in self.effects.items():
+            if effect.specific_share_to_other_effects_invest:
+                shares_invest[name] = {
+                    target: extract_data(data)
+                    for target, data in effect.specific_share_to_other_effects_invest.items()
+                }
+        shares_invest = calculate_all_conversion_paths(shares_invest)
+
+        shares_operation = {}
+        for name, effect in self.effects.items():
+            if effect.specific_share_to_other_effects_operation:
+                shares_operation[name] = {
+                    target: extract_data(data)
+                    for target, data in effect.specific_share_to_other_effects_operation.items()
+                }
+        shares_operation = calculate_all_conversion_paths(shares_operation)
+
+        return shares_operation, shares_invest
 
 
 class EffectCollectionModel(Model):
@@ -425,3 +442,145 @@ class EffectCollectionModel(Model):
                     has_time_dim=False,
                     has_scenario_dim=True,
                 )
+
+
+def calculate_all_conversion_paths(
+        conversion_dict: Dict[str, Dict[str, xr.DataArray]],
+) -> Dict[Tuple[str, str], xr.DataArray]:
+    """
+    Calculates all possible direct and indirect conversion factors between units/domains.
+    This function uses Breadth-First Search (BFS) to find all possible conversion paths
+    between different units or domains in a conversion graph. It computes both direct
+    conversions (explicitly provided in the input) and indirect conversions (derived
+    through intermediate units).
+    Args:
+        conversion_dict: A nested dictionary where:
+            - Outer keys represent origin units/domains
+            - Inner dictionaries map target units/domains to their conversion factors
+            - Conversion factors can be integers, floats, or numpy arrays
+    Returns:
+        A dictionary mapping (origin, target) tuples to their respective conversion factors.
+        Each key is a tuple of strings representing the origin and target units/domains.
+        Each value is the conversion factor (int, float, or numpy array) from origin to target.
+    """
+    # Initialize the result dictionary to accumulate all paths
+    result = {}
+
+    # Add direct connections to the result first
+    for origin, targets in conversion_dict.items():
+        for target, factor in targets.items():
+            result[(origin, target)] = factor
+
+    # Track all paths by keeping path history to avoid cycles
+    # Iterate over each domain in the dictionary
+    for origin in conversion_dict:
+        # Keep track of visited paths to avoid repeating calculations
+        processed_paths = set()
+        # Use a queue with (current_domain, factor, path_history)
+        queue = [(origin, 1, [origin])]
+
+        while queue:
+            current_domain, factor, path = queue.pop(0)
+
+            # Skip if we've processed this exact path before
+            path_key = tuple(path)
+            if path_key in processed_paths:
+                continue
+            processed_paths.add(path_key)
+
+            # Iterate over the neighbors of the current domain
+            for target, conversion_factor in conversion_dict.get(current_domain, {}).items():
+                # Skip if target would create a cycle
+                if target in path:
+                    continue
+
+                # Calculate the indirect conversion factor
+                indirect_factor = factor * conversion_factor
+                new_path = path + [target]
+
+                # Only consider paths starting at origin and ending at some target
+                if len(new_path) > 2 and new_path[0] == origin:
+                    # Update the result dictionary - accumulate factors from different paths
+                    if (origin, target) in result:
+                        result[(origin, target)] = result[(origin, target)] + indirect_factor
+                    else:
+                        result[(origin, target)] = indirect_factor
+
+                # Add new path to queue for further exploration
+                queue.append((target, indirect_factor, new_path))
+
+    return result
+
+
+def detect_cycles(graph: Dict[str, List[str]]) -> List[List[str]]:
+    """
+    Detects cycles in a directed graph using DFS.
+
+    Args:
+        graph: Adjacency list representation of the graph
+
+    Returns:
+        List of cycles found, where each cycle is a list of nodes
+    """
+    # Track nodes in current recursion stack
+    visiting = set()
+    # Track nodes that have been fully explored
+    visited = set()
+    # Store all found cycles
+    cycles = []
+
+    def dfs_find_cycles(node, path=None):
+        if path is None:
+            path = []
+
+        # Current path to this node
+        current_path = path + [node]
+        # Add node to current recursion stack
+        visiting.add(node)
+
+        # Check all neighbors
+        for neighbor in graph.get(node, []):
+            # If neighbor is in current path, we found a cycle
+            if neighbor in visiting:
+                # Get the cycle by extracting the relevant portion of the path
+                cycle_start = current_path.index(neighbor)
+                cycle = current_path[cycle_start:] + [neighbor]
+                cycles.append(cycle)
+            # If neighbor hasn't been fully explored, check it
+            elif neighbor not in visited:
+                dfs_find_cycles(neighbor, current_path)
+
+        # Remove node from current path and mark as fully explored
+        visiting.remove(node)
+        visited.add(node)
+
+    # Check each unvisited node
+    for node in graph:
+        if node not in visited:
+            dfs_find_cycles(node)
+
+    return cycles
+
+
+def tuples_to_adjacency_list(edges: List[Tuple[str, str]]) -> Dict[str, List[str]]:
+    """
+    Converts a list of edge tuples (source, target) to an adjacency list representation.
+
+    Args:
+        edges: List of (source, target) tuples representing directed edges
+
+    Returns:
+        Dictionary mapping each source node to a list of its target nodes
+    """
+    graph = {}
+
+    for source, target in edges:
+        if source not in graph:
+            graph[source] = []
+        graph[source].append(target)
+
+        # Ensure target nodes with no outgoing edges are in the graph
+        if target not in graph:
+            graph[target] = []
+
+    return graph
