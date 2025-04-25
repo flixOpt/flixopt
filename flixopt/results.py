@@ -161,6 +161,10 @@ class CalculationResults:
             label: EffectResults.from_json(self, infos) for label, infos in self.solution.attrs['Effects'].items()
         }
 
+        self.flows = {
+            label: FlowResults.from_json(self, infos) for label, infos in self.solution.attrs['Flows'].items()
+        }
+
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
@@ -174,13 +178,15 @@ class CalculationResults:
         self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
         self._flow_network_info_ = None
 
-    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
+    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults', 'FlowResults']:
         if key in self.components:
             return self.components[key]
         if key in self.buses:
             return self.buses[key]
         if key in self.effects:
             return self.effects[key]
+        if key in self.flows:
+            return self.flows[key]
         raise KeyError(f'No element with label {key} found.')
 
     @property
@@ -1109,6 +1115,32 @@ class EffectResults(_ElementResults):
     def get_shares_from(self, element: str):
         """Get the shares from an Element (without subelements) to the Effect"""
         return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
+
+
+class FlowResults(_ElementResults):
+    @classmethod
+    def from_json(cls, calculation_results, json_data: Dict) -> 'FlowResults':
+        return cls(
+            calculation_results,
+            json_data['label'],
+            json_data['variables'],
+            json_data['constraints'],
+            json_data['start'],
+            json_data['end'],
+        )
+
+    def __init__(
+        self,
+        calculation_results: CalculationResults,
+        label: str,
+        variables: List[str],
+        constraints: List[str],
+        start: str,
+        end: str,
+    ):
+        super().__init__(calculation_results, label, variables, constraints)
+        self.start = start
+        self.end = end
 
 
 class SegmentedCalculationResults:
