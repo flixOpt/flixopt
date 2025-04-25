@@ -167,6 +167,8 @@ class CalculationResults:
 
         self._effect_share_factors = None
         self._flow_system = None
+        self._flow_rates = None
+        self._flow_hours = None
         self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
@@ -219,6 +221,7 @@ class CalculationResults:
             current_logger_level = logger.getEffectiveLevel()
             logger.setLevel(logging.CRITICAL)
             self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
+            self._flow_system._connect_network()
             logger.setLevel(current_logger_level)
         return self._flow_system
 
@@ -280,46 +283,64 @@ class CalculationResults:
             self._effects_per_component[mode] = self._create_effects_dataarray(mode)
         return self._effects_per_component[mode]
 
-    def flow_rates(self):
-        """Returns a dataset containing the flow rates of each Flow."""
+    def flow_rates(
+        self, start: Optional[Union[str, List[str]]] = None, end: Optional[Union[str, List[str]]] = None
+    ) -> xr.DataArray:
+        """Returns a DataArray containing the flow rates of each Flow.
+
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+        """
+        if self._flow_rates is None:
+            self._flow_rates = self._create_flow_rates_dataarray()
+        return filter_edges_dataset(self._flow_rates, start=start, end=end)
+
+    def flow_hours(
+        self, start: Optional[Union[str, List[str]]] = None, end: Optional[Union[str, List[str]]] = None
+    ) -> xr.DataArray:
+        """Returns a DataArray containing the flow hours of each Flow.
+
+        Flow hours represent the total energy/material transferred over time,
+        calculated by multiplying flow rates by the duration of each timestep.
+
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+        """
+        if self._flow_hours is None:
+            self._flow_hours = self.flow_rates() * self.hours_per_timestep
+        return filter_edges_dataset(self._flow_hours, start=start, end=end)
+
+    def _create_flow_rates_dataarray(self):
         # Step 1: Extract all flow rates and their metadata in one loop
         edges = []
-        flow_data_list = []
+        flow_arrays = []
 
-        for name in self.solution:
-            if name.endswith('|flow_rate'):
-                flow_name = name.split('|')[0]
-                flow = self.flow_system.flows.get(flow_name)
+        for flow_name, flow in self.flow_system.flows.items():
+            flow_arrays.append(self.solution[f'{flow_name}|flow_rate'])
 
-                if flow:
-                    # Get the data
-                    data = self.solution[name].values
-                    flow_data_list.append(data)
+            # Add edge metadata
+            edges.append(
+                {
+                    'name': flow_name,
+                    'start': flow.bus if flow.is_input_in_component else flow.component,
+                    'end': flow.component if flow.is_input_in_component else flow.bus,
+                }
+            )
 
-                    # Add edge metadata
-                    edges.append(
-                        {
-                            'name': flow_name,
-                            'start': flow.bus if flow.is_input_in_component else flow.component,
-                            'end': flow.component if flow.is_input_in_component else flow.bus,
-                        }
-                    )
+        # Step 3: Create expanded arrays with edge dimension and concatenate
+        expanded_arrays = []
+        for i, arr in enumerate(flow_arrays):
+            expanded = arr.expand_dims({'flow': [edges[i]['name']]})
+            expanded_arrays.append(expanded)
 
-        # Step 2: Stack all flow data into a single array
-        # Assuming all arrays have the same time dimension
-        flow_data = np.stack(flow_data_list, axis=0)
+        # Combine into one DataArray
+        flow_da = xr.concat(expanded_arrays, dim='flow')
 
-        # Step 3: Create the DataArray with your specified structure
-        flow_da = xr.DataArray(
-            data=flow_data,
-            dims=['time', 'edge'],
-            coords={
-                'time': self.timesteps_extra,
-                'edge': [e['name'] for e in edges],  # Primary index for edge dimension
-                'start': ('edge', [e['start'] for e in edges]),  # Coordinate but not index
-                'end': ('edge', [e['end'] for e in edges]),  # Coordinate but not index
-            },
-            name='flow_rate',
+        # Add coordinates for start and end nodes
+        flow_da = flow_da.assign_coords(
+            {'start': ('flow', [e['start'] for e in edges]), 'end': ('flow', [e['end'] for e in edges])}
         )
         return flow_da
 
@@ -1403,3 +1424,54 @@ def filter_dataset(
             ) from e
 
     return filtered_ds
+
+
+def filter_edges_dataset(da: xr.DataArray, start=None, end=None) -> xr.DataArray:
+    """
+    Filter the edges/flows in a DataArray by start and/or end nodes.
+
+    This function filters a network flow DataArray based on source and/or
+    destination nodes. It preserves all dimensions while removing edges that
+    don't match the specified criteria.
+
+    Parameters
+    ----------
+    da : xr.DataArray
+        DataArray containing flow data with 'start' and 'end' coordinates
+        along the 'edge' dimension.
+    start : str or list, optional
+        Filter by source node(s). Can be a single node name or a list of names.
+        If None, no filtering is applied on source nodes.
+    end : str or list, optional
+        Filter by destination node(s). Can be a single node name or a list of names.
+        If None, no filtering is applied on destination nodes.
+
+    Returns
+    -------
+    xr.DataArray
+        Filtered DataArray containing only the edges that match the specified
+        start and/or end nodes. Preserves all dimensions and coordinates.
+
+    Examples
+    --------
+    # Filter flows from node 'A'
+    flows_from_A = filter_edges_dataset(flow_da, start='A')
+
+    # Filter flows from node 'A' to either 'B' or 'C'
+    flows_A_to_BC = filter_edges_dataset(flow_da, start='A', end=['B', 'C'])
+    """
+    filtered_da = da
+
+    if start is not None:
+        if isinstance(start, list):
+            filtered_da = filtered_da.where(filtered_da.start.isin(start), drop=True)
+        else:
+            filtered_da = filtered_da.where(filtered_da.start == start, drop=True)
+
+    if end is not None:
+        if isinstance(end, list):
+            filtered_da = filtered_da.where(filtered_da.end.isin(end), drop=True)
+        else:
+            filtered_da = filtered_da.where(filtered_da.end == end, drop=True)
+
+    return filtered_da
