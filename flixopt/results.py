@@ -280,6 +280,49 @@ class CalculationResults:
             self._effects_per_component[mode] = self._create_effects_dataarray(mode)
         return self._effects_per_component[mode]
 
+    def flow_rates(self):
+        """Returns a dataset containing the flow rates of each Flow."""
+        # Step 1: Extract all flow rates and their metadata in one loop
+        edges = []
+        flow_data_list = []
+
+        for name in self.solution:
+            if name.endswith('|flow_rate'):
+                flow_name = name.split('|')[0]
+                flow = self.flow_system.flows.get(flow_name)
+
+                if flow:
+                    # Get the data
+                    data = self.solution[name].values
+                    flow_data_list.append(data)
+
+                    # Add edge metadata
+                    edges.append(
+                        {
+                            'name': flow_name,
+                            'start': flow.bus if flow.is_input_in_component else flow.component,
+                            'end': flow.component if flow.is_input_in_component else flow.bus,
+                        }
+                    )
+
+        # Step 2: Stack all flow data into a single array
+        # Assuming all arrays have the same time dimension
+        flow_data = np.stack(flow_data_list, axis=0)
+
+        # Step 3: Create the DataArray with your specified structure
+        flow_da = xr.DataArray(
+            data=flow_data,
+            dims=['time', 'edge'],
+            coords={
+                'time': self.timesteps_extra,
+                'edge': [e['name'] for e in edges],  # Primary index for edge dimension
+                'start': ('edge', [e['start'] for e in edges]),  # Coordinate but not index
+                'end': ('edge', [e['end'] for e in edges]),  # Coordinate but not index
+            },
+            name='flow_rate',
+        )
+        return flow_da
+
     def get_effect_shares(
         self,
         element: str,
