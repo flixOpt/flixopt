@@ -1521,68 +1521,67 @@ def filter_dataset(
 
 
 def filter_edges_dataset(
-    da: xr.DataArray, start: Optional[Union[str, List[str]]] = None, end: Optional[Union[str, List[str]]] = None
+        da: xr.DataArray,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None,
+        **kwargs: Any
 ) -> xr.DataArray:
-    """Filter the edges/flows in a DataArray by start and/or end nodes.
+    """Filter flows by node and component attributes.
 
     Args:
-        da: DataArray containing flow data with 'start' and 'end' coordinates
-            along the 'edge' dimension.
-        start: Optional source node(s) to filter by. Can be a single node name
-            or a list of names. If None, no filtering is applied on source nodes.
-        end: Optional destination node(s) to filter by. Can be a single node name
-            or a list of names. If None, no filtering is applied on destination nodes.
+        da: Flow DataArray with network metadata coordinates.
+        start: Source node(s) to filter by.
+        end: Destination node(s) to filter by.
+        component: Component(s) to filter by.
+        **kwargs: Additional coord filters as name=value pairs.
 
     Returns:
-        Filtered DataArray containing only the edges that match the specified
-        start and/or end nodes.
+        Filtered DataArray with matching edges.
 
     Raises:
-        ValueError: If specified start or end nodes don't exist in the DataArray,
-            or if no edges match the specified criteria.
-        AttributeError: If the DataArray doesn't have 'start' or 'end' coordinates.
+        AttributeError: If required coordinates are missing.
+        ValueError: If specified nodes don't exist or no matches found.
     """
-    # Check if the DataArray has the required coordinates
-    required_coords = []
-    if start is not None:
-        required_coords.append('start')
-    if end is not None:
-        required_coords.append('end')
+    # Helper function to process filters
+    def apply_filter(array, coord: str, values: Union[Any, List[Any]]):
+        # Verify coord exists
+        if coord not in array.coords:
+            raise AttributeError(f"Missing required coordinate '{coord}'")
 
-    for coord in required_coords:
-        if coord not in da.coords:
-            raise AttributeError(f"DataArray is missing required coordinate '{coord}'")
+        # Convert single value to list
+        val_list = [values] if isinstance(values, str) else values
 
+        # Verify values exist
+        available = set(array[coord].values)
+        missing = [v for v in val_list if v not in available]
+        if missing:
+            raise ValueError(f"{coord.title()} value(s) not found: {missing}")
+
+        # Apply filter
+        return array.where(
+            array[coord].isin(val_list) if isinstance(values, list) else array[coord] == values,
+            drop=True
+        )
+
+    # Apply all filters
     filtered_da = da
-
-    # Check if start nodes exist
     if start is not None:
-        start_values = [start] if isinstance(start, str) else start
-        available_starts = set(da.start.values)
-        missing_starts = [s for s in start_values if s not in available_starts]
-        if missing_starts:
-            raise ValueError(f'Start node(s) not found in the network: {missing_starts}')
-
-        if isinstance(start, list):
-            filtered_da = filtered_da.where(filtered_da.start.isin(start), drop=True)
-        else:
-            filtered_da = filtered_da.where(filtered_da.start == start, drop=True)
-
-    # Check if end nodes exist
+        filtered_da = apply_filter(filtered_da, 'start', start)
     if end is not None:
-        end_values = [end] if isinstance(end, str) else end
-        available_ends = set(da.end.values)
-        missing_ends = [e for e in end_values if e not in available_ends]
-        if missing_ends:
-            raise ValueError(f'End node(s) not found in the network: {missing_ends}')
+        filtered_da = apply_filter(filtered_da, 'end', end)
+    if component is not None:
+        filtered_da = apply_filter(filtered_da, 'component', component)
 
-        if isinstance(end, list):
-            filtered_da = filtered_da.where(filtered_da.end.isin(end), drop=True)
-        else:
-            filtered_da = filtered_da.where(filtered_da.end == end, drop=True)
+    # Apply any additional filters from kwargs
+    for coord, values in kwargs.items():
+        filtered_da = apply_filter(filtered_da, coord, values)
 
-    # Check if any data remains after filtering
+    # Verify results exist
     if filtered_da.size == 0:
-        raise ValueError(f'No edges match the specified criteria (start={start}, end={end})')
+        filters = {k: v for k, v in
+                   {'start': start, 'end': end, 'component': component, **kwargs}.items()
+                   if v is not None}
+        raise ValueError(f"No edges match criteria: {filters}")
 
     return filtered_da
