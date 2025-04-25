@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union, Any
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import linopy
 import matplotlib.pyplot as plt
@@ -566,53 +566,6 @@ class CalculationResults:
                 )
 
         return combined_array.rename(f'Effects ({mode})')
-
-    def add_classification_coords(self) -> xr.Dataset:
-        """
-        Add classification coordinates to dataset variables for easier filtering.
-
-        Returns:
-            Dataset with added classification coordinates
-        """
-        # Get all variable names in the solution
-        var_names = list(self.solution.data_vars)
-
-        # Create dictionaries to store classifications
-        classifications = {'component': {}, 'bus': {}, 'flow': {}, 'effect': {}}
-
-        # Populate classifications using the .variables attribute
-        for comp_name, component in self.components.items():
-            for var_name in component._variable_names:
-                if var_name in var_names:
-                    classifications['component'][var_name] = comp_name
-
-        for bus_name, bus in self.buses.items():
-            for var_name in bus._variable_names:
-                if var_name in var_names:
-                    classifications['bus'][var_name] = bus_name
-
-        for flow_name, flow in self.flows.items():
-            for var_name in flow._variable_names:
-                if var_name in var_names:
-                    classifications['flow'][var_name] = flow_name
-
-        for effect_name, effect in self.effects.items():
-            for var_name in effect._variable_names:
-                if var_name in var_names:
-                    classifications['effect'][var_name] = effect_name
-
-        # Create coordinate arrays
-        coord_arrays = {}
-        for category in classifications:
-            # Create array with same length as var_names
-            values = [classifications[category].get(var, None) for var in var_names]
-            coord_arrays[category] = ('variable', values)
-
-        # Create new dataset with classification coordinates
-        ds_new = self.solution.copy()
-        ds_new = ds_new.assign_coords({'variable': var_names, **coord_arrays})
-
-        return ds_new
 
     def plot_heatmap(
         self,
