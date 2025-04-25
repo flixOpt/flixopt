@@ -1,7 +1,8 @@
-import pytest
-import numpy as np
-import xarray as xr
 from typing import Dict, Tuple
+
+import numpy as np
+import pytest
+import xarray as xr
 
 from flixopt.effects import calculate_all_conversion_paths
 
@@ -93,7 +94,7 @@ def test_diamond_paths():
 
     result = calculate_all_conversion_paths(conversion_dict)
 
-    # A to E should go through both paths: 
+    # A to E should go through both paths:
     # A->B->D->E (2*4*6=48) and A->C->D->E (3*5*6=90)
     assert ('A', 'E') in result
     expected = 48.0 + 90.0  # 138.0

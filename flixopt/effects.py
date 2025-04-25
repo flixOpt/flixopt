@@ -7,7 +7,7 @@ which are then transformed into the internal data structure.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union, Tuple, Set
+from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Set, Tuple, Union
 
 import linopy
 import numpy as np
