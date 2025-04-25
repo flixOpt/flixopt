@@ -319,41 +319,28 @@ class CalculationResults:
         information (start/end nodes) as coordinates.
         """
         # Step 1: Extract all flow rates and their metadata in one loop
-        edges = []
-        flow_arrays = []
+        flow_data = {}
 
         for flow_name, flow in self.flow_system.flows.items():
-            flow_arrays.append(self.solution[f'{flow_name}|flow_rate'].rename(flow_name))
+            flow_data[flow_name] = {
+                'flow_rate': self.solution[f'{flow_name}|flow_rate'].rename(flow_name),
+                'start': flow.bus if flow.is_input_in_component else flow.component,
+                'end': flow.component if flow.is_input_in_component else flow.bus,
+            }
 
-            # Add edge metadata
-            edges.append(
-                {
-                    'name': flow_name,
-                    'start': flow.bus if flow.is_input_in_component else flow.component,
-                    'end': flow.component if flow.is_input_in_component else flow.bus,
-                }
-            )
+        # Step 2: Combine into one DataArray (preserving all original coords)
+        flow_da = xr.concat([flow['flow_rate'] for flow in flow_data.values()],
+                            dim=pd.Index(flow_data.keys(), name='flow'))
 
-        # Step 2: Create expanded arrays with flow dimension and concatenate
-        expanded_arrays = []
-        for i, arr in enumerate(flow_arrays):
+        # Step 3: Add start and end coordinates
+        flow_da = flow_da.assign_coords({
+            'start': ('flow', [flow['start'] for flow in flow_data.values()]),
+            'end': ('flow', [flow['end'] for flow in flow_data.values()])
+        })
 
-            # Create expanded array with flow as the last dimension
-            expanded = arr.expand_dims({'flow': [edges[i]['name']]})
-            new_dim_order = list(arr.dims) + ['flow']
-            expanded = expanded.transpose(*new_dim_order)
-
-            expanded_arrays.append(expanded)
-
-        # Step 3: Combine into one DataArray (preserving all original coords)
-        flow_da = xr.concat(expanded_arrays, dim='flow')
-
-        # Step 4: Add network topology coordinates
-        # This preserves any existing coordinates from the original arrays
-        # and adds new coordinates for the network structure
-        flow_da = flow_da.assign_coords(
-            {'start': ('flow', [e['start'] for e in edges]), 'end': ('flow', [e['end'] for e in edges])}
-        )
+        # Step 4: Ensure flow is the last dimension if needed
+        existing_dims = [d for d in flow_da.dims if d != 'flow']
+        flow_da = flow_da.transpose(*(existing_dims + ['flow']))
 
         return flow_da.rename('flow_rates')
 
