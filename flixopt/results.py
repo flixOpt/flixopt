@@ -167,9 +167,12 @@ class CalculationResults:
 
         self._effect_share_factors = None
         self._flow_system = None
+
         self._flow_rates = None
         self._flow_hours = None
+        self._sizes = None
         self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
+        self._flow_network_info_ = None
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
@@ -312,6 +315,40 @@ class CalculationResults:
             self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
         return filter_edges_dataset(self._flow_hours, start=start, end=end)
 
+    def sizes(self, start: Optional[Union[str, List[str]]] = None, end: Optional[Union[str, List[str]]] = None):
+        """Returns a dataset with the sizes of the Flows.
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+        """
+        if self._sizes is None:
+            flow_data = self._get_flow_network_info()
+            for flow_name, flow in self.flow_system.flows.items():
+                variable_name = f'{flow.label_full}|size'
+                if variable_name in self.solution:
+                    flow_data[flow_name]['size'] = self.solution[variable_name].rename(flow_name)
+                else:
+                    flow_data[flow_name]['size'] = xr.DataArray(flow.size).rename(flow_name)
+
+            # Step 2: Combine into one DataArray (preserving all original coords)
+            flow_da = xr.concat(
+                [flow['size'] for flow in flow_data.values()], dim=pd.Index(flow_data.keys(), name='flow')
+            )
+
+            # Step 3: Add start and end coordinates
+            flow_da = flow_da.assign_coords(
+                {
+                    'start': ('flow', [flow['start'] for flow in flow_data.values()]),
+                    'end': ('flow', [flow['end'] for flow in flow_data.values()]),
+                }
+            )
+
+            # Step 4: Ensure flow is the last dimension if needed
+            existing_dims = [d for d in flow_da.dims if d != 'flow']
+            self._sizes = flow_da.transpose(*(existing_dims + ['flow']))
+
+        return filter_edges_dataset(self._sizes, start=start, end=end)
+
     def _create_flow_rates_dataarray(self) -> xr.DataArray:
         """Creates a DataArray containing flow rates with network topology coordinates.
 
@@ -319,14 +356,10 @@ class CalculationResults:
         information (start/end nodes) as coordinates.
         """
         # Step 1: Extract all flow rates and their metadata in one loop
-        flow_data = {}
+        flow_data = self._get_flow_network_info()
 
         for flow_name, flow in self.flow_system.flows.items():
-            flow_data[flow_name] = {
-                'flow_rate': self.solution[f'{flow_name}|flow_rate'].rename(flow_name),
-                'start': flow.bus if flow.is_input_in_component else flow.component,
-                'end': flow.component if flow.is_input_in_component else flow.bus,
-            }
+            flow_data[flow_name]['flow_rate'] = self.solution[f'{flow_name}|flow_rate'].rename(flow_name)
 
         # Step 2: Combine into one DataArray (preserving all original coords)
         flow_da = xr.concat([flow['flow_rate'] for flow in flow_data.values()],
@@ -343,6 +376,17 @@ class CalculationResults:
         flow_da = flow_da.transpose(*(existing_dims + ['flow']))
 
         return flow_da.rename('flow_rates')
+
+    def _get_flow_network_info(self) -> Dict[str, Dict[str, str]]:
+        flow_network_info = {}
+
+        for flow_label, flow in self.flow_system.flows.items():
+            flow_network_info[flow_label] = {
+                'label': flow.label_full,
+                'start': flow.bus if flow.is_input_in_component else flow.component,
+                'end': flow.component if flow.is_input_in_component else flow.bus,
+            }
+        return flow_network_info
 
     def get_effect_shares(
         self,
