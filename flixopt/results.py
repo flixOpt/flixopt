@@ -1439,52 +1439,69 @@ def filter_dataset(
     return filtered_ds
 
 
-def filter_edges_dataset(da: xr.DataArray, start=None, end=None) -> xr.DataArray:
-    """
-    Filter the edges/flows in a DataArray by start and/or end nodes.
+def filter_edges_dataset(
+    da: xr.DataArray, start: Optional[Union[str, List[str]]] = None, end: Optional[Union[str, List[str]]] = None
+) -> xr.DataArray:
+    """Filter the edges/flows in a DataArray by start and/or end nodes.
 
-    This function filters a network flow DataArray based on source and/or
-    destination nodes. It preserves all dimensions while removing edges that
-    don't match the specified criteria.
+    Args:
+        da: DataArray containing flow data with 'start' and 'end' coordinates
+            along the 'edge' dimension.
+        start: Optional source node(s) to filter by. Can be a single node name
+            or a list of names. If None, no filtering is applied on source nodes.
+        end: Optional destination node(s) to filter by. Can be a single node name
+            or a list of names. If None, no filtering is applied on destination nodes.
 
-    Parameters
-    ----------
-    da : xr.DataArray
-        DataArray containing flow data with 'start' and 'end' coordinates
-        along the 'edge' dimension.
-    start : str or list, optional
-        Filter by source node(s). Can be a single node name or a list of names.
-        If None, no filtering is applied on source nodes.
-    end : str or list, optional
-        Filter by destination node(s). Can be a single node name or a list of names.
-        If None, no filtering is applied on destination nodes.
-
-    Returns
-    -------
-    xr.DataArray
+    Returns:
         Filtered DataArray containing only the edges that match the specified
-        start and/or end nodes. Preserves all dimensions and coordinates.
+        start and/or end nodes.
 
-    Examples
-    --------
-    # Filter flows from node 'A'
-    flows_from_A = filter_edges_dataset(flow_da, start='A')
-
-    # Filter flows from node 'A' to either 'B' or 'C'
-    flows_A_to_BC = filter_edges_dataset(flow_da, start='A', end=['B', 'C'])
+    Raises:
+        ValueError: If specified start or end nodes don't exist in the DataArray,
+            or if no edges match the specified criteria.
+        AttributeError: If the DataArray doesn't have 'start' or 'end' coordinates.
     """
+    # Check if the DataArray has the required coordinates
+    required_coords = []
+    if start is not None:
+        required_coords.append('start')
+    if end is not None:
+        required_coords.append('end')
+
+    for coord in required_coords:
+        if coord not in da.coords:
+            raise AttributeError(f"DataArray is missing required coordinate '{coord}'")
+
     filtered_da = da
 
+    # Check if start nodes exist
     if start is not None:
+        start_values = [start] if isinstance(start, str) else start
+        available_starts = set(da.start.values)
+        missing_starts = [s for s in start_values if s not in available_starts]
+        if missing_starts:
+            raise ValueError(f'Start node(s) not found in the network: {missing_starts}')
+
         if isinstance(start, list):
             filtered_da = filtered_da.where(filtered_da.start.isin(start), drop=True)
         else:
             filtered_da = filtered_da.where(filtered_da.start == start, drop=True)
 
+    # Check if end nodes exist
     if end is not None:
+        end_values = [end] if isinstance(end, str) else end
+        available_ends = set(da.end.values)
+        missing_ends = [e for e in end_values if e not in available_ends]
+        if missing_ends:
+            raise ValueError(f'End node(s) not found in the network: {missing_ends}')
+
         if isinstance(end, list):
             filtered_da = filtered_da.where(filtered_da.end.isin(end), drop=True)
         else:
             filtered_da = filtered_da.where(filtered_da.end == end, drop=True)
+
+    # Check if any data remains after filtering
+    if filtered_da.size == 0:
+        raise ValueError(f'No edges match the specified criteria (start={start}, end={end})')
 
     return filtered_da
