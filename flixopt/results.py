@@ -265,7 +265,7 @@ class CalculationResults:
             startswith=startswith,
         )
 
-    def get_effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+    def get_effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.DataArray:
         """Returns a dataset containing effect totals for each components (including their flows).
 
         Args:
@@ -336,7 +336,7 @@ class CalculationResults:
         element: str,
         effect: str,
         mode: Literal['operation', 'invest', 'total'] = 'total',
-        include_flows: bool = False
+        include_flows: bool = False,
     ) -> xr.DataArray:
         """Calculates the total effect for a specific element and effect.
 
@@ -351,6 +351,7 @@ class CalculationResults:
                 'invest': Returns investment-specific effects.
                 'total': Returns the sum of operation effects (across all timesteps)
                     and investment effects. Defaults to 'total'.
+            include_flows: Whether to include effects from flows connected to this element.
 
         Returns:
             An xarray DataArray containing the total effects, named with pattern
@@ -365,12 +366,20 @@ class CalculationResults:
 
         if mode == 'total':
             operation = self._compute_effect_total(element=element, effect=effect, mode='operation', include_flows=include_flows)
-            if len(operation.indexes) > 0:
+            invest = self._compute_effect_total(element=element, effect=effect, mode='invest', include_flows=include_flows)
+            if invest.isnull().all() and operation.isnull().all():
+                return xr.DataArray(np.nan)
+            if operation.isnull().all():
+                return invest.rename(f'{element}->{effect}')
+            operation = operation.sum('time')
+            if invest.isnull().all():
+                return operation.rename(f'{element}->{effect}')
+            if 'time' in operation.indexes:
                 operation = operation.sum('time')
-            return (operation + self._compute_effect_total(element=element, effect=effect, mode='invest', include_flows=include_flows)
-                    ).rename(f'{element}->{effect}')
+            return invest + operation
 
         total = xr.DataArray(0)
+        share_exists = False
 
         relevant_conversion_factors = {
             key[0]: value for key, value in self.effect_share_factors[mode].items() if key[1] == effect
@@ -380,8 +389,9 @@ class CalculationResults:
         for target_effect, conversion_factor in relevant_conversion_factors.items():
             label = f'{element}->{target_effect}({mode})'
             if label in self.solution:
+                share_exists = True
                 da = self.solution[label]
-                total = total + da * conversion_factor
+                total = da * conversion_factor + total
 
             if include_flows:
                 if element not in self.components:
@@ -391,9 +401,11 @@ class CalculationResults:
                 for flow in flows:
                     label = f'{flow}->{target_effect}({mode})'
                     if label in self.solution:
+                        share_exists = True
                         da = self.solution[label]
-                        total = total + da * conversion_factor
-
+                        total = da * conversion_factor + total
+        if not share_exists:
+            total = xr.DataArray(np.nan)
         return total.rename(f'{element}->{effect}({mode})')
 
     def _create_effects_dataarray(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.DataArray:
@@ -447,7 +459,7 @@ class CalculationResults:
                     f'Results for {effect}({mode}) in effects_dataarray doesnt match {label}\n{computed=}\n, {found=}'
                 )
 
-        return combined_array
+        return combined_array.rename(f'Effects ({mode})')
 
     def plot_heatmap(
         self,
