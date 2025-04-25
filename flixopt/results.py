@@ -293,13 +293,17 @@ class CalculationResults:
         return self._effects_per_component[mode]
 
     def flow_rates(
-        self, start: Optional[Union[str, List[str]]] = None, end: Optional[Union[str, List[str]]] = None
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None,
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow rates of each Flow.
 
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
 
         Further usage:
             Convert the dataarray to a dataframe:
@@ -310,11 +314,17 @@ class CalculationResults:
             >>>results.flow_rates(end='Fernwärme').groupby('start').sum(dim='flow')
         """
         if self._flow_rates is None:
-            self._flow_rates = self._create_flow_rates_dataarray()
+            self._flow_rates = self._assign_flow_coords(
+                xr.concat([flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
+                          dim=pd.Index(self.flows.keys(), name='flow'))
+            ).rename('flow_rates')
         return filter_edges_dataset(self._flow_rates, start=start, end=end)
 
     def flow_hours(
-        self, start: Optional[Union[str, List[str]]] = None, end: Optional[Union[str, List[str]]] = None
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None,
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow hours of each Flow.
 
@@ -324,6 +334,7 @@ class CalculationResults:
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
 
         Further usage:
             Convert the dataarray to a dataframe:
@@ -345,43 +356,24 @@ class CalculationResults:
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
         """
         if self._sizes is None:
-            flow_sizes = xr.concat(
-                [flow.size.rename(flow.label) for flow in self.flows.values()], dim=pd.Index(self.flows.keys(), name='flow')
-            )
-
-            # Add start and end coordinates
-            flow_sizes = flow_sizes.assign_coords({
-                'start': ('flow', [flow.start for flow in self.flows.values()]),
-                'end': ('flow', [flow.end for flow in self.flows.values()]),
-            })
-
-            # Ensure flow is the last dimension if needed
-            existing_dims = [d for d in flow_sizes.dims if d != 'flow']
-            self._sizes = flow_sizes.transpose(*(existing_dims + ['flow']))
-
+            self._sizes = self._assign_flow_coords(
+                xr.concat([flow.size.rename(flow.label) for flow in self.flows.values()],
+                          dim=pd.Index(self.flows.keys(), name='flow'))
+            ).rename('flow_sizes')
         return filter_edges_dataset(self._sizes, start=start, end=end)
 
-    def _create_flow_rates_dataarray(self) -> xr.DataArray:
-        """Creates a DataArray containing flow rates with network topology coordinates.
-
-        Extracts flow rates from the solution dataset and adds network topology
-        information (start/end nodes) as coordinates.
-        """
-        # Combine into one DataArray (preserving all original coords)
-        flow_da = xr.concat([flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
-                            dim=pd.Index(self.flows.keys(), name='flow'))
-
+    def _assign_flow_coords(self, da: xr.DataArray):
         # Add start and end coordinates
-        flow_da = flow_da.assign_coords({
+        da = da.assign_coords({
             'start': ('flow', [flow.start for flow in self.flows.values()]),
-            'end': ('flow', [flow.end for flow in self.flows.values()])
+            'end': ('flow', [flow.end for flow in self.flows.values()]),
+            'component': ('flow', [flow.component for flow in self.flows.values()]),
         })
 
         # Ensure flow is the last dimension if needed
-        existing_dims = [d for d in flow_da.dims if d != 'flow']
-        flow_da = flow_da.transpose(*(existing_dims + ['flow']))
-
-        return flow_da.rename('flow_rates')
+        existing_dims = [d for d in da.dims if d != 'flow']
+        da = da.transpose(*(existing_dims + ['flow']))
+        return da
 
     def _get_flow_network_info(self) -> Dict[str, Dict[str, str]]:
         flow_network_info = {}
@@ -1130,6 +1122,7 @@ class FlowResults(_ElementResults):
             json_data['constraints'],
             json_data['start'],
             json_data['end'],
+            json_data['component'],
         )
 
     def __init__(
@@ -1140,10 +1133,12 @@ class FlowResults(_ElementResults):
         constraints: List[str],
         start: str,
         end: str,
+        component: str,
     ):
         super().__init__(calculation_results, label, variables, constraints)
         self.start = start
         self.end = end
+        self.component = component
 
     @property
     def flow_rate(self) -> xr.DataArray:
@@ -1521,11 +1516,11 @@ def filter_dataset(
 
 
 def filter_edges_dataset(
-        da: xr.DataArray,
-        start: Optional[Union[str, List[str]]] = None,
-        end: Optional[Union[str, List[str]]] = None,
-        component: Optional[Union[str, List[str]]] = None,
-        **kwargs: Any
+    da: xr.DataArray,
+    start: Optional[Union[str, List[str]]] = None,
+    end: Optional[Union[str, List[str]]] = None,
+    component: Optional[Union[str, List[str]]] = None,
+    **kwargs: Any
 ) -> xr.DataArray:
     """Filter flows by node and component attributes.
 

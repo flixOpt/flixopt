@@ -401,6 +401,7 @@ class FlowModel(ElementModel):
             **super().results_structure(),
             'start': self.element.bus if self.element.is_input_in_component else self.element.component,
             'end': self.element.component if self.element.is_input_in_component else self.element.bus,
+            'component': self.element.component,
         }
 
     def _create_shares(self):
