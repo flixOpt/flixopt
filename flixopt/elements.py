@@ -396,6 +396,13 @@ class FlowModel(ElementModel):
         # Shares
         self._create_shares()
 
+    def results_structure(self):
+        return {
+            **super().results_structure(),
+            'start': self.element.bus if self.element.is_input_in_component else self.element.component,
+            'end': self.element.component if self.element.is_input_in_component else self.element.bus,
+        }
+
     def _create_shares(self):
         # Arbeitskosten:
         if self.element.effects_per_flow_hour != {}:
@@ -535,7 +542,8 @@ class BusModel(ElementModel):
             inputs.append(self.excess_input.name)
         if self.excess_output is not None:
             outputs.append(self.excess_output.name)
-        return {**super().results_structure(), 'inputs': inputs, 'outputs': outputs}
+        return {**super().results_structure(), 'inputs': inputs, 'outputs': outputs,
+                'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs]}
 
 
 class ComponentModel(ElementModel):
@@ -588,4 +596,5 @@ class ComponentModel(ElementModel):
             **super().results_structure(),
             'inputs': [flow.model.flow_rate.name for flow in self.element.inputs],
             'outputs': [flow.model.flow_rate.name for flow in self.element.outputs],
+            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
         }

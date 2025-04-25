@@ -106,6 +106,10 @@ class SystemModel(linopy.Model):
                 effect.label_full: effect.model.results_structure()
                 for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
             },
+            'Flows': {
+                flow.label_full: flow.model.results_structure()
+                for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+            },
         }
         return solution.reindex(time=self.time_series_collection.timesteps_extra)
 
