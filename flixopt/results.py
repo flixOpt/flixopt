@@ -312,7 +312,12 @@ class CalculationResults:
             self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
         return filter_edges_dataset(self._flow_hours, start=start, end=end)
 
-    def _create_flow_rates_dataarray(self):
+    def _create_flow_rates_dataarray(self) -> xr.DataArray:
+        """Creates a DataArray containing flow rates with network topology coordinates.
+
+        Extracts flow rates from the solution dataset and adds network topology
+        information (start/end nodes) as coordinates.
+        """
         # Step 1: Extract all flow rates and their metadata in one loop
         edges = []
         flow_arrays = []
@@ -329,19 +334,27 @@ class CalculationResults:
                 }
             )
 
-        # Step 3: Create expanded arrays with edge dimension and concatenate
+        # Step 2: Create expanded arrays with flow dimension and concatenate
         expanded_arrays = []
         for i, arr in enumerate(flow_arrays):
+
+            # Create expanded array with flow as the last dimension
             expanded = arr.expand_dims({'flow': [edges[i]['name']]})
+            new_dim_order = list(arr.dims) + ['flow']
+            expanded = expanded.transpose(*new_dim_order)
+
             expanded_arrays.append(expanded)
 
-        # Combine into one DataArray
+        # Step 3: Combine into one DataArray (preserving all original coords)
         flow_da = xr.concat(expanded_arrays, dim='flow')
 
-        # Add coordinates for start and end nodes
+        # Step 4: Add network topology coordinates
+        # This preserves any existing coordinates from the original arrays
+        # and adds new coordinates for the network structure
         flow_da = flow_da.assign_coords(
             {'start': ('flow', [e['start'] for e in edges]), 'end': ('flow', [e['end'] for e in edges])}
         )
+
         return flow_da.rename('flow_rates')
 
     def get_effect_shares(
