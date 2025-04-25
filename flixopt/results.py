@@ -723,7 +723,7 @@ class _ElementResults:
         """
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._calculation_results.model.constraints[self._variable_names]
+        return self._calculation_results.model.constraints[self._constraint_names]
 
     def filter_solution(
         self,
