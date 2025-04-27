@@ -184,41 +184,41 @@ class TestEffectResults:
         for key, value in effect_share_factors['invest'].items():
             np.testing.assert_allclose(results.effect_share_factors['invest'][key].values, value)
 
-        xr.testing.assert_allclose(results.get_effects_per_component('operation').sum('component')['Costs'],
+        xr.testing.assert_allclose(results.effects_per_component('operation').sum('component')['Costs'],
                                    results.solution['Costs(operation)|total_per_timestep'].fillna(0))
 
-        xr.testing.assert_allclose(results.get_effects_per_component('operation').sum('component')['Effect1'],
+        xr.testing.assert_allclose(results.effects_per_component('operation').sum('component')['Effect1'],
                                    results.solution['Effect1(operation)|total_per_timestep'].fillna(0))
 
-        xr.testing.assert_allclose(results.get_effects_per_component('operation').sum('component')['Effect2'],
+        xr.testing.assert_allclose(results.effects_per_component('operation').sum('component')['Effect2'],
                                    results.solution['Effect2(operation)|total_per_timestep'].fillna(0))
 
-        xr.testing.assert_allclose(results.get_effects_per_component('operation').sum('component')['Effect3'],
+        xr.testing.assert_allclose(results.effects_per_component('operation').sum('component')['Effect3'],
                                    results.solution['Effect3(operation)|total_per_timestep'].fillna(0))
 
         # Invest mode checks
-        xr.testing.assert_allclose(results.get_effects_per_component('invest').sum('component')['Costs'],
+        xr.testing.assert_allclose(results.effects_per_component('invest').sum('component')['Costs'],
                                    results.solution['Costs(invest)|total'])
 
-        xr.testing.assert_allclose(results.get_effects_per_component('invest').sum('component')['Effect1'],
+        xr.testing.assert_allclose(results.effects_per_component('invest').sum('component')['Effect1'],
                                    results.solution['Effect1(invest)|total'])
 
-        xr.testing.assert_allclose(results.get_effects_per_component('invest').sum('component')['Effect2'],
+        xr.testing.assert_allclose(results.effects_per_component('invest').sum('component')['Effect2'],
                                    results.solution['Effect2(invest)|total'])
 
-        xr.testing.assert_allclose(results.get_effects_per_component('invest').sum('component')['Effect3'],
+        xr.testing.assert_allclose(results.effects_per_component('invest').sum('component')['Effect3'],
                                    results.solution['Effect3(invest)|total'])
 
         # Total mode checks
-        xr.testing.assert_allclose(results.get_effects_per_component('total').sum('component')['Costs'],
+        xr.testing.assert_allclose(results.effects_per_component('total').sum('component')['Costs'],
                                    results.solution['Costs|total'])
 
-        xr.testing.assert_allclose(results.get_effects_per_component('total').sum('component')['Effect1'],
+        xr.testing.assert_allclose(results.effects_per_component('total').sum('component')['Effect1'],
                                    results.solution['Effect1|total'])
 
-        xr.testing.assert_allclose(results.get_effects_per_component('total').sum('component')['Effect2'],
+        xr.testing.assert_allclose(results.effects_per_component('total').sum('component')['Effect2'],
                                    results.solution['Effect2|total'])
 
-        xr.testing.assert_allclose(results.get_effects_per_component('total').sum('component')['Effect3'],
+        xr.testing.assert_allclose(results.effects_per_component('total').sum('component')['Effect3'],
                                    results.solution['Effect3|total'])
 

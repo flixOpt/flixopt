@@ -285,7 +285,7 @@ class CalculationResults:
             startswith=startswith,
         )
 
-    def get_effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.DataArray:
+    def effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.DataArray:
         """Returns a dataset containing effect totals for each components (including their flows).
 
         Args:
