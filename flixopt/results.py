@@ -593,6 +593,9 @@ class CalculationResults:
                     f'Results for {effect}({mode}) in effects_dataarray doesnt match {label}\n{computed=}\n, {found=}'
                 )
 
+        existing_dims = [d for d in combined_array.dims if d not in ['component', 'effect']]
+        combined_array = combined_array.transpose(*(existing_dims + ['component', 'effect']))
+
         return combined_array.rename(f'Effects ({mode})')
 
     def plot_heatmap(
