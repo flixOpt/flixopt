@@ -285,7 +285,7 @@ class CalculationResults:
             startswith=startswith,
         )
 
-    def effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.DataArray:
+    def effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
         """Returns a dataset containing effect totals for each components (including their flows).
 
         Args:
@@ -297,7 +297,7 @@ class CalculationResults:
         if mode not in ['operation', 'invest', 'total']:
             raise ValueError(f'Invalid mode {mode}')
         if self._effects_per_component[mode] is None:
-            self._effects_per_component[mode] = self._create_effects_dataarray(mode)
+            self._effects_per_component[mode] = self._create_effects_dataset(mode)
         return self._effects_per_component[mode]
 
     def flow_rates(
@@ -542,19 +542,20 @@ class CalculationResults:
             total = xr.DataArray(np.nan)
         return total.rename(f'{element}->{effect}({mode})')
 
-    def _create_effects_dataarray(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.DataArray:
-        """Creates a dataarray containing effect totals for all components (including their flows).
-        The dataarray does contain the direct as well as the indirect effects of each component.
+    def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+        """Creates a dataset containing effect totals for all components (including their flows).
+        The dataset does contain the direct as well as the indirect effects of each component.
 
         Args:
             mode: The calculation mode ('operation', 'invest', or 'total').
 
         Returns:
-            An xarray DataArray with components and effects as dimensions.
+            An xarray Dataset with components as dimension and effects as variables.
         """
-        # Create a list of DataArrays, one for each effect
-        effect_arrays = []
+        # Create an empty dataset
+        ds = xr.Dataset()
 
+        # Add each effect as a variable to the dataset
         for effect in self.effects:
             # Create a list of DataArrays, one for each component
             component_arrays = [
@@ -567,16 +568,8 @@ class CalculationResults:
             # Combine all components into one DataArray for this effect
             if component_arrays:
                 effect_array = xr.concat(component_arrays, dim='component', coords='minimal')
-                # Add effect dimension
-                effect_array = effect_array.expand_dims(effect=[effect])
-                effect_arrays.append(effect_array)
-
-        # Combine all effects into one DataArray
-        if effect_arrays:
-            combined_array = xr.concat(effect_arrays, dim='effect', coords='minimal')
-        else:
-            # Create empty DataArray if no effects
-            combined_array = xr.DataArray()
+                # Add this effect as a variable to the dataset
+                ds[effect] = effect_array
 
         # For now include a test to ensure correctness
         suffix = {
@@ -586,17 +579,14 @@ class CalculationResults:
         }
         for effect in self.effects:
             label = f'{effect}{suffix[mode]}'
-            computed = combined_array.sel(effect=effect).sum('component')
+            computed = ds[effect].sum('component')
             found = self.solution[label]
             if not np.allclose(computed.values, found.fillna(0).values):
                 logger.critical(
-                    f'Results for {effect}({mode}) in effects_dataarray doesnt match {label}\n{computed=}\n, {found=}'
+                    f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
                 )
 
-        existing_dims = [d for d in combined_array.dims if d not in ['component', 'effect']]
-        combined_array = combined_array.transpose(*(existing_dims + ['component', 'effect']))
-
-        return combined_array.rename(f'Effects ({mode})')
+        return ds
 
     def plot_heatmap(
         self,
