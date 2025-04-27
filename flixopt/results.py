@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union, Any
 
 import linopy
 import matplotlib.pyplot as plt
@@ -24,6 +24,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('flixopt')
 
+class _FlowSystemRestorationError(Exception):
+    """Exception raised when a FlowSystem cannot be restored from dataset."""
+    pass
+
 
 class CalculationResults:
     """Results container for Calculation results.
@@ -37,7 +41,7 @@ class CalculationResults:
 
     Attributes:
         solution (xr.Dataset): Dataset containing optimization results.
-        flow_system (xr.Dataset): Dataset containing the flow system.
+        flow_system_data (xr.Dataset): Dataset containing the flow system.
         summary (Dict): Information about the calculation.
         name (str): Name identifier for the calculation.
         model (linopy.Model): The optimization model (if available).
@@ -226,12 +230,16 @@ class CalculationResults:
         """ The restored flow_system that was used to create the calculation.
         Contains all input parameters."""
         if self._flow_system is None:
-            from . import FlowSystem
-            current_logger_level = logger.getEffectiveLevel()
-            logger.setLevel(logging.CRITICAL)
-            self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
-            self._flow_system._connect_network()
-            logger.setLevel(current_logger_level)
+            try:
+                from . import FlowSystem
+                current_logger_level = logger.getEffectiveLevel()
+                logger.setLevel(logging.CRITICAL)
+                self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
+                self._flow_system._connect_network()
+                logger.setLevel(current_logger_level)
+            except Exception as e:
+                logger.critical(f'Not able to restore FlowSystem from dataset. Some functionality is not availlable. {e}')
+                raise _FlowSystemRestorationError(f'Not able to restore FlowSystem from dataset. {e}') from e
         return self._flow_system
 
     def filter_solution(
@@ -312,13 +320,16 @@ class CalculationResults:
             >>>results.flow_rates().max('time')
             Sum up the flow rates of flows with the same start and end:
             >>>results.flow_rates(end='Fernwärme').groupby('start').sum(dim='flow')
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
         """
         if self._flow_rates is None:
             self._flow_rates = self._assign_flow_coords(
                 xr.concat([flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
                           dim=pd.Index(self.flows.keys(), name='flow'))
             ).rename('flow_rates')
-        return filter_edges_dataset(self._flow_rates, start=start, end=end)
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._flow_rates, **filters)
 
     def flow_hours(
         self,
@@ -343,24 +354,41 @@ class CalculationResults:
             >>>results.flow_hours().sum('time')
             Sum up the flow hours of flows with the same start and end:
             >>>results.flow_hours(end='Fernwärme').groupby('start').sum(dim='flow')
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.flow_hours(start='Fernwärme'), results.flow_hours(end='Fernwärme')], dim='flow')
 
         """
         if self._flow_hours is None:
             self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
-        return filter_edges_dataset(self._flow_hours, start=start, end=end)
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._flow_hours, **filters)
 
-    def sizes(self, start: Optional[Union[str, List[str]]] = None, end: Optional[Union[str, List[str]]] = None):
+    def sizes(
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None
+    ) -> xr.DataArray:
         """Returns a dataset with the sizes of the Flows.
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+        
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.sizes().to_pandas()
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
+
         """
         if self._sizes is None:
             self._sizes = self._assign_flow_coords(
                 xr.concat([flow.size.rename(flow.label) for flow in self.flows.values()],
                           dim=pd.Index(self.flows.keys(), name='flow'))
             ).rename('flow_sizes')
-        return filter_edges_dataset(self._sizes, start=start, end=end)
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._sizes, **filters)
 
     def _assign_flow_coords(self, da: xr.DataArray):
         # Add start and end coordinates
@@ -1153,7 +1181,11 @@ class FlowResults(_ElementResults):
         name = f'{self.label}|size'
         if name in self.solution:
             return self.solution[name]
-        return xr.DataArray(self._calculation_results.flow_system.flows[self.label].size).rename(name)
+        try:
+            return xr.DataArray(self._calculation_results.flow_system.flows[self.label].size).rename(name)
+        except _FlowSystemRestorationError:
+            logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
+            return xr.DataArray(np.nan).rename(name)
 
 
 class SegmentedCalculationResults:
@@ -1515,21 +1547,21 @@ def filter_dataset(
     return filtered_ds
 
 
-def filter_edges_dataset(
+def filter_dataarray_by_coord(
     da: xr.DataArray,
-    start: Optional[Union[str, List[str]]] = None,
-    end: Optional[Union[str, List[str]]] = None,
-    component: Optional[Union[str, List[str]]] = None,
-    **kwargs: Any
+    **kwargs: Optional[Union[str, List[str]]]
 ) -> xr.DataArray:
     """Filter flows by node and component attributes.
+    
+    Filters are applied in the order they are specified. All filters must match for an edge to be included.
+    
+    To recombine filtered dataarrays, use `xr.concat`.
+    
+    xr.concat([res.sizes(start='Fernwärme'), res.sizes(end='Fernwärme')], dim='flow')
 
     Args:
         da: Flow DataArray with network metadata coordinates.
-        start: Source node(s) to filter by.
-        end: Destination node(s) to filter by.
-        component: Component(s) to filter by.
-        **kwargs: Additional coord filters as name=value pairs.
+        **kwargs: Coord filters as name=value pairs.
 
     Returns:
         Filtered DataArray with matching edges.
@@ -1539,44 +1571,36 @@ def filter_edges_dataset(
         ValueError: If specified nodes don't exist or no matches found.
     """
     # Helper function to process filters
-    def apply_filter(array, coord: str, values: Union[Any, List[Any]]):
+    def apply_filter(array, coord_name: str, coord_values: Union[Any, List[Any]]):
         # Verify coord exists
-        if coord not in array.coords:
-            raise AttributeError(f"Missing required coordinate '{coord}'")
+        if coord_name not in array.coords:
+            raise AttributeError(f"Missing required coordinate '{coord_name}'")
 
         # Convert single value to list
-        val_list = [values] if isinstance(values, str) else values
+        val_list = [coord_values] if isinstance(coord_values, str) else coord_values
 
-        # Verify values exist
-        available = set(array[coord].values)
+        # Verify coord_values exist
+        available = set(array[coord_name].values)
         missing = [v for v in val_list if v not in available]
         if missing:
-            raise ValueError(f"{coord.title()} value(s) not found: {missing}")
+            raise ValueError(f"{coord_name.title()} value(s) not found: {missing}")
 
         # Apply filter
         return array.where(
-            array[coord].isin(val_list) if isinstance(values, list) else array[coord] == values,
+            array[coord_name].isin(val_list) if isinstance(coord_values, list) else array[coord_name] == coord_values,
             drop=True
         )
 
-    # Apply all filters
-    filtered_da = da
-    if start is not None:
-        filtered_da = apply_filter(filtered_da, 'start', start)
-    if end is not None:
-        filtered_da = apply_filter(filtered_da, 'end', end)
-    if component is not None:
-        filtered_da = apply_filter(filtered_da, 'component', component)
-
-    # Apply any additional filters from kwargs
-    for coord, values in kwargs.items():
-        filtered_da = apply_filter(filtered_da, coord, values)
-
-    # Verify results exist
-    if filtered_da.size == 0:
-        filters = {k: v for k, v in
-                   {'start': start, 'end': end, 'component': component, **kwargs}.items()
-                   if v is not None}
+    # Apply filters from kwargs
+    filters = {k: v for k, v in kwargs.items() if v is not None}
+    try:
+        for coord, values in filters.items():
+            da = apply_filter(da, coord, values)
+    except ValueError as e:
         raise ValueError(f"No edges match criteria: {filters}")
 
-    return filtered_da
+    # Verify results exist
+    if da.size == 0:
+        raise ValueError(f"No edges match criteria: {filters}")
+
+    return da
