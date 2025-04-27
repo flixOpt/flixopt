@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import pathlib
+import warnings
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union, Any
 
 import linopy
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger('flixopt')
+
 
 class _FlowSystemRestorationError(Exception):
     """Exception raised when a FlowSystem cannot be restored from dataset."""
@@ -137,6 +139,7 @@ class CalculationResults:
         summary: Dict,
         folder: Optional[pathlib.Path] = None,
         model: Optional[linopy.Model] = None,
+        **kwargs,  # To accept old "flow_system" parameter
     ):
         """
         Args:
@@ -149,6 +152,16 @@ class CalculationResults:
         Deprecated:
             flow_system: Use flow_system_data instead.
         """
+        # Handle potential old "flow_system" parameter for backward compatibility
+        if 'flow_system' in kwargs and flow_system_data is None:
+            flow_system_data = kwargs.pop('flow_system')
+            warnings.warn(
+                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead."
+                "Acess is now by '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.solution = solution
         self.flow_system_data = flow_system_data
         self.summary = summary
@@ -165,9 +178,15 @@ class CalculationResults:
             label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()
         }
 
-        self.flows = {
-            label: FlowResults(self, **infos) for label, infos in self.solution.attrs['Flows'].items()
-        }
+        if 'Flows' not in self.solution.attrs:
+            warnings.warn(
+                'No Data about flows found in the results. This data is only included since v2.2.0. Some functionality '
+                'is not availlable. We recommend to evaluate your results with a version <2.2.0.')
+            self.flows = {}
+        else:
+            self.flows = {
+                label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
+            }
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
@@ -226,7 +245,7 @@ class CalculationResults:
         return self._effect_share_factors
 
     @property
-    def flow_system(self):
+    def flow_system(self) -> 'FlowSystem':
         """ The restored flow_system that was used to create the calculation.
         Contains all input parameters."""
         if self._flow_system is None:
