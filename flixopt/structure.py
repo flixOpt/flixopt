@@ -499,8 +499,7 @@ class ElementModel(Model):
 
     def results_structure(self):
         return {
-            'label': self.label,
-            'label_full': self.label_full,
+            'label': self.label_full,
             'variables': list(self.variables),
             'constraints': list(self.constraints),
         }

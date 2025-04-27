@@ -156,17 +156,17 @@ class CalculationResults:
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {
-            label: ComponentResults.from_json(self, infos) for label, infos in self.solution.attrs['Components'].items()
+            label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
 
-        self.buses = {label: BusResults.from_json(self, infos) for label, infos in self.solution.attrs['Buses'].items()}
+        self.buses = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
 
         self.effects = {
-            label: EffectResults.from_json(self, infos) for label, infos in self.solution.attrs['Effects'].items()
+            label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()
         }
 
         self.flows = {
-            label: FlowResults.from_json(self, infos) for label, infos in self.solution.attrs['Flows'].items()
+            label: FlowResults(self, **infos) for label, infos in self.solution.attrs['Flows'].items()
         }
 
         self.timesteps_extra = self.solution.indexes['time']
@@ -707,10 +707,6 @@ class CalculationResults:
 
 
 class _ElementResults:
-    @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_ElementResults':
-        return cls(calculation_results, json_data['label'], json_data['variables'], json_data['constraints'])
-
     def __init__(
         self, calculation_results: CalculationResults, label: str, variables: List[str], constraints: List[str]
     ):
@@ -788,18 +784,6 @@ class _ElementResults:
 
 
 class _NodeResults(_ElementResults):
-    @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_NodeResults':
-        return cls(
-            calculation_results,
-            json_data['label'],
-            json_data['variables'],
-            json_data['constraints'],
-            json_data['inputs'],
-            json_data['outputs'],
-            json_data['flows'],
-        )
-
     def __init__(
         self,
         calculation_results: CalculationResults,
@@ -1141,18 +1125,6 @@ class EffectResults(_ElementResults):
 
 
 class FlowResults(_ElementResults):
-    @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> 'FlowResults':
-        return cls(
-            calculation_results,
-            json_data['label_full'],
-            json_data['variables'],
-            json_data['constraints'],
-            json_data['start'],
-            json_data['end'],
-            json_data['component'],
-        )
-
     def __init__(
         self,
         calculation_results: CalculationResults,
