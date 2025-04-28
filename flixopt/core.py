@@ -688,7 +688,7 @@ class TimeSeries:
 
         # Save to file if path is provided
         if path is not None:
-            indent = 4 if len(self.active_timesteps) <= 480 else None
+            indent = 4 if len(self.selected_timesteps) <= 480 else None
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=indent, ensure_ascii=False)
 
@@ -718,7 +718,7 @@ class TimeSeries:
         return self._stored_data.sel(**self._valid_selector)
 
     @property
-    def active_timesteps(self) -> Optional[pd.DatetimeIndex]:
+    def selected_timesteps(self) -> Optional[pd.DatetimeIndex]:
         """Get the current active timesteps, or None if no time dimension."""
         if not self.has_time_dim:
             return None
@@ -749,7 +749,7 @@ class TimeSeries:
         """
         new_data = DataConverter.as_dataarray(
             value,
-            timesteps=self.active_timesteps if self.has_time_dim else None,
+            timesteps=self.selected_timesteps if self.has_time_dim else None,
             scenarios=self.active_scenarios if self.has_scenario_dim else None,
         )
 

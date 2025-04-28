@@ -675,7 +675,7 @@ class TestTimeSeriesAllocatorWithScenarios:
         # Clear selections
         sample_scenario_allocator.set_selection()
         assert ts1._selected_timesteps is None
-        assert ts1.active_timesteps.equals(sample_scenario_allocator.timesteps)
+        assert ts1.selected_timesteps.equals(sample_scenario_allocator.timesteps)
         assert ts1._selected_scenarios is None
         assert ts1.active_scenarios.equals(sample_scenario_allocator.scenarios)
         assert ts1.selected_data.shape == (5, 3)  # Back to full shape

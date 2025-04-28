@@ -12,6 +12,7 @@ import logging
 import math
 import pathlib
 import timeit
+import warnings
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -43,22 +44,31 @@ class Calculation:
         self,
         name: str,
         flow_system: FlowSystem,
-        active_timesteps: Optional[pd.DatetimeIndex] = None,
+        selected_timesteps: Optional[pd.DatetimeIndex] = None,
         selected_scenarios: Optional[pd.Index] = None,
         folder: Optional[pathlib.Path] = None,
+        active_timesteps: Optional[pd.DatetimeIndex] = None,
     ):
         """
         Args:
             name: name of calculation
             flow_system: flow_system which should be calculated
-            active_timesteps: timesteps which should be used for calculation. If None, then all timesteps are used.
+            selected_timesteps: timesteps which should be used for calculation. If None, then all timesteps are used.
             selected_scenarios: scenarios which should be used for calculation. If None, then all scenarios are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
+            active_timesteps: Deprecated. Use selected_timesteps instead.
         """
+        if active_timesteps is not None:
+            warnings.warn(
+                'active_timesteps is deprecated. Use selected_timesteps instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            selected_timesteps = active_timesteps
         self.name = name
         self.flow_system = flow_system
         self.model: Optional[SystemModel] = None
-        self.active_timesteps = active_timesteps
+        self.selected_timesteps = selected_timesteps
         self.selected_scenarios = selected_scenarios
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
@@ -133,6 +143,15 @@ class Calculation:
             'Config': CONFIG.to_dict(),
         }
 
+    @property
+    def active_timesteps(self) -> pd.DatetimeIndex:
+        warnings.warn(
+            'active_timesteps is deprecated. Use selected_timesteps instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.selected_timesteps
+
 
 class FullCalculation(Calculation):
     """
@@ -189,7 +208,7 @@ class FullCalculation(Calculation):
     def _activate_time_series(self):
         self.flow_system.transform_data()
         self.flow_system.time_series_collection.set_selection(
-            timesteps=self.active_timesteps, scenarios=self.selected_scenarios
+            timesteps=self.selected_timesteps, scenarios=self.selected_scenarios
         )
 
 
@@ -204,7 +223,7 @@ class AggregatedCalculation(FullCalculation):
         flow_system: FlowSystem,
         aggregation_parameters: AggregationParameters,
         components_to_clusterize: Optional[List[Component]] = None,
-        active_timesteps: Optional[pd.DatetimeIndex] = None,
+        selected_timesteps: Optional[pd.DatetimeIndex] = None,
         folder: Optional[pathlib.Path] = None,
     ):
         """
@@ -218,13 +237,13 @@ class AggregatedCalculation(FullCalculation):
             components_to_clusterize: List of Components to perform aggregation on. If None, then all components are aggregated.
                 This means, teh variables in the components are equalized to each other, according to the typical periods
                 computed in the DataAggregation
-            active_timesteps: pd.DatetimeIndex or None
+            selected_timesteps: pd.DatetimeIndex or None
                 list with indices, which should be used for calculation. If None, then all timesteps are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
         if flow_system.time_series_collection.scenarios is not None:
             raise ValueError('Aggregation is not supported for scenarios yet. Please use FullCalculation instead.')
-        super().__init__(name, flow_system, active_timesteps, folder=folder)
+        super().__init__(name, flow_system, selected_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize
         self.aggregation = None
@@ -342,7 +361,7 @@ class SegmentedCalculation(Calculation):
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
         ]
-        self.active_timesteps_per_segment = self._calculate_timesteps_of_segment()
+        self.selected_timesteps_per_segment = self._calculate_timesteps_of_segment()
 
         assert timesteps_per_segment > 2, 'The Segment length must be greater 2, due to unwanted internal side effects'
         assert self.timesteps_per_segment_with_overlap <= len(self.all_timesteps), (
@@ -368,7 +387,7 @@ class SegmentedCalculation(Calculation):
         logger.info(f'{" Segmented Solving ":#^80}')
 
         for i, (segment_name, timesteps_of_segment) in enumerate(
-            zip(self.segment_names, self.active_timesteps_per_segment, strict=False)
+            zip(self.segment_names, self.selected_timesteps_per_segment, strict=False)
         ):
             if self.sub_calculations:
                 self._transfer_start_values(i)
@@ -379,7 +398,7 @@ class SegmentedCalculation(Calculation):
             )
 
             calculation = FullCalculation(
-                f'{self.name}-{segment_name}', self.flow_system, active_timesteps=timesteps_of_segment
+                f'{self.name}-{segment_name}', self.flow_system, selected_timesteps=timesteps_of_segment
             )
             self.sub_calculations.append(calculation)
             calculation.do_modeling()
@@ -413,9 +432,9 @@ class SegmentedCalculation(Calculation):
         This function gets the last values of the previous solved segment and
         inserts them as start values for the next segment
         """
-        timesteps_of_prior_segment = self.active_timesteps_per_segment[segment_index - 1]
+        timesteps_of_prior_segment = self.selected_timesteps_per_segment[segment_index - 1]
 
-        start = self.active_timesteps_per_segment[segment_index][0]
+        start = self.selected_timesteps_per_segment[segment_index][0]
         start_previous_values = timesteps_of_prior_segment[self.timesteps_per_segment - self.nr_of_previous_values]
         end_previous_values = timesteps_of_prior_segment[self.timesteps_per_segment - 1]
 
@@ -444,12 +463,12 @@ class SegmentedCalculation(Calculation):
                 comp.initial_charge_state = self._original_start_values[comp.label_full]
 
     def _calculate_timesteps_of_segment(self) -> List[pd.DatetimeIndex]:
-        active_timesteps_per_segment = []
+        selected_timesteps_per_segment = []
         for i, _ in enumerate(self.segment_names):
             start = self.timesteps_per_segment * i
             end = min(start + self.timesteps_per_segment_with_overlap, len(self.all_timesteps))
-            active_timesteps_per_segment.append(self.all_timesteps[start:end])
-        return active_timesteps_per_segment
+            selected_timesteps_per_segment.append(self.all_timesteps[start:end])
+        return selected_timesteps_per_segment
 
     @property
     def timesteps_per_segment_with_overlap(self):
