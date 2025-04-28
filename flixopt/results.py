@@ -16,6 +16,7 @@ import yaml
 from . import io as fx_io
 from . import plotting
 from .core import TimeSeriesCollection
+from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
     import pyvis
@@ -181,7 +182,9 @@ class CalculationResults:
         if 'Flows' not in self.solution.attrs:
             warnings.warn(
                 'No Data about flows found in the results. This data is only included since v2.2.0. Some functionality '
-                'is not availlable. We recommend to evaluate your results with a version <2.2.0.')
+                'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
+            stacklevel=2,
+            )
             self.flows = {}
         else:
             self.flows = {
@@ -393,7 +396,7 @@ class CalculationResults:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
             component: Optional component(s) to filter by. Can be a single component name or a list of names.
-        
+
         Further usage:
             Convert the dataarray to a dataframe:
             >>>results.sizes().to_pandas()
@@ -1536,11 +1539,11 @@ def filter_dataarray_by_coord(
     **kwargs: Optional[Union[str, List[str]]]
 ) -> xr.DataArray:
     """Filter flows by node and component attributes.
-    
+
     Filters are applied in the order they are specified. All filters must match for an edge to be included.
-    
+
     To recombine filtered dataarrays, use `xr.concat`.
-    
+
     xr.concat([res.sizes(start='Fernwärme'), res.sizes(end='Fernwärme')], dim='flow')
 
     Args:
@@ -1580,8 +1583,8 @@ def filter_dataarray_by_coord(
     try:
         for coord, values in filters.items():
             da = apply_filter(da, coord, values)
-    except ValueError:
-        raise ValueError(f"No edges match criteria: {filters}")
+    except ValueError as e:
+        raise ValueError(f"No edges match criteria: {filters}") from e
 
     # Verify results exist
     if da.size == 0:
