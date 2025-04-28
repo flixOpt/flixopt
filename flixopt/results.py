@@ -3,7 +3,7 @@ import json
 import logging
 import pathlib
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import linopy
 import matplotlib.pyplot as plt
@@ -1580,7 +1580,7 @@ def filter_dataarray_by_coord(
     try:
         for coord, values in filters.items():
             da = apply_filter(da, coord, values)
-    except ValueError as e:
+    except ValueError:
         raise ValueError(f"No edges match criteria: {filters}")
 
     # Verify results exist
