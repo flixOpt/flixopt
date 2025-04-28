@@ -2,7 +2,8 @@ import datetime
 import json
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+import warnings
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union, Any
 
 import linopy
 import matplotlib.pyplot as plt
@@ -25,6 +26,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
+class _FlowSystemRestorationError(Exception):
+    """Exception raised when a FlowSystem cannot be restored from dataset."""
+    pass
+
+
 class CalculationResults:
     """Results container for Calculation results.
 
@@ -37,7 +43,7 @@ class CalculationResults:
 
     Attributes:
         solution (xr.Dataset): Dataset containing optimization results.
-        flow_system (xr.Dataset): Dataset containing the flow system.
+        flow_system_data (xr.Dataset): Dataset containing the flow system.
         summary (Dict): Information about the calculation.
         name (str): Name identifier for the calculation.
         model (linopy.Model): The optimization model (if available).
@@ -133,6 +139,7 @@ class CalculationResults:
         summary: Dict,
         folder: Optional[pathlib.Path] = None,
         model: Optional[linopy.Model] = None,
+        **kwargs,  # To accept old "flow_system" parameter
     ):
         """
         Args:
@@ -145,6 +152,16 @@ class CalculationResults:
         Deprecated:
             flow_system: Use flow_system_data instead.
         """
+        # Handle potential old "flow_system" parameter for backward compatibility
+        if 'flow_system' in kwargs and flow_system_data is None:
+            flow_system_data = kwargs.pop('flow_system')
+            warnings.warn(
+                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead."
+                "Acess is now by '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.solution = solution
         self.flow_system_data = flow_system_data
         self.summary = summary
@@ -152,14 +169,24 @@ class CalculationResults:
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {
-            label: ComponentResults.from_json(self, infos) for label, infos in self.solution.attrs['Components'].items()
+            label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
 
-        self.buses = {label: BusResults.from_json(self, infos) for label, infos in self.solution.attrs['Buses'].items()}
+        self.buses = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
 
         self.effects = {
-            label: EffectResults.from_json(self, infos) for label, infos in self.solution.attrs['Effects'].items()
+            label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()
         }
+
+        if 'Flows' not in self.solution.attrs:
+            warnings.warn(
+                'No Data about flows found in the results. This data is only included since v2.2.0. Some functionality '
+                'is not availlable. We recommend to evaluate your results with a version <2.2.0.')
+            self.flows = {}
+        else:
+            self.flows = {
+                label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
+            }
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
@@ -167,15 +194,22 @@ class CalculationResults:
 
         self._effect_share_factors = None
         self._flow_system = None
-        self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
 
-    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
+        self._flow_rates = None
+        self._flow_hours = None
+        self._sizes = None
+        self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
+        self._flow_network_info_ = None
+
+    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults', 'FlowResults']:
         if key in self.components:
             return self.components[key]
         if key in self.buses:
             return self.buses[key]
         if key in self.effects:
             return self.effects[key]
+        if key in self.flows:
+            return self.flows[key]
         raise KeyError(f'No element with label {key} found.')
 
     @property
@@ -211,15 +245,20 @@ class CalculationResults:
         return self._effect_share_factors
 
     @property
-    def flow_system(self):
+    def flow_system(self) -> 'FlowSystem':
         """ The restored flow_system that was used to create the calculation.
         Contains all input parameters."""
         if self._flow_system is None:
-            from . import FlowSystem
-            current_logger_level = logger.getEffectiveLevel()
-            logger.setLevel(logging.CRITICAL)
-            self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
-            logger.setLevel(current_logger_level)
+            try:
+                from . import FlowSystem
+                current_logger_level = logger.getEffectiveLevel()
+                logger.setLevel(logging.CRITICAL)
+                self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
+                self._flow_system._connect_network()
+                logger.setLevel(current_logger_level)
+            except Exception as e:
+                logger.critical(f'Not able to restore FlowSystem from dataset. Some functionality is not availlable. {e}')
+                raise _FlowSystemRestorationError(f'Not able to restore FlowSystem from dataset. {e}') from e
         return self._flow_system
 
     def filter_solution(
@@ -265,7 +304,7 @@ class CalculationResults:
             startswith=startswith,
         )
 
-    def get_effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+    def effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
         """Returns a dataset containing effect totals for each components (including their flows).
 
         Args:
@@ -279,6 +318,120 @@ class CalculationResults:
         if self._effects_per_component[mode] is None:
             self._effects_per_component[mode] = self._create_effects_dataset(mode)
         return self._effects_per_component[mode]
+
+    def flow_rates(
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None,
+    ) -> xr.DataArray:
+        """Returns a DataArray containing the flow rates of each Flow.
+
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.flow_rates().to_pandas()
+            Get the max or min over time:
+            >>>results.flow_rates().max('time')
+            Sum up the flow rates of flows with the same start and end:
+            >>>results.flow_rates(end='Fernwärme').groupby('start').sum(dim='flow')
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
+        """
+        if self._flow_rates is None:
+            self._flow_rates = self._assign_flow_coords(
+                xr.concat([flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
+                          dim=pd.Index(self.flows.keys(), name='flow'))
+            ).rename('flow_rates')
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._flow_rates, **filters)
+
+    def flow_hours(
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None,
+    ) -> xr.DataArray:
+        """Returns a DataArray containing the flow hours of each Flow.
+
+        Flow hours represent the total energy/material transferred over time,
+        calculated by multiplying flow rates by the duration of each timestep.
+
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.flow_hours().to_pandas()
+            Sum up the flow hours over time:
+            >>>results.flow_hours().sum('time')
+            Sum up the flow hours of flows with the same start and end:
+            >>>results.flow_hours(end='Fernwärme').groupby('start').sum(dim='flow')
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.flow_hours(start='Fernwärme'), results.flow_hours(end='Fernwärme')], dim='flow')
+
+        """
+        if self._flow_hours is None:
+            self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._flow_hours, **filters)
+
+    def sizes(
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None
+    ) -> xr.DataArray:
+        """Returns a dataset with the sizes of the Flows.
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+        
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.sizes().to_pandas()
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
+
+        """
+        if self._sizes is None:
+            self._sizes = self._assign_flow_coords(
+                xr.concat([flow.size.rename(flow.label) for flow in self.flows.values()],
+                          dim=pd.Index(self.flows.keys(), name='flow'))
+            ).rename('flow_sizes')
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._sizes, **filters)
+
+    def _assign_flow_coords(self, da: xr.DataArray):
+        # Add start and end coordinates
+        da = da.assign_coords({
+            'start': ('flow', [flow.start for flow in self.flows.values()]),
+            'end': ('flow', [flow.end for flow in self.flows.values()]),
+            'component': ('flow', [flow.component for flow in self.flows.values()]),
+        })
+
+        # Ensure flow is the last dimension if needed
+        existing_dims = [d for d in da.dims if d != 'flow']
+        da = da.transpose(*(existing_dims + ['flow']))
+        return da
+
+    def _get_flow_network_info(self) -> Dict[str, Dict[str, str]]:
+        flow_network_info = {}
+
+        for flow in self.flows.values():
+            flow_network_info[flow.label] = {
+                'label': flow.label,
+                'start': flow.start,
+                'end': flow.end,
+            }
+        return flow_network_info
 
     def get_effect_shares(
         self,
@@ -336,7 +489,7 @@ class CalculationResults:
         element: str,
         effect: str,
         mode: Literal['operation', 'invest', 'total'] = 'total',
-        include_flows: bool = False
+        include_flows: bool = False,
     ) -> xr.DataArray:
         """Calculates the total effect for a specific element and effect.
 
@@ -351,6 +504,7 @@ class CalculationResults:
                 'invest': Returns investment-specific effects.
                 'total': Returns the sum of operation effects (across all timesteps)
                     and investment effects. Defaults to 'total'.
+            include_flows: Whether to include effects from flows connected to this element.
 
         Returns:
             An xarray DataArray containing the total effects, named with pattern
@@ -365,12 +519,20 @@ class CalculationResults:
 
         if mode == 'total':
             operation = self._compute_effect_total(element=element, effect=effect, mode='operation', include_flows=include_flows)
-            if len(operation.indexes) > 0:
+            invest = self._compute_effect_total(element=element, effect=effect, mode='invest', include_flows=include_flows)
+            if invest.isnull().all() and operation.isnull().all():
+                return xr.DataArray(np.nan)
+            if operation.isnull().all():
+                return invest.rename(f'{element}->{effect}')
+            operation = operation.sum('time')
+            if invest.isnull().all():
+                return operation.rename(f'{element}->{effect}')
+            if 'time' in operation.indexes:
                 operation = operation.sum('time')
-            return (operation + self._compute_effect_total(element=element, effect=effect, mode='invest', include_flows=include_flows)
-                    ).rename(f'{element}->{effect}')
+            return invest + operation
 
         total = xr.DataArray(0)
+        share_exists = False
 
         relevant_conversion_factors = {
             key[0]: value for key, value in self.effect_share_factors[mode].items() if key[1] == effect
@@ -380,8 +542,9 @@ class CalculationResults:
         for target_effect, conversion_factor in relevant_conversion_factors.items():
             label = f'{element}->{target_effect}({mode})'
             if label in self.solution:
+                share_exists = True
                 da = self.solution[label]
-                total = total + da * conversion_factor
+                total = da * conversion_factor + total
 
             if include_flows:
                 if element not in self.components:
@@ -391,9 +554,11 @@ class CalculationResults:
                 for flow in flows:
                     label = f'{flow}->{target_effect}({mode})'
                     if label in self.solution:
+                        share_exists = True
                         da = self.solution[label]
-                        total = total + da * conversion_factor
-
+                        total = da * conversion_factor + total
+        if not share_exists:
+            total = xr.DataArray(np.nan)
         return total.rename(f'{element}->{effect}({mode})')
 
     def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
@@ -404,36 +569,41 @@ class CalculationResults:
             mode: The calculation mode ('operation', 'invest', or 'total').
 
         Returns:
-            An xarray Dataset with components as a dimension and effects as variables.
+            An xarray Dataset with components as dimension and effects as variables.
         """
-        data_vars = {}
+        # Create an empty dataset
+        ds = xr.Dataset()
 
+        # Add each effect as a variable to the dataset
         for effect in self.effects:
             # Create a list of DataArrays, one for each component
-            effect_arrays = [
-                self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
-                .expand_dims(component=[component])  # Add component dimension to each array
+            component_arrays = [
+                self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True).expand_dims(
+                    component=[component]
+                )  # Add component dimension to each array
                 for component in list(self.components)
             ]
 
             # Combine all components into one DataArray for this effect
-            if effect_arrays:
-                data_vars[effect] = xr.concat(effect_arrays, dim="component", coords='minimal')
-
-        ds = xr.Dataset(data_vars)
+            if component_arrays:
+                effect_array = xr.concat(component_arrays, dim='component', coords='minimal')
+                # Add this effect as a variable to the dataset
+                ds[effect] = effect_array
 
         # For now include a test to ensure correctness
-        suffix = {'operation': '(operation)|total_per_timestep',
-                  'invest': '(invest)|total',
-                  'total': '|total',
-                  }
+        suffix = {
+            'operation': '(operation)|total_per_timestep',
+            'invest': '(invest)|total',
+            'total': '|total',
+        }
         for effect in self.effects:
             label = f'{effect}{suffix[mode]}'
-            computed = ds.sum('component')[effect]
+            computed = ds[effect].sum('component')
             found = self.solution[label]
             if not np.allclose(computed.values, found.fillna(0).values):
-                logger.critical(f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n'
-                                f'{computed=}\n, {found=}')
+                logger.critical(
+                    f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
+                )
 
         return ds
 
@@ -549,10 +719,6 @@ class CalculationResults:
 
 
 class _ElementResults:
-    @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_ElementResults':
-        return cls(calculation_results, json_data['label'], json_data['variables'], json_data['constraints'])
-
     def __init__(
         self, calculation_results: CalculationResults, label: str, variables: List[str], constraints: List[str]
     ):
@@ -585,7 +751,7 @@ class _ElementResults:
         """
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._calculation_results.model.constraints[self._variable_names]
+        return self._calculation_results.model.constraints[self._constraint_names]
 
     def filter_solution(
         self,
@@ -630,17 +796,6 @@ class _ElementResults:
 
 
 class _NodeResults(_ElementResults):
-    @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_NodeResults':
-        return cls(
-            calculation_results,
-            json_data['label'],
-            json_data['variables'],
-            json_data['constraints'],
-            json_data['inputs'],
-            json_data['outputs'],
-        )
-
     def __init__(
         self,
         calculation_results: CalculationResults,
@@ -649,10 +804,12 @@ class _NodeResults(_ElementResults):
         constraints: List[str],
         inputs: List[str],
         outputs: List[str],
+        flows: List[str],
     ):
         super().__init__(calculation_results, label, variables, constraints)
         self.inputs = inputs
         self.outputs = outputs
+        self.flows = flows
 
     def plot_node_balance(
         self,
@@ -977,6 +1134,42 @@ class EffectResults(_ElementResults):
     def get_shares_from(self, element: str):
         """Get the shares from an Element (without subelements) to the Effect"""
         return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
+
+
+class FlowResults(_ElementResults):
+    def __init__(
+        self,
+        calculation_results: CalculationResults,
+        label: str,
+        variables: List[str],
+        constraints: List[str],
+        start: str,
+        end: str,
+        component: str,
+    ):
+        super().__init__(calculation_results, label, variables, constraints)
+        self.start = start
+        self.end = end
+        self.component = component
+
+    @property
+    def flow_rate(self) -> xr.DataArray:
+        return self.solution[f'{self.label}|flow_rate']
+
+    @property
+    def flow_hours(self) -> xr.DataArray:
+        return (self.flow_rate * self._calculation_results.hours_per_timestep).rename(f'{self.label}|flow_hours')
+
+    @property
+    def size(self) -> xr.DataArray:
+        name = f'{self.label}|size'
+        if name in self.solution:
+            return self.solution[name]
+        try:
+            return xr.DataArray(self._calculation_results.flow_system.flows[self.label].size).rename(name)
+        except _FlowSystemRestorationError:
+            logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
+            return xr.DataArray(np.nan).rename(name)
 
 
 class SegmentedCalculationResults:
@@ -1336,3 +1529,62 @@ def filter_dataset(
             ) from e
 
     return filtered_ds
+
+
+def filter_dataarray_by_coord(
+    da: xr.DataArray,
+    **kwargs: Optional[Union[str, List[str]]]
+) -> xr.DataArray:
+    """Filter flows by node and component attributes.
+    
+    Filters are applied in the order they are specified. All filters must match for an edge to be included.
+    
+    To recombine filtered dataarrays, use `xr.concat`.
+    
+    xr.concat([res.sizes(start='Fernwärme'), res.sizes(end='Fernwärme')], dim='flow')
+
+    Args:
+        da: Flow DataArray with network metadata coordinates.
+        **kwargs: Coord filters as name=value pairs.
+
+    Returns:
+        Filtered DataArray with matching edges.
+
+    Raises:
+        AttributeError: If required coordinates are missing.
+        ValueError: If specified nodes don't exist or no matches found.
+    """
+    # Helper function to process filters
+    def apply_filter(array, coord_name: str, coord_values: Union[Any, List[Any]]):
+        # Verify coord exists
+        if coord_name not in array.coords:
+            raise AttributeError(f"Missing required coordinate '{coord_name}'")
+
+        # Convert single value to list
+        val_list = [coord_values] if isinstance(coord_values, str) else coord_values
+
+        # Verify coord_values exist
+        available = set(array[coord_name].values)
+        missing = [v for v in val_list if v not in available]
+        if missing:
+            raise ValueError(f"{coord_name.title()} value(s) not found: {missing}")
+
+        # Apply filter
+        return array.where(
+            array[coord_name].isin(val_list) if isinstance(coord_values, list) else array[coord_name] == coord_values,
+            drop=True
+        )
+
+    # Apply filters from kwargs
+    filters = {k: v for k, v in kwargs.items() if v is not None}
+    try:
+        for coord, values in filters.items():
+            da = apply_filter(da, coord, values)
+    except ValueError as e:
+        raise ValueError(f"No edges match criteria: {filters}")
+
+    # Verify results exist
+    if da.size == 0:
+        raise ValueError(f"No edges match criteria: {filters}")
+
+    return da
