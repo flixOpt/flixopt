@@ -87,8 +87,8 @@ class LinearConverter(Component):
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
                     logger.warning(
-                        f'Piecewise_conversion (in {self.label_full}) and variable size '
-                        f'(in flow {flow.label_full}) do not make sense together!'
+                        f'Using a FLow with a fixed size ({flow.label_full}) AND a piecewise_conversion '
+                        f'(in {self.label_full}) and variable size is uncommon. Please check if this is intended!'
                     )
 
     def transform_data(self, flow_system: 'FlowSystem'):
