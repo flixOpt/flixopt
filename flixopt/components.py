@@ -248,9 +248,9 @@ class Storage(Component):
             minimum_capacity = self.capacity_in_flow_hours
 
         # initial capacity >= allowed min for maximum_size:
-        minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
+        minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
         # initial capacity <= allowed max for minimum_size:
-        maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
+        maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
         # TODO: index=1 ??? I think index 0
 
         if (self.initial_charge_state > maximum_inital_capacity).any():
