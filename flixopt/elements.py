@@ -154,7 +154,7 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Union[Scalar, InvestParameters] = None,
+        size: Union[ScenarioData, InvestParameters] = None,
         fixed_relative_profile: Optional[TimestepData] = None,
         relative_minimum: TimestepData = 0,
         relative_maximum: TimestepData = 1,
@@ -265,6 +265,8 @@ class Flow(Element):
             self.on_off_parameters.transform_data(flow_system, self.label_full)
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system, self.label_full)
+        else:
+            self.size = flow_system.create_time_series(f'{self.label_full}|size', self.size, has_time_dim=False)
 
     def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
         infos = super().infos(use_numpy, use_element_label)
@@ -282,8 +284,8 @@ class Flow(Element):
         if np.any(self.relative_minimum > self.relative_maximum):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
-        if (
-            self.size == CONFIG.modeling.BIG and self.fixed_relative_profile is not None
+        if not isinstance(self.size, InvestParameters) and (
+                (self.size == CONFIG.modeling.BIG).any() and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
                 f'Flow "{self.label}" has no size assigned, but a "fixed_relative_profile". '
@@ -453,10 +455,12 @@ class FlowModel(ElementModel):
         relative_minimum, relative_maximum = self.flow_rate_lower_bound_relative, self.flow_rate_upper_bound_relative
         size = self.element.size
         if not isinstance(size, InvestParameters):
-            return relative_minimum * size, relative_maximum * size
+            return relative_minimum * extract_data(size), relative_maximum * extract_data(size)
         if size.fixed_size is not None:
-            return size.fixed_size * relative_minimum, size.fixed_size * relative_maximum
-        return size.minimum_size * relative_minimum, size.maximum_size * relative_maximum
+            return (relative_minimum * extract_data(size.fixed_size),
+                    relative_maximum * extract_data(size.fixed_size))
+        return (relative_minimum * extract_data(size.minimum_size),
+                relative_maximum * extract_data(size.maximum_size))
 
     @property
     def flow_rate_lower_bound_relative(self) -> TimestepData:
