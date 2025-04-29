@@ -15,7 +15,7 @@ import yaml
 
 from . import io as fx_io
 from . import plotting
-from .core import TimeSeriesCollection, DataConverter
+from .core import DataConverter, TimeSeriesCollection
 from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
