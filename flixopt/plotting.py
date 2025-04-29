@@ -258,7 +258,7 @@ def with_plotly(
 
         fig.update_layout(
             barmode='relative',
-            bargap=0.2,  # No space between bars
+            bargap=0,  # No space between bars
             bargroupgap=0,  # No space between grouped bars
         )
     if style == 'grouped_bar':
