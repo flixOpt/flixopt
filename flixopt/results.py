@@ -15,7 +15,7 @@ import yaml
 
 from . import io as fx_io
 from . import plotting
-from .core import TimeSeriesCollection
+from .core import TimeSeriesCollection, DataConverter
 from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
@@ -1169,7 +1169,10 @@ class FlowResults(_ElementResults):
         if name in self.solution:
             return self.solution[name]
         try:
-            return xr.DataArray(self._calculation_results.flow_system.flows[self.label].size).rename(name)
+            return DataConverter.as_dataarray(
+                self._calculation_results.flow_system.flows[self.label].size,
+                scenarios=self._calculation_results.scenarios
+            ).rename(name)
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
