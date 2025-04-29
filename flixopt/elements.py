@@ -285,7 +285,7 @@ class Flow(Element):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if not isinstance(self.size, InvestParameters) and (
-                (self.size == CONFIG.modeling.BIG).any() and self.fixed_relative_profile is not None
+                np.any(self.size == CONFIG.modeling.BIG) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
                 f'Flow "{self.label}" has no size assigned, but a "fixed_relative_profile". '
