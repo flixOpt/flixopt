@@ -79,7 +79,7 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
         output_file (str): Path to output YAML file
     """
     # Process strings to normalize all newlines and handle special patterns
-    processed_data = _process_complex_strings(data)
+    processed_data = _normalize_complex_data(data)
 
     # Define a custom representer for strings
     def represent_str(dumper, data):
@@ -118,53 +118,61 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
         )
 
 
-def _process_complex_strings(data):
+def _normalize_complex_data(data):
     """
-    Process dictionary data recursively with comprehensive string normalization.
-    Handles various types of strings and special formatting.
+    Recursively normalize strings in complex data structures.
+
+    Handles dictionaries, lists, and strings, applying various text normalization
+    rules while preserving important formatting elements.
 
     Args:
-        data: The data to process (dict, list, str, or other)
+        data: Any data type (dict, list, str, or primitive)
 
     Returns:
-        Processed data with normalized strings
+        Data with all strings normalized according to defined rules
     """
     if isinstance(data, dict):
-        return {k: _process_complex_strings(v) for k, v in data.items()}
+        return {key: _normalize_complex_data(value) for key, value in data.items()}
+
     elif isinstance(data, list):
-        return [_process_complex_strings(item) for item in data]
+        return [_normalize_complex_data(item) for item in data]
+
     elif isinstance(data, str):
-        # Step 1: Normalize all line endings to \n
-        normalized = data.replace('\r\n', '\n').replace('\r', '\n')
+        return _normalize_string_content(data)
 
-        # Step 2: Clean up escaped newlines (but be careful with actual backslashes)
-        # Replace literal \n with actual newlines
-        normalized = re.sub(r'(?<!\\)\\n', '\n', normalized)
-
-        # Step 3: Fix double backslashes before certain characters
-        normalized = re.sub(r'\\\\([rtn])', r'\\\1', normalized)
-
-        # Step 4: DO NOT modify header separators (----------------------)
-        # Remove this step or make sure it doesn't affect header lines
-
-        # Step 5: Fix constraint headers
-        normalized = re.sub(r'Constraint\s*`([^`]+)`\s*(?:\\n|[\s\n]*)', r'Constraint `\1`\n', normalized)
-
-        # Step 6: Handle ellipsis patterns
-        normalized = re.sub(r'\s*\.\.\.\s*', '...', normalized)
-
-        # Step 7: Clean up excessive newlines (keep at most 2 consecutive)
-        normalized = re.sub(r'\n{3,}', '\n\n', normalized)
-
-        # Step 8: DO NOT modify mathematical expressions or separators
-        # Remove or comment out these lines as they're interfering with header lines
-        # normalized = re.sub(r'\s*=\s*=\s*', ' = ', normalized)
-        # normalized = re.sub(r'\s*-\s*-\s*', ' - ', normalized)
-        # normalized = re.sub(r'\s*\+\s*\+\s*', ' + ', normalized)
-
-        return normalized.strip()
     else:
         return data
+
+
+def _normalize_string_content(text):
+    """
+    Apply comprehensive string normalization rules.
+
+    Args:
+        text: The string to normalize
+
+    Returns:
+        Normalized string with standardized formatting
+    """
+    # Standardize line endings
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Convert escaped newlines to actual newlines (avoiding double-backslashes)
+    text = re.sub(r'(?<!\\)\\n', '\n', text)
+
+    # Normalize double backslashes before specific escape sequences
+    text = re.sub(r'\\\\([rtn])', r'\\\1', text)
+
+    # Standardize constraint headers format
+    text = re.sub(r'Constraint\s*`([^`]+)`\s*(?:\\n|[\s\n]*)', r'Constraint `\1`\n', text)
+
+    # Clean up ellipsis patterns
+    text = re.sub(r'[\t ]*(\.\.\.)', r'\1', text)
+
+    # Limit consecutive newlines (max 2)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return text.strip()
 
 
 def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dict[str, str]:
