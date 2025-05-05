@@ -83,11 +83,13 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
 
     # Define a custom representer for strings
     def represent_str(dumper, data):
-        # Use literal block style (|) for any string with newlines
+        # Use literal block style (|) for multi-line strings
         if '\n' in data:
+            # Clean up formatting for literal block style
+            data = data.strip()  # Remove leading/trailing whitespace
             return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
 
-        # Use quoted style for strings with special characters to ensure proper parsing
+        # Use quoted style for strings with special characters
         elif any(char in data for char in ':`{}[]#,&*!|>%@'):
             return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='"')
 
@@ -97,16 +99,22 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
     # Add the string representer to SafeDumper
     yaml.add_representer(str, represent_str, Dumper=yaml.SafeDumper)
 
+    # Configure dumper options for better formatting
+    class CustomDumper(yaml.SafeDumper):
+        def increase_indent(self, flow=False, indentless=False):
+            return super(CustomDumper, self).increase_indent(flow, False)
+
     # Write to file with settings that ensure proper formatting
     with open(output_file, 'w', encoding='utf-8') as file:
         yaml.dump(
             processed_data,
             file,
-            Dumper=yaml.SafeDumper,
+            Dumper=CustomDumper,
             sort_keys=False,  # Preserve dictionary order
             default_flow_style=False,  # Use block style for mappings
-            width=float('inf'),  # Don't wrap long lines
+            width=1000,  # Set a reasonable line width
             allow_unicode=True,  # Support Unicode characters
+            indent=2,  # Set consistent indentation
         )
 
 
@@ -126,22 +134,34 @@ def _process_complex_strings(data):
     elif isinstance(data, list):
         return [_process_complex_strings(item) for item in data]
     elif isinstance(data, str):
-        # Step 1: Normalize line endings to \n
+        # Step 1: Normalize all line endings to \n
         normalized = data.replace('\r\n', '\n').replace('\r', '\n')
 
-        # Step 2: Handle escaped newlines with robust regex
+        # Step 2: Clean up escaped newlines (but be careful with actual backslashes)
+        # Replace literal \n with actual newlines
         normalized = re.sub(r'(?<!\\)\\n', '\n', normalized)
 
-        # Step 3: Handle unnecessary double backslashes
-        normalized = re.sub(r'\\\\(n)', r'\\\1', normalized)
+        # Step 3: Fix double backslashes before certain characters
+        normalized = re.sub(r'\\\\([rtn])', r'\\\1', normalized)
 
-        # Step 4: Ensure proper formatting of "[time: N]:\n---------"
-        normalized = re.sub(r'(\[time: \d+\]):\s*\\?n', r'\1:\n', normalized)
+        # Step 4: Ensure consistent spacing around separators
+        normalized = re.sub(r'(\[time: \d+\])\s*:\s*[\n\\n]*\s*(\-+)', r'\1:\n\2', normalized)
 
-        # Step 5: Ensure "Constraint `...`" patterns are properly formatted
-        normalized = re.sub(r'Constraint `([^`]+)`\\?n', r'Constraint `\1`\n', normalized)
+        # Step 5: Fix constraint headers
+        normalized = re.sub(r'Constraint\s*`([^`]+)`\s*(?:\\n|[\s\n]*)', r'Constraint `\1`\n', normalized)
 
-        return normalized
+        # Step 6: Handle ellipsis patterns
+        normalized = re.sub(r'\s*\.\.\.\s*', '...', normalized)
+
+        # Step 7: Clean up excessive newlines (keep at most 2 consecutive)
+        normalized = re.sub(r'\n{3,}', '\n\n', normalized)
+
+        # Step 8: Ensure proper spacing around mathematical expressions
+        normalized = re.sub(r'\s*=\s*=\s*', ' = ', normalized)
+        normalized = re.sub(r'\s*-\s*-\s*', ' - ', normalized)
+        normalized = re.sub(r'\s*\+\s*\+\s*', ' + ', normalized)
+
+        return normalized.strip()
     else:
         return data
 
