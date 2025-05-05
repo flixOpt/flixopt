@@ -165,7 +165,7 @@ class CoolingTower(LinearConverter):
             label,
             inputs=[P_el, Q_th],
             outputs=[],
-            conversion_factors=[{P_el.label: 1, Q_th.label: -specific_electricity_demand}],
+            conversion_factors=[{P_el.label: -1, Q_th.label: specific_electricity_demand}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
@@ -177,12 +177,12 @@ class CoolingTower(LinearConverter):
 
     @property
     def specific_electricity_demand(self):
-        return -self.conversion_factors[0][self.Q_th.label]
+        return self.conversion_factors[0][self.Q_th.label]
 
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
-        self.conversion_factors[0][self.Q_th.label] = -value
+        self.conversion_factors[0][self.Q_th.label] = value
 
 
 @register_class_for_io

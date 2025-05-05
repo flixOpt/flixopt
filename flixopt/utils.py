@@ -11,15 +11,6 @@ import xarray as xr
 logger = logging.getLogger('flixopt')
 
 
-def is_number(number_alias: Union[int, float, str]):
-    """Returns True is string is a number."""
-    try:
-        float(number_alias)
-        return True
-    except ValueError:
-        return False
-
-
 def round_floats(obj, decimals=2):
     if isinstance(obj, dict):
         return {k: round_floats(v, decimals) for k, v in obj.items()}
@@ -27,6 +18,12 @@ def round_floats(obj, decimals=2):
         return [round_floats(v, decimals) for v in obj]
     elif isinstance(obj, float):
         return round(obj, decimals)
+    elif isinstance(obj, int):
+        return obj
+    elif isinstance(obj, np.ndarray):
+        return np.round(obj, decimals).tolist()
+    elif isinstance(obj, xr.DataArray):
+        return obj.round(decimals).values.tolist()
     return obj
 
 
