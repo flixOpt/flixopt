@@ -1481,5 +1481,5 @@ def extract_data(
     if isinstance(data, xr.DataArray):
         return data
     if isinstance(data, (int, float, np.integer, np.floating)):
-        return xr.DataArray(data)
+        return data
     raise TypeError(f'Unsupported data type: {type(data).__name__}')

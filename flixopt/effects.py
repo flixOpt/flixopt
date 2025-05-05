@@ -509,6 +509,10 @@ def calculate_all_conversion_paths(
                 # Add new path to queue for further exploration
                 queue.append((target, indirect_factor, new_path))
 
+    # Convert all values to DataArrays
+    result = {key: value if isinstance(value, xr.DataArray) else xr.DataArray(value)
+              for key, value in result.items()}
+
     return result
 
 
