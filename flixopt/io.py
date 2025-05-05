@@ -144,8 +144,8 @@ def _process_complex_strings(data):
         # Step 3: Fix double backslashes before certain characters
         normalized = re.sub(r'\\\\([rtn])', r'\\\1', normalized)
 
-        # Step 4: Ensure consistent spacing around separators
-        normalized = re.sub(r'(\[time: \d+\])\s*:\s*[\n\\n]*\s*(\-+)', r'\1:\n\2', normalized)
+        # Step 4: DO NOT modify header separators (----------------------)
+        # Remove this step or make sure it doesn't affect header lines
 
         # Step 5: Fix constraint headers
         normalized = re.sub(r'Constraint\s*`([^`]+)`\s*(?:\\n|[\s\n]*)', r'Constraint `\1`\n', normalized)
@@ -156,10 +156,11 @@ def _process_complex_strings(data):
         # Step 7: Clean up excessive newlines (keep at most 2 consecutive)
         normalized = re.sub(r'\n{3,}', '\n\n', normalized)
 
-        # Step 8: Ensure proper spacing around mathematical expressions
-        normalized = re.sub(r'\s*=\s*=\s*', ' = ', normalized)
-        normalized = re.sub(r'\s*-\s*-\s*', ' - ', normalized)
-        normalized = re.sub(r'\s*\+\s*\+\s*', ' + ', normalized)
+        # Step 8: DO NOT modify mathematical expressions or separators
+        # Remove or comment out these lines as they're interfering with header lines
+        # normalized = re.sub(r'\s*=\s*=\s*', ' = ', normalized)
+        # normalized = re.sub(r'\s*-\s*-\s*', ' - ', normalized)
+        # normalized = re.sub(r'\s*\+\s*\+\s*', ' + ', normalized)
 
         return normalized.strip()
     else:
