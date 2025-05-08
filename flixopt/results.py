@@ -323,6 +323,8 @@ class CalculationResults:
             raise ValueError(f'Invalid mode {mode}')
         if self._effects_per_component[mode] is None:
             self._effects_per_component[mode] = self._create_effects_dataset(mode)
+        if component is not None:
+            return self._effects_per_component[mode].sel(component=component, drop=True)
         filters = {'component': component} if component is not None else {}
         return filter_by_coord(self._effects_per_component[mode], **filters)
 
