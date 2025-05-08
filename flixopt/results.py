@@ -307,7 +307,10 @@ class CalculationResults:
             startswith=startswith,
         )
 
-    def effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+    def effects_per_component(
+            self,
+            mode: Literal['operation', 'invest', 'total'] = 'total',
+            component: Optional[Union[str, List[str]]] = None) -> xr.Dataset:
         """Returns a dataset containing effect totals for each components (including their flows).
 
         Args:
@@ -320,7 +323,8 @@ class CalculationResults:
             raise ValueError(f'Invalid mode {mode}')
         if self._effects_per_component[mode] is None:
             self._effects_per_component[mode] = self._create_effects_dataset(mode)
-        return self._effects_per_component[mode]
+        filters = {'component': component} if component is not None else {}
+        return filter_by_coord(self._effects_per_component[mode], **filters)
 
     def flow_rates(
         self,
@@ -351,7 +355,7 @@ class CalculationResults:
                           dim=pd.Index(self.flows.keys(), name='flow'))
             ).rename('flow_rates')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
-        return filter_dataarray_by_coord(self._flow_rates, **filters)
+        return filter_by_coord(self._flow_rates, **filters)
 
     def flow_hours(
         self,
@@ -383,7 +387,7 @@ class CalculationResults:
         if self._flow_hours is None:
             self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
-        return filter_dataarray_by_coord(self._flow_hours, **filters)
+        return filter_by_coord(self._flow_hours, **filters)
 
     def sizes(
         self,
@@ -410,7 +414,7 @@ class CalculationResults:
                           dim=pd.Index(self.flows.keys(), name='flow'))
             ).rename('flow_sizes')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
-        return filter_dataarray_by_coord(self._sizes, **filters)
+        return filter_by_coord(self._sizes, **filters)
 
     def _assign_flow_coords(self, da: xr.DataArray):
         # Add start and end coordinates
@@ -1534,28 +1538,23 @@ def filter_dataset(
     return filtered_ds
 
 
-def filter_dataarray_by_coord(
-    da: xr.DataArray,
-    **kwargs: Optional[Union[str, List[str]]]
-) -> xr.DataArray:
-    """Filter flows by node and component attributes.
+def filter_by_coord(
+    data: Union[xr.DataArray, xr.Dataset], **kwargs: Optional[Union[str, List[str]]]
+) -> Union[xr.DataArray, xr.Dataset]:
+    """Filter xarray object by coordinate values.
 
-    Filters are applied in the order they are specified. All filters must match for an edge to be included.
-
-    To recombine filtered dataarrays, use `xr.concat`.
-
-    xr.concat([res.sizes(start='Fernwärme'), res.sizes(end='Fernwärme')], dim='flow')
+    Filters are applied in the order they are specified. All filters must match for elements to be included.
 
     Args:
-        da: Flow DataArray with network metadata coordinates.
+        data: DataArray or Dataset with metadata coordinates.
         **kwargs: Coord filters as name=value pairs.
 
     Returns:
-        Filtered DataArray with matching edges.
+        Filtered DataArray or Dataset with matching elements.
 
     Raises:
         AttributeError: If required coordinates are missing.
-        ValueError: If specified nodes don't exist or no matches found.
+        ValueError: If specified values don't exist or no matches found.
     """
     # Helper function to process filters
     def apply_filter(array, coord_name: str, coord_values: Union[Any, List[Any]]):
@@ -1570,7 +1569,7 @@ def filter_dataarray_by_coord(
         available = set(array[coord_name].values)
         missing = [v for v in val_list if v not in available]
         if missing:
-            raise ValueError(f"{coord_name.title()} value(s) not found: {missing}")
+            raise ValueError(f'{coord_name.title()} value(s) not found: {missing}')
 
         # Apply filter
         return array.where(
@@ -1580,14 +1579,18 @@ def filter_dataarray_by_coord(
 
     # Apply filters from kwargs
     filters = {k: v for k, v in kwargs.items() if v is not None}
+    result = data
+
     try:
         for coord, values in filters.items():
-            da = apply_filter(da, coord, values)
+            result = apply_filter(result, coord, values)
     except ValueError as e:
-        raise ValueError(f"No edges match criteria: {filters}") from e
+        raise ValueError(f'No elements match criteria: {filters}') from e
 
     # Verify results exist
-    if da.size == 0:
-        raise ValueError(f"No edges match criteria: {filters}")
+    if isinstance(result, xr.DataArray) and result.size == 0:
+        raise ValueError(f'No elements match criteria: {filters}')
+    elif isinstance(result, xr.Dataset) and all(v.size == 0 for v in result.values()):
+        raise ValueError(f'No elements match criteria: {filters}')
 
-    return da
+    return result
