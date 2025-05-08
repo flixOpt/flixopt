@@ -308,13 +308,16 @@ class CalculationResults:
         )
 
     def effects_per_component(
-            self,
-            mode: Literal['operation', 'invest', 'total'] = 'total',
-            component: Optional[Union[str, List[str]]] = None) -> xr.Dataset:
+        self,
+        mode: Literal['operation', 'invest', 'total'] = 'total',
+        component: Optional[Union[str, List[str]]] = None
+    ) -> xr.Dataset:
         """Returns a dataset containing effect totals for each components (including their flows).
+        The effects contain direct as well as indirect effect through shares between effects!
 
         Args:
             mode: Which effects to contain. (operation, invest, total)
+            component: The component to return the effects for. If None, all components are returned.
 
         Returns:
             An xarray Dataset with an additional component dimension and effects as variables.
