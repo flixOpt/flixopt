@@ -13,7 +13,132 @@ These result objects can be saved to files and reloaded later for further analys
 
 ## Accessing Results
 
-The results object provides dictionary-like access to components, buses, and effects:
+There are multile ways of acessing the results of a calculation. One method might be more convenient than the others, depending on your use case.
+
+### Acess through composed DataArrays
+
+The results object provides easy access for the most commonly needed results, such as:
+
+* Flow Rates, through [`CalculationResults.flow_rates()`][flixopt.results.CalculationResults.flow_rates]
+* Flow hours, through [`CalculationResults.flow_hours()`][flixopt.results.CalculationResults.flow_hours]
+* Flow Sizes, through [`CalculationResults.sizes()`][flixopt.results.CalculationResults.sizes]
+* Effects per Component, through [`CalculationResults.effects_per_component()`][flixopt.results.CalculationResults.effects_per_component]
+
+These datasets can be filtered by start and end node or by component.
+And will most likely be converted to pandas DataFrames for exporting or plotting.
+
+Accessing the flow rates ending at the node "Fernwärme"
+```python
+# Filter flow_rates by start and end node
+calculation_results.flow_rates(end='Fernwärme').to_pandas()
+```
+```
+flow                 Boiler(Q_th)  CHP(Q_th)  Storage(Q_th_unload)
+time                                                              
+2020-01-01 00:00:00        5.0000  25.000000         -4.574119e-14
+2020-01-01 01:00:00        5.0000  21.666667         -2.286171e-15
+2020-01-01 02:00:00        5.0000  75.000000          1.000000e+01
+2020-01-01 03:00:00       23.8864  75.000000          1.111360e+01
+2020-01-01 04:00:00       35.0000  75.000000         -6.394885e-14
+2020-01-01 05:00:00        5.0000  15.000000          0.000000e+00
+2020-01-01 06:00:00        5.0000  15.000000          0.000000e+00
+2020-01-01 07:00:00        5.0000  15.000000          0.000000e+00
+2020-01-01 08:00:00        5.0000  15.000000          0.000000e+00
+2020-01-01 09:00:00           NaN        NaN                   NaN
+```
+
+Accessing the flow rates staring at the "Boiler"
+```python
+calculation_results.flow_rates(start='Boiler').to_pandas()
+```
+```
+flow                 Boiler(Q_th)
+time                             
+2020-01-01 00:00:00        5.0000
+2020-01-01 01:00:00        5.0000
+2020-01-01 02:00:00        5.0000
+2020-01-01 03:00:00       23.8864
+2020-01-01 04:00:00       35.0000
+2020-01-01 05:00:00        5.0000
+2020-01-01 06:00:00        5.0000
+2020-01-01 07:00:00        5.0000
+2020-01-01 08:00:00        5.0000
+2020-01-01 09:00:00           NaN
+```
+
+Accessing all sizes of the "Boiler"
+```python
+calculation_results.sizes(component='Boiler').to_pandas()
+```
+```
+flow
+Boiler(Q_fu)    10000000.0
+Boiler(Q_th)          50.0
+Name: flow_sizes, dtype: float64
+```
+
+Or acessing the effects per component
+```python
+# filter effects_per_component by component
+calculation_results.effects_per_component(mode='operation', component='Gastarif').to_pandas()
+```
+```
+<xarray.Dataset> Size: 24B
+Dimensions:    (component: 1)
+Coordinates:
+  * component  (component) object 8B 'Gastarif'
+Data variables:
+    CO2        (component) float64 8B 255.3
+    costs      (component) float64 8B 85.11
+```
+
+
+
+This will return a `xarray.DataArray` with the flow rates ending at the `Fernwärme` node.
+```
+xarray.DataArray 'flow_rates' (time: 10, flow: 3)> Size: 240B
+array([[ 5.  , 25.  , -0.  ],
+       [ 5.  , 21.67, -0.  ],
+       [ 5.  , 75.  , 10.  ],
+       [23.89, 75.  , 11.11],
+       [35.  , 75.  , -0.  ],
+       [ 5.  , 15.  ,  0.  ],
+       [ 5.  , 15.  ,  0.  ],
+       [ 5.  , 15.  ,  0.  ],
+       [ 5.  , 15.  ,  0.  ],
+       [  nan,   nan,   nan]])
+Coordinates:
+  * time       (time) datetime64[ns] 80B 2020-01-01 ... 2020-01-01T09:00:00
+  * flow       (flow) object 24B 'Boiler(Q_th)' ... 'Storage(Q_th_unload)'
+    start      (flow) <U9 108B 'Boiler' 'CHP' 'Storage'
+    end        (flow) <U11 132B 'Fernwärme' 'Fernwärme' 'Fernwärme'
+    component  (flow) <U11 132B 'Boiler' 'CHP' 'Storage'
+```
+
+This can then be converted to a pandas DataFrame:
+```python
+df = da.to_dataframe()
+```
+
+```
+flow                 Boiler(Q_th)  CHP(Q_th)  Storage(Q_th_unload)
+time                                                              
+2020-01-01 00:00:00          5.00      25.00                 -0.00
+2020-01-01 01:00:00          5.00      21.67                 -0.00
+2020-01-01 02:00:00          5.00      75.00                 10.00
+2020-01-01 03:00:00         23.89      75.00                 11.11
+2020-01-01 04:00:00         35.00      75.00                 -0.00
+2020-01-01 05:00:00          5.00      15.00                  0.00
+2020-01-01 06:00:00          5.00      15.00                  0.00
+2020-01-01 07:00:00          5.00      15.00                  0.00
+2020-01-01 08:00:00          5.00      15.00                  0.00
+2020-01-01 09:00:00           NaN        NaN                   NaN
+```
+And exported or plotted.
+
+### Accessing Results by Component, Bus, or Effect
+
+The results object provides dictionary-like access to results of each component, bus, and effect:
 
 ```python
 # Get results for a specific component
@@ -27,8 +152,10 @@ costs_results = calculation_results['Costs']
 ```
 
 Each of these results is an instance of [`ComponentResults`][flixopt.results.ComponentResults], [`BusResults`][flixopt.results.BusResults], or [`EffectResults`][flixopt.results.EffectResults] respectively, providing specialized methods for each type.
+Here, the variable results of each Element can be viewed individually.
 
-## Working with the Solution Dataset
+
+### Acessing the variables directly
 
 The core of the results is the `solution` attribute, which is an [xarray.Dataset](https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html) containing all variables from the optimization.
 

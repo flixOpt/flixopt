@@ -103,7 +103,7 @@ The process of working with FlixOpt can be divided into 3 steps:
 3. Analyze the results
      - The results are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object
      - This object can be saved to file and reloaded from file, retaining all information about the calculation
-     - As it contains the used [`FlowSystem`][flixopt.flow_system.FlowSystem], it can be used to start a new calculation
+     - As it contains the used [`FlowSystem`][flixopt.flow_system.FlowSystem], all data from the modeling process is availlable through the results. Further, the FlowSystem can be modefied and used to create a new Calculation.
 
 <figure markdown>
   ![FlixOpt Conceptual Usage](../images/architecture_flixOpt.png)
