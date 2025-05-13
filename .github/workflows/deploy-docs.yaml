@@ -1,9 +1,11 @@
-name: Documentation
+name: Deploy Stable Documentation
 
 on:
   release:
-    types: [created]  # Automatically deploy docs on release
-  workflow_dispatch:  # Allow manual triggering
+    types: [published]
+    tags:
+      # Only match stable version patterns (no pre-release identifiers)
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
   deploy-docs:
