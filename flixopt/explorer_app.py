@@ -14,16 +14,6 @@ import streamlit as st
 from flixopt import plotting
 
 
-# Helper function to capture plotly figures
-def get_plotly_fig(plot_func, *args, **kwargs):
-    """Capture a plotly figure from a plotting function"""
-    # Add default parameters to ensure the function returns the figure without showing it
-    kwargs['show'] = False
-    kwargs['save'] = False
-
-    # Call the plotting function
-    return plot_func(*args, **kwargs)
-
 # Reusable function to display variables
 def display_variables(variables_dict, prefix=""):
     """
@@ -116,7 +106,11 @@ def display_variables(variables_dict, prefix=""):
                         st.error(f"Error creating heatmap: {e}")
                 else:
                     # Regular time series plot
-                    fig = get_plotly_fig(plotting.with_plotly, data=var_solution.to_dataframe(), mode='area', title=f'Variable: {var_name}')
+                    fig = plotting.with_plotly(
+                        data=var_solution.to_dataframe(),
+                        style='stacked_bar',
+                        title=f'Variable: {var_name}',
+                    )
                     fig.update_layout(height=300)
                     st.plotly_chart(fig, theme='streamlit', use_container_width=True)
 
@@ -235,9 +229,9 @@ def explore_results_app(results):
 
                     # Use built-in plotting method
                     if component.is_storage:
-                        fig = get_plotly_fig(component.plot_charge_state)
+                        fig = component.plot_charge_state(show=False, save=False)
                     else:
-                        fig = get_plotly_fig(component.plot_flow_rates)
+                        fig = component.plot_flow_rates(show=False, save=False)
 
                     st.plotly_chart(fig, theme='streamlit', use_container_width=True)
 
@@ -278,7 +272,7 @@ def explore_results_app(results):
                     st.subheader("Node Balance")
 
                     # Use built-in plotting method
-                    fig = get_plotly_fig(bus.plot_flow_rates)
+                    fig = bus.plot_flow_rates(show=False, save=False)
                     st.plotly_chart(fig, theme=None, use_container_width=True)
 
                     # Also show as dataframe if requested
