@@ -3,15 +3,38 @@ name: Deploy Stable Documentation
 on:
   release:
     types: [published]
-    tags:
-      # Only match stable version patterns (no pre-release identifiers)
-      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    outputs:
+      is_stable: ${{ steps.check_version.outputs.is_stable }}
+      version: ${{ steps.check_version.outputs.version }}
+    steps:
+      - name: Check if stable release
+        id: check_version
+        run: |
+          # Extract version from the tag
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Raw version: $VERSION"
+          
+          # Check if version contains any pre-release identifiers using regex
+          if [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_stable=true" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Stable version detected: $VERSION"
+          else
+            echo "is_stable=false" >> $GITHUB_OUTPUT
+            echo "Pre-release version detected: $VERSION"
+          fi
+
   deploy-docs:
+    needs: check-release
+    if: needs.check-release.outputs.is_stable == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history for proper versioning
 
@@ -20,7 +43,8 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: 3.11
 
@@ -31,5 +55,17 @@ jobs:
 
       - name: Deploy docs
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION="${{ needs.check-release.outputs.version }}"
+          echo "Deploying documentation for version $VERSION"
           mike deploy --push --update-aliases $VERSION latest
+
+      - name: Verify deployment
+        run: |
+          # Simple verification that the deployment succeeded
+          git checkout gh-pages
+          if [ -d "${{ needs.check-release.outputs.version }}" ]; then
+            echo "Documentation successfully deployed"
+          else
+            echo "Documentation deployment failed!"
+            exit 1
+          fi
