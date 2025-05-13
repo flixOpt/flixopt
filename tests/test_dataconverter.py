@@ -451,6 +451,45 @@ class TestInvalidInputs:
         with pytest.raises(ConversionError):
             DataConverter.as_dataarray(wrong_length, sample_time_index, sample_scenario_index)
 
+class TestDataArrayBroadcasting:
+    """Tests for broadcasting DataArrays."""
+    def test_broadcast_1d_array_to_2d(self, sample_time_index, sample_scenario_index):
+        """Test broadcasting a 1D array to all scenarios."""
+        arr_1d = np.array([1, 2, 3, 4, 5])
+
+        xr.testing.assert_equal(
+            DataConverter.as_dataarray(arr_1d, sample_time_index, sample_scenario_index),
+            xr.DataArray(
+                np.array([arr_1d] * 3).T,
+                coords=(sample_time_index, sample_scenario_index)
+            )
+        )
+
+        arr_1d = np.array([1, 2, 3])
+        xr.testing.assert_equal(
+            DataConverter.as_dataarray(arr_1d, sample_time_index, sample_scenario_index),
+            xr.DataArray(
+                np.array([arr_1d] * 5),
+                coords=(sample_time_index, sample_scenario_index)
+            )
+        )
+
+    def test_broadcast_1d_array_to_1d(self, sample_time_index,):
+        """Test broadcasting a 1D array to all scenarios."""
+        arr_1d = np.array([1, 2, 3, 4, 5])
+
+        xr.testing.assert_equal(
+            DataConverter.as_dataarray(arr_1d, sample_time_index),
+            xr.DataArray(
+                arr_1d,
+                coords=(sample_time_index,)
+            )
+        )
+
+        arr_1d = np.array([1, 2, 3])
+        with pytest.raises(ConversionError):
+            DataConverter.as_dataarray(arr_1d, sample_time_index)
+
 
 class TestEdgeCases:
     """Tests for edge cases and special scenarios."""
