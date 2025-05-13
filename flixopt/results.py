@@ -17,6 +17,7 @@ from . import io as fx_io
 from . import plotting
 from .core import DataConverter, TimeSeriesCollection
 from .flow_system import FlowSystem
+from .results_explorer import explore_results
 
 if TYPE_CHECKING:
     import pyvis
@@ -64,6 +65,8 @@ class CalculationResults:
         >>> results.to_file(compression=5)
         >>> results.to_file(folder='new_results_dir', compression=5)  # Save the results to a new folder
     """
+
+    launch_dashboard = explore_results
 
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
