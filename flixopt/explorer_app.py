@@ -59,42 +59,129 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
     """
     container.write(f'**{dim}** (size: {len(dataset[dim])})')
 
-    if len(dataset[dim]) <= 5:
-        # For small dimensions, use a multiselect
-        values = dataset[dim].values
-        if isinstance(values[0], np.datetime64):
+    # Get the values for this dimension
+    values = dataset[dim].values
+
+    # Check if we have no data to work with
+    if len(values) == 0:
+        container.warning(f"Dimension '{dim}' is empty")
+        return None
+
+    # Determine the data type of the dimension
+    first_val = values[0]
+
+    # Case 1: Small number of values - always use multiselect regardless of type
+    if len(values) <= 5:
+        # For datetime64, convert to readable datetime objects
+        if isinstance(first_val, np.datetime64):
             values = [pd.to_datetime(str(val)) for val in values]
+
         selected = container.multiselect(f'Select {dim} values', options=values, default=[values[0]])
         if selected:
             return selected
         return None
-    else:
-        # For larger dimensions, use a range slider
-        min_val = float(dataset[dim].min().values)
-        max_val = float(dataset[dim].max().values)
 
-        if isinstance(dataset[dim].values[0], np.datetime64):
-            # Handle datetime dimensions
-            date_min = pd.to_datetime(str(dataset[dim].min().values))
-            date_max = pd.to_datetime(str(dataset[dim].max().values))
-            start_date, end_date = container.date_input(
-                f'Select {dim} range',
-                value=(date_min, date_max),
-                min_value=date_min,
-                max_value=date_max,
-            )
-            return slice(str(start_date), str(end_date))
-        else:
-            # Handle numeric dimensions
-            step = (max_val - min_val) / 100
+    # Case 2: Datetime values - use date picker
+    elif isinstance(first_val, np.datetime64):
+        date_min = pd.to_datetime(str(dataset[dim].min().values))
+        date_max = pd.to_datetime(str(dataset[dim].max().values))
+        start_date, end_date = container.date_input(
+            f'Select {dim} range',
+            value=(date_min, min(date_min + pd.Timedelta(days=30), date_max)),
+            min_value=date_min,
+            max_value=date_max,
+        )
+        return slice(str(start_date), str(end_date))
+
+    # Case 3: String values (categorical data) - use multiselect with limiting features
+    elif isinstance(first_val, str):
+        # For string values, provide a way to select multiple values
+        # First, get unique values and sort them
+        unique_values = sorted(list(set(values)))
+
+        # If we have too many unique values, provide a selection mechanism
+        if len(unique_values) > 20:
+            container.warning(f"Dimension '{dim}' has {len(unique_values)} unique string values. Showing first 20.")
+
+            # Option to show all values or search
+            show_all = container.checkbox(f"Show all values for '{dim}'", value=False)
+
+            if show_all:
+                # Show all values but provide a text search to filter
+                search_term = container.text_input(f"Filter values for '{dim}'", '')
+
+                if search_term:
+                    # Filter values that contain the search term
+                    filtered_values = [val for val in unique_values if search_term.lower() in str(val).lower()]
+                    if not filtered_values:
+                        container.warning(f"No values matching '{search_term}'")
+                        return None
+
+                    unique_values = filtered_values
+            else:
+                # Just show the first 20 values
+                unique_values = unique_values[:20]
+
+        # Display multiselect with available values
+        selected = container.multiselect(
+            f'Select {dim} values', options=unique_values, default=[unique_values[0]] if unique_values else []
+        )
+
+        if selected:
+            return selected
+        return None
+
+    # Case 4: Numeric values - use slider
+    elif np.issubdtype(type(first_val), np.number) or isinstance(first_val, (int, float)):
+        try:
+            min_val = float(dataset[dim].min().values)
+            max_val = float(dataset[dim].max().values)
+
+            # Check for identical min/max values
+            if min_val == max_val:
+                container.info(f"All values in dimension '{dim}' are identical: {min_val}")
+                return None
+
+            # Determine appropriate step size
+            range_size = max_val - min_val
+            if range_size < 1:
+                step = range_size / 100
+            elif range_size < 10:
+                step = 0.1
+            elif range_size < 100:
+                step = 1
+            else:
+                step = range_size / 100
+
+            # Round values for better UI
             range_val = container.slider(
                 f'Select {dim} range',
                 min_value=min_val,
                 max_value=max_val,
-                value=(min_val, min(min_val + (max_val - min_val) / 10, max_val)),
+                value=(min_val, min(min_val + range_size / 10, max_val)),
                 step=step,
             )
             return slice(range_val[0], range_val[1])
+        except Exception as e:
+            container.error(f"Error creating slider for '{dim}': {e}")
+            return None
+
+    # Case 5: Unknown/Unhandled type - fallback to multiselect with first 20 values
+    else:
+        container.warning(f"Dimension '{dim}' has an unusual data type. Using simple selection.")
+
+        # Limit to first 20 values to avoid overwhelming the UI
+        display_values = list(values)[:20]
+
+        selected = container.multiselect(
+            f'Select {dim} values (first 20 shown)',
+            options=display_values,
+            default=[display_values[0]] if display_values else [],
+        )
+
+        if selected:
+            return selected
+        return None
 
 
 def filter_and_aggregate(
