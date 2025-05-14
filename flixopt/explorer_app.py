@@ -10,29 +10,28 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import xarray as xr
 
 from flixopt import plotting
+from flixopt.results import filter_dataset
 
 
 # Reusable function to display variables
-def display_variables(variables_dict, prefix=""):
+def display_dataset(ds: xr.Dataset, prefix=""):
     """
     Display variables from a dictionary with options for visualization
 
     Args:
-        variables_dict: Dictionary of variables
+        ds: Dataset to display
         prefix: Prefix for widget keys to avoid collisions
     """
     # Add a filter option
-    variable_filter = st.text_input("Filter variables by name:", key=f"{prefix}_filter")
+    filter_contains = st.text_input("Filter variables by name:", key=f"{prefix}_filter")
 
-    # Get all variables and apply filter
-    all_variables = list(variables_dict)
-
-    if variable_filter:
-        filtered_variables = [v for v in all_variables if variable_filter.lower() in v.lower()]
-    else:
-        filtered_variables = all_variables
+    filtered_ds = filter_dataset(
+        ds,
+        contains=filter_contains if filter_contains else None,
+    )
 
     # Heatmap options in a single row
     show_heatmap_col, heatmap_col1, heatmap_col2, heatmap_col3 = st.columns(4)
@@ -60,32 +59,34 @@ def display_variables(variables_dict, prefix=""):
             key=f"{prefix}_colormap"
         )
 
-    st.write(f"Showing {len(filtered_variables)} of {len(all_variables)} variables")
+    st.write(f"Showing {len(filtered_ds)} of {len(ds)} variables")
 
     # Display all filtered variables directly
-    for var_name in filtered_variables:
+    for name, da in filtered_ds.data_vars.items():
         try:
-            var = variables_dict[var_name]
-            var_solution = var.solution
 
             # Add a divider for each variable
-            st.markdown(f"### {var_name}")
+            st.markdown(f"### {name}")
 
             # Check if this is a time-based variable
-            if 'time' in var_solution.dims:
+            if len(da.dims) > 0:
+                if len(da.dims) == 2:
+                    data = da.to_pandas()
+                else:
+                    data = da.to_dataframe()
                 if show_heatmap:
                     try:
                         # Create heatmap using var_solution
                         heatmap_data = plotting.heat_map_data_from_df(
-                            var_solution.to_dataframe(var_name),
+                            data,
                             timeframes,
                             timesteps,
                             'ffill'
                         )
 
                         fig = plotting.heat_map_plotly(
-                            heatmap_data,
-                            title=var_name,
+                            data,
+                            title=name,
                             color_map=color_map,
                             xlabel=f'timeframe [{timeframes}]',
                             ylabel=f'timesteps [{timesteps}]'
@@ -107,22 +108,22 @@ def display_variables(variables_dict, prefix=""):
                 else:
                     # Regular time series plot
                     fig = plotting.with_plotly(
-                        data=var_solution.to_dataframe(),
+                        data,
                         style='stacked_bar',
-                        title=f'Variable: {var_name}',
+                        title=f'Variable: {name}',
                     )
                     fig.update_layout(height=300)
                     st.plotly_chart(fig, theme='streamlit', use_container_width=True)
 
-                show_datatable = st.checkbox('Show data table', key=f'{prefix}_datatable_{var_name}', value=False)
+                show_datatable = st.checkbox('Show data table', key=f'{prefix}_datatable_{name}', value=False)
                 if show_datatable:
-                    st.dataframe(var_solution.to_dataframe())
+                    st.dataframe(data)
 
             else:
                 # Show scalar value
-                st.write(f"Value: {var_solution.values}")
+                st.write(f"Value: {da.item()}")
         except Exception as e:
-            st.error(f"Error displaying variable {var_name}: {e}")
+            st.error(f"Error displaying variable {name}: {e}")
 
 
 def explore_results_app(results):
@@ -241,24 +242,24 @@ def explore_results_app(results):
                     if component.is_storage:
                         fig = component.plot_charge_state(show=False, save=False)
                     else:
-                        fig = component.plot_flow_rates(show=False, save=False)
+                        fig = component.plot_node_balance(show=False, save=False)
 
                     st.plotly_chart(fig, theme='streamlit', use_container_width=True)
 
                     # Also show as dataframe if requested
                     if st.checkbox("Show Data Table"):
                         if component.is_storage:
-                            flow_rates = component.charge_state_and_flow_rates().to_dataframe()
+                            node_balance = component.node_balance_with_charge_state().to_dataframe()
                         else:
-                            flow_rates = component.flow_rates().to_dataframe()
-                        st.dataframe(flow_rates)
+                            node_balance = component.node_balance().to_dataframe()
+                        st.dataframe(node_balance)
                 except Exception as e:
                     st.error(f"Error displaying the node balance: {e}")
 
             # Variables tab
             with tabs[1]:
                 # Use the reusable function
-                display_variables(component.variables, prefix=f"comp_{component_name}")
+                display_dataset(component.solution, prefix=f"comp_{component_name}")
 
     # Buses page
     elif selected_page == "Buses":
@@ -282,12 +283,12 @@ def explore_results_app(results):
                     st.subheader("Node Balance")
 
                     # Use built-in plotting method
-                    fig = bus.plot_flow_rates(show=False, save=False)
+                    fig = bus.plot_node_balance(show=False, save=False)
                     st.plotly_chart(fig, theme=None, use_container_width=True)
 
                     # Also show as dataframe if requested
                     if st.checkbox("Show Data Table"):
-                        df = bus.flow_rates().to_dataframe()
+                        df = bus.node_balance().to_dataframe()
                         st.dataframe(df)
 
                     # Show inputs and outputs
@@ -306,7 +307,7 @@ def explore_results_app(results):
             # Variables tab
             with tabs[1]:
                 # Use the reusable function
-                display_variables(bus.variables, prefix=f"bus_{bus_name}")
+                display_dataset(bus.solution, prefix=f"bus_{bus_name}")
 
     # Effects page
     elif selected_page == "Effects":
@@ -319,7 +320,7 @@ def explore_results_app(results):
 
         st.header(f"Effect: {effect_name}")
 
-        display_variables(effect.variables, prefix=f"effect_{effect_name}")
+        display_dataset(effect.solution, prefix=f"effect_{effect_name}")
 
 
 def run_explorer_from_file(folder, name):
