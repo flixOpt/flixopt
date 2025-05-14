@@ -70,13 +70,19 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
     # Determine the data type of the dimension
     first_val = values[0]
 
+    # Create unique keys for all widgets based on dimension name
+    # This prevents duplicate widget ID errors
+    widget_key_base = f'dim_selector_{dim}'
+
     # Case 1: Small number of values - always use multiselect regardless of type
     if len(values) <= 5:
         # For datetime64, convert to readable datetime objects
         if isinstance(first_val, np.datetime64):
             values = [pd.to_datetime(str(val)) for val in values]
 
-        selected = container.multiselect(f'Select {dim} values', options=values, default=[values[0]])
+        selected = container.multiselect(
+            f'Select {dim} values', options=values, default=[values[0]], key=f'{widget_key_base}_small_multiselect'
+        )
         if selected:
             return selected
         return None
@@ -90,6 +96,7 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
             value=(date_min, min(date_min + pd.Timedelta(days=30), date_max)),
             min_value=date_min,
             max_value=date_max,
+            key=f'{widget_key_base}_date_input',
         )
         return slice(str(start_date), str(end_date))
 
@@ -104,11 +111,13 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
             container.warning(f"Dimension '{dim}' has {len(unique_values)} unique string values. Showing first 20.")
 
             # Option to show all values or search
-            show_all = container.checkbox(f"Show all values for '{dim}'", value=False)
+            show_all = container.checkbox(
+                f"Show all values for '{dim}'", value=False, key=f'{widget_key_base}_show_all'
+            )
 
             if show_all:
                 # Show all values but provide a text search to filter
-                search_term = container.text_input(f"Filter values for '{dim}'", '')
+                search_term = container.text_input(f"Filter values for '{dim}'", '', key=f'{widget_key_base}_search')
 
                 if search_term:
                     # Filter values that contain the search term
@@ -124,7 +133,10 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
 
         # Display multiselect with available values
         selected = container.multiselect(
-            f'Select {dim} values', options=unique_values, default=[unique_values[0]] if unique_values else []
+            f'Select {dim} values',
+            options=unique_values,
+            default=[unique_values[0]] if unique_values else [],
+            key=f'{widget_key_base}_str_multiselect',
         )
 
         if selected:
@@ -160,6 +172,7 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
                 max_value=max_val,
                 value=(min_val, min(min_val + range_size / 10, max_val)),
                 step=step,
+                key=f'{widget_key_base}_slider',
             )
             return slice(range_val[0], range_val[1])
         except Exception as e:
@@ -177,6 +190,7 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
             f'Select {dim} values (first 20 shown)',
             options=display_values,
             default=[display_values[0]] if display_values else [],
+            key=f'{widget_key_base}_fallback_multiselect',
         )
 
         if selected:
@@ -229,7 +243,7 @@ def resample_time_data(data: xr.DataArray, freq: str) -> xr.DataArray:
 
     Args:
         data: The xarray DataArray containing a time dimension.
-        freq: The resampling frequency string (e.g., 'D', 'M', 'Y').
+        freq: The resampling frequency string (e.g., 'D', 'M', 'Y', '5min').
 
     Returns:
         The resampled DataArray.
@@ -265,11 +279,19 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
             - The selected resampling frequency (or None if no resampling)
     """
     # Find time dimensions
-    time_dims = [dim for dim in data.dims if dim in ['time', 't'] or (isinstance(data[dim].values[0], np.datetime64))]
+    time_dims = [
+        dim
+        for dim in data.dims
+        if dim in ['time', 't', 'date', 'datetime']
+        or (len(data[dim]) > 0 and isinstance(data[dim].values[0], np.datetime64))
+    ]
 
     if not time_dims:
         # No time dimensions
         return False, None
+
+    # Create unique key base for all widgets
+    key_base = f'time_resampling_{time_dims[0]}'
 
     # Show time resampling options
     container.subheader('Time Resampling')
@@ -282,31 +304,48 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
         return False, None
 
     # Get the time range for display
-    start_time = pd.to_datetime(data[time_dim].values[0])
-    end_time = pd.to_datetime(data[time_dim].values[-1])
-    time_range = end_time - start_time
+    try:
+        # Convert to pandas datetime for safe handling of different datetime formats
+        time_values = data[time_dim].values
+        if isinstance(time_values[0], str):
+            # Try to convert string dates to datetime
+            time_values = pd.to_datetime(time_values)
 
-    # Show time range information
-    container.write(f'Time range: {start_time.date()} to {end_time.date()} ({time_range.days} days)')
+        start_time = pd.to_datetime(time_values[0])
+        end_time = pd.to_datetime(time_values[-1])
+        time_range = end_time - start_time
+
+        # Show time range information
+        container.write(f'Time range: {start_time.date()} to {end_time.date()} ({time_range.days} days)')
+    except Exception as e:
+        container.warning(f'Error determining time range: {e}')
+        # Even if there's an error showing the range, we can still offer resampling
+        time_range = pd.Timedelta(days=365)  # Assume a 1-year range as default
 
     # Determine appropriate resampling options based on the time range
     resampling_options = []
 
-    # Always include options for hourly/daily data
-    if time_range.days >= 2:
-        resampling_options.extend(['H', 'D'])
+    try:
+        days = time_range.days
 
-    # For data spanning more than a week
-    if time_range.days > 7:
-        resampling_options.extend(['W'])
+        # Always include options for hourly/daily data
+        if days >= 2:
+            resampling_options.extend(['H', 'D'])
 
-    # For data spanning more than a month
-    if time_range.days > 30:
-        resampling_options.extend(['M'])
+        # For data spanning more than a week
+        if days > 7:
+            resampling_options.extend(['W'])
 
-    # For data spanning more than a year
-    if time_range.days > 365:
-        resampling_options.extend(['Q', 'Y'])
+        # For data spanning more than a month
+        if days > 30:
+            resampling_options.extend(['M'])
+
+        # For data spanning more than a year
+        if days > 365:
+            resampling_options.extend(['Q', 'Y'])
+    except:
+        # Fallback options if we can't determine from time range
+        resampling_options = ['H', 'D', 'W', 'M']
 
     # Ensure we have at least some options
     if not resampling_options:
@@ -326,10 +365,12 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
     friendly_options.append('Custom frequency string')
 
     # Create the selection widget
-    use_resampling = container.checkbox('Enable time resampling', value=False)
+    use_resampling = container.checkbox('Enable time resampling', value=False, key=f'{key_base}_enable')
 
     if use_resampling:
-        selected_freq_name = container.selectbox('Resample to:', options=friendly_options)
+        selected_freq_name = container.selectbox(
+            'Resample to:', options=friendly_options, key=f'{key_base}_freq_select'
+        )
 
         # Map back to actual frequency string
         selected_index = friendly_options.index(selected_freq_name)
@@ -339,7 +380,7 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
             return False, None
         elif selected_freq == 'custom':
             # Provide information about pandas frequency strings
-            with container.expander('Frequency string help'):
+            with container.expander('Frequency string help', key=f'{key_base}_help_expander'):
                 container.write("""
                 **Pandas frequency strings examples:**
                 - '5min': 5 minutes
@@ -360,21 +401,31 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
                 'Enter custom frequency string:',
                 value='1D',  # Default to daily
                 help="Enter a pandas frequency string like '5min', '2H', '1D', '1W', '1M'",
+                key=f'{key_base}_custom_input',
             )
 
             if custom_freq:
                 # Validate the frequency string
                 try:
                     # Try to create a sample resampling to validate the string
-                    test_dates = pd.date_range(start_time, periods=3, freq='D')
+                    test_dates = pd.date_range('2020-01-01', periods=3, freq='D')
                     test_series = pd.Series(range(3), index=test_dates)
                     test_series.resample(custom_freq).mean()
 
                     # If we get here, the frequency string is valid
                     # Show information about what resampling will do
                     try:
-                        resampled = data.resample({time_dim: custom_freq}).mean()
                         n_points_before = len(data[time_dim])
+
+                        # Convert string dates to datetime if needed for resampling preview
+                        if isinstance(data[time_dim].values[0], str):
+                            # Create a temporary copy with datetime index for preview
+                            temp_data = data.copy()
+                            temp_data.coords[time_dim] = pd.to_datetime(temp_data[time_dim].values)
+                            resampled = temp_data.resample({time_dim: custom_freq}).mean()
+                        else:
+                            resampled = data.resample({time_dim: custom_freq}).mean()
+
                         n_points_after = len(resampled[time_dim])
                         container.info(f'Resampling will change data points from {n_points_before} to {n_points_after}')
                     except Exception as e:
@@ -388,20 +439,29 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
                 return False, None
         else:
             # Show information about what resampling will do
-            n_points_before = len(data[time_dim])
-
-            # Calculate approximate number of points after resampling
             try:
-                resampled = data.resample({time_dim: selected_freq}).mean()
+                n_points_before = len(data[time_dim])
+
+                # Convert string dates to datetime if needed for resampling preview
+                if len(data[time_dim]) > 0 and isinstance(data[time_dim].values[0], str):
+                    # Create a temporary copy with datetime index for preview
+                    temp_data = data.copy()
+                    temp_data.coords[time_dim] = pd.to_datetime(temp_data[time_dim].values)
+                    resampled = temp_data.resample({time_dim: selected_freq}).mean()
+                else:
+                    resampled = data.resample({time_dim: selected_freq}).mean()
+
                 n_points_after = len(resampled[time_dim])
-                container.info(f'Resampling will change data points from {n_points_before} to {n_points_after}')
+                container.info(
+                    f'Resampling will change data points from {n_points_before} to {n_points_after}',
+                    key=f'{key_base}_info',
+                )
             except Exception as e:
-                container.warning(f'Cannot preview resampling effect: {str(e)}')
+                container.warning(f'Cannot preview resampling effect: {str(e)}', key=f'{key_base}_warning')
 
             return True, selected_freq
     else:
         return False, None
-
 
 def create_plotly_plot(
     data: xr.DataArray, plot_type: str, var_name: str, title: Optional[str] = None, x_dim: Optional[str] = None
@@ -689,7 +749,7 @@ def xarray_explorer_component(dataset: xr.Dataset, container: Any = None) -> xr.
         container = st
 
     # Dataset information
-    with container.expander('Dataset Overview'):
+    with container.expander('Dataset Overview', key="dataset_overview_expander"):
         container.write('### Dataset Metadata')
         container.write(dataset.attrs)
 
@@ -707,11 +767,15 @@ def xarray_explorer_component(dataset: xr.Dataset, container: Any = None) -> xr.
                     'Type': str(var.dtype),
                 }
             )
-        container.dataframe(pd.DataFrame(var_info))
+        container.dataframe(pd.DataFrame(var_info), key="var_info_dataframe")
 
     # Variable selection - single variable only
     container.subheader('Variable Selection')
-    selected_var = container.selectbox('Select variable to explore', list(dataset.data_vars))
+    selected_var = container.selectbox(
+        'Select variable to explore',
+        list(dataset.data_vars),
+        key="variable_selector"
+    )
 
     # Get the variable
     variable = dataset[selected_var]
@@ -736,20 +800,36 @@ def xarray_explorer_component(dataset: xr.Dataset, container: Any = None) -> xr.
 
         # Aggregation options
         container.subheader('Aggregation Options')
-        agg_dims = container.multiselect('Dimensions to aggregate', dims)
-        agg_method = container.selectbox('Aggregation method', ['mean', 'sum', 'min', 'max', 'std'])
+        agg_dims = container.multiselect(
+            'Dimensions to aggregate',
+            dims,
+            key="agg_dims_selector"
+        )
+        agg_method = container.selectbox(
+            'Aggregation method',
+            ['mean', 'sum', 'min', 'max', 'std'],
+            key="agg_method_selector"
+        )
 
         # Check if data has time dimension and add time resampling UI
         use_time_resampling, resampling_freq = get_time_aggregation_ui(container, variable)
 
         # Plot type selection - limited to the requested types
         container.subheader('Plot Settings')
-        plot_type = container.selectbox('Plot type', ['Line', 'Stacked Bar', 'Grouped Bar', 'Heatmap'])
+        plot_type = container.selectbox(
+            'Plot type',
+            ['Line', 'Stacked Bar', 'Grouped Bar', 'Heatmap'],
+            key="plot_type_selector"
+        )
 
         if plot_type in ['Line', 'Stacked Bar', 'Grouped Bar']:
             remaining_dims = [d for d in dims if d not in agg_dims]
             if remaining_dims:
-                x_dim = container.selectbox('X axis dimension', remaining_dims)
+                x_dim = container.selectbox(
+                    'X axis dimension',
+                    remaining_dims,
+                    key="x_dim_selector"
+                )
             else:
                 x_dim = None
         else:
@@ -772,21 +852,24 @@ def xarray_explorer_component(dataset: xr.Dataset, container: Any = None) -> xr.
         fig = create_plotly_plot(filtered_data, plot_type, selected_var, title=plot_title, x_dim=x_dim)
 
         # Show the plot
-        container.plotly_chart(fig, use_container_width=True)
+        container.plotly_chart(fig, use_container_width=True, key="main_plot")
 
         # Data preview
-        with container.expander('Data Preview'):
-            container.dataframe(filtered_data.to_dataframe())
+        with container.expander('Data Preview', key="data_preview_expander"):
+            container.dataframe(filtered_data.to_dataframe(), key="filtered_data_preview")
 
         # Download options
         container.subheader('Download Options')
-        download_format = container.selectbox('Download format', ['CSV', 'NetCDF', 'Excel'])
+        download_format = container.selectbox(
+            'Download format',
+            ['CSV', 'NetCDF', 'Excel'],
+            key="download_format_selector"
+        )
 
-        if container.button('Download filtered data'):
+        if container.button('Download filtered data', key="download_button"):
             download_data(filtered_data, selected_var, download_format, container)
 
     return filtered_data
-
 
 def explore_results_app(results):
     """
@@ -805,7 +888,7 @@ def explore_results_app(results):
 
     # Create sidebar for navigation
     st.sidebar.title("FlixOpt Results Explorer")
-    pages = ["Overview", "Components", "Buses", "Effects", "Explorer"]
+    pages = ["Overview", "Components", "Buses", "Effects", "Explorer", "Effects DS"]
     selected_page = st.sidebar.radio("Navigation", pages)
 
     # Overview page
@@ -997,6 +1080,17 @@ def explore_results_app(results):
     elif selected_page == "Explorer":
         st.title("Explorer")
         xarray_explorer_component(results.solution)
+
+    elif selected_page == "Effects DS":
+        st.title('Effects Dataset')
+        tabs = st.tabs(["total", "invest", "operation"])
+
+        with tabs[0]:
+            xarray_explorer_component(results.effects_per_component('total'))
+        with tabs[1]:
+            xarray_explorer_component(results.effects_per_component('invest'))
+        with tabs[2]:
+            xarray_explorer_component(results.effects_per_component('operation'))
 
 
 def run_explorer_from_file(folder, name):
