@@ -166,31 +166,41 @@ def explore_results_app(results):
             st.write(f"**Effects:** {len(results.effects)}")
             st.write(f"**Storage Components:** {len(results.storages)}")
 
+        # Results summary
+        st.header('Results Summary')
+        tabs = st.tabs(list(results.summary.keys()))
+        for i, key in enumerate(results.summary.keys()):
+            with tabs[i]:
+                if isinstance(results.summary[key], dict):
+                    st.json(results.summary[key])
+                else:
+                    st.write(results.summary[key])
+
         # Network visualization
         st.header("Network Structure")
-        tabs = st.tabs(["Component Connections", "Details of Flow System", "Network Information"])
+        tabs = st.tabs(["Component Connections", "Nodes", "Edges"])
 
         # Show component connections
         with tabs[0]:
             connections_data = []
 
-            for comp_name, comp in results.components.items():
-                for flow_name in comp.inputs + comp.outputs:
+            for comp_name, comp in results.flow_system.components.items():
+                for flow_name, flow in comp.flows.items():
                     connections_data.append({
                         "Component": comp_name,
                         "Flow": flow_name,
                         "Direction": "from" if flow_name in comp.inputs else "to",
-                        "Bus": '?'  #TODO
+                        "Bus": flow.bus,
                     })
 
-            if connections_data:
-                st.dataframe(pd.DataFrame(connections_data))
+            st.dataframe(pd.DataFrame(connections_data))
 
+        network_infos = results.flow_system.network_infos()
         with tabs[1]:
-            st.json(results.infos)
+            st.json(network_infos[0])
 
         with tabs[2]:
-            st.json(results.network_infos)
+            st.json(network_infos[1])
 
 
     # Components page
