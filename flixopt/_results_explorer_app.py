@@ -1,21 +1,21 @@
 # FlixOpt Results Explorer App
 
 import argparse
+import functools
+import inspect
+import io
 import os
 import sys
-import io
 import tempfile
-from typing import Dict, List, Optional, Union, Tuple, Any, Callable, cast, TypeVar
 import traceback
-import inspect
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
-import functools
 import pandas as pd
-import streamlit as st
-import xarray as xr
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
+import xarray as xr
 
 T = TypeVar('T')
 
@@ -71,7 +71,7 @@ def show_traceback(
                         # Try to get source code
                         try:
                             display.code(inspect.getsource(func), language='python')
-                        except:
+                        except Exception:
                             display.warning('Could not retrieve function source code.')
 
                         # Show arguments
@@ -85,7 +85,7 @@ def show_traceback(
                                 if len(repr_arg) > 200:  # Truncate long representations
                                     repr_arg = repr_arg[:200] + '...'
                                 safe_args.append(repr_arg)
-                            except:
+                            except Exception:
                                 safe_args.append('[Representation failed]')
 
                         # Safely represent kwargs
@@ -96,7 +96,7 @@ def show_traceback(
                                 if len(repr_v) > 200:  # Truncate long representations
                                     repr_v = repr_v[:200] + '...'
                                 safe_kwargs[k] = repr_v
-                            except:
+                            except Exception:
                                 safe_kwargs[k] = '[Representation failed]'
 
                         # Display args and kwargs
@@ -216,7 +216,7 @@ def display_variable_stats(array: xr.DataArray, container: Optional[Any] = None)
             stats_cols[1].metric('Max', float(array.max().values))
             stats_cols[2].metric('Mean', float(array.mean().values))
             stats_cols[3].metric('Std', float(array.std().values))
-    except:
+    except Exception:
         pass
 
 
@@ -276,6 +276,7 @@ def aggregate_dimensions(
         container.error(f'Error during aggregation: {str(e)}')
         return array  # Return original array if aggregation fails
 
+
 @show_traceback()
 def create_dimension_selector(
     array: xr.DataArray,
@@ -331,7 +332,7 @@ def create_dimension_selector(
                 # For non-numeric values (strings, etc), find exact match
                 try:
                     selected_idx = np.where(values == selected_value)[0][0]
-                except:
+                except Exception:
                     # Fallback if exact match fails
                     selected_idx = default_idx
         else:
@@ -401,6 +402,7 @@ def create_dimension_selectors(
                             slice_indexes[dim] = create_dimension_selector(array, dim, cols[j], f'{unique_key}_{i}_{j}')
 
     return slice_indexes
+
 
 @show_traceback()
 def plot_scalar(array: xr.DataArray, container: Optional[Any] = None) -> None:
@@ -667,6 +669,7 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
 
     container.plotly_chart(fig, use_container_width=True)
     return array_slice, slice_dict
+
 
 @show_traceback()
 def display_data_preview(array: xr.DataArray, container: Optional[Any] = None) -> pd.DataFrame:
@@ -1149,30 +1152,12 @@ def run_explorer_from_file(folder, name):
     """
     # Import the relevant modules
     try:
-        # Try different import approaches
-        try:
-            # First try standard import
-            try:
-                from flixopt.results import CalculationResults
-            except ImportError:
-                from flixopt.results import CalculationResults
-        except ImportError:
-            # Add potential module paths
-            for path in [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]:
-                if path not in sys.path:
-                    sys.path.append(path)
-
-            # Try again with modified path
-            try:
-                from flixopt.results import CalculationResults
-            except ImportError:
-                from flixopt.results import CalculationResults
-
+        from flixopt.results import CalculationResults
         # Load from file
         results = CalculationResults.from_file(folder, name)
         explore_results_app(results)
     except Exception as e:
-        st.error(f"Error loading calculation results: {e}")
+        st.error(f"Error loading calculation results for streamlit app: {e}")
         st.stop()
 
 # Entry point for module execution

@@ -14,6 +14,7 @@ from pathlib import Path
 def explore_results(self, port=8501):
     """
     Launch a Streamlit app to explore the calculation results.
+    This function is experimental and might have issues.
 
     Args:
         port: Port to use for the Streamlit server
@@ -24,7 +25,7 @@ def explore_results(self, port=8501):
 
     # Find explorer app path
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    explorer_script = os.path.join(current_dir, 'explorer_app.py')
+    explorer_script = os.path.join(current_dir, '_results_explorer_app.py')
 
     # If the explorer app doesn't exist, inform the user
     if not os.path.exists(explorer_script):

@@ -17,7 +17,7 @@ from . import io as fx_io
 from . import plotting
 from .core import DataConverter, TimeSeriesCollection
 from .flow_system import FlowSystem
-from .results_explorer import explore_results
+from ._results_explorer import explore_results
 
 if TYPE_CHECKING:
     import pyvis
