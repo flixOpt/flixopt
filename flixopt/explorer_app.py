@@ -238,7 +238,7 @@ def plot_scalar(array: xr.DataArray, container: Optional[Any] = None) -> None:
 @show_traceback()
 def plot_1d(array: xr.DataArray, var_name: str, container: Optional[Any] = None) -> None:
     """
-    Plot a 1-dimensional DataArray.
+    Plot a 1-dimensional DataArray with multiple plot type options.
 
     Args:
         array: xarray.DataArray with 1 dimension
@@ -250,19 +250,56 @@ def plot_1d(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
 
     dim = list(array.dims)[0]
 
-    # Line plot
-    fig = px.line(x=array[dim].values, y=array.values, labels={'x': dim, 'y': var_name})
+    # Add plot type selector
+    plot_type = container.selectbox('Plot type:', ['Line', 'Bar', 'Histogram', 'Area'], key=f'plot_type_1d_{var_name}')
+
+    # Create figure based on selected plot type
+    if plot_type == 'Line':
+        fig = px.line(
+            x=array[dim].values, y=array.values, labels={'x': dim, 'y': var_name}, title=f'{var_name} by {dim}'
+        )
+    elif plot_type == 'Bar':
+        df = pd.DataFrame({dim: array[dim].values, 'value': array.values})
+        fig = px.bar(df, x=dim, y='value', labels={'value': var_name}, title=f'{var_name} by {dim}')
+    elif plot_type == 'Histogram':
+        fig = px.histogram(
+            x=array.values,
+            nbins=min(30, len(array) // 2) if len(array) > 2 else 10,
+            labels={'x': var_name},
+            title=f'Distribution of {var_name}',
+        )
+    elif plot_type == 'Area':
+        df = pd.DataFrame({dim: array[dim].values, 'value': array.values})
+        fig = px.area(df, x=dim, y='value', labels={'value': var_name}, title=f'{var_name} by {dim}')
+
+    # Show the plot
     container.plotly_chart(fig, use_container_width=True)
 
-    # Histogram
-    fig2 = px.histogram(x=array.values, nbins=30, labels={'x': var_name})
-    container.plotly_chart(fig2, use_container_width=True)
-
+    # For 1D data, we can also offer some basic statistics
+    if container.checkbox('Show statistics', key=f'show_stats_{var_name}'):
+        try:
+            stats = pd.DataFrame(
+                {
+                    'Statistic': ['Min', 'Max', 'Mean', 'Median', 'Std', 'Sum'],
+                    'Value': [
+                        float(array.min().values),
+                        float(array.max().values),
+                        float(array.mean().values),
+                        float(np.median(array.values)),
+                        float(array.std().values),
+                        float(array.sum().values),
+                    ],
+                }
+            )
+            container.dataframe(stats, use_container_width=True)
+        except Exception as e:
+            container.warning(f'Could not compute statistics: {str(e)}')
 
 @show_traceback()
 def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None) -> Tuple[xr.DataArray, Optional[Dict]]:
     """
     Plot a multi-dimensional DataArray with interactive dimension selectors.
+    Supports multiple plot types: heatmap, line, stacked bar, and grouped bar.
 
     Args:
         array: xarray.DataArray with 2+ dimensions
@@ -285,14 +322,26 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
         # Choose which dimension to put on x-axis
         x_dim = st.selectbox('X dimension:', dims, index=0)
 
-        # Choose which dimension to put on y-axis
+        # Choose which dimension to put on y-axis if we have at least 2 dimensions
         remaining_dims = [d for d in dims if d != x_dim]
-        y_dim = st.selectbox('Y dimension:', remaining_dims, index=0 if len(remaining_dims) > 0 else None)
+        y_dim = None
+        if len(remaining_dims) > 0:
+            y_dim_options = ['None'] + remaining_dims
+            y_dim_selection = st.selectbox('Y dimension:', y_dim_options, index=1)
+            if y_dim_selection != 'None':
+                y_dim = y_dim_selection
 
-    # If we have more than 2 dimensions, let user select values for other dimensions
+        # Add plot type selector
+        plot_type = st.selectbox(
+            'Plot type:',
+            ['Heatmap', 'Line', 'Stacked Bar', 'Grouped Bar'],
+            index=0 if y_dim is not None else 1,  # Default to heatmap for 2D, line for 1D
+        )
+
+    # If we have more than the selected dimensions, let user select values for other dimensions
     with viz_cols[1]:
         # Setup sliders for other dimensions
-        slice_dims = [d for d in dims if d not in [x_dim, y_dim]]
+        slice_dims = [d for d in dims if d not in ([x_dim] if y_dim is None else [x_dim, y_dim])]
         slice_indexes = {}
 
         for dim in slice_dims:
@@ -308,26 +357,80 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
     else:
         array_slice = array
 
-    # Visualization depends on whether we have 1 or 2 dimensions selected
-    if y_dim:
-        # 2D visualization: heatmap
-        fig = px.imshow(
-            array_slice.transpose(y_dim, x_dim).values,
-            x=array_slice[x_dim].values,
-            y=array_slice[y_dim].values,
-            color_continuous_scale='viridis',
-            labels={'x': x_dim, 'y': y_dim, 'color': var_name},
-        )
+    # Visualization depends on the selected plot type and dimensions
+    if y_dim is not None:
+        # 2D visualization
+        if plot_type == 'Heatmap':
+            # Heatmap visualization
+            fig = px.imshow(
+                array_slice.transpose(y_dim, x_dim).values,
+                x=array_slice[x_dim].values,
+                y=array_slice[y_dim].values,
+                color_continuous_scale='viridis',
+                labels={'x': x_dim, 'y': y_dim, 'color': var_name},
+            )
+            fig.update_layout(height=500)
+        elif plot_type == 'Line':
+            # Line plot with multiple lines (one per y-dimension value)
+            fig = go.Figure()
 
-        fig.update_layout(height=500)
-        container.plotly_chart(fig, use_container_width=True)
+            # Convert to dataframe for easier plotting
+            df = array_slice.to_dataframe(name='value').reset_index()
+
+            # Group by y-dimension for multiple lines
+            for y_val in array_slice[y_dim].values:
+                df_subset = df[df[y_dim] == y_val]
+                fig.add_trace(
+                    go.Scatter(x=df_subset[x_dim], y=df_subset['value'], mode='lines', name=f'{y_dim}={y_val}')
+                )
+
+            fig.update_layout(
+                height=500,
+                title=f'{var_name} by {x_dim} and {y_dim}',
+                xaxis_title=x_dim,
+                yaxis_title=var_name,
+                legend_title=y_dim,
+            )
+        elif plot_type == 'Stacked Bar':
+            # Stacked bar chart
+            # Convert to dataframe for easier plotting
+            df = array_slice.to_dataframe(name='value').reset_index()
+
+            fig = px.bar(
+                df,
+                x=x_dim,
+                y='value',
+                color=y_dim,
+                barmode='stack',
+                labels={'value': var_name, x_dim: x_dim, y_dim: y_dim},
+            )
+            fig.update_layout(height=500)
+        elif plot_type == 'Grouped Bar':
+            # Grouped bar chart
+            # Convert to dataframe for easier plotting
+            df = array_slice.to_dataframe(name='value').reset_index()
+
+            fig = px.bar(
+                df,
+                x=x_dim,
+                y='value',
+                color=y_dim,
+                barmode='group',
+                labels={'value': var_name, x_dim: x_dim, y_dim: y_dim},
+            )
+            fig.update_layout(height=500)
     else:
         # 1D visualization after slicing
-        fig = px.line(x=array_slice[x_dim].values, y=array_slice.values, labels={'x': x_dim, 'y': var_name})
-        container.plotly_chart(fig, use_container_width=True)
+        if plot_type in ['Line', 'Heatmap']:  # Default to line for 1D data
+            fig = px.line(x=array_slice[x_dim].values, y=array_slice.values, labels={'x': x_dim, 'y': var_name})
+        elif plot_type in ['Stacked Bar', 'Grouped Bar']:  # Both are the same for 1D
+            # Create a dataframe for the bar chart
+            df = pd.DataFrame({x_dim: array_slice[x_dim].values, 'value': array_slice.values})
 
+            fig = px.bar(df, x=x_dim, y='value', labels={'value': var_name})
+
+    container.plotly_chart(fig, use_container_width=True)
     return array_slice, slice_dict
-
 
 @show_traceback()
 def display_data_preview(array: xr.DataArray, container: Optional[Any] = None) -> pd.DataFrame:
