@@ -497,20 +497,6 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
 
     dims = list(array.dims)
 
-    # Add custom CSS to reduce spacing
-    container.markdown(
-        """
-    <style>
-        .stSelectbox {margin-bottom: 0.2rem;}
-        .stMultiSelect {margin-bottom: 0.2rem;}
-        .stSlider {margin-bottom: 0.2rem; padding-bottom: 0.5rem;}
-        div.block-container {padding-top: 0.5rem;}
-        div.stButton > button {margin-top: 0rem;}
-    </style>
-    """,
-        unsafe_allow_html=True,
-    )
-
     # Use tabs for main sections
     dim_tab, viz_tab = container.tabs(['Dimension Settings', 'Visualization Settings'])
 
