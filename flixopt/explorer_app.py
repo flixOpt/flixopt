@@ -819,7 +819,7 @@ def explore_results_app(results):
 
     # Create sidebar for navigation
     st.sidebar.title("FlixOpt Results Explorer")
-    pages = ["Overview", "Components", "Buses", "Effects", "Flows DS", "Effects DS", "Explorer"]
+    pages = ["Overview", "Components", "Buses", "Effects", "Flows DS", "Effects DS", 'Sizes DS', "Explorer"]
     selected_page = st.sidebar.radio("Navigation", pages)
 
     # Overview page
@@ -1020,6 +1020,10 @@ def explore_results_app(results):
         st.title('Effects Dataset')
         mode = st.selectbox("Select a mode", ['total', 'invest', 'operation'])
         xarray_explorer(results.effects_per_component(mode))
+
+    elif selected_page == 'Sizes DS':
+        st.title('Sizes Dataset')
+        xarray_explorer(results.sizes())
 
     elif selected_page == "Explorer":
         st.title("Explore all variable results")
