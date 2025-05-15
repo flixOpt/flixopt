@@ -4,20 +4,126 @@ import argparse
 import os
 import sys
 from pathlib import Path
+import io
+import tempfile
+from typing import Dict, List, Optional, Union, Tuple, Any, Callable, cast, TypeVar
+import traceback
+import inspect
 
 import numpy as np
+import functools
 import pandas as pd
 import streamlit as st
 import xarray as xr
 import plotly.express as px
 import plotly.graph_objects as go
-import io
-import tempfile
-from typing import Dict, List, Optional, Union, Tuple, Any
+
+T = TypeVar('T')
 
 from flixopt import plotting
 
 
+def show_traceback(
+    return_original_input: bool = False, include_args: bool = True, container: Optional[Any] = None
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """
+    A decorator that shows the full traceback in Streamlit when an exception occurs.
+
+    Args:
+        return_original_input: If True and the first argument is not None, return it on error.
+                              Useful for data processing functions to return original data.
+        include_args: If True, show function arguments in the error details.
+        container: Optional Streamlit container to display errors in.
+                  If None, uses st directly.
+
+    Usage:
+        @show_traceback()
+        def my_function(data, param1, param2):
+            # Your code here
+
+        # Or with custom options:
+        @show_traceback(return_original_input=True, include_args=False)
+        def process_data(data, options):
+            # Your code here
+
+    Returns:
+        The decorated function
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # Get display container
+            display = container if container is not None else st
+
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                # Show error message
+                display.error(f'⚠️ Error in {func.__name__}: {str(e)}')
+
+                # Create an expander for detailed error info
+                with display.expander('See detailed traceback'):
+                    # Show the full traceback
+                    display.code(traceback.format_exc(), language='python')
+
+                    # Show function info if requested
+                    if include_args:
+                        display.markdown('**Function Information:**')
+
+                        # Try to get source code
+                        try:
+                            display.code(inspect.getsource(func), language='python')
+                        except:
+                            display.warning('Could not retrieve function source code.')
+
+                        # Show arguments
+                        display.markdown('**Function Arguments:**')
+
+                        # Safely represent args
+                        safe_args = []
+                        for arg in args:
+                            try:
+                                repr_arg = repr(arg)
+                                if len(repr_arg) > 200:  # Truncate long representations
+                                    repr_arg = repr_arg[:200] + '...'
+                                safe_args.append(repr_arg)
+                            except:
+                                safe_args.append('[Representation failed]')
+
+                        # Safely represent kwargs
+                        safe_kwargs = {}
+                        for k, v in kwargs.items():
+                            try:
+                                repr_v = repr(v)
+                                if len(repr_v) > 200:  # Truncate long representations
+                                    repr_v = repr_v[:200] + '...'
+                                safe_kwargs[k] = repr_v
+                            except:
+                                safe_kwargs[k] = '[Representation failed]'
+
+                        # Display args and kwargs
+                        display.text(f'Args: {safe_args}')
+                        display.text(f'Kwargs: {safe_kwargs}')
+
+                # Also log to console/stderr for server logs
+                print(f'Exception in {func.__name__}:', file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+
+                # Determine what to return on error
+                if return_original_input and args and args[0] is not None:
+                    # Return the first argument (usually the data being processed)
+                    return args[0]
+                else:
+                    # Return None as default
+                    return None
+
+        return cast(Callable[..., T], wrapper)
+
+    return decorator
+
+
+@show_traceback()
 def plot_heatmap(
     data: pd.DataFrame,
     name: str,
@@ -45,7 +151,8 @@ def plot_heatmap(
     return fig
 
 
-def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Optional[Union[slice, List]]:
+@show_traceback()
+def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any, st_key: str = '') -> Optional[Union[slice, List]]:
     """Creates UI elements to select values or ranges for a specific dimension.
 
     Args:
@@ -72,7 +179,7 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
 
     # Create unique keys for all widgets based on dimension name
     # This prevents duplicate widget ID errors
-    widget_key_base = f'dim_selector_{dim}'
+    widget_key_base = f'dim_selector_{dim}_{st_key}'
 
     # Case 1: Small number of values - always use multiselect regardless of type
     if len(values) <= 5:
@@ -198,14 +305,14 @@ def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any) -> Opt
         return None
 
 
+@show_traceback()
 def filter_and_aggregate(
-    dataset: xr.Dataset, var_name: str, filters: Dict[str, Union[slice, List]], agg_dims: List[str], agg_method: str
+    da: xr.DataArray, filters: Dict[str, Union[slice, List]], agg_dims: List[str], agg_method: str
 ) -> xr.DataArray:
     """Filters and aggregates a variable from the dataset.
 
     Args:
-        dataset: The dataset containing the variable.
-        var_name: Name of the variable to process.
+        da: The dataarray.
         filters: Dictionary of dimension filters.
         agg_dims: Dimensions to aggregate over.
         agg_method: Aggregation method (mean, sum, etc.).
@@ -213,14 +320,12 @@ def filter_and_aggregate(
     Returns:
         Filtered and aggregated data.
     """
-    # Get the variable
-    variable = dataset[var_name]
 
     # Filter the data
     if filters:
-        filtered_data = variable.sel(**filters)
+        filtered_data = da.sel(**filters)
     else:
-        filtered_data = variable
+        filtered_data = da
 
     # Apply aggregation if selected
     if agg_dims and agg_method:
@@ -238,6 +343,46 @@ def filter_and_aggregate(
     return filtered_data
 
 
+@show_traceback()
+def filter_and_aggregate_dataarray(
+    dataarray: xr.DataArray, filters: dict, agg_dims: list, agg_method: str
+) -> xr.DataArray:
+    """Filter and aggregate a DataArray.
+
+    Args:
+        dataarray: The xarray DataArray to process.
+        filters: Dictionary of dimension filters.
+        agg_dims: List of dimensions to aggregate over.
+        agg_method: Aggregation method ('mean', 'sum', etc.)
+
+    Returns:
+        Filtered and aggregated DataArray.
+    """
+    # Apply filters
+    filtered_data = dataarray
+    for dim, dim_filter in filters.items():
+        if isinstance(dim_filter, slice):
+            filtered_data = filtered_data.sel({dim: dim_filter})
+        elif isinstance(dim_filter, (list, np.ndarray)):
+            filtered_data = filtered_data.sel({dim: dim_filter})
+
+    # Apply aggregation if requested
+    if agg_dims and len(agg_dims) > 0:
+        if agg_method == 'mean':
+            filtered_data = filtered_data.mean(dim=agg_dims)
+        elif agg_method == 'sum':
+            filtered_data = filtered_data.sum(dim=agg_dims)
+        elif agg_method == 'min':
+            filtered_data = filtered_data.min(dim=agg_dims)
+        elif agg_method == 'max':
+            filtered_data = filtered_data.max(dim=agg_dims)
+        elif agg_method == 'std':
+            filtered_data = filtered_data.std(dim=agg_dims)
+
+    return filtered_data
+
+
+@show_traceback()
 def resample_time_data(data: xr.DataArray, freq: str) -> xr.DataArray:
     """Resamples a DataArray along its time dimension.
 
@@ -266,7 +411,8 @@ def resample_time_data(data: xr.DataArray, freq: str) -> xr.DataArray:
         return data
 
 
-def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, Optional[str]]:
+@show_traceback()
+def get_time_aggregation_ui(container: Any, data: xr.DataArray, st_key: str = '') -> Tuple[bool, Optional[str]]:
     """Creates UI elements for time-based aggregation options.
 
     Args:
@@ -291,7 +437,7 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
         return False, None
 
     # Create unique key base for all widgets
-    key_base = f'time_resampling_{time_dims[0]}'
+    key_base = f'time_resampling_{time_dims[0]}_{st_key}'
 
     # Show time resampling options
     container.subheader('Time Resampling')
@@ -380,7 +526,7 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
             return False, None
         elif selected_freq == 'custom':
             # Provide information about pandas frequency strings
-            with container.expander('Frequency string help', key=f'{key_base}_help_expander'):
+            with container.expander('Frequency string help'):
                 container.write("""
                 **Pandas frequency strings examples:**
                 - '5min': 5 minutes
@@ -463,6 +609,8 @@ def get_time_aggregation_ui(container: Any, data: xr.DataArray) -> Tuple[bool, O
     else:
         return False, None
 
+
+@show_traceback()
 def create_plotly_plot(
     data: xr.DataArray, plot_type: str, var_name: str, title: Optional[str] = None, x_dim: Optional[str] = None
 ) -> go.Figure:
@@ -693,6 +841,7 @@ def create_plotly_plot(
     return fig
 
 
+@show_traceback()
 def download_data(filtered_data: xr.DataArray, var_name: str, download_format: str, container: Any) -> None:
     """Creates download buttons for the filtered data.
 
@@ -730,55 +879,76 @@ def download_data(filtered_data: xr.DataArray, var_name: str, download_format: s
         )
 
 
-def xarray_explorer_component(dataset: xr.Dataset, container: Any = None) -> xr.DataArray:
-    """A reusable Streamlit component that creates an xarray dataset explorer.
+@show_traceback()
+def xarray_explorer_component(
+    data: Union[xr.Dataset, xr.DataArray], container: Any = None, st_key: Optional[str] = None
+) -> Union[xr.DataArray, xr.Dataset]:
+    """A reusable Streamlit component that creates an xarray data explorer.
 
-    This component allows users to interactively explore an xarray Dataset by
-    selecting variables, filtering dimensions, and creating visualizations.
+    This component allows users to interactively explore an xarray Dataset or DataArray by
+    selecting variables (for Dataset), filtering dimensions, and creating visualizations.
 
     Args:
-        dataset: The xarray Dataset to explore.
+        data: The xarray Dataset or DataArray to explore.
         container: The Streamlit container to render the explorer in.
             If None, renders in the current Streamlit app context.
+        st_key: Optional key prefix for Streamlit widget keys to avoid duplicates.
 
     Returns:
-        The filtered/selected data for the selected variable.
+        The filtered/selected data.
     """
     # If no container is provided, use the current Streamlit context
     if container is None:
         container = st
 
-    # Dataset information
-    with container.expander('Dataset Overview', key="dataset_overview_expander"):
-        container.write('### Dataset Metadata')
-        container.write(dataset.attrs)
+    # Determine if we're dealing with a Dataset or DataArray
+    is_dataset = isinstance(data, xr.Dataset)
+
+    # Dataset/DataArray information
+    with container.expander('Data Overview'):
+        if is_dataset:
+            container.write('### Dataset Metadata')
+        else:
+            container.write('### DataArray Metadata')
+
+        container.write(data.attrs)
 
         container.write('### Dimensions')
-        container.write(pd.DataFrame({'Dimension': list(dataset.dims.keys()), 'Size': list(dataset.dims.values())}))
+        #container.write(pd.DataFrame({'Dimension': list(data.indexes.keys()), 'Size': list(data.indexes.values())}))
 
-        container.write('### Variables')
-        var_info = []
-        for var_name, var in dataset.variables.items():
-            var_info.append(
-                {
-                    'Variable': var_name,
-                    'Dimensions': ', '.join(var.dims),
-                    'Shape': str(var.shape),
-                    'Type': str(var.dtype),
-                }
-            )
-        container.dataframe(pd.DataFrame(var_info), key="var_info_dataframe")
+        if is_dataset:
+            container.write('### Variables')
+            var_info = []
+            for var_name, var in data.variables.items():
+                var_info.append(
+                    {
+                        'Variable': var_name,
+                        'Dimensions': ', '.join(var.dims),
+                        'Shape': str(var.shape),
+                        'Type': str(var.dtype),
+                    }
+                )
+            container.dataframe(pd.DataFrame(var_info), key=f'{st_key}_var_info_dataframe')
+        else:
+            # For DataArray, show its basic info
+            container.write('### DataArray Information')
+            container.write(f'**Name:** {data.name}')
+            container.write(f'**Type:** {data.dtype}')
 
-    # Variable selection - single variable only
-    container.subheader('Variable Selection')
-    selected_var = container.selectbox(
-        'Select variable to explore',
-        list(dataset.data_vars),
-        key="variable_selector"
-    )
-
-    # Get the variable
-    variable = dataset[selected_var]
+    # For Dataset: Variable selection
+    # For DataArray: Just display the variable name
+    if is_dataset:
+        container.subheader('Variable Selection')
+        selected_var = container.selectbox(
+            'Select variable to explore', list(data.data_vars), key=f'{st_key}_variable_selector'
+        )
+        # Get the variable
+        variable = data[selected_var]
+    else:
+        # For DataArray, we already have the variable
+        variable = data
+        selected_var = variable.name if variable.name is not None else 'DataArray'
+        container.subheader(f'Exploring: {selected_var}')
 
     # Display variable info
     container.write(f'**Variable shape:** {variable.shape}')
@@ -794,49 +964,41 @@ def xarray_explorer_component(dataset: xr.Dataset, container: Any = None) -> xr.
         # Set filters for each dimension
         filters = {}
         for dim in dims:
-            dim_filter = get_dimension_selector(dataset, dim, container)
+            dim_filter = get_dimension_selector(data, dim, container, st_key=st_key)
             if dim_filter is not None:
                 filters[dim] = dim_filter
 
         # Aggregation options
         container.subheader('Aggregation Options')
-        agg_dims = container.multiselect(
-            'Dimensions to aggregate',
-            dims,
-            key="agg_dims_selector"
-        )
+        agg_dims = container.multiselect('Dimensions to aggregate', dims, key=f'{st_key}_agg_dims_selector')
         agg_method = container.selectbox(
-            'Aggregation method',
-            ['mean', 'sum', 'min', 'max', 'std'],
-            key="agg_method_selector"
+            'Aggregation method', ['mean', 'sum', 'min', 'max', 'std'], key=f'{st_key}_agg_method_selector'
         )
 
         # Check if data has time dimension and add time resampling UI
-        use_time_resampling, resampling_freq = get_time_aggregation_ui(container, variable)
+        use_time_resampling, resampling_freq = get_time_aggregation_ui(container, variable, st_key=st_key)
 
         # Plot type selection - limited to the requested types
         container.subheader('Plot Settings')
         plot_type = container.selectbox(
-            'Plot type',
-            ['Line', 'Stacked Bar', 'Grouped Bar', 'Heatmap'],
-            key="plot_type_selector"
+            'Plot type', ['Line', 'Stacked Bar', 'Grouped Bar', 'Heatmap'], key=f'{st_key}_plot_type_selector'
         )
 
         if plot_type in ['Line', 'Stacked Bar', 'Grouped Bar']:
             remaining_dims = [d for d in dims if d not in agg_dims]
             if remaining_dims:
-                x_dim = container.selectbox(
-                    'X axis dimension',
-                    remaining_dims,
-                    key="x_dim_selector"
-                )
+                x_dim = container.selectbox('X axis dimension', remaining_dims, key=f'{st_key}_x_dim_selector')
             else:
                 x_dim = None
         else:
             x_dim = None
 
     # Filter and aggregate the selected variable
-    filtered_data = filter_and_aggregate(dataset, selected_var, filters, agg_dims, agg_method)
+    if is_dataset:
+        filtered_data = filter_and_aggregate(data[selected_var], filters, agg_dims, agg_method)
+    else:
+        # For DataArray, we don't need to select a variable
+        filtered_data = filter_and_aggregate(data, filters, agg_dims, agg_method)
 
     # Apply time resampling if requested
     if use_time_resampling and resampling_freq:
@@ -849,28 +1011,30 @@ def xarray_explorer_component(dataset: xr.Dataset, container: Any = None) -> xr.
 
         # Create the plot
         plot_title = f'{selected_var} {plot_type} Plot'
-        fig = create_plotly_plot(filtered_data, plot_type, selected_var, title=plot_title, x_dim=x_dim)
+        fig = create_plotly_plot(
+            filtered_data, plot_type, selected_var if is_dataset else None, title=plot_title, x_dim=x_dim
+        )
 
         # Show the plot
-        container.plotly_chart(fig, use_container_width=True, key="main_plot")
+        container.plotly_chart(fig, use_container_width=True)
 
         # Data preview
-        with container.expander('Data Preview', key="data_preview_expander"):
-            container.dataframe(filtered_data.to_dataframe(), key="filtered_data_preview")
+        with container.expander('Data Preview'):
+            container.dataframe(filtered_data.to_dataframe())
 
         # Download options
         container.subheader('Download Options')
         download_format = container.selectbox(
-            'Download format',
-            ['CSV', 'NetCDF', 'Excel'],
-            key="download_format_selector"
+            'Download format', ['CSV', 'NetCDF', 'Excel'], key=f'{st_key}_download_format_selector'
         )
 
-        if container.button('Download filtered data', key="download_button"):
+        if container.button('Download filtered data', key=f'{st_key}_download_button'):
             download_data(filtered_data, selected_var, download_format, container)
 
     return filtered_data
 
+
+@show_traceback()
 def explore_results_app(results):
     """
     Main function to explore calculation results
@@ -888,7 +1052,7 @@ def explore_results_app(results):
 
     # Create sidebar for navigation
     st.sidebar.title("FlixOpt Results Explorer")
-    pages = ["Overview", "Components", "Buses", "Effects", "Explorer", "Effects DS"]
+    pages = ["Overview", "Components", "Buses", "Effects", "Flows DS", "Effects DS", "Explorer"]
     selected_page = st.sidebar.radio("Navigation", pages)
 
     # Overview page
@@ -1077,20 +1241,28 @@ def explore_results_app(results):
 
         xarray_explorer_component(effect.solution)
 
-    elif selected_page == "Explorer":
-        st.title("Explorer")
-        xarray_explorer_component(results.solution)
+    elif selected_page == "Flows DS":
+        st.title('Flow Rates Dataset')
+        mode = st.selectbox("Select a mode", ['Flow Rates', 'Flow Hours'])
+        if mode == 'Flow Hours':
+            xarray_explorer_component(results.flow_hours())
+        else:
+            xarray_explorer_component(results.flow_rates())
 
-    elif selected_page == "Effects DS":
+    elif selected_page == 'Effects DS':
         st.title('Effects Dataset')
         tabs = st.tabs(["total", "invest", "operation"])
 
         with tabs[0]:
-            xarray_explorer_component(results.effects_per_component('total'))
+            xarray_explorer_component(results.effects_per_component('total'), st_key='total')
         with tabs[1]:
-            xarray_explorer_component(results.effects_per_component('invest'))
+            xarray_explorer_component(results.effects_per_component('invest'), st_key='invest')
         with tabs[2]:
-            xarray_explorer_component(results.effects_per_component('operation'))
+            xarray_explorer_component(results.effects_per_component('operation'), st_key='operation')
+
+    elif selected_page == "Explorer":
+        st.title("Explore all variable results")
+        xarray_explorer_component(results.solution)
 
 
 def run_explorer_from_file(folder, name):
