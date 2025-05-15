@@ -221,6 +221,63 @@ def display_variable_stats(array: xr.DataArray, container: Optional[Any] = None)
 
 
 @show_traceback()
+def aggregate_dimensions(
+    array: xr.DataArray, agg_dims: List[str], agg_method: str, container: Optional[Any] = None
+) -> xr.DataArray:
+    """
+    Aggregate a DataArray over specified dimensions using a specified method.
+
+    Args:
+        array: xarray.DataArray to aggregate
+        agg_dims: List of dimension names to aggregate over
+        agg_method: Aggregation method ('mean', 'sum', 'min', 'max', 'std', 'median')
+        container: Streamlit container for displaying messages
+
+    Returns:
+        Aggregated DataArray
+    """
+    if container is None:
+        container = st
+
+    # Filter out any dimensions that don't exist in the array
+    valid_agg_dims = [dim for dim in agg_dims if dim in array.dims]
+
+    # If there are no valid dimensions to aggregate over, just return the original array
+    if not valid_agg_dims:
+        return array
+
+    # Apply the selected aggregation method
+    try:
+        if agg_method == 'mean':
+            result = array.mean(dim=valid_agg_dims)
+        elif agg_method == 'sum':
+            result = array.sum(dim=valid_agg_dims)
+        elif agg_method == 'min':
+            result = array.min(dim=valid_agg_dims)
+        elif agg_method == 'max':
+            result = array.max(dim=valid_agg_dims)
+        elif agg_method == 'std':
+            result = array.std(dim=valid_agg_dims)
+        elif agg_method == 'median':
+            result = array.median(dim=valid_agg_dims)
+        elif agg_method == 'var':
+            result = array.var(dim=valid_agg_dims)
+        else:
+            container.warning(f"Unknown aggregation method: {agg_method}. Using 'mean' instead.")
+            result = array.mean(dim=valid_agg_dims)
+
+        # If the aggregation removed all dimensions, ensure result has correct shape
+        if len(result.dims) == 0:
+            # Convert scalar result to 0D DataArray
+            result = xr.DataArray(result.values, name=array.name, attrs=array.attrs)
+
+        return result
+    except Exception as e:
+        container.error(f'Error during aggregation: {str(e)}')
+        return array  # Return original array if aggregation fails
+
+
+@show_traceback()
 def plot_scalar(array: xr.DataArray, container: Optional[Any] = None) -> None:
     """
     Plot a scalar (0-dimensional) DataArray.
@@ -299,7 +356,7 @@ def plot_1d(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
 def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None) -> Tuple[xr.DataArray, Optional[Dict]]:
     """
     Plot a multi-dimensional DataArray with interactive dimension selectors.
-    Supports multiple plot types: heatmap, line, stacked bar, and grouped bar.
+    Supports multiple plot types and dimension aggregation.
 
     Args:
         array: xarray.DataArray with 2+ dimensions
@@ -314,12 +371,58 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
 
     dims = list(array.dims)
 
-    container.write('Select dimensions to visualize:')
+    # Aggregation options
+    container.subheader('Dimension Handling')
 
-    viz_cols = container.columns(2)
+    # Define columns for the UI layout
+    col1, col2 = container.columns(2)
 
-    with viz_cols[0]:
-        # Choose which dimension to put on x-axis
+    with col1:
+        # Multi-select for dimensions to aggregate
+        agg_dims = st.multiselect(
+            'Dimensions to aggregate:',
+            dims,
+            default=[],
+            help='Select dimensions to aggregate (reduce) using the method selected below',
+        )
+
+        # Aggregation method selection
+        agg_method = st.selectbox(
+            'Aggregation method:',
+            ['mean', 'sum', 'min', 'max', 'std', 'median', 'var'],
+            index=0,
+            help='Method used to aggregate over the selected dimensions',
+        )
+
+    # Apply aggregation if dimensions were selected
+    if agg_dims:
+        orig_dims = dims.copy()
+        array = aggregate_dimensions(array, agg_dims, agg_method, container)
+
+        # Update the list of available dimensions after aggregation
+        dims = list(array.dims)
+
+        # Show information about the aggregation
+        removed_dims = [dim for dim in orig_dims if dim not in dims]
+        if removed_dims:
+            msg = f'Applied {agg_method} aggregation over: {", ".join(removed_dims)}'
+            container.info(msg)
+
+    # If no dimensions left after aggregation, show scalar result
+    if len(dims) == 0:
+        plot_scalar(array, container)
+        return array, None
+
+    # If one dimension left after aggregation, use 1D plotting
+    if len(dims) == 1:
+        plot_1d(array, var_name, container)
+        return array, None
+
+    # Visualization options for 2+ dimensions
+    container.subheader('Visualization Settings')
+
+    # Choose which dimension to put on x-axis
+    with col2:
         x_dim = st.selectbox('X dimension:', dims, index=0)
 
         # Choose which dimension to put on y-axis if we have at least 2 dimensions
@@ -332,21 +435,42 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
                 y_dim = y_dim_selection
 
         # Add plot type selector
-        plot_type = st.selectbox(
-            'Plot type:',
-            ['Heatmap', 'Line', 'Stacked Bar', 'Grouped Bar'],
-            index=0 if y_dim is not None else 1,  # Default to heatmap for 2D, line for 1D
-        )
+        plot_types = ['Heatmap', 'Line', 'Stacked Bar', 'Grouped Bar']
+        if y_dim is None:
+            # Remove heatmap option if there's no Y dimension
+            plot_types = [pt for pt in plot_types if pt != 'Heatmap']
+            default_idx = 0  # Default to Line for 1D
+        else:
+            default_idx = 0  # Default to Heatmap for 2D
+
+        plot_type = st.selectbox('Plot type:', plot_types, index=default_idx)
 
     # If we have more than the selected dimensions, let user select values for other dimensions
-    with viz_cols[1]:
-        # Setup sliders for other dimensions
-        slice_dims = [d for d in dims if d not in ([x_dim] if y_dim is None else [x_dim, y_dim])]
-        slice_indexes = {}
+    container.subheader('Other Dimension Values')
 
-        for dim in slice_dims:
-            dim_size = array.sizes[dim]
-            slice_indexes[dim] = st.slider(f'Position in {dim} dimension', 0, dim_size - 1, dim_size // 2)
+    # Calculate which dimensions need slicers
+    slice_dims = [d for d in dims if d not in ([x_dim] if y_dim is None else [x_dim, y_dim])]
+    slice_indexes = {}
+
+    # Create sliders in a more compact layout if there are many dimensions
+    if len(slice_dims) > 0:
+        if len(slice_dims) <= 3:
+            # For a few dimensions, use columns
+            cols = container.columns(len(slice_dims))
+            for i, dim in enumerate(slice_dims):
+                dim_size = array.sizes[dim]
+                with cols[i]:
+                    slice_indexes[dim] = st.slider(
+                        f'{dim}', 0, dim_size - 1, dim_size // 2, help=f'Select position along {dim} dimension'
+                    )
+        else:
+            # For many dimensions, use a more compact layout
+            with container.expander('Select values for other dimensions', expanded=True):
+                for dim in slice_dims:
+                    dim_size = array.sizes[dim]
+                    slice_indexes[dim] = st.slider(
+                        f'{dim}', 0, dim_size - 1, dim_size // 2, help=f'Select position along {dim} dimension'
+                    )
 
     # Create slice dictionary for selection
     slice_dict = {dim: slice_indexes[dim] for dim in slice_dims}
@@ -358,6 +482,8 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
         array_slice = array
 
     # Visualization depends on the selected plot type and dimensions
+    container.subheader('Plot')
+
     if y_dim is not None:
         # 2D visualization
         if plot_type == 'Heatmap':
@@ -420,8 +546,8 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
             )
             fig.update_layout(height=500)
     else:
-        # 1D visualization after slicing
-        if plot_type in ['Line', 'Heatmap']:  # Default to line for 1D data
+        # 1D visualization after slicing (no y_dim)
+        if plot_type == 'Line':
             fig = px.line(x=array_slice[x_dim].values, y=array_slice.values, labels={'x': x_dim, 'y': var_name})
         elif plot_type in ['Stacked Bar', 'Grouped Bar']:  # Both are the same for 1D
             # Create a dataframe for the bar chart
