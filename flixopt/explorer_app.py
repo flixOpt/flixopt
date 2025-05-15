@@ -276,6 +276,131 @@ def aggregate_dimensions(
         container.error(f'Error during aggregation: {str(e)}')
         return array  # Return original array if aggregation fails
 
+@show_traceback()
+def create_dimension_selector(
+    array: xr.DataArray,
+    dim: str,
+    container: Optional[Any] = None,
+    unique_key: str = '',
+) -> int:
+    """
+    Create a dimension selector (dropdown or slider) for a given dimension of an xarray.
+
+    Args:
+        array: The xarray DataArray to select from
+        dim: The dimension name to create a selector for
+        container: The Streamlit container to render in (if None, uses st)
+        unique_key: A unique key suffix to prevent widget conflicts
+
+    Returns:
+        The selected index for the dimension
+    """
+    if container is None:
+        container = st
+
+    key_suffix = f'_{unique_key}' if unique_key else ''
+
+    # Get dimension size
+    dim_size = array.sizes[dim]
+
+    # Default to middle value
+    default_idx = dim_size // 2
+
+    # Check if this dimension has coordinates
+    if dim in array.coords:
+        values = array.coords[dim].values
+
+        # Use dropdown if fewer than 100 values, slider otherwise
+        if len(values) < 100:
+            # Use dropdown with actual coordinate values
+            options = list(values)
+
+            selected_value = container.selectbox(
+                f'{dim}',
+                options,
+                index=default_idx,
+                help=f'Select value for {dim}',
+                key=f'dim_select_{dim}{key_suffix}',
+            )
+
+            # Find the index of the selected value
+            if np.issubdtype(values.dtype, np.number):
+                # For numeric values, find the closest index
+                selected_idx = np.abs(values - selected_value).argmin()
+            else:
+                # For non-numeric values (strings, etc), find exact match
+                try:
+                    selected_idx = np.where(values == selected_value)[0][0]
+                except:
+                    # Fallback if exact match fails
+                    selected_idx = default_idx
+        else:
+            # Use slider for dimensions with many values
+            selected_idx = container.slider(
+                f'{dim}',
+                0,
+                dim_size - 1,
+                default_idx,
+                help=f'Position on {dim} dimension ({values[0]} to {values[-1]})',
+                key=f'dim_slider_{dim}{key_suffix}',
+            )
+
+            # Show the selected value for context
+            container.caption(f'Selected: {values[selected_idx]}')
+    else:
+        # No coordinates, use integer slider
+        selected_idx = container.slider(
+            f'{dim} index',
+            0,
+            dim_size - 1,
+            default_idx,
+            help=f'Position on {dim} dimension (by index)',
+            key=f'dim_slider_idx_{dim}{key_suffix}',
+        )
+
+    return selected_idx
+
+
+@show_traceback()
+def create_dimension_selectors(
+    array: xr.DataArray, slice_dims: List[str], container: Optional[Any] = None, unique_key: str = ''
+) -> Dict[str, int]:
+    """
+    Create selectors for multiple dimensions and organize them in a grid layout.
+
+    Args:
+        array: The xarray DataArray to select from
+        slice_dims: List of dimension names to create selectors for
+        container: The Streamlit container to render in (if None, uses st)
+        unique_key: A unique key suffix to prevent widget conflicts
+
+    Returns:
+        Dictionary mapping dimension names to selected indices
+    """
+    if container is None:
+        container = st
+
+    slice_indexes = {}
+
+    if len(slice_dims) > 0:
+        with container.expander('Dimension Values', expanded=True):
+            # Calculate optimal number of columns based on number of dimensions
+            num_cols = min(3, len(slice_dims))  # Max 3 columns to keep things readable
+
+            # Create a grid layout of selectors
+            for i in range(0, len(slice_dims), num_cols):
+                # Create a new row of columns
+                cols = container.columns(num_cols)
+
+                # Fill the row with selectors
+                for j in range(num_cols):
+                    col_idx = i + j
+                    if col_idx < len(slice_dims):
+                        dim = slice_dims[col_idx]
+                        with cols[j]:
+                            slice_indexes[dim] = create_dimension_selector(array, dim, cols[j], f'{unique_key}_{i}_{j}')
+
+    return slice_indexes
 
 @show_traceback()
 def plot_scalar(array: xr.DataArray, container: Optional[Any] = None) -> None:
@@ -468,32 +593,8 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
     slice_dims = [d for d in dims if d not in ([x_dim] if y_dim is None else [x_dim, y_dim])]
     slice_indexes = {}
 
-    # Create a more compact layout for dimension sliders
-    if len(slice_dims) > 0:
-        with container.expander('Other Dimension Values', expanded=True):
-            # Calculate optimal number of columns based on number of dimensions
-            num_cols = min(4, len(slice_dims))  # Max 4 columns to keep things readable
-
-            # Create a grid layout of sliders
-            for i in range(0, len(slice_dims), num_cols):
-                # Create a new row of columns
-                cols = st.columns(num_cols)
-
-                # Fill the row with sliders
-                for j in range(num_cols):
-                    col_idx = i + j
-                    if col_idx < len(slice_dims):
-                        dim = slice_dims[col_idx]
-                        dim_size = array.sizes[dim]
-                        with cols[j]:
-                            slice_indexes[dim] = st.slider(
-                                f'{dim}',
-                                0,
-                                dim_size - 1,
-                                dim_size // 2,
-                                help=f'Position on {dim}',
-                                key=f'slider_{dim}',  # Adding keys helps prevent UI issues
-                            )
+    # Create a more compact layout for dimension dropdown selectors
+    slice_indexes = create_dimension_selectors(array, slice_dims, container, 'key')
 
     # Create slice dictionary for selection
     slice_dict = {dim: slice_indexes[dim] for dim in slice_dims}
