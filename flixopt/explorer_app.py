@@ -3,7 +3,6 @@
 import argparse
 import os
 import sys
-from pathlib import Path
 import io
 import tempfile
 from typing import Dict, List, Optional, Union, Tuple, Any, Callable, cast, TypeVar
@@ -19,8 +18,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 T = TypeVar('T')
-
-from flixopt import plotting
 
 
 def show_traceback(
@@ -124,724 +121,6 @@ def show_traceback(
 
 
 @show_traceback()
-def plot_heatmap(
-    data: pd.DataFrame,
-    name: str,
-    timeframes: str,
-    timesteps: str,
-    color_map: str,
-) -> go.Figure:
-    fig = plotting.heat_map_plotly(
-        plotting.heat_map_data_from_df(data, timeframes, timesteps, 'ffill'),
-        title=name,
-        color_map=color_map,
-        xlabel=f'timeframe [{timeframes}]',
-        ylabel=f'timesteps [{timesteps}]',
-    )
-    fig.update_layout(
-        margin=dict(l=50, r=100, t=50, b=50),  # Extra space for colorbar
-        coloraxis_colorbar=dict(
-            lenmode='fraction',
-            len=0.8,
-            title='Scale',
-            tickvals=[0, 5, 10],  # Force ticks at min, mid, max
-            ticktext=['0 (Min)', '5', '10 (Max)'],  # Custom labels
-        ),  # Make colorbar bigger
-    )
-    return fig
-
-
-@show_traceback()
-def get_dimension_selector(dataset: xr.Dataset, dim: str, container: Any, st_key: str = '') -> Optional[Union[slice, List]]:
-    """Creates UI elements to select values or ranges for a specific dimension.
-
-    Args:
-        dataset: The dataset containing the dimension.
-        dim: The dimension name.
-        container: The streamlit container to render UI elements in.
-
-    Returns:
-        The selected filter for this dimension (either a slice or list of values).
-        Returns None if no selection is made.
-    """
-    container.write(f'**{dim}** (size: {len(dataset[dim])})')
-
-    # Get the values for this dimension
-    values = dataset[dim].values
-
-    # Check if we have no data to work with
-    if len(values) == 0:
-        container.warning(f"Dimension '{dim}' is empty")
-        return None
-
-    # Determine the data type of the dimension
-    first_val = values[0]
-
-    # Create unique keys for all widgets based on dimension name
-    # This prevents duplicate widget ID errors
-    widget_key_base = f'dim_selector_{dim}_{st_key}'
-
-    # Case 1: Small number of values - always use multiselect regardless of type
-    if len(values) <= 5:
-        # For datetime64, convert to readable datetime objects
-        if isinstance(first_val, np.datetime64):
-            values = [pd.to_datetime(str(val)) for val in values]
-
-        selected = container.multiselect(
-            f'Select {dim} values', options=values, default=[values[0]], key=f'{widget_key_base}_small_multiselect'
-        )
-        if selected:
-            return selected
-        return None
-
-    # Case 2: Datetime values - use date picker
-    elif isinstance(first_val, np.datetime64):
-        date_min = pd.to_datetime(str(dataset[dim].min().values))
-        date_max = pd.to_datetime(str(dataset[dim].max().values))
-        start_date, end_date = container.date_input(
-            f'Select {dim} range',
-            value=(date_min, min(date_min + pd.Timedelta(days=30), date_max)),
-            min_value=date_min,
-            max_value=date_max,
-            key=f'{widget_key_base}_date_input',
-        )
-        return slice(str(start_date), str(end_date))
-
-    # Case 3: String values (categorical data) - use multiselect with limiting features
-    elif isinstance(first_val, str):
-        # For string values, provide a way to select multiple values
-        # First, get unique values and sort them
-        unique_values = sorted(list(set(values)))
-
-        # If we have too many unique values, provide a selection mechanism
-        if len(unique_values) > 20:
-            container.warning(f"Dimension '{dim}' has {len(unique_values)} unique string values. Showing first 20.")
-
-            # Option to show all values or search
-            show_all = container.checkbox(
-                f"Show all values for '{dim}'", value=False, key=f'{widget_key_base}_show_all'
-            )
-
-            if show_all:
-                # Show all values but provide a text search to filter
-                search_term = container.text_input(f"Filter values for '{dim}'", '', key=f'{widget_key_base}_search')
-
-                if search_term:
-                    # Filter values that contain the search term
-                    filtered_values = [val for val in unique_values if search_term.lower() in str(val).lower()]
-                    if not filtered_values:
-                        container.warning(f"No values matching '{search_term}'")
-                        return None
-
-                    unique_values = filtered_values
-            else:
-                # Just show the first 20 values
-                unique_values = unique_values[:20]
-
-        # Display multiselect with available values
-        selected = container.multiselect(
-            f'Select {dim} values',
-            options=unique_values,
-            default=[unique_values[0]] if unique_values else [],
-            key=f'{widget_key_base}_str_multiselect',
-        )
-
-        if selected:
-            return selected
-        return None
-
-    # Case 4: Numeric values - use slider
-    elif np.issubdtype(type(first_val), np.number) or isinstance(first_val, (int, float)):
-        try:
-            min_val = float(dataset[dim].min().values)
-            max_val = float(dataset[dim].max().values)
-
-            # Check for identical min/max values
-            if min_val == max_val:
-                container.info(f"All values in dimension '{dim}' are identical: {min_val}")
-                return None
-
-            # Determine appropriate step size
-            range_size = max_val - min_val
-            if range_size < 1:
-                step = range_size / 100
-            elif range_size < 10:
-                step = 0.1
-            elif range_size < 100:
-                step = 1
-            else:
-                step = range_size / 100
-
-            # Round values for better UI
-            range_val = container.slider(
-                f'Select {dim} range',
-                min_value=min_val,
-                max_value=max_val,
-                value=(min_val, min(min_val + range_size / 10, max_val)),
-                step=step,
-                key=f'{widget_key_base}_slider',
-            )
-            return slice(range_val[0], range_val[1])
-        except Exception as e:
-            container.error(f"Error creating slider for '{dim}': {e}")
-            return None
-
-    # Case 5: Unknown/Unhandled type - fallback to multiselect with first 20 values
-    else:
-        container.warning(f"Dimension '{dim}' has an unusual data type. Using simple selection.")
-
-        # Limit to first 20 values to avoid overwhelming the UI
-        display_values = list(values)[:20]
-
-        selected = container.multiselect(
-            f'Select {dim} values (first 20 shown)',
-            options=display_values,
-            default=[display_values[0]] if display_values else [],
-            key=f'{widget_key_base}_fallback_multiselect',
-        )
-
-        if selected:
-            return selected
-        return None
-
-
-@show_traceback()
-def filter_and_aggregate(
-    da: xr.DataArray, filters: Dict[str, Union[slice, List]], agg_dims: List[str], agg_method: str
-) -> xr.DataArray:
-    """Filters and aggregates a variable from the dataset.
-
-    Args:
-        da: The dataarray.
-        filters: Dictionary of dimension filters.
-        agg_dims: Dimensions to aggregate over.
-        agg_method: Aggregation method (mean, sum, etc.).
-
-    Returns:
-        Filtered and aggregated data.
-    """
-
-    # Filter the data
-    if filters:
-        filtered_data = da.sel(**filters)
-    else:
-        filtered_data = da
-
-    # Apply aggregation if selected
-    if agg_dims and agg_method:
-        if agg_method == 'mean':
-            filtered_data = filtered_data.mean(dim=agg_dims)
-        elif agg_method == 'sum':
-            filtered_data = filtered_data.sum(dim=agg_dims)
-        elif agg_method == 'min':
-            filtered_data = filtered_data.min(dim=agg_dims)
-        elif agg_method == 'max':
-            filtered_data = filtered_data.max(dim=agg_dims)
-        elif agg_method == 'std':
-            filtered_data = filtered_data.std(dim=agg_dims)
-
-    return filtered_data
-
-
-@show_traceback()
-def filter_and_aggregate_dataarray(
-    dataarray: xr.DataArray, filters: dict, agg_dims: list, agg_method: str
-) -> xr.DataArray:
-    """Filter and aggregate a DataArray.
-
-    Args:
-        dataarray: The xarray DataArray to process.
-        filters: Dictionary of dimension filters.
-        agg_dims: List of dimensions to aggregate over.
-        agg_method: Aggregation method ('mean', 'sum', etc.)
-
-    Returns:
-        Filtered and aggregated DataArray.
-    """
-    # Apply filters
-    filtered_data = dataarray
-    for dim, dim_filter in filters.items():
-        if isinstance(dim_filter, slice):
-            filtered_data = filtered_data.sel({dim: dim_filter})
-        elif isinstance(dim_filter, (list, np.ndarray)):
-            filtered_data = filtered_data.sel({dim: dim_filter})
-
-    # Apply aggregation if requested
-    if agg_dims and len(agg_dims) > 0:
-        if agg_method == 'mean':
-            filtered_data = filtered_data.mean(dim=agg_dims)
-        elif agg_method == 'sum':
-            filtered_data = filtered_data.sum(dim=agg_dims)
-        elif agg_method == 'min':
-            filtered_data = filtered_data.min(dim=agg_dims)
-        elif agg_method == 'max':
-            filtered_data = filtered_data.max(dim=agg_dims)
-        elif agg_method == 'std':
-            filtered_data = filtered_data.std(dim=agg_dims)
-
-    return filtered_data
-
-
-@show_traceback()
-def resample_time_data(data: xr.DataArray, freq: str) -> xr.DataArray:
-    """Resamples a DataArray along its time dimension.
-
-    Args:
-        data: The xarray DataArray containing a time dimension.
-        freq: The resampling frequency string (e.g., 'D', 'M', 'Y', '5min').
-
-    Returns:
-        The resampled DataArray.
-    """
-    # Find the time dimension name
-    time_dims = [dim for dim in data.dims if dim in ['time', 't'] or (isinstance(data[dim].values[0], np.datetime64))]
-
-    if not time_dims:
-        # No time dimension found
-        return data
-
-    time_dim = time_dims[0]
-
-    try:
-        # Resample the data - default aggregation is mean
-        resampled_data = data.resample({time_dim: freq}).mean()
-        return resampled_data
-    except Exception as e:
-        print(f'Error resampling data: {e}')
-        return data
-
-
-@show_traceback()
-def get_time_aggregation_ui(container: Any, data: xr.DataArray, st_key: str = '') -> Tuple[bool, Optional[str]]:
-    """Creates UI elements for time-based aggregation options.
-
-    Args:
-        container: The streamlit container to render UI elements in.
-        data: The xarray DataArray to check for time dimensions.
-
-    Returns:
-        A tuple containing:
-            - Boolean indicating if time resampling should be applied
-            - The selected resampling frequency (or None if no resampling)
-    """
-    # Find time dimensions
-    time_dims = [
-        dim
-        for dim in data.dims
-        if dim in ['time', 't', 'date', 'datetime']
-        or (len(data[dim]) > 0 and isinstance(data[dim].values[0], np.datetime64))
-    ]
-
-    if not time_dims:
-        # No time dimensions
-        return False, None
-
-    # Create unique key base for all widgets
-    key_base = f'time_resampling_{time_dims[0]}_{st_key}'
-
-    # Show time resampling options
-    container.subheader('Time Resampling')
-    time_dim = time_dims[0]
-
-    # Check if the dimension has enough elements to be worth resampling
-    min_elements_for_resampling = 5
-    if len(data[time_dim]) < min_elements_for_resampling:
-        container.info(f"Time dimension '{time_dim}' has too few elements for resampling.")
-        return False, None
-
-    # Get the time range for display
-    try:
-        # Convert to pandas datetime for safe handling of different datetime formats
-        time_values = data[time_dim].values
-        if isinstance(time_values[0], str):
-            # Try to convert string dates to datetime
-            time_values = pd.to_datetime(time_values)
-
-        start_time = pd.to_datetime(time_values[0])
-        end_time = pd.to_datetime(time_values[-1])
-        time_range = end_time - start_time
-
-        # Show time range information
-        container.write(f'Time range: {start_time.date()} to {end_time.date()} ({time_range.days} days)')
-    except Exception as e:
-        container.warning(f'Error determining time range: {e}')
-        # Even if there's an error showing the range, we can still offer resampling
-        time_range = pd.Timedelta(days=365)  # Assume a 1-year range as default
-
-    # Determine appropriate resampling options based on the time range
-    resampling_options = []
-
-    try:
-        days = time_range.days
-
-        # Always include options for hourly/daily data
-        if days >= 2:
-            resampling_options.extend(['H', 'D'])
-
-        # For data spanning more than a week
-        if days > 7:
-            resampling_options.extend(['W'])
-
-        # For data spanning more than a month
-        if days > 30:
-            resampling_options.extend(['M'])
-
-        # For data spanning more than a year
-        if days > 365:
-            resampling_options.extend(['Q', 'Y'])
-    except:
-        # Fallback options if we can't determine from time range
-        resampling_options = ['H', 'D', 'W', 'M']
-
-    # Ensure we have at least some options
-    if not resampling_options:
-        resampling_options = ['H', 'D', 'W', 'M']
-
-    # Create friendly names for UI
-    freq_map = {'H': 'Hour', 'D': 'Day', 'W': 'Week', 'M': 'Month', 'Q': 'Quarter', 'Y': 'Year'}
-
-    friendly_options = [freq_map.get(opt, opt) for opt in resampling_options]
-
-    # Add "None" option for no resampling
-    resampling_options = ['none'] + resampling_options
-    friendly_options = ['None (original data)'] + friendly_options
-
-    # Add "Custom" option
-    resampling_options.append('custom')
-    friendly_options.append('Custom frequency string')
-
-    # Create the selection widget
-    use_resampling = container.checkbox('Enable time resampling', value=False, key=f'{key_base}_enable')
-
-    if use_resampling:
-        selected_freq_name = container.selectbox(
-            'Resample to:', options=friendly_options, key=f'{key_base}_freq_select'
-        )
-
-        # Map back to actual frequency string
-        selected_index = friendly_options.index(selected_freq_name)
-        selected_freq = resampling_options[selected_index]
-
-        if selected_freq == 'none':
-            return False, None
-        elif selected_freq == 'custom':
-            # Provide information about pandas frequency strings
-            with container.expander('Frequency string help'):
-                container.write("""
-                **Pandas frequency strings examples:**
-                - '5min': 5 minutes
-                - '2H': 2 hours
-                - '1D': 1 day
-                - '1W': 1 week
-                - '2W-MON': Biweekly on Monday
-                - '1M': 1 month
-                - '1Q': 1 quarter
-                - '1A' or '1Y': 1 year
-                - '3A': 3 years
-
-                You can also use combinations like '1D12H' for 1 day and 12 hours.
-                """)
-
-            # Allow user to input a custom frequency string
-            custom_freq = container.text_input(
-                'Enter custom frequency string:',
-                value='1D',  # Default to daily
-                help="Enter a pandas frequency string like '5min', '2H', '1D', '1W', '1M'",
-                key=f'{key_base}_custom_input',
-            )
-
-            if custom_freq:
-                # Validate the frequency string
-                try:
-                    # Try to create a sample resampling to validate the string
-                    test_dates = pd.date_range('2020-01-01', periods=3, freq='D')
-                    test_series = pd.Series(range(3), index=test_dates)
-                    test_series.resample(custom_freq).mean()
-
-                    # If we get here, the frequency string is valid
-                    # Show information about what resampling will do
-                    try:
-                        n_points_before = len(data[time_dim])
-
-                        # Convert string dates to datetime if needed for resampling preview
-                        if isinstance(data[time_dim].values[0], str):
-                            # Create a temporary copy with datetime index for preview
-                            temp_data = data.copy()
-                            temp_data.coords[time_dim] = pd.to_datetime(temp_data[time_dim].values)
-                            resampled = temp_data.resample({time_dim: custom_freq}).mean()
-                        else:
-                            resampled = data.resample({time_dim: custom_freq}).mean()
-
-                        n_points_after = len(resampled[time_dim])
-                        container.info(f'Resampling will change data points from {n_points_before} to {n_points_after}')
-                    except Exception as e:
-                        container.warning(f'Cannot preview resampling effect: {str(e)}')
-
-                    return True, custom_freq
-                except Exception as e:
-                    container.error(f'Invalid frequency string: {str(e)}')
-                    return False, None
-            else:
-                return False, None
-        else:
-            # Show information about what resampling will do
-            try:
-                n_points_before = len(data[time_dim])
-
-                # Convert string dates to datetime if needed for resampling preview
-                if len(data[time_dim]) > 0 and isinstance(data[time_dim].values[0], str):
-                    # Create a temporary copy with datetime index for preview
-                    temp_data = data.copy()
-                    temp_data.coords[time_dim] = pd.to_datetime(temp_data[time_dim].values)
-                    resampled = temp_data.resample({time_dim: selected_freq}).mean()
-                else:
-                    resampled = data.resample({time_dim: selected_freq}).mean()
-
-                n_points_after = len(resampled[time_dim])
-                container.info(
-                    f'Resampling will change data points from {n_points_before} to {n_points_after}',
-                    key=f'{key_base}_info',
-                )
-            except Exception as e:
-                container.warning(f'Cannot preview resampling effect: {str(e)}', key=f'{key_base}_warning')
-
-            return True, selected_freq
-    else:
-        return False, None
-
-
-@show_traceback()
-def create_plotly_plot(
-    data: xr.DataArray, plot_type: str, var_name: str, title: Optional[str] = None, x_dim: Optional[str] = None
-) -> go.Figure:
-    """Creates a plotly plot based on the selected data and plot type.
-
-    Args:
-        data: The filtered/aggregated data array to plot.
-        plot_type: Type of plot to create (Line, Stacked Bar, Grouped Bar, or Heatmap).
-        var_name: Name of the selected variable.
-        title: Plot title.
-        x_dim: Dimension to use for x-axis in line plots.
-
-    Returns:
-        Plotly figure object.
-    """
-    # Check if we have valid data to plot
-    if data is None:
-        return go.Figure().update_layout(
-            title='No data to plot',
-            annotations=[
-                dict(
-                    text='No valid data found for plotting. Check your selections.',
-                    showarrow=False,
-                    xref='paper',
-                    yref='paper',
-                    x=0.5,
-                    y=0.5,
-                )
-            ],
-        )
-
-    # Get dimensions of the data array
-    dims = list(data.dims)
-
-    # Create different plot types based on dimensions and selection
-    if plot_type == 'Line':
-        # Line plot
-        if len(dims) == 1:
-            # Simple line plot for 1D data
-            x_values = data[dims[0]].values
-            y_values = data.values
-
-            fig = px.line(x=x_values, y=y_values, labels={'x': dims[0], 'y': var_name}, title=title)
-
-        elif len(dims) >= 2 and x_dim is not None:
-            # Multiple lines for higher dimensional data
-            # Convert to dataframe for easy plotting
-            df = data.to_dataframe().reset_index()
-
-            # Group by the x dimension
-            group_dims = [d for d in dims if d != x_dim]
-
-            if len(group_dims) == 0:
-                # If no grouping dimensions, just plot a single line
-                fig = px.line(df, x=x_dim, y=var_name, title=title)
-            else:
-                # Create a plot with a line for each unique combination of group dimensions
-                fig = px.line(
-                    df,
-                    x=x_dim,
-                    y=var_name,
-                    color=group_dims[0] if len(group_dims) == 1 else None,  # Use first group dim for color
-                    facet_col=group_dims[1] if len(group_dims) > 1 else None,  # Use second group dim for faceting
-                    title=title,
-                )
-        else:
-            # Not enough dimensions for line plot
-            fig = go.Figure().update_layout(
-                title='Cannot create Line plot',
-                annotations=[
-                    dict(
-                        text='Need at least one dimension for Line plot',
-                        showarrow=False,
-                        xref='paper',
-                        yref='paper',
-                        x=0.5,
-                        y=0.5,
-                    )
-                ],
-            )
-
-    elif plot_type == 'Stacked Bar':
-        if len(dims) >= 2:
-            # Convert to dataframe
-            df = data.to_dataframe().reset_index()
-
-            # For stacked bar, need a category dimension and a value dimension
-            if x_dim is not None and x_dim in dims:
-                # Use the selected x dimension
-                x = x_dim
-                # Get another dimension for stacking
-                stack_dim = next((d for d in dims if d != x_dim), None)
-
-                if stack_dim:
-                    fig = px.bar(df, x=x, y=var_name, color=stack_dim, barmode='stack', title=title)
-                else:
-                    # No dimension to stack
-                    fig = px.bar(df, x=x, y=var_name, title=title)
-            else:
-                # Default to first dimension for x-axis
-                x = dims[0]
-                stack_dim = dims[1] if len(dims) > 1 else None
-
-                fig = px.bar(df, x=x, y=var_name, color=stack_dim, barmode='stack', title=title)
-        elif len(dims) == 1:
-            # Single dimension bar plot
-            df = data.to_dataframe().reset_index()
-
-            fig = px.bar(df, x=dims[0], y=var_name, title=title)
-        else:
-            # Not enough dimensions
-            fig = go.Figure().update_layout(
-                title='Cannot create Stacked Bar plot',
-                annotations=[
-                    dict(
-                        text='Need at least one dimension for Stacked Bar plot',
-                        showarrow=False,
-                        xref='paper',
-                        yref='paper',
-                        x=0.5,
-                        y=0.5,
-                    )
-                ],
-            )
-
-    elif plot_type == 'Grouped Bar':
-        if len(dims) >= 2:
-            # Convert to dataframe
-            df = data.to_dataframe().reset_index()
-
-            # For grouped bar, need a category dimension and a group dimension
-            if x_dim is not None and x_dim in dims:
-                # Use the selected x dimension
-                x = x_dim
-                # Get another dimension for grouping
-                group_dim = next((d for d in dims if d != x_dim), None)
-
-                if group_dim:
-                    fig = px.bar(df, x=x, y=var_name, color=group_dim, barmode='group', title=title)
-                else:
-                    # No dimension to group
-                    fig = px.bar(df, x=x, y=var_name, title=title)
-            else:
-                # Default to first dimension for x-axis
-                x = dims[0]
-                group_dim = dims[1] if len(dims) > 1 else None
-
-                fig = px.bar(df, x=x, y=var_name, color=group_dim, barmode='group', title=title)
-        elif len(dims) == 1:
-            # Single dimension bar plot
-            df = data.to_dataframe().reset_index()
-
-            fig = px.bar(df, x=dims[0], y=var_name, title=title)
-        else:
-            # Not enough dimensions
-            fig = go.Figure().update_layout(
-                title='Cannot create Grouped Bar plot',
-                annotations=[
-                    dict(
-                        text='Need at least one dimension for Grouped Bar plot',
-                        showarrow=False,
-                        xref='paper',
-                        yref='paper',
-                        x=0.5,
-                        y=0.5,
-                    )
-                ],
-            )
-
-    elif plot_type == 'Heatmap' and len(dims) >= 2:
-        # Heatmap for 2D data
-        if len(dims) > 2:
-            # If more than 2 dimensions, need to select which dimensions to use
-            if x_dim is not None and x_dim in dims:
-                # Use x_dim and find another dimension
-                dim1 = x_dim
-                dim2 = next((d for d in dims if d != x_dim), None)
-
-                # Need to aggregate other dimensions
-                agg_dims = [d for d in dims if d != dim1 and d != dim2]
-                if agg_dims:
-                    # Aggregate other dimensions using mean
-                    data = data.mean(dim=agg_dims)
-            else:
-                # Use first two dimensions
-                dim1, dim2 = dims[:2]
-
-                # Aggregate other dimensions if needed
-                if len(dims) > 2:
-                    agg_dims = dims[2:]
-                    data = data.mean(dim=agg_dims)
-        else:
-            dim1, dim2 = dims
-
-        # Create heatmap
-        fig = px.imshow(
-            data.values,
-            x=data[dim1].values,
-            y=data[dim2].values,
-            labels=dict(x=dim1, y=dim2, color=var_name),
-            title=title,
-            color_continuous_scale='Viridis',
-        )
-    else:
-        # Default empty plot with warning
-        fig = go.Figure().update_layout(
-            title='Cannot create plot',
-            annotations=[
-                dict(
-                    text=f'Cannot create {plot_type} plot with the current data dimensions',
-                    showarrow=False,
-                    xref='paper',
-                    yref='paper',
-                    x=0.5,
-                    y=0.5,
-                )
-            ],
-        )
-
-    # Common layout settings
-    fig.update_layout(
-        height=600,
-        width=800,
-        margin=dict(l=50, r=50, t=50, b=50),
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-    )
-
-    return fig
-
-
-@show_traceback()
 def download_data(filtered_data: xr.DataArray, var_name: str, download_format: str, container: Any) -> None:
     """Creates download buttons for the filtered data.
 
@@ -880,158 +159,198 @@ def download_data(filtered_data: xr.DataArray, var_name: str, download_format: s
 
 
 @show_traceback()
-def xarray_explorer_component(
-    data: Union[xr.Dataset, xr.DataArray], container: Any = None, st_key: Optional[str] = None
-) -> Union[xr.DataArray, xr.Dataset]:
-    """A reusable Streamlit component that creates an xarray data explorer.
-
-    This component allows users to interactively explore an xarray Dataset or DataArray by
-    selecting variables (for Dataset), filtering dimensions, and creating visualizations.
+def xarray_explorer(data: Union[xr.Dataset, xr.DataArray]):
+    """
+    A simple xarray explorer for both DataArrays and Datasets.
+    Just pass your xarray object to this function.
 
     Args:
-        data: The xarray Dataset or DataArray to explore.
-        container: The Streamlit container to render the explorer in.
-            If None, renders in the current Streamlit app context.
-        st_key: Optional key prefix for Streamlit widget keys to avoid duplicates.
-
-    Returns:
-        The filtered/selected data.
+        data: xarray.Dataset or xarray.DataArray
     """
-    # If no container is provided, use the current Streamlit context
-    if container is None:
-        container = st
-
-    # Determine if we're dealing with a Dataset or DataArray
+    # Determine if we're working with Dataset or DataArray
     is_dataset = isinstance(data, xr.Dataset)
 
-    # Dataset/DataArray information
-    with container.expander('Data Overview'):
-        if is_dataset:
-            container.write('### Dataset Metadata')
-        else:
-            container.write('### DataArray Metadata')
-
-        container.write(data.attrs)
-
-        container.write('### Dimensions')
-        #container.write(pd.DataFrame({'Dimension': list(data.indexes.keys()), 'Size': list(data.indexes.values())}))
-
-        if is_dataset:
-            container.write('### Variables')
-            var_info = []
-            for var_name, var in data.variables.items():
-                var_info.append(
-                    {
-                        'Variable': var_name,
-                        'Dimensions': ', '.join(var.dims),
-                        'Shape': str(var.shape),
-                        'Type': str(var.dtype),
-                    }
-                )
-            container.dataframe(pd.DataFrame(var_info), key=f'{st_key}_var_info_dataframe')
-        else:
-            # For DataArray, show its basic info
-            container.write('### DataArray Information')
-            container.write(f'**Name:** {data.name}')
-            container.write(f'**Type:** {data.dtype}')
-
-    # For Dataset: Variable selection
-    # For DataArray: Just display the variable name
+    # Variable selection for Dataset or direct visualization for DataArray
     if is_dataset:
-        container.subheader('Variable Selection')
-        selected_var = container.selectbox(
-            'Select variable to explore', list(data.data_vars), key=f'{st_key}_variable_selector'
-        )
-        # Get the variable
-        variable = data[selected_var]
+        # Variable selection
+        selected_var = st.selectbox("Select variable:", list(data.data_vars))
+        array_to_plot = data[selected_var]
     else:
-        # For DataArray, we already have the variable
-        variable = data
-        selected_var = variable.name if variable.name is not None else 'DataArray'
-        container.subheader(f'Exploring: {selected_var}')
+        # If DataArray, use directly
+        array_to_plot = data
+        selected_var = data.name if data.name else "Data"
 
-    # Display variable info
-    container.write(f'**Variable shape:** {variable.shape}')
-    container.write(f'**Variable dimensions:** {variable.dims}')
-    dims = list(variable.dims)
+    # Visualization section
+    st.subheader("Visualization")
 
-    # Create column layout
-    col1, col2 = container.columns([1, 2])
+    # Determine available visualization options based on dimensions
+    dims = list(array_to_plot.dims)
+    ndim = len(dims)
+
+    # Different visualization options based on dimensionality
+    if ndim == 0:
+        # Scalar value
+        st.metric("Value", float(array_to_plot.values))
+
+    elif ndim == 1:
+        # 1D data: line plot
+        fig = px.line(x=array_to_plot[dims[0]].values,
+                      y=array_to_plot.values,
+                      labels={"x": dims[0], "y": selected_var})
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Also show histogram
+        fig2 = px.histogram(x=array_to_plot.values, nbins=30,
+                            labels={"x": selected_var})
+        st.plotly_chart(fig2, use_container_width=True)
+
+    elif ndim >= 2:
+        # For high dimensional data, let user select dimensions to plot
+        st.write("Select dimensions to visualize:")
+
+        viz_cols = st.columns(2)
+
+        with viz_cols[0]:
+            # Choose which dimension to put on x-axis
+            x_dim = st.selectbox("X dimension:", dims, index=0)
+
+            # Choose which dimension to put on y-axis
+            remaining_dims = [d for d in dims if d != x_dim]
+            y_dim = st.selectbox("Y dimension:", remaining_dims,
+                                 index=0 if len(remaining_dims) > 0 else None)
+
+        # If we have more than 2 dimensions, let user select values for other dimensions
+        with viz_cols[1]:
+            # Setup sliders for other dimensions
+            slice_dims = [d for d in dims if d not in [x_dim, y_dim]]
+            slice_indexes = {}
+
+            for dim in slice_dims:
+                dim_size = array_to_plot.sizes[dim]  # Use sizes instead of dims
+                slice_indexes[dim] = st.slider(f"Position in {dim} dimension",
+                                               0, dim_size-1, dim_size//2)
+
+        # Create slice dictionary for selection
+        slice_dict = {dim: slice_indexes[dim] for dim in slice_dims}
+
+        # Select the data to plot
+        if slice_dims:
+            array_slice = array_to_plot.isel(slice_dict)
+        else:
+            array_slice = array_to_plot
+
+        # Visualization depends on whether we have 1 or 2 dimensions selected
+        if y_dim:
+            # 2D visualization: heatmap
+            fig = px.imshow(array_slice.transpose(y_dim, x_dim).values,
+                            x=array_slice[x_dim].values,
+                            y=array_slice[y_dim].values,
+                            color_continuous_scale="viridis",
+                            labels={"x": x_dim, "y": y_dim, "color": selected_var})
+
+            fig.update_layout(height=500)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            # 1D visualization after slicing
+            fig = px.line(x=array_slice[x_dim].values,
+                          y=array_slice.values,
+                          labels={"x": x_dim, "y": selected_var})
+            st.plotly_chart(fig, use_container_width=True)
+
+    # Data preview section
+    st.subheader("Data Preview")
+
+    # Convert to dataframe for display
+    try:
+        # Limit to first 1000 elements for performance
+        preview_data = array_to_plot
+        total_size = np.prod(preview_data.shape)
+
+        if total_size > 1000:
+            st.warning(f"Data is large ({total_size} elements). Showing first 1000 elements.")
+            # Create a slice dict to get first elements from each dimension
+            preview_slice = {}
+            remaining = 1000
+            for dim in preview_data.dims:
+                dim_size = preview_data.sizes[dim]  # Use sizes instead of dims
+                take = min(dim_size, max(1, int(remaining**(1/len(preview_data.dims)))))
+                preview_slice[dim] = slice(0, take)
+                remaining = remaining // take
+
+            preview_data = preview_data.isel(preview_slice)
+
+        # Convert to dataframe and display
+        df = preview_data.to_dataframe()
+        st.dataframe(df)
+    except Exception as e:
+        st.error(f"Could not convert to dataframe: {str(e)}")
+
+    # Download options
+    st.subheader('Download Options')
+    download_format = st.selectbox(
+        'Download format', ['CSV', 'NetCDF', 'Excel']
+    )
+
+    if st.button('Download filtered data'):
+        download_data(array_to_plot, selected_var, download_format)
+
+    # Display basic information
+    col1, col2 = st.columns([1, 2])
 
     with col1:
-        container.subheader('Query Parameters')
+        st.subheader("Data Information")
 
-        # Set filters for each dimension
-        filters = {}
-        for dim in dims:
-            dim_filter = get_dimension_selector(data, dim, container, st_key=st_key)
-            if dim_filter is not None:
-                filters[dim] = dim_filter
+        # Show dimensions and their sizes - using sizes instead of dims
+        st.write("**Dimensions:**")
+        dim_df = pd.DataFrame({
+            "Dimension": list(data.sizes.keys()),
+            "Size": list(data.sizes.values())
+        })
+        st.dataframe(dim_df)
 
-        # Aggregation options
-        container.subheader('Aggregation Options')
-        agg_dims = container.multiselect('Dimensions to aggregate', dims, key=f'{st_key}_agg_dims_selector')
-        agg_method = container.selectbox(
-            'Aggregation method', ['mean', 'sum', 'min', 'max', 'std'], key=f'{st_key}_agg_method_selector'
-        )
+        # For Dataset, show variables
+        if is_dataset:
+            st.write("**Variables:**")
+            var_info = []
+            for var_name, var in data.variables.items():
+                var_info.append({
+                    "Variable": var_name,
+                    "Dimensions": ", ".join(var.dims),
+                    "Type": str(var.dtype)
+                })
+            st.dataframe(pd.DataFrame(var_info))
 
-        # Check if data has time dimension and add time resampling UI
-        use_time_resampling, resampling_freq = get_time_aggregation_ui(container, variable, st_key=st_key)
+        # Show coordinates
+        if data.coords:
+            st.write("**Coordinates:**")
+            coord_info = []
+            for coord_name, coord in data.coords.items():
+                coord_info.append({
+                    "Coordinate": coord_name,
+                    "Dimensions": ", ".join(coord.dims),
+                    "Type": str(coord.dtype)
+                })
+            st.dataframe(pd.DataFrame(coord_info))
 
-        # Plot type selection - limited to the requested types
-        container.subheader('Plot Settings')
-        plot_type = container.selectbox(
-            'Plot type', ['Line', 'Stacked Bar', 'Grouped Bar', 'Heatmap'], key=f'{st_key}_plot_type_selector'
-        )
+        # Show attributes
+        if data.attrs:
+            st.write("**Attributes:**")
+            st.json(data.attrs)
 
-        if plot_type in ['Line', 'Stacked Bar', 'Grouped Bar']:
-            remaining_dims = [d for d in dims if d not in agg_dims]
-            if remaining_dims:
-                x_dim = container.selectbox('X axis dimension', remaining_dims, key=f'{st_key}_x_dim_selector')
-            else:
-                x_dim = None
-        else:
-            x_dim = None
-
-    # Filter and aggregate the selected variable
-    if is_dataset:
-        filtered_data = filter_and_aggregate(data[selected_var], filters, agg_dims, agg_method)
-    else:
-        # For DataArray, we don't need to select a variable
-        filtered_data = filter_and_aggregate(data, filters, agg_dims, agg_method)
-
-    # Apply time resampling if requested
-    if use_time_resampling and resampling_freq:
-        container.info(f'Applying time resampling with frequency: {resampling_freq}')
-        filtered_data = resample_time_data(filtered_data, resampling_freq)
-
-    # Display the visualizations
+    # Display variable information
     with col2:
-        container.subheader('Visualization')
+        st.subheader(f"Variable: {selected_var}")
 
-        # Create the plot
-        plot_title = f'{selected_var} {plot_type} Plot'
-        fig = create_plotly_plot(
-            filtered_data, plot_type, selected_var if is_dataset else None, title=plot_title, x_dim=x_dim
-        )
-
-        # Show the plot
-        container.plotly_chart(fig, use_container_width=True)
-
-        # Data preview
-        with container.expander('Data Preview'):
-            container.dataframe(filtered_data.to_dataframe())
-
-        # Download options
-        container.subheader('Download Options')
-        download_format = container.selectbox(
-            'Download format', ['CSV', 'NetCDF', 'Excel'], key=f'{st_key}_download_format_selector'
-        )
-
-        if container.button('Download filtered data', key=f'{st_key}_download_button'):
-            download_data(filtered_data, selected_var, download_format, container)
-
-    return filtered_data
+        # Display basic stats if numeric
+        try:
+            if np.issubdtype(array_to_plot.dtype, np.number):
+                stats_cols = st.columns(4)
+                stats_cols[0].metric("Min", float(array_to_plot.min().values))
+                stats_cols[1].metric("Max", float(array_to_plot.max().values))
+                stats_cols[2].metric("Mean", float(array_to_plot.mean().values))
+                stats_cols[3].metric("Std", float(array_to_plot.std().values))
+        except:
+            pass
 
 
 @show_traceback()
@@ -1179,7 +498,7 @@ def explore_results_app(results):
             # Variables tab
             with tabs[1]:
                 # Use the reusable function
-                xarray_explorer_component(component.solution)
+                xarray_explorer(component.solution)
 
     # Buses page
     elif selected_page == "Buses":
@@ -1226,7 +545,7 @@ def explore_results_app(results):
             # Variables tab
             with tabs[1]:
                 # Use the reusable function
-                xarray_explorer_component(bus.solution)
+                xarray_explorer(bus.solution)
 
     # Effects page
     elif selected_page == "Effects":
@@ -1239,30 +558,24 @@ def explore_results_app(results):
 
         st.header(f"Effect: {effect_name}")
 
-        xarray_explorer_component(effect.solution)
+        xarray_explorer(effect.solution)
 
     elif selected_page == "Flows DS":
         st.title('Flow Rates Dataset')
         mode = st.selectbox("Select a mode", ['Flow Rates', 'Flow Hours'])
         if mode == 'Flow Hours':
-            xarray_explorer_component(results.flow_hours())
+            xarray_explorer(results.flow_hours())
         else:
-            xarray_explorer_component(results.flow_rates())
+            xarray_explorer(results.flow_rates())
 
     elif selected_page == 'Effects DS':
         st.title('Effects Dataset')
-        tabs = st.tabs(["total", "invest", "operation"])
-
-        with tabs[0]:
-            xarray_explorer_component(results.effects_per_component('total'), st_key='total')
-        with tabs[1]:
-            xarray_explorer_component(results.effects_per_component('invest'), st_key='invest')
-        with tabs[2]:
-            xarray_explorer_component(results.effects_per_component('operation'), st_key='operation')
+        mode = st.selectbox("Select a mode", ['total', 'invest', 'operation'])
+        xarray_explorer(results.effects_per_component(mode))
 
     elif selected_page == "Explorer":
         st.title("Explore all variable results")
-        xarray_explorer_component(results.solution)
+        xarray_explorer(results.solution)
 
 
 def run_explorer_from_file(folder, name):
