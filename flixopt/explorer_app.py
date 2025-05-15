@@ -159,121 +159,204 @@ def download_data(filtered_data: xr.DataArray, var_name: str, download_format: s
 
 
 @show_traceback()
-def xarray_explorer(data: Union[xr.Dataset, xr.DataArray]):
+def display_data_info(data: Union[xr.Dataset, xr.DataArray], container: Optional[Any] = None) -> None:
     """
-    A simple xarray explorer for both DataArrays and Datasets.
-    Just pass your xarray object to this function.
+    Display basic information about an xarray object.
 
     Args:
         data: xarray.Dataset or xarray.DataArray
+        container: Streamlit container to render in (if None, uses st directly)
     """
-    # Determine if we're working with Dataset or DataArray
-    is_dataset = isinstance(data, xr.Dataset)
+    if container is None:
+        container = st
 
-    # Variable selection for Dataset or direct visualization for DataArray
-    if is_dataset:
-        # Variable selection
-        selected_var = st.selectbox("Select variable:", list(data.data_vars))
-        array_to_plot = data[selected_var]
+    # Show dimensions and their sizes
+    container.write('**Dimensions:**')
+    dim_df = pd.DataFrame({'Dimension': list(data.sizes.keys()), 'Size': list(data.sizes.values())})
+    container.dataframe(dim_df)
+
+    # For Dataset, show variables
+    if isinstance(data, xr.Dataset):
+        container.write('**Variables:**')
+        var_info = []
+        for var_name, var in data.variables.items():
+            var_info.append({'Variable': var_name, 'Dimensions': ', '.join(var.dims), 'Type': str(var.dtype)})
+        container.dataframe(pd.DataFrame(var_info))
+
+    # Show coordinates
+    if data.coords:
+        container.write('**Coordinates:**')
+        coord_info = []
+        for coord_name, coord in data.coords.items():
+            coord_info.append({'Coordinate': coord_name, 'Dimensions': ', '.join(coord.dims), 'Type': str(coord.dtype)})
+        container.dataframe(pd.DataFrame(coord_info))
+
+    # Show attributes
+    if data.attrs:
+        container.write('**Attributes:**')
+        container.json(data.attrs)
+
+
+@show_traceback()
+def display_variable_stats(array: xr.DataArray, container: Optional[Any] = None) -> None:
+    """
+    Display basic statistics for a DataArray if it's numeric.
+
+    Args:
+        array: xarray.DataArray to compute stats for
+        container: Streamlit container to render in (if None, uses st directly)
+    """
+    if container is None:
+        container = st
+
+    try:
+        if np.issubdtype(array.dtype, np.number):
+            stats_cols = container.columns(4)
+            stats_cols[0].metric('Min', float(array.min().values))
+            stats_cols[1].metric('Max', float(array.max().values))
+            stats_cols[2].metric('Mean', float(array.mean().values))
+            stats_cols[3].metric('Std', float(array.std().values))
+    except:
+        pass
+
+
+@show_traceback()
+def plot_scalar(array: xr.DataArray, container: Optional[Any] = None) -> None:
+    """
+    Plot a scalar (0-dimensional) DataArray.
+
+    Args:
+        array: xarray.DataArray with 0 dimensions
+        container: Streamlit container to render in (if None, uses st directly)
+    """
+    if container is None:
+        container = st
+
+    container.metric('Value', float(array.values))
+
+
+@show_traceback()
+def plot_1d(array: xr.DataArray, var_name: str, container: Optional[Any] = None) -> None:
+    """
+    Plot a 1-dimensional DataArray.
+
+    Args:
+        array: xarray.DataArray with 1 dimension
+        var_name: Name of the variable being plotted
+        container: Streamlit container to render in (if None, uses st directly)
+    """
+    if container is None:
+        container = st
+
+    dim = list(array.dims)[0]
+
+    # Line plot
+    fig = px.line(x=array[dim].values, y=array.values, labels={'x': dim, 'y': var_name})
+    container.plotly_chart(fig, use_container_width=True)
+
+    # Histogram
+    fig2 = px.histogram(x=array.values, nbins=30, labels={'x': var_name})
+    container.plotly_chart(fig2, use_container_width=True)
+
+
+@show_traceback()
+def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None) -> Tuple[xr.DataArray, Optional[Dict]]:
+    """
+    Plot a multi-dimensional DataArray with interactive dimension selectors.
+
+    Args:
+        array: xarray.DataArray with 2+ dimensions
+        var_name: Name of the variable being plotted
+        container: Streamlit container to render in (if None, uses st directly)
+
+    Returns:
+        Tuple of (sliced array, selection dictionary)
+    """
+    if container is None:
+        container = st
+
+    dims = list(array.dims)
+
+    container.write('Select dimensions to visualize:')
+
+    viz_cols = container.columns(2)
+
+    with viz_cols[0]:
+        # Choose which dimension to put on x-axis
+        x_dim = st.selectbox('X dimension:', dims, index=0)
+
+        # Choose which dimension to put on y-axis
+        remaining_dims = [d for d in dims if d != x_dim]
+        y_dim = st.selectbox('Y dimension:', remaining_dims, index=0 if len(remaining_dims) > 0 else None)
+
+    # If we have more than 2 dimensions, let user select values for other dimensions
+    with viz_cols[1]:
+        # Setup sliders for other dimensions
+        slice_dims = [d for d in dims if d not in [x_dim, y_dim]]
+        slice_indexes = {}
+
+        for dim in slice_dims:
+            dim_size = array.sizes[dim]
+            slice_indexes[dim] = st.slider(f'Position in {dim} dimension', 0, dim_size - 1, dim_size // 2)
+
+    # Create slice dictionary for selection
+    slice_dict = {dim: slice_indexes[dim] for dim in slice_dims}
+
+    # Select the data to plot
+    if slice_dims:
+        array_slice = array.isel(slice_dict)
     else:
-        # If DataArray, use directly
-        array_to_plot = data
-        selected_var = data.name if data.name else "Data"
+        array_slice = array
 
-    # Visualization section
-    st.subheader("Visualization")
+    # Visualization depends on whether we have 1 or 2 dimensions selected
+    if y_dim:
+        # 2D visualization: heatmap
+        fig = px.imshow(
+            array_slice.transpose(y_dim, x_dim).values,
+            x=array_slice[x_dim].values,
+            y=array_slice[y_dim].values,
+            color_continuous_scale='viridis',
+            labels={'x': x_dim, 'y': y_dim, 'color': var_name},
+        )
 
-    # Determine available visualization options based on dimensions
-    dims = list(array_to_plot.dims)
-    ndim = len(dims)
+        fig.update_layout(height=500)
+        container.plotly_chart(fig, use_container_width=True)
+    else:
+        # 1D visualization after slicing
+        fig = px.line(x=array_slice[x_dim].values, y=array_slice.values, labels={'x': x_dim, 'y': var_name})
+        container.plotly_chart(fig, use_container_width=True)
 
-    # Different visualization options based on dimensionality
-    if ndim == 0:
-        # Scalar value
-        st.metric("Value", float(array_to_plot.values))
+    return array_slice, slice_dict
 
-    elif ndim == 1:
-        # 1D data: line plot
-        fig = px.line(x=array_to_plot[dims[0]].values,
-                      y=array_to_plot.values,
-                      labels={"x": dims[0], "y": selected_var})
-        st.plotly_chart(fig, use_container_width=True)
 
-        # Also show histogram
-        fig2 = px.histogram(x=array_to_plot.values, nbins=30,
-                            labels={"x": selected_var})
-        st.plotly_chart(fig2, use_container_width=True)
+@show_traceback()
+def display_data_preview(array: xr.DataArray, container: Optional[Any] = None) -> pd.DataFrame:
+    """
+    Display a preview of the data as a dataframe.
 
-    elif ndim >= 2:
-        # For high dimensional data, let user select dimensions to plot
-        st.write("Select dimensions to visualize:")
+    Args:
+        array: xarray.DataArray to preview
+        container: Streamlit container to render in (if None, uses st directly)
 
-        viz_cols = st.columns(2)
+    Returns:
+        DataFrame containing the preview data
+    """
+    if container is None:
+        container = st
 
-        with viz_cols[0]:
-            # Choose which dimension to put on x-axis
-            x_dim = st.selectbox("X dimension:", dims, index=0)
-
-            # Choose which dimension to put on y-axis
-            remaining_dims = [d for d in dims if d != x_dim]
-            y_dim = st.selectbox("Y dimension:", remaining_dims,
-                                 index=0 if len(remaining_dims) > 0 else None)
-
-        # If we have more than 2 dimensions, let user select values for other dimensions
-        with viz_cols[1]:
-            # Setup sliders for other dimensions
-            slice_dims = [d for d in dims if d not in [x_dim, y_dim]]
-            slice_indexes = {}
-
-            for dim in slice_dims:
-                dim_size = array_to_plot.sizes[dim]  # Use sizes instead of dims
-                slice_indexes[dim] = st.slider(f"Position in {dim} dimension",
-                                               0, dim_size-1, dim_size//2)
-
-        # Create slice dictionary for selection
-        slice_dict = {dim: slice_indexes[dim] for dim in slice_dims}
-
-        # Select the data to plot
-        if slice_dims:
-            array_slice = array_to_plot.isel(slice_dict)
-        else:
-            array_slice = array_to_plot
-
-        # Visualization depends on whether we have 1 or 2 dimensions selected
-        if y_dim:
-            # 2D visualization: heatmap
-            fig = px.imshow(array_slice.transpose(y_dim, x_dim).values,
-                            x=array_slice[x_dim].values,
-                            y=array_slice[y_dim].values,
-                            color_continuous_scale="viridis",
-                            labels={"x": x_dim, "y": y_dim, "color": selected_var})
-
-            fig.update_layout(height=500)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            # 1D visualization after slicing
-            fig = px.line(x=array_slice[x_dim].values,
-                          y=array_slice.values,
-                          labels={"x": x_dim, "y": selected_var})
-            st.plotly_chart(fig, use_container_width=True)
-
-    # Data preview section
-    st.subheader("Data Preview")
-
-    # Convert to dataframe for display
     try:
         # Limit to first 1000 elements for performance
-        preview_data = array_to_plot
+        preview_data = array
         total_size = np.prod(preview_data.shape)
 
         if total_size > 1000:
-            st.warning(f"Data is large ({total_size} elements). Showing first 1000 elements.")
+            container.warning(f'Data is large ({total_size} elements). Showing first 1000 elements.')
             # Create a slice dict to get first elements from each dimension
             preview_slice = {}
             remaining = 1000
             for dim in preview_data.dims:
-                dim_size = preview_data.sizes[dim]  # Use sizes instead of dims
-                take = min(dim_size, max(1, int(remaining**(1/len(preview_data.dims)))))
+                dim_size = preview_data.sizes[dim]
+                take = min(dim_size, max(1, int(remaining ** (1 / len(preview_data.dims)))))
                 preview_slice[dim] = slice(0, take)
                 remaining = remaining // take
 
@@ -281,76 +364,212 @@ def xarray_explorer(data: Union[xr.Dataset, xr.DataArray]):
 
         # Convert to dataframe and display
         df = preview_data.to_dataframe()
-        st.dataframe(df)
+        container.dataframe(df)
+        return df
     except Exception as e:
-        st.error(f"Could not convert to dataframe: {str(e)}")
+        container.error(f'Could not convert to dataframe: {str(e)}')
+        return pd.DataFrame()
+
+
+@show_traceback()
+def xarray_explorer(
+    data: Union[xr.Dataset, xr.DataArray],
+    custom_plotters: Optional[Dict[str, Callable]] = None,
+    container: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    A modular xarray explorer for both DataArrays and Datasets.
+
+    Args:
+        data: xarray.Dataset or xarray.DataArray
+        custom_plotters: Dictionary of custom plotting functions by dimension.
+                        Keys are 'scalar', '1d', and 'nd'.
+        title: Title for the explorer
+        container: Streamlit container to render in (if None, uses st directly)
+
+    Returns:
+        Dictionary containing information about the current state:
+        - 'data': Original xarray data
+        - 'selected_array': Currently selected/displayed array
+        - 'selected_var': Name of selected variable
+        - 'sliced_array': Array after slicing (for multi-dimensional arrays)
+        - 'slice_dict': Dictionary of dimension slices applied
+    """
+    if container is None:
+        container = st
+
+    # Determine if we're working with Dataset or DataArray
+    is_dataset = isinstance(data, xr.Dataset)
+
+    # Variable selection for Dataset or direct visualization for DataArray
+    if is_dataset:
+        # Variable selection
+        selected_var = container.selectbox('Select variable:', list(data.data_vars))
+        array_to_plot = data[selected_var]
+    else:
+        # If DataArray, use directly
+        array_to_plot = data
+        selected_var = data.name if data.name else 'Data'
+
+    # Initialize result dictionary
+    result = {
+        'data': data,
+        'selected_array': array_to_plot,
+        'selected_var': selected_var,
+        'sliced_array': None,
+        'slice_dict': None,
+    }
+
+    # Visualization in right column
+    container.subheader('Visualization')
+
+    # Determine available visualization options based on dimensions
+    dims = list(array_to_plot.dims)
+    ndim = len(dims)
+
+    # Get the appropriate plotter function
+    plotters = {'scalar': plot_scalar, '1d': plot_1d, 'nd': plot_nd}
+
+    # Override with custom plotters if provided
+    if custom_plotters:
+        plotters.update(custom_plotters)
+
+    # Different visualization options based on dimensionality
+    if ndim == 0:
+        # Scalar value
+        plotters['scalar'](array_to_plot, container)
+    elif ndim == 1:
+        # 1D data
+        plotters['1d'](array_to_plot, selected_var, container)
+    else:
+        # 2D+ data
+        sliced_array, slice_dict = plotters['nd'](array_to_plot, selected_var, container)
+        result['sliced_array'] = sliced_array
+        result['slice_dict'] = slice_dict
+
+    # Data preview section
+    container.subheader('Data Preview')
+    display_data_preview(array_to_plot, container)
 
     # Download options
-    st.subheader('Download Options')
-    download_format = st.selectbox(
-        'Download format', ['CSV', 'NetCDF', 'Excel']
-    )
+    container.subheader('Download Options')
+    download_format = container.selectbox('Download format', ['CSV', 'NetCDF', 'Excel'])
 
-    if st.button('Download filtered data'):
-        download_data(array_to_plot, selected_var, download_format)
+    if container.button('Download filtered data'):
+        download_data(
+            array_to_plot if result['sliced_array'] is None else result['sliced_array'],
+            selected_var,
+            download_format,
+            container,
+        )
 
-    # Display basic information
-    col1, col2 = st.columns([1, 2])
 
-    with col1:
-        st.subheader("Data Information")
-
-        # Show dimensions and their sizes - using sizes instead of dims
-        st.write("**Dimensions:**")
-        dim_df = pd.DataFrame({
-            "Dimension": list(data.sizes.keys()),
-            "Size": list(data.sizes.values())
-        })
-        st.dataframe(dim_df)
-
-        # For Dataset, show variables
-        if is_dataset:
-            st.write("**Variables:**")
-            var_info = []
-            for var_name, var in data.variables.items():
-                var_info.append({
-                    "Variable": var_name,
-                    "Dimensions": ", ".join(var.dims),
-                    "Type": str(var.dtype)
-                })
-            st.dataframe(pd.DataFrame(var_info))
-
-        # Show coordinates
-        if data.coords:
-            st.write("**Coordinates:**")
-            coord_info = []
-            for coord_name, coord in data.coords.items():
-                coord_info.append({
-                    "Coordinate": coord_name,
-                    "Dimensions": ", ".join(coord.dims),
-                    "Type": str(coord.dtype)
-                })
-            st.dataframe(pd.DataFrame(coord_info))
-
-        # Show attributes
-        if data.attrs:
-            st.write("**Attributes:**")
-            st.json(data.attrs)
+    container.subheader('Data Information')
+    display_data_info(data, container)
 
     # Display variable information
-    with col2:
-        st.subheader(f"Variable: {selected_var}")
+    container.subheader(f'Variable: {selected_var}')
+    display_variable_stats(array_to_plot, container)
 
-        # Display basic stats if numeric
-        try:
-            if np.issubdtype(array_to_plot.dtype, np.number):
-                stats_cols = st.columns(4)
-                stats_cols[0].metric("Min", float(array_to_plot.min().values))
-                stats_cols[1].metric("Max", float(array_to_plot.max().values))
-                stats_cols[2].metric("Mean", float(array_to_plot.mean().values))
-                stats_cols[3].metric("Std", float(array_to_plot.std().values))
-        except:
-            pass
+    return result
+
+
+# Example of a custom plotter
+@show_traceback()
+def custom_heatmap_plotter(
+    array: xr.DataArray, var_name: str, container: Optional[Any] = None
+) -> Tuple[xr.DataArray, Optional[Dict]]:
+    """
+    A custom plotter for multi-dimensional arrays that uses a different color scheme.
+
+    Args:
+        array: xarray.DataArray with 2+ dimensions
+        var_name: Name of the variable being plotted
+        container: Streamlit container to render in (if None, uses st directly)
+
+    Returns:
+        Tuple of (sliced array, selection dictionary)
+    """
+    if container is None:
+        container = st
+
+    # You can reuse much of the code from plot_nd but customize the actual plotting
+    dims = list(array.dims)
+
+    container.write('Select dimensions to visualize:')
+
+    viz_cols = container.columns(2)
+
+    with viz_cols[0]:
+        # Choose which dimension to put on x-axis
+        x_dim = st.selectbox('X dimension:', dims, index=0, key='custom_x_dim')
+
+        # Choose which dimension to put on y-axis
+        remaining_dims = [d for d in dims if d != x_dim]
+        y_dim = st.selectbox(
+            'Y dimension:', remaining_dims, index=0 if len(remaining_dims) > 0 else None, key='custom_y_dim'
+        )
+
+    # If we have more than 2 dimensions, let user select values for other dimensions
+    with viz_cols[1]:
+        # Setup sliders for other dimensions
+        slice_dims = [d for d in dims if d not in [x_dim, y_dim]]
+        slice_indexes = {}
+
+        for dim in slice_dims:
+            dim_size = array.sizes[dim]
+            slice_indexes[dim] = st.slider(
+                f'Position in {dim} dimension', 0, dim_size - 1, dim_size // 2, key=f'custom_{dim}_slider'
+            )
+
+    # Create slice dictionary for selection
+    slice_dict = {dim: slice_indexes[dim] for dim in slice_dims}
+
+    # Select the data to plot
+    if slice_dims:
+        array_slice = array.isel(slice_dict)
+    else:
+        array_slice = array
+
+    # Visualization depends on whether we have 1 or 2 dimensions selected
+    if y_dim:
+        # 2D visualization: heatmap with CUSTOM COLORS and LAYOUT
+        fig = px.imshow(
+            array_slice.transpose(y_dim, x_dim).values,
+            x=array_slice[x_dim].values,
+            y=array_slice[y_dim].values,
+            color_continuous_scale='Plasma',  # Different color scale
+            labels={'x': x_dim, 'y': y_dim, 'color': var_name},
+        )
+
+        # Customize layout
+        fig.update_layout(
+            height=600,  # Taller
+            margin=dict(l=50, r=50, t=50, b=50),  # More margin
+            coloraxis_colorbar=dict(
+                title=var_name,
+                thicknessmode='pixels',
+                thickness=20,
+                lenmode='pixels',
+                len=400,
+                outlinewidth=1,
+                outlinecolor='black',
+                borderwidth=1,
+            ),
+        )
+
+        container.plotly_chart(fig, use_container_width=True)
+    else:
+        # 1D visualization after slicing - with CUSTOM LINE STYLE
+        fig = px.line(x=array_slice[x_dim].values, y=array_slice.values, labels={'x': x_dim, 'y': var_name})
+
+        # Customize the line
+        fig.update_traces(line=dict(width=3, dash='dash', color='darkred'))
+
+        container.plotly_chart(fig, use_container_width=True)
+
+    return array_slice, slice_dict
+
 
 
 @show_traceback()
