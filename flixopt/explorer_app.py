@@ -352,6 +352,7 @@ def plot_1d(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
         except Exception as e:
             container.warning(f'Could not compute statistics: {str(e)}')
 
+
 @show_traceback()
 def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None) -> Tuple[xr.DataArray, Optional[Dict]]:
     """
@@ -371,41 +372,55 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
 
     dims = list(array.dims)
 
-    # Aggregation options
-    container.subheader('Dimension Handling')
+    # Add custom CSS to reduce spacing
+    container.markdown(
+        """
+    <style>
+        .stSelectbox {margin-bottom: 0.2rem;}
+        .stMultiSelect {margin-bottom: 0.2rem;}
+        .stSlider {margin-bottom: 0.2rem; padding-bottom: 0.5rem;}
+        div.block-container {padding-top: 0.5rem;}
+        div.stButton > button {margin-top: 0rem;}
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
 
-    # Define columns for the UI layout
-    col1, col2 = container.columns(2)
+    # Use tabs for main sections
+    dim_tab, viz_tab = container.tabs(['Dimension Settings', 'Visualization Settings'])
 
-    with col1:
-        # Multi-select for dimensions to aggregate
-        agg_dims = st.multiselect(
-            'Dimensions to aggregate:',
-            dims,
-            default=[],
-            help='Select dimensions to aggregate (reduce) using the method selected below',
-        )
+    # === DIMENSION SETTINGS TAB ===
+    with dim_tab:
+        # Use columns for dimension handling
+        agg_col1, agg_col2 = dim_tab.columns([3, 2])
 
-        # Aggregation method selection
-        agg_method = st.selectbox(
-            'Aggregation method:',
-            ['mean', 'sum', 'min', 'max', 'std', 'median', 'var'],
-            index=0,
-            help='Method used to aggregate over the selected dimensions',
-        )
+        with agg_col1:
+            # Multi-select for dimensions to aggregate
+            agg_dims = st.multiselect(
+                'Dimensions to aggregate:',
+                dims,
+                default=[],
+                help='Select dimensions to aggregate',
+            )
+
+        with agg_col2:
+            # Aggregation method selection
+            agg_method = st.selectbox(
+                'Method:',
+                ['mean', 'sum', 'min', 'max', 'std', 'median', 'var'],
+                index=0,
+            )
 
     # Apply aggregation if dimensions were selected
     if agg_dims:
         orig_dims = dims.copy()
         array = aggregate_dimensions(array, agg_dims, agg_method, container)
-
-        # Update the list of available dimensions after aggregation
         dims = list(array.dims)
 
         # Show information about the aggregation
         removed_dims = [dim for dim in orig_dims if dim not in dims]
         if removed_dims:
-            msg = f'Applied {agg_method} aggregation over: {", ".join(removed_dims)}'
+            msg = f'Applied {agg_method} over: {", ".join(removed_dims)}'
             container.info(msg)
 
     # If no dimensions left after aggregation, show scalar result
@@ -418,59 +433,67 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
         plot_1d(array, var_name, container)
         return array, None
 
-    # Visualization options for 2+ dimensions
-    container.subheader('Visualization Settings')
+    # === VISUALIZATION SETTINGS TAB ===
+    with viz_tab:
+        # Use columns for visualization settings
+        viz_col1, viz_col2 = viz_tab.columns(2)
 
-    # Choose which dimension to put on x-axis
-    with col2:
-        x_dim = st.selectbox('X dimension:', dims, index=0)
+        with viz_col1:
+            # Choose which dimension to put on x-axis
+            x_dim = st.selectbox('X dimension:', dims, index=0)
 
-        # Choose which dimension to put on y-axis if we have at least 2 dimensions
-        remaining_dims = [d for d in dims if d != x_dim]
-        y_dim = None
-        if len(remaining_dims) > 0:
-            y_dim_options = ['None'] + remaining_dims
-            y_dim_selection = st.selectbox('Y dimension:', y_dim_options, index=1)
-            if y_dim_selection != 'None':
-                y_dim = y_dim_selection
+            # Choose which dimension to put on y-axis if we have at least 2 dimensions
+            remaining_dims = [d for d in dims if d != x_dim]
+            y_dim = None
+            if len(remaining_dims) > 0:
+                y_dim_options = ['None'] + remaining_dims
+                y_dim_selection = st.selectbox('Y dimension:', y_dim_options, index=1)
+                if y_dim_selection != 'None':
+                    y_dim = y_dim_selection
 
-        # Add plot type selector
-        plot_types = ['Heatmap', 'Line', 'Stacked Bar', 'Grouped Bar']
-        if y_dim is None:
-            # Remove heatmap option if there's no Y dimension
-            plot_types = [pt for pt in plot_types if pt != 'Heatmap']
-            default_idx = 0  # Default to Line for 1D
-        else:
-            default_idx = 0  # Default to Heatmap for 2D
+        with viz_col2:
+            # Add plot type selector
+            plot_types = ['Heatmap', 'Line', 'Stacked Bar', 'Grouped Bar']
+            if y_dim is None:
+                # Remove heatmap option if there's no Y dimension
+                plot_types = [pt for pt in plot_types if pt != 'Heatmap']
+                default_idx = 0  # Default to Line for 1D
+            else:
+                default_idx = 0  # Default to Heatmap for 2D
 
-        plot_type = st.selectbox('Plot type:', plot_types, index=default_idx)
+            plot_type = st.selectbox('Plot type:', plot_types, index=default_idx)
 
     # If we have more than the selected dimensions, let user select values for other dimensions
-    container.subheader('Other Dimension Values')
-
     # Calculate which dimensions need slicers
     slice_dims = [d for d in dims if d not in ([x_dim] if y_dim is None else [x_dim, y_dim])]
     slice_indexes = {}
 
-    # Create sliders in a more compact layout if there are many dimensions
+    # Create a more compact layout for dimension sliders
     if len(slice_dims) > 0:
-        if len(slice_dims) <= 3:
-            # For a few dimensions, use columns
-            cols = container.columns(len(slice_dims))
-            for i, dim in enumerate(slice_dims):
-                dim_size = array.sizes[dim]
-                with cols[i]:
-                    slice_indexes[dim] = st.slider(
-                        f'{dim}', 0, dim_size - 1, dim_size // 2, help=f'Select position along {dim} dimension'
-                    )
-        else:
-            # For many dimensions, use a more compact layout
-            with container.expander('Select values for other dimensions', expanded=True):
-                for dim in slice_dims:
-                    dim_size = array.sizes[dim]
-                    slice_indexes[dim] = st.slider(
-                        f'{dim}', 0, dim_size - 1, dim_size // 2, help=f'Select position along {dim} dimension'
-                    )
+        with container.expander('Other Dimension Values', expanded=True):
+            # Calculate optimal number of columns based on number of dimensions
+            num_cols = min(4, len(slice_dims))  # Max 4 columns to keep things readable
+
+            # Create a grid layout of sliders
+            for i in range(0, len(slice_dims), num_cols):
+                # Create a new row of columns
+                cols = st.columns(num_cols)
+
+                # Fill the row with sliders
+                for j in range(num_cols):
+                    col_idx = i + j
+                    if col_idx < len(slice_dims):
+                        dim = slice_dims[col_idx]
+                        dim_size = array.sizes[dim]
+                        with cols[j]:
+                            slice_indexes[dim] = st.slider(
+                                f'{dim}',
+                                0,
+                                dim_size - 1,
+                                dim_size // 2,
+                                help=f'Position on {dim}',
+                                key=f'slider_{dim}',  # Adding keys helps prevent UI issues
+                            )
 
     # Create slice dictionary for selection
     slice_dict = {dim: slice_indexes[dim] for dim in slice_dims}
@@ -492,7 +515,7 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
                 array_slice.transpose(y_dim, x_dim).values,
                 x=array_slice[x_dim].values,
                 y=array_slice[y_dim].values,
-                color_continuous_scale='viridis',
+                color_continuous_scale='portland',
                 labels={'x': x_dim, 'y': y_dim, 'color': var_name},
             )
             fig.update_layout(height=500)
@@ -798,7 +821,6 @@ def custom_heatmap_plotter(
         container.plotly_chart(fig, use_container_width=True)
 
     return array_slice, slice_dict
-
 
 
 @show_traceback()
