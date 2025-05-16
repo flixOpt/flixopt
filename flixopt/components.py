@@ -9,7 +9,7 @@ import linopy
 import numpy as np
 
 from . import utils
-from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
+from .core import PlausibilityError, Scalar, ScenarioData, TimeSeries, TimestepData
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -34,7 +34,7 @@ class LinearConverter(Component):
         inputs: List[Flow],
         outputs: List[Flow],
         on_off_parameters: OnOffParameters = None,
-        conversion_factors: List[Dict[str, NumericDataTS]] = None,
+        conversion_factors: List[Dict[str, TimestepData]] = None,
         piecewise_conversion: Optional[PiecewiseConversion] = None,
         meta_data: Optional[Dict] = None,
     ):
@@ -86,9 +86,9 @@ class LinearConverter(Component):
         if self.piecewise_conversion:
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
-                    raise PlausibilityError(
-                        f'piecewise_conversion (in {self.label_full}) and variable size '
-                        f'(in flow {flow.label_full}) do not make sense together!'
+                    logger.warning(
+                        f'Using a FLow with a fixed size ({flow.label_full}) AND a piecewise_conversion '
+                        f'(in {self.label_full}) and variable size is uncommon. Please check if this is intended!'
                     )
 
     def transform_data(self, flow_system: 'FlowSystem'):
@@ -96,6 +96,7 @@ class LinearConverter(Component):
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
         if self.piecewise_conversion:
+            self.piecewise_conversion.has_time_dim = True
             self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
     def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, TimeSeries]]:
@@ -127,16 +128,17 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: Union[Scalar, InvestParameters],
-        relative_minimum_charge_state: NumericData = 0,
-        relative_maximum_charge_state: NumericData = 1,
-        initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
-        minimal_final_charge_state: Optional[Scalar] = None,
-        maximal_final_charge_state: Optional[Scalar] = None,
-        eta_charge: NumericData = 1,
-        eta_discharge: NumericData = 1,
-        relative_loss_per_hour: NumericData = 0,
+        capacity_in_flow_hours: Union[ScenarioData, InvestParameters],
+        relative_minimum_charge_state: TimestepData = 0,
+        relative_maximum_charge_state: TimestepData = 1,
+        initial_charge_state: Union[ScenarioData, Literal['lastValueOfSim']] = 0,
+        minimal_final_charge_state: Optional[ScenarioData] = None,
+        maximal_final_charge_state: Optional[ScenarioData] = None,
+        eta_charge: TimestepData = 1,
+        eta_discharge: TimestepData = 1,
+        relative_loss_per_hour: TimestepData = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
+        balanced: bool = False,
         meta_data: Optional[Dict] = None,
     ):
         """
@@ -162,6 +164,7 @@ class Storage(Component):
             relative_loss_per_hour: loss per chargeState-Unit per hour. The default is 0.
             prevent_simultaneous_charge_and_discharge: If True, loading and unloading at the same time is not possible.
                 Increases the number of binary variables, but is recommended for easier evaluation. The default is True.
+            balanced: Wether to equate the size of the charging and discharging flow. Only if not fixed.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         # TODO: fixed_relative_chargeState implementieren
@@ -176,17 +179,18 @@ class Storage(Component):
         self.charging = charging
         self.discharging = discharging
         self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: NumericDataTS = relative_minimum_charge_state
-        self.relative_maximum_charge_state: NumericDataTS = relative_maximum_charge_state
+        self.relative_minimum_charge_state: TimestepData = relative_minimum_charge_state
+        self.relative_maximum_charge_state: TimestepData = relative_maximum_charge_state
 
         self.initial_charge_state = initial_charge_state
         self.minimal_final_charge_state = minimal_final_charge_state
         self.maximal_final_charge_state = maximal_final_charge_state
 
-        self.eta_charge: NumericDataTS = eta_charge
-        self.eta_discharge: NumericDataTS = eta_discharge
-        self.relative_loss_per_hour: NumericDataTS = relative_loss_per_hour
+        self.eta_charge: TimestepData = eta_charge
+        self.eta_discharge: TimestepData = eta_discharge
+        self.relative_loss_per_hour: TimestepData = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
+        self.balanced = balanced
 
     def create_model(self, model: SystemModel) -> 'StorageModel':
         self._plausibility_checks()
@@ -198,55 +202,83 @@ class Storage(Component):
         self.relative_minimum_charge_state = flow_system.create_time_series(
             f'{self.label_full}|relative_minimum_charge_state',
             self.relative_minimum_charge_state,
-            needs_extra_timestep=True,
+            has_extra_timestep=True,
         )
         self.relative_maximum_charge_state = flow_system.create_time_series(
             f'{self.label_full}|relative_maximum_charge_state',
             self.relative_maximum_charge_state,
-            needs_extra_timestep=True,
+            has_extra_timestep=True,
         )
         self.eta_charge = flow_system.create_time_series(f'{self.label_full}|eta_charge', self.eta_charge)
         self.eta_discharge = flow_system.create_time_series(f'{self.label_full}|eta_discharge', self.eta_discharge)
         self.relative_loss_per_hour = flow_system.create_time_series(
             f'{self.label_full}|relative_loss_per_hour', self.relative_loss_per_hour
         )
+        if not isinstance(self.initial_charge_state, str):
+            self.initial_charge_state = flow_system.create_time_series(
+                f'{self.label_full}|initial_charge_state', self.initial_charge_state, has_time_dim=False
+            )
+        self.minimal_final_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|minimal_final_charge_state', self.minimal_final_charge_state, has_time_dim=False
+        )
+        self.maximal_final_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|maximal_final_charge_state', self.maximal_final_charge_state, has_time_dim=False
+        )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(flow_system)
+            self.capacity_in_flow_hours.transform_data(flow_system, f'{self.label_full}|InvestParameters')
+        else:
+            self.capacity_in_flow_hours = flow_system.create_time_series(
+                f'{self.label_full}|capacity_in_flow_hours', self.capacity_in_flow_hours, has_time_dim=False
+            )
 
     def _plausibility_checks(self) -> None:
         """
         Check for infeasible or uncommon combinations of parameters
         """
         super()._plausibility_checks()
-        if utils.is_number(self.initial_charge_state):
-            if isinstance(self.capacity_in_flow_hours, InvestParameters):
-                if self.capacity_in_flow_hours.fixed_size is None:
-                    maximum_capacity = self.capacity_in_flow_hours.maximum_size
-                    minimum_capacity = self.capacity_in_flow_hours.minimum_size
-                else:
-                    maximum_capacity = self.capacity_in_flow_hours.fixed_size
-                    minimum_capacity = self.capacity_in_flow_hours.fixed_size
+        if isinstance(self.initial_charge_state, str):
+            if self.initial_charge_state != 'lastValueOfSim':
+                raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
+            return
+        if isinstance(self.capacity_in_flow_hours, InvestParameters):
+            if self.capacity_in_flow_hours.fixed_size is None:
+                maximum_capacity = self.capacity_in_flow_hours.maximum_size
+                minimum_capacity = self.capacity_in_flow_hours.minimum_size
             else:
-                maximum_capacity = self.capacity_in_flow_hours
-                minimum_capacity = self.capacity_in_flow_hours
+                maximum_capacity = self.capacity_in_flow_hours.fixed_size
+                minimum_capacity = self.capacity_in_flow_hours.fixed_size
+        else:
+            maximum_capacity = self.capacity_in_flow_hours
+            minimum_capacity = self.capacity_in_flow_hours
 
-            # initial capacity >= allowed min for maximum_size:
-            minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
-            # initial capacity <= allowed max for minimum_size:
-            maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
+        # initial capacity >= allowed min for maximum_size:
+        minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
+        # initial capacity <= allowed max for minimum_size:
+        maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
+        # TODO: index=1 ??? I think index 0
 
-            if self.initial_charge_state > maximum_inital_capacity:
-                raise ValueError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is above allowed maximum charge_state {maximum_inital_capacity}'
-                )
-            if self.initial_charge_state < minimum_inital_capacity:
-                raise ValueError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is below allowed minimum charge_state {minimum_inital_capacity}'
-                )
-        elif self.initial_charge_state != 'lastValueOfSim':
-            raise ValueError(f'{self.label_full}: {self.initial_charge_state=} has an invalid value')
+        if (self.initial_charge_state > maximum_inital_capacity).any():
+            raise ValueError(
+                f'{self.label_full}: {self.initial_charge_state=} '
+                f'is above allowed maximum charge_state {maximum_inital_capacity}'
+            )
+        if (self.initial_charge_state < minimum_inital_capacity).any():
+            raise ValueError(
+                f'{self.label_full}: {self.initial_charge_state=} '
+                f'is below allowed minimum charge_state {minimum_inital_capacity}'
+            )
+
+        if self.balanced:
+            if not isinstance(self.charging.size, InvestParameters) or not isinstance(self.discharging.size, InvestParameters):
+                raise PlausibilityError(
+                    f'Balancing charging and discharging Flows in {self.label_full} '
+                    f'is only possible with Investments.')
+            if (self.charging.size.minimum_size > self.discharging.size.maximum_size or
+                self.charging.size.maximum_size < self.discharging.size.minimum_size):
+                raise PlausibilityError(
+                    f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
+                    f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
+                    f'{self.charging.size.minimum_size=}, {self.charging.size.maximum_size=}.')
 
 
 @register_class_for_io
@@ -264,8 +296,8 @@ class Transmission(Component):
         out1: Flow,
         in2: Optional[Flow] = None,
         out2: Optional[Flow] = None,
-        relative_losses: Optional[NumericDataTS] = None,
-        absolute_losses: Optional[NumericDataTS] = None,
+        relative_losses: Optional[TimestepData] = None,
+        absolute_losses: Optional[TimestepData] = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         meta_data: Optional[Dict] = None,
@@ -348,7 +380,7 @@ class TransmissionModel(ComponentModel):
     def do_modeling(self):
         """Initiates all FlowModels"""
         # Force On Variable if absolute losses are present
-        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses.active_data != 0):
+        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses.selected_data != 0):
             for flow in self.element.inputs + self.element.outputs:
                 if flow.on_off_parameters is None:
                     flow.on_off_parameters = OnOffParameters()
@@ -385,14 +417,14 @@ class TransmissionModel(ComponentModel):
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
         con_transmission = self.add(
             self._model.add_constraints(
-                out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses.active_data - 1),
+                out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses.selected_data - 1),
                 name=f'{self.label_full}|{name}',
             ),
             name,
         )
 
         if self.element.absolute_losses is not None:
-            con_transmission.lhs += in_flow.model.on_off.on * self.element.absolute_losses.active_data
+            con_transmission.lhs += in_flow.model.on_off.on * self.element.absolute_losses.selected_data
 
         return con_transmission
 
@@ -420,8 +452,10 @@ class LinearConverterModel(ComponentModel):
 
                 self.add(
                     self._model.add_constraints(
-                        sum([flow.model.flow_rate * conv_factors[flow.label].active_data for flow in used_inputs])
-                        == sum([flow.model.flow_rate * conv_factors[flow.label].active_data for flow in used_outputs]),
+                        sum([flow.model.flow_rate * conv_factors[flow.label].selected_data for flow in used_inputs])
+                        == sum(
+                            [flow.model.flow_rate * conv_factors[flow.label].selected_data for flow in used_outputs]
+                        ),
                         name=f'{self.label_full}|conversion_{i}',
                     )
                 )
@@ -461,12 +495,15 @@ class StorageModel(ComponentModel):
         lb, ub = self.absolute_charge_state_bounds
         self.charge_state = self.add(
             self._model.add_variables(
-                lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|charge_state'
+                lower=lb,
+                upper=ub,
+                coords=self._model.get_coords(extra_timestep=True),
+                name=f'{self.label_full}|charge_state',
             ),
             'charge_state',
         )
         self.netto_discharge = self.add(
-            self._model.add_variables(coords=self._model.coords, name=f'{self.label_full}|netto_discharge'),
+            self._model.add_variables(coords=self._model.get_coords(), name=f'{self.label_full}|netto_discharge'),
             'netto_discharge',
         )
         # netto_discharge:
@@ -481,12 +518,12 @@ class StorageModel(ComponentModel):
         )
 
         charge_state = self.charge_state
-        rel_loss = self.element.relative_loss_per_hour.active_data
+        rel_loss = self.element.relative_loss_per_hour.selected_data
         hours_per_step = self._model.hours_per_step
         charge_rate = self.element.charging.model.flow_rate
         discharge_rate = self.element.discharging.model.flow_rate
-        eff_charge = self.element.eta_charge.active_data
-        eff_discharge = self.element.eta_discharge.active_data
+        eff_charge = self.element.eta_charge.selected_data
+        eff_discharge = self.element.eta_discharge.selected_data
 
         self.add(
             self._model.add_constraints(
@@ -513,28 +550,33 @@ class StorageModel(ComponentModel):
         # Initial charge state
         self._initial_and_final_charge_state()
 
+        if self.element.balanced:
+            self.add(
+                self._model.add_constraints(
+                    self.element.charging.model._investment.size * 1 == self.element.discharging.model._investment.size * 1,
+                    name=f'{self.label_full}|balanced_sizes',
+                ),
+                'balanced_sizes'
+            )
+
     def _initial_and_final_charge_state(self):
         if self.element.initial_charge_state is not None:
             name_short = 'initial_charge_state'
             name = f'{self.label_full}|{name_short}'
 
-            if utils.is_number(self.element.initial_charge_state):
-                self.add(
-                    self._model.add_constraints(
-                        self.charge_state.isel(time=0) == self.element.initial_charge_state, name=name
-                    ),
-                    name_short,
-                )
-            elif self.element.initial_charge_state == 'lastValueOfSim':
+            if isinstance(self.element.initial_charge_state, str):
                 self.add(
                     self._model.add_constraints(
                         self.charge_state.isel(time=0) == self.charge_state.isel(time=-1), name=name
                     ),
                     name_short,
                 )
-            else:  # TODO: Validation in Storage Class, not in Model
-                raise PlausibilityError(
-                    f'initial_charge_state has undefined value: {self.element.initial_charge_state}'
+            else:
+                self.add(
+                    self._model.add_constraints(
+                        self.charge_state.isel(time=0) == self.element.initial_charge_state, name=name
+                    ),
+                    name_short,
                 )
 
         if self.element.maximal_final_charge_state is not None:
@@ -556,7 +598,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+    def absolute_charge_state_bounds(self) -> Tuple[TimestepData, TimestepData]:
         relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (
@@ -570,10 +612,10 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+    def relative_charge_state_bounds(self) -> Tuple[TimestepData, TimestepData]:
         return (
-            self.element.relative_minimum_charge_state.active_data,
-            self.element.relative_maximum_charge_state.active_data,
+            self.element.relative_minimum_charge_state,
+            self.element.relative_maximum_charge_state,
         )
 
 

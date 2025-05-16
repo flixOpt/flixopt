@@ -38,10 +38,10 @@ dependencies = [
     "linopy >= 0.5.1",
     "netcdf4 >= 1.6.1",
     "rich >= 13.0.1",
-    "highspy >= 1.5.3",  # Default solver
-    "pandas >= 2, < 3",  # Used in post-processing
+    "highspy >= 1.5.3", # Default solver
+    "pandas >= 2, < 3", # Used in post-processing
     "matplotlib >= 3.5.2",  # Used in post-processing
-    "plotly >= 5.15",  # Used in post-processing
+    "plotly >= 5.15, < 6",  # Used in post-processing
     "tomli >= 2.0.1"  # TOML parser (only needed until python 3.11)
 ]
 
