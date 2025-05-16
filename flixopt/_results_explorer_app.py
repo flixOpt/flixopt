@@ -754,6 +754,10 @@ def xarray_explorer(
         array_to_plot = data
         selected_var = data.name if data.name else 'Data'
 
+    # Convert scenario dimension to string to ensure categorical plots
+    if 'scenario' in array_to_plot.dims:
+        array_to_plot = array_to_plot.assign_coords({'scenario': array_to_plot.coords['scenario'].astype(str)})
+
     # Initialize result dictionary
     result = {
         'data': data,
