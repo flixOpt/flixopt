@@ -633,13 +633,14 @@ def plot_nd(array: xr.DataArray, var_name: str, container: Optional[Any] = None)
             # Stacked bar chart
             # Convert to dataframe for easier plotting
             df = array_slice.to_dataframe(name='value').reset_index()
+            df = df.fillna(0)  # Fixes issues with stacking
 
             fig = px.bar(
                 df,
                 x=x_dim,
                 y='value',
                 color=y_dim,
-                barmode='stack',
+                barmode='relative',
                 labels={'value': var_name, x_dim: x_dim, y_dim: y_dim},
             )
             fig.update_layout(height=500)
