@@ -17,7 +17,6 @@ from . import io as fx_io
 from . import plotting
 from .core import DataConverter, TimeSeriesCollection
 from .flow_system import FlowSystem
-from ._results_explorer import explore_results
 
 if TYPE_CHECKING:
     import pyvis
@@ -66,7 +65,59 @@ class CalculationResults:
         >>> results.to_file(folder='new_results_dir', compression=5)  # Save the results to a new folder
     """
 
-    launch_dashboard = explore_results
+    def launch_dashboard(self, port=8501):
+        import os
+        import subprocess
+        import sys
+
+        # Rest of your code with try/except
+        try:
+            # Find explorer app path
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            explorer_script = os.path.join(current_dir, '_results_explorer_app.py')
+
+            if not os.path.exists(explorer_script):
+                raise FileNotFoundError(
+                    f'Explorer app not found at {explorer_script}. '
+                    'Please ensure the explorer_app.py file is in the flixopt package directory.'
+                )
+
+        # Run the Streamlit app - the port argument needs to be separate from the script arguments
+            cmd = [
+                sys.executable,
+                '-m',
+                'streamlit',
+                'run',
+                explorer_script,
+                '--server.port',
+                str(port),
+                '--server.headless',
+                'false',  # This makes Streamlit open the browser itself
+                '--',
+                str(self.folder),
+                self.name,
+            ]
+
+            self.to_file()
+
+            self._dashboard_process = subprocess.Popen(cmd)
+
+            logger.info(f'Streamlit app launched on port {port}. Use CalculationResults.stop_dashboard() to stop it.')
+            return self._dashboard_process
+
+        except Exception as e:
+            print(f'Error launching Streamlit app: {e}')
+            return None
+
+    def stop_dashboard(self):
+        """Stop the Streamlit dashboard process"""
+        if self._dashboard_process:
+            try:
+                self._dashboard_process.terminate()
+                self._dashboard_process.wait(timeout=5)  # Wait up to 5 seconds for clean termination
+            except Exception:
+                self._dashboard_process.kill()  # Force kill if needed
+            logger.info('Streamlit app has been stopped.')
 
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
@@ -206,6 +257,8 @@ class CalculationResults:
         self._sizes = None
         self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
         self._flow_network_info_ = None
+
+        self._dashboard_process = None
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults', 'FlowResults']:
         if key in self.components:
