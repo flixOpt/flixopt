@@ -795,11 +795,10 @@ def xarray_explorer(
         result['slice_dict'] = slice_dict
 
     # Data preview section
-    container.subheader('Data Preview')
-    display_data_preview(array_to_plot, container)
+    with container.expander('Data Preview', expanded=False):
+        display_data_preview(array_to_plot, container)
 
     # Download options
-    container.subheader('Download Options')
     download_format = container.selectbox('Download format', ['CSV', 'NetCDF', 'Excel'])
 
     if container.button('Download filtered data'):
