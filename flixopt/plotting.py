@@ -348,14 +348,6 @@ def with_plotly(
         plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
         paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
         font=dict(size=14),  # Increase font size for better readability
-        legend=dict(
-            orientation='h',  # Horizontal legend
-            yanchor='bottom',
-            y=-0.3,  # Adjusts how far below the plot it appears
-            xanchor='center',
-            x=0.5,
-            title_text=None,  # Removes legend title for a cleaner look
-        ),
     )
 
     return fig
@@ -397,7 +389,6 @@ def with_matplotlib(
         - If `style` is 'stacked_bar', bars are stacked for both positive and negative values.
           Negative values are stacked separately without extra labels in the legend.
         - If `style` is 'line', stepped lines are drawn for each data series.
-        - The legend is placed below the plot to accommodate multiple data series.
     """
     assert style in ['stacked_bar', 'line'], f"'style' must be one of {['stacked_bar', 'line']} for matplotlib"
 
@@ -1137,7 +1128,6 @@ def dual_pie_with_plotly(
         paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
         font=dict(size=14),
         margin=dict(t=80, b=50, l=30, r=30),
-        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5, font=dict(size=12)),
     )
 
     return fig
