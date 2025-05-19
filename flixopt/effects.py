@@ -313,7 +313,10 @@ class EffectCollection:
         if isinstance(item, str):
             return item in self.effects  # Check if the label exists
         elif isinstance(item, Effect):
-            return item in self.effects.values()  # Check if the object exists
+            if item.label_full in self.effects:
+                return True
+            if item in self.effects.values():  # Check if the object exists
+                return True
         return False
 
     @property
