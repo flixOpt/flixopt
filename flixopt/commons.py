@@ -8,6 +8,7 @@ from .calculation import AggregatedCalculation, FullCalculation, SegmentedCalcul
 from .components import (
     LinearConverter,
     Sink,
+    DSMSink,
     Source,
     SourceAndSink,
     Storage,
@@ -29,6 +30,7 @@ __all__ = [
     'Effect',
     'Source',
     'Sink',
+    'DSMSink',
     'SourceAndSink',
     'Storage',
     'LinearConverter',

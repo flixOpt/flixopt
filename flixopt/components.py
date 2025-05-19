@@ -635,3 +635,255 @@ class Sink(Component):
         """
         super().__init__(label, inputs=[sink], meta_data=meta_data)
         self.sink = sink
+
+@register_class_for_io
+class DSMSink(Sink):
+    """
+    Used to model sinks with the ability to perform demand side management.
+    In this class DSM ist modeled via a virtual storage.
+    """
+
+    def __init__(
+        self,
+        label: str,
+        sink: Flow,
+        initial_demand: NumericData,
+        virtual_capacity_in_flow_hours: Scalar,
+        maximum_relative_virtual_charging_rate: NumericData = 1,
+        maximum_relative_virtual_discharging_rate: NumericData = -1,
+        relative_minimum_charge_state: NumericData = -1,
+        relative_maximum_charge_state: NumericData = 1,
+        initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
+        relative_loss_per_hour_positive_charge_state: NumericData = 0,
+        relative_loss_per_hour_negative_charge_state: NumericData = 0,
+        prevent_simultaneous_charge_and_discharge: bool = True,
+        penalty_costs_positive_charge_states: NumericData = 0,
+        penalty_costs_negative_charge_states: NumericData = 0,
+        meta_data: Optional[Dict] = None
+    ):
+        """
+        Args:
+            label: The label of the Element. Used to identify it in the FlowSystem
+            sink: input-flow of DSM sink after DSM
+            initial_demand: initial demand of DSM sink before DSM
+            virtual_capacity_in_flow_hours: nominal capacity of the virtual storage
+            maximum_relative_virtual_charging_rate: maximum flow rate relative to the capacity of the virtual storage at which charging is possible. The default is 1.
+            maximum_relative_virtual_discharging_rate: maximum flow rate relative to the capacity of the virtual storage at which discharging is possible. The default is -1.
+            relative_minimum_charge_state: minimum relative charge state. The default is -1.
+            relative_maximum_charge_state: maximum relative charge state. The default is 1.
+            initial_charge_state: virtual storage charge_state at the beginning. The default is 0.
+            relative_loss_per_hour_positive_charge_state: loss per chargeState-Unit per hour for positive charge states of the virtual storage. The default is 0.
+            relative_loss_per_hour_negative_charge_state: loss per chargeState-Unit per hour for negative charge states of the virtual storage. The default is 0.
+            prevent_simultaneous_charge_and_discharge: If True, charging and discharging of the virtual storage at the same time is not possible.
+                Increases the number of binary variables, but is recommended for easier evaluation. The default is True.
+            penalty_costs_positive_charge_states: penalty costs per flow hour for loss of comfort due to positive charge states of the virtual storage (e.g. increased room temperature). The default is 0.
+            penalty_costs_negative_charge_states: penalty costs per flow hour for loss of comfort due to negative charge states of the virtual storage (e.g. decreased room temperature). The default is 0.
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        """
+        super().__init__(
+            label,
+            sink,
+            meta_data
+        )
+
+        self.initial_demand: NumericDataTS = initial_demand
+        self.virtual_capacity_in_flow_hours = virtual_capacity_in_flow_hours
+        self.maximum_relative_virtual_charging_rate: NumericDataTS = maximum_relative_virtual_charging_rate
+        self.maximum_relative_virtual_discharging_rate: NumericDataTS = maximum_relative_virtual_discharging_rate
+        self.relative_minimum_charge_state: NumericDataTS = relative_minimum_charge_state
+        self.relative_maximum_charge_state: NumericDataTS = relative_maximum_charge_state
+
+        self.initial_charge_state = initial_charge_state
+
+        self.relative_loss_per_hour_positive_charge_state: NumericDataTS = relative_loss_per_hour_positive_charge_state
+        self.relative_loss_per_hour_negative_charge_state: NumericDataTS = relative_loss_per_hour_negative_charge_state
+        self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
+
+        self.penalty_costs_positive_charge_states: NumericDataTS = penalty_costs_positive_charge_states
+        self.penalty_costs_negative_charge_states: NumericDataTS = penalty_costs_negative_charge_states
+
+    def create_model(self, model: SystemModel) -> 'DSMSinkModel':
+        self._plausibility_checks()
+        self.model = DSMSinkModel(model, self)
+        return self.model
+    
+    def transform_data(self, flow_system: 'FlowSystem') -> None:
+        super().transform_data(flow_system)
+        self.initial_demand = flow_system.create_time_series(
+            f'{self.label_full}|initial_demand',
+            self.initial_demand,
+        )
+        self.maximum_relative_virtual_charging_rate = flow_system.create_time_series(
+            f'{self.label_full}|maximum_relative_virtual_charging_rate',
+            self.maximum_relative_virtual_charging_rate,
+        )
+        self.maximum_relative_virtual_discharging_rate = flow_system.create_time_series(
+            f'{self.label_full}|maximum_relative_virtual_discharging_rate',
+            self.maximum_relative_virtual_discharging_rate,
+        )
+        self.relative_minimum_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|relative_minimum_charge_state',
+            self.relative_minimum_charge_state,
+            needs_extra_timestep=True,
+        )
+        self.relative_maximum_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|relative_maximum_charge_state',
+            self.relative_maximum_charge_state,
+            needs_extra_timestep=True,
+        )
+        self.relative_loss_per_hour_negative_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|relative_loss_per_hour_negative_charge_state',
+            self.relative_loss_per_hour_negative_charge_state,
+        )
+        self.relative_loss_per_hour_positive_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|relative_loss_per_hour_positive_charge_state',
+            self.relative_loss_per_hour_positive_charge_state,
+        )
+        self.penalty_costs_negative_charge_states = flow_system.create_time_series(
+            f'{self.label_full}|penalty_costs_negative_charge_states',
+            self.penalty_costs_negative_charge_states
+        )
+        self.penalty_costs_positive_charge_states = flow_system.create_time_series(
+            f'{self.label_full}|penalty_costs_positive_charge_states',
+            self.penalty_costs_positive_charge_states
+        )
+
+    def _plausibility_checks(self):
+        """
+        Check for infeasible or uncommon combinations of parameters
+        """
+        super()._plausibility_checks()
+        if utils.is_number(self.initial_charge_state):
+            maximum_capacity = self.virtual_capacity_in_flow_hours
+            minimum_capacity = self.virtual_capacity_in_flow_hours
+
+            # initial capacity >= allowed min for maximum_size:
+            minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
+            # initial capacity <= allowed max for minimum_size:
+            maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
+
+            if self.initial_charge_state > maximum_inital_capacity:
+                raise ValueError(
+                    f'{self.label_full}: {self.initial_charge_state=} '
+                    f'is above allowed maximum charge_state {maximum_inital_capacity}'
+                )
+            if self.initial_charge_state < minimum_inital_capacity:
+                raise ValueError(
+                    f'{self.label_full}: {self.initial_charge_state=} '
+                    f'is below allowed minimum charge_state {minimum_inital_capacity}'
+                )
+        elif self.initial_charge_state != 'lastValueOfSim':
+            raise ValueError(f'{self.label_full}: {self.initial_charge_state=} has an invalid value')
+    
+    #TODO: think about other implausibilities
+    #INFO: investments not implemented
+    
+class DSMSinkModel(ComponentModel):
+    """Model of DSM Sink"""
+    
+    def __init__(self, model: SystemModel, element: DSMSink):
+        super().__init__(model, element)
+        self.element: DSMSink = element
+        self.positive_charge_state: Optional[linopy.Variable] = None
+        self.negative_charge_state: Optional[linopy.Variable] = None
+        self.netto_charge_rate: Optional[linopy.Variable] = None
+    
+    def do_modeling(self):
+        super().do_modeling()
+
+        #add variable for charge rate
+        lb,ub = self.absolute_charge_rate_bounds
+        self.netto_charge_rate = self.add(
+            self._model.add_variables(
+                lower=lb, upper=ub, coords=self._model.coords, name=f'{self.label_full}|netto_charge_rate'
+            ),
+            'netto_charge_rate',
+        )
+        
+        #add variable for negative charge states
+        lb,ub = self.absolute_charge_state_bounds[0],0
+        self.negative_charge_state = self.add(
+            self._model.add_variables(
+                lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|negative_charge_state'
+            ),
+            'negative_charge_state',
+        )
+
+        #add variable for positive charge states
+        lb,ub = 0,self.absolute_charge_state_bounds[1]
+        self.positive_charge_state = self.add(
+            self._model.add_variables(
+                lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|positive_charge_state'
+            ),
+            'positive_charge_state'
+        )
+
+        positive_charge_state = self.positive_charge_state
+        negative_charge_state = self.negative_charge_state
+        etapos = 1 - self.element.relative_loss_per_hour_positive_charge_state.active_data
+        etaneg = 1 - self.element.relative_loss_per_hour_negative_charge_state.active_data
+        hours_per_step = self._model.hours_per_step
+        charge_rate = self.netto_charge_rate
+        initial_demand = self.element.initial_demand.active_data
+        sink = self.element.sink.model.flow_rate
+
+        # eq: positive_charge_state(t) + negative_charge_state(t) = positive_charge_state(t-1) * etapos + negative_charge_state(t-1) * ehtaneg + charge_rate(t)
+        self.add(
+            self._model.add_constraints(
+                positive_charge_state.isel(time=slice(1, None))
+                + negative_charge_state.isel(time=slice(1,None))
+                == positive_charge_state.isel(time=slice(None, -1)) * (etapos * hours_per_step)
+                + negative_charge_state.isel(time=slice(None,-1)) * (etaneg * hours_per_step)
+                + charge_rate,
+                name=f'{self.label_full}|charge_state',
+            ),
+            'charge_state',
+        )
+
+        # eq: sink(t) = initial_demand(t) + charge_rate(t)
+        self.add(
+            self._model.add_constraints(
+                sink
+                == charge_rate
+                + initial_demand,
+                name=f'{self.label_full}|resulting_load_profile',
+            ),
+            'resulting_load_profile',
+        )
+
+
+        #TODO: dissable positive and negative charge states at the same time
+        #TODO: add penalty costs
+        #TODO: add final charge state
+        
+        
+
+    @property
+    def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+        relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
+        return (
+            relative_lower_bound * self.element.virtual_capacity_in_flow_hours,
+            relative_upper_bound * self.element.virtual_capacity_in_flow_hours,
+        )
+        
+    @property
+    def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+        return (
+            self.element.relative_minimum_charge_state.active_data,
+            self.element.relative_maximum_charge_state.active_data,
+        )
+    
+    @property
+    def absolute_charge_rate_bounds(self) -> Tuple[NumericData, NumericData]:
+        relative_discharging_bound, relative_charging_bound = self.relative_charge_rate_bounds
+        return(
+            relative_discharging_bound * self.element.virtual_capacity_in_flow_hours,
+            relative_charging_bound * self.element.virtual_capacity_in_flow_hours,
+        )
+
+    @property
+    def relative_charge_rate_bounds(self) -> Tuple[NumericData, NumericData]:
+        return(
+            self.element.maximum_relative_virtual_discharging_rate.active_data,
+            self.element.maximum_relative_virtual_charging_rate.active_data,
+        )

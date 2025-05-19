@@ -20,6 +20,7 @@ from .commons import (
     PiecewiseEffects,
     SegmentedCalculation,
     Sink,
+    DSMSink,
     Source,
     SourceAndSink,
     Storage,
