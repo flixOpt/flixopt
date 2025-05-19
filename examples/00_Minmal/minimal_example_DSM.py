@@ -49,7 +49,7 @@ if __name__ == '__main__':
         initial_demand=thermal_load_profile,
         virtual_capacity_in_flow_hours=60,
         relative_loss_per_hour_positive_charge_state = 0.05,
-        relative_minimum_charge_state = 0
+        initial_charge_state = "lastValueOfSim"
     )
 
     # Gas source component with cost-effect per flow hour
