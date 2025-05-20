@@ -860,8 +860,25 @@ class DSMSinkModel(ComponentModel):
         # Initial and final charge state constraints
         self._initial_and_final_charge_state()
 
+        # Add penalty costs as effects for positive and negative charge states
+        penalty_costs_pos = self.element.penalty_costs_positive_charge_states.active_data
+        penalty_costs_neg = self.element.penalty_costs_negative_charge_states.active_data
+
+        # Add effects for positive charge states
+        if np.any(penalty_costs_pos != 0):
+            self._model.effects.add_share_to_penalty(
+                name = self.label_full,
+                expression = (positive_charge_state * penalty_costs_pos).sum()
+            )
+
+        # Add effects for negative charge states
+        if np.any(penalty_costs_neg != 0):
+            self._model.effects.add_share_to_penalty(
+                name = self.label_full,
+                expression = -(negative_charge_state * penalty_costs_neg).sum()
+            )
+
         #TODO: dissable positive and negative charge states at the same time
-        #TODO: add penalty costs
 
     def _initial_and_final_charge_state(self):
         """Add constraints for initial and final charge states"""
