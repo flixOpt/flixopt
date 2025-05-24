@@ -9,6 +9,7 @@ import linopy
 import numpy as np
 
 from . import utils
+from .config import CONFIG
 from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
@@ -912,29 +913,48 @@ class DSMSinkModel(ComponentModel):
         self.add(
             self._model.add_constraints(
                 positive_charge_state <= self.absolute_charge_state_bounds[1] * self.is_positive_charge_state,
-                name=f'{self.label_full}|positive_charge_state_binary'
+                name=f'{self.label_full}|positive_charge_state_binary_upper'
             ),
-            'positive_charge_state_binary'
+            'positive_charge_state_binary_upper'
+        )
+
+        # If is_positive_charge_state is 1, then positive_charge_state must be > 0
+        self.add(
+            self._model.add_constraints(
+                positive_charge_state >= CONFIG.modeling.EPSILON * self.absolute_charge_state_bounds[1] * self.is_positive_charge_state,  # Small epsilon to avoid numerical issues
+                name=f'{self.label_full}|positive_charge_state_binary_lower'
+            ),
+            'positive_charge_state_binary_lower'
         )
 
         # If negative_charge_state < 0, then is_negative_charge_state must be 1
         self.add(
             self._model.add_constraints(
-                -negative_charge_state <= -self.absolute_charge_state_bounds[0] * self.is_negative_charge_state,
-                name=f'{self.label_full}|negative_charge_state_binary'
+                negative_charge_state >= self.absolute_charge_state_bounds[0] * self.is_negative_charge_state,
+                name=f'{self.label_full}|negative_charge_state_binary_upper'
             ),
-            'negative_charge_state_binary'
+            'negative_charge_state_binary_upper'
+        )
+
+        # If is_negative_charge_state is 1, then negative_charge_state must be < 0
+        self.add(
+            self._model.add_constraints(
+                negative_charge_state <= CONFIG.modeling.EPSILON * self.absolute_charge_state_bounds[0] * self.is_negative_charge_state,  # Small epsilon to avoid numerical issues
+                name=f'{self.label_full}|negative_charge_state_binary_lower'
+            ),
+            'negative_charge_state_binary_lower'
         )
 
         # Ensure only one type of charge state can be active at a time
         self.add(
             self._model.add_constraints(
-                self.is_positive_charge_state + self.is_negative_charge_state <= 1.1,
+                self.is_positive_charge_state + self.is_negative_charge_state <= 1,
                 name=f'{self.label_full}|mutually_exclusive_charge_states'
             ),
             'mutually_exclusive_charge_states'
         )
-    #TODO: debugging of exclusivity constraints
+
+    #TODO: change implementation to use implemented state models
 
     def _initial_and_final_charge_state(self):
         """Add constraints for initial and final charge states"""
