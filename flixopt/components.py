@@ -875,14 +875,14 @@ class DSMSinkModel(ComponentModel):
         if np.any(penalty_costs_pos != 0):
             self._model.effects.add_share_to_penalty(
                 name = self.label_full,
-                expression = (positive_charge_state * penalty_costs_pos).sum()
+                expression = (positive_charge_state * penalty_costs_pos * hours_per_step).sum()
             )
 
         # Add effects for negative charge states
         if np.any(penalty_costs_neg != 0):
             self._model.effects.add_share_to_penalty(
                 name = self.label_full,
-                expression = -(negative_charge_state * penalty_costs_neg).sum()
+                expression = -(negative_charge_state * penalty_costs_neg * hours_per_step).sum()
             )
 
     def _add_charge_state_exclusivity_constraints(self):
