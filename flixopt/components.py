@@ -658,7 +658,7 @@ class DSMSink(Sink):
         maximal_final_charge_state: Optional[Scalar] = None,
         relative_loss_per_hour_positive_charge_state: NumericData = 0,
         relative_loss_per_hour_negative_charge_state: NumericData = 0,
-        prevent_simultaneous_charge_and_discharge: bool = True,
+        allow_mixed_charge_states: bool = False,
         penalty_costs_positive_charge_states: NumericData = 0,
         penalty_costs_negative_charge_states: NumericData = 0,
         meta_data: Optional[Dict] = None
@@ -678,8 +678,8 @@ class DSMSink(Sink):
             maximal_final_charge_state: maximal value of charge state at the end of timeseries.
             relative_loss_per_hour_positive_charge_state: loss per chargeState-Unit per hour for positive charge states of the virtual storage. The default is 0.
             relative_loss_per_hour_negative_charge_state: loss per chargeState-Unit per hour for negative charge states of the virtual storage. The default is 0.
-            prevent_simultaneous_charge_and_discharge: If True, charging and discharging of the virtual storage at the same time is not possible.
-                Increases the number of binary variables, but is recommended for easier evaluation. The default is True.
+            allow_mixed_charge_states: If True, positive and negative charge states can occur simultaneously.
+                If False, only one type of charge state is allowed at a time. The default is False.
             penalty_costs_positive_charge_states: penalty costs per flow hour for loss of comfort due to positive charge states of the virtual storage (e.g. increased room temperature). The default is 0.
             penalty_costs_negative_charge_states: penalty costs per flow hour for loss of comfort due to negative charge states of the virtual storage (e.g. decreased room temperature). The default is 0.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
@@ -703,7 +703,7 @@ class DSMSink(Sink):
 
         self.relative_loss_per_hour_positive_charge_state: NumericDataTS = relative_loss_per_hour_positive_charge_state
         self.relative_loss_per_hour_negative_charge_state: NumericDataTS = relative_loss_per_hour_negative_charge_state
-        self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
+        self.allow_mixed_charge_states = allow_mixed_charge_states
 
         self.penalty_costs_positive_charge_states: NumericDataTS = penalty_costs_positive_charge_states
         self.penalty_costs_negative_charge_states: NumericDataTS = penalty_costs_negative_charge_states
@@ -793,6 +793,8 @@ class DSMSinkModel(ComponentModel):
         self.positive_charge_state: Optional[linopy.Variable] = None
         self.negative_charge_state: Optional[linopy.Variable] = None
         self.netto_charge_rate: Optional[linopy.Variable] = None
+        self.is_positive_charge_state: Optional[linopy.Variable] = None
+        self.is_negative_charge_state: Optional[linopy.Variable] = None
     
     def do_modeling(self):
         super().do_modeling()
@@ -857,6 +859,10 @@ class DSMSinkModel(ComponentModel):
             'resulting_load_profile',
         )
 
+        # Add constraints for preventing mixed charge states if not allowed
+        if not self.element.allow_mixed_charge_states:
+            self._add_charge_state_exclusivity_constraints()
+
         # Initial and final charge state constraints
         self._initial_and_final_charge_state()
 
@@ -878,7 +884,57 @@ class DSMSinkModel(ComponentModel):
                 expression = -(negative_charge_state * penalty_costs_neg).sum()
             )
 
-        #TODO: dissable positive and negative charge states at the same time
+    def _add_charge_state_exclusivity_constraints(self):
+        """Add constraints to prevent simultaneous positive and negative charge states"""
+        # Add binary variables to track charge state type
+        self.is_positive_charge_state = self.add(
+            self._model.add_variables(
+                binary=True,
+                coords=self._model.coords_extra,
+                name=f'{self.label_full}|is_positive_charge_state'
+            ),
+            'is_positive_charge_state'
+        )
+
+        self.is_negative_charge_state = self.add(
+            self._model.add_variables(
+                binary=True,
+                coords=self._model.coords_extra,
+                name=f'{self.label_full}|is_negative_charge_state'
+            ),
+            'is_negative_charge_state'
+        )
+
+        positive_charge_state = self.positive_charge_state
+        negative_charge_state = self.negative_charge_state
+
+        # If positive_charge_state > 0, then is_positive_charge_state must be 1
+        self.add(
+            self._model.add_constraints(
+                positive_charge_state <= self.absolute_charge_state_bounds[1] * self.is_positive_charge_state,
+                name=f'{self.label_full}|positive_charge_state_binary'
+            ),
+            'positive_charge_state_binary'
+        )
+
+        # If negative_charge_state < 0, then is_negative_charge_state must be 1
+        self.add(
+            self._model.add_constraints(
+                -negative_charge_state <= -self.absolute_charge_state_bounds[0] * self.is_negative_charge_state,
+                name=f'{self.label_full}|negative_charge_state_binary'
+            ),
+            'negative_charge_state_binary'
+        )
+
+        # Ensure only one type of charge state can be active at a time
+        self.add(
+            self._model.add_constraints(
+                self.is_positive_charge_state + self.is_negative_charge_state <= 1.1,
+                name=f'{self.label_full}|mutually_exclusive_charge_states'
+            ),
+            'mutually_exclusive_charge_states'
+        )
+    #TODO: debugging of exclusivity constraints
 
     def _initial_and_final_charge_state(self):
         """Add constraints for initial and final charge states"""

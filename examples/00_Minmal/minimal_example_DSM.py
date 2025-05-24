@@ -52,7 +52,8 @@ if __name__ == '__main__':
         relative_loss_per_hour_negative_charge_state = 0.05,
         initial_charge_state = 'lastValueOfSim',
         penalty_costs_positive_charge_states=0,
-        penalty_costs_negative_charge_states=0.01
+        penalty_costs_negative_charge_states=0.01,
+        allow_mixed_charge_states=False
     )
 
     # Gas source component with cost-effect per flow hour
@@ -79,9 +80,13 @@ if __name__ == '__main__':
     calculation.results['District Heating'].plot_node_balance_pie()
     calculation.results['District Heating'].plot_node_balance()
 
+
+    # Save the DSM Sink Heat Demand solution dataset to a CSV file
+    calculation.results['DSM Sink Heat Demand'].solution.to_dataframe().to_csv('results/DSM_Sink_Heat_Demand_results.csv')
+
     # Save results to a file
     df2 = calculation.results['District Heating'].node_balance().to_dataframe()
-    # df2.to_csv('results/District Heating.csv')  # Save results to csv
+    #df2.to_csv('results/District Heating.csv')  # Save results to csv
 
     # Print infos to the console.
     pprint(calculation.summary)
