@@ -21,6 +21,7 @@ from .commons import (
     SegmentedCalculation,
     Sink,
     DSMSink,
+    DSMSinkTS,
     Source,
     SourceAndSink,
     Storage,
