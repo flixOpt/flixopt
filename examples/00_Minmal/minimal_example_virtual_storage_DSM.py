@@ -43,7 +43,7 @@ if __name__ == '__main__':
     )
 
     # Heat load component with a fixed thermal demand profile
-    heat_load = fx.DSMSink(
+    heat_load = fx.DSMSinkVS(
         'DSM Sink Heat Demand',
         sink=fx.Flow(label='Heat Load', bus='District Heating', size=150),
         initial_demand=thermal_load_profile,

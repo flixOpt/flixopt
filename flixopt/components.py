@@ -638,7 +638,7 @@ class Sink(Component):
         self.sink = sink
 
 @register_class_for_io
-class DSMSink(Sink):
+class DSMSinkVS(Sink):
     """
     Used to model sinks with the ability to perform demand side management.
     In this class DSM is modeled via a virtual storage.
@@ -709,9 +709,9 @@ class DSMSink(Sink):
         self.penalty_costs_positive_charge_states: NumericDataTS = penalty_costs_positive_charge_states
         self.penalty_costs_negative_charge_states: NumericDataTS = penalty_costs_negative_charge_states
 
-    def create_model(self, model: SystemModel) -> 'DSMSinkModel':
+    def create_model(self, model: SystemModel) -> 'DSMSinkVSModel':
         self._plausibility_checks()
-        self.model = DSMSinkModel(model, self)
+        self.model = DSMSinkVSModel(model, self)
         return self.model
     
     def transform_data(self, flow_system: 'FlowSystem') -> None:
@@ -748,11 +748,13 @@ class DSMSink(Sink):
         )
         self.penalty_costs_negative_charge_states = flow_system.create_time_series(
             f'{self.label_full}|penalty_costs_negative_charge_states',
-            self.penalty_costs_negative_charge_states
+            self.penalty_costs_negative_charge_states,
+            needs_extra_timestep=True
         )
         self.penalty_costs_positive_charge_states = flow_system.create_time_series(
             f'{self.label_full}|penalty_costs_positive_charge_states',
-            self.penalty_costs_positive_charge_states
+            self.penalty_costs_positive_charge_states,
+            needs_extra_timestep=True
         )
 
     def _plausibility_checks(self):
@@ -785,12 +787,12 @@ class DSMSink(Sink):
     #TODO: think about other implausibilities
     #INFO: investments not implemented
     
-class DSMSinkModel(ComponentModel):
+class DSMSinkVSModel(ComponentModel):
     """Model of DSM Sink"""
     
-    def __init__(self, model: SystemModel, element: DSMSink):
+    def __init__(self, model: SystemModel, element: DSMSinkVS):
         super().__init__(model, element)
-        self.element: DSMSink = element
+        self.element: DSMSinkVS = element
         self.positive_charge_state: Optional[linopy.Variable] = None
         self.negative_charge_state: Optional[linopy.Variable] = None
         self.netto_charge_rate: Optional[linopy.Variable] = None
@@ -875,14 +877,14 @@ class DSMSinkModel(ComponentModel):
         if np.any(penalty_costs_pos != 0):
             self._model.effects.add_share_to_penalty(
                 name = self.label_full,
-                expression = (positive_charge_state * penalty_costs_pos * hours_per_step).sum()
+                expression = (positive_charge_state * penalty_costs_pos).sum()
             )
 
         # Add effects for negative charge states
         if np.any(penalty_costs_neg != 0):
             self._model.effects.add_share_to_penalty(
                 name = self.label_full,
-                expression = -(negative_charge_state * penalty_costs_neg * hours_per_step).sum()
+                expression = - (negative_charge_state * penalty_costs_neg).sum()
             )
 
     def _add_charge_state_exclusivity_constraints(self):

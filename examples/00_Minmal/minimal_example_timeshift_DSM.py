@@ -17,8 +17,8 @@ if __name__ == '__main__':
 
     # --- Define Thermal Load Profile ---
     # Load profile (e.g., kW) for heating demand over time
-    #thermal_load_profile = np.array([80, 80, 80, 80, 80, 80, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 80, 80, 80, 80, 80, 80])
-    thermal_load_profile = np.array([100, 100, 100, 100, 100, 100, 120, 120, 120, 100, 100, 100, 100, 100, 100, 80, 80, 80, 100, 100, 100, 100, 100, 100])
+    thermal_load_profile = np.array([80, 80, 80, 80, 80, 80, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 80, 80, 80, 80, 80, 80])
+    #thermal_load_profile = np.array([100, 100, 100, 100, 100, 100, 120, 120, 120, 100, 100, 100, 100, 100, 100, 80, 80, 80, 100, 100, 100, 100, 100, 100])
 
     # --- Define Energy Buses ---
     # These are balancing nodes (inputs=outputs) and balance the different energy carriers your system
@@ -52,7 +52,6 @@ if __name__ == '__main__':
         timesteps_backward=3,
         maximum_flow_surplus_per_hour=20,
         maximum_flow_deficit_per_hour=-20,
-        allow_parallel_surplus_and_deficit = True
     )
 
     # Gas source component with cost-effect per flow hour
