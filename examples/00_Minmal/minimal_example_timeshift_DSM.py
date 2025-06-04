@@ -74,10 +74,112 @@ if __name__ == '__main__':
     # Access the results of an element
     df1 = calculation.results['costs'].filter_solution('time').to_dataframe()
 
-    # Plot the results of a specific element
-    calculation.results['District Heating'].plot_node_balance_pie()
-    calculation.results['District Heating'].plot_node_balance()
+    # Create a custom plot showing node balance, initial demand and surplus/deficit
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    from flixopt import plotting
 
+    # Get the data
+    node_balance = calculation.results['District Heating'].node_balance(with_last_timestep=True).to_dataframe()
+    dsm_results = calculation.results['DSM Sink Heat Demand']
+    
+    # Get initial demand from the flow system's time series collection
+    initial_demand = calculation.flow_system.time_series_collection.time_series_data[f'{dsm_results.label}|initial_demand'].active_data.to_dataframe(name='initial_demand')
+    
+    # Get surplus and deficit from the solution
+    surplus = dsm_results.solution[f'{dsm_results.label}|surplus'].to_dataframe()
+    
+    # Get the number of timesteps from the component's model
+    timesteps_backward = calculation.flow_system.components['DSM Sink Heat Demand'].timesteps_backward
+    timesteps_forward = calculation.flow_system.components['DSM Sink Heat Demand'].timesteps_forward
+    
+    # For timeshift DSM, deficit is split into pre and post timesteps
+    # Initialize deficit DataFrames with zeros
+    deficit_pre = pd.DataFrame(0, index=surplus.index, columns=['deficit_pre'])
+    deficit_post = pd.DataFrame(0, index=surplus.index, columns=['deficit_post'])
+    
+    # Sum up all pre and post deficits
+    for i in range(1, timesteps_backward + 1):
+        pre_df = dsm_results.solution[f'{dsm_results.label}|deficit_pre_{i}'].to_dataframe()
+        deficit_pre['deficit_pre'] += pre_df.values.flatten()
+    
+    for i in range(1, timesteps_forward + 1):
+        post_df = dsm_results.solution[f'{dsm_results.label}|deficit_post_{i}'].to_dataframe()
+        deficit_post['deficit_post'] += post_df.values.flatten()
+    
+    # Combine deficits
+    deficit = pd.DataFrame(0, index=surplus.index, columns=['deficit'])
+    deficit['deficit'] = deficit_pre['deficit_pre'] + deficit_post['deficit_post']
+
+    print(deficit)
+
+    # Create figure with secondary y-axis using the same style as node balance
+    fig = plotting.with_plotly(
+        node_balance,
+        mode='area',
+        colors='viridis',
+        title='District Heating Node Balance with DSM Surplus/Deficit',
+        ylabel='Power [kW]',
+        xlabel='Time'
+    )
+
+    # Get colors from viridis for the surplus/deficit
+    import plotly.express as px
+    viridis_colors = px.colors.sample_colorscale('viridis', 4)
+    surplus_color = viridis_colors[1]  # Use a blue-ish color from viridis
+    deficit_color = viridis_colors[0]  # Use a violette-ish color from viridis
+
+    # Add initial demand with step lines (no interpolation)
+    fig.add_trace(
+        go.Scatter(
+            x=initial_demand.index,
+            y=initial_demand['initial_demand'],
+            name='Initial Demand',
+            line=dict(dash='dash', color='black', shape='hv'),  # 'hv' for horizontal-vertical steps
+            mode='lines'
+        )
+    )
+
+    # Add surplus and deficit as bars on secondary y-axis with reduced opacity
+    fig.add_trace(
+        go.Bar(
+            x=surplus.index,
+            y=surplus.values.flatten(),
+            name='Surplus',
+            marker=dict(color=surplus_color, opacity=0.7),
+            yaxis='y2'
+        )
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x=deficit.index,
+            y=deficit['deficit'],
+            name='Deficit',
+            marker=dict(color=deficit_color, opacity=0.7),
+            yaxis='y2'
+        )
+    )
+
+    # Update layout for secondary y-axis and bar styling
+    fig.update_layout(
+        yaxis2=dict(
+            title='Power [kW]',
+            overlaying='y',
+            side='right',
+            showgrid=False
+        ),
+        hovermode='x unified',
+        bargap=0,  # No gap between bars
+        bargroupgap=0  # No gap between bar groups
+    )
+
+    # Show the plot
+    fig.show()
+
+    # Original plots
+    #calculation.results['District Heating'].plot_node_balance_pie()
+    #calculation.results['District Heating'].plot_node_balance()
 
     # Save the DSM Sink Heat Demand solution dataset to a CSV file
     calculation.results['DSM Sink Heat Demand'].solution.to_dataframe().to_csv('results/DSM_Sink_Heat_Demand_results.csv')
