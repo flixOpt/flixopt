@@ -1121,6 +1121,7 @@ class DSMSinkTS(Sink):
             )
 
         #TODO: think of infeasabilities
+        # - L > amount of timesteps
         #TODO: check for invariable timestep lengths
 
 
@@ -1160,7 +1161,7 @@ class DSMSinkTSModel(ComponentModel):
                     lower=lb, upper=ub, coords=self._model.coords, name=f'{self.label_full}|deficit_pre_{i}'
             ),
                 f'deficit_pre_{i}',
-        )
+            )
             for i in range(1, self.element.timesteps_backward + 1)
             # range starting from 1 to be consistent with the number of timesteps that the deficit occurs prior to its assigned surplus
         }
@@ -1171,7 +1172,7 @@ class DSMSinkTSModel(ComponentModel):
         lb,ub = self.absolute_DSM_bounds[0],0
         self.deficit_post = {
             i: self.add(
-            self._model.add_variables(
+                self._model.add_variables(
                     lower=lb, upper=ub, coords=self._model.coords, name=f'{self.label_full}|deficit_post_{i}'
                 ),
                 f'deficit_post_{i}',
@@ -1228,10 +1229,14 @@ class DSMSinkTSModel(ComponentModel):
             for n in range(1, timesteps_backward + 1):
                 if t + n < len(self._model.coords[0]): # only add deficits that appear in flow conservation equation
                     deficit_sum += deficit_pre[n].isel(time=t)
+                else: # unused deficits are set to zero
+                    self.add(self._model.add_constraints(deficit_pre[n].isel(time=t)==0))
             # Add deficits at t that are assigned to past surpluses
             for m in range(1, timesteps_forward + 1):
                 if t - m >= 0: # only add deficits that appear in flow conservation equation
                     deficit_sum += deficit_post[m].isel(time=t)
+                else: # unused deficits are set to zero
+                    self.add(self._model.add_constraints(deficit_post[m].isel(time=t)==0)) 
 
             self.add(
                 self._model.add_constraints(
