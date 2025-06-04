@@ -843,9 +843,9 @@ class DSMSinkVSModel(ComponentModel):
             self._model.add_constraints(
                 positive_charge_state.isel(time=slice(1, None))
                 + negative_charge_state.isel(time=slice(1,None))
-                == positive_charge_state.isel(time=slice(None, -1)) * (etapos * hours_per_step)
-                + negative_charge_state.isel(time=slice(None,-1)) * (etaneg * hours_per_step)
-                + charge_rate,
+                == positive_charge_state.isel(time=slice(None, -1)) * (etapos ** hours_per_step)
+                + negative_charge_state.isel(time=slice(None,-1)) * (etaneg ** hours_per_step)
+                + charge_rate * hours_per_step,
                 name=f'{self.label_full}|charge_state',
             ),
             'charge_state',
@@ -1040,6 +1040,7 @@ class DSMSinkTS(Sink):
     """
     Used to model a sink with the ability to perform demand side management.
     In this class DSM is modeled via a timeshift of the demand.
+    DON'T USE WITH TIMESTEPS OF VARIABLE LENGTH!
     """
 
     def __init__(
@@ -1120,6 +1121,7 @@ class DSMSinkTS(Sink):
             )
 
         #TODO: think of infeasabilities
+        #TODO: check for invariable timestep lengths
 
 
 @register_class_for_io
@@ -1242,6 +1244,8 @@ class DSMSinkTSModel(ComponentModel):
                 f'balance_{t}'
             )
 
+        # TODO: handle hours_per_timesteps appropriately
+
         # Add exclusivity constraints using StateModel and PreventSimultaneousUsageModel
         self._add_surplus_deficit_exclusivity_constraints()
 
@@ -1341,4 +1345,5 @@ class DSMSinkTSModel(ComponentModel):
     Können coords auch andere Koordinaten enthalten als time? Wie funktioniert der korrekte Zugriff?
     Lieber built-in Komponenten für Speicher und StateModel verwenden?
     Passt die Einbindung der Strafkosten?
+    Kein hours_per_step bei Strafkosten für virtual storage --> lieber ersten Schritt auslassen?
     """
