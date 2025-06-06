@@ -749,12 +749,10 @@ class DSMSinkVS(Sink):
         self.penalty_costs_negative_charge_states = flow_system.create_time_series(
             f'{self.label_full}|penalty_costs_negative_charge_states',
             self.penalty_costs_negative_charge_states,
-            needs_extra_timestep=True
         )
         self.penalty_costs_positive_charge_states = flow_system.create_time_series(
             f'{self.label_full}|penalty_costs_positive_charge_states',
             self.penalty_costs_positive_charge_states,
-            needs_extra_timestep=True
         )
 
     def _plausibility_checks(self):
@@ -875,16 +873,22 @@ class DSMSinkVSModel(ComponentModel):
 
         # Add effects for positive charge states
         if np.any(penalty_costs_pos != 0):
+            # Multiply penalty costs with hours_per_step first to get a single coefficient per timestep
+            penalty_coeff_pos = penalty_costs_pos * hours_per_step
             self._model.effects.add_share_to_penalty(
                 name = self.label_full,
-                expression = (positive_charge_state * penalty_costs_pos).sum()
+                # charge state is shifted backwards in time to apply penalty costs to the charge state at the end of a timestep
+                expression = (positive_charge_state.shift(time=-1).isel(time=slice(None,-1)) * penalty_coeff_pos).sum()
             )
 
         # Add effects for negative charge states
         if np.any(penalty_costs_neg != 0):
+            # Multiply penalty costs with hours_per_step first to get a single coefficient per timestep
+            penalty_coeff_neg = - penalty_costs_neg * hours_per_step
             self._model.effects.add_share_to_penalty(
                 name = self.label_full,
-                expression = - (negative_charge_state * penalty_costs_neg).sum()
+                # charge state is shifted backwards in time to apply penalty costs to the charge state at the end of a timestep
+                expression = (negative_charge_state.shift(time=-1).isel(time=slice(None,-1)) * penalty_coeff_neg).sum()
             )
 
     def _add_charge_state_exclusivity_constraints(self):
