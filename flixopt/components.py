@@ -1052,8 +1052,8 @@ class DSMSinkTS(Sink):
         label: str,
         sink: Flow,
         initial_demand: NumericData,
-        timesteps_forward: Scalar,
-        timesteps_backward: Scalar,
+        forward_timeshift: Scalar,
+        backward_timeshift: Scalar,
         maximum_flow_surplus_per_hour: NumericData,
         maximum_flow_deficit_per_hour: NumericData,
         allow_parallel_surplus_and_deficit: bool = False,
@@ -1065,8 +1065,8 @@ class DSMSinkTS(Sink):
             label: The label of the Element. Used to identify it in the FlowSystem
             sink: input-flow of DSM sink after DSM
             initial_demand: initial demand of DSM sink before DSM
-            timesteps_forward: Maximum number of timesteps by which the demand can be shifted forward in time (e.g., if timesteps_backward=2, demand at t can be satisfied at t-1 or t-2)
-            timesteps_backward: Maximum number of timesteps by which the demand can be shifted backward in time (e.g., if timesteps_forward=2, demand at t can be satisfied at t+1 or t+2)
+            forward_timeshift: Maximum number of hours by which the demand can be shifted forward in time (e.g., if forward_timeshift = 2 and timesteps are 1 hour long, demand at t can be satisfied at t-1 or t-2)
+            backward_timeshift: Maximum number of hours by which the demand can be shifted backward in time (e.g., if backward_timeshift = 2 and timesteps are 1 hour long, demand at t can be satisfied at t+1 or t+2)
             maximum_flow_surplus_per_hour: Maximum amount that the supply can exceed the demand per hour
             maximum_flow_deficit_per_hour: Maximum amount that the supply can fall below the demand per hour
             allow_parallel_surplus_and_deficit: If True, allows simultaneous surplus and deficit in one timestep that compensate each other but allow for timeshifts longer than the set timestep bounds
@@ -1081,15 +1081,21 @@ class DSMSinkTS(Sink):
         )
 
         self.initial_demand: NumericDataTS = initial_demand
-        self.timesteps_backward = timesteps_backward
-        self.timesteps_forward = timesteps_forward
+        self.forward_timeshift = forward_timeshift
+        self.backward_timeshift = backward_timeshift
         self.maximum_flow_surplus_per_hour: NumericDataTS = maximum_flow_surplus_per_hour
         self.maximum_flow_deficit_per_hour: NumericDataTS = maximum_flow_deficit_per_hour
         self.allow_parallel_surplus_and_deficit = allow_parallel_surplus_and_deficit
         self.penalty_costs: NumericDataTS = penalty_costs
 
     def create_model(self, model: SystemModel) -> 'DSMSinkTSModel':
-        self._plausibility_checks()
+        self._plausibility_checks(model)
+        
+        # calculate amount of timesteps, by which demand can be shifted forward/backward in time
+        hours_per_step = model.hours_per_step
+        self.timesteps_forward = int(self.forward_timeshift/hours_per_step.values[0])
+        self.timesteps_backward = int(self.backward_timeshift/hours_per_step.values[0])
+
         self.model = DSMSinkTSModel(model, self)
         return self.model
 
@@ -1112,7 +1118,7 @@ class DSMSinkTS(Sink):
             self.penalty_costs
         )
 
-    def _plausibility_checks(self):
+    def _plausibility_checks(self, model: SystemModel):
         """
         Check for infeasible or uncommon combinations of parameters
         """
@@ -1124,9 +1130,28 @@ class DSMSinkTS(Sink):
                 f'must have a negative value assigned.'
             )
 
+        hours_per_step = model.hours_per_step
+        
+        if self.forward_timeshift%hours_per_step.values[0]!=0:
+            raise ValueError(
+                f'{self.label_full}: {self.forward_timeshift=} '
+                f'must be a multiple of the timestep length.'
+            )
+        
+        if self.backward_timeshift%hours_per_step.values[0]!=0:
+            raise ValueError(
+                f'{self.label_full}: {self.backward_timeshift=} '
+                f'must be a multiple of the timestep length.'
+            )
+
+        if any(hours_per_step.values[0]!=hours_per_step.values):
+            raise ValueError(
+                f'{self.label_full}:'
+                f'DSMSinkTS class can only be used for timesteps of equal length'
+            )
+
         #TODO: think of infeasabilities
         # - L > amount of timesteps
-        #TODO: check for invariable timestep lengths
 
 
 @register_class_for_io
@@ -1145,6 +1170,10 @@ class DSMSinkTSModel(ComponentModel):
 
     def do_modeling(self):
         super().do_modeling()
+
+        hours_per_step = self._model.hours_per_step
+        timesteps_forward = self.element.timesteps_forward
+        timesteps_backward = self.element.timesteps_backward
 
         # add variables for supply surplus (one variable per timestep)
         lb,ub = 0,self.absolute_DSM_bounds[1]
@@ -1166,7 +1195,7 @@ class DSMSinkTSModel(ComponentModel):
             ),
                 f'deficit_pre_{i}',
             )
-            for i in range(1, self.element.timesteps_backward + 1)
+            for i in range(1, timesteps_backward + 1)
             # range starting from 1 to be consistent with the number of timesteps that the deficit occurs prior to its assigned surplus
         }
 
@@ -1181,18 +1210,15 @@ class DSMSinkTSModel(ComponentModel):
                 ),
                 f'deficit_post_{i}',
             )
-            for i in range(1, self.element.timesteps_forward + 1)
+            for i in range(1, timesteps_forward + 1)
             # range starting from 1 to be consistent with the number of timesteps that the deficit occurs after its assigned surplus
         }
 
-        timesteps_backward = self.element.timesteps_backward
-        timesteps_forward = self.element.timesteps_forward
         surplus = self.surplus
         deficit_pre = self.deficit_pre
         deficit_post = self.deficit_post
         initial_demand = self.element.initial_demand.active_data
         sink = self.element.sink.model.flow_rate
-        hours_per_step = self._model.hours_per_step
 
         # For each timestep t:
         # surplus(t) = sum over n (deficit_pre(t-n,n)) + sum over m (deficit_post(t+m,m))
@@ -1273,8 +1299,9 @@ class DSMSinkTSModel(ComponentModel):
         If allow_parallel_surplus_and_deficit is False, StateModel and PreventSimultaneousUsageModel is used to ensure surplus and deficit can not be active simultaneously.
         """
         
-        timesteps_backward = self.element.timesteps_backward
-        timesteps_forward = self.element.timesteps_forward
+        hours_per_step = self._model.hours_per_step
+        timesteps_forward = int(self.element.forward_timeshift/hours_per_step.values[0])
+        timesteps_backward = int(self.element.backward_timeshift/hours_per_step.values[0])
         surplus = self.surplus
         deficit_pre = self.deficit_pre
         deficit_post = self.deficit_post
