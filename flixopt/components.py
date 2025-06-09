@@ -893,6 +893,9 @@ class DSMSinkVSModel(ComponentModel):
 
     def _add_charge_state_exclusivity_constraints(self):
         """Add constraints to prevent simultaneous positive and negative charge states"""
+        #TODO: this method currently does not use the implemented statemodel and preventsimultaneous model
+        #because they do not work with variables using coords_extra
+        
         # Add binary variables to track charge state type
         self.is_positive_charge_state = self.add(
             self._model.add_variables(
@@ -959,8 +962,6 @@ class DSMSinkVSModel(ComponentModel):
             ),
             'mutually_exclusive_charge_states'
         )
-
-    #TODO: change implementation to use implemented state models
 
     def _initial_and_final_charge_state(self):
         """Add constraints for initial and final charge states"""
@@ -1056,6 +1057,8 @@ class DSMSinkTS(Sink):
         backward_timeshift: Scalar,
         maximum_flow_surplus_per_hour: NumericData,
         maximum_flow_deficit_per_hour: NumericData,
+        maximum_cumulated_surplus: NumericData = np.inf,
+        maximum_cumulated_deficit: NumericData = -np.inf,
         allow_parallel_surplus_and_deficit: bool = False,
         penalty_costs: NumericData = 0.001,
         meta_data: Optional[Dict] = None
@@ -1069,6 +1072,8 @@ class DSMSinkTS(Sink):
             backward_timeshift: Maximum number of hours by which the demand can be shifted backward in time (e.g., if backward_timeshift = 2 and timesteps are 1 hour long, demand at t can be satisfied at t+1 or t+2)
             maximum_flow_surplus_per_hour: Maximum amount that the supply can exceed the demand per hour
             maximum_flow_deficit_per_hour: Maximum amount that the supply can fall below the demand per hour
+            maximum_cumulated_surplus: Maximum cumulated flow hours that the supply can exceed the demand
+            maximum_cumulated_deficit: Maximum cumulated flow hours that the supply can fall below the demand
             allow_parallel_surplus_and_deficit: If True, allows simultaneous surplus and deficit in one timestep that compensate each other but allow for timeshifts longer than the set timestep bounds
             penalty_costs: Penalty costs per flow unit for deviating from the initial demand profile (default is a small epsilon to avoid multiple optimization results of equal value)
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
@@ -1085,6 +1090,8 @@ class DSMSinkTS(Sink):
         self.backward_timeshift = backward_timeshift
         self.maximum_flow_surplus_per_hour: NumericDataTS = maximum_flow_surplus_per_hour
         self.maximum_flow_deficit_per_hour: NumericDataTS = maximum_flow_deficit_per_hour
+        self.maximum_cumulated_surplus: NumericDataTS = maximum_cumulated_surplus
+        self.maximum_cumulated_deficit: NumericDataTS = maximum_cumulated_deficit
         self.allow_parallel_surplus_and_deficit = allow_parallel_surplus_and_deficit
         self.penalty_costs: NumericDataTS = penalty_costs
 
@@ -1117,6 +1124,16 @@ class DSMSinkTS(Sink):
             f'{self.label_full}|penalty_costs',
             self.penalty_costs
         )
+        self.maximum_cumulated_surplus = flow_system.create_time_series(
+            f'{self.label_full}|maximum_cumulated_surplus',
+            self.maximum_cumulated_surplus,
+            needs_extra_timestep=True,
+        )
+        self.maximum_cumulated_deficit = flow_system.create_time_series(
+            f'{self.label_full}|maximum_cumulated_deficit',
+            self.maximum_cumulated_deficit,
+            needs_extra_timestep=True,
+        )
 
     def _plausibility_checks(self, model: SystemModel):
         """
@@ -1129,6 +1146,12 @@ class DSMSinkTS(Sink):
                 f'{self.label_full}: {self.maximum_flow_deficit_per_hour=} '
                 f'must have a negative value assigned.'
             )
+        if self.maximum_cumulated_deficit is not None:
+            if any(self.maximum_cumulated_deficit > 0):
+                raise ValueError(
+                    f'{self.label_full}: {self.maximum_cumulated_deficit=} '
+                    f'must have a non positive value assinged.'
+                )
 
         hours_per_step = model.hours_per_step
         
@@ -1164,6 +1187,7 @@ class DSMSinkTSModel(ComponentModel):
         self.surplus: Optional[linopy.Variable] = None
         self.deficit_pre: Optional[linopy.Variable] = None
         self.deficit_post: Optional[linopy.Variable] = None
+        self.cumulated_flow_deviation: Optional[linopy.Variable] = None
         self.is_surplus: Optional[StateModel] = None
         self.is_deficit: Optional[StateModel] = None
         self.prevent_simultaneous: Optional[PreventSimultaneousUsageModel] = None
@@ -1214,11 +1238,21 @@ class DSMSinkTSModel(ComponentModel):
             # range starting from 1 to be consistent with the number of timesteps that the deficit occurs after its assigned surplus
         }
 
+        #add variables for cumulated flow on hold
+        lb,ub = self.absolute_cumulated_bounds
+        self.cumulated_flow_deviation = self.add(
+            self._model.add_variables(
+                lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|cumulated_flow_deviation'
+            ),
+            f'cumulated_flow_deviation'
+        )
+
         surplus = self.surplus
         deficit_pre = self.deficit_pre
         deficit_post = self.deficit_post
         initial_demand = self.element.initial_demand.active_data
         sink = self.element.sink.model.flow_rate
+        cumulated_flow_deviation = self.cumulated_flow_deviation
 
         # For each timestep t:
         # surplus(t) = sum over n (deficit_pre(t-n,n)) + sum over m (deficit_post(t+m,m))
@@ -1279,18 +1313,47 @@ class DSMSinkTSModel(ComponentModel):
                 f'balance_{t}'
             )
 
-        # TODO: handle hours_per_timesteps appropriately
+        # equation for the cumulated deviation
+        self.add(
+            self._model.add_constraints(
+                cumulated_flow_deviation.isel(time=slice(1,None))
+                == cumulated_flow_deviation.isel(time=slice(None,-1))
+                + sink * hours_per_step
+                - initial_demand * hours_per_step,
+                name=f'{self.label_full}|deviating_flow_cumulation'
+            ),
+            f'deviating_flow_cumulation'
+        )
+
+        # set initial value of cumulated deviation to
+        self.add(
+            self._model.add_constraints(
+                cumulated_flow_deviation.isel(time=0) == 0,
+                name=f'{self.label_full}|initial_deviation'
+            ),
+            f'initial_deviation'
+        )
 
         # Add exclusivity constraints using StateModel and PreventSimultaneousUsageModel
         self._add_surplus_deficit_exclusivity_constraints()
 
-        # Add penalty costs as effects for supply surplus
+        # Add penalty costs as effects for supply deficits
         # default is a small epsilon to avoid multiple optimization results of equal value
+        # timeshifts of greater length are penalized with a higher cost
         penalty_costs = self.element.penalty_costs.active_data
-        self._model.effects.add_share_to_penalty(
-            name = self.label_full,
-            expression = (surplus * penalty_costs * hours_per_step).sum()
-        )
+        for i in range(1, timesteps_forward + 1):
+            deficit = deficit_post[i]
+            self._model.effects.add_share_to_penalty(
+                name = self.label_full,
+                expression = - (deficit * i * penalty_costs * hours_per_step).sum()
+            )
+
+        for i in range(1, timesteps_backward + 1):
+            deficit = deficit_pre[i]
+            self._model.effects.add_share_to_penalty(
+                name = self.label_full,
+                expression = - (deficit * i * penalty_costs * hours_per_step).sum()
+            )
 
     def _add_surplus_deficit_exclusivity_constraints(self):
         """
@@ -1375,6 +1438,13 @@ class DSMSinkTSModel(ComponentModel):
         return(
             self.element.maximum_flow_deficit_per_hour.active_data,
             self.element.maximum_flow_surplus_per_hour.active_data,
+        )
+
+    @property
+    def absolute_cumulated_bounds(self) -> Tuple[NumericData, NumericData]:
+        return(
+            self.element.maximum_cumulated_deficit.active_data,
+            self.element.maximum_cumulated_surplus.active_data,
         )
     
     """zu klären:

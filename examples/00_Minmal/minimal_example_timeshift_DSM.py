@@ -19,6 +19,7 @@ if __name__ == '__main__':
     # Load profile (e.g., kW) for heating demand over time
     thermal_load_profile = np.array([80, 80, 80, 80, 80, 80, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 80, 80, 80, 80, 80, 80])
     #thermal_load_profile = np.array([100, 100, 100, 100, 100, 100, 120, 120, 120, 100, 100, 100, 100, 100, 100, 80, 80, 80, 100, 100, 100, 100, 100, 100])
+    #thermal_load_profile = np.array([80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80])
 
     # --- Define Energy Buses ---
     # These are balancing nodes (inputs=outputs) and balance the different energy carriers your system
@@ -48,8 +49,8 @@ if __name__ == '__main__':
         'DSM Sink Heat Demand',
         sink=fx.Flow(label='Heat Load', bus='District Heating', size=150),
         initial_demand=thermal_load_profile,
-        timesteps_forward=3,
-        timesteps_backward=3,
+        forward_timeshift=3,
+        backward_timeshift=3,
         maximum_flow_surplus_per_hour=20,
         maximum_flow_deficit_per_hour=-20,
     )
@@ -111,7 +112,7 @@ if __name__ == '__main__':
     deficit = pd.DataFrame(0, index=surplus.index, columns=['deficit'])
     deficit['deficit'] = deficit_pre['deficit_pre'] + deficit_post['deficit_post']
 
-    print(deficit)
+
 
     # Create figure with secondary y-axis using the same style as node balance
     fig = plotting.with_plotly(
