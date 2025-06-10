@@ -188,11 +188,16 @@ if __name__ == '__main__':
     # Update layout to include secondary y-axis
     fig.update_layout(
         hovermode='x unified',
+        yaxis=dict(
+            range=[-1.2*max(0, node_balance.max().max(), -cumulated_flow.min().min(), -deficit.min().min()), 1.2*max(node_balance.max().max(), surplus.max().max(), cumulated_flow.max().max(), initial_demand.max().max())],
+            showgrid=True
+        ),
         yaxis2=dict(
             title='Cumulated Flow [kWh]',
             overlaying='y',
             side='right',
-            showgrid=False
+            showgrid=False,
+            range=[-1.2*max(0, node_balance.max().max(), -cumulated_flow.min().min(), -deficit.min().min()), 1.2*max(node_balance.max().max(), surplus.max().max(), cumulated_flow.max().max(), initial_demand.max().max())]
         )
     )
 
