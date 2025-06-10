@@ -112,9 +112,7 @@ if __name__ == '__main__':
     deficit = pd.DataFrame(0, index=surplus.index, columns=['deficit'])
     deficit['deficit'] = deficit_pre['deficit_pre'] + deficit_post['deficit_post']
 
-
-
-    # Create figure with secondary y-axis using the same style as node balance
+    # Create figure with area plot for node balance
     fig = plotting.with_plotly(
         node_balance,
         mode='area',
@@ -126,9 +124,10 @@ if __name__ == '__main__':
 
     # Get colors from viridis for the surplus/deficit
     import plotly.express as px
-    viridis_colors = px.colors.sample_colorscale('viridis', 4)
-    surplus_color = viridis_colors[1]  # Use a blue-ish color from viridis
-    deficit_color = viridis_colors[0]  # Use a violette-ish color from viridis
+    viridis_colors = px.colors.sample_colorscale('viridis', 8)
+    surplus_color = viridis_colors[4]  # Use a blue-ish color from viridis
+    deficit_color = viridis_colors[2]  # Use a violette-ish color from viridis
+    cumulated_color = viridis_colors[3]  # Use another color from viridis for cumulated flow
 
     # Add initial demand with step lines (no interpolation)
     fig.add_trace(
@@ -137,42 +136,64 @@ if __name__ == '__main__':
             y=initial_demand['initial_demand'],
             name='Initial Demand',
             line=dict(dash='dash', color='black', shape='hv'),  # 'hv' for horizontal-vertical steps
-            mode='lines'
+            mode='lines'  
         )
     )
 
-    # Add surplus and deficit as bars on secondary y-axis with reduced opacity
+    # Add surplus and deficit as area plots with similar style to node balance
     fig.add_trace(
-        go.Bar(
+        go.Scatter(
             x=surplus.index,
             y=surplus.values.flatten(),
             name='Surplus',
-            marker=dict(color=surplus_color, opacity=0.7),
-            yaxis='y2'
+            fill='tonexty',  # Fill to the next trace
+            line=dict(color=surplus_color, width=1, shape='hv'),  # Thin line for the area border
+            mode='lines',
+            stackgroup='one'  # Stack with other traces in the same group
         )
     )
 
     fig.add_trace(
-        go.Bar(
+        go.Scatter(
             x=deficit.index,
             y=deficit['deficit'],
             name='Deficit',
-            marker=dict(color=deficit_color, opacity=0.7),
+            fill='tonexty',  # Fill to the next trace
+            line=dict(color=deficit_color, width=1, shape='hv'),  # Thin line for the area border
+            mode='lines',
+            stackgroup='two'  # Stack with other traces in the same group
+        )
+    )
+
+    # Get cumulated flow deviation from the model
+    cumulated_flow = dsm_results.solution[f'{dsm_results.label}|cumulated_flow_deviation'].to_dataframe()
+
+    # Add cumulated flow deviation as diamonds on secondary y-axis
+    fig.add_trace(
+        go.Scatter(
+            x=cumulated_flow.index,
+            y=cumulated_flow.values.flatten(),
+            name='Cumulated Flow Deviation',
+            mode='markers',
+            marker=dict(
+                color=cumulated_color,
+                size=10,
+                symbol='diamond',
+                line=dict(width=1, color='black')
+            ),
             yaxis='y2'
         )
     )
 
-    # Update layout for secondary y-axis and bar styling
+    # Update layout to include secondary y-axis
     fig.update_layout(
+        hovermode='x unified',
         yaxis2=dict(
-            title='Power [kW]',
+            title='Cumulated Flow [kWh]',
             overlaying='y',
             side='right',
             showgrid=False
-        ),
-        hovermode='x unified',
-        bargap=0,  # No gap between bars
-        bargroupgap=0  # No gap between bar groups
+        )
     )
 
     # Show the plot
