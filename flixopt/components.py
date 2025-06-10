@@ -650,6 +650,8 @@ class DSMSinkVS(Sink):
         sink: Flow,
         initial_demand: NumericData,
         virtual_capacity_in_flow_hours: Scalar,
+        forward_timeshift: Scalar = None,
+        backward_timeshift: Scalar = None,
         maximum_relative_virtual_charging_rate: NumericData = 1,
         maximum_relative_virtual_discharging_rate: NumericData = -1,
         relative_minimum_charge_state: NumericData = -1,
@@ -660,6 +662,7 @@ class DSMSinkVS(Sink):
         relative_loss_per_hour_positive_charge_state: NumericData = 0,
         relative_loss_per_hour_negative_charge_state: NumericData = 0,
         allow_mixed_charge_states: bool = False,
+        allow_parallel_charge_and_discharge: bool = False,
         penalty_costs_positive_charge_states: NumericData = 0,
         penalty_costs_negative_charge_states: NumericData = 0,
         meta_data: Optional[Dict] = None
@@ -670,6 +673,8 @@ class DSMSinkVS(Sink):
             sink: input-flow of DSM sink after DSM
             initial_demand: initial demand of DSM sink before DSM
             virtual_capacity_in_flow_hours: nominal capacity of the virtual storage
+            forward_timeshift: Maximum number of hours by which the demand can be shifted forward in time. Default is infinite.
+            backward_timeshift: Maximum number of hours by which the demand can be shifted backward in time. Default is infinite.
             maximum_relative_virtual_charging_rate: maximum flow rate relative to the capacity of the virtual storage at which charging is possible. The default is 1.
             maximum_relative_virtual_discharging_rate: maximum flow rate relative to the capacity of the virtual storage at which discharging is possible. The default is -1.
             relative_minimum_charge_state: minimum relative charge state. The default is -1.
@@ -681,6 +686,8 @@ class DSMSinkVS(Sink):
             relative_loss_per_hour_negative_charge_state: loss per chargeState-Unit per hour for negative charge states of the virtual storage. The default is 0.
             allow_mixed_charge_states: If True, positive and negative charge states can occur simultaneously.
                 If False, only one type of charge state is allowed at a time. The default is False.
+            allow_parallel_charge_and_discharge: If True, allows simultaneous charging and discharging in one timestep.
+                If False, charging and discharging cannot occur simultaneously. The default is False.
             penalty_costs_positive_charge_states: penalty costs per flow hour for loss of comfort due to positive charge states of the virtual storage (e.g. increased room temperature). The default is 0.
             penalty_costs_negative_charge_states: penalty costs per flow hour for loss of comfort due to negative charge states of the virtual storage (e.g. decreased room temperature). The default is 0.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
@@ -693,6 +700,8 @@ class DSMSinkVS(Sink):
 
         self.initial_demand: NumericDataTS = initial_demand
         self.virtual_capacity_in_flow_hours = virtual_capacity_in_flow_hours
+        self.forward_timeshift = forward_timeshift
+        self.backward_timeshift = backward_timeshift
         self.maximum_relative_virtual_charging_rate: NumericDataTS = maximum_relative_virtual_charging_rate
         self.maximum_relative_virtual_discharging_rate: NumericDataTS = maximum_relative_virtual_discharging_rate
         self.relative_minimum_charge_state: NumericDataTS = relative_minimum_charge_state
@@ -705,12 +714,19 @@ class DSMSinkVS(Sink):
         self.relative_loss_per_hour_positive_charge_state: NumericDataTS = relative_loss_per_hour_positive_charge_state
         self.relative_loss_per_hour_negative_charge_state: NumericDataTS = relative_loss_per_hour_negative_charge_state
         self.allow_mixed_charge_states = allow_mixed_charge_states
+        self.allow_parallel_charge_and_discharge = allow_parallel_charge_and_discharge
 
         self.penalty_costs_positive_charge_states: NumericDataTS = penalty_costs_positive_charge_states
         self.penalty_costs_negative_charge_states: NumericDataTS = penalty_costs_negative_charge_states
 
     def create_model(self, model: SystemModel) -> 'DSMSinkVSModel':
-        self._plausibility_checks()
+        self._plausibility_checks(model)
+
+        # calculate amount of timesteps, by which demand can be shifted forward/backward in time
+        hours_per_step = model.hours_per_step
+        self.timesteps_forward = int(self.forward_timeshift/hours_per_step.values[0]) if self.forward_timeshift is not None else None
+        self.timesteps_backward = int(self.backward_timeshift/hours_per_step.values[0]) if self.backward_timeshift is not None else None
+
         self.model = DSMSinkVSModel(model, self)
         return self.model
     
@@ -755,7 +771,7 @@ class DSMSinkVS(Sink):
             self.penalty_costs_positive_charge_states,
         )
 
-    def _plausibility_checks(self):
+    def _plausibility_checks(self, model):
         """
         Check for infeasible or uncommon combinations of parameters
         """
@@ -781,6 +797,31 @@ class DSMSinkVS(Sink):
                 )
         elif self.initial_charge_state != 'lastValueOfSim':
             raise ValueError(f'{self.label_full}: {self.initial_charge_state=} has an invalid value')
+        
+        hours_per_step = model.hours_per_step
+
+        if self.forward_timeshift != None or self.backward_timeshift != None:
+            if any(hours_per_step.values[0]!=hours_per_step.values):
+                raise ValueError(
+                    f'{self.label_full}:'
+                    f'DSMSinkTS class can only be used for timesteps of equal length'
+                )
+
+        if self.forward_timeshift is not None:
+            if self.forward_timeshift%hours_per_step.values[0]!=0:
+                raise ValueError(
+                    f'{self.label_full}: {self.forward_timeshift=} '
+                    f'must be a multiple of the timestep length.'
+                )
+        
+        if self.backward_timeshift is not None:
+            if self.backward_timeshift%hours_per_step.values[0]!=0:
+                raise ValueError(
+                    f'{self.label_full}: {self.backward_timeshift=} '
+                    f'must be a multiple of the timestep length.'
+                )
+
+            
     
     #TODO: think about other implausibilities
     #INFO: investments not implemented
@@ -883,7 +924,11 @@ class DSMSinkVSModel(ComponentModel):
             self._add_charge_state_exclusivity_constraints()
 
         # Add charge rate exclusivity constraints
-        self._add_charge_rate_exclusivity_constraints()
+        if not self.element.allow_parallel_charge_and_discharge:
+            self._add_charge_rate_exclusivity_constraints()
+
+        # Forward and backward timeshift constraints
+        self._add_timeshift_limits()
 
         # Initial and final charge state constraints
         self._initial_and_final_charge_state()
@@ -1023,6 +1068,24 @@ class DSMSinkVSModel(ComponentModel):
             )
         )
         self.prevent_simultaneous_charge_rates.do_modeling()
+
+    def _add_timeshift_limits(self):
+        hours_per_step = self._model.hours_per_step
+        timesteps_forward = self.element.timesteps_forward
+        timesteps_backward = self.element.timesteps_backward
+
+        positive_charge_state = self.positive_charge_state
+
+        if timesteps_forward is not None:
+            surplus_sum = 0
+            for i in range(1, timesteps_forward):
+                surplus_sum += self.positive_charge_rate.isel(time=XXX)
+            self.add(
+                self._model.add_constraints(
+                    positive_charge_state
+                    <= surplus_sum
+                )
+            )
 
     def _initial_and_final_charge_state(self):
         """Add constraints for initial and final charge states"""

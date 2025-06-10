@@ -54,7 +54,8 @@ if __name__ == '__main__':
         initial_charge_state = 'lastValueOfSim',
         penalty_costs_positive_charge_states=0,
         penalty_costs_negative_charge_states=0.01,
-        allow_mixed_charge_states=False
+        allow_mixed_charge_states=False,
+        forward_timeshift = 1
     )
 
     # Gas source component with cost-effect per flow hour
