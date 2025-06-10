@@ -54,7 +54,6 @@ if __name__ == '__main__':
         maximum_relative_virtual_discharging_rate = -0.2,
         #relative_loss_per_hour_positive_charge_state = 0.05,
         #relative_loss_per_hour_negative_charge_state = 0.05,
-        initial_charge_state = 'lastValueOfSim',
         #penalty_costs_positive_charge_states=0,
         #penalty_costs_negative_charge_states=0.01,
         allow_mixed_charge_states=False,

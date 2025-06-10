@@ -520,12 +520,12 @@ class StorageModel(ComponentModel):
             name = f'{self.label_full}|{name_short}'
 
             if utils.is_number(self.element.initial_charge_state):
-        self.add(
-            self._model.add_constraints(
-                        self.charge_state.isel(time=0) == self.element.initial_charge_state, name=name
-                    ),
-                    name_short,
-                )
+                self.add(
+                    self._model.add_constraints(
+                            self.charge_state.isel(time=0) == self.element.initial_charge_state, name=name
+                        ),
+                        name_short,
+                    )
             elif self.element.initial_charge_state == 'lastValueOfSim':
                 self.add(
                     self._model.add_constraints(
@@ -539,8 +539,8 @@ class StorageModel(ComponentModel):
                 )
 
         if self.element.maximal_final_charge_state is not None:
-        self.add(
-            self._model.add_constraints(
+            self.add(
+                self._model.add_constraints(
                     self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
                     name=f'{self.label_full}|final_charge_max',
                 ),
@@ -554,7 +554,7 @@ class StorageModel(ComponentModel):
                     name=f'{self.label_full}|final_charge_min',
                 ),
                 'final_charge_min',
-        )
+            )
 
     @property
     def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
@@ -656,9 +656,6 @@ class DSMSink(Sink):
         maximum_relative_virtual_discharging_rate: NumericData = -1,
         relative_minimum_charge_state: NumericData = -1,
         relative_maximum_charge_state: NumericData = 1,
-        initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
-        minimal_final_charge_state: Optional[Scalar] = None,
-        maximal_final_charge_state: Optional[Scalar] = None,
         relative_loss_per_hour_positive_charge_state: NumericData = 0,
         relative_loss_per_hour_negative_charge_state: NumericData = 0,
         allow_mixed_charge_states: bool = False,
@@ -679,9 +676,6 @@ class DSMSink(Sink):
             maximum_relative_virtual_discharging_rate: maximum flow rate relative to the capacity of the virtual storage at which discharging is possible. The default is -1.
             relative_minimum_charge_state: minimum relative charge state. The default is -1.
             relative_maximum_charge_state: maximum relative charge state. The default is 1.
-            initial_charge_state: virtual storage charge_state at the beginning. The default is 0.
-            minimal_final_charge_state: minimal value of charge state at the end of timeseries.
-            maximal_final_charge_state: maximal value of charge state at the end of timeseries.
             relative_loss_per_hour_positive_charge_state: loss per chargeState-Unit per hour for positive charge states of the virtual storage. The default is 0.
             relative_loss_per_hour_negative_charge_state: loss per chargeState-Unit per hour for negative charge states of the virtual storage. The default is 0.
             allow_mixed_charge_states: If True, positive and negative charge states can occur simultaneously.
@@ -706,10 +700,6 @@ class DSMSink(Sink):
         self.maximum_relative_virtual_discharging_rate: NumericDataTS = maximum_relative_virtual_discharging_rate
         self.relative_minimum_charge_state: NumericDataTS = relative_minimum_charge_state
         self.relative_maximum_charge_state: NumericDataTS = relative_maximum_charge_state
-
-        self.initial_charge_state = initial_charge_state
-        self.minimal_final_charge_state = minimal_final_charge_state
-        self.maximal_final_charge_state = maximal_final_charge_state
 
         self.relative_loss_per_hour_positive_charge_state: NumericDataTS = relative_loss_per_hour_positive_charge_state
         self.relative_loss_per_hour_negative_charge_state: NumericDataTS = relative_loss_per_hour_negative_charge_state
@@ -776,27 +766,6 @@ class DSMSink(Sink):
         Check for infeasible or uncommon combinations of parameters
         """
         super()._plausibility_checks()
-        if utils.is_number(self.initial_charge_state):
-            maximum_capacity = self.virtual_capacity_in_flow_hours
-            minimum_capacity = self.virtual_capacity_in_flow_hours
-
-            # initial capacity >= allowed min for maximum_size:
-            minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
-            # initial capacity <= allowed max for minimum_size:
-            maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
-
-            if self.initial_charge_state > maximum_inital_capacity:
-                raise ValueError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is above allowed maximum charge_state {maximum_inital_capacity}'
-                )
-            if self.initial_charge_state < minimum_inital_capacity:
-                raise ValueError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is below allowed minimum charge_state {minimum_inital_capacity}'
-                )
-        elif self.initial_charge_state != 'lastValueOfSim':
-            raise ValueError(f'{self.label_full}: {self.initial_charge_state=} has an invalid value')
         
         hours_per_step = model.hours_per_step
 
@@ -825,7 +794,7 @@ class DSMSink(Sink):
     
     #TODO: think about other implausibilities
     #INFO: investments not implemented
-
+    
 class DSMSinkModel(ComponentModel):
     """Model of DSM Sink"""
     
@@ -1109,50 +1078,24 @@ class DSMSinkModel(ComponentModel):
         #TODO: handle clash with initial charge state
 
     def _initial_and_final_charge_state(self):
-        """Add constraints for initial and final charge states"""
-        if self.element.initial_charge_state is not None:
-            name_short = 'initial_charge_state'
-            name = f'{self.label_full}|{name_short}'
+        """Add constraints for initial and final charge states to be zero"""
+        # Set initial charge state to zero
+        self.add(
+            self._model.add_constraints(
+                self.positive_charge_state.isel(time=0) + self.negative_charge_state.isel(time=0) == 0,
+                name=f'{self.label_full}|initial_charge_state'
+            ),
+            'initial_charge_state'
+        )
 
-            if utils.is_number(self.element.initial_charge_state):
-                self.add(
-                    self._model.add_constraints(
-                        self.positive_charge_state.isel(time=0) + self.negative_charge_state.isel(time=0) == self.element.initial_charge_state,
-                        name=name
-                    ),
-                    name_short,
-                )
-            elif self.element.initial_charge_state == 'lastValueOfSim':
-                self.add(
-                    self._model.add_constraints(
-                        self.positive_charge_state.isel(time=0) + self.negative_charge_state.isel(time=0) 
-                        == self.positive_charge_state.isel(time=-1) + self.negative_charge_state.isel(time=-1),
-                        name=name
-                    ),
-                    name_short,
-                )
-            else:
-                raise PlausibilityError(
-                    f'initial_charge_state has undefined value: {self.element.initial_charge_state}'
-                )
-
-        if self.element.maximal_final_charge_state is not None:
-            self.add(
-                self._model.add_constraints(
-                    self.positive_charge_state.isel(time=-1) + self.negative_charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
-                    name=f'{self.label_full}|final_charge_max',
-                ),
-                'final_charge_max',
-            )
-
-        if self.element.minimal_final_charge_state is not None:
-            self.add(
-                self._model.add_constraints(
-                    self.positive_charge_state.isel(time=-1) + self.negative_charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
-                    name=f'{self.label_full}|final_charge_min',
-                ),
-                'final_charge_min',
-            )
+        # Set final charge state to zero
+        self.add(
+            self._model.add_constraints(
+                self.positive_charge_state.isel(time=-1) + self.negative_charge_state.isel(time=-1) == 0,
+                name=f'{self.label_full}|final_charge_state'
+            ),
+            'final_charge_state'
+        )
 
     @property
     def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
@@ -1285,7 +1228,7 @@ class DSMSinkTS(Sink):
         Check for infeasible or uncommon combinations of parameters
         """
         super()._plausibility_checks()
-
+        
         if any(self.maximum_flow_deficit_per_hour >= 0):
             raise ValueError(
                 f'{self.label_full}: {self.maximum_flow_deficit_per_hour=} '
