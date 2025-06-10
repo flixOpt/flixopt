@@ -44,18 +44,21 @@ if __name__ == '__main__':
     )
 
     # Heat load component with a fixed thermal demand profile
-    heat_load = fx.DSMSinkVS(
+    heat_load = fx.DSMSink(
         'DSM Sink Heat Demand',
         sink=fx.Flow(label='Heat Load', bus='District Heating', size=150),
         initial_demand=thermal_load_profile,
-        virtual_capacity_in_flow_hours=60,
-        relative_loss_per_hour_positive_charge_state = 0.05,
-        relative_loss_per_hour_negative_charge_state = 0.05,
+        virtual_capacity_in_flow_hours=100,
+        maximum_relative_virtual_charging_rate = 0.2,
+        maximum_relative_virtual_discharging_rate = -0.2,
+        #relative_loss_per_hour_positive_charge_state = 0.05,
+        #relative_loss_per_hour_negative_charge_state = 0.05,
         initial_charge_state = 'lastValueOfSim',
-        penalty_costs_positive_charge_states=0,
-        penalty_costs_negative_charge_states=0.01,
+        #penalty_costs_positive_charge_states=0,
+        #penalty_costs_negative_charge_states=0.01,
         allow_mixed_charge_states=False,
-        forward_timeshift = 1
+        forward_timeshift = 3,
+        backward_timeshift = 3
     )
 
     # Gas source component with cost-effect per flow hour
@@ -72,7 +75,7 @@ if __name__ == '__main__':
     calculation = fx.FullCalculation('Simulation1', flow_system)
     calculation.do_modeling()
     #calculation.solve(fx.solvers.HighsSolver(0.01, 60))
-    calculation.solve(fx.solvers.GurobiSolver(0.01, 60))
+    calculation.solve(fx.solvers.GurobiSolver(0.001, 60))
 
     # --- Analyze Results ---
     # Access the results of an element

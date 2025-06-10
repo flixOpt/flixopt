@@ -8,7 +8,7 @@ from .calculation import AggregatedCalculation, FullCalculation, SegmentedCalcul
 from .components import (
     LinearConverter,
     Sink,
-    DSMSinkVS,
+    DSMSink,
     DSMSinkTS,
     Source,
     SourceAndSink,
@@ -31,7 +31,7 @@ __all__ = [
     'Effect',
     'Source',
     'Sink',
-    'DSMSinkVS',
+    'DSMSink',
     'DSMSinkTS',
     'SourceAndSink',
     'Storage',

@@ -638,7 +638,7 @@ class Sink(Component):
         self.sink = sink
 
 @register_class_for_io
-class DSMSinkVS(Sink):
+class DSMSink(Sink):
     """
     Used to model sinks with the ability to perform demand side management.
     In this class DSM is modeled via a virtual storage.
@@ -663,8 +663,8 @@ class DSMSinkVS(Sink):
         relative_loss_per_hour_negative_charge_state: NumericData = 0,
         allow_mixed_charge_states: bool = False,
         allow_parallel_charge_and_discharge: bool = False,
-        penalty_costs_positive_charge_states: NumericData = 0,
-        penalty_costs_negative_charge_states: NumericData = 0,
+        penalty_costs_positive_charge_states: NumericData = 0.001,
+        penalty_costs_negative_charge_states: NumericData = 0.001,
         meta_data: Optional[Dict] = None
     ):
         """
@@ -688,8 +688,8 @@ class DSMSinkVS(Sink):
                 If False, only one type of charge state is allowed at a time. The default is False.
             allow_parallel_charge_and_discharge: If True, allows simultaneous charging and discharging in one timestep.
                 If False, charging and discharging cannot occur simultaneously. The default is False.
-            penalty_costs_positive_charge_states: penalty costs per flow hour for loss of comfort due to positive charge states of the virtual storage (e.g. increased room temperature). The default is 0.
-            penalty_costs_negative_charge_states: penalty costs per flow hour for loss of comfort due to negative charge states of the virtual storage (e.g. decreased room temperature). The default is 0.
+            penalty_costs_positive_charge_states: penalty costs per flow hour for loss of comfort due to positive charge states of the virtual storage (e.g. increased room temperature). The default is a small epsilon.
+            penalty_costs_negative_charge_states: penalty costs per flow hour for loss of comfort due to negative charge states of the virtual storage (e.g. decreased room temperature). The default is a small epsilon.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(
@@ -719,7 +719,7 @@ class DSMSinkVS(Sink):
         self.penalty_costs_positive_charge_states: NumericDataTS = penalty_costs_positive_charge_states
         self.penalty_costs_negative_charge_states: NumericDataTS = penalty_costs_negative_charge_states
 
-    def create_model(self, model: SystemModel) -> 'DSMSinkVSModel':
+    def create_model(self, model: SystemModel) -> 'DSMSinkModel':
         self._plausibility_checks(model)
 
         # calculate amount of timesteps, by which demand can be shifted forward/backward in time
@@ -727,7 +727,7 @@ class DSMSinkVS(Sink):
         self.timesteps_forward = int(self.forward_timeshift/hours_per_step.values[0]) if self.forward_timeshift is not None else None
         self.timesteps_backward = int(self.backward_timeshift/hours_per_step.values[0]) if self.backward_timeshift is not None else None
 
-        self.model = DSMSinkVSModel(model, self)
+        self.model = DSMSinkModel(model, self)
         return self.model
     
     def transform_data(self, flow_system: 'FlowSystem') -> None:
@@ -826,12 +826,12 @@ class DSMSinkVS(Sink):
     #TODO: think about other implausibilities
     #INFO: investments not implemented
     
-class DSMSinkVSModel(ComponentModel):
+class DSMSinkModel(ComponentModel):
     """Model of DSM Sink"""
     
-    def __init__(self, model: SystemModel, element: DSMSinkVS):
+    def __init__(self, model: SystemModel, element: DSMSink):
         super().__init__(model, element)
-        self.element: DSMSinkVS = element
+        self.element: DSMSink = element
         self.positive_charge_state: Optional[linopy.Variable] = None
         self.negative_charge_state: Optional[linopy.Variable] = None
         self.positive_charge_rate: Optional[linopy.Variable] = None
@@ -1074,18 +1074,39 @@ class DSMSinkVSModel(ComponentModel):
         timesteps_forward = self.element.timesteps_forward
         timesteps_backward = self.element.timesteps_backward
 
+        etapos = 1 - self.element.relative_loss_per_hour_positive_charge_state.active_data
+        etaneg = 1 - self.element.relative_loss_per_hour_negative_charge_state.active_data
+
         positive_charge_state = self.positive_charge_state
+        negative_charge_state = self.negative_charge_state
 
         if timesteps_forward is not None:
             surplus_sum = 0
-            for i in range(1, timesteps_forward):
-                surplus_sum += self.positive_charge_rate.isel(time=XXX)
+            for i in range(1, timesteps_forward + 1):
+                surplus_sum += self.positive_charge_rate.shift(time=i).isel(time=slice(i,None)) * hours_per_step * (etapos ** (hours_per_step * (i-1)))
             self.add(
                 self._model.add_constraints(
                     positive_charge_state
-                    <= surplus_sum
-                )
+                    <= surplus_sum,
+                    name=f'{self.label_full}|limit_forward_timeshift'
+                ),
+                f'limit_forward_timeshift'
             )
+
+        if timesteps_backward is not None:
+            deficit_sum = 0
+            for i in range(1, timesteps_backward + 1):
+                deficit_sum += self.negative_charge_rate.shift(time=i).isel(time=slice(i,None)) * hours_per_step * (etaneg ** (hours_per_step * (i-1)))
+            self.add(
+                self._model.add_constraints(
+                    -negative_charge_state
+                    <= -deficit_sum,
+                    name=f'{self.label_full}|limit_backward_timeshift'
+                ),
+                f'limit_backward_timeshift'
+            )
+
+        #TODO: handle clash with initial charge state
 
     def _initial_and_final_charge_state(self):
         """Add constraints for initial and final charge states"""
