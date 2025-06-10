@@ -520,8 +520,8 @@ class StorageModel(ComponentModel):
             name = f'{self.label_full}|{name_short}'
 
             if utils.is_number(self.element.initial_charge_state):
-                self.add(
-                    self._model.add_constraints(
+        self.add(
+            self._model.add_constraints(
                         self.charge_state.isel(time=0) == self.element.initial_charge_state, name=name
                     ),
                     name_short,
@@ -539,8 +539,8 @@ class StorageModel(ComponentModel):
                 )
 
         if self.element.maximal_final_charge_state is not None:
-            self.add(
-                self._model.add_constraints(
+        self.add(
+            self._model.add_constraints(
                     self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
                     name=f'{self.label_full}|final_charge_max',
                 ),
@@ -554,7 +554,7 @@ class StorageModel(ComponentModel):
                     name=f'{self.label_full}|final_charge_min',
                 ),
                 'final_charge_min',
-            )
+        )
 
     @property
     def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
@@ -825,7 +825,7 @@ class DSMSink(Sink):
     
     #TODO: think about other implausibilities
     #INFO: investments not implemented
-    
+
 class DSMSinkModel(ComponentModel):
     """Model of DSM Sink"""
     
@@ -1082,11 +1082,11 @@ class DSMSinkModel(ComponentModel):
 
         if timesteps_forward is not None:
             surplus_sum = 0
-            for i in range(1, timesteps_forward + 1):
-                surplus_sum += self.positive_charge_rate.shift(time=i).isel(time=slice(i,None)) * hours_per_step * (etapos ** (hours_per_step * (i-1)))
+            for i in range(0, timesteps_forward):
+                surplus_sum += self.positive_charge_rate.shift(time=i).isel(time=slice(i,None)) * hours_per_step * (etapos ** (hours_per_step * i))
             self.add(
                 self._model.add_constraints(
-                    positive_charge_state
+                    positive_charge_state.isel(time = slice(1,None))
                     <= surplus_sum,
                     name=f'{self.label_full}|limit_forward_timeshift'
                 ),
@@ -1095,11 +1095,11 @@ class DSMSinkModel(ComponentModel):
 
         if timesteps_backward is not None:
             deficit_sum = 0
-            for i in range(1, timesteps_backward + 1):
-                deficit_sum += self.negative_charge_rate.shift(time=i).isel(time=slice(i,None)) * hours_per_step * (etaneg ** (hours_per_step * (i-1)))
+            for i in range(0, timesteps_backward):
+                deficit_sum += self.negative_charge_rate.shift(time=i).isel(time=slice(i,None)) * hours_per_step * (etaneg ** (hours_per_step * i))
             self.add(
                 self._model.add_constraints(
-                    -negative_charge_state
+                    -negative_charge_state.isel(time=slice(1,None))
                     <= -deficit_sum,
                     name=f'{self.label_full}|limit_backward_timeshift'
                 ),
@@ -1285,7 +1285,7 @@ class DSMSinkTS(Sink):
         Check for infeasible or uncommon combinations of parameters
         """
         super()._plausibility_checks()
-        
+
         if any(self.maximum_flow_deficit_per_hour >= 0):
             raise ValueError(
                 f'{self.label_full}: {self.maximum_flow_deficit_per_hour=} '
