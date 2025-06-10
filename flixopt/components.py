@@ -795,23 +795,37 @@ class DSMSinkVSModel(ComponentModel):
         self.negative_charge_state: Optional[linopy.Variable] = None
         self.positive_charge_rate: Optional[linopy.Variable] = None
         self.negative_charge_rate: Optional[linopy.Variable] = None
+
         self.is_positive_charge_state: Optional[linopy.Variable] = None
         self.is_negative_charge_state: Optional[linopy.Variable] = None
+        
+        # Add state models for charge rates
+        self.is_positive_charge_rate: Optional[StateModel] = None
+        self.is_negative_charge_rate: Optional[StateModel] = None
+        self.prevent_simultaneous_charge_rates: Optional[PreventSimultaneousUsageModel] = None
     
     def do_modeling(self):
         super().do_modeling()
 
-        #add variable for charge rate
-        lb,ub = self.absolute_charge_rate_bounds
-        self.netto_charge_rate = self.add(
+        # Add variables for positive and negative charge rates
+        lb, ub = 0, self.absolute_charge_rate_bounds[1]
+        self.positive_charge_rate = self.add(
             self._model.add_variables(
-                lower=lb, upper=ub, coords=self._model.coords, name=f'{self.label_full}|netto_charge_rate'
+                lower=lb, upper=ub, coords=self._model.coords, name=f'{self.label_full}|positive_charge_rate'
             ),
-            'netto_charge_rate',
+            'positive_charge_rate',
+        )
+
+        lb, ub = self.absolute_charge_rate_bounds[0], 0
+        self.negative_charge_rate = self.add(
+            self._model.add_variables(
+                lower=lb, upper=ub, coords=self._model.coords, name=f'{self.label_full}|negative_charge_rate'
+            ),
+            'negative_charge_rate',
         )
         
-        #add variable for negative charge states
-        lb,ub = self.absolute_charge_state_bounds[0],0
+        # Add variables for negative charge states
+        lb, ub = self.absolute_charge_state_bounds[0], 0
         self.negative_charge_state = self.add(
             self._model.add_variables(
                 lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|negative_charge_state'
@@ -819,8 +833,8 @@ class DSMSinkVSModel(ComponentModel):
             'negative_charge_state',
         )
 
-        #add variable for positive charge states
-        lb,ub = 0,self.absolute_charge_state_bounds[1]
+        # Add variables for positive charge states
+        lb, ub = 0, self.absolute_charge_state_bounds[1]
         self.positive_charge_state = self.add(
             self._model.add_variables(
                 lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|positive_charge_state'
@@ -833,28 +847,31 @@ class DSMSinkVSModel(ComponentModel):
         etapos = 1 - self.element.relative_loss_per_hour_positive_charge_state.active_data
         etaneg = 1 - self.element.relative_loss_per_hour_negative_charge_state.active_data
         hours_per_step = self._model.hours_per_step
-        charge_rate = self.netto_charge_rate
+        positive_charge_rate = self.positive_charge_rate
+        negative_charge_rate = self.negative_charge_rate
         initial_demand = self.element.initial_demand.active_data
         sink = self.element.sink.model.flow_rate
 
-        # eq: positive_charge_state(t) + negative_charge_state(t) = positive_charge_state(t-1) * etapos + negative_charge_state(t-1) * ehtaneg + charge_rate(t)
+        # eq: positive_charge_state(t) + negative_charge_state(t) = positive_charge_state(t-1) * etapos + negative_charge_state(t-1) * etaneg + positive_charge_rate(t) + negative_charge_rate(t)
         self.add(
             self._model.add_constraints(
                 positive_charge_state.isel(time=slice(1, None))
                 + negative_charge_state.isel(time=slice(1,None))
                 == positive_charge_state.isel(time=slice(None, -1)) * (etapos ** hours_per_step)
                 + negative_charge_state.isel(time=slice(None,-1)) * (etaneg ** hours_per_step)
-                + charge_rate * hours_per_step,
+                + positive_charge_rate * hours_per_step
+                + negative_charge_rate * hours_per_step,
                 name=f'{self.label_full}|charge_state',
             ),
             'charge_state',
         )
 
-        # eq: sink(t) = initial_demand(t) + charge_rate(t)
+        # eq: sink(t) = initial_demand(t) + positive_charge_rate(t) + negative_charge_rate(t)
         self.add(
             self._model.add_constraints(
                 sink
-                == charge_rate
+                == positive_charge_rate
+                + negative_charge_rate
                 + initial_demand,
                 name=f'{self.label_full}|resulting_load_profile',
             ),
@@ -864,6 +881,9 @@ class DSMSinkVSModel(ComponentModel):
         # Add constraints for preventing mixed charge states if not allowed
         if not self.element.allow_mixed_charge_states:
             self._add_charge_state_exclusivity_constraints()
+
+        # Add charge rate exclusivity constraints
+        self._add_charge_rate_exclusivity_constraints()
 
         # Initial and final charge state constraints
         self._initial_and_final_charge_state()
@@ -963,6 +983,46 @@ class DSMSinkVSModel(ComponentModel):
             ),
             'mutually_exclusive_charge_states'
         )
+
+    def _add_charge_rate_exclusivity_constraints(self):
+        """Add constraints to prevent simultaneous positive and negative charge rates using StateModel and PreventSimultaneousUsageModel"""
+        # Create a single time series of zeros to be used for both bounds
+        timeseries_zeros = np.zeros_like(self._model.coords[0], dtype=float)
+        
+        # Create StateModel for positive charge rate
+        self.is_positive_charge_rate = self.add(
+            StateModel(
+                model=self._model,
+                label_of_element=f'{self.label_full}|positive_charge_rate',
+                defining_variables=[self.positive_charge_rate],
+                defining_bounds=[(timeseries_zeros, self.absolute_charge_rate_bounds[1])],
+                use_off=False
+            )
+        )
+        self.is_positive_charge_rate.do_modeling()
+
+        # Create StateModel for negative charge rate
+        self.is_negative_charge_rate = self.add(
+            StateModel(
+                model=self._model,
+                label_of_element=f'{self.label_full}|negative_charge_rate',
+                defining_variables=[-self.negative_charge_rate],  # StateModel can only handle positive variables
+                defining_bounds=[(timeseries_zeros, -self.absolute_charge_rate_bounds[0])],
+                use_off=False
+            )
+        )
+        self.is_negative_charge_rate.do_modeling()
+        
+        # Create PreventSimultaneousUsageModel for charge rates
+        self.prevent_simultaneous_charge_rates = self.add(
+            PreventSimultaneousUsageModel(
+                model=self._model,
+                variables=[self.is_positive_charge_rate.on, self.is_negative_charge_rate.on],
+                label_of_element=self.label_full,
+                label='PreventSimultaneousChargeRates'
+            )
+        )
+        self.prevent_simultaneous_charge_rates.do_modeling()
 
     def _initial_and_final_charge_state(self):
         """Add constraints for initial and final charge states"""
