@@ -793,7 +793,8 @@ class DSMSinkVSModel(ComponentModel):
         self.element: DSMSinkVS = element
         self.positive_charge_state: Optional[linopy.Variable] = None
         self.negative_charge_state: Optional[linopy.Variable] = None
-        self.netto_charge_rate: Optional[linopy.Variable] = None
+        self.positive_charge_rate: Optional[linopy.Variable] = None
+        self.negative_charge_rate: Optional[linopy.Variable] = None
         self.is_positive_charge_state: Optional[linopy.Variable] = None
         self.is_negative_charge_state: Optional[linopy.Variable] = None
     
