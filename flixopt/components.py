@@ -765,6 +765,7 @@ class DSMSink(Sink):
         
         hours_per_step = model.hours_per_step
 
+        # Check timeshift parameters
         if self.forward_timeshift != None or self.backward_timeshift != None:
             if any(hours_per_step.values[0]!=hours_per_step.values):
                 raise ValueError(
@@ -773,22 +774,141 @@ class DSMSink(Sink):
                 )
 
         if self.forward_timeshift is not None:
+            if self.forward_timeshift <= 0:
+                raise ValueError(
+                    f'{self.label_full}: {self.forward_timeshift=} '
+                    f'must be positive.'
+                )
             if self.forward_timeshift%hours_per_step.values[0]!=0:
                 raise ValueError(
                     f'{self.label_full}: {self.forward_timeshift=} '
                     f'must be a multiple of the timestep length.'
                 )
+            # Check if forward timeshift is specified but maximum flow surplus is zero
+            if np.all(self.maximum_flow_surplus.active_data == 0):
+                logger.warning(
+                    f'{self.label_full}: forward_timeshift is specified but maximum_flow_surplus is zero. '
+                    f'This is contradictory as you cannot shift demand forward if supply cannot exceed initial demand.'
+                )
         
         if self.backward_timeshift is not None:
+            if self.backward_timeshift <= 0:
+                raise ValueError(
+                    f'{self.label_full}: {self.backward_timeshift=} '
+                    f'must be positive.'
+                )
             if self.backward_timeshift%hours_per_step.values[0]!=0:
                 raise ValueError(
                     f'{self.label_full}: {self.backward_timeshift=} '
                     f'must be a multiple of the timestep length.'
                 )
-            
-    #TODO: think about other implausibilities
-    #INFO: investments not implemented
-    
+            # Check if backward timeshift is specified but maximum flow deficit is zero
+            if np.all(self.maximum_flow_deficit.active_data == 0):
+                logger.warning(
+                    f'{self.label_full}: backward_timeshift is specified but maximum_flow_deficit is zero. '
+                    f'This is contradictory as you cannot shift demand backward if supply cannot fall short of initial demand.'
+                )
+
+        # Check maximum flow bounds
+        if np.any(self.maximum_flow_deficit.active_data > 0):
+            raise ValueError(
+                f'{self.label_full}: maximum_flow_deficit must be non-positive '
+                f'(as it represents a deficit).'
+            )
+        if np.any(self.maximum_flow_surplus.active_data < 0):
+            raise ValueError(
+                f'{self.label_full}: maximum_flow_surplus must be non-negative '
+                f'(as it represents a surplus).'
+            )
+
+        # Check maximum cumulated bounds
+        if np.any(self.maximum_cumulated_deficit.active_data > 0):
+            raise ValueError(
+                f'{self.label_full}: maximum_cumulated_deficit must be non-positive '
+                f'(as it represents a deficit).'
+            )
+        if np.any(self.maximum_cumulated_surplus.active_data < 0):
+            raise ValueError(
+                f'{self.label_full}: maximum_cumulated_surplus must be non-negative '
+                f'(as it represents a surplus).'
+            )
+
+        # Check loss rates
+        if np.any(self.relative_loss_per_hour_positive_charge_state.active_data < 0) or \
+           np.any(self.relative_loss_per_hour_positive_charge_state.active_data > 1):
+            raise ValueError(
+                f'{self.label_full}: relative_loss_per_hour_positive_charge_state must be between 0 and 1 '
+                f'(representing 0% to 100% loss).'
+            )
+        if np.any(self.relative_loss_per_hour_negative_charge_state.active_data < 0) or \
+           np.any(self.relative_loss_per_hour_negative_charge_state.active_data > 1):
+            raise ValueError(
+                f'{self.label_full}: relative_loss_per_hour_negative_charge_state must be between 0 and 1 '
+                f'(representing 0% to 100% loss).'
+            )
+
+        # Check penalty costs
+        if np.any(self.penalty_costs_positive_charge_states.active_data < 0):
+            raise ValueError(
+                f'{self.label_full}: penalty_costs_positive_charge_states must be non-negative.'
+            )
+        if np.any(self.penalty_costs_negative_charge_states.active_data < 0):
+            raise ValueError(
+                f'{self.label_full}: penalty_costs_negative_charge_states must be non-negative.'
+            )
+
+        # Check initial demand
+        if np.any(self.initial_demand.active_data < 0):
+            raise ValueError(
+                f'{self.label_full}: initial_demand must be non-negative.'
+            )
+
+        # Check for zero bounds that would disable DSM
+        if np.all(self.maximum_flow_surplus.active_data == 0):
+            logger.warning(
+                f'{self.label_full}: maximum_flow_surplus is zero. '
+                f'This could effectively disable DSM functionality as supply can never exceed the initial demand.'
+            )
+        if np.all(self.maximum_flow_deficit.active_data == 0):
+            logger.warning(
+                f'{self.label_full}: maximum_flow_deficit is zero. '
+                f'This could effectively disable DSM functionality as supply can never fall short of the initial demand.'
+            )
+        if np.all(self.maximum_cumulated_surplus.active_data == 0) and np.all(self.maximum_cumulated_deficit.active_data == 0):
+            logger.warning(
+                f'{self.label_full}: Both maximum_cumulated_surplus and maximum_cumulated_deficit are zero. '
+                f'This effectively disables DSM functionality as no energy can be stored.'
+            )
+
+        # Check for parallel charge and discharge
+        if self.allow_parallel_charge_and_discharge:
+            logger.warning(
+                f'{self.label_full}: allow_parallel_charge_and_discharge is True. '
+                f'This might lead to unexpected behaviour.'
+            )
+
+        # Check for mixed charge states
+        if self.allow_mixed_charge_states:
+            logger.warning(
+                f'{self.label_full}: allow_mixed_charge_states is True. '
+                f'This might lead to unexpected behaviour.'
+            )
+
+        # Check for zero penalty costs with non-zero bounds
+        if (np.all(self.penalty_costs_positive_charge_states.active_data == 0) and 
+            not np.all(self.maximum_flow_surplus.active_data == 0) and
+            not np.any(self.relative_loss_per_hour_positive_charge_state.active_data > 0)):
+            logger.warning(
+                f'{self.label_full}: penalty_costs_positive_charge_states is zero and relative_loss_per_hour_positive_charge_state is zero but maximum_flow_surplus is non-zero. '
+                f'This might lead to unexpected behavior as there is no cost and no loss associated with exceeding the initial demand.'
+            )
+        if (np.all(self.penalty_costs_negative_charge_states.active_data == 0) and 
+            not np.all(self.maximum_flow_deficit.active_data == 0)):
+            logger.warning(
+                f'{self.label_full}: penalty_costs_negative_charge_states is zero but maximum_flow_deficit is non-zero. '
+                f'This might lead to unexpected behavior as there is no cost associated with falling short of the initial demand.'
+            )
+
 class DSMSinkModel(ComponentModel):
     """Model of DSM Sink"""
     
