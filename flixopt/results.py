@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly
+import plotly.express
 import xarray as xr
 import yaml
 
@@ -532,6 +533,17 @@ class ComponentResults(_NodeResults):
         return self._charge_state in self._variable_names
 
     @property
+    def is_DSM_sink(self) -> bool:
+        """Check if this component is a DSM sink by looking for characteristic variables"""
+        return (
+            f'{self.label}|positive_charge_state' in self._variable_names 
+            and f'{self.label}|negative_charge_state' in self._variable_names
+            and f'{self.label}|positive_charge_rate' in self._variable_names
+            and f'{self.label}|negative_charge_rate' in self._variable_names
+            and f'{self.label}|resulting_load_profile' in self._constraint_names
+        )
+
+    @property
     def _charge_state(self) -> str:
         return f'{self.label}|charge_state'
 
@@ -541,6 +553,127 @@ class ComponentResults(_NodeResults):
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
         return self.solution[self._charge_state]
+
+    def plot_DSM_sink(
+        self,
+        save: Union[bool, pathlib.Path] = False,
+        show: bool = True,
+        colors: plotting.ColorType = 'viridis',
+        engine: plotting.PlottingEngine = 'plotly',
+    ) -> plotly.graph_objs.Figure:
+        """
+        Plots the operation of a DSM sink, showing the resulting heat load, initial demand, surplus/deficit, and cumulated flow deviation.
+        
+        Args:
+            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+            show: Whether to show the plot or not.
+            colors: The colors to use for the plot.
+            engine: Plotting engine to use. Only 'plotly' is implemented atm.
+
+        Raises:
+            ValueError: If the Component is not a DSM sink.
+        """
+        if engine != 'plotly':
+            raise NotImplementedError(
+                f'Plotting engine "{engine}" not implemented for ComponentResults.plot_DSM_sink.'
+            )
+
+        if not self.is_DSM_sink:
+            raise ValueError(f'Cannot plot DSM sink. "{self.label}" is not a DSM sink')
+
+        # Get the node balance and the initial demand
+        node_balance = - self.node_balance(with_last_timestep=True).to_dataframe()
+        initial_demand = self._calculation_results.flow_system[f'{self.label}|initial_demand'].to_dataframe(name='initial_demand')
+        
+        # Get surplus and deficit from the solution
+        surplus = self.solution[f'{self.label}|positive_charge_rate'].to_dataframe()
+        deficit = self.solution[f'{self.label}|negative_charge_rate'].to_dataframe()
+
+        # Substract surplus from node blance
+        node_balance[f'{self.inputs[0]}'] = node_balance[f'{self.inputs[0]}'].values.flatten() - surplus[f'{self.label}|positive_charge_rate'].values.flatten()
+
+        # Merge dataframes into one
+        data = pd.concat([node_balance, surplus, deficit], axis='columns')
+
+        # Create figure with area plot for node balance
+        fig = plotting.with_plotly(
+            data,
+            mode='area',
+            colors=colors,
+            title=f'District Heating Node Balance with DSM Surplus/Deficit for {self.label}',
+            ylabel='Power [kW]',
+            xlabel='Time'
+        )
+        
+        # Add initial demand
+        fig.add_trace(
+            plotly.graph_objs.Scatter(
+                x=initial_demand.index,
+                y=initial_demand['initial_demand'],
+                name='Initial Demand',
+                line=dict(dash='dash', color='black', shape='hv'),  # 'hv' for horizontal-vertical steps
+                mode='lines'
+            )
+        )
+        
+        # Get colors for the cumulated flow
+        color_samples = plotly.express.colors.sample_colorscale(colors, 8)
+        cumulated_color = color_samples[3]  # Use another color from viridis for cumulated flow
+
+        # Get cumulated flow deviation from the model
+        cumulated_flow = pd.DataFrame(0, index=surplus.index, columns=['cumulated_flow'])
+        cumulated_flow['cumulated_flow'] = (
+            self.solution[f'{self.label}|positive_charge_state'].values.flatten() + 
+            self.solution[f'{self.label}|negative_charge_state'].values.flatten()
+        )
+
+        # Add cumulated flow deviation as diamonds on secondary y-axis
+        fig.add_trace(
+            plotly.graph_objs.Scatter(
+                x=cumulated_flow.index,
+                y=cumulated_flow.values.flatten(),
+                name='Cumulated Flow Deviation',
+                mode='markers',
+                marker=dict(
+                    color=cumulated_color,
+                    size=10,
+                    symbol='diamond',
+                    line=dict(width=1, color='black')
+                ),
+                yaxis='y2'
+            )
+        )
+
+        # Update layout to include secondary y-axis and scale both y-axis appropriately
+        fig.update_layout(
+            hovermode='x unified',
+            yaxis=dict(
+                range=[
+                    -1.2*max(0, node_balance.max().max(), -cumulated_flow.min().min(), -deficit.min().min()),
+                    1.2*max(node_balance.max().max(), surplus.max().max(), cumulated_flow.max().max(), initial_demand.max().max())
+                ],
+                showgrid=True
+            ),
+            yaxis2=dict(
+                title='Cumulated Flow [kWh]',
+                overlaying='y',
+                side='right',
+                showgrid=False,
+                range=[
+                    -1.2*max(0, node_balance.max().max(), -cumulated_flow.min().min(), -deficit.min().min()),
+                    1.2*max(node_balance.max().max(), surplus.max().max(), cumulated_flow.max().max(), initial_demand.max().max())
+                ]
+            )
+        )
+
+        return plotting.export_figure(
+            fig,
+            default_path=self._calculation_results.folder / f'{self.label} (DSM sink)',
+            default_filetype='.html',
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            show=show,
+            save=True if save else False,
+        )
 
     def plot_charge_state(
         self,
