@@ -994,7 +994,7 @@ class DSMSinkModel(ComponentModel):
 
     def _add_charge_rate_exclusivity_constraints(self):
         """Add constraints to prevent simultaneous positive and negative charge rates using StateModel and PreventSimultaneousUsageModel"""
-        # Create a single time series of zeros to be used for both bounds
+        # Create a time series of zeros to be used for both bounds
         timeseries_zeros = np.zeros_like(self._model.coords[0], dtype=float)
         
         # Create StateModel for positive charge rate
@@ -1080,8 +1080,6 @@ class DSMSinkModel(ComponentModel):
                 ),
                 f'limit_backward_timeshift'
             )
-
-        #TODO: handle clash with initial charge state
 
     def _initial_and_final_charge_state(self):
         """Add constraints for initial and final charge states to be zero"""
