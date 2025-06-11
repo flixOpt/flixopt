@@ -632,13 +632,8 @@ class ComponentResults(_NodeResults):
                 x=cumulated_flow.index,
                 y=cumulated_flow.values.flatten(),
                 name='Cumulated Flow Deviation',
-                mode='markers',
-                marker=dict(
-                    color=cumulated_color,
-                    size=10,
-                    symbol='diamond',
-                    line=dict(width=1, color='black')
-                )
+                line=dict(width=3, color='black'),
+                mode='lines'
             )
         )
 
