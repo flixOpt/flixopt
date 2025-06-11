@@ -641,7 +641,6 @@ class Sink(Component):
 class DSMSink(Sink):
     """
     Used to model sinks with the ability to perform demand side management.
-    In this class DSM is modeled via a virtual storage.
     """
 
     def __init__(
@@ -649,13 +648,12 @@ class DSMSink(Sink):
         label: str,
         sink: Flow,
         initial_demand: NumericData,
-        virtual_capacity_in_flow_hours: Scalar,
+        maximum_virtual_charging_rate: NumericData,
+        maximum_virtual_discharging_rate: NumericData,
+        minimum_virtual_charge_state: NumericData,
+        maximum_virtual_charge_state: NumericData,
         forward_timeshift: Scalar = None,
         backward_timeshift: Scalar = None,
-        maximum_relative_virtual_charging_rate: NumericData = 1,
-        maximum_relative_virtual_discharging_rate: NumericData = -1,
-        relative_minimum_charge_state: NumericData = -1,
-        relative_maximum_charge_state: NumericData = 1,
         relative_loss_per_hour_positive_charge_state: NumericData = 0,
         relative_loss_per_hour_negative_charge_state: NumericData = 0,
         allow_mixed_charge_states: bool = False,
@@ -669,13 +667,12 @@ class DSMSink(Sink):
             label: The label of the Element. Used to identify it in the FlowSystem
             sink: input-flow of DSM sink after DSM
             initial_demand: initial demand of DSM sink before DSM
-            virtual_capacity_in_flow_hours: nominal capacity of the virtual storage
+            maximum_virtual_charging_rate: maximum flow rate at which charging is possible
+            maximum_virtual_discharging_rate: maximum flow rate at which discharging is possible.
+            minimum_virtual_charge_state: minimum charge state.
+            maximum_virtual_charge_state: maximum charge state.
             forward_timeshift: Maximum number of hours by which the demand can be shifted forward in time. Default is infinite.
             backward_timeshift: Maximum number of hours by which the demand can be shifted backward in time. Default is infinite.
-            maximum_relative_virtual_charging_rate: maximum flow rate relative to the capacity of the virtual storage at which charging is possible. The default is 1.
-            maximum_relative_virtual_discharging_rate: maximum flow rate relative to the capacity of the virtual storage at which discharging is possible. The default is -1.
-            relative_minimum_charge_state: minimum relative charge state. The default is -1.
-            relative_maximum_charge_state: maximum relative charge state. The default is 1.
             relative_loss_per_hour_positive_charge_state: loss per chargeState-Unit per hour for positive charge states of the virtual storage. The default is 0.
             relative_loss_per_hour_negative_charge_state: loss per chargeState-Unit per hour for negative charge states of the virtual storage. The default is 0.
             allow_mixed_charge_states: If True, positive and negative charge states can occur simultaneously.
@@ -693,13 +690,12 @@ class DSMSink(Sink):
         )
 
         self.initial_demand: NumericDataTS = initial_demand
-        self.virtual_capacity_in_flow_hours = virtual_capacity_in_flow_hours
         self.forward_timeshift = forward_timeshift
         self.backward_timeshift = backward_timeshift
-        self.maximum_relative_virtual_charging_rate: NumericDataTS = maximum_relative_virtual_charging_rate
-        self.maximum_relative_virtual_discharging_rate: NumericDataTS = maximum_relative_virtual_discharging_rate
-        self.relative_minimum_charge_state: NumericDataTS = relative_minimum_charge_state
-        self.relative_maximum_charge_state: NumericDataTS = relative_maximum_charge_state
+        self.maximum_virtual_charging_rate: NumericDataTS = maximum_virtual_charging_rate
+        self.maximum_virtual_discharging_rate: NumericDataTS = maximum_virtual_discharging_rate
+        self.minimum_virtual_charge_state: NumericDataTS = minimum_virtual_charge_state
+        self.maximum_virtual_charge_state: NumericDataTS = maximum_virtual_charge_state
 
         self.relative_loss_per_hour_positive_charge_state: NumericDataTS = relative_loss_per_hour_positive_charge_state
         self.relative_loss_per_hour_negative_charge_state: NumericDataTS = relative_loss_per_hour_negative_charge_state
@@ -726,22 +722,22 @@ class DSMSink(Sink):
             f'{self.label_full}|initial_demand',
             self.initial_demand,
         )
-        self.maximum_relative_virtual_charging_rate = flow_system.create_time_series(
-            f'{self.label_full}|maximum_relative_virtual_charging_rate',
-            self.maximum_relative_virtual_charging_rate,
+        self.maximum_virtual_charging_rate = flow_system.create_time_series(
+            f'{self.label_full}|maximum_virtual_charging_rate',
+            self.maximum_virtual_charging_rate,
         )
-        self.maximum_relative_virtual_discharging_rate = flow_system.create_time_series(
-            f'{self.label_full}|maximum_relative_virtual_discharging_rate',
-            self.maximum_relative_virtual_discharging_rate,
+        self.maximum_virtual_discharging_rate = flow_system.create_time_series(
+            f'{self.label_full}|maximum_virtual_discharging_rate',
+            self.maximum_virtual_discharging_rate,
         )
-        self.relative_minimum_charge_state = flow_system.create_time_series(
-            f'{self.label_full}|relative_minimum_charge_state',
-            self.relative_minimum_charge_state,
+        self.minimum_virtual_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|minimum_virtual_charge_state',
+            self.minimum_virtual_charge_state,
             needs_extra_timestep=True,
         )
-        self.relative_maximum_charge_state = flow_system.create_time_series(
-            f'{self.label_full}|relative_maximum_charge_state',
-            self.relative_maximum_charge_state,
+        self.maximum_virtual_charge_state = flow_system.create_time_series(
+            f'{self.label_full}|maximum_virtual_charge_state',
+            self.maximum_virtual_charge_state,
             needs_extra_timestep=True,
         )
         self.relative_loss_per_hour_negative_charge_state = flow_system.create_time_series(
@@ -761,7 +757,7 @@ class DSMSink(Sink):
             self.penalty_costs_positive_charge_states,
         )
 
-    def _plausibility_checks(self, model):
+    def _plausibility_checks(self, model: SystemModel):
         """
         Check for infeasible or uncommon combinations of parameters
         """
@@ -773,7 +769,7 @@ class DSMSink(Sink):
             if any(hours_per_step.values[0]!=hours_per_step.values):
                 raise ValueError(
                     f'{self.label_full}:'
-                    f'DSMSinkTS class can only be used for timesteps of equal length'
+                    f'limits to forward and backward timeshifts can only be used for timesteps of equal length'
                 )
 
         if self.forward_timeshift is not None:
@@ -789,9 +785,7 @@ class DSMSink(Sink):
                     f'{self.label_full}: {self.backward_timeshift=} '
                     f'must be a multiple of the timestep length.'
                 )
-
             
-    
     #TODO: think about other implausibilities
     #INFO: investments not implemented
     
@@ -818,7 +812,7 @@ class DSMSinkModel(ComponentModel):
         super().do_modeling()
 
         # Add variables for positive and negative charge rates
-        lb, ub = 0, self.absolute_charge_rate_bounds[1]
+        lb, ub = self.charge_rate_bounds
         self.positive_charge_rate = self.add(
             self._model.add_variables(
                 lower=lb, upper=ub, coords=self._model.coords, name=f'{self.label_full}|positive_charge_rate'
@@ -826,7 +820,7 @@ class DSMSinkModel(ComponentModel):
             'positive_charge_rate',
         )
 
-        lb, ub = self.absolute_charge_rate_bounds[0], 0
+        lb, ub = self.discharge_rate_bounds
         self.negative_charge_rate = self.add(
             self._model.add_variables(
                 lower=lb, upper=ub, coords=self._model.coords, name=f'{self.label_full}|negative_charge_rate'
@@ -835,7 +829,7 @@ class DSMSinkModel(ComponentModel):
         )
         
         # Add variables for negative charge states
-        lb, ub = self.absolute_charge_state_bounds[0], 0
+        lb, ub = self.negative_charge_state_bounds
         self.negative_charge_state = self.add(
             self._model.add_variables(
                 lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|negative_charge_state'
@@ -844,7 +838,7 @@ class DSMSinkModel(ComponentModel):
         )
 
         # Add variables for positive charge states
-        lb, ub = 0, self.absolute_charge_state_bounds[1]
+        lb, ub = self.positive_charge_state_bounds
         self.positive_charge_state = self.add(
             self._model.add_variables(
                 lower=lb, upper=ub, coords=self._model.coords_extra, name=f'{self.label_full}|positive_charge_state'
@@ -956,7 +950,7 @@ class DSMSinkModel(ComponentModel):
         # If positive_charge_state > 0, then is_positive_charge_state must be 1
         self.add(
             self._model.add_constraints(
-                positive_charge_state <= self.absolute_charge_state_bounds[1] * self.is_positive_charge_state,
+                positive_charge_state <= self.positive_charge_state_bounds[1] * self.is_positive_charge_state,
                 name=f'{self.label_full}|positive_charge_state_binary_upper'
             ),
             'positive_charge_state_binary_upper'
@@ -965,7 +959,7 @@ class DSMSinkModel(ComponentModel):
         # If is_positive_charge_state is 1, then positive_charge_state must be > 0
         self.add(
             self._model.add_constraints(
-                positive_charge_state >= CONFIG.modeling.EPSILON * self.absolute_charge_state_bounds[1] * self.is_positive_charge_state,  # Small epsilon to avoid numerical issues
+                positive_charge_state >= CONFIG.modeling.EPSILON * self.positive_charge_state_bounds[1] * self.is_positive_charge_state,  # Small epsilon to avoid numerical issues
                 name=f'{self.label_full}|positive_charge_state_binary_lower'
             ),
             'positive_charge_state_binary_lower'
@@ -974,7 +968,7 @@ class DSMSinkModel(ComponentModel):
         # If negative_charge_state < 0, then is_negative_charge_state must be 1
         self.add(
             self._model.add_constraints(
-                negative_charge_state >= self.absolute_charge_state_bounds[0] * self.is_negative_charge_state,
+                negative_charge_state >= self.negative_charge_state_bounds[0] * self.is_negative_charge_state,
                 name=f'{self.label_full}|negative_charge_state_binary_upper'
             ),
             'negative_charge_state_binary_upper'
@@ -983,7 +977,7 @@ class DSMSinkModel(ComponentModel):
         # If is_negative_charge_state is 1, then negative_charge_state must be < 0
         self.add(
             self._model.add_constraints(
-                negative_charge_state <= CONFIG.modeling.EPSILON * self.absolute_charge_state_bounds[0] * self.is_negative_charge_state,  # Small epsilon to avoid numerical issues
+                negative_charge_state <= CONFIG.modeling.EPSILON * self.negative_charge_state_bounds[0] * self.is_negative_charge_state,  # Small epsilon to avoid numerical issues
                 name=f'{self.label_full}|negative_charge_state_binary_lower'
             ),
             'negative_charge_state_binary_lower'
@@ -1009,7 +1003,7 @@ class DSMSinkModel(ComponentModel):
                 model=self._model,
                 label_of_element=f'{self.label_full}|positive_charge_rate',
                 defining_variables=[self.positive_charge_rate],
-                defining_bounds=[(timeseries_zeros, self.absolute_charge_rate_bounds[1])],
+                defining_bounds=[(timeseries_zeros, self.charge_rate_bounds[1])],
                 use_off=False
             )
         )
@@ -1021,7 +1015,7 @@ class DSMSinkModel(ComponentModel):
                 model=self._model,
                 label_of_element=f'{self.label_full}|negative_charge_rate',
                 defining_variables=[-self.negative_charge_rate],  # StateModel can only handle positive variables
-                defining_bounds=[(timeseries_zeros, -self.absolute_charge_rate_bounds[0])],
+                defining_bounds=[(timeseries_zeros, -self.discharge_rate_bounds[0])],
                 use_off=False
             )
         )
@@ -1049,10 +1043,16 @@ class DSMSinkModel(ComponentModel):
         positive_charge_state = self.positive_charge_state
         negative_charge_state = self.negative_charge_state
 
+        # Add constraints limiting the forward timeshift
         if timesteps_forward is not None:
             surplus_sum = 0
             for i in range(0, timesteps_forward):
                 surplus_sum += self.positive_charge_rate.shift(time=i).isel(time=slice(i,None)) * hours_per_step * (etapos ** (hours_per_step * i))
+            # eq: positive_charge_state(t) <= sum over n (positive_charge_rate(t-n) * hours_per_step * (etapos ^ (hours_per_step * i))
+            # where n ranges from 0 to timesteps_forward
+            # The positive charge state can't be any higher than the charge that was added during the last x timesteps minus the losses
+            # x is defined by the timesteps_forward
+            # This forces the virtual storage to discharge after the maximum timesteps that the demand is allowed to be shifted forward
             self.add(
                 self._model.add_constraints(
                     positive_charge_state.isel(time = slice(1,None))
@@ -1062,14 +1062,20 @@ class DSMSinkModel(ComponentModel):
                 f'limit_forward_timeshift'
             )
 
+        # Add constraints limiting the backwards timeshift
         if timesteps_backward is not None:
             deficit_sum = 0
             for i in range(0, timesteps_backward):
                 deficit_sum += self.negative_charge_rate.shift(time=i).isel(time=slice(i,None)) * hours_per_step * (etaneg ** (hours_per_step * i))
+            # eq: -negative_charge_state(t) <= -sum over n (negative_charge_rate(t-n) * hours_per_step * (etaneg ^ (hours_per_step * i))
+            # where n ranges from 0 to timesteps_backward
+            # The negative charge state can't be any higher than the deficit that was accumulated during the last x timesteps minus the losses.
+            # x is defined by the timesteps_backward.
+            # This forces the virtual storage to "recharge" (i. e. "discharge" the negative charge state) after the maximum timesteps that the demand is allowed to be shifted backward.
             self.add(
                 self._model.add_constraints(
-                    -negative_charge_state.isel(time=slice(1,None))
-                    <= -deficit_sum,
+                    - negative_charge_state.isel(time=slice(1,None))
+                    <= - deficit_sum,
                     name=f'{self.label_full}|limit_backward_timeshift'
                 ),
                 f'limit_backward_timeshift'
@@ -1098,35 +1104,32 @@ class DSMSinkModel(ComponentModel):
         )
 
     @property
-    def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
-        relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
+    def positive_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
         return (
-            relative_lower_bound * self.element.virtual_capacity_in_flow_hours,
-            relative_upper_bound * self.element.virtual_capacity_in_flow_hours,
-        )
-        
-    @property
-    def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
-        return (
-            self.element.relative_minimum_charge_state.active_data,
-            self.element.relative_maximum_charge_state.active_data,
+            0,
+            self.element.maximum_virtual_charge_state.active_data,
         )
     
     @property
-    def absolute_charge_rate_bounds(self) -> Tuple[NumericData, NumericData]:
-        relative_discharging_bound, relative_charging_bound = self.relative_charge_rate_bounds
-        return(
-            relative_discharging_bound * self.element.virtual_capacity_in_flow_hours,
-            relative_charging_bound * self.element.virtual_capacity_in_flow_hours,
+    def negative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+        return (
+            self.element.minimum_virtual_charge_state.active_data,
+            0,
         )
-
+        
     @property
-    def relative_charge_rate_bounds(self) -> Tuple[NumericData, NumericData]:
+    def charge_rate_bounds(self) -> Tuple[NumericData, NumericData]:
         return(
-            self.element.maximum_relative_virtual_discharging_rate.active_data,
-            self.element.maximum_relative_virtual_charging_rate.active_data,
+            0,
+            self.element.maximum_virtual_charging_rate.active_data,
         )
-
+    
+    @property
+    def discharge_rate_bounds(self) -> Tuple[NumericData, NumericData]:
+        return(
+            self.element.maximum_virtual_discharging_rate.active_data,
+            0,
+        )
 
 @register_class_for_io
 class DSMSinkTS(Sink):
