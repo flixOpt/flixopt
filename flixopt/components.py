@@ -658,8 +658,8 @@ class DSMSink(Sink):
         relative_loss_per_hour_negative_charge_state: NumericData = 0,
         allow_mixed_charge_states: bool = False,
         allow_parallel_charge_and_discharge: bool = False,
-        penalty_costs_positive_charge_states: NumericData = 0.001,
-        penalty_costs_negative_charge_states: NumericData = 0.001,
+        penalty_costs_positive_charge_states: NumericData = None,
+        penalty_costs_negative_charge_states: NumericData = None,
         meta_data: Optional[Dict] = None
     ):
         """
@@ -702,8 +702,8 @@ class DSMSink(Sink):
         self.allow_mixed_charge_states = allow_mixed_charge_states
         self.allow_parallel_charge_and_discharge = allow_parallel_charge_and_discharge
 
-        self.penalty_costs_positive_charge_states: NumericDataTS = penalty_costs_positive_charge_states
-        self.penalty_costs_negative_charge_states: NumericDataTS = penalty_costs_negative_charge_states
+        self.penalty_costs_positive_charge_states: NumericDataTS = penalty_costs_positive_charge_states if penalty_costs_positive_charge_states is not None else CONFIG.modeling.EPSILON
+        self.penalty_costs_negative_charge_states: NumericDataTS = penalty_costs_negative_charge_states if penalty_costs_negative_charge_states is not None else CONFIG.modeling.EPSILON
 
     def create_model(self, model: SystemModel) -> 'DSMSinkModel':
         self._plausibility_checks(model)
