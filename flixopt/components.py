@@ -648,10 +648,10 @@ class DSMSink(Sink):
         label: str,
         sink: Flow,
         initial_demand: NumericData,
-        maximum_virtual_charge_rate: NumericData,
-        maximum_virtual_discharge_rate: NumericData,
-        minimum_virtual_charge_state: NumericData,
-        maximum_virtual_charge_state: NumericData,
+        maximum_flow_deficit: NumericData,
+        maximum_flow_surplus: NumericData,
+        maximum_cumulated_deficit: NumericData,
+        maximum_cumulated_surplus: NumericData,
         forward_timeshift: Scalar = None,
         backward_timeshift: Scalar = None,
         relative_loss_per_hour_positive_charge_state: NumericData = 0,
@@ -667,10 +667,10 @@ class DSMSink(Sink):
             label: The label of the Element. Used to identify it in the FlowSystem
             sink: input-flow of DSM sink after DSM
             initial_demand: initial demand of DSM sink before DSM
-            maximum_virtual_charge_rate: maximum flow rate at which charging is possible
-            maximum_virtual_discharge_rate: maximum flow rate at which discharging is possible.
-            minimum_virtual_charge_state: minimum charge state.
-            maximum_virtual_charge_state: maximum charge state.
+            maximum_flow_deficit: maximum that the supply flow can fall short of the demand
+            maximum_flow_surplus: maximum that the supply flow can exceed the demand
+            maximum_cumulated_deficit: maximum cumulated supply deficit in flow hours
+            maximum_cumulated_surplus: maximum cumulated supply surplus in flow hours
             forward_timeshift: Maximum number of hours by which the demand can be shifted forward in time. Default is infinite.
             backward_timeshift: Maximum number of hours by which the demand can be shifted backward in time. Default is infinite.
             relative_loss_per_hour_positive_charge_state: loss per chargeState-Unit per hour for positive charge states of the virtual storage. The default is 0.
@@ -692,10 +692,10 @@ class DSMSink(Sink):
         self.initial_demand: NumericDataTS = initial_demand
         self.forward_timeshift = forward_timeshift
         self.backward_timeshift = backward_timeshift
-        self.maximum_virtual_charge_rate: NumericDataTS = maximum_virtual_charge_rate
-        self.maximum_virtual_discharge_rate: NumericDataTS = maximum_virtual_discharge_rate
-        self.minimum_virtual_charge_state: NumericDataTS = minimum_virtual_charge_state
-        self.maximum_virtual_charge_state: NumericDataTS = maximum_virtual_charge_state
+        self.maximum_flow_deficit: NumericDataTS = maximum_flow_deficit
+        self.maximum_flow_surplus: NumericDataTS = maximum_flow_surplus
+        self.maximum_cumulated_deficit: NumericDataTS = maximum_cumulated_deficit
+        self.maximum_cumulated_surplus: NumericDataTS = maximum_cumulated_surplus
 
         self.relative_loss_per_hour_positive_charge_state: NumericDataTS = relative_loss_per_hour_positive_charge_state
         self.relative_loss_per_hour_negative_charge_state: NumericDataTS = relative_loss_per_hour_negative_charge_state
@@ -722,22 +722,22 @@ class DSMSink(Sink):
             f'{self.label_full}|initial_demand',
             self.initial_demand,
         )
-        self.maximum_virtual_charge_rate = flow_system.create_time_series(
-            f'{self.label_full}|maximum_virtual_charge_rate',
-            self.maximum_virtual_charge_rate,
+        self.maximum_flow_surplus = flow_system.create_time_series(
+            f'{self.label_full}|maximum_flow_surplus',
+            self.maximum_flow_surplus,
         )
-        self.maximum_virtual_discharge_rate = flow_system.create_time_series(
-            f'{self.label_full}|maximum_virtual_discharge_rate',
-            self.maximum_virtual_discharge_rate,
+        self.maximum_flow_deficit = flow_system.create_time_series(
+            f'{self.label_full}|maximum_flow_deficit',
+            self.maximum_flow_deficit,
         )
-        self.minimum_virtual_charge_state = flow_system.create_time_series(
-            f'{self.label_full}|minimum_virtual_charge_state',
-            self.minimum_virtual_charge_state,
+        self.maximum_cumulated_deficit = flow_system.create_time_series(
+            f'{self.label_full}|maximum_cumulated_deficit',
+            self.maximum_cumulated_deficit,
             needs_extra_timestep=True,
         )
-        self.maximum_virtual_charge_state = flow_system.create_time_series(
-            f'{self.label_full}|maximum_virtual_charge_state',
-            self.maximum_virtual_charge_state,
+        self.maximum_cumulated_surplus = flow_system.create_time_series(
+            f'{self.label_full}|maximum_cumulated_surplus',
+            self.maximum_cumulated_surplus,
             needs_extra_timestep=True,
         )
         self.relative_loss_per_hour_negative_charge_state = flow_system.create_time_series(
@@ -1107,13 +1107,13 @@ class DSMSinkModel(ComponentModel):
     def positive_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
         return (
             0,
-            self.element.maximum_virtual_charge_state.active_data,
+            self.element.maximum_cumulated_surplus.active_data,
         )
     
     @property
     def negative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
         return (
-            self.element.minimum_virtual_charge_state.active_data,
+            self.element.maximum_cumulated_deficit.active_data,
             0,
         )
         
@@ -1121,12 +1121,12 @@ class DSMSinkModel(ComponentModel):
     def charge_rate_bounds(self) -> Tuple[NumericData, NumericData]:
         return(
             0,
-            self.element.maximum_virtual_charge_rate.active_data,
+            self.element.maximum_flow_surplus.active_data,
         )
     
     @property
     def discharge_rate_bounds(self) -> Tuple[NumericData, NumericData]:
         return(
-            self.element.maximum_virtual_discharge_rate.active_data,
+            self.element.maximum_flow_deficit.active_data,
             0,
         )

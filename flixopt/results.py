@@ -600,9 +600,8 @@ class ComponentResults(_NodeResults):
             data,
             mode='area',
             colors=colors,
-            title=f'District Heating Node Balance with DSM Surplus/Deficit for {self.label}',
-            ylabel='Power [kW]',
-            xlabel='Time'
+            title=f'DSM sink behaviour for {self.label}',
+            xlabel='Time in h'
         )
         
         # Add initial demand
@@ -639,30 +638,7 @@ class ComponentResults(_NodeResults):
                     size=10,
                     symbol='diamond',
                     line=dict(width=1, color='black')
-                ),
-                yaxis='y2'
-            )
-        )
-
-        # Update layout to include secondary y-axis and scale both y-axis appropriately
-        fig.update_layout(
-            hovermode='x unified',
-            yaxis=dict(
-                range=[
-                    -1.2*max(0, node_balance.max().max(), -cumulated_flow.min().min(), -deficit.min().min()),
-                    1.2*max(node_balance.max().max(), surplus.max().max(), cumulated_flow.max().max(), initial_demand.max().max())
-                ],
-                showgrid=True
-            ),
-            yaxis2=dict(
-                title='Cumulated Flow [kWh]',
-                overlaying='y',
-                side='right',
-                showgrid=False,
-                range=[
-                    -1.2*max(0, node_balance.max().max(), -cumulated_flow.min().min(), -deficit.min().min()),
-                    1.2*max(node_balance.max().max(), surplus.max().max(), cumulated_flow.max().max(), initial_demand.max().max())
-                ]
+                )
             )
         )
 
