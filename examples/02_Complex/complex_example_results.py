@@ -35,4 +35,4 @@ if __name__ == '__main__':
     # Dataframes from results:
     fw_bus = results['Fernwärme'].node_balance().to_dataframe()
     all = results.solution.to_dataframe()
-    
+
