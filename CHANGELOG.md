@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+* **Scenarios:** A big addition to flixopt: Scenarios let you model **Uncertainties** or **Multi-Period Transformations** in a single model.
+* **Results:** The CalculationResults now contain a dedicated `FlowResults` object for each Flow.
+* **Results:** dedicated xr.DataArrays for flow_rates, flow_hours, and sizes of flows are accessible through the CalculationResults
+* **Results:** Effects per component can now be easily evaluated through a dedicated xr.DataArrays.
+* Balanced storage - Storage charging and discharging sizes can now be forced to be equal when optimizing their size by choosing `balanced=True`.
+* Plotting styles can now be changed for all plots. (stacked_bar, line, area)
+
+### Deprecations
+* Renamed `Calculation.active_timesteps` to `Calculation.selected_timesteps`
+
 ## [2.1.2] - 2025-06-14
 
 ### Fixed
