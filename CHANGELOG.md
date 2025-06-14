@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## What's New
+
+### Scenarios
+Scenarios are a new feature of flixopt. They can be used to model uncertainties in the flow system, such as:
+* Different demand profiles
+* Different price forecasts
+* Different weather conditions
+They might also be used to model an evolving system with multiple investment periods. Each **scenario** might be a new year, a new month, or a new day, with a different set of investment decisions to take.
+
+The weighted sum of the total objective effect of each scenario is used as the objective of the optimization.
+
+#### Investments and scenarios
+Scenarios allow for more flexibility in investment decisions.
+You can decide to allow different investment decisions for each scenario, or to allow a single investment decision for a subset of all scenarios, while not allowing for an invest in others.
+This enables the following use cases:
+* Find the best investment decision for each scenario individually
+* Find the best overall investment decision for possible scenarios (robust decision-making)
+* Find the best overall investment decision for a subset of all scenarios
+
+The last one might be useful if you want to model a system with multiple investment periods, where one investment decision is made for more than one scenario.
+This might occur when scenarios represent years or months, while an investment decision influences the system for multiple years or months.
+
+
+### Other new features
+* Balanced storage - Storage charging and discharging sizes can now be forced to be equal in when optimizing their size.
+* Feature 2 - Description
+
 ## [2.1.2] - 2025-06-14
 
 ### Fixed
