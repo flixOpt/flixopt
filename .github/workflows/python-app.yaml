@@ -56,12 +56,56 @@ jobs:
       - name: Run tests
         run: pytest -v -p no:warnings
 
+  create-release:
+    name: Create Release with Changelog
+    runs-on: ubuntu-22.04
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Processing version: $VERSION"
+
+      - name: Validate release notes exist
+        run: |
+          python scripts/extract_release_notes.py ${{ steps.version.outputs.VERSION }} --validate-only
+
+      - name: Extract release notes
+        run: |
+          python scripts/extract_release_notes.py ${{ steps.version.outputs.VERSION }} --output current_release_notes.md
+          echo "✅ Release notes extracted for version ${{ steps.version.outputs.VERSION }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "Release v${{ steps.version.outputs.VERSION }}"
+          body_path: current_release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, 'alpha') || contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'rc') }}
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   publish-testpypi:
     name: Publish to TestPyPI
     runs-on: ubuntu-22.04
-    needs: [test]  # Only run after tests pass
-    if: github.event_name == 'release' && github.event.action == 'created'  # Only on release creation
-    
+    needs: [test, create-release]  # Run after tests and release creation
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -86,7 +130,7 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          
+
       - name: Test install from TestPyPI
         run: |
           # Create a temporary environment to test installation
@@ -104,8 +148,8 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-22.04
-    needs: [test]  # Only run after TestPyPI publish succeeds
-    if: github.event_name == 'release' && github.event.action == 'created'  # Only on release creation
+    needs: [publish-testpypi]  # Only run after TestPyPI publish succeeds
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
 
     steps:
       - name: Checkout repository
