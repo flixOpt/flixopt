@@ -89,7 +89,7 @@ jobs:
         with:
           body_path: current_release_notes.md
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
