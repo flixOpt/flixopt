@@ -31,3 +31,8 @@ if __name__ == '__main__':
     # --- Plotting internal variables manually ---
     results.plot_heatmap('BHKW2(Q_th)|on')
     results.plot_heatmap('Kessel(Q_th)|on')
+
+    # Dataframes from results:
+    fw_bus = results['Fernwärme'].node_balance().to_dataframe()
+    all = results.solution.to_dataframe()
+
