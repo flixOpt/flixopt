@@ -528,7 +528,7 @@ class StorageModel(ComponentModel):
         self.add(
             self._model.add_constraints(
                 charge_state.isel(time=slice(1, None))
-                == charge_state.isel(time=slice(None, -1)) * (1 - rel_loss * hours_per_step)
+                == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** hours_per_step)
                 + charge_rate * eff_charge * hours_per_step
                 - discharge_rate * eff_discharge * hours_per_step,
                 name=f'{self.label_full}|charge_state',
