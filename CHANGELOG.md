@@ -7,16 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+* Fixed formating issues in the yaml model documentation (line breaks)
+
+### Breaking Changes:
+* Removed `kind` in favor of `style` in plotting functions.
+* Renamed `TimeSeries.active_data` to `TimeSeries.selected_data`
+* `CalculationResults.flow_system` now returns the restorded FlowSystem instead of the `xr.Dataset`. The data can be found under `flow_system_data`.
+
 ### Added
-* **Scenarios:** A big addition to flixopt: Scenarios let you model **Uncertainties** or **Multi-Period Transformations** in a single model.
-* **Results:** The CalculationResults now contain a dedicated `FlowResults` object for each Flow.
-* **Results:** dedicated xr.DataArrays for flow_rates, flow_hours, and sizes of flows are accessible through the CalculationResults
-* **Results:** Effects per component can now be easily evaluated through a dedicated xr.DataArrays.
+* **Scenarios:**
+  * Scenarios can now be used to model uncertainties in the flow system, such as:
+  * Scenarios are passed to a `FlowSystem`. The total objective effect of each scenario is multiplied by a `scenario_weight`. This forms the objective of the optimization.
+* **`CalculationResults`:** 
+  * New dedicated `FlowResults`. 
+  * Dedicated xr.DataArrays for all **flow_rates**, **flow_hours**, and **sizes** of flows are availlable.
+  * Use `effects_per_component()` to retrieve all effects results for every Component. This includes indirect effects that hove their origin in an element, but are inflicted by another effect (ElementA --> CO2 --> Costs))
 * Balanced storage - Storage charging and discharging sizes can now be forced to be equal when optimizing their size by choosing `balanced=True`.
 * Plotting styles can now be changed for all plots. (stacked_bar, line, area)
+* Added plotting style `grouped_bar`
+* Support for pandas.Series and pandas.DataFrame when setting parameters of Elements (internally converted to xarray.DataArrays)
+
+### Changed
+* Improved internal Datatypes to make needed data format more obvious: `Scalar` for only scalar values, `TimestepData` for time-indexed data (which might have a scenario dimension), `ScenarioData` for data with a scenario dimension.
+* `InvestmentParameters` now have a `investment_scenarios` parameter to define which scenarios to define how to optimize the size across scenarios
+* Changed legend location in plots
 
 ### Deprecations
 * Renamed `Calculation.active_timesteps` to `Calculation.selected_timesteps`
+* A warning is raised if Results prior ti this version are loaded, as this prevents the FLowResults from being created.
+
+### Known Issues
+* Scenarios are not yet supported in `AggregatedCalculation` and `SegmentedCalculation`
+
+### Development
+* Greatly improved testing by directly asserting for the correctness of the created equations and variables (and their bounds).
 
 ## [2.1.2] - 2025-06-14
 
