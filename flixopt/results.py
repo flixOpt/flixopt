@@ -306,11 +306,17 @@ class CalculationResults:
             startswith=startswith,
         )
 
-    def effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+    def effects_per_component(
+        self,
+        mode: Literal['operation', 'invest', 'total'] = 'total',
+        component: Optional[Union[str, List[str]]] = None
+    ) -> xr.Dataset:
         """Returns a dataset containing effect totals for each components (including their flows).
+        The effects contain direct as well as indirect effect through shares between effects!
 
         Args:
             mode: Which effects to contain. (operation, invest, total)
+            component: The component to return the effects for. If None, all components are returned.
 
         Returns:
             An xarray Dataset with an additional component dimension and effects as variables.
@@ -319,7 +325,10 @@ class CalculationResults:
             raise ValueError(f'Invalid mode {mode}')
         if self._effects_per_component[mode] is None:
             self._effects_per_component[mode] = self._create_effects_dataset(mode)
-        return self._effects_per_component[mode]
+        ds = self._effects_per_component[mode]
+        if component is not None:
+            return ds.sel(component=component, drop=True)
+        return ds
 
     def flow_rates(
         self,

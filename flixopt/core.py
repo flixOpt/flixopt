@@ -969,7 +969,18 @@ class TimeSeriesCollection:
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None,
     ):
-        """Initialize a TimeSeriesCollection."""
+        """
+        Initialize a TimeSeriesCollection.
+
+        Args:
+            timesteps: The timesteps of the model.
+            scenarios: The scenarios of the model.
+            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
+            hours_of_previous_timesteps: The duration of previous timesteps.
+                If None, the first time increment of time_series is used.
+                This is needed to calculate previous durations (for example consecutive_on_hours).
+                If you use an array, take care that its long enough to cover all previous values!
+        """
         self._full_timesteps = self._validate_timesteps(timesteps)
         self._full_scenarios = self._validate_scenarios(scenarios)
 
