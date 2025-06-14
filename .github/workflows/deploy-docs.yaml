@@ -8,6 +8,8 @@ on:
 jobs:
   deploy-docs:
     runs-on: ubuntu-latest
+    # Only deploy docs for stable releases (not pre-releases)
+    if: github.event.release.prerelease == false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,4 +32,6 @@ jobs:
       - name: Deploy docs
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Deploying docs for stable release: $VERSION"
           mike deploy --push --update-aliases $VERSION latest
+          mike set-default --push latest
