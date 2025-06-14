@@ -128,7 +128,7 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: Union[Scalar, InvestParameters],
+        capacity_in_flow_hours: Union[ScenarioData, InvestParameters],
         relative_minimum_charge_state: TimestepData = 0,
         relative_maximum_charge_state: TimestepData = 1,
         initial_charge_state: Union[ScenarioData, Literal['lastValueOfSim']] = 0,
@@ -226,6 +226,10 @@ class Storage(Component):
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
             self.capacity_in_flow_hours.transform_data(flow_system, f'{self.label_full}|InvestParameters')
+        else:
+            self.capacity_in_flow_hours = flow_system.create_time_series(
+                f'{self.label_full}|capacity_in_flow_hours', self.capacity_in_flow_hours, has_time_dim=False
+            )
 
     def _plausibility_checks(self) -> None:
         """
@@ -524,7 +528,7 @@ class StorageModel(ComponentModel):
         self.add(
             self._model.add_constraints(
                 charge_state.isel(time=slice(1, None))
-                == charge_state.isel(time=slice(None, -1)) * (1 - rel_loss * hours_per_step)
+                == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** hours_per_step)
                 + charge_rate * eff_charge * hours_per_step
                 - discharge_rate * eff_discharge * hours_per_step,
                 name=f'{self.label_full}|charge_state',

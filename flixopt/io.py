@@ -79,15 +79,17 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
         output_file (str): Path to output YAML file
     """
     # Process strings to normalize all newlines and handle special patterns
-    processed_data = _process_complex_strings(data)
+    processed_data = _normalize_complex_data(data)
 
     # Define a custom representer for strings
     def represent_str(dumper, data):
-        # Use literal block style (|) for any string with newlines
+        # Use literal block style (|) for multi-line strings
         if '\n' in data:
+            # Clean up formatting for literal block style
+            data = data.strip()  # Remove leading/trailing whitespace
             return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
 
-        # Use quoted style for strings with special characters to ensure proper parsing
+        # Use quoted style for strings with special characters
         elif any(char in data for char in ':`{}[]#,&*!|>%@'):
             return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='"')
 
@@ -97,53 +99,80 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
     # Add the string representer to SafeDumper
     yaml.add_representer(str, represent_str, Dumper=yaml.SafeDumper)
 
+    # Configure dumper options for better formatting
+    class CustomDumper(yaml.SafeDumper):
+        def increase_indent(self, flow=False, indentless=False):
+            return super(CustomDumper, self).increase_indent(flow, False)
+
     # Write to file with settings that ensure proper formatting
     with open(output_file, 'w', encoding='utf-8') as file:
         yaml.dump(
             processed_data,
             file,
-            Dumper=yaml.SafeDumper,
+            Dumper=CustomDumper,
             sort_keys=False,  # Preserve dictionary order
             default_flow_style=False,  # Use block style for mappings
-            width=float('inf'),  # Don't wrap long lines
+            width=1000,  # Set a reasonable line width
             allow_unicode=True,  # Support Unicode characters
+            indent=2,  # Set consistent indentation
         )
 
 
-def _process_complex_strings(data):
+def _normalize_complex_data(data):
     """
-    Process dictionary data recursively with comprehensive string normalization.
-    Handles various types of strings and special formatting.
+    Recursively normalize strings in complex data structures.
+
+    Handles dictionaries, lists, and strings, applying various text normalization
+    rules while preserving important formatting elements.
 
     Args:
-        data: The data to process (dict, list, str, or other)
+        data: Any data type (dict, list, str, or primitive)
 
     Returns:
-        Processed data with normalized strings
+        Data with all strings normalized according to defined rules
     """
     if isinstance(data, dict):
-        return {k: _process_complex_strings(v) for k, v in data.items()}
+        return {key: _normalize_complex_data(value) for key, value in data.items()}
+
     elif isinstance(data, list):
-        return [_process_complex_strings(item) for item in data]
+        return [_normalize_complex_data(item) for item in data]
+
     elif isinstance(data, str):
-        # Step 1: Normalize line endings to \n
-        normalized = data.replace('\r\n', '\n').replace('\r', '\n')
+        return _normalize_string_content(data)
 
-        # Step 2: Handle escaped newlines with robust regex
-        normalized = re.sub(r'(?<!\\)\\n', '\n', normalized)
-
-        # Step 3: Handle unnecessary double backslashes
-        normalized = re.sub(r'\\\\(n)', r'\\\1', normalized)
-
-        # Step 4: Ensure proper formatting of "[time: N]:\n---------"
-        normalized = re.sub(r'(\[time: \d+\]):\s*\\?n', r'\1:\n', normalized)
-
-        # Step 5: Ensure "Constraint `...`" patterns are properly formatted
-        normalized = re.sub(r'Constraint `([^`]+)`\\?n', r'Constraint `\1`\n', normalized)
-
-        return normalized
     else:
         return data
+
+
+def _normalize_string_content(text):
+    """
+    Apply comprehensive string normalization rules.
+
+    Args:
+        text: The string to normalize
+
+    Returns:
+        Normalized string with standardized formatting
+    """
+    # Standardize line endings
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Convert escaped newlines to actual newlines (avoiding double-backslashes)
+    text = re.sub(r'(?<!\\)\\n', '\n', text)
+
+    # Normalize double backslashes before specific escape sequences
+    text = re.sub(r'\\\\([rtn])', r'\\\1', text)
+
+    # Standardize constraint headers format
+    text = re.sub(r'Constraint\s*`([^`]+)`\s*(?:\\n|[\s\n]*)', r'Constraint `\1`\n', text)
+
+    # Clean up ellipsis patterns
+    text = re.sub(r'[\t ]*(\.\.\.)', r'\1', text)
+
+    # Limit consecutive newlines (max 2)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return text.strip()
 
 
 def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dict[str, str]:

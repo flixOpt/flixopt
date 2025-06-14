@@ -255,7 +255,7 @@ class DataConverter:
             return data.copy(deep=True)
 
         # Broadcast values
-        values = np.tile(data.values, (len(coords['scenario']), 1)).T  # Tile seems to be faster than repeat()
+        values = np.repeat(data.values[:, np.newaxis], len(coords['scenario']), axis=1)
         return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
     @staticmethod
@@ -278,7 +278,7 @@ class DataConverter:
             raise ConversionError("Source scenario coordinates don't match target scenario coordinates")
 
         # Broadcast values
-        values = np.repeat(data.values[:, np.newaxis], len(coords['time']), axis=1)
+        values = np.repeat(data.values[:, np.newaxis], len(coords['time']), axis=1).T
         return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
     @staticmethod
@@ -361,7 +361,7 @@ class DataConverter:
                 return xr.DataArray(values, coords=coords, dims=dims)
             elif data.shape[0] == scenario_length:
                 # Broadcast across time
-                values = np.tile(data, (time_length, 1))
+                values = np.repeat(data[np.newaxis, :], time_length, axis=0)
                 return xr.DataArray(values, coords=coords, dims=dims)
             else:
                 raise ConversionError(f"1D array length {data.shape[0]} doesn't match either dimension")
@@ -414,7 +414,7 @@ class DataConverter:
             # Case 1: Series is indexed by time
             if data.index.equals(coords['time']):
                 # Broadcast across scenarios
-                values = np.tile(data.values[:, np.newaxis], (1, len(coords['scenario'])))
+                values = np.repeat(data.values[:, np.newaxis], len(coords['scenario']), axis=1)
                 return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
             # Case 2: Series is indexed by scenario
@@ -1481,5 +1481,5 @@ def extract_data(
     if isinstance(data, xr.DataArray):
         return data
     if isinstance(data, (int, float, np.integer, np.floating)):
-        return xr.DataArray(data)
+        return data
     raise TypeError(f'Unsupported data type: {type(data).__name__}')

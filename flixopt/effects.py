@@ -313,7 +313,10 @@ class EffectCollection:
         if isinstance(item, str):
             return item in self.effects  # Check if the label exists
         elif isinstance(item, Effect):
-            return item in self.effects.values()  # Check if the object exists
+            if item.label_full in self.effects:
+                return True
+            if item in self.effects.values():  # Check if the object exists
+                return True
         return False
 
     @property
@@ -508,6 +511,10 @@ def calculate_all_conversion_paths(
 
                 # Add new path to queue for further exploration
                 queue.append((target, indirect_factor, new_path))
+
+    # Convert all values to DataArrays
+    result = {key: value if isinstance(value, xr.DataArray) else xr.DataArray(value)
+              for key, value in result.items()}
 
     return result
 

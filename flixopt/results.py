@@ -15,7 +15,7 @@ import yaml
 
 from . import io as fx_io
 from . import plotting
-from .core import TimeSeriesCollection
+from .core import DataConverter, TimeSeriesCollection
 from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
@@ -202,7 +202,6 @@ class CalculationResults:
         self._flow_hours = None
         self._sizes = None
         self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
-        self._flow_network_info_ = None
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults', 'FlowResults']:
         if key in self.components:
@@ -433,17 +432,6 @@ class CalculationResults:
         existing_dims = [d for d in da.dims if d != 'flow']
         da = da.transpose(*(existing_dims + ['flow']))
         return da
-
-    def _get_flow_network_info(self) -> Dict[str, Dict[str, str]]:
-        flow_network_info = {}
-
-        for flow in self.flows.values():
-            flow_network_info[flow.label] = {
-                'label': flow.label,
-                'start': flow.start,
-                'end': flow.end,
-            }
-        return flow_network_info
 
     def get_effect_shares(
         self,
@@ -1178,7 +1166,10 @@ class FlowResults(_ElementResults):
         if name in self.solution:
             return self.solution[name]
         try:
-            return xr.DataArray(self._calculation_results.flow_system.flows[self.label].size).rename(name)
+            return DataConverter.as_dataarray(
+                self._calculation_results.flow_system.flows[self.label].size,
+                scenarios=self._calculation_results.scenarios
+            ).rename(name)
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
