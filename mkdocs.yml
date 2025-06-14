@@ -79,12 +79,13 @@ markdown_extensions:
   - pymdownx.snippets:
       base_path: ..
 
-
 plugins:
   - search  # Enables the search functionality in the documentation
   - table-reader  # Allows including tables from external files
   - include-markdown
-  - mike
+  - mike:
+      version_selector: true
+      default_version: latest
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py
