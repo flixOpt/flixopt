@@ -182,3 +182,37 @@ jobs:
           pip install $PACKAGE_NAME
           # Basic import test
           python -c "import flixopt; print('PyPI installation successful!')"
+
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-22.04
+    needs: [publish-pypi]  # Deploy docs after successful PyPI publishing
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper versioning
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[docs]"
+
+      - name: Configure Git Credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Deploy docs
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Deploying docs after successful PyPI publish: $VERSION"
+          mike deploy --push --update-aliases $VERSION latest
+          mike set-default --push latest
