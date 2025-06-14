@@ -73,30 +73,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Extract version from tag
-        id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "Processing version: $VERSION"
-
-      - name: Validate release notes exist
-        run: |
-          python scripts/extract_release_notes.py ${{ steps.version.outputs.VERSION }} --validate-only
-
       - name: Extract release notes
         run: |
-          python scripts/extract_release_notes.py ${{ steps.version.outputs.VERSION }} --output current_release_notes.md
-          echo "✅ Release notes extracted for version ${{ steps.version.outputs.VERSION }}"
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Extracting release notes for version: $VERSION"
+          python scripts/extract_release_notes.py $VERSION > current_release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: "Release v${{ steps.version.outputs.VERSION }}"
           body_path: current_release_notes.md
           draft: false
-          prerelease: ${{ contains(steps.version.outputs.VERSION, 'alpha') || contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'rc') }}
-          make_latest: true
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
