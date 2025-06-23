@@ -50,10 +50,10 @@ def test_flow_system_file_io(flow_system, highs_solver):
 
 
 def test_flow_system_io(flow_system):
-    di = flow_system.as_dict()
+    di = flow_system.to_dict()
     _ = fx.FlowSystem.from_dict(di)
 
-    ds = flow_system.as_dataset()
+    ds = flow_system.to_dataset()
     _ = fx.FlowSystem.from_dataset(ds)
 
     print(flow_system)

@@ -46,7 +46,7 @@ class DataConverter:
     """
 
     @staticmethod
-    def as_dataarray(data: NumericData, timesteps: pd.DatetimeIndex) -> xr.DataArray:
+    def to_dataarray(data: NumericData, timesteps: pd.DatetimeIndex) -> xr.DataArray:
         """Convert data to xarray.DataArray with specified timesteps index."""
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
             raise ValueError(f'Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}')

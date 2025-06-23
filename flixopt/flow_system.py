@@ -224,7 +224,7 @@ class FlowSystem:
         ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
         return ds
 
-    def as_dict(self, data_mode: Literal['data', 'name', 'stats'] = 'data') -> Dict:
+    def to_dict(self, data_mode: Literal['data', 'name', 'stats'] = 'data') -> Dict:
         """
         Convert the object to a dictionary representation.
         Now builds on the reference structure for consistency.
@@ -364,7 +364,7 @@ class FlowSystem:
             path: The path to the JSON file.
         """
         # Use the stats mode for JSON export (cleaner output)
-        data = get_compact_representation(self.as_dict('stats'))
+        data = get_compact_representation(self.to_dict('stats'))
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
@@ -399,12 +399,12 @@ class FlowSystem:
             # Convert TimeSeriesData to DataArray
             from .core import DataConverter  # Assuming this exists
 
-            return DataConverter.as_dataarray(data.data, timesteps=target_timesteps).rename(name)
+            return DataConverter.to_dataarray(data.data, timesteps=target_timesteps).rename(name)
         else:
             # Convert other data types to DataArray
             from .core import DataConverter  # Assuming this exists
 
-            return DataConverter.as_dataarray(data, timesteps=target_timesteps).rename(name)
+            return DataConverter.to_dataarray(data, timesteps=target_timesteps).rename(name)
 
     def create_effect_time_series(
         self,
@@ -576,7 +576,7 @@ class FlowSystem:
     def __str__(self):
         with StringIO() as output_buffer:
             console = Console(file=output_buffer, width=1000)  # Adjust width as needed
-            console.print(Pretty(self.as_dict('stats'), expand_all=True, indent_guides=True))
+            console.print(Pretty(self.to_dict('stats'), expand_all=True, indent_guides=True))
             value = output_buffer.getvalue()
         return value
 
