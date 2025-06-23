@@ -14,8 +14,8 @@ class TestStorageModel:
     def test_basic_storage(self, basic_flow_system_linopy):
         """Test that basic storage model variables and constraints are correctly generated."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
-        timesteps_extra = flow_system.time_series_collection.timesteps_extra
+        timesteps = flow_system.timesteps
+        timesteps_extra = flow_system.timesteps_extra
 
         # Create a simple storage
         storage = fx.Storage(
@@ -91,8 +91,8 @@ class TestStorageModel:
     def test_lossy_storage(self, basic_flow_system_linopy):
         """Test that basic storage model variables and constraints are correctly generated."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
-        timesteps_extra = flow_system.time_series_collection.timesteps_extra
+        timesteps = flow_system.timesteps
+        timesteps_extra = flow_system.timesteps_extra
 
         # Create a simple storage
         storage = fx.Storage(

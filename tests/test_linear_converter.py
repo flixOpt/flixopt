@@ -52,7 +52,7 @@ class TestLinearConverterModel:
     def test_linear_converter_time_varying(self, basic_flow_system_linopy):
         """Test a LinearConverter with time-varying conversion factors."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
 
         # Create time-varying efficiency (e.g., temperature-dependent)
         varying_efficiency = np.linspace(0.7, 0.9, len(timesteps))
@@ -268,7 +268,7 @@ class TestLinearConverterModel:
     def test_edge_case_time_varying_conversion(self, basic_flow_system_linopy):
         """Test edge case with extreme time-varying conversion factors."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
 
         # Create fluctuating conversion efficiency (e.g., for a heat pump)
         # Values range from very low (0.1) to very high (5.0)
@@ -317,7 +317,7 @@ class TestLinearConverterModel:
     def test_piecewise_conversion(self, basic_flow_system_linopy):
         """Test a LinearConverter with PiecewiseConversion."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
@@ -423,7 +423,7 @@ class TestLinearConverterModel:
     def test_piecewise_conversion_with_onoff(self, basic_flow_system_linopy):
         """Test a LinearConverter with PiecewiseConversion and OnOffParameters."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
