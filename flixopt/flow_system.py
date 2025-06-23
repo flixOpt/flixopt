@@ -30,6 +30,7 @@ logger = logging.getLogger('flixopt')
 class FlowSystem:
     """
     A FlowSystem organizes the high level Elements (Components & Effects).
+    Uses xr.Dataset directly from its Interface elements instead of TimeSeriesCollection.
     """
 
     def __init__(
@@ -47,13 +48,15 @@ class FlowSystem:
                 This is needed to calculate previous durations (for example consecutive_on_hours).
                 If you use an array, take care that its long enough to cover all previous values!
         """
-        self.time_series_collection = TimeSeriesCollection(
-            timesteps=timesteps,
-            hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=hours_of_previous_timesteps,
+        # Store timing information directly
+        self.timesteps = self._validate_timesteps(timesteps)
+        self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
+        self.hours_per_timestep = self._calculate_hours_per_timestep(self.timesteps_extra)
+        self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
+            timesteps, hours_of_previous_timesteps
         )
 
-        # defaults:
+        # Element collections
         self.components: Dict[str, Component] = {}
         self.buses: Dict[str, Bus] = {}
         self.effects: EffectCollection = EffectCollection()
@@ -61,60 +64,373 @@ class FlowSystem:
 
         self._connected = False
 
-    @classmethod
-    def from_dataset(cls, ds: xr.Dataset):
-        timesteps_extra = pd.DatetimeIndex(ds.attrs['timesteps_extra'], name='time')
-        hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
+    @staticmethod
+    def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
+        """Validate timesteps format and rename if needed."""
+        if not isinstance(timesteps, pd.DatetimeIndex):
+            raise TypeError('timesteps must be a pandas DatetimeIndex')
+        if len(timesteps) < 2:
+            raise ValueError('timesteps must contain at least 2 timestamps')
+        if timesteps.name != 'time':
+            timesteps.name = 'time'
+        if not timesteps.is_monotonic_increasing:
+            raise ValueError('timesteps must be sorted')
+        return timesteps
 
-        flow_system = FlowSystem(
+    @staticmethod
+    def _create_timesteps_with_extra(
+        timesteps: pd.DatetimeIndex, hours_of_last_timestep: Optional[float]
+    ) -> pd.DatetimeIndex:
+        """Create timesteps with an extra step at the end."""
+        if hours_of_last_timestep is None:
+            hours_of_last_timestep = (timesteps[-1] - timesteps[-2]) / pd.Timedelta(hours=1)
+
+        last_date = pd.DatetimeIndex([timesteps[-1] + pd.Timedelta(hours=hours_of_last_timestep)], name='time')
+        return pd.DatetimeIndex(timesteps.append(last_date), name='time')
+
+    @staticmethod
+    def _calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
+        """Calculate duration of each timestep."""
+        hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
+        return xr.DataArray(
+            hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=['time'], name='hours_per_timestep'
+        )
+
+    @staticmethod
+    def _calculate_hours_of_previous_timesteps(
+        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: Optional[Union[float, np.ndarray]]
+    ) -> Union[float, np.ndarray]:
+        """Calculate duration of regular timesteps."""
+        if hours_of_previous_timesteps is not None:
+            return hours_of_previous_timesteps
+        # Calculate from the first interval
+        first_interval = timesteps[1] - timesteps[0]
+        return first_interval.total_seconds() / 3600  # Convert to hours
+
+    def _create_reference_structure(self) -> Tuple[Dict, Dict[str, xr.DataArray]]:
+        """
+        Create reference structure for FlowSystem following the Interface pattern.
+        Extracts all DataArrays from components, buses, and effects.
+
+        Returns:
+            Tuple of (reference_structure, extracted_arrays_dict)
+        """
+        reference_structure = {
+            '__class__': self.__class__.__name__,
+            'timesteps_extra': [date.isoformat() for date in self.timesteps_extra],
+            'hours_of_previous_timesteps': self.hours_of_previous_timesteps,
+        }
+
+        all_extracted_arrays = {}
+
+        # Add timing arrays directly
+        all_extracted_arrays['hours_per_timestep'] = self.hours_per_timestep
+
+        # Extract from components
+        components_structure = {}
+        for comp_label, component in self.components.items():
+            comp_structure, comp_arrays = self._extract_from_interface(component)
+            all_extracted_arrays.update(comp_arrays)
+            components_structure[comp_label] = comp_structure
+        reference_structure['components'] = components_structure
+
+        # Extract from buses
+        buses_structure = {}
+        for bus_label, bus in self.buses.items():
+            bus_structure, bus_arrays = self._extract_from_interface(bus)
+            all_extracted_arrays.update(bus_arrays)
+            buses_structure[bus_label] = bus_structure
+        reference_structure['buses'] = buses_structure
+
+        # Extract from effects
+        effects_structure = {}
+        for effect in self.effects:
+            effect_structure, effect_arrays = self._extract_from_interface(effect)
+            all_extracted_arrays.update(effect_arrays)
+            effects_structure[effect.label] = effect_structure
+        reference_structure['effects'] = effects_structure
+
+        return reference_structure, all_extracted_arrays
+
+    def _extract_from_interface(self, interface_obj) -> Tuple[Dict, Dict[str, xr.DataArray]]:
+        """Extract arrays from an Interface object using its reference system."""
+        if hasattr(interface_obj, '_create_reference_structure'):
+            return interface_obj._create_reference_structure()
+        else:
+            # Fallback for objects that don't have the new Interface methods
+            logger.warning(f"Object {interface_obj} doesn't have _create_reference_structure method")
+            return interface_obj.to_dict(), {}
+
+    @classmethod
+    def _resolve_reference_structure(cls, structure, arrays_dict: Dict[str, xr.DataArray]):
+        """
+        Resolve reference structure back to actual objects.
+        Reuses the Interface pattern for consistency.
+        """
+        if isinstance(structure, str) and structure.startswith(':::'):
+            # This is a reference to a DataArray
+            array_name = structure[3:]  # Remove ":::" prefix
+            if array_name in arrays_dict:
+                return arrays_dict[array_name]
+            else:
+                logger.critical(f"Referenced DataArray '{array_name}' not found in dataset")
+                return None
+
+        elif isinstance(structure, list):
+            resolved_list = []
+            for item in structure:
+                resolved_item = cls._resolve_reference_structure(item, arrays_dict)
+                if resolved_item is not None:
+                    resolved_list.append(resolved_item)
+            return resolved_list
+
+        elif isinstance(structure, dict):
+            # Check if this is a serialized Interface object
+            if structure.get('__class__') and structure['__class__'] in CLASS_REGISTRY:
+                # This is a nested Interface object - restore it recursively
+                nested_class = CLASS_REGISTRY[structure['__class__']]
+                # Remove the __class__ key and process the rest
+                nested_data = {k: v for k, v in structure.items() if k != '__class__'}
+                # Resolve references in the nested data
+                resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
+                # Create the nested Interface object
+                return nested_class(**resolved_nested_data)
+            else:
+                # Regular dictionary - resolve references in values
+                resolved_dict = {}
+                for key, value in structure.items():
+                    resolved_value = cls._resolve_reference_structure(value, arrays_dict)
+                    if resolved_value is not None or value is None:
+                        resolved_dict[key] = resolved_value
+                return resolved_dict
+
+        else:
+            return structure
+
+    def to_dataset(self, constants_in_dataset: bool = True) -> xr.Dataset:
+        """
+        Convert the FlowSystem to an xarray Dataset using the Interface pattern.
+        All DataArrays become dataset variables, structure goes to attrs.
+
+        Args:
+            constants_in_dataset: If True, constants are included as Dataset variables.
+
+        Returns:
+            xr.Dataset: Dataset containing all DataArrays with structure in attributes
+        """
+        reference_structure, extracted_arrays = self._create_reference_structure()
+
+        # Create the dataset with extracted arrays as variables and structure as attrs
+        ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
+        return ds
+
+    def as_dict(self, data_mode: Literal['data', 'name', 'stats'] = 'data') -> Dict:
+        """
+        Convert the object to a dictionary representation.
+        Now builds on the reference structure for consistency.
+        """
+        reference_structure, _ = self._create_reference_structure()
+
+        if data_mode == 'data':
+            return reference_structure
+        elif data_mode == 'stats':
+            # For stats mode, we might want to process the structure further
+            return fx_io.remove_none_and_empty(reference_structure)
+        else:  # name mode
+            return reference_structure
+
+    @classmethod
+    def from_dataset(cls, ds: xr.Dataset) -> 'FlowSystem':
+        """
+        Create a FlowSystem from an xarray Dataset using the Interface pattern.
+
+        Args:
+            ds: Dataset containing the FlowSystem data
+
+        Returns:
+            FlowSystem instance
+        """
+        # Get the reference structure from attrs
+        reference_structure = dict(ds.attrs)
+
+        # Extract FlowSystem constructor parameters
+        timesteps_extra = pd.DatetimeIndex(reference_structure['timesteps_extra'], name='time')
+        hours_of_previous_timesteps = reference_structure['hours_of_previous_timesteps']
+
+        # Calculate hours_of_last_timestep from the timesteps
+        hours_of_last_timestep = float((timesteps_extra[-1] - timesteps_extra[-2]) / pd.Timedelta(hours=1))
+
+        # Create FlowSystem instance
+        flow_system = cls(
             timesteps=timesteps_extra[:-1],
             hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=ds.attrs['hours_of_previous_timesteps'],
+            hours_of_previous_timesteps=hours_of_previous_timesteps,
         )
 
-        structure = fx_io.insert_dataarray({key: ds.attrs[key] for key in ['components', 'buses', 'effects']}, ds)
-        flow_system.add_elements(
-            *[Bus.from_dict(bus) for bus in structure['buses'].values()]
-            + [Effect.from_dict(effect) for effect in structure['effects'].values()]
-            + [CLASS_REGISTRY[comp['__class__']].from_dict(comp) for comp in structure['components'].values()]
-        )
+        # Create arrays dictionary from dataset variables
+        arrays_dict = {name: array for name, array in ds.data_vars.items()}
+
+        # Restore components
+        components_structure = reference_structure.get('components', {})
+        for comp_label, comp_data in components_structure.items():
+            component = cls._resolve_reference_structure(comp_data, arrays_dict)
+            if not isinstance(component, Component):
+                logger.critical(f'Restoring component {comp_label} failed.')
+            flow_system._add_components(component)
+
+        # Restore buses
+        buses_structure = reference_structure.get('buses', {})
+        for bus_label, bus_data in buses_structure.items():
+            bus = cls._resolve_reference_structure(bus_data, arrays_dict)
+            if not isinstance(bus, Bus):
+                logger.critical(f'Restoring component {bus_label} failed.')
+            flow_system._add_buses(bus)
+
+        # Restore effects
+        effects_structure = reference_structure.get('effects', {})
+        for effect_label, effect_data in effects_structure.items():
+            effect = cls._resolve_reference_structure(effect_data, arrays_dict)
+
+            if not isinstance(effect, Effect):
+                logger.critical(f'Restoring component {effect_label} failed.')
+            flow_system._add_effects(effect)
+
         return flow_system
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'FlowSystem':
         """
-        Load a FlowSystem from a dictionary.
+        Load a FlowSystem from a dictionary using the Interface pattern.
 
         Args:
             data: Dictionary containing the FlowSystem data.
         """
-        timesteps_extra = pd.DatetimeIndex(data['timesteps_extra'], name='time')
-        hours_of_last_timestep = TimeSeriesCollection.calculate_hours_per_timestep(timesteps_extra).isel(time=-1).item()
+        # For dict format, resolve with empty arrays (references may not be used)
+        resolved_data = cls._resolve_reference_structure(data, {})
 
-        flow_system = FlowSystem(
+        # Extract constructor parameters
+        timesteps_extra = pd.DatetimeIndex(resolved_data['timesteps_extra'], name='time')
+        hours_of_last_timestep = float((timesteps_extra[-1] - timesteps_extra[-2]) / pd.Timedelta(hours=1))
+
+        flow_system = cls(
             timesteps=timesteps_extra[:-1],
             hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=data['hours_of_previous_timesteps'],
+            hours_of_previous_timesteps=resolved_data['hours_of_previous_timesteps'],
         )
 
-        flow_system.add_elements(*[Bus.from_dict(bus) for bus in data['buses'].values()])
+        # Add elements using resolved data
+        for bus_data in resolved_data.get('buses', {}).values():
+            bus = Bus.from_dict(bus_data)
+            flow_system.add_elements(bus)
 
-        flow_system.add_elements(*[Effect.from_dict(effect) for effect in data['effects'].values()])
+        for effect_data in resolved_data.get('effects', {}).values():
+            effect = Effect.from_dict(effect_data)
+            flow_system.add_elements(effect)
 
-        flow_system.add_elements(
-            *[CLASS_REGISTRY[comp['__class__']].from_dict(comp) for comp in data['components'].values()]
-        )
+        for comp_data in resolved_data.get('components', {}).values():
+            component = CLASS_REGISTRY[comp_data['__class__']].from_dict(comp_data)
+            flow_system.add_elements(component)
 
         flow_system.transform_data()
-
         return flow_system
 
     @classmethod
-    def from_netcdf(cls, path: Union[str, pathlib.Path]):
+    def from_netcdf(cls, path: Union[str, pathlib.Path]) -> 'FlowSystem':
         """
-        Load a FlowSystem from a netcdf file
+        Load a FlowSystem from a netcdf file using the Interface pattern.
         """
-        return cls.from_dataset(fx_io.load_dataset_from_netcdf(path))
+        ds = fx_io.load_dataset_from_netcdf(path)
+        return cls.from_dataset(ds)
+
+    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0, constants_in_dataset: bool = True):
+        """
+        Save the FlowSystem to a NetCDF file using the Interface pattern.
+
+        Args:
+            path: The path to the netCDF file.
+            compression: The compression level to use when saving the file.
+            constants_in_dataset: If True, constants are included as Dataset variables.
+        """
+        ds = self.to_dataset(constants_in_dataset=constants_in_dataset)
+        fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
+        logger.info(f'Saved FlowSystem to {path}')
+
+    def to_json(self, path: Union[str, pathlib.Path]):
+        """
+        Save the flow system to a JSON file using the Interface pattern.
+        This is meant for documentation and comparison, not for reloading.
+
+        Args:
+            path: The path to the JSON file.
+        """
+        # Use the stats mode for JSON export (cleaner output)
+        data = get_compact_representation(self.as_dict('stats'))
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+
+    def create_time_series(
+        self,
+        name: str,
+        data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
+        needs_extra_timestep: bool = False,
+    ) -> Optional[TimeSeries]:
+        """
+        Create a TimeSeries-like object (now just an xr.DataArray with proper coordinates).
+        This method is kept for API compatibility but simplified.
+
+        Args:
+            name: Name of the time series
+            data: Data to convert
+            needs_extra_timestep: Whether to use timesteps_extra
+
+        Returns:
+            xr.DataArray with proper time coordinates
+        """
+        if data is None:
+            return None
+
+        # Choose appropriate timesteps
+        target_timesteps = self.timesteps_extra if needs_extra_timestep else self.timesteps
+
+        if isinstance(data, TimeSeries):
+            # Extract the data and rename
+            return data.selected_data.rename(name)
+        elif isinstance(data, TimeSeriesData):
+            # Convert TimeSeriesData to DataArray
+            from .core import DataConverter  # Assuming this exists
+
+            return DataConverter.as_dataarray(data.data, timesteps=target_timesteps).rename(name)
+        else:
+            # Convert other data types to DataArray
+            from .core import DataConverter  # Assuming this exists
+
+            return DataConverter.as_dataarray(data, timesteps=target_timesteps).rename(name)
+
+    def create_effect_time_series(
+        self,
+        label_prefix: Optional[str],
+        effect_values: EffectValuesUser,
+        label_suffix: Optional[str] = None,
+    ) -> Optional[Dict[str, xr.DataArray]]:
+        """
+        Transform EffectValues to effect DataArrays.
+        Simplified version that returns DataArrays directly.
+        """
+        effect_values_dict: Optional[EffectValuesDict] = self.effects.create_effect_values_dict(effect_values)
+        if effect_values_dict is None:
+            return None
+
+        return {
+            effect: self.create_time_series('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
+            for effect, value in effect_values_dict.items()
+        }
+
+    def transform_data(self):
+        """Transform data for all elements using the new simplified approach."""
+        if not self._connected:
+            self._connect_network()
+        for element in self.all_elements.values():
+            element.transform_data(self)
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -142,63 +458,11 @@ class FlowSystem:
                     f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
                 )
 
-    def to_json(self, path: Union[str, pathlib.Path]):
-        """
-        Saves the flow system to a json file.
-        This not meant to be reloaded and recreate the object,
-        but rather used to document or compare the flow_system to others.
-
-        Args:
-            path: The path to the json file.
-        """
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(self.as_dict('stats'), f, indent=4, ensure_ascii=False)
-
-    def as_dict(self, data_mode: Literal['data', 'name', 'stats'] = 'data') -> Dict:
-        """Convert the object to a dictionary representation."""
-        data = {
-            'components': {
-                comp.label: comp.to_dict()
-                for comp in sorted(self.components.values(), key=lambda component: component.label.upper())
-            },
-            'buses': {
-                bus.label: bus.to_dict() for bus in sorted(self.buses.values(), key=lambda bus: bus.label.upper())
-            },
-            'effects': {
-                effect.label: effect.to_dict()
-                for effect in sorted(self.effects, key=lambda effect: effect.label.upper())
-            },
-            'timesteps_extra': [date.isoformat() for date in self.time_series_collection.timesteps_extra],
-            'hours_of_previous_timesteps': self.time_series_collection.hours_of_previous_timesteps,
-        }
-        if data_mode == 'data':
-            return fx_io.replace_timeseries(data, 'data')
-        elif data_mode == 'stats':
-            return fx_io.remove_none_and_empty(fx_io.replace_timeseries(data, data_mode))
-        return fx_io.replace_timeseries(data, data_mode)
-
-    def as_dataset(self, constants_in_dataset: bool = False) -> xr.Dataset:
-        """
-        Convert the FlowSystem to a xarray Dataset.
-
-        Args:
-            constants_in_dataset: If True, constants are included as Dataset variables.
-        """
-        ds = self.time_series_collection.to_dataset(include_constants=constants_in_dataset)
-        ds.attrs = self.as_dict(data_mode='name')
-        return ds
-
-    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0, constants_in_dataset: bool = True):
-        """
-        Saves the FlowSystem to a netCDF file.
-        Args:
-            path: The path to the netCDF file.
-            compression: The compression level to use when saving the file.
-            constants_in_dataset: If True, constants are included as Dataset variables.
-        """
-        ds = self.as_dataset(constants_in_dataset=constants_in_dataset)
-        fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
-        logger.info(f'Saved FlowSystem to {path}')
+    def create_model(self) -> SystemModel:
+        if not self._connected:
+            raise RuntimeError('FlowSystem is not connected. Call FlowSystem.connect() first.')
+        self.model = SystemModel(self)
+        return self.model
 
     def plot_network(
         self,
@@ -213,28 +477,6 @@ class FlowSystem:
     ) -> Optional['pyvis.network.Network']:
         """
         Visualizes the network structure of a FlowSystem using PyVis, saving it as an interactive HTML file.
-
-        Args:
-            path: Path to save the HTML visualization.
-                - `False`: Visualization is created but not saved.
-                - `str` or `Path`: Specifies file path (default: 'flow_system.html').
-            controls: UI controls to add to the visualization.
-                - `True`: Enables all available controls.
-                - `List`: Specify controls, e.g., ['nodes', 'layout'].
-                - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
-            show: Whether to open the visualization in the web browser.
-
-        Returns:
-        - Optional[pyvis.network.Network]: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
-
-        Examples:
-            >>> flow_system.plot_network()
-            >>> flow_system.plot_network(show=False)
-            >>> flow_system.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
-
-        Notes:
-        - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
-        - Nodes are styled based on type (e.g., circles for buses, boxes for components) and annotated with node information.
         """
         from . import plotting
 
@@ -264,67 +506,6 @@ class FlowSystem:
         }
 
         return nodes, edges
-
-    def transform_data(self):
-        if not self._connected:
-            self._connect_network()
-        for element in self.all_elements.values():
-            element.transform_data(self)
-
-    def create_time_series(
-        self,
-        name: str,
-        data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
-        needs_extra_timestep: bool = False,
-    ) -> Optional[TimeSeries]:
-        """
-        Tries to create a TimeSeries from NumericData Data and adds it to the time_series_collection
-        If the data already is a TimeSeries, nothing happens and the TimeSeries gets reset and returned
-        If the data is a TimeSeriesData, it is converted to a TimeSeries, and the aggregation weights are applied.
-        If the data is None, nothing happens.
-        """
-
-        if data is None:
-            return None
-        elif isinstance(data, TimeSeries):
-            data.restore_data()
-            if data in self.time_series_collection:
-                return data
-            return self.time_series_collection.create_time_series(
-                data=data.active_data, name=name, needs_extra_timestep=needs_extra_timestep
-            )
-        return self.time_series_collection.create_time_series(
-            data=data, name=name, needs_extra_timestep=needs_extra_timestep
-        )
-
-    def create_effect_time_series(
-        self,
-        label_prefix: Optional[str],
-        effect_values: EffectValuesUser,
-        label_suffix: Optional[str] = None,
-    ) -> Optional[EffectTimeSeries]:
-        """
-        Transform EffectValues to EffectTimeSeries.
-        Creates a TimeSeries for each key in the nested_values dictionary, using the value as the data.
-
-        The resulting label of the TimeSeries is the label of the parent_element,
-        followed by the label of the Effect in the nested_values and the label_suffix.
-        If the key in the EffectValues is None, the alias 'Standard_Effect' is used
-        """
-        effect_values: Optional[EffectValuesDict] = self.effects.create_effect_values_dict(effect_values)
-        if effect_values is None:
-            return None
-
-        return {
-            effect: self.create_time_series('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
-            for effect, value in effect_values.items()
-        }
-
-    def create_model(self) -> SystemModel:
-        if not self._connected:
-            raise RuntimeError('FlowSystem is not connected. Call FlowSystem.connect() first.')
-        self.model = SystemModel(self)
-        return self.model
 
     def _check_if_element_is_unique(self, element: Element) -> None:
         """

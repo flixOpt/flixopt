@@ -116,130 +116,341 @@ class Interface:
         """Transforms the data of the interface to match the FlowSystem's dimensions"""
         raise NotImplementedError('Every Interface needs a transform_data() method')
 
-    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
+    def _create_reference_structure(self) -> Tuple[Dict, Dict[str, xr.DataArray]]:
         """
-        Generate a dictionary representation of the object's constructor arguments.
-        Excludes default values and empty dictionaries and lists.
-        Converts data to be compatible with JSON.
-
-        Args:
-            use_numpy: Whether to convert NumPy arrays to lists. Defaults to True.
-                If True, numeric numpy arrays (`np.ndarray`) are preserved as-is.
-                If False, they are converted to lists.
-            use_element_label: Whether to use the element label instead of the infos of the element. Defaults to False.
-                Note that Elements used as keys in dictionaries are always converted to their labels.
+        Convert all DataArrays/TimeSeries to references and extract them.
+        This is the core method that both to_dict() and to_dataset() build upon.
 
         Returns:
-            A dictionary representation of the object's constructor arguments.
-
+            Tuple of (reference_structure, extracted_arrays_dict)
         """
-        # Get the constructor arguments and their default values
-        init_params = sorted(
-            inspect.signature(self.__init__).parameters.items(),
-            key=lambda x: (x[0].lower() != 'label', x[0].lower()),  # Prioritize 'label'
-        )
-        # Build a dict of attribute=value pairs, excluding defaults
-        details = {'class': ':'.join([cls.__name__ for cls in self.__class__.__mro__])}
-        for name, param in init_params:
-            if name == 'self':
-                continue
-            value, default = getattr(self, name, None), param.default
-            # Ignore default values and empty dicts and list
-            if np.all(value == default) or (isinstance(value, (dict, list)) and not value):
-                continue
-            details[name] = copy_and_convert_datatypes(value, use_numpy, use_element_label)
-        return details
-
-    def to_json(self, path: Union[str, pathlib.Path]):
-        """
-        Saves the element to a json file.
-        This not meant to be reloaded and recreate the object, but rather used to document or compare the object.
-
-        Args:
-            path: The path to the json file.
-        """
-        data = get_compact_representation(self.infos(use_numpy=True, use_element_label=True))
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-
-    def to_dict(self) -> Dict:
-        """Convert the object to a dictionary representation."""
-        data = {'__class__': self.__class__.__name__}
-
-        # Get the constructor parameters
+        # Get constructor parameters
         init_params = inspect.signature(self.__init__).parameters
+
+        # Process all constructor parameters
+        reference_structure = {'__class__': self.__class__.__name__}
+        all_extracted_arrays = {}
 
         for name in init_params:
             if name == 'self':
                 continue
 
             value = getattr(self, name, None)
-            data[name] = self._serialize_value(value)
+            if value is None:
+                continue
 
-        return data
+            # Extract arrays and get reference structure
+            processed_value, extracted_arrays = self._extract_dataarrays_recursive(value)
 
-    def _serialize_value(self, value: Any):
-        """Helper method to serialize a value based on its type."""
-        if value is None:
-            return None
-        elif isinstance(value, Interface):
-            return value.to_dict()
-        elif isinstance(value, (list, tuple)):
-            return self._serialize_list(value)
-        elif isinstance(value, dict):
-            return self._serialize_dict(value)
+            # Add extracted arrays to the collection
+            all_extracted_arrays.update(extracted_arrays)
+
+            # Only store in structure if it's not None/empty after processing
+            if processed_value is not None and not (isinstance(processed_value, (dict, list)) and not processed_value):
+                reference_structure[name] = processed_value
+
+        return reference_structure, all_extracted_arrays
+
+    def _extract_dataarrays_recursive(self, obj) -> Tuple[Any, Dict[str, xr.DataArray]]:
+        """
+        Recursively extract DataArrays/TimeSeries from nested structures.
+
+        Args:
+            obj: Object to process
+
+        Returns:
+            Tuple of (processed_object_with_references, extracted_arrays_dict)
+        """
+        extracted_arrays = {}
+
+        # Handle TimeSeries objects - extract their data using their unique name
+        if isinstance(obj, TimeSeries):
+            data_array = obj.active_data.rename(obj.name)
+            extracted_arrays[obj.name] = data_array
+            return f':::{obj.name}', extracted_arrays
+
+        # Handle DataArrays directly - use their unique name
+        elif isinstance(obj, xr.DataArray):
+            if not obj.name:
+                raise ValueError('DataArray must have a unique name for serialization')
+            extracted_arrays[obj.name] = obj
+            return f':::{obj.name}', extracted_arrays
+
+        # Handle Interface objects - extract their DataArrays too
+        elif isinstance(obj, Interface):
+            # Get the Interface's reference structure and arrays
+            interface_structure, interface_arrays = obj._create_reference_structure()
+
+            # Add all extracted arrays from the nested Interface
+            extracted_arrays.update(interface_arrays)
+
+            return interface_structure, extracted_arrays
+
+        # Handle lists
+        elif isinstance(obj, list):
+            processed_list = []
+            for item in obj:
+                processed_item, nested_arrays = self._extract_dataarrays_recursive(item)
+                extracted_arrays.update(nested_arrays)
+                processed_list.append(processed_item)
+            return processed_list, extracted_arrays
+
+        # Handle dictionaries
+        elif isinstance(obj, dict):
+            processed_dict = {}
+            for key, value in obj.items():
+                processed_value, nested_arrays = self._extract_dataarrays_recursive(value)
+                extracted_arrays.update(nested_arrays)
+                processed_dict[key] = processed_value
+            return processed_dict, extracted_arrays
+
+        # Handle tuples (convert to list for JSON compatibility)
+        elif isinstance(obj, tuple):
+            processed_list = []
+            for item in obj:
+                processed_item, nested_arrays = self._extract_dataarrays_recursive(item)
+                extracted_arrays.update(nested_arrays)
+                processed_list.append(processed_item)
+            return processed_list, extracted_arrays
+
+        # For all other types, serialize to basic types
         else:
-            return value
-
-    def _serialize_list(self, items):
-        """Serialize a list of items."""
-        return [self._serialize_value(item) for item in items]
-
-    def _serialize_dict(self, d):
-        """Serialize a dictionary of items."""
-        return {k: self._serialize_value(v) for k, v in d.items()}
+            return self._serialize_to_basic_types(obj), extracted_arrays
 
     @classmethod
-    def _deserialize_dict(cls, data: Dict) -> Union[Dict, 'Interface']:
-        if '__class__' in data:
-            class_name = data.pop('__class__')
-            try:
-                class_type = CLASS_REGISTRY[class_name]
-                if issubclass(class_type, Interface):
-                    # Use _deserialize_dict to process the arguments
-                    processed_data = {k: cls._deserialize_value(v) for k, v in data.items()}
-                    return class_type(**processed_data)
-                else:
-                    raise ValueError(f'Class "{class_name}" is not an Interface.')
-            except (AttributeError, KeyError) as e:
-                raise ValueError(f'Class "{class_name}" could not get reconstructed.') from e
+    def _resolve_reference_structure(cls, structure, arrays_dict: Dict[str, xr.DataArray]):
+        """
+        Convert reference structure back to actual objects using provided arrays.
+
+        Args:
+            structure: Structure containing references (:::name)
+            arrays_dict: Dictionary of available DataArrays
+
+        Returns:
+            Structure with references resolved to actual DataArrays
+        """
+        if isinstance(structure, str) and structure.startswith(':::'):
+            # This is a reference to a DataArray
+            array_name = structure[3:]  # Remove ":::" prefix
+            if array_name in arrays_dict:
+                return arrays_dict[array_name]
+            else:
+                logger.critical(f"Referenced DataArray '{array_name}' not found in dataset")
+                return None
+
+        elif isinstance(structure, list):
+            resolved_list = []
+            for item in structure:
+                resolved_item = cls._resolve_reference_structure(item, arrays_dict)
+                if resolved_item is not None:  # Filter out None values from missing references
+                    resolved_list.append(resolved_item)
+            return resolved_list
+
+        elif isinstance(structure, dict):
+            # Check if this is a serialized Interface object
+            if structure.get('__class__') and structure['__class__'] in CLASS_REGISTRY:
+                # This is a nested Interface object - restore it recursively
+                nested_class = CLASS_REGISTRY[structure['__class__']]
+                # Remove the __class__ key and process the rest
+                nested_data = {k: v for k, v in structure.items() if k != '__class__'}
+                # Resolve references in the nested data
+                resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
+                # Create the nested Interface object
+                return nested_class(**resolved_nested_data)
+            else:
+                # Regular dictionary - resolve references in values
+                resolved_dict = {}
+                for key, value in structure.items():
+                    resolved_value = cls._resolve_reference_structure(value, arrays_dict)
+                    if resolved_value is not None or value is None:  # Keep None values if they were originally None
+                        resolved_dict[key] = resolved_value
+                return resolved_dict
+
         else:
-            return {k: cls._deserialize_value(v) for k, v in data.items()}
+            return structure
+
+    def _serialize_to_basic_types(self, obj):
+        """Convert object to basic Python types only (no DataArrays, no custom objects)."""
+        if obj is None or isinstance(obj, (str, int, float, bool)):
+            return obj
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame)):
+            return obj.tolist() if hasattr(obj, 'tolist') else list(obj)
+        elif isinstance(obj, dict):
+            return {k: self._serialize_to_basic_types(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._serialize_to_basic_types(item) for item in obj]
+        elif hasattr(obj, 'isoformat'):  # datetime objects
+            return obj.isoformat()
+        else:
+            # For any other object, try to convert to string as fallback
+            logger.warning(f'Converting unknown type {type(obj)} to string: {obj}')
+            return str(obj)
+
+    def to_dataset(self) -> xr.Dataset:
+        """
+        Convert the object to an xarray Dataset representation.
+        All DataArrays and TimeSeries become dataset variables, everything else goes to attrs.
+
+        Returns:
+            xr.Dataset: Dataset containing all DataArrays with basic objects only in attributes
+        """
+        reference_structure, extracted_arrays = self._create_reference_structure()
+
+        # Create the dataset with extracted arrays as variables and structure as attrs
+        ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
+        return ds
+
+    def to_dict(self) -> Dict:
+        """
+        Convert the object to a dictionary representation.
+        DataArrays/TimeSeries are converted to references, but structure is preserved.
+
+        Returns:
+            Dict: Dictionary with references to DataArrays/TimeSeries
+        """
+        reference_structure, _ = self._create_reference_structure()
+        return reference_structure
+
+    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
+        """
+        Generate a dictionary representation of the object's constructor arguments.
+        Built on top of dataset creation for better consistency and analytics capabilities.
+
+        Args:
+            use_numpy: Whether to convert NumPy arrays to lists. Defaults to True.
+                If True, numeric numpy arrays are preserved as-is.
+                If False, they are converted to lists.
+            use_element_label: Whether to use element labels instead of full infos for nested objects.
+
+        Returns:
+            A dictionary representation optimized for documentation and analysis.
+        """
+        # Get the core dataset representation
+        ds = self.to_dataset()
+
+        # Start with the reference structure from attrs
+        info_dict = dict(ds.attrs)
+
+        # Process DataArrays in the dataset based on preferences
+        for var_name, data_array in ds.data_vars.items():
+            if use_numpy:
+                # Keep as DataArray/numpy for analysis
+                info_dict[f'_data_{var_name}'] = data_array
+            else:
+                # Convert to lists for JSON compatibility
+                info_dict[f'_data_{var_name}'] = data_array.values.tolist()
+
+        # Apply element label preference to nested structures
+        if use_element_label:
+            info_dict = self._apply_element_label_preference(info_dict)
+
+        return info_dict
+
+    def _apply_element_label_preference(self, obj):
+        """Apply element label preference to nested structures."""
+        if isinstance(obj, dict):
+            if obj.get('__class__') and 'label' in obj:
+                # This looks like an Interface with a label - return just the label
+                return obj.get('label', obj.get('__class__'))
+            else:
+                return {k: self._apply_element_label_preference(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._apply_element_label_preference(item) for item in obj]
+        else:
+            return obj
+
+    def to_json(self, path: Union[str, pathlib.Path]):
+        """
+        Save the element to a JSON file for documentation purposes.
+        Uses the infos() method for consistent representation.
+
+        Args:
+            path: The path to the JSON file.
+        """
+        data = get_compact_representation(self.infos(use_numpy=False, use_element_label=True))
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+
+    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
+        """
+        Save the object to a NetCDF file.
+
+        Args:
+            path: Path to save the NetCDF file
+            compression: Compression level (0-9)
+        """
+        from . import io as fx_io  # Assuming fx_io is available
+
+        ds = self.to_dataset()
+        fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
 
     @classmethod
-    def _deserialize_list(cls, data: List) -> List:
-        return [cls._deserialize_value(value) for value in data]
+    def from_dataset(cls, ds: xr.Dataset) -> 'Interface':
+        """
+        Create an instance from an xarray Dataset.
+
+        Args:
+            ds: Dataset containing the object data
+
+        Returns:
+            Interface instance
+        """
+        # Get class name and verify it matches
+        class_name = ds.attrs.get('__class__')
+        if class_name != cls.__name__:
+            logger.warning(f"Dataset class '{class_name}' doesn't match target class '{cls.__name__}'")
+
+        # Get the reference structure from attrs
+        reference_structure = dict(ds.attrs)
+
+        # Remove the class name since it's not a constructor parameter
+        reference_structure.pop('__class__', None)
+
+        # Create arrays dictionary from dataset variables
+        arrays_dict = {name: array for name, array in ds.data_vars.items()}
+
+        # Resolve all references using the centralized method
+        resolved_params = cls._resolve_reference_structure(reference_structure, arrays_dict)
+
+        return cls(**resolved_params)
 
     @classmethod
-    def _deserialize_value(cls, value: Any):
-        """Helper method to deserialize a value based on its type."""
-        if value is None:
-            return None
-        elif isinstance(value, dict):
-            return cls._deserialize_dict(value)
-        elif isinstance(value, list):
-            return cls._deserialize_list(value)
-        return value
+    def from_netcdf(cls, path: Union[str, pathlib.Path]) -> 'Interface':
+        """
+        Load an instance from a NetCDF file.
+
+        Args:
+            path: Path to the NetCDF file
+
+        Returns:
+            Interface instance
+        """
+        from . import io as fx_io  # Assuming fx_io is available
+
+        ds = fx_io.load_dataset_from_netcdf(path)
+        return cls.from_dataset(ds)
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'Interface':
         """
         Create an instance from a dictionary representation.
+        This is now a thin wrapper around the reference resolution system.
 
         Args:
             data: Dictionary containing the data for the object.
         """
-        return cls._deserialize_dict(data)
+        class_name = data.pop('__class__', None)
+        if class_name and class_name != cls.__name__:
+            logger.warning(f"Dict class '{class_name}' doesn't match target class '{cls.__name__}'")
+
+        # Since dict format doesn't separate arrays, resolve with empty arrays dict
+        # References in dict format would need to be handled differently if they exist
+        resolved_params = cls._resolve_reference_structure(data, {})
+        return cls(**resolved_params)
 
     def __repr__(self):
         # Get the constructor arguments and their current values
