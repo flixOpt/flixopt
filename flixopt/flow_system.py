@@ -171,7 +171,12 @@ class FlowSystem:
             # This is a reference to a DataArray
             array_name = structure[3:]  # Remove ":::" prefix
             if array_name in arrays_dict:
-                return arrays_dict[array_name]
+                #TODO: Improve this!
+                da = arrays_dict[array_name]
+                if da.isnull().any():
+                    logger.warning(f"DataArray '{array_name}' contains null values. Dropping them.")
+                    return da.dropna(dim='time', how='all')
+                return da
             else:
                 logger.critical(f"Referenced DataArray '{array_name}' not found in dataset")
                 return None
