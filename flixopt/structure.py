@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import NumericData, Scalar, TimeSeriesCollection, TimeSeriesData, TimeSeries
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -56,7 +56,6 @@ class SystemModel(linopy.Model):
         """
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
-        self.time_series_collection = flow_system.time_series_collection
         self.effects: Optional[EffectCollectionModel] = None
 
     def do_modeling(self):
@@ -88,23 +87,23 @@ class SystemModel(linopy.Model):
                 for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
             },
         }
-        return solution.reindex(time=self.time_series_collection.timesteps_extra)
+        return solution.reindex(time=self.flow_system.timesteps_extra)
 
     @property
     def hours_per_step(self):
-        return self.time_series_collection.hours_per_timestep
+        return self.flow_system.hours_per_timestep
 
     @property
     def hours_of_previous_timesteps(self):
-        return self.time_series_collection.hours_of_previous_timesteps
+        return self.flow_system.hours_of_previous_timesteps
 
     @property
     def coords(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps,)
+        return (self.flow_system.timesteps,)
 
     @property
     def coords_extra(self) -> Tuple[pd.DatetimeIndex]:
-        return (self.time_series_collection.timesteps_extra,)
+        return (self.flow_system.timesteps_extra,)
 
 
 class Interface:
@@ -165,7 +164,7 @@ class Interface:
 
         # Handle TimeSeries objects - extract their data using their unique name
         if isinstance(obj, TimeSeries):
-            data_array = obj.active_data.rename(obj.name)
+            data_array = obj.rename(obj.name)
             extracted_arrays[obj.name] = data_array
             return f':::{obj.name}', extracted_arrays
 
@@ -745,7 +744,7 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
             return copy_and_convert_datatypes(data.tolist(), use_numpy, use_element_label)
 
     elif isinstance(data, TimeSeries):
-        return copy_and_convert_datatypes(data.active_data, use_numpy, use_element_label)
+        return copy_and_convert_datatypes(data, use_numpy, use_element_label)
     elif isinstance(data, TimeSeriesData):
         return copy_and_convert_datatypes(data.data, use_numpy, use_element_label)
 

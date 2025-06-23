@@ -13,7 +13,7 @@ import linopy
 import numpy as np
 import pandas as pd
 
-from .core import NumericData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection
+from .core import NumericData, NumericDataTS, Scalar, TimeSeriesCollection, TimeSeries
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 
@@ -137,10 +137,10 @@ class EffectModel(ElementModel):
                 label_full=f'{self.label_full}(operation)',
                 total_max=self.element.maximum_operation,
                 total_min=self.element.minimum_operation,
-                min_per_hour=self.element.minimum_operation_per_hour.active_data
+                min_per_hour=self.element.minimum_operation_per_hour
                 if self.element.minimum_operation_per_hour is not None
                 else None,
-                max_per_hour=self.element.maximum_operation_per_hour.active_data
+                max_per_hour=self.element.maximum_operation_per_hour
                 if self.element.maximum_operation_per_hour is not None
                 else None,
             )
@@ -376,7 +376,7 @@ class EffectCollectionModel(Model):
             for target_effect, time_series in origin_effect.specific_share_to_other_effects_operation.items():
                 self.effects[target_effect].model.operation.add_share(
                     origin_effect.model.operation.label_full,
-                    origin_effect.model.operation.total_per_timestep * time_series.active_data,
+                    origin_effect.model.operation.total_per_timestep * time_series,
                 )
             # 2. invest:    -> hier ist es Scalar (share)
             for target_effect, factor in origin_effect.specific_share_to_other_effects_invest.items():

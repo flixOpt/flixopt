@@ -474,11 +474,6 @@ class ConsecutiveStateModel(Model):
         self._minimum_duration = minimum_duration
         self._maximum_duration = maximum_duration
 
-        if isinstance(self._minimum_duration, TimeSeries):
-            self._minimum_duration = self._minimum_duration.active_data
-        if isinstance(self._maximum_duration, TimeSeries):
-            self._maximum_duration = self._maximum_duration.active_data
-
         self.duration = None
 
     def do_modeling(self):

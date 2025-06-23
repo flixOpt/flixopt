@@ -287,7 +287,7 @@ class Flow(Element):
 
         if (self.relative_minimum > 0).any() and self.on_off_parameters is None:
             logger.warning(
-                f'Flow {self.label} has a relative_minimum of {self.relative_minimum.active_data} and no on_off_parameters. '
+                f'Flow {self.label} has a relative_minimum of {self.relative_minimum} and no on_off_parameters. '
                 f'This prevents the flow_rate from switching off (flow_rate = 0). '
                 f'Consider using on_off_parameters to allow the flow to be switched on and off.'
             )
@@ -390,7 +390,7 @@ class FlowModel(ElementModel):
             self._model.effects.add_share_to_effects(
                 name=self.label_full,  # Use the full label of the element
                 expressions={
-                    effect: self.flow_rate * self._model.hours_per_step * factor.active_data
+                    effect: self.flow_rate * self._model.hours_per_step * factor
                     for effect, factor in self.element.effects_per_flow_hour.items()
                 },
                 target='operation',
@@ -443,16 +443,16 @@ class FlowModel(ElementModel):
         """Returns the lower bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_minimum.active_data
-        return fixed_profile.active_data
+            return self.element.relative_minimum
+        return fixed_profile
 
     @property
     def flow_rate_upper_bound_relative(self) -> NumericData:
         """ Returns the upper bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_maximum.active_data
-        return fixed_profile.active_data
+            return self.element.relative_maximum
+        return fixed_profile
 
     @property
     def flow_rate_lower_bound(self) -> NumericData:
@@ -497,7 +497,7 @@ class BusModel(ElementModel):
         # Fehlerplus/-minus:
         if self.element.with_excess:
             excess_penalty = np.multiply(
-                self._model.hours_per_step, self.element.excess_penalty_per_flow_hour.active_data
+                self._model.hours_per_step, self.element.excess_penalty_per_flow_hour
             )
             self.excess_input = self.add(
                 self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_input'),
