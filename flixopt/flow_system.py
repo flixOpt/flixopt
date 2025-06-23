@@ -51,7 +51,7 @@ class FlowSystem:
         # Store timing information directly
         self.timesteps = self._validate_timesteps(timesteps)
         self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
-        self.hours_per_timestep = self._calculate_hours_per_timestep(self.timesteps_extra)
+        self.hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
         )
@@ -89,7 +89,7 @@ class FlowSystem:
         return pd.DatetimeIndex(timesteps.append(last_date), name='time')
 
     @staticmethod
-    def _calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
+    def calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
         """Calculate duration of each timestep."""
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
