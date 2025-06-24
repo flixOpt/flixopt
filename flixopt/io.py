@@ -206,7 +206,7 @@ def save_dataset_to_netcdf(
     compression: int = 0,
 ) -> None:
     """
-    Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.
+    Save a dataset to a netcdf file. Store all attrs as JSON strings in 'attrs' attributes.
 
     Args:
         ds: Dataset to save.
@@ -216,6 +216,7 @@ def save_dataset_to_netcdf(
     Raises:
         ValueError: If the path has an invalid file extension.
     """
+    path = pathlib.Path(path)
     if path.suffix not in ['.nc', '.nc4']:
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
 
@@ -228,8 +229,20 @@ def save_dataset_to_netcdf(
                 'Dataset was exported without compression due to missing dependency "netcdf4".'
                 'Install netcdf4 via `pip install netcdf4`.'
             )
+
     ds = ds.copy(deep=True)
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
+
+    # Convert all DataArray attrs to JSON strings
+    for var_name, data_var in ds.data_vars.items():
+        if data_var.attrs:  # Only if there are attrs
+            ds[var_name].attrs = {'attrs': json.dumps(data_var.attrs)}
+
+    # Also handle coordinate attrs if they exist
+    for coord_name, coord_var in ds.coords.items():
+        if hasattr(coord_var, 'attrs') and coord_var.attrs:
+            ds[coord_name].attrs = {'attrs': json.dumps(coord_var.attrs)}
+
     ds.to_netcdf(
         path,
         encoding=None
@@ -240,16 +253,30 @@ def save_dataset_to_netcdf(
 
 def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
     """
-    Load a dataset from a netcdf file. Load the attrs from the 'attrs' attribute.
+    Load a dataset from a netcdf file. Load all attrs from 'attrs' attributes.
 
     Args:
         path: Path to load the dataset from.
 
     Returns:
-        Dataset: Loaded dataset.
+        Dataset: Loaded dataset with restored attrs.
     """
     ds = xr.load_dataset(path)
-    ds.attrs = json.loads(ds.attrs['attrs'])
+
+    # Restore Dataset attrs
+    if 'attrs' in ds.attrs:
+        ds.attrs = json.loads(ds.attrs['attrs'])
+
+    # Restore DataArray attrs
+    for var_name, data_var in ds.data_vars.items():
+        if 'attrs' in data_var.attrs:
+            ds[var_name].attrs = json.loads(data_var.attrs['attrs'])
+
+    # Restore coordinate attrs
+    for coord_name, coord_var in ds.coords.items():
+        if hasattr(coord_var, 'attrs') and 'attrs' in coord_var.attrs:
+            ds[coord_name].attrs = json.loads(coord_var.attrs['attrs'])
+
     return ds
 
 
