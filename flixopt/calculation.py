@@ -136,7 +136,7 @@ class FullCalculation(Calculation):
 
     def do_modeling(self) -> SystemModel:
         t_start = timeit.default_timer()
-        self._activate_time_series()
+        self.flow_system.connect_and_transform()
 
         self.model = self.flow_system.create_model()
         self.model.do_modeling()
@@ -181,9 +181,6 @@ class FullCalculation(Calculation):
 
         self.results = CalculationResults.from_calculation(self)
 
-    def _activate_time_series(self):
-        self.flow_system.transform_data()
-
 
 class AggregatedCalculation(FullCalculation):
     """
@@ -221,7 +218,7 @@ class AggregatedCalculation(FullCalculation):
 
     def do_modeling(self) -> SystemModel:
         t_start = timeit.default_timer()
-        self._activate_time_series()
+        self.flow_system.connect_and_transform()
         self._perform_aggregation()
 
         # Model the System

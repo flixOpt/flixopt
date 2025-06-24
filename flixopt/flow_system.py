@@ -62,7 +62,7 @@ class FlowSystem:
         self.effects: EffectCollection = EffectCollection()
         self.model: Optional[SystemModel] = None
 
-        self._connected = False
+        self._connected_and_transformed = False
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -223,6 +223,10 @@ class FlowSystem:
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
         """
+        if not self._connected_and_transformed:
+            logger.warning('FlowSystem is not connected_and_transformed..')
+            self.connect_and_transform()
+
         reference_structure, extracted_arrays = self._create_reference_structure()
 
         # Create the dataset with extracted arrays as variables and structure as attrs
@@ -234,6 +238,10 @@ class FlowSystem:
         Convert the object to a dictionary representation.
         Now builds on the reference structure for consistency.
         """
+        if not self._connected_and_transformed:
+            logger.warning('FlowSystem is not connected. Calling connect() now.')
+            self.connect_and_transform()
+
         reference_structure, _ = self._create_reference_structure()
 
         if data_mode == 'data':
@@ -333,7 +341,7 @@ class FlowSystem:
         for component in resolved_data.get('components', {}).values():
             flow_system.add_elements(component)
 
-        flow_system.transform_data()
+        flow_system.connect_and_transform()
         return flow_system
 
     @classmethod
@@ -353,6 +361,10 @@ class FlowSystem:
             compression: The compression level to use when saving the file.
             constants_in_dataset: If True, constants are included as Dataset variables.
         """
+        if not self._connected_and_transformed:
+            logger.warning('FlowSystem is not connected. Calling connect() now.')
+            self.connect_and_transform()
+
         ds = self.to_dataset(constants_in_dataset=constants_in_dataset)
         fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
         logger.info(f'Saved FlowSystem to {path}')
@@ -365,6 +377,9 @@ class FlowSystem:
         Args:
             path: The path to the JSON file.
         """
+        if not self._connected_and_transformed:
+            logger.warning('FlowSystem needs to be connected and transformed before saving to JSON. Calling connect_and_transform() now.')
+            self.connect_and_transform()
         # Use the stats mode for JSON export (cleaner output)
         data = get_compact_representation(self.to_dict('stats'))
         with open(path, 'w', encoding='utf-8') as f:
@@ -425,12 +440,12 @@ class FlowSystem:
             for effect, value in effect_values_dict.items()
         }
 
-    def transform_data(self):
+    def connect_and_transform(self):
         """Transform data for all elements using the new simplified approach."""
-        if not self._connected:
+        if not self._connected_and_transformed:
             self._connect_network()
-        for element in self.all_elements.values():
-            element.transform_data(self)
+            for element in self.all_elements.values():
+                element.transform_data(self)
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -440,12 +455,12 @@ class FlowSystem:
             *elements: childs of  Element like Boiler, HeatPump, Bus,...
                 modeling Elements
         """
-        if self._connected:
+        if self._connected_and_transformed:
             warnings.warn(
                 'You are adding elements to an already connected FlowSystem. This is not recommended (But it works).',
                 stacklevel=2,
             )
-            self._connected = False
+            self._connected_and_transformed = False
         for new_element in list(elements):
             if isinstance(new_element, Component):
                 self._add_components(new_element)
@@ -459,8 +474,8 @@ class FlowSystem:
                 )
 
     def create_model(self) -> SystemModel:
-        if not self._connected:
-            raise RuntimeError('FlowSystem is not connected. Call FlowSystem.connect() first.')
+        if not self._connected_and_transformed:
+            raise RuntimeError('FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.')
         self.model = SystemModel(self)
         return self.model
 
@@ -484,8 +499,8 @@ class FlowSystem:
         return plotting.plot_network(node_infos, edge_infos, path, controls, show)
 
     def network_infos(self) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
-        if not self._connected:
-            self._connect_network()
+        if not self._connected_and_transformed:
+            self.connect_and_transform()
         nodes = {
             node.label_full: {
                 'label': node.label,
@@ -568,7 +583,6 @@ class FlowSystem:
             f'Connected {len(self.buses)} Buses and {len(self.components)} '
             f'via {len(self.flows)} Flows inside the FlowSystem.'
         )
-        self._connected = True
 
     def __repr__(self):
         return f'<{self.__class__.__name__} with {len(self.components)} components and {len(self.effects)} effects>'
