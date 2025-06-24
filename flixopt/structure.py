@@ -176,7 +176,6 @@ class Interface:
 
             # Add all extracted arrays from the nested Interface
             extracted_arrays.update(interface_arrays)
-
             return interface_structure, extracted_arrays
 
         # Handle lists
@@ -222,12 +221,17 @@ class Interface:
         Returns:
             Structure with references resolved to actual DataArrays or TimeSeriesData objects
         """
-        # Handle regular DataArray references
+        # Handle DataArray references (including TimeSeriesData)
         if isinstance(structure, str) and structure.startswith(':::'):
-            # This is a reference to a DataArray
             array_name = structure[3:]  # Remove ":::" prefix
             if array_name in arrays_dict:
-                return arrays_dict[array_name]
+                array = arrays_dict[array_name]
+
+                # Check if this should be restored as TimeSeriesData
+                if TimeSeriesData.is_timeseries_data(array):
+                    return TimeSeriesData.from_dataarray(array)
+                else:
+                    return array
             else:
                 logger.critical(f"Referenced DataArray '{array_name}' not found in dataset")
                 return None
@@ -250,7 +254,6 @@ class Interface:
                 resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
                 # Create the nested Interface object
                 return nested_class(**resolved_nested_data)
-
             else:
                 # Regular dictionary - resolve references in values
                 resolved_dict = {}
@@ -350,9 +353,6 @@ class Interface:
             if obj.get('__class__') and 'label' in obj:
                 # This looks like an Interface with a label - return just the label
                 return obj.get('label', obj.get('__class__'))
-            elif obj.get('__class__') == 'TimeSeriesData':
-                # For TimeSeriesData, show a compact representation
-                return f'TimeSeriesData(agg_group={obj.get("agg_group")}, agg_weight={obj.get("agg_weight")})'
             else:
                 return {k: self._apply_element_label_preference(v) for k, v in obj.items()}
         elif isinstance(obj, list):
