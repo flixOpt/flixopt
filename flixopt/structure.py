@@ -109,12 +109,46 @@ class SystemModel(linopy.Model):
 
 class Interface:
     """
-    This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixopt.
+    Base class for all Elements and Models in flixopt that provides serialization capabilities.
+
+    This class enables automatic serialization/deserialization of objects containing xarray DataArrays
+    and nested Interface objects to/from xarray Datasets and NetCDF files. It uses introspection
+    of constructor parameters to automatically handle most serialization scenarios.
+
+    Key Features:
+        - Automatic extraction and restoration of xarray DataArrays
+        - Support for nested Interface objects
+        - NetCDF and JSON export/import
+        - Recursive handling of complex nested structures
+
+    Subclasses must implement:
+        transform_data(flow_system): Transform data to match FlowSystem dimensions
+
+    Example:
+        >>> class MyComponent(Interface):
+        ...     def __init__(self, name: str, power_data: xr.DataArray):
+        ...         self.name = name
+        ...         self.power_data = power_data
+        ...
+        ...     def transform_data(self, flow_system):
+        ...         # Transform power_data to match flow_system timesteps
+        ...         pass
+        >>>
+        >>> component = MyComponent('gen1', power_array)
+        >>> component.to_netcdf('component.nc')  # Save to file
+        >>> restored = MyComponent.from_netcdf('component.nc')  # Load from file
     """
 
     def transform_data(self, flow_system: 'FlowSystem'):
-        """Transforms the data of the interface to match the FlowSystem's dimensions"""
-        raise NotImplementedError('Every Interface needs a transform_data() method')
+        """Transform the data of the interface to match the FlowSystem's dimensions.
+
+        Args:
+            flow_system: The FlowSystem containing timing and dimensional information
+
+        Raises:
+            NotImplementedError: Must be implemented by subclasses
+        """
+        raise NotImplementedError('Every Interface subclass needs a transform_data() method')
 
     def _create_reference_structure(self) -> Tuple[Dict, Dict[str, xr.DataArray]]:
         """
@@ -123,15 +157,19 @@ class Interface:
 
         Returns:
             Tuple of (reference_structure, extracted_arrays_dict)
+
+        Raises:
+            ValueError: If DataArrays don't have unique names or are duplicated
         """
-        # Get constructor parameters
-        init_params = inspect.signature(self.__init__).parameters
+        # Get constructor parameters using caching for performance
+        if not hasattr(self, '_cached_init_params'):
+            self._cached_init_params = list(inspect.signature(self.__init__).parameters.keys())
 
         # Process all constructor parameters
         reference_structure = {'__class__': self.__class__.__name__}
         all_extracted_arrays = {}
 
-        for name in init_params:
+        for name in self._cached_init_params:
             if name == 'self':
                 continue
 
@@ -140,73 +178,102 @@ class Interface:
                 continue
 
             # Extract arrays and get reference structure
-            processed_value, extracted_arrays = self._extract_dataarrays_recursive(value)
+            processed_value, extracted_arrays = self._extract_dataarrays_recursive(value, name)
+
+            # Check for array name conflicts
+            conflicts = set(all_extracted_arrays.keys()) & set(extracted_arrays.keys())
+            if conflicts:
+                raise ValueError(
+                    f'DataArray name conflicts detected: {conflicts}. '
+                    f'Each DataArray must have a unique name for serialization.'
+                )
 
             # Add extracted arrays to the collection
             all_extracted_arrays.update(extracted_arrays)
 
             # Only store in structure if it's not None/empty after processing
-            if processed_value is not None and not (isinstance(processed_value, (dict, list)) and not processed_value):
+            if processed_value is not None and not self._is_empty_container(processed_value):
                 reference_structure[name] = processed_value
 
         return reference_structure, all_extracted_arrays
 
-    def _extract_dataarrays_recursive(self, obj) -> Tuple[Any, Dict[str, xr.DataArray]]:
+    @staticmethod
+    def _is_empty_container(obj) -> bool:
+        """Check if object is an empty container (dict, list, tuple, set)."""
+        return isinstance(obj, (dict, list, tuple, set)) and len(obj) == 0
+
+    def _extract_dataarrays_recursive(self, obj, context_name: str = '') -> Tuple[Any, Dict[str, xr.DataArray]]:
         """
         Recursively extract DataArrays/TimeSeries from nested structures.
 
         Args:
             obj: Object to process
+            context_name: Name context for better error messages
 
         Returns:
             Tuple of (processed_object_with_references, extracted_arrays_dict)
+
+        Raises:
+            ValueError: If DataArrays don't have unique names
         """
         extracted_arrays = {}
 
         # Handle DataArrays directly - use their unique name
         if isinstance(obj, xr.DataArray):
             if not obj.name:
-                raise ValueError(f'DataArrays must have a unique name for serialization. Unnamed DataArrays are not supported. {obj}')
-            if obj.name in extracted_arrays:
-                raise ValueError(f' must have a unique name for serialization. "{obj.name}" is a duplicate. {obj}')
-            extracted_arrays[obj.name] = obj
-            return f':::{obj.name}', extracted_arrays
+                raise ValueError(
+                    f'DataArrays must have a unique name for serialization. '
+                    f'Unnamed DataArray found in {context_name}. Please set array.name = "unique_name"'
+                )
+
+            array_name = str(obj.name)  # Ensure string type
+            if array_name in extracted_arrays:
+                raise ValueError(
+                    f'DataArray name "{array_name}" is duplicated in {context_name}. '
+                    f'Each DataArray must have a unique name for serialization.'
+                )
+
+            extracted_arrays[array_name] = obj
+            return f':::{array_name}', extracted_arrays
 
         # Handle Interface objects - extract their DataArrays too
         elif isinstance(obj, Interface):
-            # Get the Interface's reference structure and arrays
-            interface_structure, interface_arrays = obj._create_reference_structure()
+            try:
+                interface_structure, interface_arrays = obj._create_reference_structure()
+                extracted_arrays.update(interface_arrays)
+                return interface_structure, extracted_arrays
+            except Exception as e:
+                raise ValueError(f'Failed to process nested Interface object in {context_name}: {e}') from e
 
-            # Add all extracted arrays from the nested Interface
-            extracted_arrays.update(interface_arrays)
-            return interface_structure, extracted_arrays
-
-        # Handle lists
-        elif isinstance(obj, list):
-            processed_list = []
-            for item in obj:
-                processed_item, nested_arrays = self._extract_dataarrays_recursive(item)
+        # Handle sequences (lists, tuples)
+        elif isinstance(obj, (list, tuple)):
+            processed_items = []
+            for i, item in enumerate(obj):
+                item_context = f'{context_name}[{i}]' if context_name else f'item[{i}]'
+                processed_item, nested_arrays = self._extract_dataarrays_recursive(item, item_context)
                 extracted_arrays.update(nested_arrays)
-                processed_list.append(processed_item)
-            return processed_list, extracted_arrays
+                processed_items.append(processed_item)
+            return processed_items, extracted_arrays
 
         # Handle dictionaries
         elif isinstance(obj, dict):
             processed_dict = {}
             for key, value in obj.items():
-                processed_value, nested_arrays = self._extract_dataarrays_recursive(value)
+                key_context = f'{context_name}.{key}' if context_name else str(key)
+                processed_value, nested_arrays = self._extract_dataarrays_recursive(value, key_context)
                 extracted_arrays.update(nested_arrays)
                 processed_dict[key] = processed_value
             return processed_dict, extracted_arrays
 
-        # Handle tuples (convert to list for JSON compatibility)
-        elif isinstance(obj, tuple):
-            processed_list = []
-            for item in obj:
-                processed_item, nested_arrays = self._extract_dataarrays_recursive(item)
+        # Handle sets (convert to list for JSON compatibility)
+        elif isinstance(obj, set):
+            processed_items = []
+            for i, item in enumerate(obj):
+                item_context = f'{context_name}.set_item[{i}]' if context_name else f'set_item[{i}]'
+                processed_item, nested_arrays = self._extract_dataarrays_recursive(item, item_context)
                 extracted_arrays.update(nested_arrays)
-                processed_list.append(processed_item)
-            return processed_list, extracted_arrays
+                processed_items.append(processed_item)
+            return processed_items, extracted_arrays
 
         # For all other types, serialize to basic types
         else:
@@ -222,28 +289,29 @@ class Interface:
             arrays_dict: Dictionary of available DataArrays
 
         Returns:
-            Structure with references resolved to actual DataArrays or TimeSeriesData objects
+            Structure with references resolved to actual DataArrays or objects
+
+        Raises:
+            ValueError: If referenced arrays are not found or class is not registered
         """
-        # Handle DataArray references (including TimeSeriesData)
+        # Handle DataArray references
         if isinstance(structure, str) and structure.startswith(':::'):
             array_name = structure[3:]  # Remove ":::" prefix
-            if array_name in arrays_dict:
-                array = arrays_dict[array_name]
+            if array_name not in arrays_dict:
+                raise ValueError(f"Referenced DataArray '{array_name}' not found in dataset")
 
-                #TODO: Improve this!
-                if array.isnull().any():
-                    logger.warning(f"DataArray '{array_name}' contains null values. Dropping them.")
-                    return array.dropna(dim='time', how='all')
-                return array
+            array = arrays_dict[array_name]
 
-                # Check if this should be restored as TimeSeriesData
-                if TimeSeriesData.is_timeseries_data(array):
-                    return TimeSeriesData.from_dataarray(array)
-                else:
-                    return array
-            else:
-                logger.critical(f"Referenced DataArray '{array_name}' not found in dataset")
-                return None
+            # Handle null values with warning
+            if array.isnull().any():
+                logger.warning(f"DataArray '{array_name}' contains null values. Dropping them.")
+                array = array.dropna(dim='time', how='all')
+
+            # Check if this should be restored as TimeSeriesData
+            if TimeSeriesData.is_timeseries_data(array):
+                return TimeSeriesData.from_dataarray(array)
+
+            return array
 
         elif isinstance(structure, list):
             resolved_list = []
@@ -254,15 +322,25 @@ class Interface:
             return resolved_list
 
         elif isinstance(structure, dict):
-            if structure.get('__class__') and structure['__class__'] in CLASS_REGISTRY:
+            if structure.get('__class__'):
+                class_name = structure['__class__']
+                if class_name not in CLASS_REGISTRY:
+                    raise ValueError(
+                        f"Class '{class_name}' not found in CLASS_REGISTRY. "
+                        f'Available classes: {list(CLASS_REGISTRY.keys())}'
+                    )
+
                 # This is a nested Interface object - restore it recursively
-                nested_class = CLASS_REGISTRY[structure['__class__']]
+                nested_class = CLASS_REGISTRY[class_name]
                 # Remove the __class__ key and process the rest
                 nested_data = {k: v for k, v in structure.items() if k != '__class__'}
                 # Resolve references in the nested data
                 resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
-                # Create the nested Interface object
-                return nested_class(**resolved_nested_data)
+
+                try:
+                    return nested_class(**resolved_nested_data)
+                except Exception as e:
+                    raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
             else:
                 # Regular dictionary - resolve references in values
                 resolved_dict = {}
@@ -276,21 +354,36 @@ class Interface:
             return structure
 
     def _serialize_to_basic_types(self, obj):
-        """Convert object to basic Python types only (no DataArrays, no custom objects)."""
+        """
+        Convert object to basic Python types only (no DataArrays, no custom objects).
+
+        Args:
+            obj: Object to serialize
+
+        Returns:
+            Object converted to basic Python types (str, int, float, bool, list, dict)
+        """
         if obj is None or isinstance(obj, (str, int, float, bool)):
             return obj
         elif isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.floating):
             return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
         elif isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame)):
             return obj.tolist() if hasattr(obj, 'tolist') else list(obj)
         elif isinstance(obj, dict):
             return {k: self._serialize_to_basic_types(v) for k, v in obj.items()}
         elif isinstance(obj, (list, tuple)):
             return [self._serialize_to_basic_types(item) for item in obj]
+        elif isinstance(obj, set):
+            return [self._serialize_to_basic_types(item) for item in obj]
         elif hasattr(obj, 'isoformat'):  # datetime objects
             return obj.isoformat()
+        elif hasattr(obj, '__dict__'):  # Custom objects with attributes
+            logger.warning(f'Converting custom object {type(obj)} to dict representation: {obj}')
+            return {str(k): self._serialize_to_basic_types(v) for k, v in obj.__dict__.items()}
         else:
             # For any other object, try to convert to string as fallback
             logger.warning(f'Converting unknown type {type(obj)} to string: {obj}')
@@ -303,12 +396,16 @@ class Interface:
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with basic objects only in attributes
-        """
-        reference_structure, extracted_arrays = self._create_reference_structure()
 
-        # Create the dataset with extracted arrays as variables and structure as attrs
-        ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
-        return ds
+        Raises:
+            ValueError: If serialization fails due to naming conflicts or invalid data
+        """
+        try:
+            reference_structure, extracted_arrays = self._create_reference_structure()
+            # Create the dataset with extracted arrays as variables and structure as attrs
+            return xr.Dataset(extracted_arrays, attrs=reference_structure)
+        except Exception as e:
+            raise ValueError(f'Failed to convert {self.__class__.__name__} to dataset: {e}') from e
 
     def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
         """
@@ -317,9 +414,16 @@ class Interface:
         Args:
             path: Path to save the NetCDF file
             compression: Compression level (0-9)
+
+        Raises:
+            ValueError: If serialization fails
+            IOError: If file cannot be written
         """
-        ds = self.to_dataset()
-        fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
+        try:
+            ds = self.to_dataset()
+            fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
+        except Exception as e:
+            raise IOError(f'Failed to save {self.__class__.__name__} to NetCDF file {path}: {e}') from e
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> 'Interface':
@@ -331,25 +435,31 @@ class Interface:
 
         Returns:
             Interface instance
+
+        Raises:
+            ValueError: If dataset format is invalid or class mismatch
         """
-        # Get class name and verify it matches
-        class_name = ds.attrs.get('__class__')
-        if class_name != cls.__name__:
-            logger.warning(f"Dataset class '{class_name}' doesn't match target class '{cls.__name__}'")
+        try:
+            # Get class name and verify it matches
+            class_name = ds.attrs.get('__class__')
+            if class_name and class_name != cls.__name__:
+                logger.warning(f"Dataset class '{class_name}' doesn't match target class '{cls.__name__}'")
 
-        # Get the reference structure from attrs
-        reference_structure = dict(ds.attrs)
+            # Get the reference structure from attrs
+            reference_structure = dict(ds.attrs)
 
-        # Remove the class name since it's not a constructor parameter
-        reference_structure.pop('__class__', None)
+            # Remove the class name since it's not a constructor parameter
+            reference_structure.pop('__class__', None)
 
-        # Create arrays dictionary from dataset variables
-        arrays_dict = {name: array for name, array in ds.data_vars.items()}
+            # Create arrays dictionary from dataset variables
+            arrays_dict = {name: array for name, array in ds.data_vars.items()}
 
-        # Resolve all references using the centralized method
-        resolved_params = cls._resolve_reference_structure(reference_structure, arrays_dict)
+            # Resolve all references using the centralized method
+            resolved_params = cls._resolve_reference_structure(reference_structure, arrays_dict)
 
-        return cls(**resolved_params)
+            return cls(**resolved_params)
+        except Exception as e:
+            raise ValueError(f'Failed to create {cls.__name__} from dataset: {e}') from e
 
     @classmethod
     def from_netcdf(cls, path: Union[str, pathlib.Path]) -> 'Interface':
@@ -361,18 +471,27 @@ class Interface:
 
         Returns:
             Interface instance
+
+        Raises:
+            IOError: If file cannot be read
+            ValueError: If file format is invalid
         """
-        ds = fx_io.load_dataset_from_netcdf(path)
-        return cls.from_dataset(ds)
+        try:
+            ds = fx_io.load_dataset_from_netcdf(path)
+            return cls.from_dataset(ds)
+        except Exception as e:
+            raise IOError(f'Failed to load {cls.__name__} from NetCDF file {path}: {e}') from e
 
     def get_structure(self, clean: bool = False) -> Dict:
         """
-        Get FlowSystem structure.
+        Get object structure as a dictionary.
 
         Args:
             clean: If True, remove None and empty dicts and lists.
-        """
 
+        Returns:
+            Dictionary representation of the object structure
+        """
         reference_structure, _ = self._create_reference_structure()
         if clean:
             return fx_io.remove_none_and_empty(reference_structure)
@@ -380,28 +499,55 @@ class Interface:
 
     def to_json(self, path: Union[str, pathlib.Path]):
         """
-        Save the Element to a JSON file using the Interface pattern.
+        Save the object to a JSON file.
         This is meant for documentation and comparison, not for reloading.
 
         Args:
             path: The path to the JSON file.
+
+        Raises:
+            IOError: If file cannot be written
         """
-        # Use the stats mode for JSON export (cleaner output)
-        data = get_compact_representation(self.get_structure(clean=True))
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        try:
+            # Use the stats mode for JSON export (cleaner output)
+            data = get_compact_representation(self.get_structure(clean=True))
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            raise IOError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
 
     def __repr__(self):
-        # Get the constructor arguments and their current values
-        init_signature = inspect.signature(self.__init__)
-        init_args = init_signature.parameters
+        """Return a detailed string representation for debugging."""
+        try:
+            # Get the constructor arguments and their current values
+            init_signature = inspect.signature(self.__init__)
+            init_args = init_signature.parameters
 
-        # Create a dictionary with argument names and their values
-        args_str = ', '.join(f'{name}={repr(getattr(self, name, None))}' for name in init_args if name != 'self')
-        return f'{self.__class__.__name__}({args_str})'
+            # Create a dictionary with argument names and their values, with better formatting
+            args_parts = []
+            for name in init_args:
+                if name == 'self':
+                    continue
+                value = getattr(self, name, None)
+                # Truncate long representations
+                value_repr = repr(value)
+                if len(value_repr) > 50:
+                    value_repr = value_repr[:47] + '...'
+                args_parts.append(f'{name}={value_repr}')
+
+            args_str = ', '.join(args_parts)
+            return f'{self.__class__.__name__}({args_str})'
+        except Exception:
+            # Fallback if introspection fails
+            return f'{self.__class__.__name__}(<repr_failed>)'
 
     def __str__(self):
-        return get_str_representation(self.get_structure(clean=True))
+        """Return a user-friendly string representation."""
+        try:
+            return get_str_representation(self.get_structure(clean=True))
+        except Exception:
+            # Fallback if structure generation fails
+            return f'{self.__class__.__name__} instance'
 
 
 class Element(Interface):
