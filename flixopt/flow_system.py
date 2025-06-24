@@ -324,16 +324,13 @@ class FlowSystem:
         )
 
         # Add elements using resolved data
-        for bus_data in resolved_data.get('buses', {}).values():
-            bus = Bus.from_dict(bus_data)
+        for bus in resolved_data.get('buses', {}).values():
             flow_system.add_elements(bus)
 
-        for effect_data in resolved_data.get('effects', {}).values():
-            effect = Effect.from_dict(effect_data)
+        for effect in resolved_data.get('effects', {}).values():
             flow_system.add_elements(effect)
 
-        for comp_data in resolved_data.get('components', {}).values():
-            component = CLASS_REGISTRY[comp_data['__class__']].from_dict(comp_data)
+        for component in resolved_data.get('components', {}).values():
             flow_system.add_elements(component)
 
         flow_system.transform_data()
