@@ -96,43 +96,64 @@ class DataConverter:
 
 
 class TimeSeriesData:
-    # TODO: Move to Interface.py
-    def __init__(self, data: NumericData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
-        """
-        timeseries class for transmit timeseries AND special characteristics of timeseries,
-        i.g. to define weights needed in calculation_type 'aggregated'
-            EXAMPLE solar:
-            you have several solar timeseries. These should not be overweighted
-            compared to the remaining timeseries (i.g. heat load, price)!
-            fixed_relative_profile_solar1 = TimeSeriesData(sol_array_1, type = 'solar')
-            fixed_relative_profile_solar2 = TimeSeriesData(sol_array_2, type = 'solar')
-            fixed_relative_profile_solar3 = TimeSeriesData(sol_array_3, type = 'solar')
-            --> this 3 series of same type share one weight, i.e. internally assigned each weight = 1/3
-            (instead of standard weight = 1)
+    """Minimal wrapper around xr.DataArray with aggregation metadata."""
 
+    def __init__(
+        self,
+        data: Union[NumericData, xr.DataArray],
+        agg_group: Optional[str] = None,
+        agg_weight: Optional[float] = None,
+    ):
+        """
         Args:
-            data: The timeseries data, which can be a scalar, array, or numpy array.
-            agg_group: The group this TimeSeriesData is a part of. agg_weight is split between members of a group. Default is None.
-            agg_weight: The weight for calculation_type 'aggregated', should be between 0 and 1. Default is None.
-
-        Raises:
-            Exception: If both agg_group and agg_weight are set, an exception is raised.
+            data: Numeric data or DataArray
+            agg_group: Aggregation group name
+            agg_weight: Aggregation weight (0-1)
         """
-        self.data = data
+        if (agg_group is not None) and (agg_weight is not None):
+            raise ValueError('Use either agg_group or agg_weight, not both')
+
         self.agg_group = agg_group
         self.agg_weight = agg_weight
-        if (agg_group is not None) and (agg_weight is not None):
-            raise ValueError('Either <agg_group> or explicit <agg_weigth> can be used. Not both!')
-        self.label: Optional[str] = None
+
+        # Store as DataArray
+        if isinstance(data, xr.DataArray):
+            self.data = data
+        else:
+            # Simple conversion - let caller handle timesteps/coords
+            self.data = xr.DataArray(np.asarray(data))
+
+    @property
+    def label(self) -> Optional[str]:
+        return self.data.name
+
+    @label.setter
+    def label(self, value: Optional[str]):
+        self.data.name = value
+
+    def to_dataarray(self) -> xr.DataArray:
+        """Return the DataArray with metadata in attrs."""
+        attrs = {}
+        if self.agg_group is not None:
+            attrs['agg_group'] = self.agg_group
+        if self.agg_weight is not None:
+            attrs['agg_weight'] = self.agg_weight
+
+        da = self.data.copy()
+        da.attrs.update(attrs)
+        return da
+
+    @classmethod
+    def from_dataarray(cls, da: xr.DataArray) -> 'TimeSeriesData':
+        """Create from DataArray, extracting metadata from attrs."""
+        return cls(data=da, agg_group=da.attrs.get('agg_group'), agg_weight=da.attrs.get('agg_weight'))
+
+    def __getattr__(self, name):
+        """Delegate to underlying DataArray."""
+        return getattr(self.data, name)
 
     def __repr__(self):
-        # Get the constructor arguments and their current values
-        init_signature = inspect.signature(self.__init__)
-        init_args = init_signature.parameters
-
-        # Create a dictionary with argument names and their values
-        args_str = ', '.join(f'{name}={repr(getattr(self, name, None))}' for name in init_args if name != 'self')
-        return f'{self.__class__.__name__}({args_str})'
+        return f'TimeSeriesData(agg_group={self.agg_group!r}, agg_weight={self.agg_weight!r})'
 
     def __str__(self):
         return str(self.data)
