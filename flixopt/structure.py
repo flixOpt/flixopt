@@ -20,6 +20,7 @@ from rich.pretty import Pretty
 
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeriesCollection, TimeSeries
+from . import io as fx_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -311,8 +312,6 @@ class Interface:
             path: Path to save the NetCDF file
             compression: Compression level (0-9)
         """
-        from . import io as fx_io  # Assuming fx_io is available
-
         ds = self.to_dataset()
         fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
 
@@ -357,10 +356,34 @@ class Interface:
         Returns:
             Interface instance
         """
-        from . import io as fx_io  # Assuming fx_io is available
-
         ds = fx_io.load_dataset_from_netcdf(path)
         return cls.from_dataset(ds)
+
+    def get_structure(self, clean: bool = False) -> Dict:
+        """
+        Get FlowSystem structure.
+
+        Args:
+            clean: If True, remove None and empty dicts and lists.
+        """
+
+        reference_structure, _ = self._create_reference_structure()
+        if clean:
+            return fx_io.remove_none_and_empty(reference_structure)
+        return reference_structure
+
+    def to_json(self, path: Union[str, pathlib.Path]):
+        """
+        Save the Element to a JSON file using the Interface pattern.
+        This is meant for documentation and comparison, not for reloading.
+
+        Args:
+            path: The path to the JSON file.
+        """
+        # Use the stats mode for JSON export (cleaner output)
+        data = get_compact_representation(self.get_structure(clean=True))
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
 
     def __repr__(self):
         # Get the constructor arguments and their current values
@@ -372,7 +395,7 @@ class Interface:
         return f'{self.__class__.__name__}({args_str})'
 
     def __str__(self):
-        return get_str_representation(self.infos(use_numpy=True, use_element_label=True))
+        return get_str_representation(self.get_structure(clean=True))
 
 
 class Element(Interface):
