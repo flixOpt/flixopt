@@ -303,41 +303,6 @@ class Interface:
         ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
         return ds
 
-    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
-        """
-        Generate a dictionary representation of the object's constructor arguments.
-        Built on top of dataset creation for better consistency and analytics capabilities.
-
-        Args:
-            use_numpy: Whether to convert NumPy arrays to lists. Defaults to True.
-                If True, numeric numpy arrays are preserved as-is.
-                If False, they are converted to lists.
-            use_element_label: Whether to use element labels instead of full infos for nested objects.
-
-        Returns:
-            A dictionary representation optimized for documentation and analysis.
-        """
-        # Get the core dataset representation
-        ds = self.to_dataset()
-
-        # Start with the reference structure from attrs
-        info_dict = dict(ds.attrs)
-
-        # Process DataArrays in the dataset based on preferences
-        for var_name, data_array in ds.data_vars.items():
-            if use_numpy:
-                # Keep as DataArray/numpy for analysis
-                info_dict[f'_data_{var_name}'] = data_array
-            else:
-                # Convert to lists for JSON compatibility
-                info_dict[f'_data_{var_name}'] = data_array.values.tolist()
-
-        # Apply element label preference to nested structures
-        if use_element_label:
-            info_dict = self._apply_element_label_preference(info_dict)
-
-        return info_dict
-
     def _apply_element_label_preference(self, obj):
         """Apply element label preference to nested structures."""
         if isinstance(obj, dict):

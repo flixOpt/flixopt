@@ -72,12 +72,6 @@ class Component(Element):
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
 
-    def infos(self, use_numpy=True, use_element_label: bool = False) -> Dict:
-        infos = super().infos(use_numpy, use_element_label)
-        infos['inputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.inputs]
-        infos['outputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.outputs]
-        return infos
-
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
 
@@ -252,11 +246,6 @@ class Flow(Element):
             self.on_off_parameters.transform_data(flow_system, self.label_full)
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system)
-
-    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
-        infos = super().infos(use_numpy, use_element_label)
-        infos['is_input_in_component'] = self.is_input_in_component
-        return infos
 
     def to_dict(self) -> Dict:
         data = super().to_dict()
