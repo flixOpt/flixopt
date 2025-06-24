@@ -50,11 +50,12 @@ def test_flow_system_file_io(flow_system, highs_solver):
 
 
 def test_flow_system_io(flow_system):
-    di = flow_system.to_dict()
-    _ = fx.FlowSystem.from_dict(di)
+    flow_system.to_json('fs.json')
 
     ds = flow_system.to_dataset()
-    _ = fx.FlowSystem.from_dataset(ds)
+    new_fs = fx.FlowSystem.from_dataset(ds)
+
+    assert flow_system == new_fs
 
     print(flow_system)
     flow_system.__repr__()
