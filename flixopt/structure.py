@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeriesCollection, TimeSeriesData, TimeSeries
+from .core import NumericData, Scalar, TimeSeriesCollection, TimeSeries
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -162,14 +162,8 @@ class Interface:
         """
         extracted_arrays = {}
 
-        # Handle TimeSeries objects - extract their data using their unique name
-        if isinstance(obj, TimeSeries):
-            data_array = obj.rename(obj.name)
-            extracted_arrays[obj.name] = data_array
-            return f':::{obj.name}', extracted_arrays
-
         # Handle DataArrays directly - use their unique name
-        elif isinstance(obj, xr.DataArray):
+        if isinstance(obj, xr.DataArray):
             if not obj.name:
                 raise ValueError('DataArray must have a unique name for serialization')
             extracted_arrays[obj.name] = obj
@@ -222,12 +216,13 @@ class Interface:
         Convert reference structure back to actual objects using provided arrays.
 
         Args:
-            structure: Structure containing references (:::name)
+            structure: Structure containing references (:::name) or special type markers
             arrays_dict: Dictionary of available DataArrays
 
         Returns:
-            Structure with references resolved to actual DataArrays
+            Structure with references resolved to actual DataArrays or TimeSeriesData objects
         """
+        # Handle regular DataArray references
         if isinstance(structure, str) and structure.startswith(':::'):
             # This is a reference to a DataArray
             array_name = structure[3:]  # Remove ":::" prefix
@@ -246,7 +241,6 @@ class Interface:
             return resolved_list
 
         elif isinstance(structure, dict):
-            # Check if this is a serialized Interface object
             if structure.get('__class__') and structure['__class__'] in CLASS_REGISTRY:
                 # This is a nested Interface object - restore it recursively
                 nested_class = CLASS_REGISTRY[structure['__class__']]
@@ -256,6 +250,7 @@ class Interface:
                 resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
                 # Create the nested Interface object
                 return nested_class(**resolved_nested_data)
+
             else:
                 # Regular dictionary - resolve references in values
                 resolved_dict = {}
@@ -355,6 +350,9 @@ class Interface:
             if obj.get('__class__') and 'label' in obj:
                 # This looks like an Interface with a label - return just the label
                 return obj.get('label', obj.get('__class__'))
+            elif obj.get('__class__') == 'TimeSeriesData':
+                # For TimeSeriesData, show a compact representation
+                return f'TimeSeriesData(agg_group={obj.get("agg_group")}, agg_weight={obj.get("agg_weight")})'
             else:
                 return {k: self._apply_element_label_preference(v) for k, v in obj.items()}
         elif isinstance(obj, list):
@@ -664,6 +662,65 @@ class ElementModel(Model):
             'variables': list(self.variables),
             'constraints': list(self.constraints),
         }
+
+
+class TimeSeriesData(xr.DataArray):
+    """Minimal TimeSeriesData that inherits from xr.DataArray with aggregation metadata."""
+
+    def __init__(self, *args, agg_group: Optional[str] = None, agg_weight: Optional[float] = None, **kwargs):
+        """
+        Args:
+            *args: Arguments passed to DataArray
+            agg_group: Aggregation group name
+            agg_weight: Aggregation weight (0-1)
+            **kwargs: Additional arguments passed to DataArray
+        """
+        if (agg_group is not None) and (agg_weight is not None):
+            raise ValueError('Use either agg_group or agg_weight, not both')
+
+        # Let xarray handle all the initialization complexity
+        super().__init__(*args, **kwargs)
+
+        # Add our metadata to attrs after initialization
+        if agg_group is not None:
+            self.attrs['agg_group'] = agg_group
+        if agg_weight is not None:
+            self.attrs['agg_weight'] = agg_weight
+
+        # Always mark as TimeSeriesData
+        self.attrs['__timeseries_data__'] = True
+
+    @property
+    def agg_group(self) -> Optional[str]:
+        return self.attrs.get('agg_group')
+
+    @property
+    def agg_weight(self) -> Optional[float]:
+        return self.attrs.get('agg_weight')
+
+    @classmethod
+    def from_dataarray(cls, da: xr.DataArray, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
+        """Create TimeSeriesData from DataArray, extracting metadata from attrs."""
+        # Get aggregation metadata from attrs or parameters
+        final_agg_group = agg_group if agg_group is not None else da.attrs.get('agg_group')
+        final_agg_weight = agg_weight if agg_weight is not None else da.attrs.get('agg_weight')
+
+        return cls(da, agg_group=final_agg_group, agg_weight=final_agg_weight)
+
+    @classmethod
+    def is_timeseries_data(cls, obj) -> bool:
+        """Check if an object is TimeSeriesData."""
+        return isinstance(obj, xr.DataArray) and obj.attrs.get('__timeseries_data__', False)
+
+    def __repr__(self):
+        agg_info = []
+        if self.agg_group:
+            agg_info.append(f"agg_group='{self.agg_group}'")
+        if self.agg_weight is not None:
+            agg_info.append(f'agg_weight={self.agg_weight}')
+
+        info_str = f'TimeSeriesData({", ".join(agg_info)})' if agg_info else 'TimeSeriesData'
+        return f'{info_str}\n{super().__repr__()}'
 
 
 def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_label: bool = False) -> Any:

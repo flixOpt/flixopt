@@ -16,10 +16,10 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import NumericData, NumericDataTS, TimeSeriesCollection, TimeSeriesData, TimeSeries
+from .core import NumericData, NumericDataTS, TimeSeriesCollection, TimeSeries
 from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
 from .elements import Bus, Component, Flow
-from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation
+from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation, TimeSeriesData
 
 if TYPE_CHECKING:
     import pyvis

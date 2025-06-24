@@ -95,73 +95,10 @@ class DataConverter:
             raise ConversionError(f'Converting data {type(data)} to xarray.Dataset raised an error: {str(e)}') from e
 
 
-class TimeSeriesData:
-    """Minimal wrapper around xr.DataArray with aggregation metadata."""
-
-    def __init__(
-        self,
-        data: Union[NumericData, xr.DataArray],
-        agg_group: Optional[str] = None,
-        agg_weight: Optional[float] = None,
-    ):
-        """
-        Args:
-            data: Numeric data or DataArray
-            agg_group: Aggregation group name
-            agg_weight: Aggregation weight (0-1)
-        """
-        if (agg_group is not None) and (agg_weight is not None):
-            raise ValueError('Use either agg_group or agg_weight, not both')
-
-        self.agg_group = agg_group
-        self.agg_weight = agg_weight
-
-        # Store as DataArray
-        if isinstance(data, xr.DataArray):
-            self.data = data
-        else:
-            # Simple conversion - let caller handle timesteps/coords
-            self.data = xr.DataArray(np.asarray(data))
-
-    @property
-    def label(self) -> Optional[str]:
-        return self.data.name
-
-    @label.setter
-    def label(self, value: Optional[str]):
-        self.data.name = value
-
-    def to_dataarray(self) -> xr.DataArray:
-        """Return the DataArray with metadata in attrs."""
-        attrs = {}
-        if self.agg_group is not None:
-            attrs['agg_group'] = self.agg_group
-        if self.agg_weight is not None:
-            attrs['agg_weight'] = self.agg_weight
-
-        da = self.data.copy()
-        da.attrs.update(attrs)
-        return da
-
-    @classmethod
-    def from_dataarray(cls, da: xr.DataArray) -> 'TimeSeriesData':
-        """Create from DataArray, extracting metadata from attrs."""
-        return cls(data=da, agg_group=da.attrs.get('agg_group'), agg_weight=da.attrs.get('agg_weight'))
-
-    def __getattr__(self, name):
-        """Delegate to underlying DataArray."""
-        return getattr(self.data, name)
-
-    def __repr__(self):
-        return f'TimeSeriesData(agg_group={self.agg_group!r}, agg_weight={self.agg_weight!r})'
-
-    def __str__(self):
-        return str(self.data)
-
-
 class TimeSeries:
     def __init__(self):
         raise NotImplementedError('TimeSeries was removed')
+
 
 class TimeSeriesCollection:
     """
@@ -173,6 +110,7 @@ class TimeSeriesCollection:
 
     def __init__(self):
         raise NotImplementedError('TimeSeriesCollection was removed')
+
 
 def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10) -> str:
     """Calculates the mean, median, min, max, and standard deviation of a numeric DataArray."""
