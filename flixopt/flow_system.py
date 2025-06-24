@@ -546,28 +546,32 @@ class FlowSystem:
         return (
             f'FlowSystem({len(self.timesteps)} timesteps '
             f'[{self.timesteps[0].strftime("%Y-%m-%d")} to {self.timesteps[-1].strftime("%Y-%m-%d")}], '
-            f'{len(self.components)} Components / {len(self.buses)} Buses / {len(self.effects)} Effects, {status})'
+            f'{len(self.components)} Components,  {len(self.buses)} Buses, {len(self.effects)} Effects, {status})'
         )
 
     def __str__(self) -> str:
         """Structured summary for users."""
 
-        def format_elements(parts: list, label: str):
-            if not parts:
-                return f'{label}:{"":>8} {len(parts)}'
-            name_list = ', '.join(parts[:3])
-            if len(parts) > 3:
-                name_list += f' ... (+{len(parts) - 3} more)'
-            return f'{label}:{"":>8} {len(parts)} ({name_list})'
+        def format_elements(element_names: list, label: str, alignment: int = 12):
+            name_list = ', '.join(element_names[:3])
+            if len(element_names) > 3:
+                name_list += f' ... (+{len(element_names) - 3} more)'
+
+            suffix = f' ({name_list})' if element_names else ''
+            padding = alignment - len(label) - 1  # -1 for the colon
+            return f'{label}:{"":<{padding}} {len(element_names)}{suffix}'
+
+        time_period = f'Time period: {self.timesteps[0].date()} to {self.timesteps[-1].date()}'
+        freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
 
         lines = [
             f'FlowSystem Overview:',
             f'{"─" * 50}',
-            f'Time period: {self.timesteps[0].date()} to {self.timesteps[-1].date()}',
-            f'Timesteps:   {len(self.timesteps)} ({self.timesteps.freq or "irregular frequency"})',
-            format_elements(list(self.components), 'Components'),
-            format_elements(list(self.buses), 'Buses'),
-            format_elements(list(self.effects.effects), 'Effects'),
+            time_period,
+            f'Timesteps:   {len(self.timesteps)} ({freq_str})',
+            format_elements(list(self.components.keys()), 'Components'),
+            format_elements(list(self.buses.keys()), 'Buses'),
+            format_elements(list(self.effects.effects.keys()), 'Effects'),
             f'Status:      {"Connected & Transformed" if self._connected_and_transformed else "Not connected"}',
         ]
 
