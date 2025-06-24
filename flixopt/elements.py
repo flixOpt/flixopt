@@ -247,12 +247,6 @@ class Flow(Element):
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system)
 
-    def to_dict(self) -> Dict:
-        data = super().to_dict()
-        if isinstance(data.get('previous_flow_rate'), np.ndarray):
-            data['previous_flow_rate'] = data['previous_flow_rate'].tolist()
-        return data
-
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
         if np.any(self.relative_minimum > self.relative_maximum):

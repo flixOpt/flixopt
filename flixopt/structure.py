@@ -303,19 +303,6 @@ class Interface:
         ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
         return ds
 
-    def _apply_element_label_preference(self, obj):
-        """Apply element label preference to nested structures."""
-        if isinstance(obj, dict):
-            if obj.get('__class__') and 'label' in obj:
-                # This looks like an Interface with a label - return just the label
-                return obj.get('label', obj.get('__class__'))
-            else:
-                return {k: self._apply_element_label_preference(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._apply_element_label_preference(item) for item in obj]
-        else:
-            return obj
-
     def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
         """
         Save the object to a NetCDF file.
@@ -374,24 +361,6 @@ class Interface:
 
         ds = fx_io.load_dataset_from_netcdf(path)
         return cls.from_dataset(ds)
-
-    @classmethod
-    def from_dict(cls, data: Dict) -> 'Interface':
-        """
-        Create an instance from a dictionary representation.
-        This is now a thin wrapper around the reference resolution system.
-
-        Args:
-            data: Dictionary containing the data for the object.
-        """
-        class_name = data.pop('__class__', None)
-        if class_name and class_name != cls.__name__:
-            logger.warning(f"Dict class '{class_name}' doesn't match target class '{cls.__name__}'")
-
-        # Since dict format doesn't separate arrays, resolve with empty arrays dict
-        # References in dict format would need to be handled differently if they exist
-        resolved_params = cls._resolve_reference_structure(data, {})
-        return cls(**resolved_params)
 
     def __repr__(self):
         # Get the constructor arguments and their current values
