@@ -129,7 +129,7 @@ class FlowSystem:
         # Extract from components
         components_structure = {}
         for comp_label, component in self.components.items():
-            comp_structure, comp_arrays = self._extract_from_interface(component)
+            comp_structure, comp_arrays = component._create_reference_structure()
             all_extracted_arrays.update(comp_arrays)
             components_structure[comp_label] = comp_structure
         reference_structure['components'] = components_structure
@@ -137,7 +137,7 @@ class FlowSystem:
         # Extract from buses
         buses_structure = {}
         for bus_label, bus in self.buses.items():
-            bus_structure, bus_arrays = self._extract_from_interface(bus)
+            bus_structure, bus_arrays = bus._create_reference_structure()
             all_extracted_arrays.update(bus_arrays)
             buses_structure[bus_label] = bus_structure
         reference_structure['buses'] = buses_structure
@@ -145,21 +145,12 @@ class FlowSystem:
         # Extract from effects
         effects_structure = {}
         for effect in self.effects:
-            effect_structure, effect_arrays = self._extract_from_interface(effect)
+            effect_structure, effect_arrays = effect._create_reference_structure()
             all_extracted_arrays.update(effect_arrays)
             effects_structure[effect.label] = effect_structure
         reference_structure['effects'] = effects_structure
 
         return reference_structure, all_extracted_arrays
-
-    def _extract_from_interface(self, interface_obj) -> Tuple[Dict, Dict[str, xr.DataArray]]:
-        """Extract arrays from an Interface object using its reference system."""
-        if hasattr(interface_obj, '_create_reference_structure'):
-            return interface_obj._create_reference_structure()
-        else:
-            # Fallback for objects that don't have the new Interface methods
-            logger.warning(f"Object {interface_obj} doesn't have _create_reference_structure method")
-            return interface_obj.to_dict(), {}
 
     @classmethod
     def _resolve_reference_structure(cls, structure, arrays_dict: Dict[str, xr.DataArray]):
@@ -212,7 +203,7 @@ class FlowSystem:
         else:
             return structure
 
-    def to_dataset(self, constants_in_dataset: bool = True) -> xr.Dataset:
+    def to_dataset(self) -> xr.Dataset:
         """
         Convert the FlowSystem to an xarray Dataset using the Interface pattern.
         All DataArrays become dataset variables, structure goes to attrs.
@@ -232,25 +223,6 @@ class FlowSystem:
         # Create the dataset with extracted arrays as variables and structure as attrs
         ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
         return ds
-
-    def to_dict(self, data_mode: Literal['data', 'name', 'stats'] = 'data') -> Dict:
-        """
-        Convert the object to a dictionary representation.
-        Now builds on the reference structure for consistency.
-        """
-        if not self._connected_and_transformed:
-            logger.warning('FlowSystem is not connected. Calling connect() now.')
-            self.connect_and_transform()
-
-        reference_structure, _ = self._create_reference_structure()
-
-        if data_mode == 'data':
-            return reference_structure
-        elif data_mode == 'stats':
-            # For stats mode, we might want to process the structure further
-            return fx_io.remove_none_and_empty(reference_structure)
-        else:  # name mode
-            return reference_structure
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> 'FlowSystem':
@@ -310,49 +282,7 @@ class FlowSystem:
 
         return flow_system
 
-    @classmethod
-    def from_dict(cls, data: Dict) -> 'FlowSystem':
-        """
-        Load a FlowSystem from a dictionary using the Interface pattern.
-
-        Args:
-            data: Dictionary containing the FlowSystem data.
-        """
-        # For dict format, resolve with empty arrays (references may not be used)
-        resolved_data = cls._resolve_reference_structure(data, {})
-
-        # Extract constructor parameters
-        timesteps_extra = pd.DatetimeIndex(resolved_data['timesteps_extra'], name='time')
-        hours_of_last_timestep = float((timesteps_extra[-1] - timesteps_extra[-2]) / pd.Timedelta(hours=1))
-
-        flow_system = cls(
-            timesteps=timesteps_extra[:-1],
-            hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=resolved_data['hours_of_previous_timesteps'],
-        )
-
-        # Add elements using resolved data
-        for bus in resolved_data.get('buses', {}).values():
-            flow_system.add_elements(bus)
-
-        for effect in resolved_data.get('effects', {}).values():
-            flow_system.add_elements(effect)
-
-        for component in resolved_data.get('components', {}).values():
-            flow_system.add_elements(component)
-
-        flow_system.connect_and_transform()
-        return flow_system
-
-    @classmethod
-    def from_netcdf(cls, path: Union[str, pathlib.Path]) -> 'FlowSystem':
-        """
-        Load a FlowSystem from a netcdf file using the Interface pattern.
-        """
-        ds = fx_io.load_dataset_from_netcdf(path)
-        return cls.from_dataset(ds)
-
-    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0, constants_in_dataset: bool = True):
+    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
         """
         Save the FlowSystem to a NetCDF file using the Interface pattern.
 
@@ -365,9 +295,34 @@ class FlowSystem:
             logger.warning('FlowSystem is not connected. Calling connect() now.')
             self.connect_and_transform()
 
-        ds = self.to_dataset(constants_in_dataset=constants_in_dataset)
+        ds = self.to_dataset()
         fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
         logger.info(f'Saved FlowSystem to {path}')
+
+    @classmethod
+    def from_netcdf(cls, path: Union[str, pathlib.Path]) -> 'FlowSystem':
+        """
+        Load a FlowSystem from a netcdf file using the Interface pattern.
+        """
+        ds = fx_io.load_dataset_from_netcdf(path)
+        return cls.from_dataset(ds)
+
+    def get_structure(self, clean: bool = False) -> Dict:
+        """
+        Get FlowSystem structure.
+
+        Args:
+            clean: If True, remove None and empty dicts and lists.
+        """
+        if not self._connected_and_transformed:
+            logger.warning('FlowSystem is not connected. Calling connect() now.')
+            self.connect_and_transform()
+
+        reference_structure, _ = self._create_reference_structure()
+        if clean:
+            return fx_io.remove_none_and_empty(reference_structure)
+        else:
+            return reference_structure
 
     def to_json(self, path: Union[str, pathlib.Path]):
         """
@@ -381,7 +336,7 @@ class FlowSystem:
             logger.warning('FlowSystem needs to be connected and transformed before saving to JSON. Calling connect_and_transform() now.')
             self.connect_and_transform()
         # Use the stats mode for JSON export (cleaner output)
-        data = get_compact_representation(self.to_dict('stats'))
+        data = get_compact_representation(self.get_structure(clean=True))
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
@@ -446,6 +401,7 @@ class FlowSystem:
             self._connect_network()
             for element in self.all_elements.values():
                 element.transform_data(self)
+        self._connected_and_transformed = True
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -590,9 +546,27 @@ class FlowSystem:
     def __str__(self):
         with StringIO() as output_buffer:
             console = Console(file=output_buffer, width=1000)  # Adjust width as needed
-            console.print(Pretty(self.to_dict('stats'), expand_all=True, indent_guides=True))
+            console.print(Pretty(self.get_structure(clean=True), expand_all=True, indent_guides=True))
             value = output_buffer.getvalue()
         return value
+
+    def __eq__(self, other: 'FlowSystem'):
+        """Check if two FlowSystems are equal by comparing their dataset representations."""
+        if not isinstance(other, FlowSystem):
+            raise NotImplementedError('Comparison with other types is not implemented for class FlowSystem')
+
+        ds_me = self.to_dataset()
+        ds_other = other.to_dataset()
+
+        try:
+            xr.testing.assert_equal(ds_me, ds_other)
+        except AssertionError:
+            return False
+
+        if ds_me.attrs != ds_other.attrs:
+            return False
+
+        return True
 
     @property
     def flows(self) -> Dict[str, Flow]:

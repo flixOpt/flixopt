@@ -303,17 +303,6 @@ class Interface:
         ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
         return ds
 
-    def to_dict(self) -> Dict:
-        """
-        Convert the object to a dictionary representation.
-        DataArrays/TimeSeries are converted to references, but structure is preserved.
-
-        Returns:
-            Dict: Dictionary with references to DataArrays/TimeSeries
-        """
-        reference_structure, _ = self._create_reference_structure()
-        return reference_structure
-
     def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
         """
         Generate a dictionary representation of the object's constructor arguments.
@@ -361,18 +350,6 @@ class Interface:
             return [self._apply_element_label_preference(item) for item in obj]
         else:
             return obj
-
-    def to_json(self, path: Union[str, pathlib.Path]):
-        """
-        Save the element to a JSON file for documentation purposes.
-        Uses the infos() method for consistent representation.
-
-        Args:
-            path: The path to the JSON file.
-        """
-        data = get_compact_representation(self.infos(use_numpy=False, use_element_label=True))
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
 
     def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
         """

@@ -8,10 +8,10 @@ from typing import Dict, Optional
 import numpy as np
 
 from .components import LinearConverter
-from .core import NumericDataTS
+from .core import NumericDataTS, TimeSeriesData
 from .elements import Flow
 from .interface import OnOffParameters
-from .structure import register_class_for_io, TimeSeriesData
+from .structure import register_class_for_io
 
 logger = logging.getLogger('flixopt')
 
