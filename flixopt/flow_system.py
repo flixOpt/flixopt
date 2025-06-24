@@ -540,15 +540,38 @@ class FlowSystem:
             f'via {len(self.flows)} Flows inside the FlowSystem.'
         )
 
-    def __repr__(self):
-        return f'<{self.__class__.__name__} with {len(self.components)} components and {len(self.effects)} effects>'
+    def __repr__(self) -> str:
+        """Compact representation for debugging."""
+        status = '✓' if self._connected_and_transformed else '⚠'
+        return (
+            f'FlowSystem({len(self.timesteps)} timesteps '
+            f'[{self.timesteps[0].strftime("%Y-%m-%d")} to {self.timesteps[-1].strftime("%Y-%m-%d")}], '
+            f'{len(self.components)} Components / {len(self.buses)} Buses / {len(self.effects)} Effects, {status})'
+        )
 
-    def __str__(self):
-        with StringIO() as output_buffer:
-            console = Console(file=output_buffer, width=1000)  # Adjust width as needed
-            console.print(Pretty(self.get_structure(clean=True), expand_all=True, indent_guides=True))
-            value = output_buffer.getvalue()
-        return value
+    def __str__(self) -> str:
+        """Structured summary for users."""
+
+        def format_elements(parts: list, label: str):
+            if not parts:
+                return f'{label}:{"":>8} {len(parts)}'
+            name_list = ', '.join(parts[:3])
+            if len(parts) > 3:
+                name_list += f' ... (+{len(parts) - 3} more)'
+            return f'{label}:{"":>8} {len(parts)} ({name_list})'
+
+        lines = [
+            f'FlowSystem Overview:',
+            f'{"─" * 50}',
+            f'Time period: {self.timesteps[0].date()} to {self.timesteps[-1].date()}',
+            f'Timesteps:   {len(self.timesteps)} ({self.timesteps.freq or "irregular frequency"})',
+            format_elements(list(self.components), 'Components'),
+            format_elements(list(self.buses), 'Buses'),
+            format_elements(list(self.effects.effects), 'Effects'),
+            f'Status:      {"Connected & Transformed" if self._connected_and_transformed else "Not connected"}',
+        ]
+
+        return '\n'.join(lines)
 
     def __eq__(self, other: 'FlowSystem'):
         """Check if two FlowSystems are equal by comparing their dataset representations."""
