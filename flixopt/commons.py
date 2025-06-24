@@ -18,7 +18,7 @@ from .effects import Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
-from .structure import TimeSeriesData
+from .core import TimeSeriesData
 
 __all__ = [
     'TimeSeriesData',

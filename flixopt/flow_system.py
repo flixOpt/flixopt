@@ -16,10 +16,10 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import NumericData, NumericDataTS, TimeSeriesCollection, TimeSeries
+from .core import NumericData, NumericDataTS, TimeSeriesCollection, TimeSeries, DataConverter, ConversionError, TimeSeriesData
 from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
 from .elements import Bus, Component, Flow
-from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation, TimeSeriesData
+from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation
 
 if TYPE_CHECKING:
     import pyvis
@@ -394,18 +394,16 @@ class FlowSystem:
         # Choose appropriate timesteps
         target_timesteps = self.timesteps_extra if needs_extra_timestep else self.timesteps
 
-        if isinstance(data, TimeSeries):
-            # Extract the data and rename
-            return data.selected_data.rename(name)
-        elif isinstance(data, TimeSeriesData):
-            # Convert TimeSeriesData to DataArray
-            from .core import DataConverter  # Assuming this exists
-
-            return DataConverter.to_dataarray(data.data, timesteps=target_timesteps).rename(name)
+        if isinstance(data, TimeSeriesData):
+            try:
+                return TimeSeriesData(
+                    DataConverter.to_dataarray(data, timesteps=target_timesteps),
+                    agg_group=data.agg_group, agg_weight=data.agg_weight
+                ).rename(name)
+            except ConversionError as e:
+                logger.critical(f'Could not convert time series data "{name}" to DataArray: {e}. \n'
+                                f'Take care to use the correct (time) index.')
         else:
-            # Convert other data types to DataArray
-            from .core import DataConverter  # Assuming this exists
-
             return DataConverter.to_dataarray(data, timesteps=target_timesteps).rename(name)
 
     def create_effect_time_series(

@@ -22,14 +22,13 @@ except ImportError:
     TSAM_AVAILABLE = False
 
 from .components import Storage
-from .core import Scalar
+from .core import Scalar, TimeSeriesData
 from .elements import Component
 from .flow_system import FlowSystem
 from .structure import (
     Element,
     Model,
     SystemModel,
-    TimeSeriesData,
 )
 
 if TYPE_CHECKING:
