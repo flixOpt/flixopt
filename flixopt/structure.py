@@ -549,6 +549,28 @@ class Interface:
             # Fallback if structure generation fails
             return f'{self.__class__.__name__} instance'
 
+    def copy(self) -> 'Interface':
+        """
+        Create a copy of the Interface object.
+
+        Uses the existing serialization infrastructure to ensure proper copying
+        of all DataArrays and nested objects.
+
+        Returns:
+            A new instance of the same class with copied data.
+        """
+        # Convert to dataset, copy it, and convert back
+        dataset = self.to_dataset().copy(deep=True)
+        return self.__class__.from_dataset(dataset)
+
+    def __copy__(self):
+        """Support for copy.copy()."""
+        return self.copy()
+
+    def __deepcopy__(self, memo):
+        """Support for copy.deepcopy()."""
+        return self.copy()
+
 
 class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
