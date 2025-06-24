@@ -230,6 +230,12 @@ class Interface:
             if array_name in arrays_dict:
                 array = arrays_dict[array_name]
 
+                #TODO: Improve this!
+                if array.isnull().any():
+                    logger.warning(f"DataArray '{array_name}' contains null values. Dropping them.")
+                    return array.dropna(dim='time', how='all')
+                return array
+
                 # Check if this should be restored as TimeSeriesData
                 if TimeSeriesData.is_timeseries_data(array):
                     return TimeSeriesData.from_dataarray(array)
