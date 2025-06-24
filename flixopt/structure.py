@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeriesCollection, TimeSeries
+from .core import NumericData, Scalar, TimeSeriesCollection, TimeSeries, TimeSeriesData
 from . import io as fx_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports

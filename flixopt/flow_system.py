@@ -29,8 +29,18 @@ logger = logging.getLogger('flixopt')
 
 class FlowSystem:
     """
-    A FlowSystem organizes the high level Elements (Components & Effects).
-    Uses xr.Dataset directly from its Interface elements instead of TimeSeriesCollection.
+    FlowSystem serves as the main container for energy system modeling, organizing
+    high-level elements including Components (like boilers, heat pumps, storages),
+    Buses (connection points), and Effects (system-wide influences). It handles
+    time series data management, network connectivity, and provides serialization
+    capabilities for saving and loading complete system configurations.
+
+    The system uses xarray.Dataset for efficient time series data handling. It can be exported and restored to NETCDF.
+
+    See Also:
+        Component: Base class for system components like boilers, heat pumps.
+        Bus: Connection points for flows between components.
+        Effect: System-wide effects, like the optimization objective.
     """
 
     def __init__(
