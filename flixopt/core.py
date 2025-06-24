@@ -84,6 +84,9 @@ class DataConverter:
                         f"DataArray length {data.sizes[dims[0]]} doesn't match expected {len(coords[0])}"
                     )
                 return data.copy(deep=True)
+            elif isinstance(data, list):
+                logger.warning(f'Converting list to DataArray. This is not reccomended.')
+                return xr.DataArray(data, coords=coords, dims=dims)
             else:
                 raise ConversionError(f'Unsupported type: {type(data).__name__}')
         except Exception as e:
