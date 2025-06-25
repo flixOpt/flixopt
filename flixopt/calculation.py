@@ -29,7 +29,7 @@ from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
 from .solvers import _Solver
-from .structure import SystemModel, copy_and_convert_datatypes, get_compact_representation
+from .structure import SystemModel
 
 logger = logging.getLogger('flixopt')
 

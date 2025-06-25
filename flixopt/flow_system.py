@@ -19,14 +19,7 @@ from . import io as fx_io
 from .core import ConversionError, DataConverter, NumericDataInternal, NumericDataUser, TimeSeriesData
 from .effects import Effect, EffectCollection, EffectValuesInternal, EffectValuesUser
 from .elements import Bus, Component, Flow
-from .structure import (
-    CLASS_REGISTRY,
-    Element,
-    Interface,
-    SystemModel,
-    get_compact_representation,
-    get_str_representation,
-)
+from .structure import Element, Interface, SystemModel
 
 if TYPE_CHECKING:
     import pyvis
