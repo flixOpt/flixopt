@@ -532,7 +532,7 @@ class Interface:
         """
         try:
             # Use the stats mode for JSON export (cleaner output)
-            data = get_compact_representation(self.get_structure(clean=True))
+            data = self.get_structure(clean=True, stats=True)
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
@@ -566,7 +566,11 @@ class Interface:
     def __str__(self):
         """Return a user-friendly string representation."""
         try:
-            return get_str_representation(self.get_structure(clean=True))
+            data = self.get_structure(clean=True, stats=True)
+            with StringIO() as output_buffer:
+                console = Console(file=output_buffer, width=1000)  # Adjust width as needed
+                console.print(Pretty(data, expand_all=True, indent_guides=True))
+                return output_buffer.getvalue()
         except Exception:
             # Fallback if structure generation fails
             return f'{self.__class__.__name__} instance'
