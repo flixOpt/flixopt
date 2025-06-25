@@ -10,7 +10,6 @@ import linopy
 import xarray as xr
 import yaml
 
-
 logger = logging.getLogger('flixopt')
 
 
