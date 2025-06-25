@@ -44,10 +44,10 @@ class FlowSystem(Interface):
     """
 
     def __init__(
-            self,
-            timesteps: pd.DatetimeIndex,
-            hours_of_last_timestep: Optional[float] = None,
-            hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
+        self,
+        timesteps: pd.DatetimeIndex,
+        hours_of_last_timestep: Optional[float] = None,
+        hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
     ):
         """
         Args:
@@ -73,6 +73,7 @@ class FlowSystem(Interface):
         self.model: Optional[SystemModel] = None
 
         self._connected_and_transformed = False
+        self._used_in_calculation = False
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -542,3 +543,7 @@ class FlowSystem(Interface):
     @property
     def all_elements(self) -> Dict[str, Element]:
         return {**self.components, **self.effects.effects, **self.flows, **self.buses}
+
+    @property
+    def used_in_calculation(self) -> bool:
+        return self._used_in_calculation

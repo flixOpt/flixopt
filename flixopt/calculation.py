@@ -54,7 +54,13 @@ class Calculation:
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
         self.name = name
+        if flow_system.used_in_calculation:
+            logging.warning(f'FlowSystem {flow_system.name} is already used in a calculation. '
+                            f'Creating a copy for Calculation "{self.name}".')
+            flow_system = flow_system.copy()
+
         self.flow_system = flow_system
+        self.flow_system._used_in_calculation = True
         self.model: Optional[SystemModel] = None
         self.active_timesteps = active_timesteps
 
