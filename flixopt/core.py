@@ -229,16 +229,3 @@ class DataConverter:
             if isinstance(e, ConversionError):
                 raise
             raise ConversionError(f'Converting data {type(data)} to xarray.DataArray raised an error: {str(e)}') from e
-
-
-def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10) -> str:
-    """Calculates the mean, median, min, max, and standard deviation of a numeric DataArray."""
-    format_spec = f'>{padd}.{decimals}f' if padd else f'.{decimals}f'
-    if np.unique(data).size == 1:
-        return f'{data.max().item():{format_spec}} (constant)'
-    mean = data.mean().item()
-    median = data.median().item()
-    min_val = data.min().item()
-    max_val = data.max().item()
-    std = data.std().item()
-    return f'{mean:{format_spec}} (mean), {median:{format_spec}} (median), {min_val:{format_spec}} (min), {max_val:{format_spec}} (max), {std:{format_spec}} (std)'
