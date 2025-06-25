@@ -229,3 +229,31 @@ class DataConverter:
             if isinstance(e, ConversionError):
                 raise
             raise ConversionError(f'Converting data {type(data)} to xarray.DataArray raised an error: {str(e)}') from e
+
+
+def get_dataarray_stats(arr: xr.DataArray) -> Dict:
+    """Generate statistical summary of a DataArray."""
+    stats = {}
+
+    if arr.dtype.kind in 'biufc':  # bool, int, uint, float, complex
+        try:
+            stats.update(
+                {
+                    'min': float(arr.min().values),
+                    'max': float(arr.max().values),
+                    'mean': float(arr.mean().values),
+                    'median': float(arr.median().values),
+                    'std': float(arr.std().values),
+                    'count': int(arr.count().values),  # non-null count
+                }
+            )
+
+            # Add null count only if there are nulls
+            null_count = int(arr.isnull().sum().values)
+            if null_count > 0:
+                stats['nulls'] = null_count
+
+        except Exception:
+            pass
+
+    return stats

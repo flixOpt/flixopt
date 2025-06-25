@@ -259,19 +259,20 @@ class FlowSystem(Interface):
         super().to_netcdf(path, compression)
         logger.info(f'Saved FlowSystem to {path}')
 
-    def get_structure(self, clean: bool = False) -> Dict:
+    def get_structure(self, clean: bool = False, stats: bool = False) -> Dict:
         """
         Get FlowSystem structure.
         Ensures FlowSystem is connected before getting structure.
 
         Args:
             clean: If True, remove None and empty dicts and lists.
+            stats: If True, replace DataArray references with statistics
         """
         if not self._connected_and_transformed:
             logger.warning('FlowSystem is not connected. Calling connect_and_transform() now.')
             self.connect_and_transform()
 
-        return super().get_structure(clean)
+        return super().get_structure(clean, stats)
 
     def to_json(self, path: Union[str, pathlib.Path]):
         """
