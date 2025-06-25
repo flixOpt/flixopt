@@ -18,9 +18,9 @@ import xarray as xr
 from rich.console import Console
 from rich.pretty import Pretty
 
-from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeriesCollection, TimeSeries, TimeSeriesData
 from . import io as fx_io
+from .config import CONFIG
+from .core import NumericDataUser, Scalar, TimeSeriesData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -851,8 +851,6 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
             )
             return copy_and_convert_datatypes(data.tolist(), use_numpy, use_element_label)
 
-    elif isinstance(data, TimeSeries):
-        return copy_and_convert_datatypes(data, use_numpy, use_element_label)
     elif isinstance(data, TimeSeriesData):
         return copy_and_convert_datatypes(data.data, use_numpy, use_element_label)
 

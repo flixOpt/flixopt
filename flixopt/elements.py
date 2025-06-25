@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
+from .core import NumericDataUser, PlausibilityError, Scalar, TimeSeriesCollection
 from .effects import EffectValuesUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
@@ -90,7 +90,7 @@ class Bus(Element):
     """
 
     def __init__(
-        self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataTS] = 1e5, meta_data: Optional[Dict] = None
+        self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataUser] = 1e5, meta_data: Optional[Dict] = None
     ):
         """
         Args:
@@ -111,7 +111,7 @@ class Bus(Element):
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem'):
-        self.excess_penalty_per_flow_hour = flow_system.create_time_series(
+        self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
@@ -149,16 +149,16 @@ class Flow(Element):
         label: str,
         bus: str,
         size: Union[Scalar, InvestParameters] = None,
-        fixed_relative_profile: Optional[NumericDataTS] = None,
-        relative_minimum: NumericDataTS = 0,
-        relative_maximum: NumericDataTS = 1,
+        fixed_relative_profile: Optional[NumericDataUser] = None,
+        relative_minimum: NumericDataUser = 0,
+        relative_maximum: NumericDataUser = 1,
         effects_per_flow_hour: Optional[EffectValuesUser] = None,
         on_off_parameters: Optional[OnOffParameters] = None,
         flow_hours_total_max: Optional[Scalar] = None,
         flow_hours_total_min: Optional[Scalar] = None,
         load_factor_min: Optional[Scalar] = None,
         load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[NumericData] = None,
+        previous_flow_rate: Optional[NumericDataUser] = None,
         meta_data: Optional[Dict] = None,
     ):
         r"""
@@ -230,16 +230,16 @@ class Flow(Element):
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem'):
-        self.relative_minimum = flow_system.create_time_series(
+        self.relative_minimum = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum', self.relative_minimum
         )
-        self.relative_maximum = flow_system.create_time_series(
+        self.relative_maximum = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_maximum', self.relative_maximum
         )
-        self.fixed_relative_profile = flow_system.create_time_series(
+        self.fixed_relative_profile = flow_system.fit_to_model_coords(
             f'{self.label_full}|fixed_relative_profile', self.fixed_relative_profile
         )
-        self.effects_per_flow_hour = flow_system.create_effect_time_series(
+        self.effects_per_flow_hour = flow_system.fit_effects_to_model_coords(
             self.label_full, self.effects_per_flow_hour, 'per_flow_hour'
         )
         if self.on_off_parameters is not None:
@@ -411,7 +411,7 @@ class FlowModel(ElementModel):
             )
 
     @property
-    def flow_rate_bounds_on(self) -> Tuple[NumericData, NumericData]:
+    def flow_rate_bounds_on(self) -> Tuple[NumericDataUser, NumericDataUser]:
         """Returns absolute flow rate bounds. Important for OnOffModel"""
         relative_minimum, relative_maximum = self.flow_rate_lower_bound_relative, self.flow_rate_upper_bound_relative
         size = self.element.size
@@ -422,7 +422,7 @@ class FlowModel(ElementModel):
         return relative_minimum * size.minimum_size, relative_maximum * size.maximum_size
 
     @property
-    def flow_rate_lower_bound_relative(self) -> NumericData:
+    def flow_rate_lower_bound_relative(self) -> NumericDataUser:
         """Returns the lower bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
@@ -430,7 +430,7 @@ class FlowModel(ElementModel):
         return fixed_profile
 
     @property
-    def flow_rate_upper_bound_relative(self) -> NumericData:
+    def flow_rate_upper_bound_relative(self) -> NumericDataUser:
         """ Returns the upper bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
@@ -438,7 +438,7 @@ class FlowModel(ElementModel):
         return fixed_profile
 
     @property
-    def flow_rate_lower_bound(self) -> NumericData:
+    def flow_rate_lower_bound(self) -> NumericDataUser:
         """
         Returns the minimum bound the flow_rate can reach.
         Further constraining might be done in OnOffModel and InvestmentModel
@@ -452,7 +452,7 @@ class FlowModel(ElementModel):
         return self.flow_rate_lower_bound_relative * self.element.size
 
     @property
-    def flow_rate_upper_bound(self) -> NumericData:
+    def flow_rate_upper_bound(self) -> NumericDataUser:
         """
         Returns the maximum bound the flow_rate can reach.
         Further constraining might be done in OnOffModel and InvestmentModel

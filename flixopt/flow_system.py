@@ -16,10 +16,17 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import NumericData, NumericDataTS, TimeSeriesCollection, TimeSeries, DataConverter, ConversionError, TimeSeriesData
-from .effects import Effect, EffectCollection, EffectTimeSeries, EffectValuesDict, EffectValuesUser
+from .core import ConversionError, DataConverter, NumericDataInternal, NumericDataUser, TimeSeriesData
+from .effects import Effect, EffectCollection, EffectValuesInternal, EffectValuesUser
 from .elements import Bus, Component, Flow
-from .structure import CLASS_REGISTRY, Element, SystemModel, get_compact_representation, get_str_representation, Interface
+from .structure import (
+    CLASS_REGISTRY,
+    Element,
+    Interface,
+    SystemModel,
+    get_compact_representation,
+    get_str_representation,
+)
 
 if TYPE_CHECKING:
     import pyvis
@@ -280,23 +287,22 @@ class FlowSystem(Interface):
 
         super().to_json(path)
 
-    def create_time_series(
+    def fit_to_model_coords(
         self,
         name: str,
-        data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
+        data: Optional[NumericDataUser],
         needs_extra_timestep: bool = False,
-    ) -> Optional[TimeSeries]:
+    ) -> Optional[NumericDataInternal]:
         """
-        Create a TimeSeries-like object (now just an xr.DataArray with proper coordinates).
-        This method is kept for API compatibility but simplified.
+        Fit data to model coordinate system (currently time, but extensible).
 
         Args:
-            name: Name of the time series
-            data: Data to convert
-            needs_extra_timestep: Whether to use timesteps_extra
+            name: Name of the data
+            data: Data to fit to model coordinates
+            needs_extra_timestep: Whether to use extended time coordinates
 
         Returns:
-            xr.DataArray with proper time coordinates
+            xr.DataArray aligned to model coordinate system
         """
         if data is None:
             return None
@@ -316,22 +322,22 @@ class FlowSystem(Interface):
         else:
             return DataConverter.to_dataarray(data, timesteps=target_timesteps).rename(name)
 
-    def create_effect_time_series(
+    def fit_effects_to_model_coords(
         self,
         label_prefix: Optional[str],
-        effect_values: EffectValuesUser,
+        effect_values: Optional[EffectValuesUser],
         label_suffix: Optional[str] = None,
-    ) -> Optional[Dict[str, xr.DataArray]]:
+    ) -> Optional[EffectValuesInternal]:
         """
-        Transform EffectValues to effect DataArrays.
-        Simplified version that returns DataArrays directly.
+        Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """
-        effect_values_dict: Optional[EffectValuesDict] = self.effects.create_effect_values_dict(effect_values)
-        if effect_values_dict is None:
+        if effect_values is None:
             return None
 
+        effect_values_dict = self.effects.create_effect_values_dict(effect_values)
+
         return {
-            effect: self.create_time_series('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
+            effect: self.fit_to_model_coords('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
             for effect, value in effect_values_dict.items()
         }
 
@@ -505,7 +511,7 @@ class FlowSystem(Interface):
         freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
 
         lines = [
-            f'FlowSystem Overview:',
+            'FlowSystem Overview:',
             f'{"─" * 50}',
             time_period,
             f'Timesteps:   {len(self.timesteps)} ({freq_str})',

@@ -14,11 +14,11 @@ from .components import (
     Transmission,
 )
 from .config import CONFIG, change_logging_level
+from .core import TimeSeriesData
 from .effects import Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
-from .core import TimeSeriesData
 
 __all__ = [
     'TimeSeriesData',

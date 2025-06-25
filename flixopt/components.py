@@ -9,7 +9,7 @@ import linopy
 import numpy as np
 
 from . import utils
-from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeries
+from .core import NumericDataUser, PlausibilityError, Scalar, TimeSeries
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -34,7 +34,7 @@ class LinearConverter(Component):
         inputs: List[Flow],
         outputs: List[Flow],
         on_off_parameters: OnOffParameters = None,
-        conversion_factors: List[Dict[str, NumericDataTS]] = None,
+        conversion_factors: List[Dict[str, NumericDataUser]] = None,
         piecewise_conversion: Optional[PiecewiseConversion] = None,
         meta_data: Optional[Dict] = None,
     ):
@@ -105,7 +105,7 @@ class LinearConverter(Component):
             transformed_dict = {}
             for flow, values in conversion_factor.items():
                 # TODO: Might be better to use the label of the component instead of the flow
-                transformed_dict[flow] = flow_system.create_time_series(
+                transformed_dict[flow] = flow_system.fit_to_model_coords(
                     f'{self.flows[flow].label_full}|conversion_factor{idx}', values
                 )
             list_of_conversion_factors.append(transformed_dict)
@@ -128,14 +128,14 @@ class Storage(Component):
         charging: Flow,
         discharging: Flow,
         capacity_in_flow_hours: Union[Scalar, InvestParameters],
-        relative_minimum_charge_state: NumericData = 0,
-        relative_maximum_charge_state: NumericData = 1,
+        relative_minimum_charge_state: NumericDataUser = 0,
+        relative_maximum_charge_state: NumericDataUser = 1,
         initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
         minimal_final_charge_state: Optional[Scalar] = None,
         maximal_final_charge_state: Optional[Scalar] = None,
-        eta_charge: NumericData = 1,
-        eta_discharge: NumericData = 1,
-        relative_loss_per_hour: NumericData = 0,
+        eta_charge: NumericDataUser = 1,
+        eta_discharge: NumericDataUser = 1,
+        relative_loss_per_hour: NumericDataUser = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
         meta_data: Optional[Dict] = None,
     ):
@@ -176,16 +176,16 @@ class Storage(Component):
         self.charging = charging
         self.discharging = discharging
         self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: NumericDataTS = relative_minimum_charge_state
-        self.relative_maximum_charge_state: NumericDataTS = relative_maximum_charge_state
+        self.relative_minimum_charge_state: NumericDataUser = relative_minimum_charge_state
+        self.relative_maximum_charge_state: NumericDataUser = relative_maximum_charge_state
 
         self.initial_charge_state = initial_charge_state
         self.minimal_final_charge_state = minimal_final_charge_state
         self.maximal_final_charge_state = maximal_final_charge_state
 
-        self.eta_charge: NumericDataTS = eta_charge
-        self.eta_discharge: NumericDataTS = eta_discharge
-        self.relative_loss_per_hour: NumericDataTS = relative_loss_per_hour
+        self.eta_charge: NumericDataUser = eta_charge
+        self.eta_discharge: NumericDataUser = eta_discharge
+        self.relative_loss_per_hour: NumericDataUser = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
 
     def create_model(self, model: SystemModel) -> 'StorageModel':
@@ -195,19 +195,19 @@ class Storage(Component):
 
     def transform_data(self, flow_system: 'FlowSystem') -> None:
         super().transform_data(flow_system)
-        self.relative_minimum_charge_state = flow_system.create_time_series(
+        self.relative_minimum_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum_charge_state',
             self.relative_minimum_charge_state,
             needs_extra_timestep=True,
         )
-        self.relative_maximum_charge_state = flow_system.create_time_series(
+        self.relative_maximum_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_maximum_charge_state',
             self.relative_maximum_charge_state,
             needs_extra_timestep=True,
         )
-        self.eta_charge = flow_system.create_time_series(f'{self.label_full}|eta_charge', self.eta_charge)
-        self.eta_discharge = flow_system.create_time_series(f'{self.label_full}|eta_discharge', self.eta_discharge)
-        self.relative_loss_per_hour = flow_system.create_time_series(
+        self.eta_charge = flow_system.fit_to_model_coords(f'{self.label_full}|eta_charge', self.eta_charge)
+        self.eta_discharge = flow_system.fit_to_model_coords(f'{self.label_full}|eta_discharge', self.eta_discharge)
+        self.relative_loss_per_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_loss_per_hour', self.relative_loss_per_hour
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
@@ -264,8 +264,8 @@ class Transmission(Component):
         out1: Flow,
         in2: Optional[Flow] = None,
         out2: Optional[Flow] = None,
-        relative_losses: Optional[NumericDataTS] = None,
-        absolute_losses: Optional[NumericDataTS] = None,
+        relative_losses: Optional[NumericDataUser] = None,
+        absolute_losses: Optional[NumericDataUser] = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         meta_data: Optional[Dict] = None,
@@ -331,10 +331,10 @@ class Transmission(Component):
 
     def transform_data(self, flow_system: 'FlowSystem') -> None:
         super().transform_data(flow_system)
-        self.relative_losses = flow_system.create_time_series(
+        self.relative_losses = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_losses', self.relative_losses
         )
-        self.absolute_losses = flow_system.create_time_series(
+        self.absolute_losses = flow_system.fit_to_model_coords(
             f'{self.label_full}|absolute_losses', self.absolute_losses
         )
 
@@ -556,7 +556,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+    def absolute_charge_state_bounds(self) -> Tuple[NumericDataUser, NumericDataUser]:
         relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (
@@ -570,7 +570,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+    def relative_charge_state_bounds(self) -> Tuple[NumericDataUser, NumericDataUser]:
         return (
             self.element.relative_minimum_charge_state,
             self.element.relative_maximum_charge_state,

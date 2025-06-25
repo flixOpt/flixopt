@@ -17,13 +17,13 @@ import xarray as xr
 logger = logging.getLogger('flixopt')
 
 Scalar = Union[int, float]
-"""A type representing a single number, either integer or float."""
+"""A single number, either integer or float."""
 
-NumericData = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
-"""Represents any form of numeric data, from simple scalars to complex data structures."""
+NumericDataUser = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray, 'TimeSeriesData']
+"""Numeric data accepted in varios types. Will be converted to an xr.DataArray or Scalar internally."""
 
-NumericDataTS = Union[NumericData, 'TimeSeriesData']
-"""Represents either standard numeric data or TimeSeriesData."""
+NumericDataInternal = Union[int, float, xr.DataArray, 'TimeSeriesData']
+"""Internally used datatypes for numeric data."""
 
 
 class PlausibilityError(Exception):
@@ -36,6 +36,7 @@ class ConversionError(Exception):
     """Base exception for data conversion errors."""
 
     pass
+
 
 class TimeSeriesData(xr.DataArray):
     """Minimal TimeSeriesData that inherits from xr.DataArray with aggregation metadata."""
@@ -153,7 +154,7 @@ class DataConverter:
         # Check if time coordinates are identical
         elif not data.coords['time'].equals(timesteps):
             logger.warning(
-                f'TimeSeriesData has different time coordinates than expected. Replacing with provided timesteps.'
+                'TimeSeriesData has different time coordinates than expected. Replacing with provided timesteps.'
             )
             # Replace time coordinates while preserving data and metadata
             recoordinated_data = xr.DataArray(
@@ -166,7 +167,7 @@ class DataConverter:
             return data.copy(deep=True)
 
     @staticmethod
-    def to_dataarray(data: NumericData, timesteps: pd.DatetimeIndex) -> xr.DataArray:
+    def to_dataarray(data: NumericDataUser, timesteps: pd.DatetimeIndex) -> xr.DataArray:
         """Convert data to xarray.DataArray with specified timesteps index."""
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
             raise ValueError(f'Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}')
@@ -181,10 +182,6 @@ class DataConverter:
             # Handle TimeSeriesData first (before generic DataArray check)
             if isinstance(data, TimeSeriesData):
                 return DataConverter._fix_timeseries_data_indexing(data, timesteps, dims, coords)
-
-            elif isinstance(data, TimeSeries):
-                # Handle TimeSeries objects (your existing logic)
-                pass  # Add your TimeSeries handling here
 
             elif isinstance(data, (int, float, np.integer, np.floating)):
                 # Scalar: broadcast to all timesteps
@@ -220,7 +217,7 @@ class DataConverter:
                 return data.copy(deep=True)
 
             elif isinstance(data, list):
-                logger.warning(f'Converting list to DataArray. This is not recommended.')
+                logger.warning('Converting list to DataArray. This is not recommended.')
                 if len(data) != expected_shape[0]:
                     raise ConversionError(f"List length {len(data)} doesn't match expected {expected_shape[0]}")
                 return xr.DataArray(data, coords=coords, dims=dims)
@@ -232,23 +229,6 @@ class DataConverter:
             if isinstance(e, ConversionError):
                 raise
             raise ConversionError(f'Converting data {type(data)} to xarray.DataArray raised an error: {str(e)}') from e
-
-
-class TimeSeries:
-    def __init__(self):
-        raise NotImplementedError('TimeSeries was removed')
-
-
-class TimeSeriesCollection:
-    """
-    Collection of TimeSeries objects with shared timestep management.
-
-    TimeSeriesCollection handles multiple TimeSeries objects with synchronized
-    timesteps, provides operations on collections, and manages extra timesteps.
-    """
-
-    def __init__(self):
-        raise NotImplementedError('TimeSeriesCollection was removed')
 
 
 def get_numeric_stats(data: xr.DataArray, decimals: int = 2, padd: int = 10) -> str:

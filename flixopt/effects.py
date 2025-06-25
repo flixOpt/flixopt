@@ -13,7 +13,7 @@ import linopy
 import numpy as np
 import pandas as pd
 
-from .core import NumericData, NumericDataTS, Scalar, TimeSeriesCollection, TimeSeries
+from .core import NumericDataInternal, NumericDataUser, Scalar
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 
@@ -44,8 +44,8 @@ class Effect(Element):
         maximum_operation: Optional[Scalar] = None,
         minimum_invest: Optional[Scalar] = None,
         maximum_invest: Optional[Scalar] = None,
-        minimum_operation_per_hour: Optional[NumericDataTS] = None,
-        maximum_operation_per_hour: Optional[NumericDataTS] = None,
+        minimum_operation_per_hour: Optional[NumericDataUser] = None,
+        maximum_operation_per_hour: Optional[NumericDataUser] = None,
         minimum_total: Optional[Scalar] = None,
         maximum_total: Optional[Scalar] = None,
     ):
@@ -82,22 +82,22 @@ class Effect(Element):
         self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
-        self.minimum_operation_per_hour: NumericDataTS = minimum_operation_per_hour
-        self.maximum_operation_per_hour: NumericDataTS = maximum_operation_per_hour
+        self.minimum_operation_per_hour: NumericDataUser = minimum_operation_per_hour
+        self.maximum_operation_per_hour: NumericDataUser = maximum_operation_per_hour
         self.minimum_invest = minimum_invest
         self.maximum_invest = maximum_invest
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
     def transform_data(self, flow_system: 'FlowSystem'):
-        self.minimum_operation_per_hour = flow_system.create_time_series(
+        self.minimum_operation_per_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
         )
-        self.maximum_operation_per_hour = flow_system.create_time_series(
+        self.maximum_operation_per_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|maximum_operation_per_hour', self.maximum_operation_per_hour, flow_system
         )
 
-        self.specific_share_to_other_effects_operation = flow_system.create_effect_time_series(
+        self.specific_share_to_other_effects_operation = flow_system.fit_effects_to_model_coords(
             f'{self.label_full}|operation->', self.specific_share_to_other_effects_operation, 'operation'
         )
 
@@ -168,10 +168,9 @@ class EffectModel(ElementModel):
         )
 
 
-EffectValuesExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
-EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
-EffectValuesDict = Dict[str, NumericDataTS]  # How effect values are stored
-EffectValuesUser = Union[NumericDataTS, Dict[str, NumericDataTS]]  # User-specified Shares to Effects
+EffectExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
+EffectValuesInternal = Dict[str, NumericDataInternal]  # Used internally to index values
+EffectValuesUser = Union[NumericDataUser, Dict[str, NumericDataUser]]  # User-specified Shares to Effects
 """ This datatype is used to define the share to an effect by a certain attribute. """
 
 EffectValuesUserScalar = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
@@ -207,7 +206,7 @@ class EffectCollection:
             self._effects[effect.label] = effect
             logger.info(f'Registered new Effect: {effect.label}')
 
-    def create_effect_values_dict(self, effect_values_user: EffectValuesUser) -> Optional[EffectValuesDict]:
+    def create_effect_values_dict(self, effect_values_user: EffectValuesUser) -> Optional[Dict[str, NumericDataUser]]:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
@@ -233,6 +232,8 @@ class EffectCollection:
                     stacklevel=2,
                 )
                 return eff.label_full
+            elif eff is None:
+                return self.standard_effect.label_full
             else:
                 return eff
 
@@ -341,7 +342,7 @@ class EffectCollectionModel(Model):
     def add_share_to_effects(
         self,
         name: str,
-        expressions: EffectValuesExpr,
+        expressions: EffectExpr,
         target: Literal['operation', 'invest'],
     ) -> None:
         for effect, expression in expressions.items():
