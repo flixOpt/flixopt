@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Set, Tuple, Uni
 
 import linopy
 import numpy as np
+import xarray as xr
 
 from . import utils
-from .core import NumericDataUser, PlausibilityError, Scalar, TimeSeries
+from .core import NumericDataUser, PlausibilityError, Scalar
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -98,8 +99,8 @@ class LinearConverter(Component):
         if self.piecewise_conversion:
             self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
-    def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, TimeSeries]]:
-        """macht alle Faktoren, die nicht TimeSeries sind, zu TimeSeries"""
+    def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, xr.DataArray]]:
+        """Converts all conversion factors to internal datatypes"""
         list_of_conversion_factors = []
         for idx, conversion_factor in enumerate(self.conversion_factors):
             transformed_dict = {}

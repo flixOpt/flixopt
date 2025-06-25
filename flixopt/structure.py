@@ -152,7 +152,7 @@ class Interface:
 
     def _create_reference_structure(self) -> Tuple[Dict, Dict[str, xr.DataArray]]:
         """
-        Convert all DataArrays/TimeSeries to references and extract them.
+        Convert all DataArrays to references and extract them.
         This is the core method that both to_dict() and to_dataset() build upon.
 
         Returns:
@@ -204,7 +204,7 @@ class Interface:
 
     def _extract_dataarrays_recursive(self, obj, context_name: str = '') -> Tuple[Any, Dict[str, xr.DataArray]]:
         """
-        Recursively extract DataArrays/TimeSeries from nested structures.
+        Recursively extract DataArrays from nested structures.
 
         Args:
             obj: Object to process
@@ -392,7 +392,7 @@ class Interface:
     def to_dataset(self) -> xr.Dataset:
         """
         Convert the object to an xarray Dataset representation.
-        All DataArrays and TimeSeries become dataset variables, everything else goes to attrs.
+        All DataArrays become dataset variables, everything else goes to attrs.
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with basic objects only in attributes

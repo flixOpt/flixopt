@@ -11,7 +11,7 @@ import numpy as np
 
 from . import utils
 from .config import CONFIG
-from .core import NumericDataUser, Scalar, TimeSeries
+from .core import NumericDataUser, Scalar
 from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 

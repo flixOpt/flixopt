@@ -10,45 +10,8 @@ import linopy
 import xarray as xr
 import yaml
 
-from .core import TimeSeries
 
 logger = logging.getLogger('flixopt')
-
-
-def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
-    """Recursively replaces TimeSeries objects with their names prefixed by '::::'."""
-    if isinstance(obj, dict):
-        return {k: replace_timeseries(v, mode) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [replace_timeseries(v, mode) for v in obj]
-    elif isinstance(obj, TimeSeries):  # Adjust this based on the actual class
-        if obj.all_equal:
-            return obj.values[0].item()
-        elif mode == 'name':
-            return f'::::{obj.name}'
-        elif mode == 'stats':
-            return obj.stats
-        elif mode == 'data':
-            return obj
-        else:
-            raise ValueError(f'Invalid mode {mode}')
-    else:
-        return obj
-
-
-def insert_dataarray(obj, ds: xr.Dataset):
-    """Recursively inserts TimeSeries objects into a dataset."""
-    if isinstance(obj, dict):
-        return {k: insert_dataarray(v, ds) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [insert_dataarray(v, ds) for v in obj]
-    elif isinstance(obj, str) and obj.startswith('::::'):
-        da = ds[obj[4:]]
-        if da.isel(time=-1).isnull():
-            return da.isel(time=slice(0, -1))
-        return da
-    else:
-        return obj
 
 
 def remove_none_and_empty(obj):
