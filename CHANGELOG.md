@@ -8,13 +8,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- `relative_minimum_charge_state` and `relative_maximum_charge_state` dont have an extra timestep anymore. The final charge state can be constrainted by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead.
-- FlowSystems can not be shared across multiple Calculations anymore. A copy of the FLowSystem is created instead. THs makes every Calculation independent. 
-- THe above allowed to remove the intermediate classes `TimeSeries` and `TimeSeriesCollection` classes which orchestratet datahandling.
+* **BREAKING**: FlowSystems can not be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
+* **BREAKING**: Type system overhaul - replaced `NumericDataTS` with `NumericDataUser` throughout codebase for better clarity
+* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
+* FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
+* Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
+* *Internal*: Removed intermediate `TimeSeries` and `TimeSeriesCollection` classes, replaced directly with `xr.DataArray` or `TimeSeriesData` (inheriting from `xr.DataArray`)
 
 ### Added
-- Added IO for all Interfaces and the FlowSystem
-- Added `sel`, `isel` and `resample` methods to FlowSystem, allowing for a flexible data handling.
+* **NEW**: Complete serialization infrastructure through `Interface` base class
+   * IO for all Interfaces and the FlowSystem with round-trip serialization support
+   * Automatic DataArray extraction and restoration
+   * NetCDF export/import capabilities for all Interface objects and FlowSystem
+   * JSON export for documentation purposes
+   * Recursive handling of nested Interface objects
+* **NEW**: FlowSystem data manipulation methods
+   * `sel()` and `isel()` methods for temporal data selection
+   * `resample()` method for temporal resampling
+   * `copy()` method with deep copying support
+   * `__eq__()` method for FlowSystem comparison
+* **NEW**: Storage component enhancements
+   * `relative_minimum_final_charge_state` parameter for final state control
+   * `relative_maximum_final_charge_state` parameter for final state control
+* *Internal*: Enhanced data handling methods
+   * `fit_to_model_coords()` method for data alignment
+   * `fit_effects_to_model_coords()` method for effect data processing
+   * `connect_and_transform()` method replacing separate operations
+* **NEW**: Core data handling improvements
+   * `get_dataarray_stats()` function for statistical summaries
+   * Enhanced `DataConverter` class with better TimeSeriesData support
+
+### Fixed
+* Enhanced NetCDF I/O with proper attribute preservation for DataArrays
+* Improved error handling and validation in serialization processes
+* Better type consistency across all framework components
+
+### Know Issues
+* Plotly >= 6 may raise errors if "nbformat" is not installed. We pinned plotly to <6, but this may be fixed in the future.
+* IO for single Interfaces/Elemenets to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arrises from Numeric Data not being stored as xr.DataArray by the user. TO avoid this, always use the `to_dataset()` on Elements inside a FlowSystem thats connected and transformed.
 
 ## [2.1.2] - 2025-06-14
 
