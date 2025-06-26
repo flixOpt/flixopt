@@ -20,7 +20,7 @@ from rich.pretty import Pretty
 
 from . import io as fx_io
 from .config import CONFIG
-from .core import NumericDataUser, Scalar, TimeSeriesData, get_dataarray_stats
+from .core import Scalar, TemporalDataUser, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel

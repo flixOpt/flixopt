@@ -8,7 +8,7 @@ from typing import Dict, Optional
 import numpy as np
 
 from .components import LinearConverter
-from .core import NumericDataUser, TimeSeriesData
+from .core import TemporalDataUser, TimeSeriesData
 from .elements import Flow
 from .interface import OnOffParameters
 from .structure import register_class_for_io
@@ -21,7 +21,7 @@ class Boiler(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: NumericDataUser,
+        eta: TemporalDataUser,
         Q_fu: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
@@ -62,7 +62,7 @@ class Power2Heat(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: NumericDataUser,
+        eta: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
@@ -104,7 +104,7 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: NumericDataUser,
+        COP: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
@@ -146,7 +146,7 @@ class CoolingTower(LinearConverter):
     def __init__(
         self,
         label: str,
-        specific_electricity_demand: NumericDataUser,
+        specific_electricity_demand: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
@@ -190,8 +190,8 @@ class CHP(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta_th: NumericDataUser,
-        eta_el: NumericDataUser,
+        eta_th: TemporalDataUser,
+        eta_el: TemporalDataUser,
         Q_fu: Flow,
         P_el: Flow,
         Q_th: Flow,
@@ -251,7 +251,7 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: NumericDataUser,
+        COP: TemporalDataUser,
         P_el: Flow,
         Q_ab: Flow,
         Q_th: Flow,
@@ -297,11 +297,11 @@ class HeatPumpWithSource(LinearConverter):
 
 
 def check_bounds(
-    value: NumericDataUser,
+    value: TemporalDataUser,
     parameter_label: str,
     element_label: str,
-    lower_bound: NumericDataUser,
-    upper_bound: NumericDataUser,
+    lower_bound: TemporalDataUser,
+    upper_bound: TemporalDataUser,
 ) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.

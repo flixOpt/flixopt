@@ -3,12 +3,8 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
-import inspect
-import json
 import logging
-import pathlib
-from collections import Counter
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -19,11 +15,13 @@ logger = logging.getLogger('flixopt')
 Scalar = Union[int, float]
 """A single number, either integer or float."""
 
-NumericDataUser = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray, 'TimeSeriesData']
-"""Numeric data accepted in varios types. Will be converted to an xr.DataArray or Scalar internally."""
+TemporalDataUser = Union[
+    int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray, 'TimeSeriesData'
+]
+"""User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension."""
 
-NumericDataInternal = Union[int, float, xr.DataArray, 'TimeSeriesData']
-"""Internally used datatypes for numeric data."""
+TemporalData = Union[xr.DataArray, 'TimeSeriesData']
+"""Internally used datatypes for temporal data."""
 
 
 class PlausibilityError(Exception):
@@ -167,7 +165,7 @@ class DataConverter:
             return data.copy(deep=True)
 
     @staticmethod
-    def to_dataarray(data: NumericDataUser, timesteps: pd.DatetimeIndex) -> xr.DataArray:
+    def to_dataarray(data: TemporalData, timesteps: pd.DatetimeIndex) -> xr.DataArray:
         """Convert data to xarray.DataArray with specified timesteps index."""
         if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
             raise ValueError(f'Timesteps must be a non-empty DatetimeIndex, got {type(timesteps).__name__}')

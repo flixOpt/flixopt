@@ -10,7 +10,7 @@ import numpy as np
 import xarray as xr
 
 from . import utils
-from .core import NumericDataUser, PlausibilityError, Scalar
+from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -35,7 +35,7 @@ class LinearConverter(Component):
         inputs: List[Flow],
         outputs: List[Flow],
         on_off_parameters: OnOffParameters = None,
-        conversion_factors: List[Dict[str, NumericDataUser]] = None,
+        conversion_factors: List[Dict[str, TemporalDataUser]] = None,
         piecewise_conversion: Optional[PiecewiseConversion] = None,
         meta_data: Optional[Dict] = None,
     ):
@@ -129,16 +129,16 @@ class Storage(Component):
         charging: Flow,
         discharging: Flow,
         capacity_in_flow_hours: Union[Scalar, InvestParameters],
-        relative_minimum_charge_state: NumericDataUser = 0,
-        relative_maximum_charge_state: NumericDataUser = 1,
+        relative_minimum_charge_state: TemporalDataUser = 0,
+        relative_maximum_charge_state: TemporalDataUser = 1,
         initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
         minimal_final_charge_state: Optional[Scalar] = None,
         maximal_final_charge_state: Optional[Scalar] = None,
         relative_minimum_final_charge_state: Optional[Scalar] = None,
         relative_maximum_final_charge_state: Optional[Scalar] = None,
-        eta_charge: NumericDataUser = 1,
-        eta_discharge: NumericDataUser = 1,
-        relative_loss_per_hour: NumericDataUser = 0,
+        eta_charge: TemporalDataUser = 1,
+        eta_discharge: TemporalDataUser = 1,
+        relative_loss_per_hour: TemporalDataUser = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
         meta_data: Optional[Dict] = None,
     ):
@@ -181,19 +181,19 @@ class Storage(Component):
         self.charging = charging
         self.discharging = discharging
         self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: NumericDataUser = relative_minimum_charge_state
-        self.relative_maximum_charge_state: NumericDataUser = relative_maximum_charge_state
+        self.relative_minimum_charge_state: TemporalDataUser = relative_minimum_charge_state
+        self.relative_maximum_charge_state: TemporalDataUser = relative_maximum_charge_state
 
-        self.relative_minimum_final_charge_state: NumericDataUser = relative_minimum_final_charge_state
-        self.relative_maximum_final_charge_state: NumericDataUser = relative_maximum_final_charge_state
+        self.relative_minimum_final_charge_state: Scalar = relative_minimum_final_charge_state
+        self.relative_maximum_final_charge_state: Scalar = relative_maximum_final_charge_state
 
         self.initial_charge_state = initial_charge_state
         self.minimal_final_charge_state = minimal_final_charge_state
         self.maximal_final_charge_state = maximal_final_charge_state
 
-        self.eta_charge: NumericDataUser = eta_charge
-        self.eta_discharge: NumericDataUser = eta_discharge
-        self.relative_loss_per_hour: NumericDataUser = relative_loss_per_hour
+        self.eta_charge: TemporalDataUser = eta_charge
+        self.eta_discharge: TemporalDataUser = eta_discharge
+        self.relative_loss_per_hour: TemporalDataUser = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
 
     def create_model(self, model: SystemModel) -> 'StorageModel':
@@ -270,8 +270,8 @@ class Transmission(Component):
         out1: Flow,
         in2: Optional[Flow] = None,
         out2: Optional[Flow] = None,
-        relative_losses: Optional[NumericDataUser] = None,
-        absolute_losses: Optional[NumericDataUser] = None,
+        relative_losses: Optional[TemporalDataUser] = None,
+        absolute_losses: Optional[TemporalDataUser] = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         meta_data: Optional[Dict] = None,
@@ -562,7 +562,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def absolute_charge_state_bounds(self) -> Tuple[NumericDataUser, NumericDataUser]:
+    def absolute_charge_state_bounds(self) -> Tuple[TemporalData, TemporalData]:
         relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (

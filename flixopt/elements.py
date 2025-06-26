@@ -10,8 +10,8 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NumericDataUser, PlausibilityError, Scalar
-from .effects import EffectValuesUser
+from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
+from .effects import TemporalEffectsUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, SystemModel, register_class_for_io
@@ -90,7 +90,7 @@ class Bus(Element):
     """
 
     def __init__(
-        self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataUser] = 1e5, meta_data: Optional[Dict] = None
+        self, label: str, excess_penalty_per_flow_hour: Optional[TemporalDataUser] = 1e5, meta_data: Optional[Dict] = None
     ):
         """
         Args:
@@ -149,16 +149,16 @@ class Flow(Element):
         label: str,
         bus: str,
         size: Union[Scalar, InvestParameters] = None,
-        fixed_relative_profile: Optional[NumericDataUser] = None,
-        relative_minimum: NumericDataUser = 0,
-        relative_maximum: NumericDataUser = 1,
-        effects_per_flow_hour: Optional[EffectValuesUser] = None,
+        fixed_relative_profile: Optional[TemporalDataUser] = None,
+        relative_minimum: TemporalDataUser = 0,
+        relative_maximum: TemporalDataUser = 1,
+        effects_per_flow_hour: Optional[TemporalEffectsUser] = None,
         on_off_parameters: Optional[OnOffParameters] = None,
         flow_hours_total_max: Optional[Scalar] = None,
         flow_hours_total_min: Optional[Scalar] = None,
         load_factor_min: Optional[Scalar] = None,
         load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[NumericDataUser] = None,
+        previous_flow_rate: Optional[TemporalDataUser] = None,
         meta_data: Optional[Dict] = None,
     ):
         r"""
@@ -411,7 +411,7 @@ class FlowModel(ElementModel):
             )
 
     @property
-    def flow_rate_bounds_on(self) -> Tuple[NumericDataUser, NumericDataUser]:
+    def flow_rate_bounds_on(self) -> Tuple[TemporalData, TemporalData]:
         """Returns absolute flow rate bounds. Important for OnOffModel"""
         relative_minimum, relative_maximum = self.flow_rate_lower_bound_relative, self.flow_rate_upper_bound_relative
         size = self.element.size
@@ -422,7 +422,7 @@ class FlowModel(ElementModel):
         return relative_minimum * size.minimum_size, relative_maximum * size.maximum_size
 
     @property
-    def flow_rate_lower_bound_relative(self) -> NumericDataUser:
+    def flow_rate_lower_bound_relative(self) -> TemporalData:
         """Returns the lower bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
@@ -430,7 +430,7 @@ class FlowModel(ElementModel):
         return fixed_profile
 
     @property
-    def flow_rate_upper_bound_relative(self) -> NumericDataUser:
+    def flow_rate_upper_bound_relative(self) -> TemporalData:
         """ Returns the upper bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
@@ -438,7 +438,7 @@ class FlowModel(ElementModel):
         return fixed_profile
 
     @property
-    def flow_rate_lower_bound(self) -> NumericDataUser:
+    def flow_rate_lower_bound(self) -> TemporalData:
         """
         Returns the minimum bound the flow_rate can reach.
         Further constraining might be done in OnOffModel and InvestmentModel
@@ -452,7 +452,7 @@ class FlowModel(ElementModel):
         return self.flow_rate_lower_bound_relative * self.element.size
 
     @property
-    def flow_rate_upper_bound(self) -> NumericDataUser:
+    def flow_rate_upper_bound(self) -> TemporalData:
         """
         Returns the maximum bound the flow_rate can reach.
         Further constraining might be done in OnOffModel and InvestmentModel

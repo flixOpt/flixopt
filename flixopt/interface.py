@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
 
 from .config import CONFIG
-from .core import NumericDataUser, Scalar
+from .core import Scalar, TemporalDataUser
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -20,7 +20,7 @@ logger = logging.getLogger('flixopt')
 
 @register_class_for_io
 class Piece(Interface):
-    def __init__(self, start: NumericDataUser, end: NumericDataUser):
+    def __init__(self, start: TemporalDataUser, end: TemporalDataUser):
         """
         Define a Piece, which is part of a Piecewise object.
 
@@ -175,10 +175,10 @@ class OnOffParameters(Interface):
         effects_per_running_hour: Optional['EffectValuesUser'] = None,
         on_hours_total_min: Optional[int] = None,
         on_hours_total_max: Optional[int] = None,
-        consecutive_on_hours_min: Optional[NumericDataUser] = None,
-        consecutive_on_hours_max: Optional[NumericDataUser] = None,
-        consecutive_off_hours_min: Optional[NumericDataUser] = None,
-        consecutive_off_hours_max: Optional[NumericDataUser] = None,
+        consecutive_on_hours_min: Optional[TemporalDataUser] = None,
+        consecutive_on_hours_max: Optional[TemporalDataUser] = None,
+        consecutive_off_hours_min: Optional[TemporalDataUser] = None,
+        consecutive_off_hours_max: Optional[TemporalDataUser] = None,
         switch_on_total_max: Optional[int] = None,
         force_switch_on: bool = False,
     ):
@@ -206,10 +206,10 @@ class OnOffParameters(Interface):
         self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}
         self.on_hours_total_min: Scalar = on_hours_total_min
         self.on_hours_total_max: Scalar = on_hours_total_max
-        self.consecutive_on_hours_min: NumericDataUser = consecutive_on_hours_min
-        self.consecutive_on_hours_max: NumericDataUser = consecutive_on_hours_max
-        self.consecutive_off_hours_min: NumericDataUser = consecutive_off_hours_min
-        self.consecutive_off_hours_max: NumericDataUser = consecutive_off_hours_max
+        self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min
+        self.consecutive_on_hours_max: TemporalDataUser = consecutive_on_hours_max
+        self.consecutive_off_hours_min: TemporalDataUser = consecutive_off_hours_min
+        self.consecutive_off_hours_max: TemporalDataUser = consecutive_off_hours_max
         self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 

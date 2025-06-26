@@ -16,8 +16,8 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import ConversionError, DataConverter, NumericDataInternal, NumericDataUser, TimeSeriesData
-from .effects import Effect, EffectCollection, EffectValuesInternal, EffectValuesUser
+from .core import ConversionError, DataConverter, TemporalData, TemporalDataUser, TimeSeriesData
+from .effects import Effect, EffectCollection, ScalarEffects, ScalarEffectsUser, TemporalEffects, TemporalEffectsUser
 from .elements import Bus, Component, Flow
 from .structure import Element, Interface, SystemModel
 
@@ -271,8 +271,8 @@ class FlowSystem(Interface):
     def fit_to_model_coords(
         self,
         name: str,
-        data: Optional[NumericDataUser],
-    ) -> Optional[NumericDataInternal]:
+        data: Optional[TemporalDataUser],
+    ) -> Optional[TemporalData]:
         """
         Fit data to model coordinate system (currently time, but extensible).
 
@@ -301,9 +301,9 @@ class FlowSystem(Interface):
     def fit_effects_to_model_coords(
         self,
         label_prefix: Optional[str],
-        effect_values: Optional[EffectValuesUser],
+        effect_values: Optional[TemporalEffectsUser],
         label_suffix: Optional[str] = None,
-    ) -> Optional[EffectValuesInternal]:
+    ) -> Optional[TemporalEffects]:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """
@@ -530,7 +530,7 @@ class FlowSystem(Interface):
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
 
-    def sel(self, time: Optional[Union[str, slice, List[str], pd.Timestamp]] = None) -> 'FlowSystem':
+    def sel(self, time: Optional[Union[str, slice, List[str], pd.Timestamp, pd.DatetimeIndex]] = None) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by the time coordinate.
 

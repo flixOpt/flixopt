@@ -12,7 +12,8 @@ import logging
 import math
 import pathlib
 import timeit
-from typing import Any, Dict, List, Optional, Union
+import warnings
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -43,26 +44,39 @@ class Calculation:
         self,
         name: str,
         flow_system: FlowSystem,
-        active_timesteps: Optional[pd.DatetimeIndex] = None,
+        active_timesteps: Annotated[
+            Optional[pd.DatetimeIndex],
+            "DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead"
+        ] = None,
         folder: Optional[pathlib.Path] = None,
     ):
         """
         Args:
             name: name of calculation
             flow_system: flow_system which should be calculated
-            active_timesteps: list with indices, which should be used for calculation. If None, then all timesteps are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
         self.name = name
         if flow_system.used_in_calculation:
-            logging.warning(f'FlowSystem {flow_system.name} is already used in a calculation. '
+            logging.warning(f'FlowSystem {flow_system} is already used in a calculation. '
                             f'Creating a copy for Calculation "{self.name}".')
             flow_system = flow_system.copy()
+
+        if active_timesteps is not None:
+            warnings.warn(
+                "The 'active_timesteps' parameter is deprecated and will be removed in a future version. "
+                'Use flow_system.sel(time=timesteps) or flow_system.isel(time=indices) before passing '
+                'the FlowSystem to the Calculation instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            flow_system = flow_system.sel(time=active_timesteps)
+
 
         self.flow_system = flow_system
         self.flow_system._used_in_calculation = True
         self.model: Optional[SystemModel] = None
-        self.active_timesteps = active_timesteps
+        self._active_timesteps = active_timesteps  # deprecated
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
@@ -134,6 +148,15 @@ class Calculation:
             'Config': CONFIG.to_dict(),
         }
 
+    @property
+    def active_timesteps(self) -> pd.DatetimeIndex:
+        warnings.warn(
+            "The 'active_timesteps' is deprecated and will be removed in a future version.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_system.timesteps
+
 
 class FullCalculation(Calculation):
     """
@@ -199,7 +222,10 @@ class AggregatedCalculation(FullCalculation):
         flow_system: FlowSystem,
         aggregation_parameters: AggregationParameters,
         components_to_clusterize: Optional[List[Component]] = None,
-        active_timesteps: Optional[pd.DatetimeIndex] = None,
+        active_timesteps: Annotated[
+            Optional[pd.DatetimeIndex],
+            'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
+        ] = None,
         folder: Optional[pathlib.Path] = None,
     ):
         """
@@ -213,8 +239,6 @@ class AggregatedCalculation(FullCalculation):
             components_to_clusterize: List of Components to perform aggregation on. If None, then all components are aggregated.
                 This means, teh variables in the components are equalized to each other, according to the typical periods
                 computed in the DataAggregation
-            active_timesteps: pd.DatetimeIndex or None
-                list with indices, which should be used for calculation. If None, then all timesteps are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
         super().__init__(name, flow_system, active_timesteps, folder=folder)
@@ -370,7 +394,7 @@ class SegmentedCalculation(Calculation):
             )
 
             calculation = FullCalculation(
-                f'{self.name}-{segment_name}', self.flow_system, active_timesteps=timesteps_of_segment
+                f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment),
             )
             self.sub_calculations.append(calculation)
             calculation.do_modeling()

@@ -13,7 +13,7 @@ import linopy
 import numpy as np
 import pandas as pd
 
-from .core import NumericDataInternal, NumericDataUser, Scalar
+from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 
@@ -38,14 +38,14 @@ class Effect(Element):
         meta_data: Optional[Dict] = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        specific_share_to_other_effects_operation: Optional['EffectValuesUser'] = None,
-        specific_share_to_other_effects_invest: Optional['EffectValuesUser'] = None,
+        specific_share_to_other_effects_operation: Optional['TemporalEffectsUser'] = None,
+        specific_share_to_other_effects_invest: Optional['ScalarEffectsUser'] = None,
         minimum_operation: Optional[Scalar] = None,
         maximum_operation: Optional[Scalar] = None,
         minimum_invest: Optional[Scalar] = None,
         maximum_invest: Optional[Scalar] = None,
-        minimum_operation_per_hour: Optional[NumericDataUser] = None,
-        maximum_operation_per_hour: Optional[NumericDataUser] = None,
+        minimum_operation_per_hour: Optional[TemporalDataUser] = None,
+        maximum_operation_per_hour: Optional[TemporalDataUser] = None,
         minimum_total: Optional[Scalar] = None,
         maximum_total: Optional[Scalar] = None,
     ):
@@ -76,14 +76,14 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.specific_share_to_other_effects_operation: EffectValuesUser = (
+        self.specific_share_to_other_effects_operation: TemporalEffectsUser = (
             specific_share_to_other_effects_operation or {}
         )
-        self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
+        self.specific_share_to_other_effects_invest: ScalarEffectsUser = specific_share_to_other_effects_invest or {}
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
-        self.minimum_operation_per_hour: NumericDataUser = minimum_operation_per_hour
-        self.maximum_operation_per_hour: NumericDataUser = maximum_operation_per_hour
+        self.minimum_operation_per_hour: TemporalDataUser = minimum_operation_per_hour
+        self.maximum_operation_per_hour: TemporalDataUser = maximum_operation_per_hour
         self.minimum_invest = minimum_invest
         self.maximum_invest = maximum_invest
         self.minimum_total = minimum_total
@@ -168,13 +168,19 @@ class EffectModel(ElementModel):
         )
 
 
-EffectExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
-EffectValuesInternal = Dict[str, NumericDataInternal]  # Used internally to index values
-EffectValuesUser = Union[NumericDataUser, Dict[str, NumericDataUser]]  # User-specified Shares to Effects
-""" This datatype is used to define the share to an effect by a certain attribute. """
+TemporalEffectsUser = Union[TemporalDataUser, Dict[str, TemporalDataUser]]  # User-specified Shares to Effects
+""" This datatype is used to define a temporal share to an effect by a certain attribute. """
 
-EffectValuesUserScalar = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
-""" This datatype is used to define the share to an effect by a certain attribute. Only scalars are allowed. """
+ScalarEffectsUser = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
+""" This datatype is used to define a scalar share to an effect by a certain attribute. """
+
+TemporalEffects = Dict[str, TemporalData]  # User-specified Shares to Effects
+""" This datatype is used internally to handle temporal shares to an effect. """
+
+ScalarEffects = Dict[str, Scalar]
+""" This datatype is used internally to handle scalar shares to an effect. """
+
+EffectExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
 
 
 class EffectCollection:
@@ -206,7 +212,10 @@ class EffectCollection:
             self._effects[effect.label] = effect
             logger.info(f'Registered new Effect: {effect.label}')
 
-    def create_effect_values_dict(self, effect_values_user: EffectValuesUser) -> Optional[Dict[str, NumericDataUser]]:
+    def create_effect_values_dict(
+        self,
+        effect_values_user: Union[ScalarEffectsUser, TemporalEffectsUser]
+    ) -> Optional[Dict[str, Union[Scalar, TemporalDataUser]]]:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
