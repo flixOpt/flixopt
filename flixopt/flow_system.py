@@ -167,7 +167,7 @@ class FlowSystem(Interface):
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
         """
         if not self._connected_and_transformed:
-            logger.warning('FlowSystem is not connected_and_transformed..')
+            logger.warning('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
         return super().to_dataset()

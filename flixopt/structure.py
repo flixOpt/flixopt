@@ -380,6 +380,9 @@ class Interface:
         Convert the object to an xarray Dataset representation.
         All DataArrays become dataset variables, everything else goes to attrs.
 
+        Its recommended to only call this method on Interfaces with all numeric data stored as xr.DataArrays.
+        Interfaces inside a FlowSystem are automatically converted this form after connecting and transforming the FlowSystem.
+
         Returns:
             xr.Dataset: Dataset containing all DataArrays with basic objects only in attributes
 
@@ -391,7 +394,10 @@ class Interface:
             # Create the dataset with extracted arrays as variables and structure as attrs
             return xr.Dataset(extracted_arrays, attrs=reference_structure)
         except Exception as e:
-            raise ValueError(f'Failed to convert {self.__class__.__name__} to dataset: {e}') from e
+            raise ValueError(
+                f'Failed to convert {self.__class__.__name__} to dataset. Its recommended to only call this method on '
+                f'a fully connected and transformed FlowSystem, or Interfaces inside such a FlowSystem.'
+                f'Original Error: {e}') from e
 
     def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
         """
