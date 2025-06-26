@@ -134,6 +134,8 @@ class Storage(Component):
         initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
         minimal_final_charge_state: Optional[Scalar] = None,
         maximal_final_charge_state: Optional[Scalar] = None,
+        relative_minimum_final_charge_state: Optional[Scalar] = None,
+        relative_maximum_final_charge_state: Optional[Scalar] = None,
         eta_charge: NumericDataUser = 1,
         eta_discharge: NumericDataUser = 1,
         relative_loss_per_hour: NumericDataUser = 0,
@@ -158,6 +160,8 @@ class Storage(Component):
             initial_charge_state: storage charge_state at the beginning. The default is 0.
             minimal_final_charge_state: minimal value of chargeState at the end of timeseries.
             maximal_final_charge_state: maximal value of chargeState at the end of timeseries.
+            minimal_final_charge_state: relative minimal value of chargeState at the end of timeseries.
+            maximal_final_charge_state: relative maximal value of chargeState at the end of timeseries.
             eta_charge: efficiency factor of charging/loading. The default is 1.
             eta_discharge: efficiency factor of uncharging/unloading. The default is 1.
             relative_loss_per_hour: loss per chargeState-Unit per hour. The default is 0.
@@ -180,6 +184,9 @@ class Storage(Component):
         self.relative_minimum_charge_state: NumericDataUser = relative_minimum_charge_state
         self.relative_maximum_charge_state: NumericDataUser = relative_maximum_charge_state
 
+        self.relative_minimum_final_charge_state: NumericDataUser = relative_minimum_final_charge_state
+        self.relative_maximum_final_charge_state: NumericDataUser = relative_maximum_final_charge_state
+
         self.initial_charge_state = initial_charge_state
         self.minimal_final_charge_state = minimal_final_charge_state
         self.maximal_final_charge_state = maximal_final_charge_state
@@ -199,12 +206,10 @@ class Storage(Component):
         self.relative_minimum_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum_charge_state',
             self.relative_minimum_charge_state,
-            needs_extra_timestep=True,
         )
         self.relative_maximum_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_maximum_charge_state',
             self.relative_maximum_charge_state,
-            needs_extra_timestep=True,
         )
         self.eta_charge = flow_system.fit_to_model_coords(f'{self.label_full}|eta_charge', self.eta_charge)
         self.eta_discharge = flow_system.fit_to_model_coords(f'{self.label_full}|eta_discharge', self.eta_discharge)
@@ -571,10 +576,20 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def relative_charge_state_bounds(self) -> Tuple[NumericDataUser, NumericDataUser]:
+    def relative_charge_state_bounds(self) -> Tuple[xr.DataArray, xr.DataArray]:
+        relative_minimum_final_charge_state = (
+            xr.DataArray([np.min(self.element.relative_minimum_charge_state)], coords={'time': [self._model.flow_system.timesteps_extra[-1]]}, dims=['time']
+                         ) if self.element.relative_minimum_final_charge_state is None else
+            self.element.relative_minimum_final_charge_state
+        )
+        relative_maximum_final_charge_state = (
+            xr.DataArray([np.max(self.element.relative_maximum_charge_state)], coords={'time': [self._model.flow_system.timesteps_extra[-1]]}, dims=['time']
+                         ) if self.element.relative_maximum_final_charge_state is None else
+            self.element.relative_maximum_final_charge_state
+        )
         return (
-            self.element.relative_minimum_charge_state,
-            self.element.relative_maximum_charge_state,
+            xr.concat([self.element.relative_minimum_charge_state, relative_minimum_final_charge_state], dim='time'),
+            xr.concat([self.element.relative_maximum_charge_state, relative_maximum_final_charge_state], dim='time'),
         )
 
 

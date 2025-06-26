@@ -285,7 +285,6 @@ class FlowSystem(Interface):
         self,
         name: str,
         data: Optional[NumericDataUser],
-        needs_extra_timestep: bool = False,
     ) -> Optional[NumericDataInternal]:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -293,7 +292,6 @@ class FlowSystem(Interface):
         Args:
             name: Name of the data
             data: Data to fit to model coordinates
-            needs_extra_timestep: Whether to use extended time coordinates
 
         Returns:
             xr.DataArray aligned to model coordinate system
@@ -301,20 +299,17 @@ class FlowSystem(Interface):
         if data is None:
             return None
 
-        # Choose appropriate timesteps
-        target_timesteps = self.timesteps_extra if needs_extra_timestep else self.timesteps
-
         if isinstance(data, TimeSeriesData):
             try:
                 return TimeSeriesData(
-                    DataConverter.to_dataarray(data, timesteps=target_timesteps),
+                    DataConverter.to_dataarray(data, timesteps=self.timesteps),
                     agg_group=data.agg_group, agg_weight=data.agg_weight
                 ).rename(name)
             except ConversionError as e:
                 logger.critical(f'Could not convert time series data "{name}" to DataArray: {e}. \n'
                                 f'Take care to use the correct (time) index.')
         else:
-            return DataConverter.to_dataarray(data, timesteps=target_timesteps).rename(name)
+            return DataConverter.to_dataarray(data, timesteps=self.timesteps).rename(name)
 
     def fit_effects_to_model_coords(
         self,
