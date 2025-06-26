@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `relative_minimum_charge_state` and `relative_maximum_charge_state` dont have an extra timestep anymore. The final charge state can be constrainted by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead.
+- FlowSystems can not be shared across multiple Calculations anymore. A copy of the FLowSystem is created instead. THs makes every Calculation independent. 
+- THe above allowed to remove the intermediate classes `TimeSeries` and `TimeSeriesCollection` classes which orchestratet datahandling.
+
+### Added
+- Added IO for all Interfaces and the FlowSystem
+- Added `sel`, `isel` and `resample` methods to FlowSystem, allowing for a flexible data handling.
+
 ## [2.1.2] - 2025-06-14
 
 ### Fixed
