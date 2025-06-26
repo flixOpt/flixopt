@@ -129,14 +129,8 @@ class FlowSystem(Interface):
         # Start with Interface base functionality for constructor parameters
         reference_structure, all_extracted_arrays = super()._create_reference_structure()
 
-        # Override timesteps serialization (we need timesteps_extra instead of timesteps)
-        reference_structure['timesteps_extra'] = [date.isoformat() for date in self.timesteps_extra]
-
-        # Remove timesteps from structure since we're using timesteps_extra
+        # Remove timesteps, as it's directly stored in dataset index
         reference_structure.pop('timesteps', None)
-
-        # Add timing arrays directly (not handled by Interface introspection)
-        all_extracted_arrays['hours_per_timestep'] = self.hours_per_timestep
 
         # Extract from components
         components_structure = {}
@@ -193,18 +187,11 @@ class FlowSystem(Interface):
         # Get the reference structure from attrs
         reference_structure = dict(ds.attrs)
 
-        # Extract FlowSystem constructor parameters
-        timesteps_extra = ds.indexes['time']
-        hours_of_previous_timesteps = reference_structure['hours_of_previous_timesteps']
-
-        # Calculate hours_of_last_timestep from the timesteps
-        hours_of_last_timestep = float((timesteps_extra[-1] - timesteps_extra[-2]) / pd.Timedelta(hours=1))
-
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
-            timesteps=timesteps_extra[:-1],
-            hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=hours_of_previous_timesteps,
+            timesteps=ds.indexes['time'],
+            hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
+            hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
         )
 
         # Create arrays dictionary from dataset variables
@@ -549,15 +536,7 @@ class FlowSystem(Interface):
             self.connect_and_transform()
 
         # Convert to dataset, select, then convert back
-        dataset = self.to_dataset()
-
-        # Extend time selection and handle NaN preservation
-        if 'time' in indexers:
-            indexers = self._extend_time_selection(indexers, dataset)
-            selected_dataset = dataset.sel(**indexers)
-            selected_dataset = self._preserve_nan_pattern(selected_dataset, dataset)
-        else:
-            selected_dataset = dataset.sel(**indexers)
+        selected_dataset = self.to_dataset().sel(**indexers)
 
         return self.__class__.from_dataset(selected_dataset)
 
@@ -567,93 +546,9 @@ class FlowSystem(Interface):
             self.connect_and_transform()
 
         # Convert to dataset, select, then convert back
-        dataset = self.to_dataset()
-
-        # Extend time selection and handle NaN preservation
-        if 'time' in indexers:
-            indexers = self._extend_time_iselection(indexers, dataset)
-            selected_dataset = dataset.isel(**indexers)
-            selected_dataset = self._preserve_nan_pattern(selected_dataset, dataset)
-        else:
-            selected_dataset = dataset.isel(**indexers)
+        selected_dataset = self.to_dataset().isel(**indexers)
 
         return self.__class__.from_dataset(selected_dataset)
-
-    def _preserve_nan_pattern(self, processed_dataset: xr.Dataset, original_dataset: xr.Dataset) -> xr.Dataset:
-        """
-        Preserve NaN pattern at the last timestep for arrays that originally had NaN at the end.
-        Works for both selection and resampling operations.
-        """
-        for var_name, processed_array in processed_dataset.data_vars.items():
-            if var_name in original_dataset.data_vars:
-                original_array = original_dataset.data_vars[var_name]
-
-                # Check if original array had NaN at the last timestep
-                if len(original_array.time) > 0 and len(processed_array.time) > 0:
-                    last_original = original_array.isel(time=-1)
-
-                    if last_original.isnull().all():  # All values at last timestep are NaN
-                        # Set all values at last timestep to NaN
-                        processed_array = processed_array.copy()
-                        processed_array.values[..., -1] = np.nan
-                        processed_dataset[var_name] = processed_array
-                    elif last_original.isnull().any():  # Some values at last timestep are NaN
-                        # Preserve the specific NaN pattern (if dimensions allow)
-                        processed_array = processed_array.copy()
-                        try:
-                            nan_mask = last_original.isnull().values
-                            processed_array.values[..., -1][nan_mask] = np.nan
-                        except (IndexError, ValueError):
-                            # Fallback: set entire last timestep to NaN if dimensions don't match
-                            processed_array.values[..., -1] = np.nan
-                        processed_dataset[var_name] = processed_array
-
-        return processed_dataset
-
-    def _extend_time_selection(self, indexers: dict, dataset: xr.Dataset) -> dict:
-        """Extend time selection to include the next timestep for proper boundaries."""
-        new_indexers = indexers.copy()
-        time_sel = indexers['time']
-
-        if isinstance(time_sel, slice):
-            # For slice, extend the stop point
-            if time_sel.stop is not None:
-                time_coord = dataset.coords['time']
-                try:
-                    # Find the index of the stop time and add 1
-                    stop_idx = time_coord.get_index('time').get_indexer([time_sel.stop], method='nearest')[0]
-                    if stop_idx < len(time_coord) - 1:  # Don't go beyond bounds
-                        next_time = time_coord.isel(time=stop_idx + 1).values
-                        new_indexers['time'] = slice(time_sel.start, next_time, time_sel.step)
-                except Exception:
-                    pass  # Keep original if extension fails
-
-        return new_indexers
-
-    def _extend_time_iselection(self, indexers: dict, dataset: xr.Dataset) -> dict:
-        """Extend integer time selection to include the next timestep."""
-        new_indexers = indexers.copy()
-        time_sel = indexers['time']
-
-        if isinstance(time_sel, slice):
-            # For slice, extend the stop point by 1
-            stop = time_sel.stop
-            if stop is not None and stop < len(dataset.coords['time']) - 1:
-                new_indexers['time'] = slice(time_sel.start, stop + 1, time_sel.step)
-        elif isinstance(time_sel, int):
-            # For single index, convert to slice including next
-            if time_sel < len(dataset.coords['time']) - 1:
-                new_indexers['time'] = slice(time_sel, time_sel + 2)
-        elif isinstance(time_sel, (list, np.ndarray)):
-            # For list/array of indices, add next indices
-            extended_indices = list(time_sel)
-            max_idx = len(dataset.coords['time']) - 1
-            for idx in time_sel:
-                if isinstance(idx, int) and idx < max_idx and (idx + 1) not in extended_indices:
-                    extended_indices.append(idx + 1)
-            new_indexers['time'] = sorted(extended_indices)
-
-        return new_indexers
 
     def resample(self, time, method: str = 'mean', **kwargs) -> 'FlowSystem':
         """
@@ -675,8 +570,5 @@ class FlowSystem(Interface):
             resampled_dataset = getattr(resampler, method)()
         else:
             raise ValueError(f'Unsupported resampling method: {method}')
-
-        # Preserve NaN pattern at the last timestep
-        resampled_dataset = self._preserve_nan_pattern(resampled_dataset, dataset)
 
         return self.__class__.from_dataset(resampled_dataset)
