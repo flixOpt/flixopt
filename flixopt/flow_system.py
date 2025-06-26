@@ -517,6 +517,30 @@ class FlowSystem(Interface):
 
         return True
 
+    def __getitem__(self, item) -> Element:
+        """Get element by exact label with helpful error messages."""
+        if item in self.all_elements:
+            return self.all_elements[item]
+
+        # Provide helpful error with suggestions
+        from difflib import get_close_matches
+
+        suggestions = get_close_matches(item, self.all_elements.keys(), n=3, cutoff=0.6)
+
+        if suggestions:
+            suggestion_str = ', '.join(f"'{s}'" for s in suggestions)
+            raise KeyError(f"Element '{item}' not found. Did you mean: {suggestion_str}?")
+        else:
+            raise KeyError(f"Element '{item}' not found in FlowSystem")
+
+    def __contains__(self, item: str) -> bool:
+        """Check if element exists in the FlowSystem."""
+        return item in self.all_elements
+
+    def __iter__(self):
+        """Iterate over element labels."""
+        return iter(self.all_elements.keys())
+
     @property
     def flows(self) -> Dict[str, Flow]:
         set_of_flows = {flow for comp in self.components.values() for flow in comp.inputs + comp.outputs}
