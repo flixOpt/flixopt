@@ -584,11 +584,13 @@ class StorageModel(ComponentModel):
             Tuple of (minimum_bounds, maximum_bounds) DataArrays extending to final timestep
         """
         final_timestep = self._model.flow_system.timesteps_extra[-1]
-        final_coords = {'time': final_timestep}
+        final_coords = {'time': [final_timestep]}
 
         # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
-            min_final = self.element.relative_minimum_charge_state.isel(time=-1).assign_coords(time=final_timestep)
+            min_final = self.element.relative_minimum_charge_state.isel(
+                time=-1, drop=True
+            ).assign_coords(time=final_timestep)
         else:
             min_final = xr.DataArray(
                 [self.element.relative_minimum_final_charge_state], coords=final_coords, dims=['time']
@@ -596,7 +598,9 @@ class StorageModel(ComponentModel):
 
         # Get final maximum charge state
         if self.element.relative_maximum_final_charge_state is None:
-            max_final = self.element.relative_maximum_charge_state.isel(time=-1).assign_coords(time=final_timestep)
+            max_final = self.element.relative_maximum_charge_state.isel(
+                time=-1, drop=True
+            ).assign_coords(time=final_timestep)
         else:
             max_final = xr.DataArray(
                 [self.element.relative_maximum_final_charge_state], coords=final_coords, dims=['time']
