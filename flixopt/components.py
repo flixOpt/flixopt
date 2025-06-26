@@ -577,33 +577,36 @@ class StorageModel(ComponentModel):
 
     @property
     def relative_charge_state_bounds(self) -> Tuple[xr.DataArray, xr.DataArray]:
-        coords = {'time': self._model.flow_system.timesteps_extra[-1]}
+        """
+        Get relative charge state bounds with final timestep values.
+
+        Returns:
+            Tuple of (minimum_bounds, maximum_bounds) DataArrays extending to final timestep
+        """
+        final_timestep = self._model.flow_system.timesteps_extra[-1]
+        final_coords = {'time': final_timestep}
+
+        # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
-            relative_minimum_final_charge_state = self.element.relative_minimum_charge_state.isel(
-                time=-1
-            ).assign_coords(time=self._model.flow_system.timesteps_extra[-1])
+            min_final = self.element.relative_minimum_charge_state.isel(time=-1).assign_coords(time=final_timestep)
         else:
-            relative_minimum_final_charge_state = xr.DataArray(
-                [self.element.relative_minimum_final_charge_state],
-                coords=coords,
-                dims=['time']
+            min_final = xr.DataArray(
+                [self.element.relative_minimum_final_charge_state], coords=final_coords, dims=['time']
             )
 
+        # Get final maximum charge state
         if self.element.relative_maximum_final_charge_state is None:
-            relative_maximum_final_charge_state = self.element.relative_maximum_charge_state.isel(
-                time=-1
-            ).assign_coords(coords)
+            max_final = self.element.relative_maximum_charge_state.isel(time=-1).assign_coords(time=final_timestep)
         else:
-            relative_maximum_final_charge_state = xr.DataArray(
-                [self.element.relative_maximum_final_charge_state],
-                coords=coords,
-                dims=['time']
+            max_final = xr.DataArray(
+                [self.element.relative_maximum_final_charge_state], coords=final_coords, dims=['time']
             )
 
-        return (
-            xr.concat([self.element.relative_minimum_charge_state, relative_minimum_final_charge_state], dim='time'),
-            xr.concat([self.element.relative_maximum_charge_state, relative_maximum_final_charge_state], dim='time'),
-        )
+        # Concatenate with original bounds
+        min_bounds = xr.concat([self.element.relative_minimum_charge_state, min_final], dim='time')
+        max_bounds = xr.concat([self.element.relative_maximum_charge_state, max_final], dim='time')
+
+        return min_bounds, max_bounds
 
 
 @register_class_for_io
