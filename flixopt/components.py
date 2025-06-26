@@ -577,16 +577,18 @@ class StorageModel(ComponentModel):
 
     @property
     def relative_charge_state_bounds(self) -> Tuple[xr.DataArray, xr.DataArray]:
-        relative_minimum_final_charge_state = (
-            xr.DataArray([np.min(self.element.relative_minimum_charge_state)], coords={'time': [self._model.flow_system.timesteps_extra[-1]]}, dims=['time']
-                         ) if self.element.relative_minimum_final_charge_state is None else
-            self.element.relative_minimum_final_charge_state
+        relative_minimum_final_charge_state = xr.DataArray(
+            [self.element.relative_minimum_charge_state.max('time') if self.element.relative_minimum_final_charge_state is None else self.element.relative_minimum_final_charge_state],
+            coords={'time': [self._model.flow_system.timesteps_extra[-1]]},
+            dims=['time']
         )
-        relative_maximum_final_charge_state = (
-            xr.DataArray([np.max(self.element.relative_maximum_charge_state)], coords={'time': [self._model.flow_system.timesteps_extra[-1]]}, dims=['time']
-                         ) if self.element.relative_maximum_final_charge_state is None else
-            self.element.relative_maximum_final_charge_state
+        relative_maximum_final_charge_state = xr.DataArray(
+            [self.element.relative_maximum_charge_state.max('time') if self.element.relative_maximum_final_charge_state is None else
+            self.element.relative_maximum_final_charge_state],
+            coords={'time': [self._model.flow_system.timesteps_extra[-1]]},
+            dims=['time']
         )
+
         return (
             xr.concat([self.element.relative_minimum_charge_state, relative_minimum_final_charge_state], dim='time'),
             xr.concat([self.element.relative_maximum_charge_state, relative_maximum_final_charge_state], dim='time'),
