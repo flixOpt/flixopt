@@ -103,13 +103,8 @@ if __name__ == '__main__':
     calculation = fx.FullCalculation(name='Sim1', flow_system=flow_system)
     calculation.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
 
-    calculation2 = fx.FullCalculation(name='Sim2', flow_system=flow_system)
-    calculation2.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
-
     # --- Solve the Calculation and Save Results ---
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
-
-    calculation2.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
     # --- Analyze Results ---
     calculation.results['Fernwärme'].plot_node_balance_pie()
