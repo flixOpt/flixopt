@@ -212,7 +212,7 @@ class DataConverter:
                     raise ConversionError(f"DataArray dimensions {data.dims} don't match expected {dims}")
                 if data.sizes[dims[0]] != len(coords[0]):
                     raise ConversionError(
-                        f"DataArray length {data.sizes[dims[0]]} doesn't match expected {len(coords[0])}"
+                        f"DataArray length {data.sizes[dims[0]]} doesn't match expected {len(coords[0])}: {data}"
                     )
                 return data.copy(deep=True)
 
