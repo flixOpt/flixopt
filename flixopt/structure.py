@@ -156,7 +156,7 @@ class Interface:
         all_extracted_arrays = {}
 
         for name in self._cached_init_params:
-            if name == 'self':
+            if name == 'self' or name == 'timesteps':  # Skip self and timesteps. Timesteps are directly stored in Datasets
                 continue
 
             value = getattr(self, name, None)
