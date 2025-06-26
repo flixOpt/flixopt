@@ -175,6 +175,87 @@ class TestStorageModel:
             model.variables['TestStorage|charge_state'].isel(time=0) == 0
         )
 
+    def test_charge_state_bounds(self, basic_flow_system_linopy):
+        """Test that basic storage model variables and constraints are correctly generated."""
+        flow_system = basic_flow_system_linopy
+        timesteps = flow_system.timesteps
+        timesteps_extra = flow_system.timesteps_extra
+
+        # Create a simple storage
+        storage = fx.Storage(
+            'TestStorage',
+            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
+            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            capacity_in_flow_hours=30,  # 30 kWh storage capacity
+            initial_charge_state=3,
+            prevent_simultaneous_charge_and_discharge=True,
+            relative_maximum_charge_state=np.array([0.14, 0.22, 0.3 , 0.38, 0.46, 0.54, 0.62, 0.7 , 0.78, 0.86]),
+            relative_minimum_charge_state=np.array([0.07, 0.11, 0.15, 0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43]),
+        )
+
+        flow_system.add_elements(storage)
+        model = create_linopy_model(flow_system)
+
+        # Check that all expected variables exist - linopy model variables are accessed by indexing
+        expected_variables = {
+            'TestStorage(Q_th_in)|flow_rate',
+            'TestStorage(Q_th_in)|total_flow_hours',
+            'TestStorage(Q_th_out)|flow_rate',
+            'TestStorage(Q_th_out)|total_flow_hours',
+            'TestStorage|charge_state',
+            'TestStorage|netto_discharge',
+        }
+        for var_name in expected_variables:
+            assert var_name in model.variables, f"Missing variable: {var_name}"
+
+        # Check that all expected constraints exist - linopy model constraints are accessed by indexing
+        expected_constraints = {
+            'TestStorage(Q_th_in)|total_flow_hours',
+            'TestStorage(Q_th_out)|total_flow_hours',
+            'TestStorage|netto_discharge',
+            'TestStorage|charge_state',
+            'TestStorage|initial_charge_state',
+        }
+        for con_name in expected_constraints:
+            assert con_name in model.constraints, f"Missing constraint: {con_name}"
+
+        # Check variable properties
+        assert_var_equal(
+            model['TestStorage(Q_th_in)|flow_rate'],
+            model.add_variables(lower=0, upper=20, coords=(timesteps,))
+        )
+        assert_var_equal(
+            model['TestStorage(Q_th_out)|flow_rate'],
+            model.add_variables(lower=0, upper=20, coords=(timesteps,))
+        )
+        assert_var_equal(
+            model['TestStorage|charge_state'],
+            model.add_variables(lower=np.array([0.07, 0.11, 0.15, 0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43, 0.43]) * 30,
+                                upper=np.array([0.14, 0.22, 0.3 , 0.38, 0.46, 0.54, 0.62, 0.7 , 0.78, 0.86, 0.86]) * 30,
+                                coords=(timesteps_extra,))
+        )
+
+        # Check constraint formulations
+        assert_conequal(
+            model.constraints['TestStorage|netto_discharge'],
+            model.variables['TestStorage|netto_discharge'] ==
+            model.variables['TestStorage(Q_th_out)|flow_rate'] - model.variables['TestStorage(Q_th_in)|flow_rate']
+        )
+
+        charge_state = model.variables['TestStorage|charge_state']
+        assert_conequal(
+            model.constraints['TestStorage|charge_state'],
+            charge_state.isel(time=slice(1, None))
+            == charge_state.isel(time=slice(None, -1))
+            + model.variables['TestStorage(Q_th_in)|flow_rate'] * model.hours_per_step
+            - model.variables['TestStorage(Q_th_out)|flow_rate'] *  model.hours_per_step,
+        )
+        # Check initial charge state constraint
+        assert_conequal(
+            model.constraints['TestStorage|initial_charge_state'],
+            model.variables['TestStorage|charge_state'].isel(time=0) == 3
+        )
+
     def test_storage_with_investment(self, basic_flow_system_linopy):
         """Test storage with investment parameters."""
         flow_system = basic_flow_system_linopy
