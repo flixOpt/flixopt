@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 * **BREAKING**: FlowSystems can not be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
-* **BREAKING**: Type system overhaul - replaced `NumericDataTS` with `NumericDataUser` throughout codebase for better clarity
+* **BREAKING**: Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
 * **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
 * FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
 * Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
