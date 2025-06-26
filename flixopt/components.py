@@ -237,9 +237,9 @@ class Storage(Component):
                 minimum_capacity = self.capacity_in_flow_hours
 
             # initial capacity >= allowed min for maximum_size:
-            minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
+            minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
             # initial capacity <= allowed max for minimum_size:
-            maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
+            maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
             if self.initial_charge_state > maximum_inital_capacity:
                 raise ValueError(
@@ -577,17 +577,28 @@ class StorageModel(ComponentModel):
 
     @property
     def relative_charge_state_bounds(self) -> Tuple[xr.DataArray, xr.DataArray]:
-        relative_minimum_final_charge_state = xr.DataArray(
-            [self.element.relative_minimum_charge_state.max('time') if self.element.relative_minimum_final_charge_state is None else self.element.relative_minimum_final_charge_state],
-            coords={'time': [self._model.flow_system.timesteps_extra[-1]]},
-            dims=['time']
-        )
-        relative_maximum_final_charge_state = xr.DataArray(
-            [self.element.relative_maximum_charge_state.max('time') if self.element.relative_maximum_final_charge_state is None else
-            self.element.relative_maximum_final_charge_state],
-            coords={'time': [self._model.flow_system.timesteps_extra[-1]]},
-            dims=['time']
-        )
+        coords = {'time': self._model.flow_system.timesteps_extra[-1]}
+        if self.element.relative_minimum_final_charge_state is None:
+            relative_minimum_final_charge_state = self.element.relative_minimum_charge_state.isel(
+                time=-1
+            ).assign_coords(time=self._model.flow_system.timesteps_extra[-1])
+        else:
+            relative_minimum_final_charge_state = xr.DataArray(
+                [self.element.relative_minimum_final_charge_state],
+                coords=coords,
+                dims=['time']
+            )
+
+        if self.element.relative_maximum_final_charge_state is None:
+            relative_maximum_final_charge_state = self.element.relative_maximum_charge_state.isel(
+                time=-1
+            ).assign_coords(coords)
+        else:
+            relative_maximum_final_charge_state = xr.DataArray(
+                [self.element.relative_maximum_final_charge_state],
+                coords=coords,
+                dims=['time']
+            )
 
         return (
             xr.concat([self.element.relative_minimum_charge_state, relative_minimum_final_charge_state], dim='time'),
