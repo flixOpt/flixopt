@@ -7,7 +7,7 @@ import logging
 import pathlib
 import warnings
 from io import StringIO
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
