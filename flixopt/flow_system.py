@@ -7,7 +7,7 @@ import logging
 import pathlib
 import warnings
 from io import StringIO
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union, Any
 
 import numpy as np
 import pandas as pd
@@ -530,34 +530,70 @@ class FlowSystem(Interface):
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
 
-    def sel(self, **indexers) -> 'FlowSystem':
-        """Select a subset of the flowsystem like dataset.sel(time=slice('2023-01', '2023-06'))"""
-        if not self._connected_and_transformed:
-            self.connect_and_transform()
-
-        # Convert to dataset, select, then convert back
-        selected_dataset = self.to_dataset().sel(**indexers)
-
-        return self.__class__.from_dataset(selected_dataset)
-
-    def isel(self, **indexers) -> 'FlowSystem':
-        """Select by integer index like dataset.isel(time=slice(0, 100))"""
-        if not self._connected_and_transformed:
-            self.connect_and_transform()
-
-        # Convert to dataset, select, then convert back
-        selected_dataset = self.to_dataset().isel(**indexers)
-
-        return self.__class__.from_dataset(selected_dataset)
-
-    def resample(self, time, method: str = 'mean', **kwargs) -> 'FlowSystem':
+    def sel(self, time: Optional[Union[str, slice, List[str], pd.Timestamp]] = None) -> 'FlowSystem':
         """
-        Resample time dimension like dataset.resample().
+        Select a subset of the flowsystem by the time coordinate.
 
         Args:
-            time: Resampling frequency (e.g., '1H', '1D')
-            method: Resampling method ('mean', 'sum', 'max', 'min', 'first', 'last')
+            time: Time selection (e.g., slice('2023-01-01', '2023-12-31'), '2023-06-15', or list of times)
+
+        Returns:
+            FlowSystem: New FlowSystem with selected data
+        """
+        if not self._connected_and_transformed:
+            self.connect_and_transform()
+
+        # Build indexers dict from non-None parameters
+        indexers = {}
+        if time is not None:
+            indexers['time'] = time
+
+        if not indexers:
+            return self.copy()  # Return a copy when no selection
+
+        selected_dataset = self.to_dataset().sel(**indexers)
+        return self.__class__.from_dataset(selected_dataset)
+
+    def isel(self, time: Optional[Union[int, slice, List[int]]] = None) -> 'FlowSystem':
+        """
+        Select a subset of the flowsystem by integer indices.
+
+        Args:
+            time: Time selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
+
+        Returns:
+            FlowSystem: New FlowSystem with selected data
+        """
+        if not self._connected_and_transformed:
+            self.connect_and_transform()
+
+        # Build indexers dict from non-None parameters
+        indexers = {}
+        if time is not None:
+            indexers['time'] = time
+
+        if not indexers:
+            return self.copy()  # Return a copy when no selection
+
+        selected_dataset = self.to_dataset().isel(**indexers)
+        return self.__class__.from_dataset(selected_dataset)
+
+    def resample(
+        self,
+        time: str,
+        method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
+        **kwargs: Any
+    ) -> 'FlowSystem':
+        """
+        Create a resampled FlowSystem by resampling data along the time dimension (like xr.Dataset.resample()).
+
+        Args:
+            time: Resampling frequency (e.g., '3h', '2D', '1M')
+            method: Resampling method. Recommended: 'mean', 'first', 'last', 'max', 'min'
             **kwargs: Additional arguments passed to xarray.resample()
+
+        Returns:
+            FlowSystem: New FlowSystem with resampled data
         """
         if not self._connected_and_transformed:
             self.connect_and_transform()
@@ -565,10 +601,10 @@ class FlowSystem(Interface):
         dataset = self.to_dataset()
         resampler = dataset.resample(time=time, **kwargs)
 
-        # Apply the specified method
         if hasattr(resampler, method):
             resampled_dataset = getattr(resampler, method)()
         else:
-            raise ValueError(f'Unsupported resampling method: {method}')
+            available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
+            raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
 
         return self.__class__.from_dataset(resampled_dataset)
