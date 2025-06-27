@@ -288,9 +288,10 @@ class FlowSystem(Interface):
 
         if isinstance(data, TimeSeriesData):
             try:
+                data.name = name  # Set name of previous object!
                 return TimeSeriesData(
                     DataConverter.to_dataarray(data, timesteps=self.timesteps),
-                    agg_group=data.agg_group, agg_weight=data.agg_weight
+                    aggregation_group=data.aggregation_group, aggregation_weight=data.aggregation_weight
                 ).rename(name)
             except ConversionError as e:
                 logger.critical(f'Could not convert time series data "{name}" to DataArray: {e}. \n'

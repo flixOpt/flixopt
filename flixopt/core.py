@@ -41,45 +41,45 @@ class TimeSeriesData(xr.DataArray):
 
     __slots__ = ()  # No additional instance attributes - everything goes in attrs
 
-    def __init__(self, *args, agg_group: Optional[str] = None, agg_weight: Optional[float] = None, **kwargs):
+    def __init__(self, *args, aggregation_group: Optional[str] = None, aggregation_weight: Optional[float] = None, **kwargs):
         """
         Args:
             *args: Arguments passed to DataArray
-            agg_group: Aggregation group name
-            agg_weight: Aggregation weight (0-1)
+            aggregation_group: Aggregation group name
+            aggregation_weight: Aggregation weight (0-1)
             **kwargs: Additional arguments passed to DataArray
         """
-        if (agg_group is not None) and (agg_weight is not None):
-            raise ValueError('Use either agg_group or agg_weight, not both')
+        if (aggregation_group is not None) and (aggregation_weight is not None):
+            raise ValueError('Use either aggregation_group or aggregation_weight, not both')
 
         # Let xarray handle all the initialization complexity
         super().__init__(*args, **kwargs)
 
         # Add our metadata to attrs after initialization
-        if agg_group is not None:
-            self.attrs['agg_group'] = agg_group
-        if agg_weight is not None:
-            self.attrs['agg_weight'] = agg_weight
+        if aggregation_group is not None:
+            self.attrs['aggregation_group'] = aggregation_group
+        if aggregation_weight is not None:
+            self.attrs['aggregation_weight'] = aggregation_weight
 
         # Always mark as TimeSeriesData
         self.attrs['__timeseries_data__'] = True
 
     @property
-    def agg_group(self) -> Optional[str]:
-        return self.attrs.get('agg_group')
+    def aggregation_group(self) -> Optional[str]:
+        return self.attrs.get('aggregation_group')
 
     @property
-    def agg_weight(self) -> Optional[float]:
-        return self.attrs.get('agg_weight')
+    def aggregation_weight(self) -> Optional[float]:
+        return self.attrs.get('aggregation_weight')
 
     @classmethod
-    def from_dataarray(cls, da: xr.DataArray, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
+    def from_dataarray(cls, da: xr.DataArray, aggregation_group: Optional[str] = None, aggregation_weight: Optional[float] = None):
         """Create TimeSeriesData from DataArray, extracting metadata from attrs."""
         # Get aggregation metadata from attrs or parameters
-        final_agg_group = agg_group if agg_group is not None else da.attrs.get('agg_group')
-        final_agg_weight = agg_weight if agg_weight is not None else da.attrs.get('agg_weight')
+        final_aggregation_group = aggregation_group if aggregation_group is not None else da.attrs.get('aggregation_group')
+        final_aggregation_weight = aggregation_weight if aggregation_weight is not None else da.attrs.get('aggregation_weight')
 
-        return cls(da, agg_group=final_agg_group, agg_weight=final_agg_weight)
+        return cls(da, aggregation_group=final_aggregation_group, aggregation_weight=final_aggregation_weight)
 
     @classmethod
     def is_timeseries_data(cls, obj) -> bool:
@@ -88,10 +88,10 @@ class TimeSeriesData(xr.DataArray):
 
     def __repr__(self):
         agg_info = []
-        if self.agg_group:
-            agg_info.append(f"agg_group='{self.agg_group}'")
-        if self.agg_weight is not None:
-            agg_info.append(f'agg_weight={self.agg_weight}')
+        if self.aggregation_group:
+            agg_info.append(f"aggregation_group='{self.aggregation_group}'")
+        if self.aggregation_weight is not None:
+            agg_info.append(f'aggregation_weight={self.aggregation_weight}')
 
         info_str = f'TimeSeriesData({", ".join(agg_info)})' if agg_info else 'TimeSeriesData'
         return f'{info_str}\n{super().__repr__()}'
@@ -255,3 +255,19 @@ def get_dataarray_stats(arr: xr.DataArray) -> Dict:
             pass
 
     return stats
+
+
+def drop_constant_arrays(ds: xr.Dataset, dim='time', drop_arrays_without_dim: bool = True):
+    """Drop variables with very low variance (near-constant)."""
+    drop_vars = []
+
+    for name, da in ds.data_vars.items():
+        if dim in da.dims:
+            if da.max(dim) == da.min(dim):
+                drop_vars.append(name)
+            continue
+        elif drop_arrays_without_dim:
+            drop_vars.append(name)
+
+    logger.debug(f'Dropping {len(drop_vars)} arrays with constant values')
+    return ds.drop_vars(drop_vars)

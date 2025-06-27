@@ -14,17 +14,19 @@ import pathlib
 import timeit
 import warnings
 from typing import Annotated, Any, Dict, List, Optional, Union
+from collections import Counter
 
 import numpy as np
 import pandas as pd
 import yaml
+import xarray as xr
 
 from . import io as fx_io
 from . import utils as utils
 from .aggregation import AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
-from .core import Scalar
+from .core import Scalar, DataConverter, drop_constant_arrays, TimeSeriesData
 from .elements import Component
 from .features import InvestmentModel
 from .flow_system import FlowSystem
@@ -294,15 +296,17 @@ class AggregatedCalculation(FullCalculation):
         logger.info(f'{"":#^80}')
         logger.info(f'{" Aggregating TimeSeries Data ":#^80}')
 
+        ds = self.flow_system.to_dataset()
+
+        temporaly_changing_ds = drop_constant_arrays(ds, dim='time')
+
         # Aggregation - creation of aggregated timeseries:
         self.aggregation = Aggregation(
-            original_data=self.flow_system.to_dataframe(
-                include_extra_timestep=False
-            ),  # Exclude last row (NaN)
+            original_data=temporaly_changing_ds.to_dataframe(),
             hours_per_time_step=float(dt_min),
             hours_per_period=self.aggregation_parameters.hours_per_period,
             nr_of_periods=self.aggregation_parameters.nr_of_periods,
-            weights=self.flow_system.calculate_aggregation_weights(),
+            weights=self.calculate_aggregation_weights(temporaly_changing_ds),
             time_series_for_high_peaks=self.aggregation_parameters.labels_for_high_peaks,
             time_series_for_low_peaks=self.aggregation_parameters.labels_for_low_peaks,
         )
@@ -310,10 +314,40 @@ class AggregatedCalculation(FullCalculation):
         self.aggregation.cluster()
         self.aggregation.plot(show=True, save=self.folder / 'aggregation.html')
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
-            self.flow_system.insert_new_data(
-                self.aggregation.aggregated_data, include_extra_timestep=False
-            )
+            ds = self.flow_system.to_dataset()
+            for name, series in self.aggregation.aggregated_data.items():
+                da = DataConverter.to_dataarray(series, timesteps=self.flow_system.timesteps).rename(name).assign_attrs(ds[name].attrs)
+                if TimeSeriesData.is_timeseries_data(da):
+                    da = TimeSeriesData.from_dataarray(da)
+
+                ds[name] = da
+
+            self.flow_system = FlowSystem.from_dataset(ds)
+        self.flow_system.connect_and_transform()
         self.durations['aggregation'] = round(timeit.default_timer() - t_start_agg, 2)
+
+    @classmethod
+    def calculate_aggregation_weights(cls, ds: xr.Dataset) -> Dict[str, float]:
+        """Calculate weights for all datavars in the dataset. Weights are pulled from the attrs of the datavars."""
+
+        groups = [da.attrs['aggregation_group'] for da in ds.values() if 'aggregation_group' in da.attrs]
+        group_counts = Counter(groups)
+
+        # Calculate weight for each group (1/count)
+        group_weights = {group: 1 / count for group, count in group_counts.items()}
+
+        weights = {}
+        for name, da in ds.data_vars.items():
+            group_weight = group_weights.get(da.attrs.get('aggregation_group'))
+            if group_weight is not None:
+                weights[name] = group_weight
+            else:
+                weights[name] = da.attrs.get('aggregation_weight', 1)
+
+        if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
+            logger.info('All Aggregation weights were set to 1')
+
+        return weights
 
 
 class SegmentedCalculation(Calculation):
