@@ -659,7 +659,7 @@ class SegmentedCalculationResults:
         with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
-            [CalculationResults.from_file(folder, name) for name in meta_data['sub_calculations']],
+            [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
             all_timesteps=pd.DatetimeIndex(
                 [datetime.datetime.fromisoformat(date) for date in meta_data['all_timesteps']], name='time'
             ),
@@ -756,7 +756,7 @@ class SegmentedCalculationResults:
                     f'Folder {folder} and its parent do not exist. Please create them first.'
                 ) from e
         for segment in self.segment_results:
-            segment.to_file(folder=folder, name=f'{name}-{segment.name}', compression=compression)
+            segment.to_file(folder=folder, name=segment.name, compression=compression)
 
         with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(self.meta_data, f, indent=4, ensure_ascii=False)
