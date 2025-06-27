@@ -410,13 +410,12 @@ class SegmentedCalculation(Calculation):
 
     def _create_sub_calculations(self):
         for i, (segment_name, timesteps_of_segment) in enumerate(
-            zip(self.segment_names, self._timesteps_per_segment, strict=False)
+            zip(self.segment_names, self._timesteps_per_segment, strict=True)
         ):
-            self.sub_calculations.append(
-                FullCalculation(
-                    f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment),
-                )
-            )
+            calc = FullCalculation(f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment))
+            calc.flow_system._connect_network()  # Connect to have Correct names of Flows!
+
+            self.sub_calculations.append(calc)
             logger.info(
                 f'{segment_name} [{i + 1:>2}/{len(self.segment_names):<2}] '
                 f'({timesteps_of_segment[0]} -> {timesteps_of_segment[-1]}):'
@@ -435,7 +434,7 @@ class SegmentedCalculation(Calculation):
                 f'({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]}):'
             )
 
-            if i > 0:
+            if i > 0 and self.nr_of_previous_values > 0:
                 self._transfer_start_values(i)
 
             calculation.do_modeling()
@@ -478,18 +477,22 @@ class SegmentedCalculation(Calculation):
         end_previous_values = timesteps_of_prior_segment[self.timesteps_per_segment - 1]
 
         logger.debug(
-            f'start of next segment: {start}. indices of previous values: {start_previous_values}:{end_previous_values}'
+            f'Start of next segment: {start}. Indices of previous values: {start_previous_values} -> {end_previous_values}'
         )
         current_flow_system = self.sub_calculations[i -1].flow_system
         next_flow_system = self.sub_calculations[i].flow_system
 
         start_values_of_this_segment = {}
-        for current_flow, next_flow in zip(current_flow_system.flows.values(), next_flow_system.flows.values()):
+
+        for current_flow in current_flow_system.flows.values():
+            next_flow = next_flow_system.flows[current_flow.label_full]
             next_flow.previous_flow_rate = current_flow.model.flow_rate.solution.sel(
                 time=slice(start_previous_values, end_previous_values)
             ).values
             start_values_of_this_segment[current_flow.label_full] = next_flow.previous_flow_rate
-        for current_comp, next_comp in zip(current_flow_system.components.values(), next_flow_system.components.values()):
+
+        for current_comp in current_flow_system.components.values():
+            next_comp = next_flow_system.components[current_comp.label_full]
             if isinstance(next_comp, Storage):
                 next_comp.initial_charge_state = current_comp.model.charge_state.solution.sel(time=start).item()
                 start_values_of_this_segment[current_comp.label_full] = next_comp.initial_charge_state
