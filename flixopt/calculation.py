@@ -385,8 +385,6 @@ class SegmentedCalculation(Calculation):
         self.nr_of_previous_values = nr_of_previous_values
         self.sub_calculations: List[FullCalculation] = []
 
-        self.all_timesteps = self.flow_system.all_timesteps
-        self.all_timesteps_extra = self.flow_system.all_timesteps_extra
 
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
@@ -419,22 +417,22 @@ class SegmentedCalculation(Calculation):
         for i, (segment_name, timesteps_of_segment) in enumerate(
             zip(self.segment_names, self.active_timesteps_per_segment, strict=False)
         ):
-            if self.sub_calculations:
-                self._transfer_start_values(i)
+            calculation = FullCalculation(
+                f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment),
+            )
+            self.sub_calculations.append(calculation)
 
             logger.info(
                 f'{segment_name} [{i + 1:>2}/{len(self.segment_names):<2}] '
                 f'({timesteps_of_segment[0]} -> {timesteps_of_segment[-1]}):'
             )
+            if len(self.sub_calculations) >= 2:
+                self._transfer_start_values(i)
 
-            calculation = FullCalculation(
-                f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment),
-            )
-            self.sub_calculations.append(calculation)
             calculation.do_modeling()
             invest_elements = [
                 model.label_full
-                for component in self.flow_system.components.values()
+                for component in calculation.flow_system.components.values()
                 for model in component.model.all_sub_models
                 if isinstance(model, InvestmentModel)
             ]
@@ -448,8 +446,6 @@ class SegmentedCalculation(Calculation):
                 log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
                 log_main_results=log_main_results,
             )
-
-        self._reset_start_values()
 
         for calc in self.sub_calculations:
             for key, value in calc.durations.items():
@@ -471,26 +467,21 @@ class SegmentedCalculation(Calculation):
         logger.debug(
             f'start of next segment: {start}. indices of previous values: {start_previous_values}:{end_previous_values}'
         )
+        current_flow_system = self.sub_calculations[segment_index -1].flow_system
+        next_flow_system = self.sub_calculations[segment_index].flow_system
+
         start_values_of_this_segment = {}
-        for flow in self.flow_system.flows.values():
-            flow.previous_flow_rate = flow.model.flow_rate.solution.sel(
+        for current_flow, next_flow in zip(current_flow_system.flows.values(), next_flow_system.flows.values()):
+            next_flow.previous_flow_rate = current_flow.model.flow_rate.solution.sel(
                 time=slice(start_previous_values, end_previous_values)
             ).values
-            start_values_of_this_segment[flow.label_full] = flow.previous_flow_rate
-        for comp in self.flow_system.components.values():
-            if isinstance(comp, Storage):
-                comp.initial_charge_state = comp.model.charge_state.solution.sel(time=start).item()
-                start_values_of_this_segment[comp.label_full] = comp.initial_charge_state
+            start_values_of_this_segment[current_flow.label_full] = next_flow.previous_flow_rate
+        for current_comp, next_comp in zip(current_flow_system.components.values(), next_flow_system.components.values()):
+            if isinstance(next_comp, Storage):
+                next_comp.initial_charge_state = current_comp.model.charge_state.solution.sel(time=start).item()
+                start_values_of_this_segment[current_comp.label_full] = next_comp.initial_charge_state
 
         self._transfered_start_values.append(start_values_of_this_segment)
-
-    def _reset_start_values(self):
-        """This resets the start values of all Elements to its original state"""
-        for flow in self.flow_system.flows.values():
-            flow.previous_flow_rate = self._original_start_values[flow.label_full]
-        for comp in self.flow_system.components.values():
-            if isinstance(comp, Storage):
-                comp.initial_charge_state = self._original_start_values[comp.label_full]
 
     def _calculate_timesteps_of_segment(self) -> List[pd.DatetimeIndex]:
         active_timesteps_per_segment = []
@@ -511,3 +502,7 @@ class SegmentedCalculation(Calculation):
             0: {element.label_full: value for element, value in self._original_start_values.items()},
             **{i: start_values for i, start_values in enumerate(self._transfered_start_values, 1)},
         }
+
+    @property
+    def all_timesteps(self) -> pd.DatetimeIndex:
+        return self.flow_system.timesteps
