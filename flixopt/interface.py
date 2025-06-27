@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
 from .config import CONFIG
-from .core import Scalar, TemporalDataUser
+from .core import Scalar, TemporalDataUser, NonTemporalDataUser
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -33,8 +33,8 @@ class Piece(Interface):
         self.has_time_dim = False
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, has_time_dim=self.has_time_dim, has_scenario_dim=True)
-        self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, has_time_dim=self.has_time_dim, has_scenario_dim=True)
+        self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, has_time_dim=self.has_time_dim)
+        self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, has_time_dim=self.has_time_dim)
 
 
 @register_class_for_io
@@ -146,9 +146,9 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: Optional[ScenarioData] = None,
-        minimum_size: Optional[ScenarioData] = None,
-        maximum_size: Optional[ScenarioData] = None,
+        fixed_size: Optional[NonTemporalDataUser] = None,
+        minimum_size: Optional[NonTemporalDataUser] = None,
+        maximum_size: Optional[NonTemporalDataUser] = None,
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['EffectValuesUserScenario'] = None,
         specific_effects: Optional['EffectValuesUserScenario'] = None,  # costs per Flow-Unit/Storage-Size/...
@@ -185,40 +185,37 @@ class InvestParameters(Interface):
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         self._plausibility_checks(flow_system)
-        self.fix_effects = flow_system.create_effect_time_series(
+        self.fix_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.fix_effects,
             label_suffix='fix_effects',
             has_time_dim=False,
-            has_scenario_dim=True,
         )
-        self.divest_effects = flow_system.create_effect_time_series(
+        self.divest_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.divest_effects,
             label_suffix='divest_effects',
             has_time_dim=False,
-            has_scenario_dim=True,
         )
-        self.specific_effects = flow_system.create_effect_time_series(
+        self.specific_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.specific_effects,
             label_suffix='specific_effects',
             has_time_dim=False,
-            has_scenario_dim=True,
         )
         if self.piecewise_effects is not None:
             self.piecewise_effects.has_time_dim = False
             self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
-        self._minimum_size = flow_system.create_time_series(
-            f'{name_prefix}|minimum_size', self.minimum_size, has_time_dim=False, has_scenario_dim=True
+        self._minimum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_size', self.minimum_size, has_time_dim=False
         )
-        self._maximum_size = flow_system.create_time_series(
-            f'{name_prefix}|maximum_size', self.maximum_size, has_time_dim=False, has_scenario_dim=True
+        self._maximum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_size', self.maximum_size, has_time_dim=False
         )
         if self.fixed_size is not None:
-            self.fixed_size = flow_system.create_time_series(
-                f'{name_prefix}|fixed_size', self.fixed_size, has_time_dim=False, has_scenario_dim=True
+            self.fixed_size = flow_system.fit_to_model_coords(
+                f'{name_prefix}|fixed_size', self.fixed_size, has_time_dim=False
             )
 
     def _plausibility_checks(self, flow_system):
@@ -310,13 +307,13 @@ class OnOffParameters(Interface):
         self.consecutive_off_hours_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
         )
-        self.on_hours_total_max = flow_system.create_time_series(
+        self.on_hours_total_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, has_time_dim=False
         )
-        self.on_hours_total_min = flow_system.create_time_series(
+        self.on_hours_total_min = flow_system.fit_to_model_coords(
             f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, has_time_dim=False
         )
-        self.switch_on_total_max = flow_system.create_time_series(
+        self.switch_on_total_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, has_time_dim=False
         )
 

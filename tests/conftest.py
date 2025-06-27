@@ -16,7 +16,7 @@ import flixopt as fx
 from flixopt.structure import SystemModel
 
 
-@pytest.fixture()
+@pytest.fixture(
 def highs_solver():
     return fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=300)
 

@@ -39,7 +39,7 @@ class Effect(Element):
         is_standard: bool = False,
         is_objective: bool = False,
         specific_share_to_other_effects_operation: Optional['TemporalEffectsUser'] = None,
-        specific_share_to_other_effects_invest: Optional['ScalarEffectsUser'] = None,
+        specific_share_to_other_effects_invest: Optional['NonTemporalEffectsUser'] = None,
         minimum_operation: Optional[Scalar] = None,
         maximum_operation: Optional[Scalar] = None,
         minimum_invest: Optional[Scalar] = None,
@@ -79,7 +79,7 @@ class Effect(Element):
         self.specific_share_to_other_effects_operation: TemporalEffectsUser = (
             specific_share_to_other_effects_operation or {}
         )
-        self.specific_share_to_other_effects_invest: ScalarEffectsUser = specific_share_to_other_effects_invest or {}
+        self.specific_share_to_other_effects_invest: NonTemporalEffectsUser = specific_share_to_other_effects_invest or {}
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
         self.minimum_operation_per_hour: TemporalDataUser = minimum_operation_per_hour
@@ -148,8 +148,8 @@ class EffectModel(ElementModel):
                 label_of_element=self.label_of_element,
                 label='invest',
                 label_full=f'{self.label_full}(invest)',
-                total_max=extract_data(self.element.maximum_invest),
-                total_min=extract_data(self.element.minimum_invest),
+                total_max=self.element.maximum_invest,
+                total_min=self.element.minimum_invest,
             )
         )
 
@@ -197,13 +197,13 @@ class EffectModel(ElementModel):
 TemporalEffectsUser = Union[TemporalDataUser, Dict[str, TemporalDataUser]]  # User-specified Shares to Effects
 """ This datatype is used to define a temporal share to an effect by a certain attribute. """
 
-ScalarEffectsUser = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
+NonTemporalEffectsUser = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
 """ This datatype is used to define a scalar share to an effect by a certain attribute. """
 
 TemporalEffects = Dict[str, TemporalData]  # User-specified Shares to Effects
 """ This datatype is used internally to handle temporal shares to an effect. """
 
-ScalarEffects = Dict[str, Scalar]
+NonTemporalEffects = Dict[str, Scalar]
 """ This datatype is used internally to handle scalar shares to an effect. """
 
 EffectExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
@@ -240,7 +240,7 @@ class EffectCollection:
 
     def create_effect_values_dict(
         self,
-        effect_values_user: Union[ScalarEffectsUser, TemporalEffectsUser]
+        effect_values_user: Union[NonTemporalEffectsUser, TemporalEffectsUser]
     ) -> Optional[Dict[str, Union[Scalar, TemporalDataUser]]]:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
@@ -366,7 +366,7 @@ class EffectCollection:
         for name, effect in self.effects.items():
             if effect.specific_share_to_other_effects_invest:
                 shares_invest[name] = {
-                    target: extract_data(data)
+                    target: data
                     for target, data in effect.specific_share_to_other_effects_invest.items()
                 }
         shares_invest = calculate_all_conversion_paths(shares_invest)
@@ -375,7 +375,7 @@ class EffectCollection:
         for name, effect in self.effects.items():
             if effect.specific_share_to_other_effects_operation:
                 shares_operation[name] = {
-                    target: extract_data(data)
+                    target: data
                     for target, data in effect.specific_share_to_other_effects_operation.items()
                 }
         shares_operation = calculate_all_conversion_paths(shares_operation)

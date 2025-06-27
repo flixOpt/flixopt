@@ -5,7 +5,7 @@ It provides Datatypes, logging functionality, and some functions to transform da
 
 import logging
 import warnings
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -24,11 +24,11 @@ TemporalDataUser = Union[
 TemporalData = Union[xr.DataArray, 'TimeSeriesData']
 """Internally used datatypes for temporal data."""
 
-TimestepData = NumericData
-"""Represents any form of numeric data that corresponds to timesteps."""
+NonTemporalDataUser = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
+"""User data which has no time dimension. Internally converted to an xr.DataArray without a time dimension."""
 
-ScenarioData = NumericData
-"""Represents any form of numeric data that corresponds to scenarios."""
+NonTemporalData = Union[Scalar, xr.DataArray]
+"""Internally used datatypes for non-temporal data."""
 
 
 class PlausibilityError(Exception):
@@ -196,7 +196,7 @@ class DataConverter:
 
     @staticmethod
     def to_dataarray(
-            data: TimestepData, timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None
+            data: Union[TemporalData, NonTemporalData], timesteps: Optional[pd.DatetimeIndex] = None, scenarios: Optional[pd.Index] = None
     ) -> xr.DataArray:
         """
         Convert data to xarray.DataArray with specified dimensions.

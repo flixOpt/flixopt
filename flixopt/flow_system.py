@@ -16,8 +16,8 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import ConversionError, DataConverter, TemporalData, TemporalDataUser, TimeSeriesData
-from .effects import Effect, EffectCollection, ScalarEffects, ScalarEffectsUser, TemporalEffects, TemporalEffectsUser
+from .core import ConversionError, DataConverter, TemporalData, TemporalDataUser, TimeSeriesData, NonTemporalDataUser
+from .effects import Effect, EffectCollection, NonTemporalEffects, NonTemporalEffectsUser, TemporalEffects, TemporalEffectsUser
 from .elements import Bus, Component, Flow
 from .structure import Element, Interface, SystemModel
 
@@ -49,7 +49,7 @@ class FlowSystem(Interface):
         scenarios: Optional[pd.Index] = None,
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
-        scenario_weights: Optional[ScenarioData] = None,
+        scenario_weights: Optional[NonTemporalDataUser] = None,
     ):
         """
         Args:
@@ -69,9 +69,8 @@ class FlowSystem(Interface):
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
         )
-        self.scenario_weights = self.create_time_series(
-            'scenario_weights', scenario_weights, has_time_dim=False, has_scenario_dim=True
-        )
+        self.scenarios = scenarios
+        self.scenario_weights = self.fit_to_model_coords('scenario_weights', scenario_weights, has_time_dim=False)
 
         # Element collections
         self.components: Dict[str, Component] = {}
@@ -279,6 +278,7 @@ class FlowSystem(Interface):
         self,
         name: str,
         data: Optional[TemporalDataUser],
+        has_time_dim: bool = True,
     ) -> Optional[TemporalData]:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -297,21 +297,22 @@ class FlowSystem(Interface):
             try:
                 data.name = name  # Set name of previous object!
                 return TimeSeriesData(
-                    DataConverter.to_dataarray(data, timesteps=self.timesteps),
+                    DataConverter.to_dataarray(data, timesteps=self.timesteps, scenarios=self.scenarios),
                     aggregation_group=data.aggregation_group, aggregation_weight=data.aggregation_weight
                 ).rename(name)
             except ConversionError as e:
                 logger.critical(f'Could not convert time series data "{name}" to DataArray: {e}. \n'
                                 f'Take care to use the correct (time) index.')
         else:
-            return DataConverter.to_dataarray(data, timesteps=self.timesteps).rename(name)
+            return DataConverter.to_dataarray(data, timesteps=self.timesteps if has_time_dim else None, scenarios=self.scenarios).rename(name)
 
     def fit_effects_to_model_coords(
         self,
         label_prefix: Optional[str],
         effect_values: Optional[TemporalEffectsUser],
         label_suffix: Optional[str] = None,
-    ) -> Optional[TemporalEffects]:
+        has_time_dim: bool = True,
+    ) -> Optional[Union[TemporalEffects, NonTemporalEffects]]:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """
@@ -321,14 +322,14 @@ class FlowSystem(Interface):
         effect_values_dict = self.effects.create_effect_values_dict(effect_values)
 
         return {
-            effect: self.fit_to_model_coords('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
+            effect: self.fit_to_model_coords('|'.join(filter(None, [label_prefix, effect, label_suffix])), value, has_time_dim=has_time_dim)
             for effect, value in effect_values_dict.items()
         }
 
     def connect_and_transform(self):
         """Transform data for all elements using the new simplified approach."""
         self.scenario_weights = self.fit_to_model_coords(
-            'scenario_weights', self.scenario_weights, has_time_dim=False, has_scenario_dim=True
+            'scenario_weights', self.scenario_weights, has_time_dim=False
         )
         if not self._connected_and_transformed:
             self._connect_network()

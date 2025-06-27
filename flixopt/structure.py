@@ -7,7 +7,6 @@ import inspect
 import json
 import logging
 import pathlib
-from datetime import datetime
 from io import StringIO
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -20,7 +19,7 @@ from rich.pretty import Pretty
 
 from . import io as fx_io
 from .config import CONFIG
-from .core import Scalar, TemporalDataUser, TimeSeriesData, get_dataarray_stats
+from .core import Scalar, TemporalDataUser, TimeSeriesData, get_dataarray_stats, NonTemporalData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -70,21 +69,19 @@ class SystemModel(linopy.Model):
         for bus_model in bus_models:  # Buses after Components, because FlowModels are created in ComponentModels
             bus_model.do_modeling()
 
-    def _calculate_scenario_weights(self, weights: Optional[TimeSeries] = None) -> xr.DataArray:
+    def _calculate_scenario_weights(self, weights: Optional[NonTemporalData] = None) -> xr.DataArray:
         """Calculates the weights of the scenarios. If None, all scenarios have the same weight. All weights are normalized to 1.
         If no scenarios are present, s single weight of 1 is returned.
         """
-        if weights is not None and not isinstance(weights, TimeSeries):
-            raise TypeError(f'Weights must be a TimeSeries or None, got {type(weights)}')
-        if self.time_series_collection.scenarios is None:
+        if weights is not None and not isinstance(weights, xr.DataArray):
+            raise TypeError(f'Weights must be a xr.DataArray or None, got {type(weights)}')
+        if self.flow_system.scenarios is None:
             return xr.DataArray(1)
         if weights is None:
             weights = xr.DataArray(
-                np.ones(len(self.time_series_collection.scenarios)),
-                coords={'scenario': self.time_series_collection.scenarios}
+                np.ones(len(self.flow_system.scenarios)),
+                coords={'scenario': self.flow_system.scenarios}
             )
-        elif isinstance(weights, TimeSeries):
-            weights = weights.selected_data
 
         return weights / weights.sum()
 
@@ -137,7 +134,7 @@ class SystemModel(linopy.Model):
         """
         if not scenario_dim and not time_dim:
             return None
-        scenarios = self.time_series_collection.scenarios
+        scenarios = self.flow_system.scenarios
         timesteps = (
             self.flow_system.timesteps if not extra_timestep else self.flow_system.timesteps_extra
         )

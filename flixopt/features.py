@@ -45,8 +45,8 @@ class InvestmentModel(Model):
     def do_modeling(self):
         self.size = self.add(
             self._model.add_variables(
-                lower=0 if self.parameters.optional else extract_data(self.parameters.minimum_size),
-                upper=extract_data(self.parameters.maximum_size),
+                lower=0 if self.parameters.optional else self.parameters.minimum_size,
+                upper=self.parameters.maximum_size,
                 name=f'{self.label_full}|size',
                 coords=self._model.get_coords(time_dim=False),
             ),
@@ -292,8 +292,8 @@ class StateModel(Model):
 
         self.total_on_hours = self.add(
             self._model.add_variables(
-                lower=extract_data(self._on_hours_total_min),
-                upper=extract_data(self._on_hours_total_max),
+                lower=self._on_hours_total_min,
+                upper=self._on_hours_total_max,
                 coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|on_hours_total',
             ),
@@ -437,7 +437,7 @@ class SwitchStateModel(Model):
         # Create count variable for number of switches
         self.switch_on_nr = self.add(
             self._model.add_variables(
-                upper=extract_data(self._switch_on_max),
+                upper=self._switch_on_max,
                 lower=0,
                 name=f'{self.label_full}|switch_on_nr',
             ),
@@ -526,7 +526,7 @@ class ConsecutiveStateModel(Model):
         self.duration = self.add(
             self._model.add_variables(
                 lower=0,
-                upper=extract_data(self._maximum_duration, mega),
+                upper=self._maximum_duration if self._maximum_duration is not None else mega,
                 coords=self._model.get_coords(),
                 name=f'{self.label_full}|hours',
             ),
@@ -707,8 +707,8 @@ class OnOffModel(Model):
             defining_bounds=self._defining_bounds,
             previous_values=self._previous_values,
             use_off=self.parameters.use_off,
-            on_hours_total_min=extract_data(self.parameters.on_hours_total_min),
-            on_hours_total_max=extract_data(self.parameters.on_hours_total_max),
+            on_hours_total_min=self.parameters.on_hours_total_min,
+            on_hours_total_max=self.parameters.on_hours_total_max,
             effects_per_running_hour=self.parameters.effects_per_running_hour,
         )
         self.add(self.state_model)
@@ -1001,8 +1001,8 @@ class ShareAllocationModel(Model):
         if self._has_time_dim:
             self.total_per_timestep = self.add(
                 self._model.add_variables(
-                    lower=-np.inf if (self._min_per_hour is None) else extract_data(self._min_per_hour) * self._model.hours_per_step,
-                    upper=np.inf if (self._max_per_hour is None) else extract_data(self._max_per_hour) * self._model.hours_per_step,
+                    lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.hours_per_step,
+                    upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.hours_per_step,
                     coords=self._model.get_coords(time_dim=True, scenario_dim=self._has_scenario_dim),
                     name=f'{self.label_full}|total_per_timestep',
                 ),

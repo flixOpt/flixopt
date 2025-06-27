@@ -10,7 +10,7 @@ import numpy as np
 import xarray as xr
 
 from . import utils
-from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser, ScenarioData
+from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser, NonTemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
