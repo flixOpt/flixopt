@@ -13,20 +13,20 @@ import math
 import pathlib
 import timeit
 import warnings
-from typing import Annotated, Any, Dict, List, Optional, Union
 from collections import Counter
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
-import yaml
 import xarray as xr
+import yaml
 
 from . import io as fx_io
 from . import utils as utils
 from .aggregation import AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
-from .core import Scalar, DataConverter, drop_constant_arrays, TimeSeriesData
+from .core import DataConverter, Scalar, TimeSeriesData, drop_constant_arrays
 from .elements import Component
 from .features import InvestmentModel
 from .flow_system import FlowSystem
