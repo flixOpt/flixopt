@@ -396,7 +396,7 @@ class SegmentedCalculation(Calculation):
             f'{self.timesteps_per_segment_with_overlap=} cant be greater than the total length {len(self.all_timesteps)}'
         )
 
-        self.flow_system._connect_network()  # Connect network to ensure that all FLows know their Component
+        self.flow_system._connect_network()  # Connect network to ensure that all Flows know their Component
         # Storing all original start values
         self._original_start_values = {
             **{flow.label_full: flow.previous_flow_rate for flow in self.flow_system.flows.values()},
@@ -408,39 +408,52 @@ class SegmentedCalculation(Calculation):
         }
         self._transfered_start_values: List[Dict[str, Any]] = []
 
+    def _create_sub_calculations(self):
+        for i, (segment_name, timesteps_of_segment) in enumerate(
+            zip(self.segment_names, self.active_timesteps_per_segment, strict=False)
+        ):
+            self.sub_calculations.append(
+                FullCalculation(
+                    f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment),
+                    folder=self.folder / segment_name
+                )
+            )
+            logger.info(
+                f'{segment_name} [{i + 1:>2}/{len(self.segment_names):<2}] '
+                f'({timesteps_of_segment[0]} -> {timesteps_of_segment[-1]}):'
+            )
+
     def do_modeling_and_solve(
         self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = False
     ):
         logger.info(f'{"":#^80}')
         logger.info(f'{" Segmented Solving ":#^80}')
 
-        for i, (segment_name, timesteps_of_segment) in enumerate(
-            zip(self.segment_names, self.active_timesteps_per_segment, strict=False)
-        ):
-            calculation = FullCalculation(
-                f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment),
-            )
-            self.sub_calculations.append(calculation)
-
+        for i, calculation in enumerate(self.sub_calculations):
             logger.info(
-                f'{segment_name} [{i + 1:>2}/{len(self.segment_names):<2}] '
-                f'({timesteps_of_segment[0]} -> {timesteps_of_segment[-1]}):'
+                f'{self.segment_names[i]} [{i + 1:>2}/{len(self.segment_names):<2}] '
+                f'({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]}):'
             )
+
             if len(self.sub_calculations) >= 2:
                 self._transfer_start_values(i)
 
             calculation.do_modeling()
-            invest_elements = [
-                model.label_full
-                for component in calculation.flow_system.components.values()
-                for model in component.model.all_sub_models
-                if isinstance(model, InvestmentModel)
-            ]
-            if invest_elements:
-                logger.critical(
-                    f'Investments are not supported in Segmented Calculation! '
-                    f'Following InvestmentModels were found: {invest_elements}'
-                )
+
+            # Warn about Investments, but only in fist run
+            if i == 0:
+                invest_elements = [
+                    model.label_full
+                    for component in calculation.flow_system.components.values()
+                    for model in component.model.all_sub_models
+                    if isinstance(model, InvestmentModel)
+                ]
+                if invest_elements:
+                    logger.critical(
+                        f'Investments are not supported in Segmented Calculation! '
+                        f'Following InvestmentModels were found: {invest_elements}'
+                    )
+
             calculation.solve(
                 solver,
                 log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
@@ -458,7 +471,7 @@ class SegmentedCalculation(Calculation):
         This function gets the last values of the previous solved segment and
         inserts them as start values for the next segment
         """
-        timesteps_of_prior_segment = self.active_timesteps_per_segment[segment_index - 1]
+        timesteps_of_prior_segment = self.sub_calculations[segment_index - 1].flow_system.timesteps_extra
 
         start = self.active_timesteps_per_segment[segment_index][0]
         start_previous_values = timesteps_of_prior_segment[self.timesteps_per_segment - self.nr_of_previous_values]
