@@ -95,7 +95,8 @@ def simple_flow_system() -> fx.FlowSystem:
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
         capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
         initial_charge_state=0,
-        relative_maximum_charge_state=1 / 100 * np.array([80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80, 80]),
+        relative_maximum_charge_state=1 / 100 * np.array([80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80]),
+        relative_maximum_final_charge_state=0.8,
         eta_charge=0.9,
         eta_discharge=1,
         relative_loss_per_hour=0.08,
@@ -367,8 +368,8 @@ def flow_system_segments_of_flows_2(flow_system_complex) -> fx.FlowSystem:
                 {
                     'P_el': fx.Piecewise(
                         [
-                            fx.Piece(np.linspace(5, 6, len(flow_system.time_series_collection.timesteps)), 30),
-                            fx.Piece(40, np.linspace(60, 70, len(flow_system.time_series_collection.timesteps))),
+                            fx.Piece(np.linspace(5, 6, len(flow_system.timesteps)), 30),
+                            fx.Piece(40, np.linspace(60, 70, len(flow_system.timesteps))),
                         ]
                     ),
                     'Q_th': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
@@ -400,11 +401,11 @@ def flow_system_long():
 
     thermal_load_ts, electrical_load_ts = (
         fx.TimeSeriesData(thermal_load),
-        fx.TimeSeriesData(electrical_load, agg_weight=0.7),
+        fx.TimeSeriesData(electrical_load, aggregation_weight=0.7),
     )
     p_feed_in, p_sell = (
-        fx.TimeSeriesData(-(p_el - 0.5), agg_group='p_el'),
-        fx.TimeSeriesData(p_el + 0.5, agg_group='p_el'),
+        fx.TimeSeriesData(-(p_el - 0.5), aggregation_group='p_el'),
+        fx.TimeSeriesData(p_el + 0.5, aggregation_group='p_el'),
     )
 
     flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))

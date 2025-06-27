@@ -13,7 +13,7 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .core import NumericDataTS, ScenarioData, TimeSeries, TimeSeriesCollection, TimestepData, extract_data
+from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
 
@@ -38,16 +38,16 @@ class Effect(Element):
         meta_data: Optional[Dict] = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        specific_share_to_other_effects_operation: Optional['EffectValuesUserTimestep'] = None,
-        specific_share_to_other_effects_invest: Optional['EffectValuesUserScenario'] = None,
-        minimum_operation: Optional[ScenarioData] = None,
-        maximum_operation: Optional[ScenarioData] = None,
-        minimum_invest: Optional[ScenarioData] = None,
-        maximum_invest: Optional[ScenarioData] = None,
-        minimum_operation_per_hour: Optional[NumericDataTS] = None,
-        maximum_operation_per_hour: Optional[NumericDataTS] = None,
-        minimum_total: Optional[ScenarioData] = None,
-        maximum_total: Optional[ScenarioData] = None,
+        specific_share_to_other_effects_operation: Optional['TemporalEffectsUser'] = None,
+        specific_share_to_other_effects_invest: Optional['ScalarEffectsUser'] = None,
+        minimum_operation: Optional[Scalar] = None,
+        maximum_operation: Optional[Scalar] = None,
+        minimum_invest: Optional[Scalar] = None,
+        maximum_invest: Optional[Scalar] = None,
+        minimum_operation_per_hour: Optional[TemporalDataUser] = None,
+        maximum_operation_per_hour: Optional[TemporalDataUser] = None,
+        minimum_total: Optional[Scalar] = None,
+        maximum_total: Optional[Scalar] = None,
     ):
         """
         Args:
@@ -76,51 +76,51 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.specific_share_to_other_effects_operation: EffectValuesUserTimestep = (
+        self.specific_share_to_other_effects_operation: TemporalEffectsUser = (
             specific_share_to_other_effects_operation or {}
         )
-        self.specific_share_to_other_effects_invest: EffectValuesUserTimestep = (
-            specific_share_to_other_effects_invest or {}
-        )
+        self.specific_share_to_other_effects_invest: ScalarEffectsUser = specific_share_to_other_effects_invest or {}
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
-        self.minimum_operation_per_hour: NumericDataTS = minimum_operation_per_hour
-        self.maximum_operation_per_hour: NumericDataTS = maximum_operation_per_hour
+        self.minimum_operation_per_hour: TemporalDataUser = minimum_operation_per_hour
+        self.maximum_operation_per_hour: TemporalDataUser = maximum_operation_per_hour
         self.minimum_invest = minimum_invest
         self.maximum_invest = maximum_invest
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
     def transform_data(self, flow_system: 'FlowSystem'):
-        self.minimum_operation_per_hour = flow_system.create_time_series(
+        self.minimum_operation_per_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
         )
-        self.maximum_operation_per_hour = flow_system.create_time_series(
-            f'{self.label_full}|maximum_operation_per_hour', self.maximum_operation_per_hour, flow_system
+
+        self.maximum_operation_per_hour = flow_system.fit_to_model_coords(
+            f'{self.label_full}|maximum_operation_per_hour', self.maximum_operation_per_hour
         )
-        self.specific_share_to_other_effects_operation = flow_system.create_effect_time_series(
+
+        self.specific_share_to_other_effects_operation = flow_system.fit_effects_to_model_coords(
             f'{self.label_full}|operation->', self.specific_share_to_other_effects_operation, 'operation'
         )
 
-        self.minimum_operation = flow_system.create_time_series(
+        self.minimum_operation = flow_system.fit_to_model_coords(
             f'{self.label_full}|minimum_operation', self.minimum_operation, has_time_dim=False
         )
-        self.maximum_operation = flow_system.create_time_series(
+        self.maximum_operation = flow_system.fit_to_model_coords(
             f'{self.label_full}|maximum_operation', self.maximum_operation, has_time_dim=False
         )
-        self.minimum_invest = flow_system.create_time_series(
+        self.minimum_invest = flow_system.fit_to_model_coords(
             f'{self.label_full}|minimum_invest', self.minimum_invest, has_time_dim=False
         )
-        self.maximum_invest = flow_system.create_time_series(
+        self.maximum_invest = flow_system.fit_to_model_coords(
             f'{self.label_full}|maximum_invest', self.maximum_invest, has_time_dim=False
         )
-        self.minimum_total = flow_system.create_time_series(
+        self.minimum_total = flow_system.fit_to_model_coords(
             f'{self.label_full}|minimum_total', self.minimum_total, has_time_dim=False,
         )
-        self.maximum_total = flow_system.create_time_series(
+        self.maximum_total = flow_system.fit_to_model_coords(
             f'{self.label_full}|maximum_total', self.maximum_total, has_time_dim=False
         )
-        self.specific_share_to_other_effects_invest = flow_system.create_effect_time_series(
+        self.specific_share_to_other_effects_invest = flow_system.fit_effects_to_model_coords(
             f'{self.label_full}|invest->', self.specific_share_to_other_effects_invest, 'invest',
             has_time_dim=False
         )
@@ -161,10 +161,14 @@ class EffectModel(ElementModel):
                 label_of_element=self.label_of_element,
                 label='operation',
                 label_full=f'{self.label_full}(operation)',
-                total_max=extract_data(self.element.maximum_operation),
-                total_min=extract_data(self.element.minimum_operation),
-                min_per_hour=extract_data(self.element.minimum_operation_per_hour),
-                max_per_hour=extract_data(self.element.maximum_operation_per_hour),
+                total_max=self.element.maximum_operation,
+                total_min=self.element.minimum_operation,
+                min_per_hour=self.element.minimum_operation_per_hour
+                if self.element.minimum_operation_per_hour is not None
+                else None,
+                max_per_hour=self.element.maximum_operation_per_hour
+                if self.element.maximum_operation_per_hour is not None
+                else None,
             )
         )
 
@@ -174,8 +178,8 @@ class EffectModel(ElementModel):
 
         self.total = self.add(
             self._model.add_variables(
-                lower=extract_data(self.element.minimum_total, if_none=-np.inf),
-                upper=extract_data(self.element.maximum_total, if_none=np.inf),
+                lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
+                upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
                 coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|total',
             ),
@@ -190,15 +194,19 @@ class EffectModel(ElementModel):
         )
 
 
-EffectValuesExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
-EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
-EffectValuesDict = Dict[str, NumericDataTS]  # How effect values are stored
+TemporalEffectsUser = Union[TemporalDataUser, Dict[str, TemporalDataUser]]  # User-specified Shares to Effects
+""" This datatype is used to define a temporal share to an effect by a certain attribute. """
 
-EffectValuesUserScenario = Union[ScenarioData, Dict[str, ScenarioData]]
-""" This datatype is used to define the share to an effect for every scenario. """
+ScalarEffectsUser = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
+""" This datatype is used to define a scalar share to an effect by a certain attribute. """
 
-EffectValuesUserTimestep = Union[TimestepData, Dict[str, TimestepData]]
-""" This datatype is used to define the share to an effect for every timestep. """
+TemporalEffects = Dict[str, TemporalData]  # User-specified Shares to Effects
+""" This datatype is used internally to handle temporal shares to an effect. """
+
+ScalarEffects = Dict[str, Scalar]
+""" This datatype is used internally to handle scalar shares to an effect. """
+
+EffectExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
 
 
 class EffectCollection:
@@ -231,8 +239,9 @@ class EffectCollection:
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
-        self, effect_values_user: Union[EffectValuesUserScenario, EffectValuesUserTimestep]
-    ) -> Optional[EffectValuesDict]:
+        self,
+        effect_values_user: Union[ScalarEffectsUser, TemporalEffectsUser]
+    ) -> Optional[Dict[str, Union[Scalar, TemporalDataUser]]]:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
@@ -258,6 +267,8 @@ class EffectCollection:
                     stacklevel=2,
                 )
                 return eff.label_full
+            elif eff is None:
+                return self.standard_effect.label_full
             else:
                 return eff
 
@@ -385,7 +396,7 @@ class EffectCollectionModel(Model):
     def add_share_to_effects(
         self,
         name: str,
-        expressions: EffectValuesExpr,
+        expressions: EffectExpr,
         target: Literal['operation', 'invest'],
     ) -> None:
         for effect, expression in expressions.items():
@@ -433,7 +444,7 @@ class EffectCollectionModel(Model):
             for target_effect, time_series in origin_effect.specific_share_to_other_effects_operation.items():
                 self.effects[target_effect].model.operation.add_share(
                     origin_effect.model.operation.label_full,
-                    origin_effect.model.operation.total_per_timestep * time_series.selected_data,
+                    origin_effect.model.operation.total_per_timestep * time_series,
                     has_time_dim=True,
                     has_scenario_dim=True,
                 )

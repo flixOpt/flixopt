@@ -13,7 +13,7 @@ class TestEffectModel:
 
     def test_minimal(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
         effect = fx.Effect('Effect1', '€', 'Testing Effect')
 
         flow_system.add_elements(effect)
@@ -43,7 +43,7 @@ class TestEffectModel:
 
     def test_bounds(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
         effect = fx.Effect('Effect1', '€', 'Testing Effect',
                            minimum_operation=1.0,
                            maximum_operation=1.1,

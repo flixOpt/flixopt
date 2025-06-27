@@ -48,9 +48,9 @@ if __name__ == '__main__':
 
     # TimeSeriesData objects
     TS_heat_demand = fx.TimeSeriesData(heat_demand)
-    TS_electricity_demand = fx.TimeSeriesData(electricity_demand, agg_weight=0.7)
-    TS_electricity_price_sell = fx.TimeSeriesData(-(electricity_demand - 0.5), agg_group='p_el')
-    TS_electricity_price_buy = fx.TimeSeriesData(electricity_price + 0.5, agg_group='p_el')
+    TS_electricity_demand = fx.TimeSeriesData(electricity_demand, aggregation_weight=0.7)
+    TS_electricity_price_sell = fx.TimeSeriesData(-(electricity_demand - 0.5), aggregation_group='p_el')
+    TS_electricity_price_buy = fx.TimeSeriesData(electricity_price + 0.5, aggregation_group='p_el')
 
     flow_system = fx.FlowSystem(timesteps)
     flow_system.add_elements(
@@ -164,12 +164,12 @@ if __name__ == '__main__':
     if full:
         calculation = fx.FullCalculation('Full', flow_system)
         calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0, 60))
+        calculation.solve(fx.solvers.HighsSolver(0.01/100, 60))
         calculations.append(calculation)
 
     if segmented:
         calculation = fx.SegmentedCalculation('Segmented', flow_system, segment_length, overlap_length)
-        calculation.do_modeling_and_solve(fx.solvers.HighsSolver(0, 60))
+        calculation.do_modeling_and_solve(fx.solvers.HighsSolver(0.01/100, 60))
         calculations.append(calculation)
 
     if aggregated:
@@ -178,7 +178,7 @@ if __name__ == '__main__':
             aggregation_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
         calculation = fx.AggregatedCalculation('Aggregated', flow_system, aggregation_parameters)
         calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0, 60))
+        calculation.solve(fx.solvers.HighsSolver(0.01/100, 60))
         calculations.append(calculation)
 
     # Get solutions for plotting for different calculations

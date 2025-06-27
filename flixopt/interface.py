@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
 from .config import CONFIG
-from .core import NumericDataTS, Scalar, ScenarioData, TimestepData
+from .core import Scalar, TemporalDataUser
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -20,7 +20,7 @@ logger = logging.getLogger('flixopt')
 
 @register_class_for_io
 class Piece(Interface):
-    def __init__(self, start: TimestepData, end: TimestepData):
+    def __init__(self, start: TemporalDataUser, end: TemporalDataUser):
         """
         Define a Piece, which is part of a Piecewise object.
 
@@ -33,12 +33,8 @@ class Piece(Interface):
         self.has_time_dim = False
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.start = flow_system.create_time_series(
-            name=f'{name_prefix}|start', data=self.start, has_time_dim=self.has_time_dim, has_scenario_dim=True
-        )
-        self.end = flow_system.create_time_series(
-            name=f'{name_prefix}|end', data=self.end, has_time_dim=self.has_time_dim, has_scenario_dim=True
-        )
+        self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, has_time_dim=self.has_time_dim, has_scenario_dim=True)
+        self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, has_time_dim=self.has_time_dim, has_scenario_dim=True)
 
 
 @register_class_for_io
@@ -253,15 +249,15 @@ class InvestParameters(Interface):
 class OnOffParameters(Interface):
     def __init__(
         self,
-        effects_per_switch_on: Optional['EffectValuesUserTimestep'] = None,
-        effects_per_running_hour: Optional['EffectValuesUserTimestep'] = None,
-        on_hours_total_min: Optional[ScenarioData] = None,
-        on_hours_total_max: Optional[ScenarioData] = None,
-        consecutive_on_hours_min: Optional[TimestepData] = None,
-        consecutive_on_hours_max: Optional[TimestepData] = None,
-        consecutive_off_hours_min: Optional[TimestepData] = None,
-        consecutive_off_hours_max: Optional[TimestepData] = None,
-        switch_on_total_max: Optional[ScenarioData] = None,
+        effects_per_switch_on: Optional['EffectValuesUser'] = None,
+        effects_per_running_hour: Optional['EffectValuesUser'] = None,
+        on_hours_total_min: Optional[int] = None,
+        on_hours_total_max: Optional[int] = None,
+        consecutive_on_hours_min: Optional[TemporalDataUser] = None,
+        consecutive_on_hours_max: Optional[TemporalDataUser] = None,
+        consecutive_off_hours_min: Optional[TemporalDataUser] = None,
+        consecutive_off_hours_max: Optional[TemporalDataUser] = None,
+        switch_on_total_max: Optional[int] = None,
         force_switch_on: bool = False,
     ):
         """
@@ -288,30 +284,30 @@ class OnOffParameters(Interface):
         self.effects_per_running_hour: EffectValuesUserTimestep = effects_per_running_hour or {}
         self.on_hours_total_min: Scalar = on_hours_total_min
         self.on_hours_total_max: Scalar = on_hours_total_max
-        self.consecutive_on_hours_min: NumericDataTS = consecutive_on_hours_min
-        self.consecutive_on_hours_max: NumericDataTS = consecutive_on_hours_max
-        self.consecutive_off_hours_min: NumericDataTS = consecutive_off_hours_min
-        self.consecutive_off_hours_max: NumericDataTS = consecutive_off_hours_max
+        self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min
+        self.consecutive_on_hours_max: TemporalDataUser = consecutive_on_hours_max
+        self.consecutive_off_hours_min: TemporalDataUser = consecutive_off_hours_min
+        self.consecutive_off_hours_max: TemporalDataUser = consecutive_off_hours_max
         self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.effects_per_switch_on = flow_system.create_effect_time_series(
+        self.effects_per_switch_on = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_switch_on, 'per_switch_on'
         )
-        self.effects_per_running_hour = flow_system.create_effect_time_series(
+        self.effects_per_running_hour = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_running_hour, 'per_running_hour'
         )
-        self.consecutive_on_hours_min = flow_system.create_time_series(
+        self.consecutive_on_hours_min = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
         )
-        self.consecutive_on_hours_max = flow_system.create_time_series(
+        self.consecutive_on_hours_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_on_hours_max', self.consecutive_on_hours_max
         )
-        self.consecutive_off_hours_min = flow_system.create_time_series(
+        self.consecutive_off_hours_min = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_off_hours_min', self.consecutive_off_hours_min
         )
-        self.consecutive_off_hours_max = flow_system.create_time_series(
+        self.consecutive_off_hours_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
         )
         self.on_hours_total_max = flow_system.create_time_series(

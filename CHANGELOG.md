@@ -34,6 +34,54 @@ This might occur when scenarios represent years or months, while an investment d
 * Balanced storage - Storage charging and discharging sizes can now be forced to be equal in when optimizing their size.
 * Feature 2 - Description
 
+
+## [Unreleased]
+
+### Changed
+* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
+* FlowSystems can not be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
+* Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
+* FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
+* Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
+
+### Added
+* **NEW**: Complete serialization infrastructure through `Interface` base class
+   * IO for all Interfaces and the FlowSystem with round-trip serialization support
+   * Automatic DataArray extraction and restoration
+   * NetCDF export/import capabilities for all Interface objects and FlowSystem
+   * JSON export for documentation purposes
+   * Recursive handling of nested Interface objects
+* **NEW**: FlowSystem data manipulation methods
+   * `sel()` and `isel()` methods for temporal data selection
+   * `resample()` method for temporal resampling
+   * `copy()` method to create a copy of a FlowSystem, including all underlying Elements and their data
+   * `__eq__()` method for FlowSystem comparison
+* **NEW**: Storage component enhancements
+   * `relative_minimum_final_charge_state` parameter for final state control
+   * `relative_maximum_final_charge_state` parameter for final state control
+* *Internal*: Enhanced data handling methods
+   * `fit_to_model_coords()` method for data alignment
+   * `fit_effects_to_model_coords()` method for effect data processing
+   * `connect_and_transform()` method replacing separate operations
+* **NEW**: Core data handling improvements
+   * `get_dataarray_stats()` function for statistical summaries
+   * Enhanced `DataConverter` class with better TimeSeriesData support
+
+### Fixed
+* Enhanced NetCDF I/O with proper attribute preservation for DataArrays
+* Improved error handling and validation in serialization processes
+* Better type consistency across all framework components
+
+### Know Issues
+* Plotly >= 6 may raise errors if "nbformat" is not installed. We pinned plotly to <6, but this may be fixed in the future.
+* IO for single Interfaces/Elemenets to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arrises from Numeric Data not being stored as xr.DataArray by the user. TO avoid this, always use the `to_dataset()` on Elements inside a FlowSystem thats connected and transformed.
+
+### Deprecated
+* The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
+* The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
+* The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
+* The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
+
 ## [2.1.2] - 2025-06-14
 
 ### Fixed

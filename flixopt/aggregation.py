@@ -274,11 +274,11 @@ class AggregationParameters:
 
     @property
     def labels_for_high_peaks(self) -> List[str]:
-        return [ts.label for ts in self.time_series_for_high_peaks]
+        return [ts.name for ts in self.time_series_for_high_peaks]
 
     @property
     def labels_for_low_peaks(self) -> List[str]:
-        return [ts.label for ts in self.time_series_for_low_peaks]
+        return [ts.name for ts in self.time_series_for_low_peaks]
 
     @property
     def use_low_peaks(self):
