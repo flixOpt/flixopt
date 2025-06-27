@@ -148,7 +148,10 @@ class DataConverter:
 
         # Check if dimensions match
         if data.dims != tuple(dims):
-            logger.warning(f'TimeSeriesData has dimensions {data.dims}, expected {dims}. Reshaping to match timesteps.')
+            logger.warning(
+                f'TimeSeriesData has dimensions {data.dims}, expected {dims}. Reshaping to match timesteps. To avoid '
+                f'this warning, create a correctly shaped DataArray with the correct dimensions in the first place.'
+            )
             # Try to reshape the data to match expected dimensions
             if data.size != len(timesteps):
                 raise ConversionError(
