@@ -389,7 +389,7 @@ class SegmentedCalculation(Calculation):
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
         ]
-        self.active_timesteps_per_segment = self._calculate_timesteps_of_segment()
+        self._timesteps_per_segment = self._calculate_timesteps_per_segment()
 
         assert timesteps_per_segment > 2, 'The Segment length must be greater 2, due to unwanted internal side effects'
         assert self.timesteps_per_segment_with_overlap <= len(self.all_timesteps), (
@@ -410,12 +410,11 @@ class SegmentedCalculation(Calculation):
 
     def _create_sub_calculations(self):
         for i, (segment_name, timesteps_of_segment) in enumerate(
-            zip(self.segment_names, self.active_timesteps_per_segment, strict=False)
+            zip(self.segment_names, self._timesteps_per_segment, strict=False)
         ):
             self.sub_calculations.append(
                 FullCalculation(
                     f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment),
-                    folder=self.folder / segment_name
                 )
             )
             logger.info(
@@ -428,6 +427,7 @@ class SegmentedCalculation(Calculation):
     ):
         logger.info(f'{"":#^80}')
         logger.info(f'{" Segmented Solving ":#^80}')
+        self._create_sub_calculations()
 
         for i, calculation in enumerate(self.sub_calculations):
             logger.info(
@@ -435,7 +435,7 @@ class SegmentedCalculation(Calculation):
                 f'({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]}):'
             )
 
-            if len(self.sub_calculations) >= 2:
+            if i > 0:
                 self._transfer_start_values(i)
 
             calculation.do_modeling()
@@ -466,22 +466,22 @@ class SegmentedCalculation(Calculation):
 
         self.results = SegmentedCalculationResults.from_calculation(self)
 
-    def _transfer_start_values(self, segment_index: int):
+    def _transfer_start_values(self, i: int):
         """
         This function gets the last values of the previous solved segment and
         inserts them as start values for the next segment
         """
-        timesteps_of_prior_segment = self.sub_calculations[segment_index - 1].flow_system.timesteps_extra
+        timesteps_of_prior_segment = self.sub_calculations[i - 1].flow_system.timesteps_extra
 
-        start = self.active_timesteps_per_segment[segment_index][0]
+        start = self.sub_calculations[i].flow_system.timesteps[0]
         start_previous_values = timesteps_of_prior_segment[self.timesteps_per_segment - self.nr_of_previous_values]
         end_previous_values = timesteps_of_prior_segment[self.timesteps_per_segment - 1]
 
         logger.debug(
             f'start of next segment: {start}. indices of previous values: {start_previous_values}:{end_previous_values}'
         )
-        current_flow_system = self.sub_calculations[segment_index -1].flow_system
-        next_flow_system = self.sub_calculations[segment_index].flow_system
+        current_flow_system = self.sub_calculations[i -1].flow_system
+        next_flow_system = self.sub_calculations[i].flow_system
 
         start_values_of_this_segment = {}
         for current_flow, next_flow in zip(current_flow_system.flows.values(), next_flow_system.flows.values()):
@@ -496,25 +496,24 @@ class SegmentedCalculation(Calculation):
 
         self._transfered_start_values.append(start_values_of_this_segment)
 
-    def _calculate_timesteps_of_segment(self) -> List[pd.DatetimeIndex]:
-        active_timesteps_per_segment = []
+    def _calculate_timesteps_per_segment(self) -> List[pd.DatetimeIndex]:
+        timesteps_per_segment = []
         for i, _ in enumerate(self.segment_names):
             start = self.timesteps_per_segment * i
             end = min(start + self.timesteps_per_segment_with_overlap, len(self.all_timesteps))
-            active_timesteps_per_segment.append(self.all_timesteps[start:end])
-        return active_timesteps_per_segment
+            timesteps_per_segment.append(self.all_timesteps[start:end])
+        return timesteps_per_segment
 
     @property
     def timesteps_per_segment_with_overlap(self):
         return self.timesteps_per_segment + self.overlap_timesteps
 
     @property
-    def start_values_of_segments(self) -> Dict[int, Dict[str, Any]]:
+    def start_values_of_segments(self) -> List[Dict[str, Any]]:
         """Gives an overview of the start values of all Segments"""
-        return {
-            0: {element.label_full: value for element, value in self._original_start_values.items()},
-            **{i: start_values for i, start_values in enumerate(self._transfered_start_values, 1)},
-        }
+        return [
+            {name: value for name, value in self._original_start_values.items()}
+        ] + [start_values for start_values in self._transfered_start_values]
 
     @property
     def all_timesteps(self) -> pd.DatetimeIndex:
