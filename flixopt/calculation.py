@@ -74,9 +74,9 @@ class Calculation:
             )
             flow_system = flow_system.sel(time=active_timesteps)
 
+        flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
-        self.flow_system._used_in_calculation = True
         self.model: Optional[SystemModel] = None
         self._active_timesteps = active_timesteps  # deprecated
 

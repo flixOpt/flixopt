@@ -4,6 +4,7 @@ It provides Datatypes, logging functionality, and some functions to transform da
 """
 
 import logging
+import warnings
 from typing import Dict, Optional, Union
 
 import numpy as np
@@ -41,14 +42,24 @@ class TimeSeriesData(xr.DataArray):
 
     __slots__ = ()  # No additional instance attributes - everything goes in attrs
 
-    def __init__(self, *args, aggregation_group: Optional[str] = None, aggregation_weight: Optional[float] = None, **kwargs):
+    def __init__(self, *args, aggregation_group: Optional[str] = None, aggregation_weight: Optional[float] = None,
+                 agg_group: Optional[str] = None, agg_weight: Optional[float] = None, **kwargs):
         """
         Args:
             *args: Arguments passed to DataArray
             aggregation_group: Aggregation group name
             aggregation_weight: Aggregation weight (0-1)
+            agg_group: Deprecated, use aggregation_group instead
+            agg_weight: Deprecated, use aggregation_weight instead
             **kwargs: Additional arguments passed to DataArray
         """
+        if agg_group is not None:
+            warnings.warn('agg_group is deprecated, use aggregation_group instead', DeprecationWarning, stacklevel=2)
+            aggregation_group = agg_group
+        if agg_weight is not None:
+            warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
+            aggregation_weight = agg_weight
+
         if (aggregation_group is not None) and (aggregation_weight is not None):
             raise ValueError('Use either aggregation_group or aggregation_weight, not both')
 
@@ -95,6 +106,16 @@ class TimeSeriesData(xr.DataArray):
 
         info_str = f'TimeSeriesData({", ".join(agg_info)})' if agg_info else 'TimeSeriesData'
         return f'{info_str}\n{super().__repr__()}'
+
+    @property
+    def agg_group(self):
+        warnings.warn('agg_group is deprecated, use aggregation_group instead', DeprecationWarning, stacklevel=2)
+        return self._aggregation_group
+
+    @property
+    def agg_weight(self):
+        warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
+        return self._aggregation_weight
 
 
 class DataConverter:
