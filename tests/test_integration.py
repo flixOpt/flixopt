@@ -420,6 +420,12 @@ class TestModelingTypes:
                 f'Costs do not match for {modeling_type} modeling type',
             )
 
+    def test_segmented_io(self, modeling_calculation):
+        calc, modeling_type = modeling_calculation
+        if modeling_type == 'segmented':
+            calc.results.to_file()
+            _ = fx.results.SegmentedCalculationResults.from_file(calc.folder, calc.name)
+
 
 if __name__ == '__main__':
     pytest.main(['-v'])

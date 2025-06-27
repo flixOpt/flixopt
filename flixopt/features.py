@@ -11,7 +11,7 @@ import numpy as np
 
 from . import utils
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries
+from .core import Scalar, TemporalData
 from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 
@@ -27,7 +27,7 @@ class InvestmentModel(Model):
         label_of_element: str,
         parameters: InvestParameters,
         defining_variable: [linopy.Variable],
-        relative_bounds_of_defining_variable: Tuple[NumericData, NumericData],
+        relative_bounds_of_defining_variable: Tuple[TemporalData, TemporalData],
         label: Optional[str] = None,
         on_variable: Optional[linopy.Variable] = None,
     ):
@@ -203,12 +203,12 @@ class StateModel(Model):
         model: SystemModel,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[NumericData, NumericData]],
-        previous_values: List[Optional[NumericData]] = None,
+        defining_bounds: List[Tuple[TemporalData, TemporalData]],
+        previous_values: List[Optional[TemporalData]] = None,
         use_off: bool = True,
-        on_hours_total_min: Optional[NumericData] = 0,
-        on_hours_total_max: Optional[NumericData] = None,
-        effects_per_running_hour: Dict[str, NumericData] = None,
+        on_hours_total_min: Optional[TemporalData] = 0,
+        on_hours_total_max: Optional[TemporalData] = None,
+        effects_per_running_hour: Dict[str, TemporalData] = None,
         label: Optional[str] = None,
     ):
         """
@@ -344,7 +344,7 @@ class StateModel(Model):
         return 1 - self.previous_states
 
     @staticmethod
-    def compute_previous_states(previous_values: List[NumericData], epsilon: float = 1e-5) -> np.ndarray:
+    def compute_previous_states(previous_values: List[TemporalData], epsilon: float = 1e-5) -> np.ndarray:
         """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
         if not previous_values or all([val is None for val in previous_values]):
             return np.array([0])
@@ -451,9 +451,9 @@ class ConsecutiveStateModel(Model):
         model: SystemModel,
         label_of_element: str,
         state_variable: linopy.Variable,
-        minimum_duration: Optional[NumericData] = None,
-        maximum_duration: Optional[NumericData] = None,
-        previous_states: Optional[NumericData] = None,
+        minimum_duration: Optional[TemporalData] = None,
+        maximum_duration: Optional[TemporalData] = None,
+        previous_states: Optional[TemporalData] = None,
         label: Optional[str] = None,
     ):
         """
@@ -473,11 +473,6 @@ class ConsecutiveStateModel(Model):
         self._previous_states = previous_states
         self._minimum_duration = minimum_duration
         self._maximum_duration = maximum_duration
-
-        if isinstance(self._minimum_duration, TimeSeries):
-            self._minimum_duration = self._minimum_duration.active_data
-        if isinstance(self._maximum_duration, TimeSeries):
-            self._maximum_duration = self._maximum_duration.active_data
 
         self.duration = None
 
@@ -575,7 +570,7 @@ class ConsecutiveStateModel(Model):
 
     @staticmethod
     def compute_consecutive_hours_in_state(
-        binary_values: NumericData, hours_per_timestep: Union[int, float, np.ndarray]
+        binary_values: TemporalData, hours_per_timestep: Union[int, float, np.ndarray]
     ) -> Scalar:
         """
         Computes the final consecutive duration in state 'on' (=1) in hours, from a binary array.
@@ -634,8 +629,8 @@ class OnOffModel(Model):
         on_off_parameters: OnOffParameters,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[NumericData, NumericData]],
-        previous_values: List[Optional[NumericData]],
+        defining_bounds: List[Tuple[TemporalData, TemporalData]],
+        previous_values: List[Optional[TemporalData]],
         label: Optional[str] = None,
     ):
         """
@@ -923,8 +918,8 @@ class ShareAllocationModel(Model):
         label_full: Optional[str] = None,
         total_max: Optional[Scalar] = None,
         total_min: Optional[Scalar] = None,
-        max_per_hour: Optional[NumericData] = None,
-        min_per_hour: Optional[NumericData] = None,
+        max_per_hour: Optional[TemporalData] = None,
+        min_per_hour: Optional[TemporalData] = None,
     ):
         super().__init__(model, label_of_element=label_of_element, label=label, label_full=label_full)
         if not shares_are_time_series:  # If the condition is True

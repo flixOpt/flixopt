@@ -14,7 +14,7 @@ import yaml
 
 from . import io as fx_io
 from . import plotting
-from .core import TimeSeriesCollection
+from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
     import pyvis
@@ -118,7 +118,7 @@ class CalculationResults:
         """
         return cls(
             solution=calculation.model.solution,
-            flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
+            flow_system=calculation.flow_system.to_dataset(),
             summary=calculation.summary,
             model=calculation.model,
             name=calculation.name,
@@ -160,7 +160,7 @@ class CalculationResults:
         }
 
         self.timesteps_extra = self.solution.indexes['time']
-        self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
+        self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
         if key in self.components:
@@ -659,7 +659,7 @@ class SegmentedCalculationResults:
         with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
-            [CalculationResults.from_file(folder, name) for name in meta_data['sub_calculations']],
+            [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
             all_timesteps=pd.DatetimeIndex(
                 [datetime.datetime.fromisoformat(date) for date in meta_data['all_timesteps']], name='time'
             ),
@@ -684,7 +684,7 @@ class SegmentedCalculationResults:
         self.overlap_timesteps = overlap_timesteps
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
+        self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
 
     @property
     def meta_data(self) -> Dict[str, Union[int, List[str]]]:
@@ -756,7 +756,7 @@ class SegmentedCalculationResults:
                     f'Folder {folder} and its parent do not exist. Please create them first.'
                 ) from e
         for segment in self.segment_results:
-            segment.to_file(folder=folder, name=f'{name}-{segment.name}', compression=compression)
+            segment.to_file(folder=folder, name=segment.name, compression=compression)
 
         with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(self.meta_data, f, indent=4, ensure_ascii=False)

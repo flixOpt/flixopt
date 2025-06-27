@@ -67,7 +67,8 @@ if __name__ == '__main__':
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1000),
         capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
         initial_charge_state=0,  # Initial storage state: empty
-        relative_maximum_charge_state=1 / 100 * np.array([80, 70, 80, 80, 80, 80, 80, 80, 80, 80]),
+        relative_maximum_charge_state=1 / 100 * np.array([80, 70, 80, 80, 80, 80, 80, 80, 80]),
+        relative_maximum_final_charge_state=0.8,
         eta_charge=0.9,
         eta_discharge=1,  # Efficiency factors for charging/discharging
         relative_loss_per_hour=0.08,  # 8% loss per hour. Absolute loss depends on current charge state

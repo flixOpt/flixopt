@@ -10,8 +10,8 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
-from .effects import EffectValuesUser
+from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
+from .effects import TemporalEffectsUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, SystemModel, register_class_for_io
@@ -72,12 +72,6 @@ class Component(Element):
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
 
-    def infos(self, use_numpy=True, use_element_label: bool = False) -> Dict:
-        infos = super().infos(use_numpy, use_element_label)
-        infos['inputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.inputs]
-        infos['outputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.outputs]
-        return infos
-
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
 
@@ -96,7 +90,7 @@ class Bus(Element):
     """
 
     def __init__(
-        self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataTS] = 1e5, meta_data: Optional[Dict] = None
+        self, label: str, excess_penalty_per_flow_hour: Optional[TemporalDataUser] = 1e5, meta_data: Optional[Dict] = None
     ):
         """
         Args:
@@ -117,13 +111,13 @@ class Bus(Element):
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem'):
-        self.excess_penalty_per_flow_hour = flow_system.create_time_series(
+        self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
         if self.excess_penalty_per_flow_hour is not None and (self.excess_penalty_per_flow_hour == 0).all():
-            logger.warning(f'In Bus {self.label}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.')
+            logger.warning(f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.')
 
     @property
     def with_excess(self) -> bool:
@@ -155,16 +149,16 @@ class Flow(Element):
         label: str,
         bus: str,
         size: Union[Scalar, InvestParameters] = None,
-        fixed_relative_profile: Optional[NumericDataTS] = None,
-        relative_minimum: NumericDataTS = 0,
-        relative_maximum: NumericDataTS = 1,
-        effects_per_flow_hour: Optional[EffectValuesUser] = None,
+        fixed_relative_profile: Optional[TemporalDataUser] = None,
+        relative_minimum: TemporalDataUser = 0,
+        relative_maximum: TemporalDataUser = 1,
+        effects_per_flow_hour: Optional[TemporalEffectsUser] = None,
         on_off_parameters: Optional[OnOffParameters] = None,
         flow_hours_total_max: Optional[Scalar] = None,
         flow_hours_total_min: Optional[Scalar] = None,
         load_factor_min: Optional[Scalar] = None,
         load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[NumericData] = None,
+        previous_flow_rate: Optional[TemporalDataUser] = None,
         meta_data: Optional[Dict] = None,
     ):
         r"""
@@ -236,33 +230,22 @@ class Flow(Element):
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem'):
-        self.relative_minimum = flow_system.create_time_series(
+        self.relative_minimum = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum', self.relative_minimum
         )
-        self.relative_maximum = flow_system.create_time_series(
+        self.relative_maximum = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_maximum', self.relative_maximum
         )
-        self.fixed_relative_profile = flow_system.create_time_series(
+        self.fixed_relative_profile = flow_system.fit_to_model_coords(
             f'{self.label_full}|fixed_relative_profile', self.fixed_relative_profile
         )
-        self.effects_per_flow_hour = flow_system.create_effect_time_series(
+        self.effects_per_flow_hour = flow_system.fit_effects_to_model_coords(
             self.label_full, self.effects_per_flow_hour, 'per_flow_hour'
         )
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system)
-
-    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
-        infos = super().infos(use_numpy, use_element_label)
-        infos['is_input_in_component'] = self.is_input_in_component
-        return infos
-
-    def to_dict(self) -> Dict:
-        data = super().to_dict()
-        if isinstance(data.get('previous_flow_rate'), np.ndarray):
-            data['previous_flow_rate'] = data['previous_flow_rate'].tolist()
-        return data
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
@@ -273,21 +256,21 @@ class Flow(Element):
             self.size == CONFIG.modeling.BIG and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
-                f'Flow "{self.label}" has no size assigned, but a "fixed_relative_profile". '
+                f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
                 f'The default size is {CONFIG.modeling.BIG}. As "flow_rate = size * fixed_relative_profile", '
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
             )
 
         if self.fixed_relative_profile is not None and self.on_off_parameters is not None:
             raise ValueError(
-                f'Flow {self.label} has both a fixed_relative_profile and an on_off_parameters. This is not supported. '
+                f'Flow {self.label_full} has both a fixed_relative_profile and an on_off_parameters. This is not supported. '
                 f'Use relative_minimum and relative_maximum instead, '
                 f'if you want to allow flows to be switched on and off.'
             )
 
         if (self.relative_minimum > 0).any() and self.on_off_parameters is None:
             logger.warning(
-                f'Flow {self.label} has a relative_minimum of {self.relative_minimum.active_data} and no on_off_parameters. '
+                f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no on_off_parameters. '
                 f'This prevents the flow_rate from switching off (flow_rate = 0). '
                 f'Consider using on_off_parameters to allow the flow to be switched on and off.'
             )
@@ -390,7 +373,7 @@ class FlowModel(ElementModel):
             self._model.effects.add_share_to_effects(
                 name=self.label_full,  # Use the full label of the element
                 expressions={
-                    effect: self.flow_rate * self._model.hours_per_step * factor.active_data
+                    effect: self.flow_rate * self._model.hours_per_step * factor
                     for effect, factor in self.element.effects_per_flow_hour.items()
                 },
                 target='operation',
@@ -428,7 +411,7 @@ class FlowModel(ElementModel):
             )
 
     @property
-    def flow_rate_bounds_on(self) -> Tuple[NumericData, NumericData]:
+    def flow_rate_bounds_on(self) -> Tuple[TemporalData, TemporalData]:
         """Returns absolute flow rate bounds. Important for OnOffModel"""
         relative_minimum, relative_maximum = self.flow_rate_lower_bound_relative, self.flow_rate_upper_bound_relative
         size = self.element.size
@@ -439,23 +422,23 @@ class FlowModel(ElementModel):
         return relative_minimum * size.minimum_size, relative_maximum * size.maximum_size
 
     @property
-    def flow_rate_lower_bound_relative(self) -> NumericData:
+    def flow_rate_lower_bound_relative(self) -> TemporalData:
         """Returns the lower bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_minimum.active_data
-        return fixed_profile.active_data
+            return self.element.relative_minimum
+        return fixed_profile
 
     @property
-    def flow_rate_upper_bound_relative(self) -> NumericData:
+    def flow_rate_upper_bound_relative(self) -> TemporalData:
         """ Returns the upper bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
-            return self.element.relative_maximum.active_data
-        return fixed_profile.active_data
+            return self.element.relative_maximum
+        return fixed_profile
 
     @property
-    def flow_rate_lower_bound(self) -> NumericData:
+    def flow_rate_lower_bound(self) -> TemporalData:
         """
         Returns the minimum bound the flow_rate can reach.
         Further constraining might be done in OnOffModel and InvestmentModel
@@ -469,7 +452,7 @@ class FlowModel(ElementModel):
         return self.flow_rate_lower_bound_relative * self.element.size
 
     @property
-    def flow_rate_upper_bound(self) -> NumericData:
+    def flow_rate_upper_bound(self) -> TemporalData:
         """
         Returns the maximum bound the flow_rate can reach.
         Further constraining might be done in OnOffModel and InvestmentModel
@@ -497,7 +480,7 @@ class BusModel(ElementModel):
         # Fehlerplus/-minus:
         if self.element.with_excess:
             excess_penalty = np.multiply(
-                self._model.hours_per_step, self.element.excess_penalty_per_flow_hour.active_data
+                self._model.hours_per_step, self.element.excess_penalty_per_flow_hour
             )
             self.excess_input = self.add(
                 self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_input'),

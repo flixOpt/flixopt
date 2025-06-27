@@ -31,7 +31,7 @@ class TestBusModel:
     def test_bus_penalty(self, basic_flow_system_linopy):
         """Test that flow model constraints are correctly generated."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
         bus = fx.Bus('TestBus')
         flow_system.add_elements(bus,
                                  fx.Sink('WärmelastTest', sink=fx.Flow('Q_th_Last', 'TestBus')),

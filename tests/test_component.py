@@ -57,7 +57,7 @@ class TestComponentModel:
     def test_on_with_multiple_flows(self, basic_flow_system_linopy):
         """Test that flow model constraints are correctly generated."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
@@ -128,7 +128,7 @@ class TestComponentModel:
     def test_on_with_single_flow(self, basic_flow_system_linopy):
         """Test that flow model constraints are correctly generated."""
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
+        timesteps = flow_system.timesteps
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
         ]
