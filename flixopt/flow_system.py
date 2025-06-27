@@ -409,25 +409,25 @@ class FlowSystem(Interface):
             element: new element to check
         """
         if element in self.all_elements.values():
-            raise ValueError(f'Element {element.label} already added to FlowSystem!')
+            raise ValueError(f'Element {element.label_full} already added to FlowSystem!')
         # check if name is already used:
         if element.label_full in self.all_elements:
-            raise ValueError(f'Label of Element {element.label} already used in another element!')
+            raise ValueError(f'Label of Element {element.label_full} already used in another element!')
 
     def _add_effects(self, *args: Effect) -> None:
         self.effects.add_effects(*args)
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
-            logger.info(f'Registered new Component: {new_component.label}')
+            logger.info(f'Registered new Component: {new_component.label_full}')
             self._check_if_element_is_unique(new_component)  # check if already exists:
-            self.components[new_component.label] = new_component  # Add to existing components
+            self.components[new_component.label_full] = new_component  # Add to existing components
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
-            logger.info(f'Registered new Bus: {new_bus.label}')
+            logger.info(f'Registered new Bus: {new_bus.label_full}')
             self._check_if_element_is_unique(new_bus)  # check if already exists:
-            self.buses[new_bus.label] = new_bus  # Add to existing components
+            self.buses[new_bus.label_full] = new_bus  # Add to existing components
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -440,7 +440,7 @@ class FlowSystem(Interface):
                 if flow._bus_object is not None and flow._bus_object not in self.buses.values():
                     self._add_buses(flow._bus_object)
                     warnings.warn(
-                        f'The Bus {flow._bus_object.label} was added to the FlowSystem from {flow.label_full}.'
+                        f'The Bus {flow._bus_object.label_full} was added to the FlowSystem from {flow.label_full}.'
                         f'This is deprecated and will be removed in the future. '
                         f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead.',
                         UserWarning,

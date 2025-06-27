@@ -117,7 +117,7 @@ class Bus(Element):
 
     def _plausibility_checks(self) -> None:
         if self.excess_penalty_per_flow_hour is not None and (self.excess_penalty_per_flow_hour == 0).all():
-            logger.warning(f'In Bus {self.label}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.')
+            logger.warning(f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.')
 
     @property
     def with_excess(self) -> bool:
@@ -256,21 +256,21 @@ class Flow(Element):
             self.size == CONFIG.modeling.BIG and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
-                f'Flow "{self.label}" has no size assigned, but a "fixed_relative_profile". '
+                f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
                 f'The default size is {CONFIG.modeling.BIG}. As "flow_rate = size * fixed_relative_profile", '
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
             )
 
         if self.fixed_relative_profile is not None and self.on_off_parameters is not None:
             raise ValueError(
-                f'Flow {self.label} has both a fixed_relative_profile and an on_off_parameters. This is not supported. '
+                f'Flow {self.label_full} has both a fixed_relative_profile and an on_off_parameters. This is not supported. '
                 f'Use relative_minimum and relative_maximum instead, '
                 f'if you want to allow flows to be switched on and off.'
             )
 
         if (self.relative_minimum > 0).any() and self.on_off_parameters is None:
             logger.warning(
-                f'Flow {self.label} has a relative_minimum of {self.relative_minimum} and no on_off_parameters. '
+                f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no on_off_parameters. '
                 f'This prevents the flow_rate from switching off (flow_rate = 0). '
                 f'Consider using on_off_parameters to allow the flow to be switched on and off.'
             )
