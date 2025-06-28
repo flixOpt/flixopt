@@ -443,7 +443,7 @@ class FlowModel(ElementModel):
         if size.fixed_size is not None:
             return relative_minimum * size.fixed_size, relative_maximum * size.fixed_size
 
-        return relative_minimum * size.minimum_size, relative_maximum * size.maximum_size
+        return relative_minimum * size.minimum_or_fixed_size, relative_maximum * size.maximum_or_fixed_size
 
     @property
     def flow_rate_lower_bound_relative(self) -> TemporalData:
@@ -472,7 +472,7 @@ class FlowModel(ElementModel):
         if isinstance(self.element.size, InvestParameters):
             if self.element.size.optional:
                 return 0
-            return self.flow_rate_lower_bound_relative * self.element.size.minimum_size
+            return self.flow_rate_lower_bound_relative * self.element.size.minimum_or_fixed_size
         return self.flow_rate_lower_bound_relative * self.element.size
 
     @property
@@ -482,7 +482,7 @@ class FlowModel(ElementModel):
         Further constraining might be done in OnOffModel and InvestmentModel
         """
         if isinstance(self.element.size, InvestParameters):
-            return self.flow_rate_upper_bound_relative * self.element.size.maximum_size
+            return self.flow_rate_upper_bound_relative * self.element.size.maximum_or_fixed_size
         return self.flow_rate_upper_bound_relative * self.element.size
 
 

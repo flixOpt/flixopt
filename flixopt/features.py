@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import Scalar, TemporalData
+from .core import Scalar, TemporalData, NonTemporalData
 from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 
@@ -45,8 +45,8 @@ class InvestmentModel(Model):
     def do_modeling(self):
         self.size = self.add(
             self._model.add_variables(
-                lower=0 if self.parameters.optional else self.parameters.minimum_size,
-                upper=self.parameters.maximum_size,
+                lower=0 if self.parameters.optional else self.parameters.minimum_or_fixed_size,
+                upper=self.parameters.maximum_or_fixed_size,
                 name=f'{self.label_full}|size',
                 coords=self._model.get_coords(time_dim=False),
             ),
@@ -138,7 +138,7 @@ class InvestmentModel(Model):
             # eq2: P_invest >= isInvested * max(epsilon, investSize_min)
             self.add(
                 self._model.add_constraints(
-                    self.size >= self.is_invested * np.maximum(CONFIG.modeling.EPSILON, self.parameters.minimum_size),
+                    self.size >= self.is_invested * np.maximum(CONFIG.modeling.EPSILON, self.parameters.minimum_or_fixed_size),
                     name=f'{self.label_full}|is_invested_lb',
                 ),
                 'is_invested_lb',

@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
 from .config import CONFIG
-from .core import Scalar, TemporalDataUser, NonTemporalDataUser
+from .core import Scalar, TemporalDataUser, NonTemporalDataUser, NonTemporalData
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -232,6 +232,14 @@ class InvestParameters(Interface):
                         'When using investment_scenarios, minimum_size and fixed_size should only ne used if optional is True.'
                         'Otherwise the investment cannot be 0 incertain scenarios while being non-zero in others.'
                     )
+
+    @property
+    def minimum_or_fixed_size(self) -> NonTemporalData:
+        return self.fixed_size if self.fixed_size is not None else self.minimum_size
+
+    @property
+    def maximum_or_fixed_size(self) -> NonTemporalData:
+        return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
 
 @register_class_for_io
