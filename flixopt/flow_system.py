@@ -69,7 +69,7 @@ class FlowSystem(Interface):
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
         )
-        self.scenarios = scenarios
+        self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
         self.scenario_weights = scenario_weights
 
         # Element collections
@@ -93,6 +93,22 @@ class FlowSystem(Interface):
         if not timesteps.is_monotonic_increasing:
             raise ValueError('timesteps must be sorted')
         return timesteps
+
+    @staticmethod
+    def _validate_scenarios(scenarios: pd.Index) -> pd.Index:
+        """
+        Validate and prepare scenario index.
+
+        Args:
+            scenarios: The scenario index to validate
+        """
+        if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
+            raise ConversionError('Scenarios must be a non-empty Index')
+
+        if not scenarios.name == 'scenario':
+            raise ConversionError(f'Scenarios must be named "scenario", got "{scenarios.name}"')
+
+        return scenarios
 
     @staticmethod
     def _create_timesteps_with_extra(
