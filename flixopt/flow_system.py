@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import ConversionError, DataConverter, TemporalData, TemporalDataUser, TimeSeriesData, NonTemporalDataUser
+from .core import ConversionError, DataConverter, TemporalData, TemporalDataUser, TimeSeriesData, NonTemporalDataUser, NonTemporalData
 from .effects import Effect, EffectCollection, NonTemporalEffects, NonTemporalEffectsUser, TemporalEffects, TemporalEffectsUser
 from .elements import Bus, Component, Flow
 from .structure import Element, Interface, SystemModel
@@ -277,15 +277,16 @@ class FlowSystem(Interface):
     def fit_to_model_coords(
         self,
         name: str,
-        data: Optional[TemporalDataUser],
+        data: Optional[Union[TemporalDataUser, NonTemporalDataUser]],
         has_time_dim: bool = True,
-    ) -> Optional[TemporalData]:
+    ) -> Optional[Union[TemporalData, NonTemporalData]]:
         """
         Fit data to model coordinate system (currently time, but extensible).
 
         Args:
             name: Name of the data
             data: Data to fit to model coordinates
+            has_time_dim: Whether the data has a time dimension
 
         Returns:
             xr.DataArray aligned to model coordinate system
@@ -309,7 +310,7 @@ class FlowSystem(Interface):
     def fit_effects_to_model_coords(
         self,
         label_prefix: Optional[str],
-        effect_values: Optional[TemporalEffectsUser],
+        effect_values: Optional[Union[TemporalEffectsUser, NonTemporalEffectsUser]],
         label_suffix: Optional[str] = None,
         has_time_dim: bool = True,
     ) -> Optional[Union[TemporalEffects, NonTemporalEffects]]:

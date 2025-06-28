@@ -22,13 +22,13 @@ TemporalDataUser = Union[
 """User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension."""
 
 TemporalData = Union[xr.DataArray, 'TimeSeriesData']
-"""Internally used datatypes for temporal data."""
+"""Internally used datatypes for temporal data (data with a time dimension)."""
 
 NonTemporalDataUser = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
-"""User data which has no time dimension. Internally converted to an xr.DataArray without a time dimension."""
+"""User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension."""
 
 NonTemporalData = Union[Scalar, xr.DataArray]
-"""Internally used datatypes for non-temporal data."""
+"""Internally used datatypes for non-temporal data. Can be a Scalar or an xr.DataArray."""
 
 
 class PlausibilityError(Exception):
