@@ -66,7 +66,7 @@ class InvestmentModel(Model):
 
             self._create_bounds_for_optional_investment()
 
-        if self._model.time_series_collection.scenarios is not None:
+        if self._model.flow_system.scenarios is not None:
             self._create_bounds_for_scenarios()
 
         # Bounds for defining variable
