@@ -70,7 +70,7 @@ class FlowSystem(Interface):
             timesteps, hours_of_previous_timesteps
         )
         self.scenarios = scenarios
-        self.scenario_weights = self.fit_to_model_coords('scenario_weights', scenario_weights, has_time_dim=False)
+        self.scenario_weights = scenario_weights
 
         # Element collections
         self.components: Dict[str, Component] = {}
