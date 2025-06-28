@@ -179,8 +179,8 @@ class InvestParameters(Interface):
         self.optional = optional
         self.specific_effects: EffectValuesUserScenario = specific_effects if specific_effects is not None else {}
         self.piecewise_effects = piecewise_effects
-        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
-        self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
         self.investment_scenarios = investment_scenarios
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
@@ -207,10 +207,10 @@ class InvestParameters(Interface):
             self.piecewise_effects.has_time_dim = False
             self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
-        self._minimum_size = flow_system.fit_to_model_coords(
+        self.minimum_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|minimum_size', self.minimum_size, has_time_dim=False
         )
-        self._maximum_size = flow_system.fit_to_model_coords(
+        self.maximum_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|maximum_size', self.maximum_size, has_time_dim=False
         )
         if self.fixed_size is not None:
@@ -220,10 +220,10 @@ class InvestParameters(Interface):
 
     def _plausibility_checks(self, flow_system):
         if isinstance(self.investment_scenarios, list):
-            if not set(self.investment_scenarios).issubset(flow_system.time_series_collection.scenarios):
+            if not set(self.investment_scenarios).issubset(flow_system.scenarios):
                 raise ValueError(
                     f'Some scenarios in investment_scenarios are not present in the time_series_collection: '
-                    f'{set(self.investment_scenarios) - set(flow_system.time_series_collection.scenarios)}'
+                    f'{set(self.investment_scenarios) - set(flow_system.scenarios)}'
                 )
         if self.investment_scenarios is not None:
             if not self.optional:
@@ -232,14 +232,6 @@ class InvestParameters(Interface):
                         'When using investment_scenarios, minimum_size and fixed_size should only ne used if optional is True.'
                         'Otherwise the investment cannot be 0 incertain scenarios while being non-zero in others.'
                     )
-
-    @property
-    def minimum_size(self):
-        return self.fixed_size if self.fixed_size is not None else self._minimum_size
-
-    @property
-    def maximum_size(self):
-        return self.fixed_size if self.fixed_size is not None else self._maximum_size
 
 
 @register_class_for_io
