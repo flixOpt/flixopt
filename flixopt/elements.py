@@ -72,6 +72,9 @@ class Component(Element):
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
 
+        for flow in self.inputs + self.outputs:
+            flow.transform_data(flow_system)
+
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
 

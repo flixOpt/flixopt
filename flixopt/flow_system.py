@@ -334,7 +334,7 @@ class FlowSystem(Interface):
         )
         if not self._connected_and_transformed:
             self._connect_network()
-            for element in self.all_elements.values():
+            for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
                 element.transform_data(self)
         self._connected_and_transformed = True
 
