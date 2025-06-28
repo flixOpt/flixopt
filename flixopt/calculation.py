@@ -46,30 +46,19 @@ class Calculation:
         self,
         name: str,
         flow_system: FlowSystem,
-        selected_timesteps: Annotated[
+        active_timesteps: Annotated[
             Optional[pd.DatetimeIndex],
             'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
         ] = None,
-        selected_scenarios: Optional[pd.Index] = None,
         folder: Optional[pathlib.Path] = None,
-        active_timesteps: Optional[pd.DatetimeIndex] = None,
     ):
         """
         Args:
             name: name of calculation
             flow_system: flow_system which should be calculated
-            selected_timesteps: timesteps which should be used for calculation. If None, then all timesteps are used.
-            selected_scenarios: scenarios which should be used for calculation. If None, then all scenarios are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
-            active_timesteps: Deprecated. Use selected_timesteps instead.
+            active_timesteps: Deprecated. Use FLowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
         """
-        if active_timesteps is not None:
-            warnings.warn(
-                'active_timesteps is deprecated. Use selected_timesteps instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            selected_timesteps = active_timesteps
         self.name = name
         if flow_system.used_in_calculation:
             logging.warning(f'FlowSystem {flow_system} is already used in a calculation. '
@@ -85,14 +74,12 @@ class Calculation:
                 stacklevel=2,
             )
             flow_system = flow_system.sel(time=active_timesteps)
+        self._active_timesteps = active_timesteps  # deprecated
 
         flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
         self.model: Optional[SystemModel] = None
-        self.selected_timesteps = selected_timesteps
-        self.selected_scenarios = selected_scenarios
-        self._active_timesteps = active_timesteps  # deprecated
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
@@ -169,11 +156,11 @@ class Calculation:
     @property
     def active_timesteps(self) -> pd.DatetimeIndex:
         warnings.warn(
-            'active_timesteps is deprecated. Use selected_timesteps instead.',
+            'active_timesteps is deprecated. Use active_timesteps instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.selected_timesteps
+        return self._active_timesteps
 
 
 class FullCalculation(Calculation):
@@ -240,7 +227,6 @@ class AggregatedCalculation(FullCalculation):
         flow_system: FlowSystem,
         aggregation_parameters: AggregationParameters,
         components_to_clusterize: Optional[List[Component]] = None,
-        selected_timesteps: Optional[pd.DatetimeIndex] = None,
         active_timesteps: Annotated[
             Optional[pd.DatetimeIndex],
             'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
@@ -258,13 +244,13 @@ class AggregatedCalculation(FullCalculation):
             components_to_clusterize: List of Components to perform aggregation on. If None, then all components are aggregated.
                 This means, teh variables in the components are equalized to each other, according to the typical periods
                 computed in the DataAggregation
-            selected_timesteps: pd.DatetimeIndex or None
+            active_timesteps: pd.DatetimeIndex or None
                 list with indices, which should be used for calculation. If None, then all timesteps are used.
             folder: folder where results should be saved. If None, then the current working directory is used.
         """
         if flow_system.scenarios is not None:
             raise ValueError('Aggregation is not supported for scenarios yet. Please use FullCalculation instead.')
-        super().__init__(name, flow_system, selected_timesteps, folder=folder, active_timesteps=active_timesteps)
+        super().__init__(name, flow_system, folder=folder, active_timesteps=active_timesteps)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize
         self.aggregation = None
