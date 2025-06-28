@@ -257,20 +257,20 @@ class Storage(Component):
             maximum_capacity = self.capacity_in_flow_hours
             minimum_capacity = self.capacity_in_flow_hours
 
-            # initial capacity >= allowed min for maximum_size:
-            minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-            # initial capacity <= allowed max for minimum_size:
-            maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
+        # initial capacity >= allowed min for maximum_size:
+        minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
+        # initial capacity <= allowed max for minimum_size:
+        maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
-        if (self.initial_charge_state > maximum_inital_capacity).any():
+        if (self.initial_charge_state > maximum_initial_capacity).any():
             raise ValueError(
                 f'{self.label_full}: {self.initial_charge_state=} '
-                f'is above allowed maximum charge_state {maximum_inital_capacity}'
+                f'is above allowed maximum charge_state {maximum_initial_capacity}'
             )
-        if (self.initial_charge_state < minimum_inital_capacity).any():
+        if (self.initial_charge_state < minimum_initial_capacity).any():
             raise ValueError(
                 f'{self.label_full}: {self.initial_charge_state=} '
-                f'is below allowed minimum charge_state {minimum_inital_capacity}'
+                f'is below allowed minimum charge_state {minimum_initial_capacity}'
             )
 
         if self.balanced:

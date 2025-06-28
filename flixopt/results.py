@@ -124,7 +124,7 @@ class CalculationResults:
         """
         return cls(
             solution=calculation.model.solution,
-            flow_system=calculation.flow_system.to_dataset(),
+            flow_system_data=calculation.flow_system.to_dataset(),
             summary=calculation.summary,
             model=calculation.model,
             name=calculation.name,
