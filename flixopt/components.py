@@ -660,6 +660,8 @@ class DSMSink(Sink):
         allow_parallel_charge_and_discharge: bool = False,
         penalty_costs_positive_charge_states: NumericData = None,
         penalty_costs_negative_charge_states: NumericData = None,
+        penalty_costs_positive_charge_rates: NumericData = 0,
+        penalty_costs_negative_charge_rates: NumericData = 0,
         meta_data: Optional[Dict] = None
     ):
         """
@@ -681,6 +683,8 @@ class DSMSink(Sink):
                 If False, charging and discharging cannot occur simultaneously. The default is False.
             penalty_costs_positive_charge_states: penalty costs per flow hour for loss of comfort due to positive charge states of the virtual storage (e.g. increased room temperature). The default is a small epsilon.
             penalty_costs_negative_charge_states: penalty costs per flow hour for loss of comfort due to negative charge states of the virtual storage (e.g. decreased room temperature). The default is a small epsilon.
+            penalty_costs_positive_charge_rates: penalty costs per flow hour for positive charge rates (e.g. costs for increasing supply above demand). The default is 0.
+            penalty_costs_negative_charge_rates: penalty costs per flow hour for negative charge rates (e.g. costs for decreasing supply below demand). The default is 0.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(
@@ -704,6 +708,8 @@ class DSMSink(Sink):
 
         self.penalty_costs_positive_charge_states: NumericDataTS = penalty_costs_positive_charge_states if penalty_costs_positive_charge_states is not None else CONFIG.modeling.EPSILON
         self.penalty_costs_negative_charge_states: NumericDataTS = penalty_costs_negative_charge_states if penalty_costs_negative_charge_states is not None else CONFIG.modeling.EPSILON
+        self.penalty_costs_positive_charge_rates: NumericDataTS = penalty_costs_positive_charge_rates
+        self.penalty_costs_negative_charge_rates: NumericDataTS = penalty_costs_negative_charge_rates
 
     def create_model(self, model: SystemModel) -> 'DSMSinkModel':
         self._plausibility_checks(model)
@@ -755,6 +761,14 @@ class DSMSink(Sink):
         self.penalty_costs_positive_charge_states = flow_system.create_time_series(
             f'{self.label_full}|penalty_costs_positive_charge_states',
             self.penalty_costs_positive_charge_states,
+        )
+        self.penalty_costs_negative_charge_rates = flow_system.create_time_series(
+            f'{self.label_full}|penalty_costs_negative_charge_rates',
+            self.penalty_costs_negative_charge_rates,
+        )
+        self.penalty_costs_positive_charge_rates = flow_system.create_time_series(
+            f'{self.label_full}|penalty_costs_positive_charge_rates',
+            self.penalty_costs_positive_charge_rates,
         )
 
     def _plausibility_checks(self, model: SystemModel):
@@ -849,18 +863,26 @@ class DSMSink(Sink):
 
         # Check penalty costs
         if np.any(self.penalty_costs_positive_charge_states.active_data < 0):
-            raise ValueError(
-                f'{self.label_full}: penalty_costs_positive_charge_states must be non-negative.'
+            logger.warning(
+                f'{self.label_full}: penalty_costs_positive_charge_states should be non-negative.'
             )
         if np.any(self.penalty_costs_negative_charge_states.active_data < 0):
-            raise ValueError(
-                f'{self.label_full}: penalty_costs_negative_charge_states must be non-negative.'
+            logger.warning(
+                f'{self.label_full}: penalty_costs_negative_charge_states should be non-negative.'
+            )
+        if np.any(self.penalty_costs_positive_charge_rates.active_data < 0):
+            logger.warning(
+                f'{self.label_full}: penalty_costs_positive_charge_rates should be non-negative.'
+            )
+        if np.any(self.penalty_costs_negative_charge_rates.active_data < 0):
+            logger.warning(
+                f'{self.label_full}: penalty_costs_negative_charge_rates should be non-negative.'
             )
 
         # Check initial demand
         if np.any(self.initial_demand.active_data < 0):
-            raise ValueError(
-                f'{self.label_full}: initial_demand must be non-negative.'
+            logger.warning(
+                f'{self.label_full}: initial_demand should be non-negative.'
             )
 
         # Check for zero bounds that would disable DSM
@@ -1038,6 +1060,28 @@ class DSMSinkModel(ComponentModel):
                 name = self.label_full,
                 # charge state is shifted backwards in time to apply penalty costs to the charge state at the end of a timestep
                 expression = (negative_charge_state.shift(time=-1).isel(time=slice(None,-1)) * penalty_coeff_neg).sum()
+            )
+
+        # Add penalty costs as effects for positive and negative charge rates
+        penalty_costs_pos_rate = self.element.penalty_costs_positive_charge_rates.active_data
+        penalty_costs_neg_rate = self.element.penalty_costs_negative_charge_rates.active_data
+
+        # Add effects for positive charge rates
+        if np.any(penalty_costs_pos_rate != 0):
+            # Multiply penalty costs with hours_per_step first to get a single coefficient per timestep
+            penalty_coeff_pos_rate = penalty_costs_pos_rate * hours_per_step
+            self._model.effects.add_share_to_penalty(
+                name = self.label_full,
+                expression = (positive_charge_rate * penalty_coeff_pos_rate).sum()
+            )
+
+        # Add effects for negative charge rates
+        if np.any(penalty_costs_neg_rate != 0):
+            # Multiply penalty costs with hours_per_step first to get a single coefficient per timestep
+            penalty_coeff_neg_rate = - penalty_costs_neg_rate * hours_per_step
+            self._model.effects.add_share_to_penalty(
+                name = self.label_full,
+                expression = (negative_charge_rate * penalty_coeff_neg_rate).sum()
             )
 
     def _add_charge_state_exclusivity_constraints(self):
