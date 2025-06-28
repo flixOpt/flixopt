@@ -358,7 +358,17 @@ class Transmission(Component):
             if flow is not None and isinstance(flow.size, InvestParameters):
                 raise ValueError(
                     'Transmission currently does not support separate InvestParameters for Flows. '
-                    'Please use Flow in1. The size of in2 is equal to in1. THis is handled internally'
+                    'Please use Flow in1. The size of in2 is equal to in1. This is handled internally'
+                )
+
+        # Make sure either None or both in Flows have InvestParameters
+        if self.in2 is not None:
+            if isinstance(self.in1.size, InvestParameters) and not isinstance(
+                self.in2.size, InvestParameters
+            ):
+                array_name = self.in1.size.maximum_size.name.replace(self.in1, self.in2)
+                self.in2.size = InvestParameters(
+                    maximum_size=self.in1.size.maximum_size.rename(array_name)
                 )
 
     def create_model(self, model) -> 'TransmissionModel':
@@ -389,13 +399,6 @@ class TransmissionModel(ComponentModel):
             for flow in self.element.inputs + self.element.outputs:
                 if flow.on_off_parameters is None:
                     flow.on_off_parameters = OnOffParameters()
-
-        # Make sure either None or both in Flows have InvestParameters
-        if self.element.in2 is not None:
-            if isinstance(self.element.in1.size, InvestParameters) and not isinstance(
-                self.element.in2.size, InvestParameters
-            ):
-                self.element.in2.size = InvestParameters(maximum_size=self.element.in1.size.maximum_size)
 
         super().do_modeling()
 
