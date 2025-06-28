@@ -305,6 +305,7 @@ class Transmission(Component):
         absolute_losses: Optional[TemporalDataUser] = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
+        balanced: bool = False,
         meta_data: Optional[Dict] = None,
     ):
         """
@@ -322,6 +323,7 @@ class Transmission(Component):
             absolute_losses: The absolute loss, occur only when the Flow is on. Induces the creation of the ON-Variable
             on_off_parameters: Parameters defining the on/off behavior of the component.
             prevent_simultaneous_flows_in_both_directions: If True, inflow and outflow are not allowed to be both non-zero at same timestep.
+            balanced: Wether to equate the size of the in1 and in2 Flow. Needs InvestParameters in both Flows.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(
@@ -341,6 +343,7 @@ class Transmission(Component):
 
         self.relative_losses = relative_losses
         self.absolute_losses = absolute_losses
+        self.balanced = balanced
 
     def _plausibility_checks(self):
         super()._plausibility_checks()
@@ -353,23 +356,20 @@ class Transmission(Component):
             assert self.out2.bus == self.in1.bus, (
                 f'Input 1 and Output 2 do not start/end at the same Bus: {self.in1.bus=}, {self.out2.bus=}'
             )
-        # Check Investments
-        for flow in [self.out1, self.in2, self.out2]:
-            if flow is not None and isinstance(flow.size, InvestParameters):
-                raise ValueError(
-                    'Transmission currently does not support separate InvestParameters for Flows. '
-                    'Please use Flow in1. The size of in2 is equal to in1. This is handled internally'
-                )
 
-        # Make sure either None or both in Flows have InvestParameters
-        if self.in2 is not None:
-            if isinstance(self.in1.size, InvestParameters) and not isinstance(
-                self.in2.size, InvestParameters
+        if self.balanced:
+            if self.in2 is None:
+                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
+            if not isinstance(self.in1.size, InvestParameters) or not isinstance(self.in2.size, InvestParameters):
+                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
+            if (
+                    (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or
+                    (self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size).any()
             ):
-                array_name = self.in1.size.maximum_size.name.replace(self.in1, self.in2)
-                self.in2.size = InvestParameters(
-                    maximum_size=self.in1.size.maximum_size.rename(array_name)
-                )
+                raise ValueError(
+                    f'Balanced Transmission needs compatible minimum and maximum sizes.'
+                    f'Got: {self.in1.size.minimum_size=}, {self.in1.size.maximum_size=}, {self.in1.size.fixed_size=} and '
+                    f'{self.in2.size.minimum_size=}, {self.in2.size.maximum_size=}, {self.in2.size.fixed_size=}.')
 
     def create_model(self, model) -> 'TransmissionModel':
         self._plausibility_checks()
@@ -410,7 +410,7 @@ class TransmissionModel(ComponentModel):
             self.create_transmission_equation('dir2', self.element.in2, self.element.out2)
 
         # equate size of both directions
-        if isinstance(self.element.in1.size, InvestParameters) and self.element.in2 is not None:
+        if self.element.balanced:
             # eq: in1.size = in2.size
             self.add(
                 self._model.add_constraints(
