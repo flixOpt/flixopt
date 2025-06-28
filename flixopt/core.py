@@ -246,7 +246,8 @@ class DataConverter:
             raise ConversionError('Timesteps must be a non-empty DatetimeIndex')
 
         if not timesteps.name == 'time':
-            raise ConversionError(f'Scenarios must be named "time", got "{timesteps.name}"')
+            logger.warning(f'Timesteps must be named "time", got "{timesteps.name}". Renaming to "time".')
+            timesteps = timesteps.rename('time')
 
         return timesteps
 
@@ -262,7 +263,8 @@ class DataConverter:
             raise ConversionError('Scenarios must be a non-empty Index')
 
         if not scenarios.name == 'scenario':
-            raise ConversionError(f'Scenarios must be named "scenario", got "{scenarios.name}"')
+            logger.warning(f'Scenarios must be named "scenario", got "{scenarios.name}". Renaming to "scenario".')
+            scenarios = scenarios.rename('scenario')
 
         return scenarios
 
