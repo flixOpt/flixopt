@@ -240,7 +240,7 @@ class DataConverter:
                 raise ConversionError(
                     f'Array length {len(data)} does not match {dim_name} length {len(coords[dim_name])}'
                 )
-            return xr.DataArray(data, coords=coords, dims=dims)
+            return xr.DataArray(data.copy(), coords=coords, dims=dims)
 
         elif len(dims) == 2:
             # Broadcast 1D array to 2D based on which dimension it matches
@@ -250,11 +250,11 @@ class DataConverter:
             if len(data) == time_len:
                 # Broadcast across scenarios
                 values = np.repeat(data[:, np.newaxis], scenario_len, axis=1)
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
             elif len(data) == scenario_len:
                 # Broadcast across time
                 values = np.repeat(data[np.newaxis, :], time_len, axis=0)
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
             else:
                 raise ConversionError(
                     f'Array length {len(data)} matches neither time ({time_len}) nor scenario ({scenario_len}) dimensions'
@@ -275,18 +275,18 @@ class DataConverter:
             dim_name = dims[0]
             if not data.index.equals(coords[dim_name]):
                 raise ConversionError(f'Series index does not match {dim_name} coordinates')
-            return xr.DataArray(data.values, coords=coords, dims=dims)
+            return xr.DataArray(data.values.copy(), coords=coords, dims=dims)
 
         elif len(dims) == 2:
             # Check which dimension the Series index matches
             if data.index.equals(coords['time']):
                 # Broadcast across scenarios
                 values = np.repeat(data.values[:, np.newaxis], len(coords['scenario']), axis=1)
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
             elif data.index.equals(coords['scenario']):
                 # Broadcast across time
                 values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
             else:
                 raise ConversionError('Series index must match either time or scenario coordinates')
 
@@ -337,11 +337,11 @@ class DataConverter:
             if source_dim == 'time':
                 # Broadcast time to include scenarios
                 values = np.repeat(data.values[:, np.newaxis], len(coords['scenario']), axis=1)
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
             elif source_dim == 'scenario':
                 # Broadcast scenario to include time
                 values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
-                return xr.DataArray(values, coords=coords, dims=dims)
+                return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
         raise ConversionError(f'Cannot broadcast from {data.dims} to {dims}')
 
