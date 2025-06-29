@@ -309,6 +309,104 @@ class TestTimeSeriesDataConversion:
             assert np.array_equal(result.sel(scenario=scenario).values, [10, 20, 30, 40, 50])
 
 
+class TestMultipleDimensions:
+    """Test support for more than 2 dimensions."""
+
+    def test_scalar_many_dimensions(self):
+        """Scalar should broadcast to any number of dimensions."""
+        coords = {
+            'time': pd.date_range('2024-01-01', periods=2, freq='D', name='time'),
+            'scenario': pd.Index(['A', 'B'], name='scenario'),
+            'region': pd.Index(['north', 'south'], name='region'),
+            'technology': pd.Index(['solar', 'wind'], name='technology')
+        }
+
+        result = DataConverter.to_dataarray(42, coords=coords)
+        assert result.shape == (2, 2, 2, 2)
+        assert result.dims == ('time', 'scenario', 'region', 'technology')
+        assert np.all(result.values == 42)
+
+    def test_1d_array_broadcast_to_many_dimensions(self):
+        """1D array should broadcast to many dimensions."""
+        coords = {
+            'time': pd.date_range('2024-01-01', periods=3, freq='D', name='time'),
+            'scenario': pd.Index(['A', 'B'], name='scenario'),
+            'region': pd.Index(['north', 'south'], name='region')
+        }
+
+        # Array matching time dimension
+        time_arr = np.array([10, 20, 30])
+        result = DataConverter.to_dataarray(time_arr, coords=coords)
+
+        assert result.shape == (3, 2, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting - all scenarios and regions should have same time values
+        for scenario in coords['scenario']:
+            for region in coords['region']:
+                assert np.array_equal(
+                    result.sel(scenario=scenario, region=region).values,
+                    time_arr
+                )
+
+    def test_series_broadcast_to_many_dimensions(self):
+        """Series should broadcast to many dimensions."""
+        time_coords = pd.date_range('2024-01-01', periods=3, freq='D', name='time')
+        coords = {
+            'time': time_coords,
+            'scenario': pd.Index(['A', 'B'], name='scenario'),
+            'region': pd.Index(['north', 'south'], name='region'),
+            'product': pd.Index(['X', 'Y', 'Z'], name='product')
+        }
+
+        # Time-indexed series
+        time_series = pd.Series([100, 200, 300], index=time_coords)
+        result = DataConverter.to_dataarray(time_series, coords=coords)
+
+        assert result.shape == (3, 2, 2, 3)
+        assert result.dims == ('time', 'scenario', 'region', 'product')
+
+        # Check that all non-time dimensions have the same time series values
+        for scenario in coords['scenario']:
+            for region in coords['region']:
+                for product in coords['product']:
+                    assert np.array_equal(
+                        result.sel(scenario=scenario, region=region, product=product).values,
+                        time_series.values
+                    )
+
+    def test_dataarray_broadcast_to_more_dimensions(self):
+        """DataArray should broadcast to additional dimensions."""
+        time_coords = pd.date_range('2024-01-01', periods=2, freq='D', name='time')
+        scenario_coords = pd.Index(['A', 'B'], name='scenario')
+
+        # Start with 2D DataArray
+        original = xr.DataArray(
+            [[10, 20], [30, 40]],
+            coords={'time': time_coords, 'scenario': scenario_coords},
+            dims=['time', 'scenario']
+        )
+
+        # Broadcast to 3D
+        coords = {
+            'time': time_coords,
+            'scenario': scenario_coords,
+            'region': pd.Index(['north', 'south'], name='region')
+        }
+
+        result = DataConverter.to_dataarray(original, coords=coords)
+
+        assert result.shape == (2, 2, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check that all regions have the same time+scenario values
+        for region in coords['region']:
+            assert np.array_equal(
+                result.sel(region=region).values,
+                original.values
+            )
+
+
 class TestCustomDimensions:
     """Test with custom dimension names beyond time/scenario."""
 
