@@ -262,6 +262,117 @@ class TestTimeSeriesDataConversion:
             assert np.array_equal(result.sel(scenario=scenario).values, [1, 2, 3, 4, 5])
 
 
+class TestDataFrameConversion:
+    """Tests for converting single-column pandas DataFrames to DataArray."""
+
+    def test_single_column_dataframe_time(self, sample_time_index):
+        """Test converting a single-column DataFrame with time index."""
+        # Create DataFrame with one column
+        df = pd.DataFrame({'value': [10, 20, 30, 40, 50]}, index=sample_time_index)
+
+        # Convert and check
+        result = DataConverter.to_dataarray(df, sample_time_index)
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values, df['value'].values)
+
+    def test_single_column_dataframe_scenario(self, sample_scenario_index):
+        """Test converting a single-column DataFrame with scenario index."""
+        # Create DataFrame with one column and scenario index
+        df = pd.DataFrame({'value': [100, 200, 300]}, index=sample_scenario_index)
+
+        result = DataConverter.to_dataarray(df, scenarios=sample_scenario_index)
+        assert result.shape == (3,)
+        assert result.dims == ('scenario',)
+        assert np.array_equal(result.values, df['value'].values)
+
+    def test_dataframe_broadcast_to_scenarios(self, sample_time_index, sample_scenario_index):
+        """Test broadcasting a time-indexed DataFrame across scenarios."""
+        # Create DataFrame with time index
+        df = pd.DataFrame({'power': [10, 20, 30, 40, 50]}, index=sample_time_index)
+
+        # Convert with scenarios
+        result = DataConverter.to_dataarray(df, sample_time_index, sample_scenario_index)
+
+        assert result.shape == (5, 3)
+        assert result.dims == ('time', 'scenario')
+
+        # Check broadcasting - each scenario should have the same values
+        for scenario in sample_scenario_index:
+            scenario_slice = result.sel(scenario=scenario)
+            assert np.array_equal(scenario_slice.values, df['power'].values)
+
+    def test_dataframe_broadcast_to_time(self, sample_time_index, sample_scenario_index):
+        """Test broadcasting a scenario-indexed DataFrame across time."""
+        # Create DataFrame with scenario index
+        df = pd.DataFrame({'cost': [100, 200, 300]}, index=sample_scenario_index)
+
+        # Convert with time
+        result = DataConverter.to_dataarray(df, sample_time_index, sample_scenario_index)
+
+        assert result.shape == (5, 3)
+        assert result.dims == ('time', 'scenario')
+
+        # Check broadcasting - each time should have the same scenario values
+        for time in sample_time_index:
+            time_slice = result.sel(time=time)
+            assert np.array_equal(time_slice.values, df['cost'].values)
+
+    def test_multi_column_dataframe_fails(self, sample_time_index):
+        """Test that multi-column DataFrames are rejected."""
+        # Create DataFrame with multiple columns
+        df = pd.DataFrame({
+            'value1': [10, 20, 30, 40, 50],
+            'value2': [15, 25, 35, 45, 55]
+        }, index=sample_time_index)
+
+        # Should raise error
+        with pytest.raises(ConversionError, match="Only single-column DataFrames are supported"):
+            DataConverter.to_dataarray(df, sample_time_index)
+
+    def test_dataframe_mismatched_index(self, sample_time_index):
+        """Test DataFrame with mismatched index."""
+        # Create DataFrame with different time index
+        different_times = pd.date_range('2025-01-01', periods=5, freq='D', name='time')
+        df = pd.DataFrame({'value': [10, 20, 30, 40, 50]}, index=different_times)
+
+        # Should raise error for mismatched index
+        with pytest.raises(ConversionError):
+            DataConverter.to_dataarray(df, sample_time_index)
+
+    def test_dataframe_copy_behavior(self, sample_time_index):
+        """Test that DataFrame conversion creates a copy."""
+        # Create DataFrame
+        df = pd.DataFrame({'value': [10, 20, 30, 40, 50]}, index=sample_time_index)
+
+        # Convert
+        result = DataConverter.to_dataarray(df, sample_time_index)
+
+        # Modify the result
+        result[0] = 999
+
+        # Original DataFrame should be unchanged
+        assert df.loc[sample_time_index[0], 'value'] == 10
+
+    def test_empty_dataframe_fails(self, sample_time_index):
+        """Test that empty DataFrames are rejected."""
+        # DataFrame with no columns
+        df = pd.DataFrame(index=sample_time_index)
+
+        with pytest.raises(ConversionError, match="Only single-column DataFrames are supported"):
+            DataConverter.to_dataarray(df, sample_time_index)
+
+    def test_dataframe_with_named_column(self, sample_time_index):
+        """Test DataFrame with a named column."""
+        df = pd.DataFrame(index=sample_time_index)
+        df['energy_output'] = [100, 150, 200, 175, 125]
+
+        result = DataConverter.to_dataarray(df, sample_time_index)
+        assert result.shape == (5,)
+        assert np.array_equal(result.values, [100, 150, 200, 175, 125])
+
+
 class TestInvalidInputs:
     """Tests for invalid inputs and error handling."""
 

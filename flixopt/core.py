@@ -135,8 +135,19 @@ class DataConverter:
     """
 
     @staticmethod
+    def _convert_dataframe(data: pd.DataFrame, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
+        """Convert single-column pandas DataFrame to DataArray by treating it as a Series."""
+        # Check that DataFrame has exactly one column
+        if len(data.columns) != 1:
+            raise ConversionError(f'Only single-column DataFrames are supported, got {len(data.columns)} columns')
+
+        # Extract the single column as a Series and convert it
+        series = data.iloc[:, 0]
+        return DataConverter._convert_series(series, coords, dims)
+
+    @staticmethod
     def to_dataarray(
-        data: Union[Scalar, np.ndarray, pd.Series, xr.DataArray, TimeSeriesData],
+        data: Union[Scalar, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray, TimeSeriesData],
         timesteps: Optional[pd.DatetimeIndex] = None,
         scenarios: Optional[pd.Index] = None,
     ) -> xr.DataArray:
@@ -144,7 +155,7 @@ class DataConverter:
         Convert data to xarray.DataArray with specified dimensions.
 
         Args:
-            data: Scalar, 1D array/Series, or existing DataArray
+            data: Scalar, 1D array/Series, single-column DataFrame, or existing DataArray
             timesteps: Optional DatetimeIndex for time dimension
             scenarios: Optional Index for scenario dimension
 
@@ -167,13 +178,17 @@ class DataConverter:
         elif isinstance(data, pd.Series):
             return DataConverter._convert_series(data, coords, dims)
 
+        # Handle pandas DataFrames (single column only)
+        elif isinstance(data, pd.DataFrame):
+            return DataConverter._convert_dataframe(data, coords, dims)
+
         # Handle existing DataArrays (including TimeSeriesData)
         elif isinstance(data, xr.DataArray):
             return DataConverter._handle_dataarray(data, coords, dims)
 
         else:
             raise ConversionError(
-                f'Unsupported data type: {type(data).__name__}. Only scalars, 1D arrays, Series, and DataArrays are supported.'
+                f'Unsupported data type: {type(data).__name__}. Only scalars, 1D arrays, Series, single-column DataFrames, and DataArrays are supported.'
             )
 
     @staticmethod
