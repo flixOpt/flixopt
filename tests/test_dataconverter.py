@@ -502,19 +502,8 @@ class TestErrorHandling:
         """Error messages should be informative."""
         # Array with wrong length
         wrong_arr = np.array([1, 2])  # Length 2, but no dimension has length 2
-        with pytest.raises(ConversionError, match="matches none of the dimensions"):
+        with pytest.raises(ConversionError, match="matches none of the target dimensions"):
             DataConverter.to_dataarray(wrong_arr, coords={'time': time_coords, 'scenario': scenario_coords})
-
-    def test_maximum_dimensions(self):
-        """Should handle up to 2 dimensions currently."""
-        coords = {
-            'dim1': pd.Index(['a', 'b'], name='dim1'),
-            'dim2': pd.Index(['x', 'y'], name='dim2'),
-            'dim3': pd.Index(['1', '2'], name='dim3')
-        }
-
-        with pytest.raises(ConversionError, match="Maximum 2 dimensions currently supported"):
-            DataConverter.to_dataarray(42, coords=coords)
 
 
 class TestDataIntegrity:

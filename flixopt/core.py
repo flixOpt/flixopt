@@ -164,7 +164,8 @@ class DataConverter:
                 if data.index.equals(coords[dim_name]):
                     return xr.DataArray(data.values.copy(), coords={dim_name: coords[dim_name]}, dims=[dim_name])
 
-            # If no index match, fall through to length matching
+            # If no index matches, raise error
+            raise ConversionError(f'Data {data} does not match any of the target dimensions: {target_dims}')
 
         # For arrays or unmatched Series, match by length
         matching_dims = []
@@ -246,28 +247,34 @@ class DataConverter:
             if not np.array_equal(data.coords[dim].values, coords[dim].values):
                 raise ConversionError(f'Source {dim} coordinates do not match target coordinates')
 
-        # Build the full coordinate system
-        full_coords = {}
-        for dim in target_dims:
-            full_coords[dim] = coords[dim]
+        # Start with the original data
+        result_data = data.values
+        result_dims = list(data.dims)
+        result_coords = {dim: data.coords[dim] for dim in data.dims}
 
-        # Use xarray's broadcast_to functionality
-        # Create a template DataArray with target structure
-        template_data = np.broadcast_to(data.values, [len(coords[dim]) for dim in target_dims])
+        # Add missing dimensions one by one
+        for target_dim in target_dims:
+            if target_dim not in result_dims:
+                # Add this dimension at the end
+                result_data = np.expand_dims(result_data, axis=-1)
+                result_dims.append(target_dim)
+                result_coords[target_dim] = coords[target_dim]
 
-        # Create mapping for broadcasting
-        # We need to insert new axes for missing dimensions
-        expanded_data = data.values
-        for i, dim in enumerate(target_dims):
-            if dim not in data.dims:
-                # Add new axis for this dimension
-                expanded_data = np.expand_dims(expanded_data, axis=i)
+                # Broadcast along the new dimension
+                new_shape = list(result_data.shape)
+                new_shape[-1] = len(coords[target_dim])
+                result_data = np.broadcast_to(result_data, new_shape)
 
-        # Now broadcast to full shape
-        target_shape = tuple(len(coords[dim]) for dim in target_dims)
-        broadcasted_data = np.broadcast_to(expanded_data, target_shape)
+        # Reorder dimensions to match target order
+        if tuple(result_dims) != target_dims:
+            # Create mapping from current to target order
+            dim_indices = [result_dims.index(dim) for dim in target_dims]
+            result_data = np.transpose(result_data, dim_indices)
 
-        return xr.DataArray(broadcasted_data.copy(), coords=full_coords, dims=target_dims)
+        # Build final coordinates dict in target order
+        final_coords = {dim: coords[dim] for dim in target_dims}
+
+        return xr.DataArray(result_data.copy(), coords=final_coords, dims=target_dims)
 
     @staticmethod
     def to_dataarray(
