@@ -309,6 +309,283 @@ class TestTimeSeriesDataConversion:
             assert np.array_equal(result.sel(scenario=scenario).values, [10, 20, 30, 40, 50])
 
 
+class TestThreeDimensionConversion:
+    """Test conversions with exactly 3 dimensions for all data types."""
+
+    @pytest.fixture
+    def three_d_coords(self, time_coords, scenario_coords):
+        """Standard 3D coordinate system with unique lengths."""
+        return {
+            'time': time_coords,  # length 5
+            'scenario': scenario_coords,  # length 3
+            'region': pd.Index(['north', 'south'], name='region')  # length 2 - unique!
+        }
+
+    def test_scalar_three_dimensions(self, three_d_coords):
+        """Scalar should broadcast to 3 dimensions."""
+        result = DataConverter.to_dataarray(42, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)  # time=5, scenario=3, region=2
+        assert result.dims == ('time', 'scenario', 'region')
+        assert np.all(result.values == 42)
+
+        # Verify all coordinates are correct
+        assert result.indexes['time'].equals(three_d_coords['time'])
+        assert result.indexes['scenario'].equals(three_d_coords['scenario'])
+        assert result.indexes['region'].equals(three_d_coords['region'])
+
+    def test_numpy_scalar_three_dimensions(self, three_d_coords):
+        """Numpy scalars should broadcast to 3 dimensions."""
+        for scalar in [np.int32(100), np.float64(3.14)]:
+            result = DataConverter.to_dataarray(scalar, coords=three_d_coords)
+
+            assert result.shape == (5, 3, 2)
+            assert result.dims == ('time', 'scenario', 'region')
+            assert np.all(result.values == scalar.item())
+
+    def test_1d_array_time_to_three_dimensions(self, three_d_coords):
+        """1D array matching time should broadcast to 3D."""
+        time_arr = np.array([10, 20, 30, 40, 50])
+        result = DataConverter.to_dataarray(time_arr, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting across scenarios and regions
+        for scenario in three_d_coords['scenario']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(scenario=scenario, region=region)
+                assert np.array_equal(slice_data.values, time_arr)
+
+    def test_1d_array_scenario_to_three_dimensions(self, three_d_coords):
+        """1D array matching scenario should broadcast to 3D."""
+        scenario_arr = np.array([100, 200, 300])
+        result = DataConverter.to_dataarray(scenario_arr, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting across time and regions
+        for time in three_d_coords['time']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(time=time, region=region)
+                assert np.array_equal(slice_data.values, scenario_arr)
+
+    def test_1d_array_region_to_three_dimensions(self, three_d_coords):
+        """1D array matching region should broadcast to 3D."""
+        region_arr = np.array([1000, 2000])  # Length 2 to match region
+        result = DataConverter.to_dataarray(region_arr, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting across time and scenarios
+        for time in three_d_coords['time']:
+            for scenario in three_d_coords['scenario']:
+                slice_data = result.sel(time=time, scenario=scenario)
+                assert np.array_equal(slice_data.values, region_arr)
+
+    def test_series_time_to_three_dimensions(self, three_d_coords):
+        """Time-indexed Series should broadcast to 3D."""
+        time_series = pd.Series([15, 25, 35, 45, 55], index=three_d_coords['time'])
+        result = DataConverter.to_dataarray(time_series, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting
+        for scenario in three_d_coords['scenario']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(scenario=scenario, region=region)
+                assert np.array_equal(slice_data.values, time_series.values)
+
+    def test_series_scenario_to_three_dimensions(self, three_d_coords):
+        """Scenario-indexed Series should broadcast to 3D."""
+        scenario_series = pd.Series([500, 600, 700], index=three_d_coords['scenario'])
+        result = DataConverter.to_dataarray(scenario_series, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting
+        for time in three_d_coords['time']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(time=time, region=region)
+                assert np.array_equal(slice_data.values, scenario_series.values)
+
+    def test_series_region_to_three_dimensions(self, three_d_coords):
+        """Region-indexed Series should broadcast to 3D."""
+        region_series = pd.Series([5000, 6000], index=three_d_coords['region'])  # Length 2
+        result = DataConverter.to_dataarray(region_series, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting
+        for time in three_d_coords['time']:
+            for scenario in three_d_coords['scenario']:
+                slice_data = result.sel(time=time, scenario=scenario)
+                assert np.array_equal(slice_data.values, region_series.values)
+
+    def test_dataframe_time_to_three_dimensions(self, three_d_coords):
+        """Time-indexed DataFrame should broadcast to 3D."""
+        df = pd.DataFrame({'power': [11, 22, 33, 44, 55]}, index=three_d_coords['time'])
+        result = DataConverter.to_dataarray(df, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting
+        for scenario in three_d_coords['scenario']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(scenario=scenario, region=region)
+                assert np.array_equal(slice_data.values, df['power'].values)
+
+    def test_dataframe_scenario_to_three_dimensions(self, three_d_coords):
+        """Scenario-indexed DataFrame should broadcast to 3D."""
+        df = pd.DataFrame({'cost': [1100, 1200, 1300]}, index=three_d_coords['scenario'])
+        result = DataConverter.to_dataarray(df, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting
+        for time in three_d_coords['time']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(time=time, region=region)
+                assert np.array_equal(slice_data.values, df['cost'].values)
+
+    def test_1d_dataarray_time_to_three_dimensions(self, three_d_coords):
+        """1D time DataArray should broadcast to 3D."""
+        original = xr.DataArray([101, 102, 103, 104, 105],
+                                coords={'time': three_d_coords['time']},
+                                dims=['time'])
+        result = DataConverter.to_dataarray(original, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting
+        for scenario in three_d_coords['scenario']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(scenario=scenario, region=region)
+                assert np.array_equal(slice_data.values, original.values)
+
+    def test_1d_dataarray_scenario_to_three_dimensions(self, three_d_coords):
+        """1D scenario DataArray should broadcast to 3D."""
+        original = xr.DataArray([2001, 2002, 2003],
+                                coords={'scenario': three_d_coords['scenario']},
+                                dims=['scenario'])
+        result = DataConverter.to_dataarray(original, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting
+        for time in three_d_coords['time']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(time=time, region=region)
+                assert np.array_equal(slice_data.values, original.values)
+
+    def test_2d_dataarray_to_three_dimensions(self, three_d_coords):
+        """2D DataArray should broadcast to 3D."""
+        # Create 2D time x scenario DataArray
+        data_2d = np.random.rand(5, 3)
+        original = xr.DataArray(data_2d,
+                                coords={'time': three_d_coords['time'],
+                                        'scenario': three_d_coords['scenario']},
+                                dims=['time', 'scenario'])
+
+        result = DataConverter.to_dataarray(original, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check that all regions have the same time x scenario data
+        for region in three_d_coords['region']:
+            slice_data = result.sel(region=region)
+            assert np.array_equal(slice_data.values, original.values)
+
+    def test_timeseries_data_to_three_dimensions(self, three_d_coords):
+        """TimeSeriesData should broadcast to 3D."""
+        data_array = xr.DataArray([99, 88, 77, 66, 55],
+                                  coords={'time': three_d_coords['time']},
+                                  dims=['time'])
+        ts_data = TimeSeriesData(data_array, aggregation_group='test_3d')
+
+        result = DataConverter.to_dataarray(ts_data, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+
+        # Check broadcasting
+        for scenario in three_d_coords['scenario']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(scenario=scenario, region=region)
+                assert np.array_equal(slice_data.values, [99, 88, 77, 66, 55])
+
+    def test_three_d_copy_independence(self, three_d_coords):
+        """3D results should be independent copies."""
+        original_arr = np.array([10, 20, 30, 40, 50])
+        result = DataConverter.to_dataarray(original_arr, coords=three_d_coords)
+
+        # Modify result
+        result[0, 0, 0] = 999
+
+        # Original should be unchanged
+        assert original_arr[0] == 10
+
+    def test_three_d_special_values(self, three_d_coords):
+        """3D conversion should preserve special values."""
+        # Array with NaN and inf
+        special_arr = np.array([1, np.nan, np.inf, -np.inf, 5])
+        result = DataConverter.to_dataarray(special_arr, coords=three_d_coords)
+
+        assert result.shape == (5, 3, 2)
+
+        # Check that special values are preserved in all broadcasts
+        for scenario in three_d_coords['scenario']:
+            for region in three_d_coords['region']:
+                slice_data = result.sel(scenario=scenario, region=region)
+                assert np.array_equal(np.isnan(slice_data.values), np.isnan(special_arr))
+                assert np.array_equal(np.isinf(slice_data.values), np.isinf(special_arr))
+
+    def test_three_d_ambiguous_length_error(self):
+        """Should fail when array length matches multiple dimensions in 3D."""
+        # All dimensions have length 3
+        coords_3x3x3 = {
+            'time': pd.date_range('2024-01-01', periods=3, freq='D', name='time'),
+            'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),
+            'region': pd.Index(['X', 'Y', 'Z'], name='region')
+        }
+
+        arr = np.array([1, 2, 3])  # Length 3 - matches all dimensions
+
+        with pytest.raises(ConversionError, match="matches multiple dimensions"):
+            DataConverter.to_dataarray(arr, coords=coords_3x3x3)
+
+    def test_three_d_custom_dimensions(self):
+        """3D conversion with custom dimension names."""
+        coords = {
+            'product': pd.Index(['A', 'B'], name='product'),
+            'factory': pd.Index(['F1', 'F2', 'F3'], name='factory'),
+            'quarter': pd.Index(['Q1', 'Q2', 'Q3', 'Q4'], name='quarter')
+        }
+
+        # Array matching factory dimension
+        factory_arr = np.array([100, 200, 300])
+        result = DataConverter.to_dataarray(factory_arr, coords=coords)
+
+        assert result.shape == (2, 3, 4)
+        assert result.dims == ('product', 'factory', 'quarter')
+
+        # Check broadcasting
+        for product in coords['product']:
+            for quarter in coords['quarter']:
+                slice_data = result.sel(product=product, quarter=quarter)
+                assert np.array_equal(slice_data.values, factory_arr)
+
+
 class TestMultipleDimensions:
     """Test support for more than 2 dimensions."""
 

@@ -105,8 +105,8 @@ class FlowSystem(Interface):
         if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
             raise ConversionError('Scenarios must be a non-empty Index')
 
-        if not scenarios.name == 'scenario':
-            raise ConversionError(f'Scenarios must be named "scenario", got "{scenarios.name}"')
+        if scenarios.name != 'scenario':
+            scenarios = scenarios.rename('scenario')
 
         return scenarios
 
