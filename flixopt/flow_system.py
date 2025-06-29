@@ -294,7 +294,7 @@ class FlowSystem(Interface):
         self,
         name: str,
         data: Optional[Union[TemporalDataUser, NonTemporalDataUser]],
-        has_time_dim: bool = True,
+        dimensions: Union[List[str], str] = 'time',  # Default to time only
     ) -> Optional[Union[TemporalData, NonTemporalData]]:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -310,18 +310,31 @@ class FlowSystem(Interface):
         if data is None:
             return None
 
+        # Build coords from requested dimensions
+        if isinstance(dimensions, str):
+            dimensions = [dimensions]
+
+        coords = {}
+        for dim in dimensions:
+            if dim == 'time' and self.timesteps is not None:
+                coords['time'] = self.timesteps
+            elif dim == 'scenario' and self.scenarios is not None:
+                coords['scenario'] = self.scenarios
+            # Future: elif dim == 'region' and self.regions is not None: ...
+
+        # Rest of your method stays the same, just pass coords
         if isinstance(data, TimeSeriesData):
             try:
                 data.name = name  # Set name of previous object!
                 return TimeSeriesData(
-                    DataConverter.to_dataarray(data, timesteps=self.timesteps, scenarios=self.scenarios),
+                    DataConverter.to_dataarray(data, coords=coords),
                     aggregation_group=data.aggregation_group, aggregation_weight=data.aggregation_weight
                 ).rename(name)
             except ConversionError as e:
                 logger.critical(f'Could not convert time series data "{name}" to DataArray: {e}. \n'
                                 f'Take care to use the correct (time) index.')
         else:
-            return DataConverter.to_dataarray(data, timesteps=self.timesteps if has_time_dim else None, scenarios=self.scenarios).rename(name)
+            return DataConverter.to_dataarray(data, coords=coords).rename(name)
 
     def fit_effects_to_model_coords(
         self,
