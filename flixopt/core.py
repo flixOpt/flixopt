@@ -148,21 +148,23 @@ class DataConverter:
     @staticmethod
     def to_dataarray(
         data: Union[Scalar, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray, TimeSeriesData],
-        timesteps: Optional[pd.DatetimeIndex] = None,
-        scenarios: Optional[pd.Index] = None,
+        coords: Optional[Dict[str, pd.Index]] = None,
     ) -> xr.DataArray:
         """
-        Convert data to xarray.DataArray with specified dimensions.
+        Convert data to xarray.DataArray with specified coordinates.
 
         Args:
             data: Scalar, 1D array/Series, single-column DataFrame, or existing DataArray
-            timesteps: Optional DatetimeIndex for time dimension
-            scenarios: Optional Index for scenario dimension
+            coords: Dictionary mapping dimension names to coordinate indices
+                   e.g., {'time': timesteps, 'scenario': scenarios}
 
         Returns:
             DataArray with the converted data
         """
-        coords, dims = DataConverter._prepare_dimensions(timesteps, scenarios)
+        if coords is None:
+            coords = {}
+
+        coords, dims = DataConverter._prepare_dimensions(coords)
 
         # Handle scalars
         if isinstance(data, (int, float, np.integer, np.floating)):
@@ -192,30 +194,40 @@ class DataConverter:
             )
 
     @staticmethod
-    def _prepare_dimensions(
-        timesteps: Optional[pd.DatetimeIndex], scenarios: Optional[pd.Index]
-    ) -> Tuple[Dict[str, pd.Index], Tuple[str, ...]]:
-        """Prepare coordinates and dimensions."""
-        coords = {}
+    def _prepare_dimensions(coords: Dict[str, pd.Index]) -> Tuple[Dict[str, pd.Index], Tuple[str, ...]]:
+        """
+        Prepare and validate coordinates for the DataArray.
+
+        Args:
+            coords: Dictionary mapping dimension names to coordinate indices
+
+        Returns:
+            Tuple of (validated coordinates dict, dimensions tuple)
+        """
+        # Check dimension limit
+        if len(coords) > 2:
+            raise ConversionError(f'Maximum 2 dimensions currently supported, got {len(coords)}')
+
+        validated_coords = {}
         dims = []
 
-        if timesteps is not None:
-            if not isinstance(timesteps, pd.DatetimeIndex) or len(timesteps) == 0:
-                raise ConversionError('Timesteps must be a non-empty DatetimeIndex')
-            if timesteps.name != 'time':
-                timesteps = timesteps.rename('time')
-            coords['time'] = timesteps
-            dims.append('time')
+        for dim_name, coord_index in coords.items():
+            # Validate coordinate index
+            if not isinstance(coord_index, pd.Index) or len(coord_index) == 0:
+                raise ConversionError(f'{dim_name} coordinates must be a non-empty pandas Index')
 
-        if scenarios is not None:
-            if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
-                raise ConversionError('Scenarios must be a non-empty Index')
-            if scenarios.name != 'scenario':
-                scenarios = scenarios.rename('scenario')
-            coords['scenario'] = scenarios
-            dims.append('scenario')
+            # Ensure coordinate index has the correct name
+            if coord_index.name != dim_name:
+                coord_index = coord_index.rename(dim_name)
 
-        return coords, tuple(dims)
+            # Special validation for time dimension
+            if dim_name == 'time' and not isinstance(coord_index, pd.DatetimeIndex):
+                raise ConversionError('time coordinates must be a DatetimeIndex')
+
+            validated_coords[dim_name] = coord_index
+            dims.append(dim_name)
+
+        return validated_coords, tuple(dims)
 
     @staticmethod
     def _convert_scalar(
@@ -244,24 +256,31 @@ class DataConverter:
 
         elif len(dims) == 2:
             # Broadcast 1D array to 2D based on which dimension it matches
-            time_len = len(coords['time'])
-            scenario_len = len(coords['scenario'])
+            dim_lengths = {dim: len(coords[dim]) for dim in dims}
 
-            if len(data) == time_len:
-                # Broadcast across scenarios
-                values = np.repeat(data[:, np.newaxis], scenario_len, axis=1)
-                return xr.DataArray(values.copy(), coords=coords, dims=dims)
-            elif len(data) == scenario_len:
-                # Broadcast across time
-                values = np.repeat(data[np.newaxis, :], time_len, axis=0)
-                return xr.DataArray(values.copy(), coords=coords, dims=dims)
-            else:
+            # Find which dimension the array length matches
+            matching_dims = [dim for dim, length in dim_lengths.items() if len(data) == length]
+
+            if len(matching_dims) == 0:
+                raise ConversionError(f'Array length {len(data)} matches none of the dimensions: {dim_lengths}')
+            elif len(matching_dims) > 1:
                 raise ConversionError(
-                    f'Array length {len(data)} matches neither time ({time_len}) nor scenario ({scenario_len}) dimensions'
+                    f'Array length {len(data)} matches multiple dimensions: {matching_dims}. Cannot determine broadcasting direction.'
                 )
 
+            # Broadcast along the matching dimension
+            match_dim = matching_dims[0]
+            other_dim = [d for d in dims if d != match_dim][0]
+
+            if dims.index(match_dim) == 0:  # First dimension
+                values = np.repeat(data[:, np.newaxis], len(coords[other_dim]), axis=1)
+            else:  # Second dimension
+                values = np.repeat(data[np.newaxis, :], len(coords[other_dim]), axis=0)
+
+            return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
         else:
-            raise ConversionError('Maximum 2 dimensions supported')
+            raise ConversionError(f'Maximum 2 dimensions currently supported, got {len(dims)}')
 
     @staticmethod
     def _convert_series(data: pd.Series, coords: Dict[str, pd.Index], dims: Tuple[str, ...]) -> xr.DataArray:
@@ -279,16 +298,23 @@ class DataConverter:
 
         elif len(dims) == 2:
             # Check which dimension the Series index matches
-            if data.index.equals(coords['time']):
-                # Broadcast across scenarios
-                values = np.repeat(data.values[:, np.newaxis], len(coords['scenario']), axis=1)
-                return xr.DataArray(values.copy(), coords=coords, dims=dims)
-            elif data.index.equals(coords['scenario']):
-                # Broadcast across time
-                values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
-                return xr.DataArray(values.copy(), coords=coords, dims=dims)
-            else:
-                raise ConversionError('Series index must match either time or scenario coordinates')
+            if 'time' in coords and data.index.equals(coords['time']):
+                # Broadcast across other dimensions
+                other_dims = [d for d in dims if d != 'time']
+                if len(other_dims) == 1:
+                    other_dim = other_dims[0]
+                    values = np.repeat(data.values[:, np.newaxis], len(coords[other_dim]), axis=1)
+                    return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
+            elif len([d for d in dims if d != 'time']) == 1:
+                # Check if Series matches the non-time dimension
+                other_dim = [d for d in dims if d != 'time'][0]
+                if data.index.equals(coords[other_dim]):
+                    # Broadcast across time
+                    values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
+                    return xr.DataArray(values.copy(), coords=coords, dims=dims)
+
+            raise ConversionError(f'Series index must match one of the target dimensions: {list(coords.keys())}')
 
         else:
             raise ConversionError('Maximum 2 dimensions supported')
@@ -330,18 +356,24 @@ class DataConverter:
         elif len(data.dims) == 1 and len(dims) == 2:
             source_dim = data.dims[0]
 
+            # Check if source dimension exists in target
+            if source_dim not in coords:
+                raise ConversionError(f'Source dimension "{source_dim}" not found in target coordinates')
+
             # Check coordinate compatibility
             if not np.array_equal(data.coords[source_dim].values, coords[source_dim].values):
                 raise ConversionError(f'Source {source_dim} coordinates do not match target coordinates')
 
-            if source_dim == 'time':
-                # Broadcast time to include scenarios
-                values = np.repeat(data.values[:, np.newaxis], len(coords['scenario']), axis=1)
-                return xr.DataArray(values.copy(), coords=coords, dims=dims)
-            elif source_dim == 'scenario':
-                # Broadcast scenario to include time
-                values = np.repeat(data.values[np.newaxis, :], len(coords['time']), axis=0)
-                return xr.DataArray(values.copy(), coords=coords, dims=dims)
+            # Find the other dimension to broadcast to
+            other_dim = [d for d in dims if d != source_dim][0]
+
+            # Broadcast based on dimension order
+            if dims.index(source_dim) == 0:  # Source is first dimension
+                values = np.repeat(data.values[:, np.newaxis], len(coords[other_dim]), axis=1)
+            else:  # Source is second dimension
+                values = np.repeat(data.values[np.newaxis, :], len(coords[other_dim]), axis=0)
+
+            return xr.DataArray(values.copy(), coords=coords, dims=dims)
 
         raise ConversionError(f'Cannot broadcast from {data.dims} to {dims}')
 
