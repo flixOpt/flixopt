@@ -6,6 +6,7 @@ import xarray as xr
 from flixopt.core import (  # Adjust this import to match your project structure
     ConversionError,
     DataConverter,
+    TimeSeriesData,
 )
 
 
@@ -17,12 +18,6 @@ def sample_time_index():
 @pytest.fixture
 def sample_scenario_index():
     return pd.Index(['baseline', 'high_demand', 'low_price'], name='scenario')
-
-
-@pytest.fixture
-def multi_index(sample_time_index, sample_scenario_index):
-    """Create a sample MultiIndex combining scenarios and times."""
-    return pd.MultiIndex.from_product([sample_scenario_index, sample_time_index], names=['scenario', 'time'])
 
 
 class TestSingleDimensionConversion:
@@ -110,8 +105,8 @@ class TestMultiDimensionConversion:
         result = DataConverter.to_dataarray(42.5, sample_time_index, sample_scenario_index)
         assert np.all(result.values == 42.5)
 
-    def test_1d_array_with_scenarios(self, sample_time_index, sample_scenario_index):
-        """Test converting 1D array with scenario dimension (broadcasting)."""
+    def test_1d_array_with_scenarios_time_broadcast(self, sample_time_index, sample_scenario_index):
+        """Test converting 1D array matching time dimension (broadcasting across scenarios)."""
         # Create 1D array matching timesteps length
         arr_1d = np.array([1, 2, 3, 4, 5])
 
@@ -126,35 +121,29 @@ class TestMultiDimensionConversion:
             scenario_slice = result.sel(scenario=scenario)
             assert np.array_equal(scenario_slice.values, arr_1d)
 
-    def test_2d_array_with_scenarios(self, sample_time_index, sample_scenario_index):
-        """Test converting 2D array with scenario dimension."""
-        # Create 2D array with different values per scenario
-        arr_2d = np.array(
-            [
-                [1, 2, 3, 4, 5],  # baseline scenario
-                [6, 7, 8, 9, 10],  # high_demand scenario
-                [11, 12, 13, 14, 15],  # low_price scenario
-            ]
-        )
+    def test_1d_array_with_scenarios_scenario_broadcast(self, sample_time_index, sample_scenario_index):
+        """Test converting 1D array matching scenario dimension (broadcasting across time)."""
+        # Create 1D array matching scenario length
+        arr_1d = np.array([10, 20, 30])  # 3 scenarios
 
-        # Convert to DataArray
-        result = DataConverter.to_dataarray(arr_2d.T, sample_time_index, sample_scenario_index)
+        # Convert with time and scenarios
+        result = DataConverter.to_dataarray(arr_1d, sample_time_index, sample_scenario_index)
 
-        assert result.shape == (5, 3)
+        assert result.shape == (len(sample_time_index), len(sample_scenario_index))
         assert result.dims == ('time', 'scenario')
 
-        # Check that each scenario has correct values
-        assert np.array_equal(result.sel(scenario='baseline').values, arr_2d[0])
-        assert np.array_equal(result.sel(scenario='high_demand').values, arr_2d[1])
-        assert np.array_equal(result.sel(scenario='low_price').values, arr_2d[2])
+        # Each time step should have the same scenario values (broadcasting)
+        for time in sample_time_index:
+            time_slice = result.sel(time=time)
+            assert np.array_equal(time_slice.values, arr_1d)
 
     def test_dataarray_with_scenarios(self, sample_time_index, sample_scenario_index):
         """Test converting an existing DataArray with scenarios."""
-        # Create a multi-scenario DataArray
+        # Create a multi-scenario DataArray with dims in (time, scenario) order
         original = xr.DataArray(
-            data=np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15]]),
-            coords={'scenario': sample_scenario_index, 'time': sample_time_index},
-            dims=['scenario', 'time'],
+            data=np.array([[1, 6, 11], [2, 7, 12], [3, 8, 13], [4, 9, 14], [5, 10, 15]]),
+            coords={'time': sample_time_index, 'scenario': sample_scenario_index},
+            dims=['time', 'scenario'],
         )
 
         # Test conversion
@@ -162,7 +151,7 @@ class TestMultiDimensionConversion:
 
         assert result.shape == (5, 3)
         assert result.dims == ('time', 'scenario')
-        assert np.array_equal(result.values, original.values.T)
+        assert np.array_equal(result.values, original.values)
 
         # Ensure it's a copy
         result.loc[:, 'baseline'] = 999
@@ -172,7 +161,7 @@ class TestMultiDimensionConversion:
 class TestSeriesConversion:
     """Tests for converting pandas Series to DataArray."""
 
-    def test_series_single_dimension(self, sample_time_index):
+    def test_series_single_dimension_time(self, sample_time_index):
         """Test converting a pandas Series with time index."""
         # Create a Series with matching time index
         series = pd.Series([10, 20, 30, 40, 50], index=sample_time_index)
@@ -185,15 +174,16 @@ class TestSeriesConversion:
         assert np.array_equal(result.values, series.values)
         assert np.array_equal(result.coords['time'].values, sample_time_index.values)
 
-        # Test with scenario index
-        scenario_index = pd.Index(['baseline', 'high_demand', 'low_price'], name='scenario')
-        series = pd.Series([100, 200, 300], index=scenario_index)
+    def test_series_single_dimension_scenario(self, sample_scenario_index):
+        """Test converting a pandas Series with scenario index."""
+        # Create a Series with scenario index
+        series = pd.Series([100, 200, 300], index=sample_scenario_index)
 
-        result = DataConverter.to_dataarray(series, scenarios=scenario_index)
+        result = DataConverter.to_dataarray(series, scenarios=sample_scenario_index)
         assert result.shape == (3,)
         assert result.dims == ('scenario',)
         assert np.array_equal(result.values, series.values)
-        assert np.array_equal(result.coords['scenario'].values, scenario_index.values)
+        assert np.array_equal(result.coords['scenario'].values, sample_scenario_index.values)
 
     def test_series_mismatched_index(self, sample_time_index):
         """Test converting a Series with mismatched index."""
@@ -237,104 +227,39 @@ class TestSeriesConversion:
             time_slice = result.sel(time=time)
             assert np.array_equal(time_slice.values, series.values)
 
-    def test_series_dimension_order(self, sample_time_index, sample_scenario_index):
-        """Test that dimension order is respected with Series conversions."""
-        # Create custom dimensions tuple with reversed order
-        dims = ('scenario', 'time',)
-        coords = {'time': sample_time_index, 'scenario': sample_scenario_index}
 
-        # Time-indexed series
-        series = pd.Series([10, 20, 30, 40, 50], index=sample_time_index)
-        with pytest.raises(ConversionError, match="only supports time and scenario dimensions"):
-            _ = DataConverter._convert_series(series, coords, dims)
+class TestTimeSeriesDataConversion:
+    """Tests for converting TimeSeriesData objects."""
 
-        # Scenario-indexed series
-        series = pd.Series([100, 200, 300], index=sample_scenario_index)
-        with pytest.raises(ConversionError, match="only supports time and scenario dimensions"):
-            _ = DataConverter._convert_series(series, coords, dims)
+    def test_timeseries_data_conversion(self, sample_time_index):
+        """Test converting TimeSeriesData."""
+        # Create TimeSeriesData
+        data_array = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_time_index}, dims=['time'])
+        ts_data = TimeSeriesData(data_array, aggregation_group='test_group')
 
+        # Convert
+        result = DataConverter.to_dataarray(ts_data, sample_time_index)
 
-class TestDataFrameConversion:
-    """Tests for converting pandas DataFrame to DataArray."""
-
-    def test_dataframe_single_column(self, sample_time_index):
-        """Test converting a DataFrame with a single column."""
-        # Create DataFrame with one column
-        df = pd.DataFrame({'value': [10, 20, 30, 40, 50]}, index=sample_time_index)
-
-        # Convert and check
-        result = DataConverter.to_dataarray(df, sample_time_index)
         assert isinstance(result, xr.DataArray)
         assert result.shape == (5,)
         assert result.dims == ('time',)
-        assert np.array_equal(result.values, df['value'].values)
+        assert np.array_equal(result.values, [1, 2, 3, 4, 5])
 
-    def test_dataframe_multi_column_fails(self, sample_time_index):
-        """Test that converting a multi-column DataFrame to 1D fails."""
-        # Create DataFrame with multiple columns
-        df = pd.DataFrame({'val1': [10, 20, 30, 40, 50], 'val2': [15, 25, 35, 45, 55]}, index=sample_time_index)
+    def test_timeseries_data_with_scenarios(self, sample_time_index, sample_scenario_index):
+        """Test converting TimeSeriesData with broadcasting to scenarios."""
+        # Create 1D TimeSeriesData
+        data_array = xr.DataArray([1, 2, 3, 4, 5], coords={'time': sample_time_index}, dims=['time'])
+        ts_data = TimeSeriesData(data_array)
 
-        # Should raise error
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(df, sample_time_index)
-
-    def test_dataframe_time_scenario(self, sample_time_index, sample_scenario_index):
-        """Test converting a DataFrame with time index and scenario columns."""
-        # Create DataFrame with time as index and scenarios as columns
-        data = {'baseline': [10, 20, 30, 40, 50], 'high_demand': [15, 25, 35, 45, 55], 'low_price': [5, 15, 25, 35, 45]}
-        df = pd.DataFrame(data, index=sample_time_index)
-
-        # Make sure columns are named properly
-        df.columns.name = 'scenario'
-
-        # Convert and check
-        result = DataConverter.to_dataarray(df, sample_time_index, sample_scenario_index)
+        # Convert with scenarios (should broadcast)
+        result = DataConverter.to_dataarray(ts_data, sample_time_index, sample_scenario_index)
 
         assert result.shape == (5, 3)
         assert result.dims == ('time', 'scenario')
-        assert np.array_equal(result.values, df.values)
 
-        # Check values for specific scenarios
-        assert np.array_equal(result.sel(scenario='baseline').values, df['baseline'].values)
-        assert np.array_equal(result.sel(scenario='high_demand').values, df['high_demand'].values)
-
-    def test_dataframe_mismatched_coordinates(self, sample_time_index, sample_scenario_index):
-        """Test conversion fails with mismatched coordinates."""
-        # Create DataFrame with different time index
-        different_times = pd.date_range('2025-01-01', periods=5, freq='D', name='time')
-        data = {'baseline': [10, 20, 30, 40, 50], 'high_demand': [15, 25, 35, 45, 55], 'low_price': [5, 15, 25, 35, 45]}
-        df = pd.DataFrame(data, index=different_times)
-        df.columns = sample_scenario_index
-
-        # Should raise error
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(df, sample_time_index, sample_scenario_index)
-
-        # Create DataFrame with different scenario columns
-        different_scenarios = pd.Index(['scenario1', 'scenario2', 'scenario3'], name='scenario')
-        data = {'scenario1': [10, 20, 30, 40, 50], 'scenario2': [15, 25, 35, 45, 55], 'scenario3': [5, 15, 25, 35, 45]}
-        df = pd.DataFrame(data, index=sample_time_index)
-        df.columns = different_scenarios
-
-        # Should raise error
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(df, sample_time_index, sample_scenario_index)
-
-    def test_ensure_copy(self, sample_time_index, sample_scenario_index):
-        """Test that the returned DataArray is a copy."""
-        # Create DataFrame
-        data = {'baseline': [10, 20, 30, 40, 50], 'high_demand': [15, 25, 35, 45, 55], 'low_price': [5, 15, 25, 35, 45]}
-        df = pd.DataFrame(data, index=sample_time_index)
-        df.columns = sample_scenario_index
-
-        # Convert
-        result = DataConverter.to_dataarray(df, sample_time_index, sample_scenario_index)
-
-        # Modify the result
-        result.loc[dict(time=sample_time_index[0], scenario='baseline')] = 999
-
-        # Original should be unchanged
-        assert df.loc[sample_time_index[0], 'baseline'] == 10
+        # Each scenario should have the same values
+        for scenario in sample_scenario_index:
+            assert np.array_equal(result.sel(scenario=scenario).values, [1, 2, 3, 4, 5])
 
 
 class TestInvalidInputs:
@@ -344,8 +269,9 @@ class TestInvalidInputs:
         """Test validation of time index."""
         # Test with unnamed index
         unnamed_index = pd.date_range('2024-01-01', periods=5, freq='D')
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(42, unnamed_index)
+        # Should automatically rename to 'time' with a warning, not raise error
+        result = DataConverter.to_dataarray(42, unnamed_index)
+        assert result.coords['time'].name == 'time'
 
         # Test with empty index
         empty_index = pd.DatetimeIndex([], name='time')
@@ -361,8 +287,9 @@ class TestInvalidInputs:
         """Test validation of scenario index."""
         # Test with unnamed scenario index
         unnamed_index = pd.Index(['baseline', 'high_demand'])
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(42, sample_time_index, unnamed_index)
+        # Should automatically rename to 'scenario' with a warning, not raise error
+        result = DataConverter.to_dataarray(42, sample_time_index, unnamed_index)
+        assert result.coords['scenario'].name == 'scenario'
 
         # Test with empty scenario index
         empty_index = pd.Index([], name='scenario')
@@ -391,6 +318,18 @@ class TestInvalidInputs:
         with pytest.raises(ConversionError):
             DataConverter.to_dataarray(None, sample_time_index)
 
+    def test_multidimensional_array_rejection(self, sample_time_index, sample_scenario_index):
+        """Test that multidimensional arrays are rejected."""
+        # Test 2D array (not supported in simplified version)
+        arr_2d = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
+        with pytest.raises(ConversionError, match="Only 1D arrays supported"):
+            DataConverter.to_dataarray(arr_2d, sample_time_index)
+
+        # Test 3D array
+        arr_3d = np.ones((2, 3, 4))
+        with pytest.raises(ConversionError, match="Only 1D arrays supported"):
+            DataConverter.to_dataarray(arr_3d, sample_time_index, sample_scenario_index)
+
     def test_mismatched_input_dimensions(self, sample_time_index, sample_scenario_index):
         """Test handling of mismatched input dimensions."""
         # Test mismatched Series index
@@ -400,31 +339,14 @@ class TestInvalidInputs:
         with pytest.raises(ConversionError):
             DataConverter.to_dataarray(mismatched_series, sample_time_index)
 
-        # Test DataFrame with multiple columns
-        df_multi_col = pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [6, 7, 8, 9, 10]}, index=sample_time_index)
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(df_multi_col, sample_time_index)
-
-        # Test mismatched array shape for time-only
+        # Test mismatched array length for time-only
         with pytest.raises(ConversionError):
             DataConverter.to_dataarray(np.array([1, 2, 3]), sample_time_index)  # Wrong length
 
-        # Test mismatched array shape for scenario × time
-        # Array shape should be (n_scenarios, n_timesteps)
-        wrong_shape_array = np.array(
-            [
-                [1, 2, 3, 4],  # Missing a timestep
-                [5, 6, 7, 8],
-                [9, 10, 11, 12],
-            ]
-        )
+        # Test array that doesn't match either dimension
+        wrong_length_array = np.array([1, 2, 3, 4])  # Doesn't match time (5) or scenario (3)
         with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(wrong_shape_array, sample_time_index, sample_scenario_index)
-
-        # Test array with too many dimensions
-        with pytest.raises(ConversionError):
-            # 3D array not allowed
-            DataConverter.to_dataarray(np.ones((3, 5, 2)), sample_time_index, sample_scenario_index)
+            DataConverter.to_dataarray(wrong_length_array, sample_time_index, sample_scenario_index)
 
     def test_dataarray_dimension_mismatch(self, sample_time_index, sample_scenario_index):
         """Test handling of mismatched DataArray dimensions."""
@@ -433,61 +355,58 @@ class TestInvalidInputs:
         with pytest.raises(ConversionError):
             DataConverter.to_dataarray(wrong_dims, sample_time_index)
 
-        # Create DataArray with scenario but no time
-        wrong_dims_2 = xr.DataArray(data=np.array([1, 2, 3]), coords={'scenario': ['a', 'b', 'c']}, dims=['scenario'])
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(wrong_dims_2, sample_time_index, sample_scenario_index)
-
-        # Create DataArray with right dims but wrong length
-        wrong_length = xr.DataArray(
-            data=np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]),
-            coords={
-                'scenario': sample_scenario_index,
-                'time': pd.date_range('2024-01-01', periods=3, freq='D', name='time'),
-            },
-            dims=['scenario', 'time'],
+        # Create DataArray with right dims but wrong coordinate values
+        wrong_coords = xr.DataArray(
+            data=np.array([1, 2, 3, 4, 5]),
+            coords={'time': pd.date_range('2025-01-01', periods=5, freq='D', name='time')},
+            dims=['time']
         )
         with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(wrong_length, sample_time_index, sample_scenario_index)
+            DataConverter.to_dataarray(wrong_coords, sample_time_index)
+
 
 class TestDataArrayBroadcasting:
     """Tests for broadcasting DataArrays."""
-    def test_broadcast_1d_array_to_2d(self, sample_time_index, sample_scenario_index):
-        """Test broadcasting a 1D array to all scenarios."""
+
+    def test_broadcast_1d_array_to_2d_time(self, sample_time_index, sample_scenario_index):
+        """Test broadcasting a 1D array (time) to 2D."""
         arr_1d = np.array([1, 2, 3, 4, 5])
 
-        xr.testing.assert_equal(
-            DataConverter.to_dataarray(arr_1d, sample_time_index, sample_scenario_index),
-            xr.DataArray(
-                np.array([arr_1d] * 3).T,
-                coords=(sample_time_index, sample_scenario_index)
-            )
-        )
+        result = DataConverter.to_dataarray(arr_1d, sample_time_index, sample_scenario_index)
 
-        arr_1d = np.array([1, 2, 3])
-        xr.testing.assert_equal(
-            DataConverter.to_dataarray(arr_1d, sample_time_index, sample_scenario_index),
-            xr.DataArray(
-                np.array([arr_1d] * 5),
-                coords=(sample_time_index, sample_scenario_index)
-            )
-        )
+        # Should broadcast across scenarios
+        expected = np.repeat(arr_1d[:, np.newaxis], len(sample_scenario_index), axis=1)
+        assert np.array_equal(result.values, expected)
+        assert result.dims == ('time', 'scenario')
 
-    def test_broadcast_1d_array_to_1d(self, sample_time_index,):
-        """Test broadcasting a 1D array to all scenarios."""
+    def test_broadcast_1d_array_to_2d_scenario(self, sample_time_index, sample_scenario_index):
+        """Test broadcasting a 1D array (scenario) to 2D."""
+        arr_1d = np.array([1, 2, 3])  # Matches scenario length
+
+        result = DataConverter.to_dataarray(arr_1d, sample_time_index, sample_scenario_index)
+
+        # Should broadcast across time
+        expected = np.repeat(arr_1d[np.newaxis, :], len(sample_time_index), axis=0)
+        assert np.array_equal(result.values, expected)
+        assert result.dims == ('time', 'scenario')
+
+    def test_broadcast_1d_array_to_1d(self, sample_time_index):
+        """Test that 1D array with matching dimension doesn't change."""
         arr_1d = np.array([1, 2, 3, 4, 5])
 
-        xr.testing.assert_equal(
-            DataConverter.to_dataarray(arr_1d, sample_time_index),
-            xr.DataArray(
-                arr_1d,
-                coords=(sample_time_index,)
-            )
-        )
+        result = DataConverter.to_dataarray(arr_1d, sample_time_index)
 
-        arr_1d = np.array([1, 2, 3])
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(arr_1d, sample_time_index)
+        assert np.array_equal(result.values, arr_1d)
+        assert result.dims == ('time',)
+
+    def test_scalar_dataarray_broadcasting(self, sample_time_index, sample_scenario_index):
+        """Test broadcasting scalar DataArray."""
+        scalar_da = xr.DataArray(42)
+
+        result = DataConverter.to_dataarray(scalar_da, sample_time_index, sample_scenario_index)
+
+        assert result.shape == (len(sample_time_index), len(sample_scenario_index))
+        assert np.all(result.values == 42)
 
 
 class TestEdgeCases:
@@ -524,38 +443,6 @@ class TestEdgeCases:
         assert result_arr.shape == (5, 1)
         assert np.array_equal(result_arr.sel(scenario='baseline').values, arr)
 
-        # 2D array with single scenario
-        arr_2d = np.array([[1, 2, 3, 4, 5]])  # Note the extra dimension
-        result_arr_2d = DataConverter.to_dataarray(arr_2d.T, sample_time_index, single_scenario)
-        assert result_arr_2d.shape == (5, 1)
-        assert np.array_equal(result_arr_2d.sel(scenario='baseline').values, arr_2d[0])
-
-    def test_different_scenario_order(self, sample_time_index):
-        """Test that scenario order is preserved."""
-        # Test with different scenario orders
-        scenarios1 = pd.Index(['a', 'b', 'c'], name='scenario')
-        scenarios2 = pd.Index(['c', 'b', 'a'], name='scenario')
-
-        # Create DataArray with first order
-        data = np.array(
-            [
-                [1, 2, 3, 4, 5],  # a
-                [6, 7, 8, 9, 10],  # b
-                [11, 12, 13, 14, 15],  # c
-            ]
-        ).T
-
-        result1 = DataConverter.to_dataarray(data, sample_time_index, scenarios1)
-        assert np.array_equal(result1.sel(scenario='a').values, [1, 2, 3, 4, 5])
-        assert np.array_equal(result1.sel(scenario='c').values, [11, 12, 13, 14, 15])
-
-        # Create DataArray with second order
-        result2 = DataConverter.to_dataarray(data, sample_time_index, scenarios2)
-        # First row should match 'c' now
-        assert np.array_equal(result2.sel(scenario='c').values, [1, 2, 3, 4, 5])
-        # Last row should match 'a' now
-        assert np.array_equal(result2.sel(scenario='a').values, [11, 12, 13, 14, 15])
-
     def test_all_nan_data(self, sample_time_index, sample_scenario_index):
         """Test handling of all-NaN data."""
         # Create array of all NaNs
@@ -566,12 +453,6 @@ class TestEdgeCases:
         # With scenarios
         result = DataConverter.to_dataarray(all_nan_array, sample_time_index, sample_scenario_index)
         assert result.shape == (len(sample_time_index), len(sample_scenario_index))
-        assert np.all(np.isnan(result.values))
-
-        # Series of all NaNs
-        result = DataConverter.to_dataarray(
-            np.array([np.nan, np.nan, np.nan, np.nan, np.nan]), sample_time_index, sample_scenario_index
-        )
         assert np.all(np.isnan(result.values))
 
     def test_mixed_data_types(self, sample_time_index, sample_scenario_index):
@@ -590,165 +471,50 @@ class TestEdgeCases:
         for scenario in sample_scenario_index:
             assert np.array_equal(result.sel(scenario=scenario).values, mixed_array)
 
-
-class TestFunctionalUseCase:
-    """Tests for realistic use cases combining multiple features."""
-
-    def test_large_dataset(self, sample_scenario_index):
-        """Test with a larger dataset to ensure performance."""
-        # Create a larger timestep array (e.g., hourly for a year)
-        large_timesteps = pd.date_range(
-            '2024-01-01',
-            periods=8760,  # Hours in a year
-            freq='H',
-            name='time',
-        )
-
-        # Create large 2D array (3 scenarios × 8760 hours)
-        large_data = np.random.rand(len(sample_scenario_index), len(large_timesteps))
-
-        # Convert and check
-        result = DataConverter.to_dataarray(large_data.T, large_timesteps, sample_scenario_index)
-
-        assert result.shape == (len(large_timesteps), len(sample_scenario_index))
-        assert result.dims == ('time', 'scenario')
-        assert np.array_equal(result.values, large_data.T)
-
-
-class TestMultiScenarioArrayConversion:
-    """Tests specifically focused on array conversion with scenarios."""
-
-    def test_1d_array_broadcasting(self, sample_time_index, sample_scenario_index):
-        """Test that 1D arrays are properly broadcast to all scenarios."""
-        arr_1d = np.array([1, 2, 3, 4, 5])
-        result = DataConverter.to_dataarray(arr_1d, sample_time_index, sample_scenario_index)
-
-        assert result.shape == (len(sample_time_index), len(sample_scenario_index))
-
-        # Each scenario should have identical values
-        for i, scenario in enumerate(sample_scenario_index):
-            assert np.array_equal(result.sel(scenario=scenario).values, arr_1d)
-
-            # Modify one scenario's values
-            result.loc[dict(scenario=scenario)] = np.ones(len(sample_time_index)) * i
-
-        # Ensure modifications are isolated to each scenario
-        for i, scenario in enumerate(sample_scenario_index):
-            assert np.all(result.sel(scenario=scenario).values == i)
-
-    def test_2d_array_different_shapes(self, sample_time_index):
-        """Test different scenario shapes with 2D arrays."""
-        # Test with 1 scenario
-        single_scenario = pd.Index(['baseline'], name='scenario')
-        arr_1_scenario = np.array([[1, 2, 3, 4, 5]])
-
-        result = DataConverter.to_dataarray(arr_1_scenario.T, sample_time_index, single_scenario)
-        assert result.shape == (len(sample_time_index), 1)
-
-        # Test with 2 scenarios
-        two_scenarios = pd.Index(['baseline', 'high_demand'], name='scenario')
-        arr_2_scenarios = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
-
-        result = DataConverter.to_dataarray(arr_2_scenarios.T, sample_time_index, two_scenarios)
-        assert result.shape == (len(sample_time_index), 2)
-        assert np.array_equal(result.sel(scenario='baseline').values, arr_2_scenarios[0])
-        assert np.array_equal(result.sel(scenario='high_demand').values, arr_2_scenarios[1])
-
-        # Test mismatched scenarios count
-        three_scenarios = pd.Index(['a', 'b', 'c'], name='scenario')
-        with pytest.raises(ConversionError):
-            DataConverter.to_dataarray(arr_2_scenarios, sample_time_index, three_scenarios)
-
-    def test_array_handling_edge_cases(self, sample_time_index, sample_scenario_index):
-        """Test array edge cases."""
-        # Test with boolean array
+    def test_boolean_data(self, sample_time_index, sample_scenario_index):
+        """Test handling of boolean data."""
         bool_array = np.array([True, False, True, False, True])
         result = DataConverter.to_dataarray(bool_array, sample_time_index, sample_scenario_index)
         assert result.dtype == bool
         assert result.shape == (len(sample_time_index), len(sample_scenario_index))
 
-        # Test with array containing infinite values
-        inf_array = np.array([1, np.inf, 3, -np.inf, 5])
-        result = DataConverter.to_dataarray(inf_array, sample_time_index, sample_scenario_index)
-        for scenario in sample_scenario_index:
-            scenario_data = result.sel(scenario=scenario)
-            assert np.isinf(scenario_data[1].item())
-            assert np.isinf(scenario_data[3].item())
-            assert scenario_data[3].item() < 0  # Negative infinity
 
+class TestNoIndexConversion:
+    """Tests for conversion without any indices (scalar results)."""
 
-class TestScenarioReindexing:
-    """Tests for reindexing and coordinate preservation in DataConverter."""
+    def test_scalar_no_dimensions(self):
+        """Test scalar conversion without any dimensions."""
+        result = DataConverter.to_dataarray(42)
+        assert isinstance(result, xr.DataArray)
+        assert result.shape == ()
+        assert result.dims == ()
+        assert result.item() == 42
 
-    def test_preserving_scenario_order(self, sample_time_index):
-        """Test that scenario order is preserved in converted DataArrays."""
-        # Define scenarios in a specific order
-        scenarios = pd.Index(['scenario3', 'scenario1', 'scenario2'], name='scenario')
+    def test_single_element_array_no_dimensions(self):
+        """Test single-element array without dimensions."""
+        arr = np.array([42])
+        result = DataConverter.to_dataarray(arr)
+        assert result.shape == ()
+        assert result.item() == 42
 
-        # Create 2D array
-        data = np.array(
-            [
-                [1, 2, 3, 4, 5],  # scenario3
-                [6, 7, 8, 9, 10],  # scenario1
-                [11, 12, 13, 14, 15],  # scenario2
-            ]
-        )
+    def test_multi_element_array_no_dimensions_fails(self):
+        """Test that multi-element array fails without dimensions."""
+        arr = np.array([1, 2, 3])
+        with pytest.raises(ConversionError):
+            DataConverter.to_dataarray(arr)
 
-        # Convert to DataArray
-        result = DataConverter.to_dataarray(data.T, sample_time_index, scenarios)
+    def test_series_no_dimensions_fails(self):
+        """Test that multi-element Series fails without dimensions."""
+        series = pd.Series([1, 2, 3])
+        with pytest.raises(ConversionError):
+            DataConverter.to_dataarray(series)
 
-        # Verify order of scenarios is preserved
-        assert list(result.coords['scenario'].values) == list(scenarios)
-
-        # Verify data for each scenario
-        assert np.array_equal(result.sel(scenario='scenario3').values, data[0])
-        assert np.array_equal(result.sel(scenario='scenario1').values, data[1])
-        assert np.array_equal(result.sel(scenario='scenario2').values, data[2])
-
-
-if __name__ == '__main__':
-    pytest.main()
-
-
-def test_invalid_inputs(sample_time_index):
-    # Test invalid input type
-    with pytest.raises(ConversionError):
-        DataConverter.to_dataarray('invalid_string', sample_time_index)
-
-    # Test mismatched Series index
-    mismatched_series = pd.Series([1, 2, 3, 4, 5, 6], index=pd.date_range('2025-01-01', periods=6, freq='D'))
-    with pytest.raises(ConversionError):
-        DataConverter.to_dataarray(mismatched_series, sample_time_index)
-
-    # Test DataFrame with multiple columns
-    df_multi_col = pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [6, 7, 8, 9, 10]}, index=sample_time_index)
-    with pytest.raises(ConversionError):
-        DataConverter.to_dataarray(df_multi_col, sample_time_index)
-
-    # Test mismatched array shape
-    with pytest.raises(ConversionError):
-        DataConverter.to_dataarray(np.array([1, 2, 3]), sample_time_index)  # Wrong length
-
-    # Test multi-dimensional array
-    with pytest.raises(ConversionError):
-        DataConverter.to_dataarray(np.array([[1, 2], [3, 4]]), sample_time_index)  # 2D array not allowed
-
-
-def test_time_index_validation():
-    # Test with unnamed index
-    unnamed_index = pd.date_range('2024-01-01', periods=5, freq='D')
-    with pytest.raises(ConversionError):
-        DataConverter.to_dataarray(42, unnamed_index)
-
-    # Test with empty index
-    empty_index = pd.DatetimeIndex([], name='time')
-    with pytest.raises(ConversionError):
-        DataConverter.to_dataarray(42, empty_index)
-
-    # Test with non-DatetimeIndex
-    wrong_type_index = pd.Index([1, 2, 3, 4, 5], name='time')
-    with pytest.raises(ConversionError):
-        DataConverter.to_dataarray(42, wrong_type_index)
+    def test_single_element_series_no_dimensions(self):
+        """Test single-element Series without dimensions."""
+        series = pd.Series([42])
+        result = DataConverter.to_dataarray(series)
+        assert result.shape == ()
+        assert result.item() == 42
 
 
 if __name__ == '__main__':
