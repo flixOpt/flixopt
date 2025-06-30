@@ -195,7 +195,7 @@ class Flow(Element):
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, meta_data=meta_data)
-        self.size = size or CONFIG.modeling.BIG  # Default size
+        self.size = size if size is not None else CONFIG.modeling.BIG  # Default size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
