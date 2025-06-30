@@ -294,7 +294,7 @@ class FlowSystem(Interface):
         self,
         name: str,
         data: Optional[Union[TemporalDataUser, NonTemporalDataUser]],
-        dimensions: Optional[Union[List[FlowSystemDimensions], FlowSystemDimensions]] = None,  # Default to time only
+        has_time_dim: bool = True,
     ) -> Optional[Union[TemporalData, NonTemporalData]]:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -302,7 +302,7 @@ class FlowSystem(Interface):
         Args:
             name: Name of the data
             data: Data to fit to model coordinates
-            dimensions: Dimensions to use for the DataArray
+            has_time_dim: Wether to use the time dimension or not
 
         Returns:
             xr.DataArray aligned to model coordinate system
@@ -310,19 +310,10 @@ class FlowSystem(Interface):
         if data is None:
             return None
 
-        # Build coords from requested dimensions
-        if isinstance(dimensions, str):
-            dimensions = [dimensions]
+        coords = self.coords
 
-        coords = {}
-        for dim in dimensions:
-            if dim == 'time':
-                coords['time'] = self.timesteps
-            elif dim == 'scenario' and self.scenarios is not None:
-                coords['scenario'] = self.scenarios
-            else:
-                raise ValueError(f'Invalid flow system dimension "{dim}"')
-            # Future: elif dim == 'region' and self.regions is not None: ...
+        if not has_time_dim:
+            coords.pop('time')
 
         # Rest of your method stays the same, just pass coords
         if isinstance(data, TimeSeriesData):
@@ -354,7 +345,11 @@ class FlowSystem(Interface):
         effect_values_dict = self.effects.create_effect_values_dict(effect_values)
 
         return {
-            effect: self.fit_to_model_coords('|'.join(filter(None, [label_prefix, effect, label_suffix])), value, has_time_dim=has_time_dim)
+            effect: self.fit_to_model_coords(
+                '|'.join(filter(None, [label_prefix, effect, label_suffix])),
+                value,
+                has_time_dim=has_time_dim
+            )
             for effect, value in effect_values_dict.items()
         }
 
@@ -593,6 +588,13 @@ class FlowSystem(Interface):
     @property
     def all_elements(self) -> Dict[str, Element]:
         return {**self.components, **self.effects.effects, **self.flows, **self.buses}
+
+    @property
+    def coords(self) -> Dict[str, pd.Index]:
+        active_coords = {'time': self.timesteps}
+        if self.scenarios is not None:
+            active_coords['scenario'] = self.scenarios
+        return active_coords
 
     @property
     def used_in_calculation(self) -> bool:
