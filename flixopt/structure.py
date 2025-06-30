@@ -317,6 +317,40 @@ class Interface:
             return self._serialize_to_basic_types(obj), extracted_arrays
 
     @classmethod
+    def _resolve_dataarray_reference(
+        cls, reference: str, arrays_dict: Dict[str, xr.DataArray]
+    ) -> Union[xr.DataArray, TimeSeriesData]:
+        """
+        Resolve a single DataArray reference (:::name) to actual DataArray or TimeSeriesData.
+
+        Args:
+            reference: Reference string starting with ":::"
+            arrays_dict: Dictionary of available DataArrays
+
+        Returns:
+            Resolved DataArray or TimeSeriesData object
+
+        Raises:
+            ValueError: If referenced array is not found
+        """
+        array_name = reference[3:]  # Remove ":::" prefix
+        if array_name not in arrays_dict:
+            raise ValueError(f"Referenced DataArray '{array_name}' not found in dataset")
+
+        array = arrays_dict[array_name]
+
+        # Handle null values with warning
+        if array.isnull().any():
+            logger.warning(f"DataArray '{array_name}' contains null values. Dropping them.")
+            array = array.dropna(dim='time', how='all')
+
+        # Check if this should be restored as TimeSeriesData
+        if TimeSeriesData.is_timeseries_data(array):
+            return TimeSeriesData.from_dataarray(array)
+
+        return array
+
+    @classmethod
     def _resolve_reference_structure(cls, structure, arrays_dict: Dict[str, xr.DataArray]):
         """
         Convert reference structure back to actual objects using provided arrays.
@@ -333,22 +367,7 @@ class Interface:
         """
         # Handle DataArray references
         if isinstance(structure, str) and structure.startswith(':::'):
-            array_name = structure[3:]  # Remove ":::" prefix
-            if array_name not in arrays_dict:
-                raise ValueError(f"Referenced DataArray '{array_name}' not found in dataset")
-
-            array = arrays_dict[array_name]
-
-            # Handle null values with warning
-            if array.isnull().any():
-                logger.warning(f"DataArray '{array_name}' contains null values. Dropping them.")
-                array = array.dropna(dim='time', how='all')
-
-            # Check if this should be restored as TimeSeriesData
-            if TimeSeriesData.is_timeseries_data(array):
-                return TimeSeriesData.from_dataarray(array)
-
-            return array
+            return cls._resolve_dataarray_reference(structure, arrays_dict)
 
         elif isinstance(structure, list):
             resolved_list = []
