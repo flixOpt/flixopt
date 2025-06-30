@@ -400,16 +400,17 @@ def flow_system_long():
     p_el = data['Strompr.€/MWh'].values
     gas_price = data['Gaspr.€/MWh'].values
 
+    flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))
+
     thermal_load_ts, electrical_load_ts = (
-        fx.TimeSeriesData(thermal_load),
-        fx.TimeSeriesData(electrical_load, aggregation_weight=0.7),
+        fx.TimeSeriesData(thermal_load, coords={'time': flow_system.timesteps}),
+        fx.TimeSeriesData(electrical_load, aggregation_weight=0.7, coords={'time': flow_system.timesteps}),
     )
     p_feed_in, p_sell = (
-        fx.TimeSeriesData(-(p_el - 0.5), aggregation_group='p_el'),
-        fx.TimeSeriesData(p_el + 0.5, aggregation_group='p_el'),
+        fx.TimeSeriesData(-(p_el - 0.5), aggregation_group='p_el', coords={'time': flow_system.timesteps}),
+        fx.TimeSeriesData(p_el + 0.5, aggregation_group='p_el', coords={'time': flow_system.timesteps}),
     )
 
-    flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))
     flow_system.add_elements(
         fx.Bus('Strom'),
         fx.Bus('Fernwärme'),
