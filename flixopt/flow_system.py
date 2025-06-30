@@ -325,8 +325,8 @@ class FlowSystem(Interface):
                     aggregation_group=data.aggregation_group, aggregation_weight=data.aggregation_weight
                 ).rename(name)
             except ConversionError as e:
-                logger.critical(f'Could not convert time series data "{name}" to DataArray: {e}. \n'
-                                f'Take care to use the correct (time) index.')
+                raise ConversionError(
+                    f'Could not convert time series data "{name}" to DataArray: Original Error: {e}') from e
         else:
             return DataConverter.to_dataarray(data, coords=coords).rename(name)
 
