@@ -5,7 +5,7 @@ It provides Datatypes, logging functionality, and some functions to transform da
 
 import logging
 import warnings
-from typing import Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Union, Tuple, Literal
 
 import numpy as np
 import pandas as pd
@@ -29,6 +29,9 @@ NonTemporalDataUser = Union[int, float, np.integer, np.floating, np.ndarray, pd.
 
 NonTemporalData = Union[Scalar, xr.DataArray]
 """Internally used datatypes for non-temporal data. Can be a Scalar or an xr.DataArray."""
+
+FlowSystemDimensions = Literal['time', 'scenario']
+"""Possible dimensions of a FlowSystem."""
 
 
 class PlausibilityError(Exception):

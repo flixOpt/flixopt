@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import ConversionError, DataConverter, TemporalData, TemporalDataUser, TimeSeriesData, NonTemporalDataUser, NonTemporalData
+from .core import ConversionError, DataConverter, TemporalData, TemporalDataUser, TimeSeriesData, NonTemporalDataUser, NonTemporalData, FlowSystemDimensions
 from .effects import Effect, EffectCollection, NonTemporalEffects, NonTemporalEffectsUser, TemporalEffects, TemporalEffectsUser
 from .elements import Bus, Component, Flow
 from .structure import Element, Interface, SystemModel
@@ -294,7 +294,7 @@ class FlowSystem(Interface):
         self,
         name: str,
         data: Optional[Union[TemporalDataUser, NonTemporalDataUser]],
-        dimensions: Union[List[str], str] = 'time',  # Default to time only
+        dimensions: Optional[Union[List[FlowSystemDimensions], FlowSystemDimensions]] = None,  # Default to time only
     ) -> Optional[Union[TemporalData, NonTemporalData]]:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -302,7 +302,7 @@ class FlowSystem(Interface):
         Args:
             name: Name of the data
             data: Data to fit to model coordinates
-            has_time_dim: Whether the data has a time dimension
+            dimensions: Dimensions to use for the DataArray
 
         Returns:
             xr.DataArray aligned to model coordinate system
@@ -316,10 +316,12 @@ class FlowSystem(Interface):
 
         coords = {}
         for dim in dimensions:
-            if dim == 'time' and self.timesteps is not None:
+            if dim == 'time':
                 coords['time'] = self.timesteps
             elif dim == 'scenario' and self.scenarios is not None:
                 coords['scenario'] = self.scenarios
+            else:
+                raise ValueError(f'Invalid flow system dimension "{dim}"')
             # Future: elif dim == 'region' and self.regions is not None: ...
 
         # Rest of your method stays the same, just pass coords
