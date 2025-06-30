@@ -209,16 +209,19 @@ class FlowSystem(Interface):
         # Get the reference structure from attrs
         reference_structure = dict(ds.attrs)
 
+        # Create arrays dictionary from dataset variables
+        arrays_dict = {name: array for name, array in ds.data_vars.items()}
+
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
             timesteps=ds.indexes['time'],
             scenarios=ds.indexes.get('scenario'),
+            scenario_weights=cls._resolve_dataarray_reference(
+                reference_structure['scenario_weights'], arrays_dict
+            ) if 'scenario_weights' in reference_structure else None,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
         )
-
-        # Create arrays dictionary from dataset variables
-        arrays_dict = {name: array for name, array in ds.data_vars.items()}
 
         # Restore components
         components_structure = reference_structure.get('components', {})
