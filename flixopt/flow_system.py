@@ -212,6 +212,7 @@ class FlowSystem(Interface):
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
             timesteps=ds.indexes['time'],
+            scenarios=ds.indexes.get('scenario'),
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
         )

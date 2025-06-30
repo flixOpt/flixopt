@@ -203,11 +203,15 @@ class Interface:
         all_extracted_arrays = {}
 
         for name in self._cached_init_params:
-            if name == 'self' or name == 'timesteps':  # Skip self and timesteps. Timesteps are directly stored in Datasets
+            if name == 'self':  # Skip self and timesteps. Timesteps are directly stored in Datasets
                 continue
 
             value = getattr(self, name, None)
+
             if value is None:
+                continue
+            if isinstance(value, pd.Index):
+                logger.debug(f'Skipping {name=} because it is an Index')
                 continue
 
             # Extract arrays and get reference structure
