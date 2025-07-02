@@ -62,15 +62,24 @@ class FlowSystem(Interface):
                 If you use an array, take care that its long enough to cover all previous values!
             scenario_weights: The weights of the scenarios. If None, all scenarios have the same weight. All weights are normalized to 1.
         """
-        # Store timing information directly
         self.timesteps = self._validate_timesteps(timesteps)
+
         self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
-        self.hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra)
-        self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
-            timesteps, hours_of_previous_timesteps
-        )
+        self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
+
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
-        self.scenario_weights = scenario_weights
+
+        hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra)
+
+        self.hours_of_last_timestep = hours_per_timestep[-1].item()
+
+        self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
+
+        self.scenario_weights = self.fit_to_model_coords(
+            'scenario_weights',
+            scenario_weights,
+            has_time_dim=False,
+        )
 
         # Element collections
         self.components: Dict[str, Component] = {}
@@ -123,7 +132,7 @@ class FlowSystem(Interface):
 
     @staticmethod
     def calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
-        """Calculate duration of each timestep."""
+        """Calculate duration of each timestep as a 1D DataArray."""
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
             hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=['time'], name='hours_per_timestep'
