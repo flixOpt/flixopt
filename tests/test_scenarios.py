@@ -239,8 +239,8 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
                 {
                     'P_el': fx.Piecewise(
                         [
-                            fx.Piece(np.linspace(5, 6, len(flow_system.time_series_collection.timesteps)), 30),
-                            fx.Piece(40, np.linspace(60, 70, len(flow_system.time_series_collection.timesteps))),
+                            fx.Piece(np.linspace(5, 6, len(flow_system.timesteps)), 30),
+                            fx.Piece(40, np.linspace(60, 70, len(flow_system.timesteps))),
                         ]
                     ),
                     'Q_th': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
@@ -256,7 +256,18 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
 
 def test_scenario_weights(flow_system_piecewise_conversion_scenarios):
     """Test that scenario weights are correctly used in the model."""
-    scenarios = flow_system_piecewise_conversion_scenarios.time_series_collection.scenarios
+    scenarios = flow_system_piecewise_conversion_scenarios.scenarios
+    weights = np.linspace(0.5, 1, len(scenarios))
+    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
+    model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
+    np.testing.assert_allclose(model.scenario_weights.values, weights)
+    assert_linequal(model.objective.expression,
+                    (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total'])
+    assert np.isclose(model.scenario_weights.sum().item(), 2.25)
+
+def test_scenario_weights_io(flow_system_piecewise_conversion_scenarios):
+    """Test that scenario weights are correctly used in the model."""
+    scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.scenario_weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
@@ -273,7 +284,7 @@ def test_scenario_dimensions_in_variables(flow_system_piecewise_conversion_scena
 
 def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
-    scenarios = flow_system_piecewise_conversion_scenarios.time_series_collection.scenarios
+    scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.scenario_weights = weights
     calc = create_calculation_and_solve(flow_system_piecewise_conversion_scenarios,
@@ -292,7 +303,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
 @pytest.mark.skip(reason="This test is taking too long with highs and is too big for gurobipy free")
 def test_io_persistance(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
-    scenarios = flow_system_piecewise_conversion_scenarios.time_series_collection.scenarios
+    scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.scenario_weights = weights
     calc = create_calculation_and_solve(flow_system_piecewise_conversion_scenarios,
@@ -312,21 +323,23 @@ def test_io_persistance(flow_system_piecewise_conversion_scenarios):
 
 
 def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
-    flow_system = flow_system_piecewise_conversion_scenarios
-    scenarios = flow_system_piecewise_conversion_scenarios.time_series_collection.scenarios
+    flow_system_full = flow_system_piecewise_conversion_scenarios
+    scenarios = flow_system_full.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
-    calc = fx.FullCalculation(flow_system=flow_system_piecewise_conversion_scenarios,
-                              selected_scenarios=flow_system.time_series_collection.scenarios[0:2],
-                              name='test_full_scenario')
+    flow_system_full.scenario_weights = weights
+    flow_system = flow_system_full.sel(scenario=scenarios[0:2])
+
+    assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])
+
+    np.testing.assert_allclose(flow_system.scenario_weights.values, flow_system_full.scenario_weights[0:2])
+
+
+    calc = fx.FullCalculation(flow_system=flow_system, name='test_full_scenario')
     calc.do_modeling()
     calc.solve(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
 
     calc.results.to_file()
-    flow_system_2 = fx.FlowSystem.from_dataset(calc.results.flow_system_data)
 
-    assert calc.results.solution.indexes['scenario'].equals(flow_system.time_series_collection.scenarios[0:2])
+    xr.testing.assert_allclose(calc.results.objective, calc.results.solution['costs|total'] * flow_system.scenario_weights)
 
-    assert flow_system_2.time_series_collection.scenarios.equals(flow_system.time_series_collection.scenarios[0:2])
-
-    np.testing.assert_allclose(flow_system_2.scenario_weights.selected_data.values, weights[0:2])
+    assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])
