@@ -340,6 +340,6 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     calc.results.to_file()
 
-    xr.testing.assert_allclose(calc.results.objective, calc.results.solution['costs|total'] * flow_system.scenario_weights)
+    np.testing.assert_allclose(calc.results.objective, ((calc.results.solution['costs|total'] * flow_system.scenario_weights).sum() + calc.results.solution['Penalty|total']).item()) ## Acount for rounding errors
 
     assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])

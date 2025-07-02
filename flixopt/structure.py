@@ -137,10 +137,10 @@ class SystemModel(linopy.Model):
         return tuple(coords.values())
 
     @property
-    def scenario_weights(self) -> xr.DataArray:
+    def scenario_weights(self) -> Union[int, xr.DataArray]:
         """Returns the scenario weights of the FlowSystem."""
-        if self.flow_system.scenarios is None:
-            return xr.DataArray(1)
+        if self.flow_system.scenario_weights is None:
+            return 1
 
         return self.flow_system.scenario_weights
 
