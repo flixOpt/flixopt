@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import Scalar, TemporalData, NonTemporalData
+from .core import NonTemporalData, Scalar, TemporalData
 from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 

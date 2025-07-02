@@ -6,7 +6,13 @@ import xarray as xr
 import flixopt as fx
 import flixopt.elements
 
-from .conftest import assert_conequal, assert_var_equal, create_linopy_model, create_calculation_and_solve, assert_almost_equal_numeric
+from .conftest import (
+    assert_almost_equal_numeric,
+    assert_conequal,
+    assert_var_equal,
+    create_calculation_and_solve,
+    create_linopy_model,
+)
 
 
 class TestComponentModel:

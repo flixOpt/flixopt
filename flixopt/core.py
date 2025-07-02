@@ -5,7 +5,7 @@ It provides Datatypes, logging functionality, and some functions to transform da
 
 import logging
 import warnings
-from typing import Dict, Optional, Union, Tuple, Literal
+from typing import Dict, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd

@@ -1161,10 +1161,7 @@ class FlowResults(_ElementResults):
         if name in self.solution:
             return self.solution[name]
         try:
-            return DataConverter.as_dataarray(
-                self._calculation_results.flow_system.flows[self.label].size,
-                scenarios=self._calculation_results.scenarios
-            ).rename(name)
+            return self._calculation_results.flow_system.flows[self.label].size.rename(name)
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
