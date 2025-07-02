@@ -60,7 +60,7 @@ class FlowSystem(Interface):
                 If None, the first time increment of time_series is used.
                 This is needed to calculate previous durations (for example consecutive_on_hours).
                 If you use an array, take care that its long enough to cover all previous values!
-            scenario_weights: The weights of the scenarios. If None, all scenarios have the same weight. All weights are normalized to 1.
+            scenario_weights: The weights of each scenarios. If None, all scenarios have the same weight (normalized to 1). Its recommended to scale the weights to sum up to 1.
         """
         self.timesteps = self._validate_timesteps(timesteps)
 
@@ -318,7 +318,7 @@ class FlowSystem(Interface):
             has_time_dim: Wether to use the time dimension or not
 
         Returns:
-            xr.DataArray aligned to model coordinate system
+            xr.DataArray aligned to model coordinate system. If data is None, returns None.
         """
         if data is None:
             return None
@@ -613,12 +613,14 @@ class FlowSystem(Interface):
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
 
-    def sel(self, time: Optional[Union[str, slice, List[str], pd.Timestamp, pd.DatetimeIndex]] = None) -> 'FlowSystem':
+    def sel(self, time: Optional[Union[str, slice, List[str], pd.Timestamp, pd.DatetimeIndex]] = None,
+            scenario: Optional[Union[str, slice, List[str], pd.Index]] = None) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by the time coordinate.
 
         Args:
             time: Time selection (e.g., slice('2023-01-01', '2023-12-31'), '2023-06-15', or list of times)
+            scenario: Scenario selection (e.g., slice('scenario1', 'scenario2'), or list of scenarios)
 
         Returns:
             FlowSystem: New FlowSystem with selected data
@@ -630,6 +632,9 @@ class FlowSystem(Interface):
         indexers = {}
         if time is not None:
             indexers['time'] = time
+
+        if scenario is not None:
+            indexers['scenario'] = scenario
 
         if not indexers:
             return self.copy()  # Return a copy when no selection
@@ -637,12 +642,13 @@ class FlowSystem(Interface):
         selected_dataset = self.to_dataset().sel(**indexers)
         return self.__class__.from_dataset(selected_dataset)
 
-    def isel(self, time: Optional[Union[int, slice, List[int]]] = None) -> 'FlowSystem':
+    def isel(self, time: Optional[Union[int, slice, List[int]]] = None, scenario: Optional[Union[int, slice, List[int]]] = None) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by integer indices.
 
         Args:
             time: Time selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
+            scenario: Scenario selection by integer index (e.g., slice(0, 3), 50, or [0, 5, 10])
 
         Returns:
             FlowSystem: New FlowSystem with selected data
@@ -654,6 +660,9 @@ class FlowSystem(Interface):
         indexers = {}
         if time is not None:
             indexers['time'] = time
+
+        if scenario is not None:
+            indexers['scenario'] = scenario
 
         if not indexers:
             return self.copy()  # Return a copy when no selection
