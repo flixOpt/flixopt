@@ -57,7 +57,6 @@ class SystemModel(linopy.Model):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
         self.effects: Optional[EffectCollectionModel] = None
-        self.scenario_weights = self._calculate_scenario_weights(flow_system.scenario_weights)
 
     def do_modeling(self):
         self.effects = self.flow_system.effects.create_model(self)
@@ -68,22 +67,6 @@ class SystemModel(linopy.Model):
             component_model.do_modeling()
         for bus_model in bus_models:  # Buses after Components, because FlowModels are created in ComponentModels
             bus_model.do_modeling()
-
-    def _calculate_scenario_weights(self, weights: Optional[NonTemporalData] = None) -> xr.DataArray:
-        """Calculates the weights of the scenarios. If None, all scenarios have the same weight. All weights are normalized to 1.
-        If no scenarios are present, s single weight of 1 is returned.
-        """
-        if weights is not None and not isinstance(weights, xr.DataArray):
-            raise TypeError(f'Weights must be a xr.DataArray or None, got {type(weights)}')
-        if self.flow_system.scenarios is None:
-            return xr.DataArray(1)
-        if weights is None:
-            weights = xr.DataArray(
-                np.ones(len(self.flow_system.scenarios)),
-                coords={'scenario': self.flow_system.scenarios}
-            )
-
-        return weights / weights.sum()
 
     @property
     def solution(self):
@@ -151,6 +134,14 @@ class SystemModel(linopy.Model):
             return (coords.popitem()[1],)
 
         return tuple(coords.values())
+
+    @property
+    def scenario_weights(self) -> xr.DataArray:
+        """Returns the scenario weights of the FlowSystem."""
+        if self.flow_system.scenarios is None:
+            return xr.DataArray(1)
+
+        return self.flow_system.scenario_weights
 
 
 class Interface:

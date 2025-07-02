@@ -68,18 +68,13 @@ class FlowSystem(Interface):
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
 
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
+        self.scenario_weights = scenario_weights
 
         hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra)
 
         self.hours_of_last_timestep = hours_per_timestep[-1].item()
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
-
-        self.scenario_weights = self.fit_to_model_coords(
-            'scenario_weights',
-            scenario_weights,
-            has_time_dim=False,
-        )
 
         # Element collections
         self.components: Dict[str, Component] = {}
