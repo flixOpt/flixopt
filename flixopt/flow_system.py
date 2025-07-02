@@ -366,6 +366,10 @@ class FlowSystem(Interface):
         self.scenario_weights = self.fit_to_model_coords(
             'scenario_weights', self.scenario_weights, has_time_dim=False
         )
+        if self.scenario_weights is not None and self.scenario_weights.sum() != 1:
+            logger.warning(f'Scenario weights are not normalized to 1. This is reccomended for a better scaled model. '
+                           f'Sum of weights={self.scenario_weights.sum().item()}')
+
         if not self._connected_and_transformed:
             self._connect_network()
             for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
