@@ -71,6 +71,7 @@ class SystemModel(linopy.Model):
     @property
     def solution(self):
         solution = super().solution
+        solution['objective'] = self.objective.value
         solution.attrs = {
             'Components': {
                 comp.label_full: comp.model.results_structure()

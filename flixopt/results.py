@@ -221,7 +221,12 @@ class CalculationResults:
     @property
     def objective(self) -> float:
         """The objective result of the optimization."""
-        return self.summary['Main Results']['Objective']
+        # Deprecated. Fallback
+        if 'objective' not in self.solution:
+            logger.warning('Objective not found in solution. Fallback to summary (rounded value). This is deprecated')
+            return self.summary['Main Results']['Objective']
+
+        return self.solution['objective'].item()
 
     @property
     def variables(self) -> linopy.Variables:
