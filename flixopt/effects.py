@@ -77,9 +77,11 @@ class Effect(Element):
         self.is_standard = is_standard
         self.is_objective = is_objective
         self.specific_share_to_other_effects_operation: TemporalEffectsUser = (
-            specific_share_to_other_effects_operation or {}
+            specific_share_to_other_effects_operation if specific_share_to_other_effects_operation is not None else {}
         )
-        self.specific_share_to_other_effects_invest: NonTemporalEffectsUser = specific_share_to_other_effects_invest or {}
+        self.specific_share_to_other_effects_invest: NonTemporalEffectsUser = (
+            specific_share_to_other_effects_invest if specific_share_to_other_effects_invest is not None else {}
+        )
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
         self.minimum_operation_per_hour: TemporalDataUser = minimum_operation_per_hour

@@ -150,10 +150,10 @@ class InvestParameters(Interface):
         minimum_size: Optional[NonTemporalDataUser] = None,
         maximum_size: Optional[NonTemporalDataUser] = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: Optional[NonTemporalEffectsUser] = None,
-        specific_effects: Optional[NonTemporalEffectsUser] = None,  # costs per Flow-Unit/Storage-Size/...
+        fix_effects: Optional['NonTemporalEffectsUser'] = None,
+        specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: Optional[PiecewiseEffects] = None,
-        divest_effects: Optional[NonTemporalEffectsUser] = None,
+        divest_effects: Optional['NonTemporalEffectsUser'] = None,
         investment_scenarios: Optional[Union[Literal['individual'], List[Union[int, str]]]] = None,
     ):
         """
@@ -173,11 +173,11 @@ class InvestParameters(Interface):
                 - List of scenario names: Optimize the size for the passed scenario names (equal size in all). All other scenarios will have the size 0.
                 - None: Equals to a list of all scenarios (default)
         """
-        self.fix_effects: NonTemporalEffectsUser = fix_effects if fix_effects is not None else {}
-        self.divest_effects: NonTemporalEffectsUser = divest_effects if divest_effects is not None else {}
+        self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
+        self.divest_effects: 'NonTemporalEffectsUser' = divest_effects if divest_effects is not None else {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: NonTemporalEffectsUser = specific_effects if specific_effects is not None else {}
+        self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
         self.piecewise_effects = piecewise_effects
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
@@ -246,8 +246,8 @@ class InvestParameters(Interface):
 class OnOffParameters(Interface):
     def __init__(
         self,
-        effects_per_switch_on: Optional[NonTemporalEffectsUser] = None,
-        effects_per_running_hour: Optional[NonTemporalEffectsUser] = None,
+        effects_per_switch_on: Optional['NonTemporalEffectsUser'] = None,
+        effects_per_running_hour: Optional['NonTemporalEffectsUser'] = None,
         on_hours_total_min: Optional[int] = None,
         on_hours_total_max: Optional[int] = None,
         consecutive_on_hours_min: Optional[TemporalDataUser] = None,
@@ -277,8 +277,8 @@ class OnOffParameters(Interface):
             switch_on_total_max: max nr of switchOn operations
             force_switch_on: force creation of switch on variable, even if there is no switch_on_total_max
         """
-        self.effects_per_switch_on: TemporalEffectsUser = effects_per_switch_on or {}
-        self.effects_per_running_hour: TemporalEffectsUser = effects_per_running_hour or {}
+        self.effects_per_switch_on: 'TemporalEffectsUser' = effects_per_switch_on if effects_per_switch_on is not None else {}
+        self.effects_per_running_hour: 'TemporalEffectsUser' = effects_per_running_hour if effects_per_running_hour is not None else {}
         self.on_hours_total_min: Scalar = on_hours_total_min
         self.on_hours_total_max: Scalar = on_hours_total_max
         self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min

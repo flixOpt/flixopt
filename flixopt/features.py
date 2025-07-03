@@ -274,7 +274,7 @@ class StateModel(Model):
         self._on_hours_total_min = on_hours_total_min if on_hours_total_min is not None else 0
         self._on_hours_total_max = on_hours_total_max if on_hours_total_max is not None else np.inf
         self._use_off = use_off
-        self._effects_per_running_hour = effects_per_running_hour or {}
+        self._effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
 
         self.on = None
         self.total_on_hours: Optional[linopy.Variable] = None
