@@ -323,7 +323,7 @@ class AggregatedCalculation(FullCalculation):
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
             ds = self.flow_system.to_dataset()
             for name, series in self.aggregation.aggregated_data.items():
-                da = DataConverter.to_dataarray(series, timesteps=self.flow_system.timesteps).rename(name).assign_attrs(ds[name].attrs)
+                da = DataConverter.to_dataarray(series, self.flow_system.coords).rename(name).assign_attrs(ds[name].attrs)
                 if TimeSeriesData.is_timeseries_data(da):
                     da = TimeSeriesData.from_dataarray(da)
 
