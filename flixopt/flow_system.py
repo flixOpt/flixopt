@@ -349,9 +349,13 @@ class FlowSystem(Interface):
                 ).rename(name)
             except ConversionError as e:
                 raise ConversionError(
-                    f'Could not convert time series data "{name}" to DataArray: Original Error: {e}') from e
+                    f'Could not convert time series data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
         else:
-            return DataConverter.to_dataarray(data, coords=coords).rename(name)
+            try:
+                return DataConverter.to_dataarray(data, coords=coords).rename(name)
+            except ConversionError as e:
+                raise ConversionError(
+                    f'Could not convert data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
 
     def fit_effects_to_model_coords(
         self,
