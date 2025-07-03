@@ -280,6 +280,63 @@ class DataConverter:
         return xr.DataArray(result_data.copy(), coords=final_coords, dims=target_dims)
 
     @staticmethod
+    def _convert_multid_array_to_dataarray(
+        data: np.ndarray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Convert multi-dimensional numpy array to DataArray by matching dimensions by length.
+
+        Args:
+            data: Multi-dimensional numpy array
+            coords: Available coordinates
+            target_dims: Target dimension names
+
+        Returns:
+            DataArray with dimensions matched by length
+
+        Raises:
+            ConversionError: If array dimensions cannot be uniquely matched to coordinates
+        """
+        if len(target_dims) == 0:
+            if data.size != 1:
+                raise ConversionError('Cannot convert multi-element array without target dimensions')
+            return xr.DataArray(data.item())
+
+        if data.ndim != len(target_dims):
+            raise ConversionError(f'Array has {data.ndim} dimensions but {len(target_dims)} target dimensions provided')
+
+        # Get lengths of each dimension
+        array_shape = data.shape
+        coord_lengths = {dim: len(coords[dim]) for dim in target_dims}
+
+        # Try to find a unique mapping from array dimensions to coordinate dimensions
+        possible_mappings = []
+
+        # Generate all possible permutations of target dimensions
+        from itertools import permutations
+
+        for dim_order in permutations(target_dims):
+            # Check if this permutation matches the array shape
+            if all(array_shape[i] == coord_lengths[dim_order[i]] for i in range(len(dim_order))):
+                possible_mappings.append(dim_order)
+
+        if len(possible_mappings) == 0:
+            shape_info = f'Array shape: {array_shape}, Coordinate lengths: {coord_lengths}'
+            raise ConversionError(f'Array dimensions do not match any coordinate lengths. {shape_info}')
+
+        if len(possible_mappings) > 1:
+            raise ConversionError(
+                f'Array shape {array_shape} matches multiple dimension orders: {possible_mappings}. '
+                'Cannot uniquely determine dimension mapping.'
+            )
+
+        # Use the unique mapping found
+        matched_dims = possible_mappings[0]
+        matched_coords = {dim: coords[dim] for dim in matched_dims}
+
+        return xr.DataArray(data.copy(), coords=matched_coords, dims=matched_dims)
+
+    @staticmethod
     def to_dataarray(
         data: Union[Scalar, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray, TimeSeriesData],
         coords: Optional[Dict[str, pd.Index]] = None,
@@ -289,7 +346,8 @@ class DataConverter:
 
         Accepts:
         - Scalars (broadcast to all dimensions)
-        - 1D arrays, Series, or single-column DataFrames (matched to one dimension, broadcast to others)
+        - 1D arrays or Series (matched to one dimension, broadcast to others)
+        - Multi-D arrays or DataFrames (dimensions matched by length)
         - xr.DataArray (validated and potentially broadcast to additional dimensions)
 
         Args:
@@ -304,31 +362,42 @@ class DataConverter:
 
         validated_coords, target_dims = DataConverter._prepare_dimensions(coords)
 
-        # Step 1: Convert to DataArray (with safe 1D/2D logic for simple data)
+        # Step 1: Convert to DataArray
         if isinstance(data, (int, float, np.integer, np.floating)):
             # Scalars: create 0D DataArray, will be broadcast later
             intermediate = xr.DataArray(data.item() if hasattr(data, 'item') else data)
 
         elif isinstance(data, np.ndarray):
-            if data.ndim != 1:
-                raise ConversionError(f'Only 1D arrays supported, got {data.ndim}D array')
-            intermediate = DataConverter._convert_1d_data_to_dataarray(data, validated_coords, target_dims)
+            if data.ndim == 1:
+                intermediate = DataConverter._convert_1d_data_to_dataarray(data, validated_coords, target_dims)
+            else:
+                # Handle multi-dimensional arrays
+                intermediate = DataConverter._convert_multid_array_to_dataarray(data, validated_coords, target_dims)
 
         elif isinstance(data, pd.Series):
+            if isinstance(data.index, pd.MultiIndex):
+                raise ConversionError('Series index must be a single level Index. Multi-index Series are not supported.')
             intermediate = DataConverter._convert_1d_data_to_dataarray(data, validated_coords, target_dims)
 
         elif isinstance(data, pd.DataFrame):
-            if len(data.columns) != 1:
-                raise ConversionError(f'Only single-column DataFrames are supported, got {len(data.columns)} columns')
-            series = data.iloc[:, 0]
-            intermediate = DataConverter._convert_1d_data_to_dataarray(series, validated_coords, target_dims)
+            if isinstance(data.index, pd.MultiIndex):
+                raise ConversionError('DataFrame index must be a single level Index. Multi-index DataFrames are not supported.')
+            if len(data.columns) == 0 or data.empty:
+                raise ConversionError('DataFrame must have at least one column.')
+
+            if len(data.columns) == 1:
+                intermediate = DataConverter._convert_1d_data_to_dataarray(data.iloc[:, 0], validated_coords, target_dims)
+            else:
+                # Handle multi-column DataFrames
+                logger.warning(f'Converting multi-column DataFrame to xr.DataArray. We advise to do this manually.')
+                intermediate = DataConverter._convert_multid_array_to_dataarray(data.to_numpy(), validated_coords, target_dims)
 
         elif isinstance(data, xr.DataArray):
             intermediate = data.copy()
 
         else:
             raise ConversionError(
-                f'Unsupported data type: {type(data).__name__}. Only scalars, 1D arrays, Series, single-column DataFrames, and DataArrays are supported.'
+                f'Unsupported data type: {type(data).__name__}. Only scalars, arrays, Series, DataFrames, and DataArrays are supported.'
             )
 
         # Step 2: Broadcast to target dimensions if needed

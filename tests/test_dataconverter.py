@@ -211,14 +211,14 @@ class TestDataFrameConversion:
             'value2': [15, 25, 35, 45, 55]
         }, index=time_coords)
 
-        with pytest.raises(ConversionError, match="Only single-column DataFrames are supported"):
+        with pytest.raises(ConversionError, match="Array has 2 dimensions but 1 target "):
             DataConverter.to_dataarray(df, coords={'time': time_coords})
 
     def test_empty_dataframe_rejected(self, time_coords):
         """Empty DataFrame should be rejected."""
         df = pd.DataFrame(index=time_coords)  # No columns
 
-        with pytest.raises(ConversionError, match="Only single-column DataFrames are supported"):
+        with pytest.raises(ConversionError, match="DataFrame must have at least one"):
             DataConverter.to_dataarray(df, coords={'time': time_coords})
 
     def test_dataframe_broadcast(self, time_coords, scenario_coords):
@@ -853,6 +853,332 @@ class TestSpecialValues:
 
         assert np.issubdtype(result.dtype, np.floating)
         assert np.array_equal(result.values, mixed_arr)
+
+
+class TestMultiDimensionalArrayConversion:
+    """Test multi-dimensional numpy array conversions."""
+
+    @pytest.fixture
+    def standard_coords(self):
+        """Standard coordinates with unique lengths for easy testing."""
+        return {
+            'time': pd.date_range('2024-01-01', periods=5, freq='D', name='time'),  # length 5
+            'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),  # length 3
+            'region': pd.Index(['north', 'south'], name='region')  # length 2
+        }
+
+    def test_2d_array_unique_dimensions(self, standard_coords):
+        """2D array with unique dimension lengths should work."""
+        # 5x3 array should map to time x scenario
+        data_2d = np.random.rand(5, 3)
+        result = DataConverter.to_dataarray(data_2d, coords={
+            'time': standard_coords['time'],
+            'scenario': standard_coords['scenario']
+        })
+
+        assert result.shape == (5, 3)
+        assert result.dims == ('time', 'scenario')
+        assert np.array_equal(result.values, data_2d)
+
+        # 3x5 array should map to scenario x time
+        data_2d_flipped = np.random.rand(3, 5)
+        result_flipped = DataConverter.to_dataarray(data_2d_flipped, coords={
+            'time': standard_coords['time'],
+            'scenario': standard_coords['scenario']
+        })
+
+        assert result_flipped.shape == (3, 5)
+        assert result_flipped.dims == ('scenario', 'time')
+        assert np.array_equal(result_flipped.values, data_2d_flipped)
+
+    def test_3d_array_unique_dimensions(self, standard_coords):
+        """3D array with unique dimension lengths should work."""
+        # 5x3x2 array should map to time x scenario x region
+        data_3d = np.random.rand(5, 3, 2)
+        result = DataConverter.to_dataarray(data_3d, coords=standard_coords)
+
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+        assert np.array_equal(result.values, data_3d)
+
+    def test_3d_array_different_permutation(self, standard_coords):
+        """3D array with different dimension order should work."""
+        # 2x5x3 array should map to region x time x scenario
+        data_3d = np.random.rand(2, 5, 3)
+        result = DataConverter.to_dataarray(data_3d, coords=standard_coords)
+
+        assert result.shape == (2, 5, 3)
+        assert result.dims == ('region', 'time', 'scenario')
+        assert np.array_equal(result.values, data_3d)
+
+    def test_4d_array_unique_dimensions(self):
+        """4D array with unique dimension lengths should work."""
+        coords = {
+            'time': pd.date_range('2024-01-01', periods=2, freq='D', name='time'),  # length 2
+            'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),  # length 3
+            'region': pd.Index(['north', 'south', 'east', 'west'], name='region'),  # length 4
+            'technology': pd.Index(['solar', 'wind', 'gas', 'coal', 'hydro'], name='technology')  # length 5
+        }
+
+        # 3x5x2x4 array should map to scenario x technology x time x region
+        data_4d = np.random.rand(3, 5, 2, 4)
+        result = DataConverter.to_dataarray(data_4d, coords=coords)
+
+        assert result.shape == (3, 5, 2, 4)
+        assert result.dims == ('scenario', 'technology', 'time', 'region')
+        assert np.array_equal(result.values, data_4d)
+
+    def test_2d_array_ambiguous_dimensions_error(self):
+        """2D array with ambiguous dimension lengths should fail."""
+        # Both dimensions have length 3
+        coords_ambiguous = {
+            'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),  # length 3
+            'region': pd.Index(['north', 'south', 'east'], name='region')  # length 3
+        }
+
+        data_2d = np.random.rand(3, 3)
+        with pytest.raises(ConversionError, match="matches multiple dimension orders"):
+            DataConverter.to_dataarray(data_2d, coords=coords_ambiguous)
+
+    def test_3d_array_ambiguous_dimensions_error(self):
+        """3D array with ambiguous dimension lengths should fail."""
+        # All dimensions have length 2
+        coords_ambiguous = {
+            'scenario': pd.Index(['A', 'B'], name='scenario'),  # length 2
+            'region': pd.Index(['north', 'south'], name='region'),  # length 2
+            'technology': pd.Index(['solar', 'wind'], name='technology')  # length 2
+        }
+
+        data_3d = np.random.rand(2, 2, 2)
+        with pytest.raises(ConversionError, match="matches multiple dimension orders"):
+            DataConverter.to_dataarray(data_3d, coords=coords_ambiguous)
+
+    def test_array_dimension_count_mismatch_error(self, standard_coords):
+        """Array with wrong number of dimensions should fail."""
+        # 2D array with 3D coordinates
+        data_2d = np.random.rand(5, 3)
+        with pytest.raises(ConversionError, match="Array has 2 dimensions but 3 target dimensions provided"):
+            DataConverter.to_dataarray(data_2d, coords=standard_coords)
+
+        # 4D array with 3D coordinates
+        data_4d = np.random.rand(5, 3, 2, 4)
+        with pytest.raises(ConversionError, match="Array has 4 dimensions but 3 target dimensions provided"):
+            DataConverter.to_dataarray(data_4d, coords=standard_coords)
+
+    def test_array_no_matching_dimensions_error(self, standard_coords):
+        """Array with no matching dimension lengths should fail."""
+        # 7x8 array - no dimension has length 7 or 8
+        data_2d = np.random.rand(7, 8)
+        coords_2d = {
+            'time': standard_coords['time'],  # length 5
+            'scenario': standard_coords['scenario']  # length 3
+        }
+
+        with pytest.raises(ConversionError, match="Array dimensions do not match any coordinate lengths"):
+            DataConverter.to_dataarray(data_2d, coords=coords_2d)
+
+    def test_2d_array_custom_dimensions(self):
+        """2D array with custom dimension names should work."""
+        coords = {
+            'product': pd.Index(['A', 'B', 'C', 'D'], name='product'),  # length 4
+            'factory': pd.Index(['F1', 'F2', 'F3'], name='factory')  # length 3
+        }
+
+        # 4x3 array should map to product x factory
+        data_2d = np.array([[10, 11, 12],
+                           [20, 21, 22],
+                           [30, 31, 32],
+                           [40, 41, 42]])
+
+        result = DataConverter.to_dataarray(data_2d, coords=coords)
+
+        assert result.shape == (4, 3)
+        assert result.dims == ('product', 'factory')
+        assert np.array_equal(result.values, data_2d)
+
+        # Verify coordinates are correct
+        assert result.indexes['product'].equals(coords['product'])
+        assert result.indexes['factory'].equals(coords['factory'])
+
+    def test_multid_array_copy_independence(self, standard_coords):
+        """Multi-D arrays should be independent copies."""
+        original_data = np.random.rand(5, 3)
+        result = DataConverter.to_dataarray(original_data, coords={
+            'time': standard_coords['time'],
+            'scenario': standard_coords['scenario']
+        })
+
+        # Modify result
+        result[0, 0] = 999
+
+        # Original should be unchanged
+        assert original_data[0, 0] != 999
+
+    def test_multid_array_special_values(self, standard_coords):
+        """Multi-D arrays should preserve special values."""
+        # Create 2D array with special values
+        data_2d = np.array([[1.0, np.nan, 3.0],
+                           [np.inf, 5.0, -np.inf],
+                           [7.0, 8.0, 9.0],
+                           [10.0, np.nan, 12.0],
+                           [13.0, 14.0, np.inf]])
+
+        result = DataConverter.to_dataarray(data_2d, coords={
+            'time': standard_coords['time'],
+            'scenario': standard_coords['scenario']
+        })
+
+        assert result.shape == (5, 3)
+        assert np.array_equal(np.isnan(result.values), np.isnan(data_2d))
+        assert np.array_equal(np.isinf(result.values), np.isinf(data_2d))
+
+    def test_multid_array_with_time_dimension(self):
+        """Multi-D arrays should work with time dimension."""
+        time_coords = pd.date_range('2024-01-01', periods=4, freq='H', name='time')
+        scenario_coords = pd.Index(['base', 'high', 'low'], name='scenario')
+
+        # 4x3 time series data
+        data_2d = np.array([[100, 110, 120],
+                           [200, 210, 220],
+                           [300, 310, 320],
+                           [400, 410, 420]])
+
+        result = DataConverter.to_dataarray(data_2d, coords={
+            'time': time_coords,
+            'scenario': scenario_coords
+        })
+
+        assert result.shape == (4, 3)
+        assert result.dims == ('time', 'scenario')
+        assert isinstance(result.indexes['time'], pd.DatetimeIndex)
+        assert np.array_equal(result.values, data_2d)
+
+    def test_multid_array_dtype_preservation(self, standard_coords):
+        """Multi-D arrays should preserve data types."""
+        # Integer array
+        int_data = np.array([[1, 2, 3],
+                            [4, 5, 6],
+                            [7, 8, 9],
+                            [10, 11, 12],
+                            [13, 14, 15]], dtype=np.int32)
+
+        result_int = DataConverter.to_dataarray(int_data, coords={
+            'time': standard_coords['time'],
+            'scenario': standard_coords['scenario']
+        })
+
+        assert result_int.dtype == np.int32
+        assert np.array_equal(result_int.values, int_data)
+
+        # Float array
+        float_data = np.array([[1.1, 2.2, 3.3],
+                              [4.4, 5.5, 6.6],
+                              [7.7, 8.8, 9.9],
+                              [10.1, 11.1, 12.1],
+                              [13.1, 14.1, 15.1]], dtype=np.float64)
+
+        result_float = DataConverter.to_dataarray(float_data, coords={
+            'time': standard_coords['time'],
+            'scenario': standard_coords['scenario']
+        })
+
+        assert result_float.dtype == np.float64
+        assert np.array_equal(result_float.values, float_data)
+
+        # Boolean array
+        bool_data = np.array([[True, False, True],
+                             [False, True, False],
+                             [True, True, False],
+                             [False, False, True],
+                             [True, False, True]])
+
+        result_bool = DataConverter.to_dataarray(bool_data, coords={
+            'time': standard_coords['time'],
+            'scenario': standard_coords['scenario']
+        })
+
+        assert result_bool.dtype == bool
+        assert np.array_equal(result_bool.values, bool_data)
+
+    def test_multid_array_no_coords(self):
+        """Multi-D arrays without coords should fail unless scalar."""
+        # Multi-element fails
+        data_2d = np.random.rand(2, 3)
+        with pytest.raises(ConversionError, match="Cannot convert multi-element array without target dimensions"):
+            DataConverter.to_dataarray(data_2d)
+
+        # Single element succeeds
+        single_element = np.array([[42]])
+        result = DataConverter.to_dataarray(single_element)
+        assert result.shape == ()
+        assert result.item() == 42
+
+    def test_multid_array_empty_coords(self, standard_coords):
+        """Multi-D arrays with empty coords should fail."""
+        data_2d = np.random.rand(5, 3)
+        with pytest.raises(ConversionError, match="Cannot convert multi-element array without target dimensions"):
+            DataConverter.to_dataarray(data_2d, coords={})
+
+    def test_multid_array_coordinate_validation(self):
+        """Multi-D arrays should validate coordinates properly."""
+        # Test with time coordinate that's not DatetimeIndex
+        wrong_time = pd.Index([1, 2, 3, 4, 5], name='time')
+        scenario_coords = pd.Index(['A', 'B', 'C'], name='scenario')
+
+        data_2d = np.random.rand(5, 3)
+        with pytest.raises(ConversionError, match="time coordinates must be a DatetimeIndex"):
+            DataConverter.to_dataarray(data_2d, coords={
+                'time': wrong_time,
+                'scenario': scenario_coords
+            })
+
+    def test_multid_array_complex_scenario(self):
+        """Complex real-world scenario with multi-D array."""
+        # Energy system data: time x technology x region
+        coords = {
+            'time': pd.date_range('2024-01-01', periods=8760, freq='H', name='time'),  # 1 year hourly
+            'technology': pd.Index(['solar', 'wind', 'gas', 'coal'], name='technology'),  # 4 technologies
+            'region': pd.Index(['north', 'south', 'east'], name='region')  # 3 regions
+        }
+
+        # Capacity factors: 8760 x 4 x 3
+        capacity_factors = np.random.rand(8760, 4, 3)
+
+        result = DataConverter.to_dataarray(capacity_factors, coords=coords)
+
+        assert result.shape == (8760, 4, 3)
+        assert result.dims == ('time', 'technology', 'region')
+        assert isinstance(result.indexes['time'], pd.DatetimeIndex)
+        assert len(result.indexes['time']) == 8760
+        assert len(result.indexes['technology']) == 4
+        assert len(result.indexes['region']) == 3
+
+    def test_multid_array_edge_cases(self):
+        """Test edge cases for multi-D arrays."""
+        # Single dimension with multi-D array should fail
+        coords_1d = {'time': pd.date_range('2024-01-01', periods=5, freq='D', name='time')}
+        data_2d = np.random.rand(5, 3)
+
+        with pytest.raises(ConversionError, match="Array has 2 dimensions but 1 target dimensions provided"):
+            DataConverter.to_dataarray(data_2d, coords=coords_1d)
+
+        # Zero dimensions with multi-D array should fail
+        data_1d = np.array([1, 2, 3])
+        with pytest.raises(ConversionError, match="Cannot convert multi-element array without target dimensions"):
+            DataConverter.to_dataarray(data_1d, coords={})
+
+    def test_multid_array_partial_dimension_match(self):
+        """Array where only some dimensions match should fail."""
+        coords = {
+            'time': pd.date_range('2024-01-01', periods=5, freq='D', name='time'),  # length 5
+            'scenario': pd.Index(['A', 'B', 'C'], name='scenario')  # length 3
+        }
+
+        # 5x7 array - first dimension matches time (5) but second doesn't match scenario (3)
+        data_2d = np.random.rand(5, 7)
+        with pytest.raises(ConversionError, match="Array dimensions do not match any coordinate lengths"):
+            DataConverter.to_dataarray(data_2d, coords=coords)
+
 
 
 if __name__ == '__main__':
