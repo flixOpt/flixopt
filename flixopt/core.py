@@ -285,6 +285,7 @@ class DataConverter:
     ) -> xr.DataArray:
         """
         Convert multi-dimensional numpy array to DataArray by matching dimensions by length.
+        Returns a DataArray that may need further broadcasting to target dimensions.
 
         Args:
             data: Multi-dimensional numpy array
@@ -292,7 +293,7 @@ class DataConverter:
             target_dims: Target dimension names
 
         Returns:
-            DataArray with dimensions matched by length
+            DataArray with dimensions matched by length (may be subset of target_dims)
 
         Raises:
             ConversionError: If array dimensions cannot be uniquely matched to coordinates
@@ -302,23 +303,19 @@ class DataConverter:
                 raise ConversionError('Cannot convert multi-element array without target dimensions')
             return xr.DataArray(data.item())
 
-        if data.ndim != len(target_dims):
-            raise ConversionError(f'Array has {data.ndim} dimensions but {len(target_dims)} target dimensions provided')
-
         # Get lengths of each dimension
         array_shape = data.shape
         coord_lengths = {dim: len(coords[dim]) for dim in target_dims}
 
-        # Try to find a unique mapping from array dimensions to coordinate dimensions
-        possible_mappings = []
-
-        # Generate all possible permutations of target dimensions
+        # Find all possible ways to match array dimensions to available coordinates
         from itertools import permutations
 
-        for dim_order in permutations(target_dims):
+        # Try all permutations of target_dims that match the array's number of dimensions
+        possible_mappings = []
+        for dim_subset in permutations(target_dims, data.ndim):
             # Check if this permutation matches the array shape
-            if all(array_shape[i] == coord_lengths[dim_order[i]] for i in range(len(dim_order))):
-                possible_mappings.append(dim_order)
+            if all(array_shape[i] == coord_lengths[dim_subset[i]] for i in range(len(dim_subset))):
+                possible_mappings.append(dim_subset)
 
         if len(possible_mappings) == 0:
             shape_info = f'Array shape: {array_shape}, Coordinate lengths: {coord_lengths}'
@@ -334,6 +331,7 @@ class DataConverter:
         matched_dims = possible_mappings[0]
         matched_coords = {dim: coords[dim] for dim in matched_dims}
 
+        # Return DataArray with matched dimensions - broadcasting will happen later if needed
         return xr.DataArray(data.copy(), coords=matched_coords, dims=matched_dims)
 
     @staticmethod
@@ -347,7 +345,7 @@ class DataConverter:
         Accepts:
         - Scalars (broadcast to all dimensions)
         - 1D arrays or Series (matched to one dimension, broadcast to others)
-        - Multi-D arrays or DataFrames (dimensions matched by length)
+        - Multi-D arrays or DataFrames (dimensions matched by length, broadcast to remaining)
         - xr.DataArray (validated and potentially broadcast to additional dimensions)
 
         Args:
@@ -362,7 +360,7 @@ class DataConverter:
 
         validated_coords, target_dims = DataConverter._prepare_dimensions(coords)
 
-        # Step 1: Convert to DataArray
+        # Step 1: Convert to DataArray (may have fewer dimensions than target)
         if isinstance(data, (int, float, np.integer, np.floating)):
             # Scalars: create 0D DataArray, will be broadcast later
             intermediate = xr.DataArray(data.item() if hasattr(data, 'item') else data)
@@ -371,26 +369,34 @@ class DataConverter:
             if data.ndim == 1:
                 intermediate = DataConverter._convert_1d_data_to_dataarray(data, validated_coords, target_dims)
             else:
-                # Handle multi-dimensional arrays
+                # Handle multi-dimensional arrays - this now allows partial matching
                 intermediate = DataConverter._convert_multid_array_to_dataarray(data, validated_coords, target_dims)
 
         elif isinstance(data, pd.Series):
             if isinstance(data.index, pd.MultiIndex):
-                raise ConversionError('Series index must be a single level Index. Multi-index Series are not supported.')
+                raise ConversionError(
+                    'Series index must be a single level Index. Multi-index Series are not supported.'
+                )
             intermediate = DataConverter._convert_1d_data_to_dataarray(data, validated_coords, target_dims)
 
         elif isinstance(data, pd.DataFrame):
             if isinstance(data.index, pd.MultiIndex):
-                raise ConversionError('DataFrame index must be a single level Index. Multi-index DataFrames are not supported.')
+                raise ConversionError(
+                    'DataFrame index must be a single level Index. Multi-index DataFrames are not supported.'
+                )
             if len(data.columns) == 0 or data.empty:
                 raise ConversionError('DataFrame must have at least one column.')
 
             if len(data.columns) == 1:
-                intermediate = DataConverter._convert_1d_data_to_dataarray(data.iloc[:, 0], validated_coords, target_dims)
+                intermediate = DataConverter._convert_1d_data_to_dataarray(
+                    data.iloc[:, 0], validated_coords, target_dims
+                )
             else:
-                # Handle multi-column DataFrames
-                logger.warning(f'Converting multi-column DataFrame to xr.DataArray. We advise to do this manually.')
-                intermediate = DataConverter._convert_multid_array_to_dataarray(data.to_numpy(), validated_coords, target_dims)
+                # Handle multi-column DataFrames - this now allows partial matching
+                logger.warning('Converting multi-column DataFrame to xr.DataArray. We advise to do this manually.')
+                intermediate = DataConverter._convert_multid_array_to_dataarray(
+                    data.to_numpy(), validated_coords, target_dims
+                )
 
         elif isinstance(data, xr.DataArray):
             intermediate = data.copy()
@@ -401,6 +407,7 @@ class DataConverter:
             )
 
         # Step 2: Broadcast to target dimensions if needed
+        # This now handles cases where intermediate has some but not all target dimensions
         return DataConverter._broadcast_to_target_dims(intermediate, validated_coords, target_dims)
 
     @staticmethod
