@@ -631,7 +631,7 @@ class ComponentResults(_NodeResults):
             plotly.graph_objs.Scatter(
                 x=cumulated_flow.index,
                 y=cumulated_flow.values.flatten(),
-                name='Cumulated Flow Deviation',
+                name='Virtual Charge State',
                 line=dict(width=3, color='black'),
                 mode='lines'
             )
