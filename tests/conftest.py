@@ -95,7 +95,8 @@ def simple_flow_system() -> fx.FlowSystem:
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
         capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
         initial_charge_state=0,
-        relative_maximum_charge_state=1 / 100 * np.array([80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80, 80]),
+        relative_maximum_charge_state=1 / 100 * np.array([80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80]),
+        relative_maximum_final_charge_state=0.8,
         eta_charge=0.9,
         eta_discharge=1,
         relative_loss_per_hour=0.08,
@@ -116,6 +117,81 @@ def simple_flow_system() -> fx.FlowSystem:
 
     # Create flow system
     flow_system = fx.FlowSystem(base_timesteps)
+    flow_system.add_elements(fx.Bus('Strom'), fx.Bus('Fernwärme'), fx.Bus('Gas'))
+    flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
+
+    return flow_system
+
+@pytest.fixture
+def simple_flow_system_scenarios() -> fx.FlowSystem:
+    """
+    Create a simple energy system for testing
+    """
+    base_thermal_load = np.array([30.0, 0.0, 90.0, 110, 110, 20, 20, 20, 20])
+    base_electrical_price = np.array([0.08, 0.1, 0.15])
+    base_timesteps = pd.date_range('2020-01-01', periods=9, freq='h', name='time')
+    # Define effects
+    costs = fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True)
+    co2 = fx.Effect(
+        'CO2',
+        'kg',
+        'CO2_e-Emissionen',
+        specific_share_to_other_effects_operation={costs.label: 0.2},
+        maximum_operation_per_hour=1000,
+    )
+
+    # Create components
+    boiler = fx.linear_converters.Boiler(
+        'Boiler',
+        eta=0.5,
+        Q_th=fx.Flow(
+            'Q_th',
+            bus='Fernwärme',
+            size=50,
+            relative_minimum=5 / 50,
+            relative_maximum=1,
+            on_off_parameters=fx.OnOffParameters(),
+        ),
+        Q_fu=fx.Flow('Q_fu', bus='Gas'),
+    )
+
+    chp = fx.linear_converters.CHP(
+        'CHP_unit',
+        eta_th=0.5,
+        eta_el=0.4,
+        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()),
+        Q_th=fx.Flow('Q_th', bus='Fernwärme'),
+        Q_fu=fx.Flow('Q_fu', bus='Gas'),
+    )
+
+    storage = fx.Storage(
+        'Speicher',
+        charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
+        discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
+        capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
+        initial_charge_state=0,
+        relative_maximum_charge_state=1 / 100 * np.array([80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80]),
+        relative_maximum_final_charge_state=0.8,
+        eta_charge=0.9,
+        eta_discharge=1,
+        relative_loss_per_hour=0.08,
+        prevent_simultaneous_charge_and_discharge=True,
+    )
+
+    heat_load = fx.Sink(
+        'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=base_thermal_load)
+    )
+
+    gas_tariff = fx.Source(
+        'Gastarif', source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})
+    )
+
+    electricity_feed_in = fx.Sink(
+        'Einspeisung', sink=fx.Flow('P_el', bus='Strom', effects_per_flow_hour=-1 * base_electrical_price)
+    )
+
+    # Create flow system
+    flow_system = fx.FlowSystem(base_timesteps, scenarios=pd.Index(['A', 'B', 'C']), scenario_weights=np.array([0.5, 0.25, 0.25]))
     flow_system.add_elements(fx.Bus('Strom'), fx.Bus('Fernwärme'), fx.Bus('Gas'))
     flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
 
@@ -293,8 +369,8 @@ def flow_system_segments_of_flows_2(flow_system_complex) -> fx.FlowSystem:
                 {
                     'P_el': fx.Piecewise(
                         [
-                            fx.Piece(np.linspace(5, 6, len(flow_system.time_series_collection.timesteps)), 30),
-                            fx.Piece(40, np.linspace(60, 70, len(flow_system.time_series_collection.timesteps))),
+                            fx.Piece(np.linspace(5, 6, len(flow_system.timesteps)), 30),
+                            fx.Piece(40, np.linspace(60, 70, len(flow_system.timesteps))),
                         ]
                     ),
                     'Q_th': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
@@ -324,16 +400,17 @@ def flow_system_long():
     p_el = data['Strompr.€/MWh'].values
     gas_price = data['Gaspr.€/MWh'].values
 
+    flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))
+
     thermal_load_ts, electrical_load_ts = (
-        fx.TimeSeriesData(thermal_load),
-        fx.TimeSeriesData(electrical_load, agg_weight=0.7),
+        fx.TimeSeriesData(thermal_load, coords={'time': flow_system.timesteps}),
+        fx.TimeSeriesData(electrical_load, aggregation_weight=0.7, coords={'time': flow_system.timesteps}),
     )
     p_feed_in, p_sell = (
-        fx.TimeSeriesData(-(p_el - 0.5), agg_group='p_el'),
-        fx.TimeSeriesData(p_el + 0.5, agg_group='p_el'),
+        fx.TimeSeriesData(-(p_el - 0.5), aggregation_group='p_el', coords={'time': flow_system.timesteps}),
+        fx.TimeSeriesData(p_el + 0.5, aggregation_group='p_el', coords={'time': flow_system.timesteps}),
     )
 
-    flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))
     flow_system.add_elements(
         fx.Bus('Strom'),
         fx.Bus('Fernwärme'),

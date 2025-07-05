@@ -9,9 +9,8 @@ from typing import Dict, List, Optional, Tuple, Union
 import linopy
 import numpy as np
 
-from . import utils
 from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries
+from .core import NonTemporalData, Scalar, TemporalData
 from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 
@@ -27,13 +26,14 @@ class InvestmentModel(Model):
         label_of_element: str,
         parameters: InvestParameters,
         defining_variable: [linopy.Variable],
-        relative_bounds_of_defining_variable: Tuple[NumericData, NumericData],
+        relative_bounds_of_defining_variable: Tuple[TemporalData, TemporalData],
         label: Optional[str] = None,
         on_variable: Optional[linopy.Variable] = None,
     ):
         super().__init__(model, label_of_element, label)
         self.size: Optional[Union[Scalar, linopy.Variable]] = None
         self.is_invested: Optional[linopy.Variable] = None
+        self.scenario_of_investment: Optional[linopy.Variable] = None
 
         self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
 
@@ -43,30 +43,31 @@ class InvestmentModel(Model):
         self.parameters = parameters
 
     def do_modeling(self):
-        if self.parameters.fixed_size and not self.parameters.optional:
-            self.size = self.add(
-                self._model.add_variables(
-                    lower=self.parameters.fixed_size, upper=self.parameters.fixed_size, name=f'{self.label_full}|size'
-                ),
-                'size',
-            )
-        else:
-            self.size = self.add(
-                self._model.add_variables(
-                    lower=0 if self.parameters.optional else self.parameters.minimum_size,
-                    upper=self.parameters.maximum_size,
-                    name=f'{self.label_full}|size',
-                ),
-                'size',
-            )
+        self.size = self.add(
+            self._model.add_variables(
+                lower=0 if self.parameters.optional else self.parameters.minimum_or_fixed_size,
+                upper=self.parameters.maximum_or_fixed_size,
+                name=f'{self.label_full}|size',
+                coords=self._model.get_coords(time_dim=False),
+            ),
+            'size',
+        )
 
         # Optional
         if self.parameters.optional:
             self.is_invested = self.add(
-                self._model.add_variables(binary=True, name=f'{self.label_full}|is_invested'), 'is_invested'
+                self._model.add_variables(
+                    binary=True,
+                    name=f'{self.label_full}|is_invested',
+                    coords=self._model.get_coords(time_dim=False),
+                ),
+                'is_invested',
             )
 
             self._create_bounds_for_optional_investment()
+
+        if self._model.flow_system.scenarios is not None:
+            self._create_bounds_for_scenarios()
 
         # Bounds for defining variable
         self._create_bounds_for_defining_variable()
@@ -137,7 +138,7 @@ class InvestmentModel(Model):
             # eq2: P_invest >= isInvested * max(epsilon, investSize_min)
             self.add(
                 self._model.add_constraints(
-                    self.size >= self.is_invested * np.maximum(CONFIG.modeling.EPSILON, self.parameters.minimum_size),
+                    self.size >= self.is_invested * np.maximum(CONFIG.modeling.EPSILON, self.parameters.minimum_or_fixed_size),
                     name=f'{self.label_full}|is_invested_lb',
                 ),
                 'is_invested_lb',
@@ -153,11 +154,6 @@ class InvestmentModel(Model):
                 ),
                 f'fix_{variable.name}',
             )
-            if self._on_variable is not None:
-                raise ValueError(
-                    f'Flow {self.label_full} has a fixed relative flow rate and an on_variable.'
-                    f'This combination is currently not supported.'
-                )
             return
 
         # eq: defining_variable(t)  <= size * upper_bound(t)
@@ -182,7 +178,7 @@ class InvestmentModel(Model):
             #     ... mit mega = relative_maximum * maximum_size
             # äquivalent zu:.
             # eq: - defining_variable(t) + mega * On(t) + size * relative_minimum(t) <= + mega
-            mega = lb_relative * self.parameters.maximum_size
+            mega = self.parameters.maximum_size * lb_relative
             on = self._on_variable
             self.add(
                 self._model.add_constraints(
@@ -191,6 +187,50 @@ class InvestmentModel(Model):
                 f'lb_{variable.name}',
             )
             # anmerkung: Glg bei Spezialfall relative_minimum = 0 redundant zu OnOff ??
+
+    def _create_bounds_for_scenarios(self):
+        if isinstance(self.parameters.investment_scenarios, str):
+            if self.parameters.investment_scenarios == 'individual':
+                return
+            raise ValueError(f'Invalid value for investment_scenarios: {self.parameters.investment_scenarios}')
+
+        if self.parameters.investment_scenarios is None:
+            self.add(
+                self._model.add_constraints(
+                    self.size.isel(scenario=slice(None, -1)) == self.size.isel(scenario=slice(1, None)),
+                    name=f'{self.label_full}|equalize_size_per_scenario',
+                ),
+                'equalize_size_per_scenario',
+            )
+            return
+        if not isinstance(self.parameters.investment_scenarios, list):
+            raise ValueError(f'Invalid value for investment_scenarios: {self.parameters.investment_scenarios}')
+        if not all(scenario in self._model.time_series_collection.scenarios for scenario in self.parameters.investment_scenarios):
+            raise ValueError(f'Some scenarios in investment_scenarios are not present in the time_series_collection: '
+                             f'{self.parameters.investment_scenarios}. This might be due to selecting a subset of '
+                             f'all scenarios, which is not yet supported.')
+
+        investment_scenarios = self._model.time_series_collection.scenarios.intersection(self.parameters.investment_scenarios)
+        no_investment_scenarios = self._model.time_series_collection.scenarios.difference(self.parameters.investment_scenarios)
+
+        # eq: size(s) = size(s')    for s, s' in investment_scenarios
+        if len(investment_scenarios) > 1:
+            self.add(
+                self._model.add_constraints(
+                    self.size.sel(scenario=investment_scenarios[:-1]) == self.size.sel(scenario=investment_scenarios[1:]),
+                    name=f'{self.label_full}|investment_scenarios',
+                    ),
+                'investment_scenarios',
+            )
+
+        if len(no_investment_scenarios) >= 1:
+            self.add(
+                self._model.add_constraints(
+                    self.size.sel(scenario=no_investment_scenarios) == 0,
+                    name=f'{self.label_full}|no_investment_scenarios',
+                    ),
+                'no_investment_scenarios',
+            )
 
 
 class StateModel(Model):
@@ -203,12 +243,12 @@ class StateModel(Model):
         model: SystemModel,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[NumericData, NumericData]],
-        previous_values: List[Optional[NumericData]] = None,
+        defining_bounds: List[Tuple[TemporalData, TemporalData]],
+        previous_values: List[Optional[TemporalData]] = None,
         use_off: bool = True,
-        on_hours_total_min: Optional[NumericData] = 0,
-        on_hours_total_max: Optional[NumericData] = None,
-        effects_per_running_hour: Dict[str, NumericData] = None,
+        on_hours_total_min: Optional[TemporalData] = 0,
+        on_hours_total_max: Optional[TemporalData] = None,
+        effects_per_running_hour: Dict[str, TemporalData] = None,
         label: Optional[str] = None,
     ):
         """
@@ -234,7 +274,7 @@ class StateModel(Model):
         self._on_hours_total_min = on_hours_total_min if on_hours_total_min is not None else 0
         self._on_hours_total_max = on_hours_total_max if on_hours_total_max is not None else np.inf
         self._use_off = use_off
-        self._effects_per_running_hour = effects_per_running_hour or {}
+        self._effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
 
         self.on = None
         self.total_on_hours: Optional[linopy.Variable] = None
@@ -245,7 +285,7 @@ class StateModel(Model):
             self._model.add_variables(
                 name=f'{self.label_full}|on',
                 binary=True,
-                coords=self._model.coords,
+                coords=self._model.get_coords(),
             ),
             'on',
         )
@@ -254,7 +294,7 @@ class StateModel(Model):
             self._model.add_variables(
                 lower=self._on_hours_total_min,
                 upper=self._on_hours_total_max,
-                coords=None,
+                coords=self._model.get_coords(time_dim=False),
                 name=f'{self.label_full}|on_hours_total',
             ),
             'on_hours_total',
@@ -262,7 +302,7 @@ class StateModel(Model):
 
         self.add(
             self._model.add_constraints(
-                self.total_on_hours == (self.on * self._model.hours_per_step).sum(),
+                self.total_on_hours == (self.on * self._model.hours_per_step).sum('time'),
                 name=f'{self.label_full}|on_hours_total',
             ),
             'on_hours_total',
@@ -276,7 +316,7 @@ class StateModel(Model):
                 self._model.add_variables(
                     name=f'{self.label_full}|off',
                     binary=True,
-                    coords=self._model.coords,
+                    coords=self._model.get_coords(),
                 ),
                 'off',
             )
@@ -344,7 +384,7 @@ class StateModel(Model):
         return 1 - self.previous_states
 
     @staticmethod
-    def compute_previous_states(previous_values: List[NumericData], epsilon: float = 1e-5) -> np.ndarray:
+    def compute_previous_states(previous_values: List[TemporalData], epsilon: float = 1e-5) -> np.ndarray:
         """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
         if not previous_values or all([val is None for val in previous_values]):
             return np.array([0])
@@ -385,12 +425,12 @@ class SwitchStateModel(Model):
 
         # Create switch variables
         self.switch_on = self.add(
-            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.coords),
+            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_on', coords=self._model.get_coords()),
             'switch_on',
         )
 
         self.switch_off = self.add(
-            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.coords),
+            self._model.add_variables(binary=True, name=f'{self.label_full}|switch_off', coords=self._model.get_coords()),
             'switch_off',
         )
 
@@ -451,9 +491,9 @@ class ConsecutiveStateModel(Model):
         model: SystemModel,
         label_of_element: str,
         state_variable: linopy.Variable,
-        minimum_duration: Optional[NumericData] = None,
-        maximum_duration: Optional[NumericData] = None,
-        previous_states: Optional[NumericData] = None,
+        minimum_duration: Optional[TemporalData] = None,
+        maximum_duration: Optional[TemporalData] = None,
+        previous_states: Optional[TemporalData] = None,
         label: Optional[str] = None,
     ):
         """
@@ -474,11 +514,6 @@ class ConsecutiveStateModel(Model):
         self._minimum_duration = minimum_duration
         self._maximum_duration = maximum_duration
 
-        if isinstance(self._minimum_duration, TimeSeries):
-            self._minimum_duration = self._minimum_duration.active_data
-        if isinstance(self._maximum_duration, TimeSeries):
-            self._maximum_duration = self._maximum_duration.active_data
-
         self.duration = None
 
     def do_modeling(self):
@@ -492,7 +527,7 @@ class ConsecutiveStateModel(Model):
             self._model.add_variables(
                 lower=0,
                 upper=self._maximum_duration if self._maximum_duration is not None else mega,
-                coords=self._model.coords,
+                coords=self._model.get_coords(),
                 name=f'{self.label_full}|hours',
             ),
             'hours',
@@ -545,7 +580,7 @@ class ConsecutiveStateModel(Model):
             )
 
             # Handle initial condition
-            if 0 < self.previous_duration < self._minimum_duration.isel(time=0):
+            if 0 < self.previous_duration < self._minimum_duration.isel(time=0).max():
                 self.add(
                     self._model.add_constraints(
                         self._state_variable.isel(time=0) == 1, name=f'{self.label_full}|initial_minimum'
@@ -570,12 +605,12 @@ class ConsecutiveStateModel(Model):
         """Computes the previous duration of the state variable"""
         #TODO: Allow for other/dynamic timestep resolutions
         return ConsecutiveStateModel.compute_consecutive_hours_in_state(
-            self._previous_states, self._model.hours_per_step.isel(time=0).item()
+            self._previous_states, self._model.hours_per_step.isel(time=0).values.flatten()[0]
         )
 
     @staticmethod
     def compute_consecutive_hours_in_state(
-        binary_values: NumericData, hours_per_timestep: Union[int, float, np.ndarray]
+        binary_values: TemporalData, hours_per_timestep: Union[int, float, np.ndarray]
     ) -> Scalar:
         """
         Computes the final consecutive duration in state 'on' (=1) in hours, from a binary array.
@@ -634,8 +669,8 @@ class OnOffModel(Model):
         on_off_parameters: OnOffParameters,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[NumericData, NumericData]],
-        previous_values: List[Optional[NumericData]],
+        defining_bounds: List[Tuple[TemporalData, TemporalData]],
+        previous_values: List[Optional[TemporalData]],
         label: Optional[str] = None,
     ):
         """
@@ -792,7 +827,7 @@ class PieceModel(Model):
             self._model.add_variables(
                 binary=True,
                 name=f'{self.label_full}|inside_piece',
-                coords=self._model.coords if self._as_time_series else None,
+                coords=self._model.get_coords(time_dim=self._as_time_series),
             ),
             'inside_piece',
         )
@@ -802,7 +837,7 @@ class PieceModel(Model):
                 lower=0,
                 upper=1,
                 name=f'{self.label_full}|lambda0',
-                coords=self._model.coords if self._as_time_series else None,
+                coords=self._model.get_coords(time_dim=self._as_time_series),
             ),
             'lambda0',
         )
@@ -812,7 +847,7 @@ class PieceModel(Model):
                 lower=0,
                 upper=1,
                 name=f'{self.label_full}|lambda1',
-                coords=self._model.coords if self._as_time_series else None,
+                coords=self._model.get_coords(time_dim=self._as_time_series),
             ),
             'lambda1',
         )
@@ -896,7 +931,7 @@ class PiecewiseModel(Model):
             elif self._zero_point is True:
                 self.zero_point = self.add(
                     self._model.add_variables(
-                        coords=self._model.coords, binary=True, name=f'{self.label_full}|zero_point'
+                        coords=self._model.get_coords(), binary=True, name=f'{self.label_full}|zero_point'
                     ),
                     'zero_point',
                 )
@@ -917,19 +952,20 @@ class ShareAllocationModel(Model):
     def __init__(
         self,
         model: SystemModel,
-        shares_are_time_series: bool,
+        has_time_dim: bool,
+        has_scenario_dim: bool,
         label_of_element: Optional[str] = None,
         label: Optional[str] = None,
         label_full: Optional[str] = None,
         total_max: Optional[Scalar] = None,
         total_min: Optional[Scalar] = None,
-        max_per_hour: Optional[NumericData] = None,
-        min_per_hour: Optional[NumericData] = None,
+        max_per_hour: Optional[TemporalData] = None,
+        min_per_hour: Optional[TemporalData] = None,
     ):
         super().__init__(model, label_of_element=label_of_element, label=label, label_full=label_full)
-        if not shares_are_time_series:  # If the condition is True
+        if not has_time_dim:  # If the condition is True
             assert max_per_hour is None and min_per_hour is None, (
-                'Both max_per_hour and min_per_hour cannot be used when shares_are_time_series is False'
+                'Both max_per_hour and min_per_hour cannot be used when has_time_dim is False'
             )
         self.total_per_timestep: Optional[linopy.Variable] = None
         self.total: Optional[linopy.Variable] = None
@@ -940,8 +976,9 @@ class ShareAllocationModel(Model):
         self._eq_total: Optional[linopy.Constraint] = None
 
         # Parameters
-        self._shares_are_time_series = shares_are_time_series
-        self._total_max = total_max if total_min is not None else np.inf
+        self._has_time_dim = has_time_dim
+        self._has_scenario_dim = has_scenario_dim
+        self._total_max = total_max if total_max is not None else np.inf
         self._total_min = total_min if total_min is not None else -np.inf
         self._max_per_hour = max_per_hour if max_per_hour is not None else np.inf
         self._min_per_hour = min_per_hour if min_per_hour is not None else -np.inf
@@ -949,7 +986,10 @@ class ShareAllocationModel(Model):
     def do_modeling(self):
         self.total = self.add(
             self._model.add_variables(
-                lower=self._total_min, upper=self._total_max, coords=None, name=f'{self.label_full}|total'
+                lower=self._total_min,
+                upper=self._total_max,
+                coords=self._model.get_coords(time_dim=False, scenario_dim=self._has_scenario_dim),
+                name=f'{self.label_full}|total',
             ),
             'total',
         )
@@ -958,16 +998,12 @@ class ShareAllocationModel(Model):
             self._model.add_constraints(self.total == 0, name=f'{self.label_full}|total'), 'total'
         )
 
-        if self._shares_are_time_series:
+        if self._has_time_dim:
             self.total_per_timestep = self.add(
                 self._model.add_variables(
-                    lower=-np.inf
-                    if (self._min_per_hour is None)
-                    else np.multiply(self._min_per_hour, self._model.hours_per_step),
-                    upper=np.inf
-                    if (self._max_per_hour is None)
-                    else np.multiply(self._max_per_hour, self._model.hours_per_step),
-                    coords=self._model.coords,
+                    lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.hours_per_step,
+                    upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.hours_per_step,
+                    coords=self._model.get_coords(time_dim=True, scenario_dim=self._has_scenario_dim),
                     name=f'{self.label_full}|total_per_timestep',
                 ),
                 'total_per_timestep',
@@ -979,12 +1015,14 @@ class ShareAllocationModel(Model):
             )
 
             # Add it to the total
-            self._eq_total.lhs -= self.total_per_timestep.sum()
+            self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')
 
     def add_share(
         self,
         name: str,
         expression: linopy.LinearExpression,
+        has_time_dim: bool,
+        has_scenario_dim: bool,
     ):
         """
         Add a share to the share allocation model. If the share already exists, the expression is added to the existing share.
@@ -996,16 +1034,17 @@ class ShareAllocationModel(Model):
             name: The name of the share.
             expression: The expression of the share. Added to the right hand side of the constraint.
         """
+        if has_time_dim and not self._has_time_dim:
+            raise ValueError('Cannot add share with time_dim=True to a model without time_dim')
+        if has_scenario_dim and not self._has_scenario_dim:
+            raise ValueError('Cannot add share with scenario_dim=True to a model without scenario_dim')
+
         if name in self.shares:
             self.share_constraints[name].lhs -= expression
         else:
             self.shares[name] = self.add(
                 self._model.add_variables(
-                    coords=None
-                    if isinstance(expression, linopy.LinearExpression)
-                    and expression.ndim == 0
-                    or not isinstance(expression, linopy.LinearExpression)
-                    else self._model.coords,
+                    coords=self._model.get_coords(time_dim=has_time_dim, scenario_dim=has_scenario_dim),
                     name=f'{name}->{self.label_full}',
                 ),
                 name,
@@ -1013,7 +1052,7 @@ class ShareAllocationModel(Model):
             self.share_constraints[name] = self.add(
                 self._model.add_constraints(self.shares[name] == expression, name=f'{name}->{self.label_full}'), name
             )
-            if self.shares[name].ndim == 0:
+            if not has_time_dim:
                 self._eq_total.lhs -= self.shares[name]
             else:
                 self._eq_total_per_timestep.lhs -= self.shares[name]
@@ -1042,7 +1081,12 @@ class PiecewiseEffectsModel(Model):
 
     def do_modeling(self):
         self.shares = {
-            effect: self.add(self._model.add_variables(coords=None, name=f'{self.label_full}|{effect}'), f'{effect}')
+            effect: self.add(
+                self._model.add_variables(
+                    coords=self._model.get_coords(time_dim=False), name=f'{self.label_full}|{effect}'
+                ),
+                f'{effect}',
+            )
             for effect in self._piecewise_shares
         }
 
