@@ -158,6 +158,7 @@ class DataConverter:
     Supports:
     - Scalars (broadcast to all dimensions)
     - 1D data (np.ndarray, pd.Series, single-column DataFrame)
+    - Multi-dimensional arrays
     - xr.DataArray (validated and potentially broadcast)
 
     Simple 1D data is matched to one dimension and broadcast to others.
@@ -165,11 +166,11 @@ class DataConverter:
     """
 
     @staticmethod
-    def _convert_series_by_index(
+    def _match_series_to_dimension(
         data: pd.Series, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
     ) -> xr.DataArray:
         """
-        Convert pandas Series to DataArray by matching index to coordinates.
+        Match pandas Series to a dimension by comparing its index to coordinates.
 
         Args:
             data: pandas Series
@@ -196,11 +197,11 @@ class DataConverter:
         raise ConversionError(f'Series index does not match any target dimension coordinates: {target_dims}')
 
     @staticmethod
-    def _convert_1d_array_by_length(
+    def _match_array_to_dimension(
         data: np.ndarray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
     ) -> xr.DataArray:
         """
-        Convert 1D numpy array to DataArray by matching length to coordinates.
+        Match 1D numpy array to a dimension by comparing its length to coordinate lengths.
 
         Args:
             data: 1D numpy array
@@ -218,7 +219,7 @@ class DataConverter:
                 raise ConversionError('Cannot convert multi-element array without target dimensions')
             return xr.DataArray(data[0])
 
-        # Match by length
+        # Find dimensions with matching lengths
         matching_dims = []
         for dim_name in target_dims:
             if len(data) == len(coords[dim_name]):
@@ -239,102 +240,11 @@ class DataConverter:
         return xr.DataArray(data.copy(), coords={match_dim: coords[match_dim]}, dims=[match_dim])
 
     @staticmethod
-    def _broadcast_to_target_dims(
-        data: xr.DataArray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
-    ) -> xr.DataArray:
-        """
-        Broadcast DataArray to match target dimensions.
-
-        Args:
-            data: Source DataArray
-            coords: Target coordinates
-            target_dims: Target dimension names
-
-        Returns:
-            DataArray broadcast to target dimensions
-        """
-        if len(target_dims) == 0:
-            # Target is scalar
-            if data.size != 1:
-                raise ConversionError('Cannot convert multi-element DataArray to scalar')
-            return xr.DataArray(data.values.item())
-
-        # If data already matches target, validate coordinates and return
-        if set(data.dims) == set(target_dims) and len(data.dims) == len(target_dims):
-            # Check coordinate compatibility
-            for dim in data.dims:
-                if dim in coords and not np.array_equal(data.coords[dim].values, coords[dim].values):
-                    raise ConversionError(f'DataArray {dim} coordinates do not match target coordinates')
-
-            # Ensure correct dimension order
-            if data.dims != target_dims:
-                data = data.transpose(*target_dims)
-            return data.copy()
-
-        # Handle scalar data (0D) - broadcast to all dimensions
-        if data.ndim == 0:
-            return xr.DataArray(data.item(), coords=coords, dims=target_dims)
-
-        # Handle broadcasting from fewer to more dimensions
-        if len(data.dims) < len(target_dims):
-            return DataConverter._expand_to_more_dims(data, coords, target_dims)
-
-        # Cannot handle more dimensions than target
-        if len(data.dims) > len(target_dims):
-            raise ConversionError(f'Cannot reduce DataArray from {len(data.dims)} to {len(target_dims)} dimensions')
-
-        raise ConversionError(f'Cannot convert DataArray with dims {data.dims} to target dims {target_dims}')
-
-    @staticmethod
-    def _expand_to_more_dims(
-        data: xr.DataArray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
-    ) -> xr.DataArray:
-        """Expand DataArray to additional dimensions by broadcasting."""
-        # Validate that all source dimensions exist in target
-        for dim in data.dims:
-            if dim not in target_dims:
-                raise ConversionError(f'Source dimension "{dim}" not found in target dimensions {target_dims}')
-
-            # Check coordinate compatibility
-            if not np.array_equal(data.coords[dim].values, coords[dim].values):
-                raise ConversionError(f'Source {dim} coordinates do not match target coordinates')
-
-        # Start with the original data
-        result_data = data.values
-        result_dims = list(data.dims)
-        result_coords = {dim: data.coords[dim] for dim in data.dims}
-
-        # Add missing dimensions one by one
-        for target_dim in target_dims:
-            if target_dim not in result_dims:
-                # Add this dimension at the end
-                result_data = np.expand_dims(result_data, axis=-1)
-                result_dims.append(target_dim)
-                result_coords[target_dim] = coords[target_dim]
-
-                # Broadcast along the new dimension
-                new_shape = list(result_data.shape)
-                new_shape[-1] = len(coords[target_dim])
-                result_data = np.broadcast_to(result_data, new_shape)
-
-        # Reorder dimensions to match target order
-        if tuple(result_dims) != target_dims:
-            # Create mapping from current to target order
-            dim_indices = [result_dims.index(dim) for dim in target_dims]
-            result_data = np.transpose(result_data, dim_indices)
-
-        # Build final coordinates dict in target order
-        final_coords = {dim: coords[dim] for dim in target_dims}
-
-        return xr.DataArray(result_data.copy(), coords=final_coords, dims=target_dims)
-
-    @staticmethod
-    def _convert_multid_array_by_shape(
+    def _match_multidim_array_to_dimensions(
         data: np.ndarray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
     ) -> xr.DataArray:
         """
-        Convert multi-dimensional numpy array to DataArray by matching dimensions by shape.
-        Returns a DataArray that may need further broadcasting to target dimensions.
+        Match multi-dimensional numpy array to dimensions by finding the correct shape permutation.
 
         Args:
             data: Multi-dimensional numpy array
@@ -342,7 +252,7 @@ class DataConverter:
             target_dims: Target dimension names
 
         Returns:
-            DataArray with dimensions matched by shape (may be subset of target_dims)
+            DataArray with dimensions matched by shape
 
         Raises:
             ConversionError: If array dimensions cannot be uniquely matched to coordinates
@@ -352,17 +262,14 @@ class DataConverter:
                 raise ConversionError('Cannot convert multi-element array without target dimensions')
             return xr.DataArray(data.item())
 
-        # Get lengths of each dimension
+        from itertools import permutations
+
         array_shape = data.shape
         coord_lengths = {dim: len(coords[dim]) for dim in target_dims}
 
-        # Find all possible ways to match array dimensions to available coordinates
-        from itertools import permutations
-
-        # Try all permutations of target_dims that match the array's number of dimensions
+        # Find all possible dimension mappings
         possible_mappings = []
         for dim_subset in permutations(target_dims, data.ndim):
-            # Check if this permutation matches the array shape
             if all(array_shape[i] == coord_lengths[dim_subset[i]] for i in range(len(dim_subset))):
                 possible_mappings.append(dim_subset)
 
@@ -376,58 +283,80 @@ class DataConverter:
                 'Cannot uniquely determine dimension mapping.'
             )
 
-        # Use the unique mapping found
         matched_dims = possible_mappings[0]
         matched_coords = {dim: coords[dim] for dim in matched_dims}
 
-        # Return DataArray with matched dimensions - broadcasting will happen later if needed
         return xr.DataArray(data.copy(), coords=matched_coords, dims=matched_dims)
+
+    @staticmethod
+    def _broadcast_to_target(
+        data: xr.DataArray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Broadcast DataArray to target dimensions with validation.
+
+        Handles all cases: scalar expansion, dimension validation, coordinate matching,
+        and broadcasting to additional dimensions using xarray's capabilities.
+        """
+        # Cannot reduce dimensions of data
+        if len(data.dims) > len(target_dims):
+            raise ConversionError(f'Cannot reduce DataArray from {len(data.dims)} to {len(target_dims)} dimensions')
+
+        # Validate coordinate compatibility
+        for dim in data.dims:
+            if dim not in target_dims:
+                raise ConversionError(f'Source dimension "{dim}" not found in target dimensions {target_dims}')
+
+            if not np.array_equal(data.coords[dim].values, coords[dim].values):
+                raise ConversionError(f'DataArray {dim} coordinates do not match target coordinates')
+
+        # Use xarray's broadcast_like for efficient expansion and broadcasting
+        target_template = xr.DataArray(
+            np.empty([len(coords[dim]) for dim in target_dims]), coords=coords, dims=target_dims
+        )
+        return data.broadcast_like(target_template).transpose(*target_dims)
 
     @classmethod
     def to_dataarray(
         cls,
-        data: Union[Scalar, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray, TimeSeriesData],
+        data: Union[float, int, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray],
         coords: Optional[Dict[str, pd.Index]] = None,
     ) -> xr.DataArray:
         """
-        Convert data to xarray.DataArray with specified coordinates.
-
-        Accepts:
-        - Scalars (broadcast to all dimensions)
-        - 1D arrays or Series (matched to one dimension, broadcast to others)
-        - Multi-D arrays or DataFrames (dimensions matched by length, broadcast to remaining)
-        - xr.DataArray (validated and potentially broadcast to additional dimensions)
+        Convert various data types to xarray.DataArray with specified coordinates.
 
         Args:
-            data: Data to convert
+            data: Data to convert (scalar, array, Series, DataFrame, or DataArray)
             coords: Dictionary mapping dimension names to coordinate indices
 
         Returns:
-            DataArray with the converted data
+            DataArray with the converted data broadcast to target dimensions
+
+        Raises:
+            ConversionError: If data cannot be converted or dimensions are ambiguous
         """
         if coords is None:
             coords = {}
 
-        validated_coords, target_dims = cls._validate_and_prepare_coords(coords)
+        validated_coords, target_dims = cls._prepare_coordinates(coords)
 
-        # Step 1: Convert to DataArray (may have fewer dimensions than target)
+        # Step 1: Convert input data to initial DataArray
         if isinstance(data, (int, float, np.integer, np.floating)):
-            # Scalars: create 0D DataArray, will be broadcast later
+            # Scalar values
             intermediate = xr.DataArray(data.item() if hasattr(data, 'item') else data)
 
         elif isinstance(data, np.ndarray):
             if data.ndim == 1:
-                intermediate = cls._convert_1d_array_by_length(data, validated_coords, target_dims)
+                intermediate = cls._match_array_to_dimension(data, validated_coords, target_dims)
             else:
-                # Handle multi-dimensional arrays - this now allows partial matching
-                intermediate = cls._convert_multid_array_by_shape(data, validated_coords, target_dims)
+                intermediate = cls._match_multidim_array_to_dimensions(data, validated_coords, target_dims)
 
         elif isinstance(data, pd.Series):
             if isinstance(data.index, pd.MultiIndex):
                 raise ConversionError(
                     'Series index must be a single level Index. Multi-index Series are not supported.'
                 )
-            intermediate = cls._convert_series_by_index(data, validated_coords, target_dims)
+            intermediate = cls._match_series_to_dimension(data, validated_coords, target_dims)
 
         elif isinstance(data, pd.DataFrame):
             if isinstance(data.index, pd.MultiIndex):
@@ -438,44 +367,40 @@ class DataConverter:
                 raise ConversionError('DataFrame must have at least one column.')
 
             if len(data.columns) == 1:
-                intermediate = cls._convert_series_by_index(
-                    data.iloc[:, 0], validated_coords, target_dims
-                )
+                # Single-column DataFrame - treat as Series
+                intermediate = cls._match_series_to_dimension(data.iloc[:, 0], validated_coords, target_dims)
             else:
-                # Handle multi-column DataFrames - this now allows partial matching
-                logger.warning('Converting multi-column DataFrame to xr.DataArray. We advise to do this manually.')
-                intermediate = cls._convert_multid_array_by_shape(
-                    data.to_numpy(), validated_coords, target_dims
-                )
+                # Multi-column DataFrame - treat as multi-dimensional array
+                intermediate = cls._match_multidim_array_to_dimensions(data.to_numpy(), validated_coords, target_dims)
 
         elif isinstance(data, xr.DataArray):
             intermediate = data.copy()
 
         else:
-            raise ConversionError(
-                f'Unsupported data type: {type(data).__name__}. Only scalars, arrays, Series, DataFrames, and DataArrays are supported.'
-            )
+            raise ConversionError(f'Unsupported data type: {type(data).__name__}.')
 
-        # Step 2: Broadcast to target dimensions if needed
-        # This now handles cases where intermediate has some but not all target dimensions
-        return cls._broadcast_to_target_dims(intermediate, validated_coords, target_dims)
+        # Step 2: Broadcast to target dimensions
+        return cls._broadcast_to_target(intermediate, validated_coords, target_dims)
 
     @staticmethod
-    def _validate_and_prepare_coords(coords: Dict[str, pd.Index]) -> Tuple[Dict[str, pd.Index], Tuple[str, ...]]:
+    def _prepare_coordinates(coords: Dict[str, pd.Index]) -> Tuple[Dict[str, pd.Index], Tuple[str, ...]]:
         """
-        Validate and prepare coordinates for the DataArray.
+        Validate coordinates and prepare them for DataArray creation.
 
         Args:
             coords: Dictionary mapping dimension names to coordinate indices
 
         Returns:
             Tuple of (validated coordinates dict, dimensions tuple)
+
+        Raises:
+            ConversionError: If coordinates are invalid
         """
         validated_coords = {}
         dims = []
 
         for dim_name, coord_index in coords.items():
-            # Validate coordinate index
+            # Basic validation
             if not isinstance(coord_index, pd.Index) or len(coord_index) == 0:
                 raise ConversionError(f'{dim_name} coordinates must be a non-empty pandas Index')
 
