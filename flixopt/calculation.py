@@ -61,8 +61,10 @@ class Calculation:
         """
         self.name = name
         if flow_system.used_in_calculation:
-            logging.warning(f'FlowSystem {flow_system} is already used in a calculation. '
-                            f'Creating a copy for Calculation "{self.name}".')
+            logger.warning(
+                f'FlowSystem {flow_system} is already used in a calculation. '
+                f'Creating a copy of the FlowSystem for Calculation "{self.name}".'
+            )
             flow_system = flow_system.copy()
 
         if active_timesteps is not None:

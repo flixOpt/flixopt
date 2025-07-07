@@ -51,8 +51,15 @@ class TimeSeriesData(xr.DataArray):
 
     __slots__ = ()  # No additional instance attributes - everything goes in attrs
 
-    def __init__(self, *args, aggregation_group: Optional[str] = None, aggregation_weight: Optional[float] = None,
-                 agg_group: Optional[str] = None, agg_weight: Optional[float] = None, **kwargs):
+    def __init__(
+            self,
+            *args,
+            aggregation_group: Optional[str] = None,
+            aggregation_weight: Optional[float] = None,
+            agg_group: Optional[str] = None,
+            agg_weight: Optional[float] = None,
+            **kwargs
+    ):
         """
         Args:
             *args: Arguments passed to DataArray
@@ -83,6 +90,23 @@ class TimeSeriesData(xr.DataArray):
 
         # Always mark as TimeSeriesData
         self.attrs['__timeseries_data__'] = True
+
+    def fit_to_coords(
+        self,
+        coords: Dict[str, pd.Index],
+        name: Optional[str] = None,
+    ) -> 'TimeSeriesData':
+        """Fit the data to the given coordinates. Returns a new TimeSeriesData object if the current coords are different."""
+        if self.coords.equals(xr.Coordinates(coords)):
+            return self
+
+        da = DataConverter.to_dataarray(self.data, coords=coords)
+        return self.__class__(
+            da,
+            aggregation_group=self.aggregation_group,
+            aggregation_weight=self.aggregation_weight,
+            name=name if name is not None else self.name
+        )
 
     @property
     def aggregation_group(self) -> Optional[str]:

@@ -343,10 +343,7 @@ class FlowSystem(Interface):
         if isinstance(data, TimeSeriesData):
             try:
                 data.name = name  # Set name of previous object!
-                return TimeSeriesData(
-                    DataConverter.to_dataarray(data, coords=coords),
-                    aggregation_group=data.aggregation_group, aggregation_weight=data.aggregation_weight
-                ).rename(name)
+                return data.fit_to_coords(coords)
             except ConversionError as e:
                 raise ConversionError(
                     f'Could not convert time series data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
