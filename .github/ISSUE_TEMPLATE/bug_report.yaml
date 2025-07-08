@@ -1,0 +1,64 @@
+name: 🐛 Bug Report
+description: Report a bug in flixopt
+title: "[BUG] "
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please provide the information below to help us reproduce and fix it.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug
+      placeholder: Describe what went wrong...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce-steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create FlowSystem with...
+        2. Add components...
+        3. Run calculation...
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: code-example
+    attributes:
+      label: Minimal code example
+      description: A minimal example that reproduces the bug
+      render: python
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        - flixopt version: 
+        - Python version: 
+        - Operating System: 
+        - Solver used:
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-output
+    attributes:
+      label: Error output
+      description: Any error messages or stack traces
+      render: shell
