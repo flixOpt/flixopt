@@ -12,10 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Uni
 import numpy as np
 import pandas as pd
 import xarray as xr
-from rich.console import Console
-from rich.pretty import Pretty
 
-from . import io as fx_io
 from .core import (
     ConversionError,
     DataConverter,
@@ -648,7 +645,7 @@ class FlowSystem(Interface):
         return {**self.components, **self.effects.effects, **self.flows, **self.buses}
 
     @property
-    def coords(self) -> Dict[str, pd.Index]:
+    def coords(self) -> Dict[FlowSystemDimensions, pd.Index]:
         active_coords = {'time': self.timesteps}
         if self.years is not None:
             active_coords['year'] = self.years
@@ -665,7 +662,7 @@ class FlowSystem(Interface):
         time: Optional[Union[str, slice, List[str], pd.Timestamp, pd.DatetimeIndex]] = None,
         year: Optional[Union[int, slice, List[int], pd.Index]] = None,
         scenario: Optional[Union[str, slice, List[str], pd.Index]] = None,
-            ) -> 'FlowSystem':
+    ) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by the time coordinate.
 

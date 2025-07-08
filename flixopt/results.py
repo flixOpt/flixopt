@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     import pyvis
 
     from .calculation import Calculation, SegmentedCalculation
+    from .core import FlowSystemDimensions
 
 
 logger = logging.getLogger('flixopt')
@@ -611,7 +612,7 @@ class CalculationResults:
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        scenario: Optional[Union[str, int]] = None,
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
         Plots a heatmap of the solution of a variable.
@@ -624,19 +625,60 @@ class CalculationResults:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                     If None, uses first value for each dimension.
+
+        Examples:
+            Basic usage (uses first scenario, first year, all time):
+
+            >>> results.plot_heatmap('Battery|charge_state')
+
+            Select specific scenario and year:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={'scenario': 'base', 'year': 2024})
+
+            Time filtering (summer months only):
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={
+            ...     'scenario': 'base',
+            ...     'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])]
+            ... })
+
+            Save to specific location:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate',
+            ...                      indexer={'scenario': 'base'},
+            ...                      save='path/to/my_heatmap.html')
         """
         dataarray = self.solution[variable_name]
 
-        scenario_suffix = ''
-        if 'scenario' in dataarray.indexes:
-            chosen_scenario = scenario or self.scenarios[0]
-            dataarray = dataarray.sel(scenario=chosen_scenario).drop_vars('scenario')
-            scenario_suffix = f'--{chosen_scenario}'
+        # Apply indexer or use first values
+        if indexer is not None:
+            # User provided custom indexer - apply it
+            dataarray = dataarray.sel(indexer)
+            suffix = '--' + '_'.join(f'{k}_{v}' for k, v in indexer.items())
+        else:
+            # No indexer - use first value for each dimension except 'time'
+            selection = {}
+            suffix_parts = []
+
+            for dim in dataarray.dims:
+                if dim != 'time' and dim in dataarray.coords:
+                    first_value = dataarray.coords[dim].values[0]
+                    selection[dim] = first_value
+                    suffix_parts.append(f'{dim}_{first_value}')
+
+            if selection:
+                dataarray = dataarray.sel(selection)
+
+            suffix = '--' + '_'.join(suffix_parts) if suffix_parts else ''
+
+        # Create name
+        name = f'{variable_name}{suffix}' if suffix else variable_name
 
         return plot_heatmap(
             dataarray=dataarray,
-            name=f'{variable_name}{scenario_suffix}',
+            name=name,
             folder=self.folder,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
