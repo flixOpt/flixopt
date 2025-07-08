@@ -62,29 +62,34 @@ class FlowSystem(Interface):
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
+        years: Optional[pd.Index] = None,
         scenarios: Optional[pd.Index] = None,
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
-        scenario_weights: Optional[NonTemporalDataUser] = None,
+        weights: Optional[NonTemporalDataUser] = None,
     ):
         """
         Args:
             timesteps: The timesteps of the model.
+            years: The years of the model.
             scenarios: The scenarios of the model.
             hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
             hours_of_previous_timesteps: The duration of previous timesteps.
                 If None, the first time increment of time_series is used.
                 This is needed to calculate previous durations (for example consecutive_on_hours).
                 If you use an array, take care that its long enough to cover all previous values!
-            scenario_weights: The weights of each scenarios. If None, all scenarios have the same weight (normalized to 1). Its recommended to scale the weights to sum up to 1.
+            weights: The weights of each year and scenario. If None, all have the same weight (normalized to 1). Its recommended to scale the weights to sum up to 1.
         """
         self.timesteps = self._validate_timesteps(timesteps)
 
         self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
 
+        self.years = None if years is None else self._validate_years(years)
+
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
-        self.scenario_weights = scenario_weights
+
+        self.weights = weights
 
         hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra)
 
@@ -129,6 +134,29 @@ class FlowSystem(Interface):
             scenarios = scenarios.rename('scenario')
 
         return scenarios
+
+    @staticmethod
+    def _validate_years(years: pd.Index) -> pd.Index:
+        """
+        Validate and prepare year index.
+
+        Args:
+            years: The year index to validate
+        """
+        if not isinstance(years, pd.Index) or len(years) == 0:
+            raise ConversionError('Years must be a non-empty Index')
+
+        if not (
+            years.dtype.kind == 'i'  # integer dtype
+            and years.is_monotonic_increasing  # rising
+            and years.is_unique
+        ):
+            raise ConversionError('Years must be a monotonically increasing and unique Index')
+
+        if years.name != 'year':
+            years = years.rename('year')
+
+        return years
 
     @staticmethod
     def _create_timesteps_with_extra(
@@ -235,10 +263,11 @@ class FlowSystem(Interface):
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
             timesteps=ds.indexes['time'],
+            years=ds.indexes.get('year'),
             scenarios=ds.indexes.get('scenario'),
-            scenario_weights=cls._resolve_dataarray_reference(
-                reference_structure['scenario_weights'], arrays_dict
-            ) if 'scenario_weights' in reference_structure else None,
+            weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
+            if 'weights' in reference_structure
+            else None,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
         )
@@ -380,12 +409,12 @@ class FlowSystem(Interface):
 
     def connect_and_transform(self):
         """Transform data for all elements using the new simplified approach."""
-        self.scenario_weights = self.fit_to_model_coords(
-            'scenario_weights', self.scenario_weights, has_time_dim=False
+        self.weights = self.fit_to_model_coords(
+            'weights', self.weights, has_time_dim=False
         )
-        if self.scenario_weights is not None and self.scenario_weights.sum() != 1:
+        if self.weights is not None and self.weights.sum() != 1:
             logger.warning(f'Scenario weights are not normalized to 1. This is reccomended for a better scaled model. '
-                           f'Sum of weights={self.scenario_weights.sum().item()}')
+                           f'Sum of weights={self.weights.sum().item()}')
 
         if not self.connected_and_transformed:
             self._connect_network()
@@ -621,6 +650,8 @@ class FlowSystem(Interface):
     @property
     def coords(self) -> Dict[str, pd.Index]:
         active_coords = {'time': self.timesteps}
+        if self.years is not None:
+            active_coords['year'] = self.years
         if self.scenarios is not None:
             active_coords['scenario'] = self.scenarios
         return active_coords
@@ -629,13 +660,18 @@ class FlowSystem(Interface):
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
 
-    def sel(self, time: Optional[Union[str, slice, List[str], pd.Timestamp, pd.DatetimeIndex]] = None,
-            scenario: Optional[Union[str, slice, List[str], pd.Index]] = None) -> 'FlowSystem':
+    def sel(
+        self,
+        time: Optional[Union[str, slice, List[str], pd.Timestamp, pd.DatetimeIndex]] = None,
+        year: Optional[Union[int, slice, List[int], pd.Index]] = None,
+        scenario: Optional[Union[str, slice, List[str], pd.Index]] = None,
+            ) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by the time coordinate.
 
         Args:
             time: Time selection (e.g., slice('2023-01-01', '2023-12-31'), '2023-06-15', or list of times)
+            year: Year selection (e.g., slice(2023, 2024), or list of years)
             scenario: Scenario selection (e.g., slice('scenario1', 'scenario2'), or list of scenarios)
 
         Returns:
@@ -648,7 +684,8 @@ class FlowSystem(Interface):
         indexers = {}
         if time is not None:
             indexers['time'] = time
-
+        if year is not None:
+            indexers['year'] = year
         if scenario is not None:
             indexers['scenario'] = scenario
 
@@ -658,12 +695,18 @@ class FlowSystem(Interface):
         selected_dataset = self.to_dataset().sel(**indexers)
         return self.__class__.from_dataset(selected_dataset)
 
-    def isel(self, time: Optional[Union[int, slice, List[int]]] = None, scenario: Optional[Union[int, slice, List[int]]] = None) -> 'FlowSystem':
+    def isel(
+        self,
+        time: Optional[Union[int, slice, List[int]]] = None,
+        year: Optional[Union[int, slice, List[int]]] = None,
+        scenario: Optional[Union[int, slice, List[int]]] = None
+    ) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by integer indices.
 
         Args:
             time: Time selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
+            year: Year selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
             scenario: Scenario selection by integer index (e.g., slice(0, 3), 50, or [0, 5, 10])
 
         Returns:
@@ -676,7 +719,8 @@ class FlowSystem(Interface):
         indexers = {}
         if time is not None:
             indexers['time'] = time
-
+        if year is not None:
+            indexers['year'] = year
         if scenario is not None:
             indexers['scenario'] = scenario
 
