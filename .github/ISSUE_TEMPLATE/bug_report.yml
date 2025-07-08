@@ -62,8 +62,8 @@ body:
       - CPLEX
       - GLPK
       - Other (please specify in description)
-    validations:
-      required: true
+  validations:
+    required: true
 - type: textarea
   id: version
   attributes:
