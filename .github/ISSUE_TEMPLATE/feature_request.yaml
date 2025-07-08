@@ -1,33 +1,88 @@
-name: 🚀 Feature Request
-description: Suggest a new feature for flixopt
+name: Feature Request
+description: Suggest a new feature or enhancement for FlixOpt.
 title: "[FEATURE] "
 labels: ["type: feature"]
 body:
-  - type: textarea
-    id: feature-description
-    attributes:
-      label: What feature would you like to see?
-      description: A clear description of the feature you're requesting
-    validations:
-      required: true
-
-  - type: textarea
-    id: use-case
-    attributes:
-      label: Use case
-      description: Describe your specific use case and how this feature would help
-      placeholder: "I want to model... so that I can..."
-    validations:
-      required: true
-
-  - type: textarea
-    id: solution
-    attributes:
-      label: Proposed solution
-      description: How do you envision this feature working?
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives considered
-      description: Any alternative solutions or workarounds you've considered
+- type: markdown
+  attributes:
+    value: |
+      Thanks for suggesting a new feature! Please provide as much detail as possible.
+- type: checkboxes
+  id: checks
+  attributes:
+    label: Prerequisite Checks
+    options:
+    - label: >
+        I have searched the [existing issues](https://github.com/flixOpt/flixopt/issues)
+        and confirmed this feature doesn't already exist.
+    - label: >
+        I have checked the [documentation](https://flixopt.github.io/flixopt/latest/)
+        to ensure this feature isn't already available.
+- type: textarea
+  id: problem
+  attributes:
+    label: Is your feature request related to a problem?
+    description: >
+      A clear and concise description of what the problem is.
+    placeholder: >
+      I'm always frustrated when modeling [specific energy system scenario]...
+- type: textarea
+  id: solution
+  validations:
+    required: true
+  attributes:
+    label: Describe the solution you'd like
+    description: >
+      A clear and concise description of what you want to happen.
+    placeholder: >
+      I would like to be able to model [specific component/feature]...
+- type: textarea
+  id: use-case
+  validations:
+    required: true
+  attributes:
+    label: Energy System Use Case
+    description: >
+      Describe your specific energy system modeling scenario and how this feature would help.
+    placeholder: >
+      I'm modeling a district heating system with seasonal thermal storage and need to...
+- type: textarea
+  id: example
+  attributes:
+    label: Desired Code Example (optional)
+    description: >
+      If possible, show how you would like to use this feature in code.
+    placeholder: >
+      # Example of how the new feature might work
+      thermal_storage = fx.SeasonalStorage(
+          label='seasonal_storage',
+          capacity_mwh=1000,
+          efficiency=0.95
+      )
+    render: python
+- type: dropdown
+  id: component-type
+  attributes:
+    label: Component Category (if applicable)
+    description: What type of energy system component does this relate to?
+    options:
+      - Storage (batteries, thermal storage, etc.)
+      - Generation (PV, wind, CHP, etc.)
+      - Conversion (heat pumps, boilers, etc.)
+      - Network/Grid (transmission, distribution)
+      - Optimization/Calculation (algorithms, solvers)
+      - Data/Input handling
+      - Results/Output
+      - Other
+- type: textarea
+  id: alternatives
+  attributes:
+    label: Alternatives considered
+    description: >
+      Describe any alternative solutions or workarounds you've considered.
+- type: textarea
+  id: additional-context
+  attributes:
+    label: Additional context
+    description: >
+      Add any other context, research papers, or examples about the feature request here.
