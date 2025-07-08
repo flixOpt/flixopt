@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.3] - 2025-07-08
 
 ### Fixed
-- Using `Effect.maximum_operation_per_hour` raised an error, needing an extra timestep. This has been fixed.
+- Using `Effect.maximum_operation_per_hour` raised an error, needing an extra timestep. This has been fixed thanks to @PRse4.
 
 ## [2.1.2] - 2025-06-14
 
