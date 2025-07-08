@@ -24,15 +24,14 @@ def test_system():
     # Create two scenarios
     scenarios = pd.Index(["Scenario A", "Scenario B"], name="scenario")
 
-    # Create scenario weights as TimeSeriesData
-    # Using TimeSeriesData to avoid conversion issues
-    scenario_weights = TimeSeriesData(np.array([0.7, 0.3]))
+    # Create scenario weights
+    weights = np.array([0.7, 0.3])
 
     # Create a flow system with scenarios
     flow_system = FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        scenario_weights=scenario_weights  # Use TimeSeriesData for weights
+        weights=weights  # Use TimeSeriesData for weights
     )
 
     # Create demand profiles that differ between scenarios
@@ -254,27 +253,27 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
     return flow_system
 
 
-def test_scenario_weights(flow_system_piecewise_conversion_scenarios):
+def test_weights(flow_system_piecewise_conversion_scenarios):
     """Test that scenario weights are correctly used in the model."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios))
-    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
+    flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    np.testing.assert_allclose(model.scenario_weights.values, weights)
+    np.testing.assert_allclose(model.weights.values, weights)
     assert_linequal(model.objective.expression,
                     (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total'])
-    assert np.isclose(model.scenario_weights.sum().item(), 2.25)
+    assert np.isclose(model.weights.sum().item(), 2.25)
 
-def test_scenario_weights_io(flow_system_piecewise_conversion_scenarios):
+def test_weights_io(flow_system_piecewise_conversion_scenarios):
     """Test that scenario weights are correctly used in the model."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
+    flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    np.testing.assert_allclose(model.scenario_weights.values, weights)
+    np.testing.assert_allclose(model.weights.values, weights)
     assert_linequal(model.objective.expression,
                     (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total'])
-    assert np.isclose(model.scenario_weights.sum().item(), 1.0)
+    assert np.isclose(model.weights.sum().item(), 1.0)
 
 def test_scenario_dimensions_in_variables(flow_system_piecewise_conversion_scenarios):
     """Test that all time variables are correctly broadcasted to scenario dimensions."""
@@ -286,7 +285,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
+    flow_system_piecewise_conversion_scenarios.weights = weights
     calc = create_calculation_and_solve(flow_system_piecewise_conversion_scenarios,
                                         solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
                                         name='test_full_scenario')
@@ -305,7 +304,7 @@ def test_io_persistance(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
+    flow_system_piecewise_conversion_scenarios.weights = weights
     calc = create_calculation_and_solve(flow_system_piecewise_conversion_scenarios,
                                         solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
                                         name='test_full_scenario')
@@ -326,12 +325,12 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     flow_system_full = flow_system_piecewise_conversion_scenarios
     scenarios = flow_system_full.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_full.scenario_weights = weights
+    flow_system_full.weights = weights
     flow_system = flow_system_full.sel(scenario=scenarios[0:2])
 
     assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])
 
-    np.testing.assert_allclose(flow_system.scenario_weights.values, flow_system_full.scenario_weights[0:2])
+    np.testing.assert_allclose(flow_system.weights.values, flow_system_full.weights[0:2])
 
 
     calc = fx.FullCalculation(flow_system=flow_system, name='test_full_scenario')
@@ -340,6 +339,6 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     calc.results.to_file()
 
-    np.testing.assert_allclose(calc.results.objective, ((calc.results.solution['costs|total'] * flow_system.scenario_weights).sum() + calc.results.solution['Penalty|total']).item()) ## Acount for rounding errors
+    np.testing.assert_allclose(calc.results.objective, ((calc.results.solution['costs|total'] * flow_system.weights).sum() + calc.results.solution['Penalty|total']).item()) ## Acount for rounding errors
 
     assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])

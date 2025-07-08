@@ -145,8 +145,7 @@ class EffectModel(ElementModel):
         self.invest: ShareAllocationModel = self.add(
             ShareAllocationModel(
                 model=self._model,
-                has_time_dim=False,
-                has_scenario_dim=True,
+                dims=['year', 'scenario'],
                 label_of_element=self.label_of_element,
                 label='invest',
                 label_full=f'{self.label_full}(invest)',
@@ -158,8 +157,7 @@ class EffectModel(ElementModel):
         self.operation: ShareAllocationModel = self.add(
             ShareAllocationModel(
                 model=self._model,
-                has_time_dim=True,
-                has_scenario_dim=True,
+                dims=['time', 'year', 'scenario'],
                 label_of_element=self.label_of_element,
                 label='operation',
                 label_full=f'{self.label_full}(operation)',
@@ -182,7 +180,7 @@ class EffectModel(ElementModel):
             self._model.add_variables(
                 lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
                 upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
-                coords=self._model.get_coords(time_dim=False),
+                coords=self._model.get_coords(['year', 'scenario']),
                 name=f'{self.label_full}|total',
             ),
             'total',
@@ -406,15 +404,13 @@ class EffectCollectionModel(Model):
                 self.effects[effect].model.operation.add_share(
                     name,
                     expression,
-                    has_time_dim=True,
-                    has_scenario_dim=True,
+                    dims=['time', 'year', 'scenario'],
                 )
             elif target == 'invest':
                 self.effects[effect].model.invest.add_share(
                     name,
                     expression,
-                    has_time_dim=False,
-                    has_scenario_dim=True,
+                    dims=['year', 'scenario'],
                 )
             else:
                 raise ValueError(f'Target {target} not supported!')
@@ -422,13 +418,13 @@ class EffectCollectionModel(Model):
     def add_share_to_penalty(self, name: str, expression: linopy.LinearExpression) -> None:
         if expression.ndim != 0:
             raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
-        self.penalty.add_share(name, expression, has_time_dim=False, has_scenario_dim=False)
+        self.penalty.add_share(name, expression, dims=[])
 
     def do_modeling(self):
         for effect in self.effects:
             effect.create_model(self._model)
         self.penalty = self.add(
-            ShareAllocationModel(self._model, has_time_dim=False, has_scenario_dim=False, label_of_element='Penalty')
+            ShareAllocationModel(self._model, dims=[], label_of_element='Penalty')
         )
         for model in [effect.model for effect in self.effects] + [self.penalty]:
             model.do_modeling()
@@ -436,7 +432,7 @@ class EffectCollectionModel(Model):
         self._add_share_between_effects()
 
         self._model.add_objective(
-            (self.effects.objective_effect.model.total * self._model.scenario_weights).sum()
+            (self.effects.objective_effect.model.total * self._model.weights).sum()
             + self.penalty.total.sum()
         )
 
@@ -447,16 +443,14 @@ class EffectCollectionModel(Model):
                 self.effects[target_effect].model.operation.add_share(
                     origin_effect.model.operation.label_full,
                     origin_effect.model.operation.total_per_timestep * time_series,
-                    has_time_dim=True,
-                    has_scenario_dim=True,
+                    dims=['time', 'year', 'scenario'],
                 )
             # 2. invest:    -> hier ist es Scalar (share)
             for target_effect, factor in origin_effect.specific_share_to_other_effects_invest.items():
                 self.effects[target_effect].model.invest.add_share(
                     origin_effect.model.invest.label_full,
                     origin_effect.model.invest.total * factor,
-                    has_time_dim=False,
-                    has_scenario_dim=True,
+                    dims=['year', 'scenario'],
                 )
 
 

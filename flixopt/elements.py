@@ -364,7 +364,7 @@ class FlowModel(ElementModel):
             self._model.add_variables(
                 lower=self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else 0,
                 upper=self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else np.inf,
-                coords=self._model.get_coords(time_dim=False),
+                coords=self._model.get_coords(['year', 'scenario']),
                 name=f'{self.label_full}|total_flow_hours',
             ),
             'total_flow_hours',

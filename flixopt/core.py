@@ -30,7 +30,7 @@ NonTemporalDataUser = Union[int, float, np.integer, np.floating, np.ndarray, pd.
 NonTemporalData = Union[Scalar, xr.DataArray]
 """Internally used datatypes for non-temporal data. Can be a Scalar or an xr.DataArray."""
 
-FlowSystemDimensions = Literal['time', 'scenario']
+FlowSystemDimensions = Literal['time', 'year', 'scenario']
 """Possible dimensions of a FlowSystem."""
 
 

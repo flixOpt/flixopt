@@ -12,14 +12,15 @@ if __name__ == '__main__':
     # Create datetime array starting from '2020-01-01' for the given time period
     timesteps = pd.date_range('2020-01-01', periods=9, freq='h')
     scenarios = pd.Index(['Base Case', 'High Demand'])
+    years = pd.Index([2020, 2021, 2022])
 
     # --- Create Time Series Data ---
     # Heat demand profile (e.g., kW) over time and corresponding power prices
     heat_demand_per_h = pd.DataFrame({'Base Case':[30, 0, 90, 110, 110, 20, 20, 20, 20],
                                       'High Demand':[30, 0, 100, 118, 125, 20, 20, 20, 20]}, index=timesteps)
-    power_prices = np.array([0.08, 0.09])
+    power_prices = np.array([0.08, 0.09, 0.10])
 
-    flow_system = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_weights=np.array([0.5, 0.6]))
+    flow_system = fx.FlowSystem(timesteps=timesteps, years=years, scenarios=scenarios, weights=np.array([0.5, 0.6]))
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)

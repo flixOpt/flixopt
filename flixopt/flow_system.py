@@ -376,12 +376,12 @@ class FlowSystem(Interface):
             except ConversionError as e:
                 raise ConversionError(
                     f'Could not convert time series data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
-        else:
-            try:
-                return DataConverter.to_dataarray(data, coords=coords).rename(name)
-            except ConversionError as e:
-                raise ConversionError(
-                    f'Could not convert data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
+
+        try:
+            return DataConverter.to_dataarray(data, coords=coords).rename(name)
+        except ConversionError as e:
+            raise ConversionError(
+                f'Could not convert data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
 
     def fit_effects_to_model_coords(
         self,
@@ -413,7 +413,7 @@ class FlowSystem(Interface):
             'weights', self.weights, has_time_dim=False
         )
         if self.weights is not None and self.weights.sum() != 1:
-            logger.warning(f'Scenario weights are not normalized to 1. This is reccomended for a better scaled model. '
+            logger.warning(f'Scenario weights are not normalized to 1. This is recomended for a better scaled model. '
                            f'Sum of weights={self.weights.sum().item()}')
 
         if not self.connected_and_transformed:

@@ -19,7 +19,7 @@ from rich.pretty import Pretty
 
 from . import io as fx_io
 from .config import CONFIG
-from .core import NonTemporalData, Scalar, TemporalDataUser, TimeSeriesData, get_dataarray_stats
+from .core import NonTemporalData, Scalar, TemporalDataUser, TimeSeriesData, get_dataarray_stats, FlowSystemDimensions
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -103,28 +103,28 @@ class SystemModel(linopy.Model):
         return self.flow_system.hours_of_previous_timesteps
 
     def get_coords(
-        self, scenario_dim=True, time_dim=True, extra_timestep=False
+        self,
+        dims: Optional[FlowSystemDimensions] = None,
+        extra_timestep=False,
     ) -> Optional[Union[Tuple[pd.Index], Tuple[pd.Index, pd.Index]]]:
         """
         Returns the coordinates of the model
 
         Args:
-            scenario_dim: If True, the scenario dimension is included in the coordinates
-            time_dim: If True, the time dimension is included in the coordinates
+            dims: The dimensions to include in the coordinates. Defaults to all dimensions. Coords are ordered automatically
             extra_timestep: If True, the extra timesteps are used instead of the regular timesteps
 
         Returns:
             The coordinates of the model. Might also be None if no scenarios are present and time_dim is False
         """
-        if extra_timestep and not time_dim:
-            raise ValueError('extra_timestep=True requires time_dim=True')
+        if dims is not None and extra_timestep and 'time' not in dims:
+            raise ValueError('extra_timestep=True requires time to be included in dims')
 
-        coords = self.flow_system.coords
+        if dims is None:
+            coords = self.flow_system.coords
+        else:
+            coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
 
-        if not scenario_dim:
-            coords.pop('scenario', None)
-        if not time_dim:
-            coords.pop('time', None)
         if extra_timestep:
             coords['time'] = self.flow_system.timesteps_extra
 
@@ -137,12 +137,12 @@ class SystemModel(linopy.Model):
         return tuple(coords.values())
 
     @property
-    def scenario_weights(self) -> Union[int, xr.DataArray]:
+    def weights(self) -> Union[int, xr.DataArray]:
         """Returns the scenario weights of the FlowSystem."""
-        if self.flow_system.scenario_weights is None:
+        if self.flow_system.weights is None:
             return 1
 
-        return self.flow_system.scenario_weights
+        return self.flow_system.weights
 
 
 class Interface:

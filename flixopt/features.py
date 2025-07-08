@@ -10,7 +10,7 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NonTemporalData, Scalar, TemporalData
+from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
 from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
 
@@ -48,7 +48,7 @@ class InvestmentModel(Model):
                 lower=0 if self.parameters.optional else self.parameters.minimum_or_fixed_size,
                 upper=self.parameters.maximum_or_fixed_size,
                 name=f'{self.label_full}|size',
-                coords=self._model.get_coords(time_dim=False),
+                coords=self._model.get_coords(['year', 'scenario']),
             ),
             'size',
         )
@@ -59,7 +59,7 @@ class InvestmentModel(Model):
                 self._model.add_variables(
                     binary=True,
                     name=f'{self.label_full}|is_invested',
-                    coords=self._model.get_coords(time_dim=False),
+                    coords=self._model.get_coords(['year', 'scenario']),
                 ),
                 'is_invested',
             )
@@ -294,7 +294,7 @@ class StateModel(Model):
             self._model.add_variables(
                 lower=self._on_hours_total_min,
                 upper=self._on_hours_total_max,
-                coords=self._model.get_coords(time_dim=False),
+                coords=self._model.get_coords(['year', 'scenario']),
                 name=f'{self.label_full}|on_hours_total',
             ),
             'on_hours_total',
@@ -952,8 +952,7 @@ class ShareAllocationModel(Model):
     def __init__(
         self,
         model: SystemModel,
-        has_time_dim: bool,
-        has_scenario_dim: bool,
+        dims: List[FlowSystemDimensions],
         label_of_element: Optional[str] = None,
         label: Optional[str] = None,
         label_full: Optional[str] = None,
@@ -963,10 +962,11 @@ class ShareAllocationModel(Model):
         min_per_hour: Optional[TemporalData] = None,
     ):
         super().__init__(model, label_of_element=label_of_element, label=label, label_full=label_full)
-        if not has_time_dim:  # If the condition is True
-            assert max_per_hour is None and min_per_hour is None, (
-                'Both max_per_hour and min_per_hour cannot be used when has_time_dim is False'
-            )
+
+        if 'time' not in dims and max_per_hour is not None or min_per_hour is not None:
+            raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')
+
+        self._dims = dims
         self.total_per_timestep: Optional[linopy.Variable] = None
         self.total: Optional[linopy.Variable] = None
         self.shares: Dict[str, linopy.Variable] = {}
@@ -976,8 +976,6 @@ class ShareAllocationModel(Model):
         self._eq_total: Optional[linopy.Constraint] = None
 
         # Parameters
-        self._has_time_dim = has_time_dim
-        self._has_scenario_dim = has_scenario_dim
         self._total_max = total_max if total_max is not None else np.inf
         self._total_min = total_min if total_min is not None else -np.inf
         self._max_per_hour = max_per_hour if max_per_hour is not None else np.inf
@@ -988,7 +986,7 @@ class ShareAllocationModel(Model):
             self._model.add_variables(
                 lower=self._total_min,
                 upper=self._total_max,
-                coords=self._model.get_coords(time_dim=False, scenario_dim=self._has_scenario_dim),
+                coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
                 name=f'{self.label_full}|total',
             ),
             'total',
@@ -998,12 +996,12 @@ class ShareAllocationModel(Model):
             self._model.add_constraints(self.total == 0, name=f'{self.label_full}|total'), 'total'
         )
 
-        if self._has_time_dim:
+        if 'time' in self._dims:
             self.total_per_timestep = self.add(
                 self._model.add_variables(
                     lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.hours_per_step,
                     upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.hours_per_step,
-                    coords=self._model.get_coords(time_dim=True, scenario_dim=self._has_scenario_dim),
+                    coords=self._model.get_coords(self._dims),
                     name=f'{self.label_full}|total_per_timestep',
                 ),
                 'total_per_timestep',
@@ -1021,8 +1019,7 @@ class ShareAllocationModel(Model):
         self,
         name: str,
         expression: linopy.LinearExpression,
-        has_time_dim: bool,
-        has_scenario_dim: bool,
+        dims: Optional[List[FlowSystemDimensions]] = None,
     ):
         """
         Add a share to the share allocation model. If the share already exists, the expression is added to the existing share.
@@ -1033,18 +1030,24 @@ class ShareAllocationModel(Model):
         Args:
             name: The name of the share.
             expression: The expression of the share. Added to the right hand side of the constraint.
+            dims: The dimensions of the share. Defaults to all dimensions. Dims are ordered automatically
         """
-        if has_time_dim and not self._has_time_dim:
-            raise ValueError('Cannot add share with time_dim=True to a model without time_dim')
-        if has_scenario_dim and not self._has_scenario_dim:
-            raise ValueError('Cannot add share with scenario_dim=True to a model without scenario_dim')
+        if dims is None:
+            dims = self._dims
+        else:
+            if 'time' in dims and 'time' not in self._dims:
+                raise ValueError('Cannot add share with time-dim to a model without time-dim')
+            if 'year' in dims and 'year' not in self._dims:
+                raise ValueError('Cannot add share with year-dim to a model without year-dim')
+            if 'scenario' in dims and 'scenario' not in self._dims:
+                raise ValueError('Cannot add share with scenario-dim to a model without scenario-dim')
 
         if name in self.shares:
             self.share_constraints[name].lhs -= expression
         else:
             self.shares[name] = self.add(
                 self._model.add_variables(
-                    coords=self._model.get_coords(time_dim=has_time_dim, scenario_dim=has_scenario_dim),
+                    coords=self._model.get_coords(dims),
                     name=f'{name}->{self.label_full}',
                 ),
                 name,
@@ -1052,7 +1055,7 @@ class ShareAllocationModel(Model):
             self.share_constraints[name] = self.add(
                 self._model.add_constraints(self.shares[name] == expression, name=f'{name}->{self.label_full}'), name
             )
-            if not has_time_dim:
+            if 'time' not in dims:
                 self._eq_total.lhs -= self.shares[name]
             else:
                 self._eq_total_per_timestep.lhs -= self.shares[name]
@@ -1083,7 +1086,7 @@ class PiecewiseEffectsModel(Model):
         self.shares = {
             effect: self.add(
                 self._model.add_variables(
-                    coords=self._model.get_coords(time_dim=False), name=f'{self.label_full}|{effect}'
+                    coords=self._model.get_coords(['year', 'scenario']), name=f'{self.label_full}|{effect}'
                 ),
                 f'{effect}',
             )

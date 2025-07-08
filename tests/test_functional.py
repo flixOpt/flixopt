@@ -325,60 +325,6 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__IsInvested" does not have the right value',
     )
 
-    def test_fixed_relative_profile(self):
-        self.flow_system = self.create_model(self.datetime_array)
-        self.flow_system.add_elements(
-            fx.linear_converters.Boiler(
-                'Boiler',
-                0.5,
-                Q_fu=fx.Flow('Q_fu', bus=self.get_element('Gas')),
-                Q_th=fx.Flow(
-                    'Q_th',
-                    bus=self.get_element('Fernwärme'),
-                    size=fx.InvestParameters(optional=True, minimum_size=40, fix_effects=10, specific_effects=1),
-                ),
-            ),
-            fx.linear_converters.Boiler(
-                'Boiler_optional',
-                0.5,
-                Q_fu=fx.Flow('Q_fu', bus=self.get_element('Gas')),
-                Q_th=fx.Flow(
-                    'Q_th',
-                    bus=self.get_element('Fernwärme'),
-                    size=fx.InvestParameters(optional=True, minimum_size=50, fix_effects=10, specific_effects=1),
-                ),
-            ),
-        )
-        self.flow_system.add_elements(
-            fx.Source(
-                'Wärmequelle',
-                source=fx.Flow(
-                    'Q_th',
-                    bus=self.get_element('Fernwärme'),
-                    fixed_relative_profile=np.linspace(0, 5, len(self.datetime_array)),
-                    size=fx.InvestParameters(optional=False, minimum_size=2, maximum_size=5),
-                ),
-            )
-        )
-        self.get_element('Fernwärme').excess_penalty_per_flow_hour = 1e5
-
-        self.solve_and_load(self.flow_system)
-        source = self.get_element('Wärmequelle')
-        assert_allclose(
-            source.source.model.flow_rate.result,
-            np.linspace(0, 5, len(self.datetime_array)) * source.source.model._investment.size.result,
-            rtol=self.mip_gap,
-            atol=1e-10,
-            err_msg='The total costs does not have the right value',
-        )
-        assert_allclose(
-            source.source.model._investment.size.result,
-            2,
-            rtol=self.mip_gap,
-            atol=1e-10,
-            err_msg='The total costs does not have the right value',
-        )
-
 
 def test_on(solver_fixture, time_steps_fixture):
     """Tests if the On Variable is correctly created and calculated in a Flow"""
