@@ -128,23 +128,184 @@ def make_cytoscape_elements(graph: networkx.DiGraph):
     return nodes + edges
 
 
-def create_style_controls():
-    """Create UI controls for modifying the stylesheet"""
+def create_style_section(title, children):
+    """Create a collapsible section for organizing controls"""
     return html.Div([
-        html.H3("Style Controls", style={'color': 'white', 'margin-bottom': '10px'}),
+        html.H4(title, style={
+            'color': 'white',
+            'margin-bottom': '10px',
+            'border-bottom': '2px solid #3498DB',
+            'padding-bottom': '5px'
+        }),
+        html.Div(children, style={'margin-bottom': '20px'})
+    ])
 
-        # Color scheme selector
-        html.Div([
-            html.Label("Color Scheme:", style={'color': 'white', 'margin-right': '10px'}),
+
+def create_sidebar():
+    """Create the sidebar with organized style controls"""
+    return html.Div([
+        html.H3("Style Controls", style={
+            'color': 'white',
+            'margin-bottom': '20px',
+            'text-align': 'center',
+            'border-bottom': '3px solid #9B59B6',
+            'padding-bottom': '10px'
+        }),
+
+        # Layout Controls
+        create_style_section("Layout", [
+            dcc.Dropdown(
+                id='layout-dropdown',
+                options=[
+                    {'label': 'Klay (horizontal)', 'value': 'klay'},
+                    {'label': 'Dagre (vertical)', 'value': 'dagre'},
+                    {'label': 'Breadthfirst', 'value': 'breadthfirst'},
+                    {'label': 'Cose (force-directed)', 'value': 'cose'},
+                    {'label': 'Grid', 'value': 'grid'},
+                    {'label': 'Circle', 'value': 'circle'},
+                ],
+                value='klay',
+                clearable=False,
+                style={'width': '100%'}
+            )
+        ]),
+
+        # Color Scheme Section
+        create_style_section("Color Scheme", [
             dcc.Dropdown(
                 id='color-scheme-dropdown',
                 options=[{'label': k, 'value': k} for k in color_presets.keys()],
                 value='Default',
-                style={'width': '200px', 'display': 'inline-block'}
-            ),
-            # Arrow styling
+                style={'width': '100%', 'margin-bottom': '10px'}
+            )
+        ]),
+
+        # Custom Colors Section
+        create_style_section("Custom Colors", [
             html.Div([
-                html.Label("Arrow Style:", style={'color': 'white', 'margin-right': '10px'}),
+                html.Label("Bus", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Input(id='bus-color-input', type='text', value='#7F8C8D',
+                          style={'width': '100%', 'margin-bottom': '8px'})
+            ]),
+            html.Div([
+                html.Label("Source", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Input(id='source-color-input', type='text', value='#F1C40F',
+                          style={'width': '100%', 'margin-bottom': '8px'})
+            ]),
+            html.Div([
+                html.Label("Sink", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Input(id='sink-color-input', type='text', value='#F1C40F',
+                          style={'width': '100%', 'margin-bottom': '8px'})
+            ]),
+            html.Div([
+                html.Label("Storage", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Input(id='storage-color-input', type='text', value='#2980B9',
+                          style={'width': '100%', 'margin-bottom': '8px'})
+            ]),
+            html.Div([
+                html.Label("Converter", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Input(id='converter-color-input', type='text', value='#D35400',
+                          style={'width': '100%', 'margin-bottom': '8px'})
+            ]),
+            html.Div([
+                html.Label("Edge", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Input(id='edge-color-input', type='text', value='gray',
+                          style={'width': '100%', 'margin-bottom': '8px'})
+            ])
+        ]),
+
+        # Node Styling Section
+        create_style_section("Node Styling", [
+            html.Div([
+                html.Label("Node Size", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Slider(
+                    id='node-size-slider',
+                    min=50, max=150, step=10, value=90,
+                    marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                           for i in range(50, 151, 25)},
+                    tooltip={"placement": "bottom", "always_visible": True}
+                )
+            ], style={'margin-bottom': '15px'}),
+            html.Div([
+                html.Label("Font Size", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Slider(
+                    id='font-size-slider',
+                    min=8, max=20, step=1, value=10,
+                    marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                           for i in range(8, 21, 2)},
+                    tooltip={"placement": "bottom", "always_visible": True}
+                )
+            ], style={'margin-bottom': '15px'})
+        ]),
+
+        # Text Styling Section
+        create_style_section("Text Styling", [
+            html.Div([
+                html.Label("Text Color", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Input(id='text-color-input', type='text', value='white',
+                          style={'width': '100%', 'margin-bottom': '8px'})
+            ]),
+            html.Div([
+                html.Label("Text Outline", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Input(id='text-outline-input', type='text', value='black',
+                          style={'width': '100%', 'margin-bottom': '8px'})
+            ]),
+            html.Div([
+                html.Label("Text Position", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Dropdown(
+                    id='text-valign-dropdown',
+                    options=[
+                        {'label': 'Top', 'value': 'top'},
+                        {'label': 'Center', 'value': 'center'},
+                        {'label': 'Bottom', 'value': 'bottom'}
+                    ],
+                    value='center',
+                    style={'width': '100%', 'margin-bottom': '8px'}
+                )
+            ]),
+            html.Div([
+                html.Label("Text Alignment", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Dropdown(
+                    id='text-halign-dropdown',
+                    options=[
+                        {'label': 'Left', 'value': 'left'},
+                        {'label': 'Center', 'value': 'center'},
+                        {'label': 'Right', 'value': 'right'}
+                    ],
+                    value='center',
+                    style={'width': '100%', 'margin-bottom': '8px'}
+                )
+            ])
+        ]),
+
+        # Edge Styling Section
+        create_style_section("Edge Styling", [
+            html.Div([
+                html.Label("Edge Width", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Slider(
+                    id='edge-width-slider',
+                    min=1, max=10, step=1, value=2,
+                    marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                           for i in range(1, 11)},
+                    tooltip={"placement": "bottom", "always_visible": True}
+                )
+            ], style={'margin-bottom': '15px'}),
+            html.Div([
+                html.Label("Edge Curve", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Dropdown(
+                    id='edge-curve-dropdown',
+                    options=[
+                        {'label': 'Straight', 'value': 'straight'},
+                        {'label': 'Bezier', 'value': 'bezier'},
+                        {'label': 'Unbundled Bezier', 'value': 'unbundled-bezier'},
+                        {'label': 'Segments', 'value': 'segments'}
+                    ],
+                    value='straight',
+                    style={'width': '100%', 'margin-bottom': '8px'}
+                )
+            ]),
+            html.Div([
+                html.Label("Arrow Style", style={'color': 'white', 'font-size': '12px'}),
                 dcc.Dropdown(
                     id='arrow-style-dropdown',
                     options=[
@@ -156,172 +317,44 @@ def create_style_controls():
                         {'label': 'None', 'value': 'none'}
                     ],
                     value='triangle',
-                    style={'width': '200px', 'display': 'inline-block'}
+                    style={'width': '100%', 'margin-bottom': '8px'}
                 )
-            ], style={'margin-bottom': '15px'}),
+            ])
+        ]),
 
-            # Individual color pickers for each node type
+        # Advanced Section
+        create_style_section("Advanced", [
             html.Div([
-                html.H4("Custom Colors:", style={'color': 'white', 'margin-bottom': '10px'}),
-                html.Div([
-                    html.Label("Bus Color:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Input(id='bus-color-input', type='text', value='#7F8C8D',
-                              style={'width': '100px', 'margin-right': '20px'}),
-                    html.Label("Source Color:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Input(id='source-color-input', type='text', value='#F1C40F',
-                              style={'width': '100px', 'margin-right': '20px'}),
-                ], style={'margin-bottom': '10px'}),
-                html.Div([
-                    html.Label("Sink Color:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Input(id='sink-color-input', type='text', value='#F1C40F',
-                              style={'width': '100px', 'margin-right': '20px'}),
-                    html.Label("Storage Color:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Input(id='storage-color-input', type='text', value='#2980B9',
-                              style={'width': '100px', 'margin-right': '20px'}),
-                ], style={'margin-bottom': '10px'}),
-                html.Div([
-                    html.Label("Converter Color:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Input(id='converter-color-input', type='text', value='#D35400',
-                              style={'width': '100px', 'margin-right': '20px'}),
-                    html.Label("Edge Color:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Input(id='edge-color-input', type='text', value='gray',
-                              style={'width': '100px', 'margin-right': '20px'}),
-                ], style={'margin-bottom': '15px'}),
-            ]),
-
-            # Text styling controls
-            html.Div([
-                html.H4("Text Styling:", style={'color': 'white', 'margin-bottom': '10px'}),
-                html.Div([
-                    html.Label("Text Color:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Input(id='text-color-input', type='text', value='white',
-                              style={'width': '100px', 'margin-right': '20px'}),
-                    html.Label("Text Outline:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Input(id='text-outline-input', type='text', value='black',
-                              style={'width': '100px', 'margin-right': '20px'}),
-                ], style={'margin-bottom': '10px'}),
-                html.Div([
-                    html.Label("Text Position:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Dropdown(
-                        id='text-valign-dropdown',
-                        options=[
-                            {'label': 'Top', 'value': 'top'},
-                            {'label': 'Center', 'value': 'center'},
-                            {'label': 'Bottom', 'value': 'bottom'}
-                        ],
-                        value='center',
-                        style={'width': '120px', 'margin-right': '20px', 'display': 'inline-block'}
-                    ),
-                    html.Label("Text Alignment:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Dropdown(
-                        id='text-halign-dropdown',
-                        options=[
-                            {'label': 'Left', 'value': 'left'},
-                            {'label': 'Center', 'value': 'center'},
-                            {'label': 'Right', 'value': 'right'}
-                        ],
-                        value='center',
-                        style={'width': '120px', 'display': 'inline-block'}
-                    ),
-                ], style={'margin-bottom': '15px'}),
+                html.Label("Custom Stylesheet (JSON)", style={'color': 'white', 'font-size': '12px'}),
+                dcc.Textarea(
+                    id='custom-stylesheet-textarea',
+                    placeholder='Enter custom Cytoscape stylesheet as JSON...',
+                    style={'width': '100%', 'height': '120px', 'background-color': '#34495E',
+                           'color': 'white', 'font-size': '11px', 'margin-bottom': '10px'},
+                    value=json.dumps(default_cytoscape_stylesheet, indent=2)
+                )
             ]),
             html.Div([
-                html.Label("Node Size:", style={'color': 'white', 'margin-right': '10px'}),
-                dcc.Slider(
-                    id='node-size-slider',
-                    min=50,
-                    max=150,
-                    step=10,
-                    value=90,
-                    marks={i: str(i) for i in range(50, 151, 25)},
-                    tooltip={"placement": "bottom", "always_visible": True}
-                )
-            ], style={'margin-bottom': '15px'}),
-
-            # Font size controls
-            html.Div([
-                html.Label("Font Size:", style={'color': 'white', 'margin-right': '10px'}),
-                dcc.Slider(
-                    id='font-size-slider',
-                    min=8,
-                    max=20,
-                    step=1,
-                    value=10,
-                    marks={i: str(i) for i in range(8, 21, 2)},
-                    tooltip={"placement": "bottom", "always_visible": True}
-                )
-            ], style={'margin-bottom': '15px'}),
-
-            # Edge styling controls
-            html.Div([
-                html.H4("Edge Styling:", style={'color': 'white', 'margin-bottom': '10px'}),
-                html.Div([
-                    html.Label("Edge Width:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Slider(
-                        id='edge-width-slider',
-                        min=1,
-                        max=10,
-                        step=1,
-                        value=2,
-                        marks={i: str(i) for i in range(1, 11)},
-                        tooltip={"placement": "bottom", "always_visible": True}
-                    )
-                ], style={'margin-bottom': '15px'}),
-
-                # Edge curve style
-                html.Div([
-                    html.Label("Edge Curve Style:", style={'color': 'white', 'margin-right': '10px'}),
-                    dcc.Dropdown(
-                        id='edge-curve-dropdown',
-                        options=[
-                            {'label': 'Straight', 'value': 'straight'},
-                            {'label': 'Bezier', 'value': 'bezier'},
-                            {'label': 'Unbundled Bezier', 'value': 'unbundled-bezier'},
-                            {'label': 'Segments', 'value': 'segments'}
-                        ],
-                        value='straight',
-                        style={'width': '200px', 'display': 'inline-block'}
-                    )
-                ], style={'margin-bottom': '15px'}),
-
-                # Save/Load custom styles
-                html.Div([
-                    html.H4("Style Presets:", style={'color': 'white', 'margin-bottom': '10px'}),
-                    html.Div([
-                        dcc.Input(id='save-style-name', type='text', placeholder='Enter style name...',
-                                  style={'width': '200px', 'margin-right': '10px'}),
-                        html.Button("Save Style", id="save-style-btn", n_clicks=0,
-                                    style={'margin-right': '10px', 'background-color': '#27AE60', 'color': 'white',
-                                           'border': 'none', 'padding': '5px 10px'}),
-                        dcc.Dropdown(
-                            id='load-style-dropdown',
-                            options=[],
-                            placeholder="Load saved style...",
-                            style={'width': '200px', 'display': 'inline-block'}
-                        )
-                    ], style={'margin-bottom': '15px'}),
-                ]),
-                html.Div([
-                    html.Label("Custom Stylesheet (JSON):", style={'color': 'white', 'margin-bottom': '5px'}),
-                    dcc.Textarea(
-                        id='custom-stylesheet-textarea',
-                        placeholder='Enter custom Cytoscape stylesheet as JSON...',
-                        style={'width': '100%', 'height': '150px', 'background-color': '#34495E', 'color': 'white'},
-                        value=json.dumps(default_cytoscape_stylesheet, indent=2)
-                    )
-                ], style={'margin-bottom': '15px'}),
-
-                # Control buttons
-                html.Div([
-                    html.Button("Apply Custom Style", id="apply-custom-btn", n_clicks=0,
-                                style={'margin-right': '10px', 'background-color': '#3498DB', 'color': 'white',
-                                       'border': 'none', 'padding': '5px 10px'}),
-                    html.Button("Reset to Default", id="reset-style-btn", n_clicks=0,
-                                style={'background-color': '#E74C3C', 'color': 'white', 'border': 'none',
-                                       'padding': '5px 10px'})
-                ])
-            ], style={'background-color': '#2D3033', 'padding': '15px', 'margin': '10px', 'border-radius': '5px'})
-        ])])
+                html.Button("Apply Custom", id="apply-custom-btn", n_clicks=0,
+                            style={'width': '48%', 'margin-right': '4%', 'background-color': '#3498DB',
+                                   'color': 'white', 'border': 'none', 'padding': '8px', 'border-radius': '3px'}),
+                html.Button("Reset Default", id="reset-style-btn", n_clicks=0,
+                            style={'width': '48%', 'background-color': '#E74C3C',
+                                   'color': 'white', 'border': 'none', 'padding': '8px', 'border-radius': '3px'})
+            ])
+        ])
+    ], style={
+        'width': '280px',
+        'height': '100vh',
+        'background-color': '#2C3E50',
+        'padding': '20px',
+        'position': 'fixed',
+        'left': '0',
+        'top': '0',
+        'overflow-y': 'auto',
+        'border-right': '3px solid #34495E',
+        'box-shadow': '2px 0 5px rgba(0,0,0,0.1)'
+    })
 
 
 def shownetwork(graph: networkx.DiGraph):
@@ -333,65 +366,63 @@ def shownetwork(graph: networkx.DiGraph):
     textcolor = 'white'
 
     app.layout = html.Div([
-        # Main controls row
+        # Sidebar
+        create_sidebar(),
+
+        # Main content area
         html.Div([
+            # Top toolbar
             html.Div([
-                dcc.Dropdown(
-                    id='layout-dropdown',
-                    options=[
-                        {'label': 'Klay (horizontal)', 'value': 'klay'},
-                        {'label': 'Dagre (vertical)', 'value': 'dagre'},
-                        {'label': 'Breadthfirst', 'value': 'breadthfirst'},
-                        {'label': 'Cose (force-directed)', 'value': 'cose'},
-                        {'label': 'Grid', 'value': 'grid'},
-                        {'label': 'Circle', 'value': 'circle'},
-                    ],
-                    value='klay',
-                    clearable=False,
-                    style={'width': '300px', 'margin': '10px'}
-                ),
-            ], style={'width': '30%', 'display': 'inline-block'}),
+                html.H2("Network Visualization", style={
+                    'color': 'white',
+                    'margin': '0',
+                    'text-align': 'center'
+                }),
+                html.Button("Export as Image", id="btn-image", n_clicks=0,
+                            style={'position': 'absolute', 'right': '20px', 'top': '15px',
+                                   'background-color': '#27AE60', 'color': 'white', 'border': 'none',
+                                   'padding': '10px 20px', 'border-radius': '5px', 'cursor': 'pointer'})
+            ], style={
+                'background-color': '#34495E',
+                'padding': '15px 20px',
+                'margin-bottom': '0',
+                'position': 'relative',
+                'border-bottom': '2px solid #3498DB'
+            }),
 
+            # Main cytoscape component
+            cyto.Cytoscape(
+                id='cytoscape',
+                layout={'name': 'klay'},
+                style={'width': '100%', 'height': '70vh'},
+                elements=elements,
+                stylesheet=default_cytoscape_stylesheet,
+            ),
+
+            # Bottom panel for node information
             html.Div([
-                html.Button("Toggle Style Panel", id="toggle-style-btn", n_clicks=0,
-                            style={'margin': '10px', 'background-color': '#9B59B6', 'color': 'white', 'border': 'none',
-                                   'padding': '10px 20px'})
-            ], style={'width': '70%', 'display': 'inline-block', 'text-align': 'right'})
-        ]),
-
-        # Collapsible style panel
-        html.Div(id='style-panel', children=[create_style_controls()], style={'display': 'none'}),
-
-        # Main cytoscape component
-        cyto.Cytoscape(
-            id='cytoscape',
-            layout={'name': 'grid'},
-            style={'width': '100%', 'height': '500px'},
-            elements=elements,
-            stylesheet=default_cytoscape_stylesheet,
-        ),
-
-        # Node data display
-        html.Div(id='node-data', style={
-            'white-space': 'pre-line', 'color': 'white',
-            'background-color': '#2D3033', 'padding': '10px'
-        }),
-
-        # Export button
-        html.Button("Export as Image", id="btn-image", n_clicks=0,
-                    style={'margin': '10px', 'background-color': '#27AE60', 'color': 'white', 'border': 'none',
-                           'padding': '10px 20px'})
+                html.H4("Node Information", style={
+                    'color': 'white',
+                    'margin': '0 0 10px 0',
+                    'border-bottom': '2px solid #3498DB',
+                    'padding-bottom': '5px'
+                }),
+                html.Div(id='node-data', children=[
+                    html.P("Click on a node to see its parameters.", style={'color': 'white', 'margin': '0'})
+                ])
+            ], style={
+                'background-color': '#2C3E50',
+                'padding': '15px',
+                'height': '25vh',
+                'overflow-y': 'auto',
+                'border-top': '2px solid #34495E'
+            })
+        ], style={
+            'margin-left': '280px',
+            'background-color': '#1A252F',
+            'min-height': '100vh'
+        })
     ])
-
-    # Toggle style panel visibility
-    @app.callback(
-        Output('style-panel', 'style'),
-        Input('toggle-style-btn', 'n_clicks')
-    )
-    def toggle_style_panel(n_clicks):
-        if n_clicks % 2 == 1:
-            return {'display': 'block'}
-        return {'display': 'none'}
 
     # Update stylesheet based on controls
     @app.callback(
@@ -413,15 +444,13 @@ def shownetwork(graph: networkx.DiGraph):
          Input('edge-curve-dropdown', 'value'),
          Input('arrow-style-dropdown', 'value'),
          Input('apply-custom-btn', 'n_clicks'),
-         Input('reset-style-btn', 'n_clicks'),
-         Input('load-style-dropdown', 'value')],
+         Input('reset-style-btn', 'n_clicks')],
         [State('custom-stylesheet-textarea', 'value')]
     )
     def update_stylesheet(color_scheme, bus_color, source_color, sink_color, storage_color,
                           converter_color, edge_color, text_color, text_outline,
                           text_valign, text_halign, node_size, font_size, edge_width,
-                          edge_curve, arrow_style, apply_clicks, reset_clicks,
-                          load_style, custom_style):
+                          edge_curve, arrow_style, apply_clicks, reset_clicks, custom_style):
         ctx = callback_context
 
         if ctx.triggered:
@@ -438,82 +467,11 @@ def shownetwork(graph: networkx.DiGraph):
                 except json.JSONDecodeError:
                     return default_cytoscape_stylesheet
 
-        # Update stylesheet based on controls
-        colors = color_presets[color_scheme]
-
-        # Update elements with new colors (only for preset color schemes)
-        if color_scheme != 'Custom':
-            for element in elements:
-                if 'color' in element['data']:
-                    # Get the actual node type from the graph or determine it from the element
-                    node_id = element['data']['id']
-                    # Since we don't have direct access to the node type, we'll determine it from the shape
-                    shape = element['data'].get('shape', 'rectangle')
-
-                    if shape == 'ellipse':
-                        node_type = 'Bus'
-                    elif shape == 'custom-source':
-                        node_type = 'Source'
-                    elif shape == 'custom-sink':
-                        node_type = 'Sink'
-                    elif 'storage' in node_id.lower():
-                        node_type = 'Storage'
-                    elif 'converter' in node_id.lower():
-                        node_type = 'Converter'
-                    else:
-                        node_type = 'Other'
-
-                    if node_type in colors:
-                        element['data']['color'] = colors[node_type]
-
-            # Create updated stylesheet using individual color inputs
-            updated_stylesheet = [
-                {
-                    'selector': 'node',
-                    'style': {
-                        'content': 'data(label)',
-                        'background-color': 'data(color)',
-                        'font-size': font_size,
-                        'color': text_color,
-                        'text-valign': text_valign,
-                        'text-halign': text_halign,
-                        'width': f'{node_size}px',
-                        'height': f'{node_size * 0.8}px',
-                        'shape': 'data(shape)',
-                        'text-outline-color': text_outline,
-                        'text-outline-width': 0.5,
-                    }
-                },
-                {
-                    'selector': '[shape = "custom-source"]',
-                    'style': {
-                        'shape': 'polygon',
-                        'shape-polygon-points': '-0.5 0.5, 0.5 0.5, 1 -0.5, -1 -0.5',
-                    }
-                },
-                {
-                    'selector': '[shape = "custom-sink"]',
-                    'style': {
-                        'shape': 'polygon',
-                        'shape-polygon-points': '-0.5 -0.5, 0.5 -0.5, 1 0.5, -1 0.5',
-                    }
-                },
-                {
-                    'selector': 'edge',
-                    'style': {
-                        'curve-style': edge_curve,
-                        'width': edge_width,
-                        'line-color': edge_color,
-                        'target-arrow-color': edge_color,
-                        'target-arrow-shape': arrow_style,
-                        'arrow-scale': 2,
-                    }
-                }
-            ]
-
-        # Update node colors based on individual inputs if not using preset
-        elif color_scheme == 'Custom' or any([bus_color, source_color, sink_color, storage_color, converter_color]):
-            custom_colors = {
+        # Determine colors to use
+        if color_scheme and color_scheme != 'Custom':
+            colors = color_presets[color_scheme]
+        else:
+            colors = {
                 'Bus': bus_color or '#7F8C8D',
                 'Source': source_color or '#F1C40F',
                 'Sink': sink_color or '#F1C40F',
@@ -522,30 +480,72 @@ def shownetwork(graph: networkx.DiGraph):
                 'Other': converter_color or '#27AE60'
             }
 
-            for element in elements:
-                if 'color' in element['data']:
-                    # Determine node type from shape and id
-                    node_id = element['data']['id']
-                    shape = element['data'].get('shape', 'rectangle')
+        # Update element colors
+        for element in elements:
+            if 'color' in element['data']:
+                node_id = element['data']['id']
+                shape = element['data'].get('shape', 'rectangle')
 
-                    if shape == 'ellipse':
-                        node_type = 'Bus'
-                    elif shape == 'custom-source':
-                        node_type = 'Source'
-                    elif shape == 'custom-sink':
-                        node_type = 'Sink'
-                    elif 'storage' in node_id.lower():
-                        node_type = 'Storage'
-                    elif 'converter' in node_id.lower():
-                        node_type = 'Converter'
-                    else:
-                        node_type = 'Other'
+                if shape == 'ellipse':
+                    node_type = 'Bus'
+                elif shape == 'custom-source':
+                    node_type = 'Source'
+                elif shape == 'custom-sink':
+                    node_type = 'Sink'
+                elif 'storage' in node_id.lower():
+                    node_type = 'Storage'
+                elif 'converter' in node_id.lower():
+                    node_type = 'Converter'
+                else:
+                    node_type = 'Other'
 
-                    if node_type in custom_colors:
-                        element['data']['color'] = custom_colors[node_type]
+                if node_type in colors:
+                    element['data']['color'] = colors[node_type]
 
-        return updated_stylesheet
-
+        # Create updated stylesheet
+        return [
+            {
+                'selector': 'node',
+                'style': {
+                    'content': 'data(label)',
+                    'background-color': 'data(color)',
+                    'font-size': font_size,
+                    'color': text_color,
+                    'text-valign': text_valign,
+                    'text-halign': text_halign,
+                    'width': f'{node_size}px',
+                    'height': f'{node_size * 0.8}px',
+                    'shape': 'data(shape)',
+                    'text-outline-color': text_outline,
+                    'text-outline-width': 0.5,
+                }
+            },
+            {
+                'selector': '[shape = "custom-source"]',
+                'style': {
+                    'shape': 'polygon',
+                    'shape-polygon-points': '-0.5 0.5, 0.5 0.5, 1 -0.5, -1 -0.5',
+                }
+            },
+            {
+                'selector': '[shape = "custom-sink"]',
+                'style': {
+                    'shape': 'polygon',
+                    'shape-polygon-points': '-0.5 -0.5, 0.5 -0.5, 1 0.5, -1 0.5',
+                }
+            },
+            {
+                'selector': 'edge',
+                'style': {
+                    'curve-style': edge_curve,
+                    'width': edge_width,
+                    'line-color': edge_color,
+                    'target-arrow-color': edge_color,
+                    'target-arrow-shape': arrow_style,
+                    'arrow-scale': 2,
+                }
+            }
+        ]
 
     # Show node data on click
     @app.callback(
@@ -555,21 +555,23 @@ def shownetwork(graph: networkx.DiGraph):
     def display_node_data(data):
         if data:
             parameters = data.get('parameters', {})
-            components = [html.H4(f"Node {data['id']} Parameters:", style={'color': textcolor})]
-            for k, v in parameters.items():
-                components.append(html.P(f"{k}: {v}", style={'color': textcolor}))
-            return html.Div(components)
-        return html.P("Click on a node to see its parameters.", style={'color': textcolor})
+            if isinstance(parameters, dict) and parameters:
+                components = [html.H5(f"Node: {data['id']}", style={'color': 'white', 'margin-bottom': '10px'})]
+                for k, v in parameters.items():
+                    components.append(html.P(f"{k}: {v}", style={'color': '#BDC3C7', 'margin': '5px 0'}))
+                return components
+            else:
+                return [html.P(f"Node: {data['id']}", style={'color': 'white'}),
+                        html.P(str(parameters), style={'color': '#BDC3C7'})]
+        return [html.P("Click on a node to see its parameters.", style={'color': '#95A5A6'})]
 
-
-    # Allow changing layout dynamically
+    # Update layout when dropdown changes
     @app.callback(
         Output('cytoscape', 'layout'),
         Input('layout-dropdown', 'value')
     )
     def update_layout(selected_layout):
         return {'name': selected_layout}
-
 
     # Export graph as image
     app.clientside_callback(
@@ -581,7 +583,7 @@ def shownetwork(graph: networkx.DiGraph):
                     var png64 = cy.png({scale: 3, full: true});
                     var a = document.createElement('a');
                     a.href = png64;
-                    a.download = 'Oemof_model.png';
+                    a.download = 'network_visualization.png';
                     a.click();
                 }
             }
@@ -592,19 +594,16 @@ def shownetwork(graph: networkx.DiGraph):
         Input('btn-image', 'n_clicks')
     )
 
-
     # Find a free port
     def is_port_in_use(port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(('localhost', port)) == 0
-
 
     def find_free_port(start_port=8050, end_port=8100):
         for port in range(start_port, end_port):
             if not is_port_in_use(port):
                 return port
         raise Exception("No free port found")
-
 
     # Run app
     port = find_free_port(8050, 8100)
