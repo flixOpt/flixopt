@@ -366,6 +366,9 @@ def shownetwork(graph: networkx.DiGraph):
     textcolor = 'white'
 
     app.layout = html.Div([
+        # Hidden div to store elements data
+        html.Div(id='elements-store', style={'display': 'none'}),
+
         # Sidebar
         create_sidebar(),
 
@@ -475,9 +478,10 @@ def shownetwork(graph: networkx.DiGraph):
             json.dumps(default_cytoscape_stylesheet, indent=2)
         )
 
-    # Update stylesheet based on controls
+    # Update elements and stylesheet based on controls
     @app.callback(
-        Output('cytoscape', 'stylesheet'),
+        [Output('cytoscape', 'elements'),
+         Output('cytoscape', 'stylesheet')],
         [Input('color-scheme-dropdown', 'value'),
          Input('bus-color-input', 'value'),
          Input('source-color-input', 'value'),
@@ -497,10 +501,10 @@ def shownetwork(graph: networkx.DiGraph):
          Input('apply-custom-btn', 'n_clicks')],
         [State('custom-stylesheet-textarea', 'value')]
     )
-    def update_stylesheet(color_scheme, bus_color, source_color, sink_color, storage_color,
-                          converter_color, edge_color, text_color, text_outline,
-                          text_valign, text_halign, node_size, font_size, edge_width,
-                          edge_curve, arrow_style, apply_clicks, custom_style):
+    def update_elements_and_stylesheet(color_scheme, bus_color, source_color, sink_color, storage_color,
+                                       converter_color, edge_color, text_color, text_outline,
+                                       text_valign, text_halign, node_size, font_size, edge_width,
+                                       edge_curve, arrow_style, apply_clicks, custom_style):
         ctx = callback_context
 
         if ctx.triggered:
@@ -509,11 +513,11 @@ def shownetwork(graph: networkx.DiGraph):
             # Apply custom stylesheet
             if button_id == 'apply-custom-btn':
                 try:
-                    return json.loads(custom_style)
+                    return elements, json.loads(custom_style)
                 except json.JSONDecodeError:
-                    return default_cytoscape_stylesheet
+                    return elements, default_cytoscape_stylesheet
 
-        # Always use custom colors if any are provided, otherwise use preset
+        # Determine which colors to use
         use_custom_colors = any([
             bus_color and bus_color != '#7F8C8D',
             source_color and source_color != '#F1C40F',
@@ -523,7 +527,7 @@ def shownetwork(graph: networkx.DiGraph):
             edge_color and edge_color != 'gray'
         ])
 
-        if use_custom_colors or color_scheme == 'Custom':
+        if use_custom_colors:
             colors = {
                 'Bus': bus_color or '#7F8C8D',
                 'Source': source_color or '#F1C40F',
@@ -535,30 +539,40 @@ def shownetwork(graph: networkx.DiGraph):
         else:
             colors = color_presets.get(color_scheme, color_presets['Default'])
 
-        # Update element colors
+        # Create updated elements with new colors
+        updated_elements = []
         for element in elements:
-            if 'color' in element['data']:
-                node_id = element['data']['id']
-                shape = element['data'].get('shape', 'rectangle')
+            if 'data' in element:
+                element_copy = element.copy()
+                element_copy['data'] = element['data'].copy()
 
-                if shape == 'ellipse':
-                    node_type = 'Bus'
-                elif shape == 'custom-source':
-                    node_type = 'Source'
-                elif shape == 'custom-sink':
-                    node_type = 'Sink'
-                elif 'storage' in node_id.lower():
-                    node_type = 'Storage'
-                elif 'converter' in node_id.lower():
-                    node_type = 'Converter'
-                else:
-                    node_type = 'Other'
+                # Update node colors
+                if 'color' in element_copy['data']:
+                    node_id = element_copy['data']['id']
+                    shape = element_copy['data'].get('shape', 'rectangle')
 
-                if node_type in colors:
-                    element['data']['color'] = colors[node_type]
+                    if shape == 'ellipse':
+                        node_type = 'Bus'
+                    elif shape == 'custom-source':
+                        node_type = 'Source'
+                    elif shape == 'custom-sink':
+                        node_type = 'Sink'
+                    elif 'storage' in node_id.lower():
+                        node_type = 'Storage'
+                    elif 'converter' in node_id.lower():
+                        node_type = 'Converter'
+                    else:
+                        node_type = 'Other'
+
+                    if node_type in colors:
+                        element_copy['data']['color'] = colors[node_type]
+
+                updated_elements.append(element_copy)
+            else:
+                updated_elements.append(element)
 
         # Create updated stylesheet
-        return [
+        stylesheet = [
             {
                 'selector': 'node',
                 'style': {
@@ -601,6 +615,8 @@ def shownetwork(graph: networkx.DiGraph):
                 }
             }
         ]
+
+        return updated_elements, stylesheet
 
     # Show node data on click
     @app.callback(
