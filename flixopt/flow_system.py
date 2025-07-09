@@ -241,6 +241,10 @@ class FlowSystem:
         node_infos, edge_infos = self.network_infos()
         return plotting.plot_network(node_infos, edge_infos, path, controls, show)
 
+    def plot_network_dash(self):
+        from .network import shownetwork, flow_graph
+        return shownetwork(flow_graph(self))
+
     def network_infos(self) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
         if not self._connected:
             self._connect_network()
