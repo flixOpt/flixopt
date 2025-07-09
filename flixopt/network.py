@@ -424,6 +424,57 @@ def shownetwork(graph: networkx.DiGraph):
         })
     ])
 
+    # Reset all controls to defaults
+    @app.callback(
+        [Output('color-scheme-dropdown', 'value'),
+         Output('bus-color-input', 'value'),
+         Output('source-color-input', 'value'),
+         Output('sink-color-input', 'value'),
+         Output('storage-color-input', 'value'),
+         Output('converter-color-input', 'value'),
+         Output('edge-color-input', 'value'),
+         Output('text-color-input', 'value'),
+         Output('text-outline-input', 'value'),
+         Output('text-valign-dropdown', 'value'),
+         Output('text-halign-dropdown', 'value'),
+         Output('node-size-slider', 'value'),
+         Output('font-size-slider', 'value'),
+         Output('edge-width-slider', 'value'),
+         Output('edge-curve-dropdown', 'value'),
+         Output('arrow-style-dropdown', 'value'),
+         Output('layout-dropdown', 'value'),
+         Output('custom-stylesheet-textarea', 'value')],
+        [Input('reset-style-btn', 'n_clicks')]
+    )
+    def reset_all_controls(reset_clicks):
+        if reset_clicks and reset_clicks > 0:
+            return (
+                'Default',  # color-scheme-dropdown
+                '#7F8C8D',  # bus-color-input
+                '#F1C40F',  # source-color-input
+                '#F1C40F',  # sink-color-input
+                '#2980B9',  # storage-color-input
+                '#D35400',  # converter-color-input
+                'gray',  # edge-color-input
+                'white',  # text-color-input
+                'black',  # text-outline-input
+                'center',  # text-valign-dropdown
+                'center',  # text-halign-dropdown
+                90,  # node-size-slider
+                10,  # font-size-slider
+                2,  # edge-width-slider
+                'straight',  # edge-curve-dropdown
+                'triangle',  # arrow-style-dropdown
+                'klay',  # layout-dropdown
+                json.dumps(default_cytoscape_stylesheet, indent=2)  # custom-stylesheet-textarea
+            )
+        # Return current values if no reset
+        return (
+            'Default', '#7F8C8D', '#F1C40F', '#F1C40F', '#2980B9', '#D35400', 'gray',
+            'white', 'black', 'center', 'center', 90, 10, 2, 'straight', 'triangle', 'klay',
+            json.dumps(default_cytoscape_stylesheet, indent=2)
+        )
+
     # Update stylesheet based on controls
     @app.callback(
         Output('cytoscape', 'stylesheet'),
@@ -443,22 +494,17 @@ def shownetwork(graph: networkx.DiGraph):
          Input('edge-width-slider', 'value'),
          Input('edge-curve-dropdown', 'value'),
          Input('arrow-style-dropdown', 'value'),
-         Input('apply-custom-btn', 'n_clicks'),
-         Input('reset-style-btn', 'n_clicks')],
+         Input('apply-custom-btn', 'n_clicks')],
         [State('custom-stylesheet-textarea', 'value')]
     )
     def update_stylesheet(color_scheme, bus_color, source_color, sink_color, storage_color,
                           converter_color, edge_color, text_color, text_outline,
                           text_valign, text_halign, node_size, font_size, edge_width,
-                          edge_curve, arrow_style, apply_clicks, reset_clicks, custom_style):
+                          edge_curve, arrow_style, apply_clicks, custom_style):
         ctx = callback_context
 
         if ctx.triggered:
             button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-            # Reset to default
-            if button_id == 'reset-style-btn':
-                return default_cytoscape_stylesheet
 
             # Apply custom stylesheet
             if button_id == 'apply-custom-btn':
@@ -467,10 +513,17 @@ def shownetwork(graph: networkx.DiGraph):
                 except json.JSONDecodeError:
                     return default_cytoscape_stylesheet
 
-        # Determine colors to use
-        if color_scheme and color_scheme != 'Custom':
-            colors = color_presets[color_scheme]
-        else:
+        # Always use custom colors if any are provided, otherwise use preset
+        use_custom_colors = any([
+            bus_color and bus_color != '#7F8C8D',
+            source_color and source_color != '#F1C40F',
+            sink_color and sink_color != '#F1C40F',
+            storage_color and storage_color != '#2980B9',
+            converter_color and converter_color != '#D35400',
+            edge_color and edge_color != 'gray'
+        ])
+
+        if use_custom_colors or color_scheme == 'Custom':
             colors = {
                 'Bus': bus_color or '#7F8C8D',
                 'Source': source_color or '#F1C40F',
@@ -479,6 +532,8 @@ def shownetwork(graph: networkx.DiGraph):
                 'Converter': converter_color or '#D35400',
                 'Other': converter_color or '#27AE60'
             }
+        else:
+            colors = color_presets.get(color_scheme, color_presets['Default'])
 
         # Update element colors
         for element in elements:
@@ -509,14 +564,14 @@ def shownetwork(graph: networkx.DiGraph):
                 'style': {
                     'content': 'data(label)',
                     'background-color': 'data(color)',
-                    'font-size': font_size,
-                    'color': text_color,
-                    'text-valign': text_valign,
-                    'text-halign': text_halign,
-                    'width': f'{node_size}px',
-                    'height': f'{node_size * 0.8}px',
+                    'font-size': font_size or 10,
+                    'color': text_color or 'white',
+                    'text-valign': text_valign or 'center',
+                    'text-halign': text_halign or 'center',
+                    'width': f'{node_size or 90}px',
+                    'height': f'{(node_size or 90) * 0.8}px',
                     'shape': 'data(shape)',
-                    'text-outline-color': text_outline,
+                    'text-outline-color': text_outline or 'black',
                     'text-outline-width': 0.5,
                 }
             },
@@ -537,11 +592,11 @@ def shownetwork(graph: networkx.DiGraph):
             {
                 'selector': 'edge',
                 'style': {
-                    'curve-style': edge_curve,
-                    'width': edge_width,
-                    'line-color': edge_color,
-                    'target-arrow-color': edge_color,
-                    'target-arrow-shape': arrow_style,
+                    'curve-style': edge_curve or 'straight',
+                    'width': edge_width or 2,
+                    'line-color': edge_color or 'gray',
+                    'target-arrow-color': edge_color or 'gray',
+                    'target-arrow-shape': arrow_style or 'triangle',
                     'arrow-scale': 2,
                 }
             }
