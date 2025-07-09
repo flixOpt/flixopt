@@ -141,220 +141,226 @@ def create_style_section(title, children):
     ])
 
 
-def create_sidebar():
-    """Create the sidebar with organized style controls"""
+def create_collapsible_sidebar():
+    """Create a collapsible sidebar with toggle functionality"""
     return html.Div([
-        html.H3("Style Controls", style={
-            'color': 'white',
-            'margin-bottom': '20px',
-            'text-align': 'center',
-            'border-bottom': '3px solid #9B59B6',
-            'padding-bottom': '10px'
-        }),
+        # Sidebar content
+        html.Div([
+            html.H3("Style Controls", style={
+                'color': 'white',
+                'margin-bottom': '20px',
+                'text-align': 'center',
+                'border-bottom': '3px solid #9B59B6',
+                'padding-bottom': '10px'
+            }),
 
-        # Layout Controls
-        create_style_section("Layout", [
-            dcc.Dropdown(
-                id='layout-dropdown',
-                options=[
-                    {'label': 'Klay (horizontal)', 'value': 'klay'},
-                    {'label': 'Dagre (vertical)', 'value': 'dagre'},
-                    {'label': 'Breadthfirst', 'value': 'breadthfirst'},
-                    {'label': 'Cose (force-directed)', 'value': 'cose'},
-                    {'label': 'Grid', 'value': 'grid'},
-                    {'label': 'Circle', 'value': 'circle'},
-                ],
-                value='klay',
-                clearable=False,
-                style={'width': '100%'}
-            )
-        ]),
-
-        # Color Scheme Section
-        create_style_section("Color Scheme", [
-            dcc.Dropdown(
-                id='color-scheme-dropdown',
-                options=[{'label': k, 'value': k} for k in color_presets.keys()],
-                value='Default',
-                style={'width': '100%', 'margin-bottom': '10px'}
-            )
-        ]),
-
-        # Custom Colors Section
-        create_style_section("Custom Colors", [
-            html.Div([
-                html.Label("Bus", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Input(id='bus-color-input', type='text', value='#7F8C8D',
-                          style={'width': '100%', 'margin-bottom': '8px'})
-            ]),
-            html.Div([
-                html.Label("Source", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Input(id='source-color-input', type='text', value='#F1C40F',
-                          style={'width': '100%', 'margin-bottom': '8px'})
-            ]),
-            html.Div([
-                html.Label("Sink", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Input(id='sink-color-input', type='text', value='#F1C40F',
-                          style={'width': '100%', 'margin-bottom': '8px'})
-            ]),
-            html.Div([
-                html.Label("Storage", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Input(id='storage-color-input', type='text', value='#2980B9',
-                          style={'width': '100%', 'margin-bottom': '8px'})
-            ]),
-            html.Div([
-                html.Label("Converter", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Input(id='converter-color-input', type='text', value='#D35400',
-                          style={'width': '100%', 'margin-bottom': '8px'})
-            ]),
-            html.Div([
-                html.Label("Edge", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Input(id='edge-color-input', type='text', value='gray',
-                          style={'width': '100%', 'margin-bottom': '8px'})
-            ])
-        ]),
-
-        # Node Styling Section
-        create_style_section("Node Styling", [
-            html.Div([
-                html.Label("Node Size", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Slider(
-                    id='node-size-slider',
-                    min=50, max=150, step=10, value=90,
-                    marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
-                           for i in range(50, 151, 25)},
-                    tooltip={"placement": "bottom", "always_visible": True}
-                )
-            ], style={'margin-bottom': '15px'}),
-            html.Div([
-                html.Label("Font Size", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Slider(
-                    id='font-size-slider',
-                    min=8, max=20, step=1, value=10,
-                    marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
-                           for i in range(8, 21, 2)},
-                    tooltip={"placement": "bottom", "always_visible": True}
-                )
-            ], style={'margin-bottom': '15px'})
-        ]),
-
-        # Text Styling Section
-        create_style_section("Text Styling", [
-            html.Div([
-                html.Label("Text Color", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Input(id='text-color-input', type='text', value='white',
-                          style={'width': '100%', 'margin-bottom': '8px'})
-            ]),
-            html.Div([
-                html.Label("Text Outline", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Input(id='text-outline-input', type='text', value='black',
-                          style={'width': '100%', 'margin-bottom': '8px'})
-            ]),
-            html.Div([
-                html.Label("Text Position", style={'color': 'white', 'font-size': '12px'}),
+            # Layout Controls
+            create_style_section("Layout", [
                 dcc.Dropdown(
-                    id='text-valign-dropdown',
+                    id='layout-dropdown',
                     options=[
-                        {'label': 'Top', 'value': 'top'},
-                        {'label': 'Center', 'value': 'center'},
-                        {'label': 'Bottom', 'value': 'bottom'}
-                    ],
-                    value='center',
-                    style={'width': '100%', 'margin-bottom': '8px'}
-                )
-            ]),
-            html.Div([
-                html.Label("Text Alignment", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Dropdown(
-                    id='text-halign-dropdown',
-                    options=[
-                        {'label': 'Left', 'value': 'left'},
-                        {'label': 'Center', 'value': 'center'},
-                        {'label': 'Right', 'value': 'right'}
-                    ],
-                    value='center',
-                    style={'width': '100%', 'margin-bottom': '8px'}
-                )
-            ])
-        ]),
-
-        # Edge Styling Section
-        create_style_section("Edge Styling", [
-            html.Div([
-                html.Label("Edge Width", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Slider(
-                    id='edge-width-slider',
-                    min=1, max=10, step=1, value=2,
-                    marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
-                           for i in range(1, 11)},
-                    tooltip={"placement": "bottom", "always_visible": True}
-                )
-            ], style={'margin-bottom': '15px'}),
-            html.Div([
-                html.Label("Edge Curve", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Dropdown(
-                    id='edge-curve-dropdown',
-                    options=[
-                        {'label': 'Straight', 'value': 'straight'},
-                        {'label': 'Bezier', 'value': 'bezier'},
-                        {'label': 'Unbundled Bezier', 'value': 'unbundled-bezier'},
-                        {'label': 'Segments', 'value': 'segments'}
-                    ],
-                    value='straight',
-                    style={'width': '100%', 'margin-bottom': '8px'}
-                )
-            ]),
-            html.Div([
-                html.Label("Arrow Style", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Dropdown(
-                    id='arrow-style-dropdown',
-                    options=[
-                        {'label': 'Triangle', 'value': 'triangle'},
-                        {'label': 'Triangle (Tee)', 'value': 'triangle-tee'},
+                        {'label': 'Klay (horizontal)', 'value': 'klay'},
+                        {'label': 'Dagre (vertical)', 'value': 'dagre'},
+                        {'label': 'Breadthfirst', 'value': 'breadthfirst'},
+                        {'label': 'Cose (force-directed)', 'value': 'cose'},
+                        {'label': 'Grid', 'value': 'grid'},
                         {'label': 'Circle', 'value': 'circle'},
-                        {'label': 'Square', 'value': 'square'},
-                        {'label': 'Diamond', 'value': 'diamond'},
-                        {'label': 'None', 'value': 'none'}
                     ],
-                    value='triangle',
-                    style={'width': '100%', 'margin-bottom': '8px'}
-                )
-            ])
-        ]),
-
-        # Advanced Section
-        create_style_section("Advanced", [
-            html.Div([
-                html.Label("Custom Stylesheet (JSON)", style={'color': 'white', 'font-size': '12px'}),
-                dcc.Textarea(
-                    id='custom-stylesheet-textarea',
-                    placeholder='Enter custom Cytoscape stylesheet as JSON...',
-                    style={'width': '100%', 'height': '120px', 'background-color': '#34495E',
-                           'color': 'white', 'font-size': '11px', 'margin-bottom': '10px'},
-                    value=json.dumps(default_cytoscape_stylesheet, indent=2)
+                    value='klay',
+                    clearable=False,
+                    style={'width': '100%'}
                 )
             ]),
-            html.Div([
-                html.Button("Apply Custom", id="apply-custom-btn", n_clicks=0,
-                            style={'width': '48%', 'margin-right': '4%', 'background-color': '#3498DB',
-                                   'color': 'white', 'border': 'none', 'padding': '8px', 'border-radius': '3px'}),
-                html.Button("Reset Default", id="reset-style-btn", n_clicks=0,
-                            style={'width': '48%', 'background-color': '#E74C3C',
-                                   'color': 'white', 'border': 'none', 'padding': '8px', 'border-radius': '3px'})
+
+            # Color Scheme Section
+            create_style_section("Color Scheme", [
+                dcc.Dropdown(
+                    id='color-scheme-dropdown',
+                    options=[{'label': k, 'value': k} for k in color_presets.keys()],
+                    value='Default',
+                    style={'width': '100%', 'margin-bottom': '10px'}
+                )
+            ]),
+
+            # Custom Colors Section
+            create_style_section("Custom Colors", [
+                html.Div([
+                    html.Label("Bus", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Input(id='bus-color-input', type='text', value='#7F8C8D',
+                              style={'width': '100%', 'margin-bottom': '8px'})
+                ]),
+                html.Div([
+                    html.Label("Source", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Input(id='source-color-input', type='text', value='#F1C40F',
+                              style={'width': '100%', 'margin-bottom': '8px'})
+                ]),
+                html.Div([
+                    html.Label("Sink", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Input(id='sink-color-input', type='text', value='#F1C40F',
+                              style={'width': '100%', 'margin-bottom': '8px'})
+                ]),
+                html.Div([
+                    html.Label("Storage", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Input(id='storage-color-input', type='text', value='#2980B9',
+                              style={'width': '100%', 'margin-bottom': '8px'})
+                ]),
+                html.Div([
+                    html.Label("Converter", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Input(id='converter-color-input', type='text', value='#D35400',
+                              style={'width': '100%', 'margin-bottom': '8px'})
+                ]),
+                html.Div([
+                    html.Label("Edge", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Input(id='edge-color-input', type='text', value='gray',
+                              style={'width': '100%', 'margin-bottom': '8px'})
+                ])
+            ]),
+
+            # Node Styling Section
+            create_style_section("Node Styling", [
+                html.Div([
+                    html.Label("Node Size", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Slider(
+                        id='node-size-slider',
+                        min=50, max=150, step=10, value=90,
+                        marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                               for i in range(50, 151, 25)},
+                        tooltip={"placement": "bottom", "always_visible": True}
+                    )
+                ], style={'margin-bottom': '15px'}),
+                html.Div([
+                    html.Label("Font Size", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Slider(
+                        id='font-size-slider',
+                        min=8, max=20, step=1, value=10,
+                        marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                               for i in range(8, 21, 2)},
+                        tooltip={"placement": "bottom", "always_visible": True}
+                    )
+                ], style={'margin-bottom': '15px'})
+            ]),
+
+            # Text Styling Section
+            create_style_section("Text Styling", [
+                html.Div([
+                    html.Label("Text Color", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Input(id='text-color-input', type='text', value='white',
+                              style={'width': '100%', 'margin-bottom': '8px'})
+                ]),
+                html.Div([
+                    html.Label("Text Outline", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Input(id='text-outline-input', type='text', value='black',
+                              style={'width': '100%', 'margin-bottom': '8px'})
+                ]),
+                html.Div([
+                    html.Label("Text Position", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Dropdown(
+                        id='text-valign-dropdown',
+                        options=[
+                            {'label': 'Top', 'value': 'top'},
+                            {'label': 'Center', 'value': 'center'},
+                            {'label': 'Bottom', 'value': 'bottom'}
+                        ],
+                        value='center',
+                        style={'width': '100%', 'margin-bottom': '8px'}
+                    )
+                ]),
+                html.Div([
+                    html.Label("Text Alignment", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Dropdown(
+                        id='text-halign-dropdown',
+                        options=[
+                            {'label': 'Left', 'value': 'left'},
+                            {'label': 'Center', 'value': 'center'},
+                            {'label': 'Right', 'value': 'right'}
+                        ],
+                        value='center',
+                        style={'width': '100%', 'margin-bottom': '8px'}
+                    )
+                ])
+            ]),
+
+            # Edge Styling Section
+            create_style_section("Edge Styling", [
+                html.Div([
+                    html.Label("Edge Width", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Slider(
+                        id='edge-width-slider',
+                        min=1, max=10, step=1, value=2,
+                        marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                               for i in range(1, 11)},
+                        tooltip={"placement": "bottom", "always_visible": True}
+                    )
+                ], style={'margin-bottom': '15px'}),
+                html.Div([
+                    html.Label("Edge Curve", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Dropdown(
+                        id='edge-curve-dropdown',
+                        options=[
+                            {'label': 'Straight', 'value': 'straight'},
+                            {'label': 'Bezier', 'value': 'bezier'},
+                            {'label': 'Unbundled Bezier', 'value': 'unbundled-bezier'},
+                            {'label': 'Segments', 'value': 'segments'}
+                        ],
+                        value='straight',
+                        style={'width': '100%', 'margin-bottom': '8px'}
+                    )
+                ]),
+                html.Div([
+                    html.Label("Arrow Style", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Dropdown(
+                        id='arrow-style-dropdown',
+                        options=[
+                            {'label': 'Triangle', 'value': 'triangle'},
+                            {'label': 'Triangle (Tee)', 'value': 'triangle-tee'},
+                            {'label': 'Circle', 'value': 'circle'},
+                            {'label': 'Square', 'value': 'square'},
+                            {'label': 'Diamond', 'value': 'diamond'},
+                            {'label': 'None', 'value': 'none'}
+                        ],
+                        value='triangle',
+                        style={'width': '100%', 'margin-bottom': '8px'}
+                    )
+                ])
+            ]),
+
+            # Advanced Section
+            create_style_section("Advanced", [
+                html.Div([
+                    html.Label("Custom Stylesheet (JSON)", style={'color': 'white', 'font-size': '12px'}),
+                    dcc.Textarea(
+                        id='custom-stylesheet-textarea',
+                        placeholder='Enter custom Cytoscape stylesheet as JSON...',
+                        style={'width': '100%', 'height': '120px', 'background-color': '#34495E',
+                               'color': 'white', 'font-size': '11px', 'margin-bottom': '10px'},
+                        value=json.dumps(default_cytoscape_stylesheet, indent=2)
+                    )
+                ]),
+                html.Div([
+                    html.Button("Apply Custom", id="apply-custom-btn", n_clicks=0,
+                                style={'width': '48%', 'margin-right': '4%', 'background-color': '#3498DB',
+                                       'color': 'white', 'border': 'none', 'padding': '8px', 'border-radius': '3px'}),
+                    html.Button("Reset Default", id="reset-style-btn", n_clicks=0,
+                                style={'width': '48%', 'background-color': '#E74C3C',
+                                       'color': 'white', 'border': 'none', 'padding': '8px', 'border-radius': '3px'})
+                ])
             ])
-        ])
-    ], style={
-        'width': '280px',
-        'height': '100vh',
-        'background-color': '#2C3E50',
-        'padding': '20px',
-        'position': 'fixed',
-        'left': '0',
-        'top': '0',
-        'overflow-y': 'auto',
-        'border-right': '3px solid #34495E',
-        'box-shadow': '2px 0 5px rgba(0,0,0,0.1)'
-    })
+        ], id='sidebar-content', style={
+            'width': '280px',
+            'height': '100vh',
+            'background-color': '#2C3E50',
+            'padding': '20px',
+            'position': 'fixed',
+            'left': '0',
+            'top': '0',
+            'overflow-y': 'auto',
+            'border-right': '3px solid #34495E',
+            'box-shadow': '2px 0 5px rgba(0,0,0,0.1)',
+            'transform': 'translateX(-100%)',  # Initially hidden
+            'transition': 'transform 0.3s ease',
+            'z-index': '999'
+        })
+    ])
 
 
 def shownetwork(graph: networkx.DiGraph):
@@ -366,11 +372,28 @@ def shownetwork(graph: networkx.DiGraph):
     textcolor = 'white'
 
     app.layout = html.Div([
+        # Toggle button
+        html.Button("☰", id="toggle-sidebar", n_clicks=0,
+                    style={
+                        'position': 'fixed',
+                        'top': '20px',
+                        'left': '20px',
+                        'z-index': '1000',
+                        'background-color': '#3498DB',
+                        'color': 'white',
+                        'border': 'none',
+                        'padding': '10px 15px',
+                        'border-radius': '5px',
+                        'cursor': 'pointer',
+                        'font-size': '18px',
+                        'box-shadow': '0 2px 5px rgba(0,0,0,0.3)'
+                    }),
+
         # Hidden div to store elements data
         html.Div(id='elements-store', style={'display': 'none'}),
 
         # Sidebar
-        create_sidebar(),
+        create_collapsible_sidebar(),
 
         # Main content area
         html.Div([
@@ -420,12 +443,67 @@ def shownetwork(graph: networkx.DiGraph):
                 'overflow-y': 'auto',
                 'border-top': '2px solid #34495E'
             })
-        ], style={
-            'margin-left': '280px',
+        ], id='main-content', style={
+            'margin-left': '0',  # Initially no margin
             'background-color': '#1A252F',
-            'min-height': '100vh'
+            'min-height': '100vh',
+            'transition': 'margin-left 0.3s ease'
         })
     ])
+
+    # Toggle sidebar visibility
+    @app.callback(
+        [Output('sidebar-content', 'style'),
+         Output('main-content', 'style')],
+        [Input('toggle-sidebar', 'n_clicks')]
+    )
+    def toggle_sidebar(n_clicks):
+        if n_clicks % 2 == 1:  # Sidebar is open
+            sidebar_style = {
+                'width': '280px',
+                'height': '100vh',
+                'background-color': '#2C3E50',
+                'padding': '20px',
+                'position': 'fixed',
+                'left': '0',
+                'top': '0',
+                'overflow-y': 'auto',
+                'border-right': '3px solid #34495E',
+                'box-shadow': '2px 0 5px rgba(0,0,0,0.1)',
+                'transform': 'translateX(0)',
+                'transition': 'transform 0.3s ease',
+                'z-index': '999'
+            }
+            main_style = {
+                'margin-left': '280px',
+                'background-color': '#1A252F',
+                'min-height': '100vh',
+                'transition': 'margin-left 0.3s ease'
+            }
+        else:  # Sidebar is closed
+            sidebar_style = {
+                'width': '280px',
+                'height': '100vh',
+                'background-color': '#2C3E50',
+                'padding': '20px',
+                'position': 'fixed',
+                'left': '0',
+                'top': '0',
+                'overflow-y': 'auto',
+                'border-right': '3px solid #34495E',
+                'box-shadow': '2px 0 5px rgba(0,0,0,0.1)',
+                'transform': 'translateX(-100%)',
+                'transition': 'transform 0.3s ease',
+                'z-index': '999'
+            }
+            main_style = {
+                'margin-left': '0',
+                'background-color': '#1A252F',
+                'min-height': '100vh',
+                'transition': 'margin-left 0.3s ease'
+            }
+
+        return sidebar_style, main_style
 
     # Reset all controls to defaults
     @app.callback(
