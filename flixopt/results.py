@@ -652,29 +652,11 @@ class CalculationResults:
         """
         dataarray = self.solution[variable_name]
 
-        # Apply indexer or use first values
-        if indexer is not None:
-            # User provided custom indexer - apply it
-            dataarray = dataarray.sel(indexer)
-            suffix = '--' + '_'.join(f'{k}_{v}' for k, v in indexer.items())
-        else:
-            # No indexer - use first value for each dimension except 'time'
-            selection = {}
-            suffix_parts = []
-
-            for dim in dataarray.dims:
-                if dim != 'time' and dim in dataarray.coords:
-                    first_value = dataarray.coords[dim].values[0]
-                    selection[dim] = first_value
-                    suffix_parts.append(f'{dim}_{first_value}')
-
-            if selection:
-                dataarray = dataarray.sel(selection)
-
-            suffix = '--' + '_'.join(suffix_parts) if suffix_parts else ''
+        dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer)
 
         # Create name
-        name = f'{variable_name}{suffix}' if suffix else variable_name
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        name = variable_name if not suffix_parts else f'{variable_name}--{'-'.join(suffix_parts)}' if suffix else variable_name
 
         return plot_heatmap(
             dataarray=dataarray,
@@ -854,7 +836,7 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        scenario: Optional[Union[str, int]] = None,
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
         mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
@@ -917,7 +899,7 @@ class _NodeResults(_ElementResults):
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        scenario: Optional[Union[str, int]] = None,
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -1068,7 +1050,7 @@ class ComponentResults(_NodeResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
-        scenario: Optional[Union[str, int]] = None,
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
     ) -> plotly.graph_objs.Figure:
         """
         Plots the charge state of a Storage.
@@ -1625,3 +1607,34 @@ def filter_dataarray_by_coord(
         raise ValueError(f"No edges match criteria: {filters}")
 
     return da
+
+
+def _apply_indexer_to_data(data: xr.DataArray, indexer: Optional[Dict[str, Any]] = None):
+    """
+    Apply indexer selection or auto-select first values for non-time dimensions.
+
+    Args:
+        data: xarray Dataset or DataArray
+        indexer: Optional selection dict
+
+    Returns:
+        Tuple of (selected_data, suffix_parts_list)
+    """
+    suffix_parts = []
+
+    if indexer is not None:
+        # User provided indexer
+        data = data.sel(indexer)
+        suffix_parts.extend(f"{v}[{k}]" for k, v in indexer.items())
+    else:
+        # Auto-select first value for each dimension except 'time'
+        selection = {}
+        for dim in data.dims:
+            if dim != 'time' and dim in data.coords:
+                first_value = data.coords[dim].values[0]
+                selection[dim] = first_value
+                suffix_parts.append(f"{first_value}[{dim}]")
+        if selection:
+            data = data.sel(selection)
+
+    return data, suffix_parts
