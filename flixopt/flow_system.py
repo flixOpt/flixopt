@@ -694,6 +694,7 @@ class FlowSystem(Interface):
     ) -> 'FlowSystem':
         """
         Create a resampled FlowSystem by resampling data along the time dimension (like xr.Dataset.resample()).
+        Only resamples data variables that have a time dimension.
 
         Args:
             time: Resampling frequency (e.g., '3h', '2D', '1M')
@@ -707,12 +708,32 @@ class FlowSystem(Interface):
             self.connect_and_transform()
 
         dataset = self.to_dataset()
-        resampler = dataset.resample(time=time, **kwargs)
+
+        # Separate variables with and without time dimension
+        time_vars = {}
+        non_time_vars = {}
+
+        for var_name, var in dataset.data_vars.items():
+            if 'time' in var.dims:
+                time_vars[var_name] = var
+            else:
+                non_time_vars[var_name] = var
+
+        # Only resample variables that have time dimension
+        time_dataset = dataset[list(time_vars.keys())]
+        resampler = time_dataset.resample(time=time, **kwargs)
 
         if hasattr(resampler, method):
-            resampled_dataset = getattr(resampler, method)()
+            resampled_time_data = getattr(resampler, method)()
         else:
             available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
             raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
+
+        # Combine resampled time variables with non-time variables
+        if non_time_vars:
+            non_time_dataset = dataset[list(non_time_vars.keys())]
+            resampled_dataset = xr.merge([resampled_time_data, non_time_dataset])
+        else:
+            resampled_dataset = resampled_time_data
 
         return self.__class__.from_dataset(resampled_dataset)
