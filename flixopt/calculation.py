@@ -62,7 +62,7 @@ class Calculation:
         self.name = name
         if flow_system.used_in_calculation:
             logger.warning(
-                f'FlowSystem {flow_system} is already used in a calculation. '
+                f'This FlowSystem is already used in a calculation:\n{flow_system}\n'
                 f'Creating a copy of the FlowSystem for Calculation "{self.name}".'
             )
             flow_system = flow_system.copy()
