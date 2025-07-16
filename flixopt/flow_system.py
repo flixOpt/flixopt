@@ -141,14 +141,14 @@ class FlowSystem(Interface):
             years: The year index to validate
         """
         if not isinstance(years, pd.Index) or len(years) == 0:
-            raise ConversionError('Years must be a non-empty Index')
+            raise ConversionError(f'Years must be a non-empty Index. Got {years}')
 
         if not (
             years.dtype.kind == 'i'  # integer dtype
             and years.is_monotonic_increasing  # rising
             and years.is_unique
         ):
-            raise ConversionError('Years must be a monotonically increasing and unique Index')
+            raise ConversionError(f'Years must be a monotonically increasing and unique Index. Got {years}')
 
         if years.name != 'year':
             years = years.rename('year')

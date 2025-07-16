@@ -185,7 +185,7 @@ class DataConverter:
         """
         if len(target_dims) == 0:
             if len(data) != 1:
-                raise ConversionError('Cannot convert multi-element Series without target dimensions')
+                raise ConversionError(f'Cannot convert multi-element Series without target dimensions. Got \n{data}\n and \n{coords}')
             return xr.DataArray(data.iloc[0])
 
         # Try to match Series index to coordinates
