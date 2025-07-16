@@ -4,7 +4,7 @@ This can be very useful when working with large models or during developement st
 as it can drastically reduce the computational time.
 This leads to faster results and easier debugging.
 A common use case is to do optimize the investments of a model with a downsampled version of the original model, and than fix the computed sizes when calculating th actual dispatch.
-While the final optimum might differ from the fglobal optimum, the solving will be much faster.
+While the final optimum might differ from the global optimum, the solving will be much faster.
 """
 
 import logging
@@ -107,7 +107,6 @@ if __name__ == '__main__':
     calculation_sizing.do_modeling()
     calculation_sizing.solve(fx.solvers.HighsSolver(0.1/100, 600))
     timer_sizing = timeit.default_timer() - start
-    flow_sizes = xr.Dataset({flow.size.name: flow.size for flow in calculation_sizing.results.flows.values()})
 
     calculation_dispatch = fx.FullCalculation('Sizing', flow_system)
     calculation_dispatch.do_modeling()
@@ -133,7 +132,7 @@ if __name__ == '__main__':
     ).assign_coords(mode=['Combined', 'Two-stage'])
     comparison['Duration [s]'] = xr.DataArray([timer_combined, timer_sizing + timer_dispatch], dims='mode')
 
-    comparison_main = comparison[['Duration [s]', 'costs|total', 'costs(invest)|total', 'costs(operation)|total', 'BHKW2(Q_fu)|size', 'Kessel(Q_fu)|size']]
+    comparison_main = comparison[['Duration [s]', 'costs|total', 'costs(invest)|total', 'costs(operation)|total', 'BHKW2(Q_fu)|size', 'Kessel(Q_fu)|size', 'Speicher|size']]
     comparison_main = xr.concat([
         comparison_main,
         ((comparison_main.sel(mode='Two-stage') - comparison_main.sel(mode='Combined'))
