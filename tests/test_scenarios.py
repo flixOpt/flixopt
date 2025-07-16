@@ -142,7 +142,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     thermal_load = np.array([30, 0, 90, 110, 110, 20, 20, 20, 20])
     electrical_load = np.array([40, 40, 40, 40, 40, 40, 40, 40, 40])
     flow_system = fx.FlowSystem(pd.date_range('2020-01-01', periods=9, freq='h', name='time'),
-                                pd.Index(['A', 'B', 'C'], name='scenario'))
+                                scenarios=pd.Index(['A', 'B', 'C'], name='scenario'))
     # Define the components and flow_system
     flow_system.add_elements(
         fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True),

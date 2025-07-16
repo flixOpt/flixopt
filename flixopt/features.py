@@ -964,7 +964,7 @@ class ShareAllocationModel(Model):
     ):
         super().__init__(model, label_of_element=label_of_element, label=label, label_full=label_full)
 
-        if 'time' not in dims and max_per_hour is not None or min_per_hour is not None:
+        if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
             raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')
 
         self._dims = dims
