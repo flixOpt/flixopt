@@ -737,7 +737,7 @@ class FlowSystem(Interface):
             resampled_dataset = resampled_time_data
 
         return self.__class__.from_dataset(resampled_dataset)
-    
+
     @property
     def connected_and_transformed(self) -> bool:
         return self._connected_and_transformed

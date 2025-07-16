@@ -176,7 +176,7 @@ class FullCalculation(Calculation):
     class for defined way of solving a flow_system optimization
     """
 
-    def do_modeling(self) -> SystemModel:
+    def do_modeling(self) -> 'FullCalculation':
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
@@ -184,9 +184,9 @@ class FullCalculation(Calculation):
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
-        return self.model
+        return self
 
-    def fix_sizes(self, ds: xr.Dataset, decimal_rounding: Optional[int] = 5):
+    def fix_sizes(self, ds: xr.Dataset, decimal_rounding: Optional[int] = 5) -> 'FullCalculation':
         """Fix the sizes of the calculations to specified values.
 
         Args:
@@ -211,7 +211,9 @@ class FullCalculation(Calculation):
             )
             logger.debug(f'Fixed "{name}":\n{con}')
 
-    def solve(self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = True):
+        return self
+
+    def solve(self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = True) -> 'FullCalculation':
         t_start = timeit.default_timer()
 
         self.model.solve(
@@ -247,6 +249,8 @@ class FullCalculation(Calculation):
             )
 
         self.results = CalculationResults.from_calculation(self)
+
+        return self
 
 
 class AggregatedCalculation(FullCalculation):
@@ -288,7 +292,7 @@ class AggregatedCalculation(FullCalculation):
         self.components_to_clusterize = components_to_clusterize
         self.aggregation = None
 
-    def do_modeling(self) -> SystemModel:
+    def do_modeling(self) -> 'AggregatedCalculation':
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
         self._perform_aggregation()
@@ -302,7 +306,7 @@ class AggregatedCalculation(FullCalculation):
         )
         self.aggregation.do_modeling()
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
-        return self.model
+        return self
 
     def _perform_aggregation(self):
         from .aggregation import Aggregation
@@ -463,7 +467,7 @@ class SegmentedCalculation(Calculation):
 
     def do_modeling_and_solve(
         self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = False
-    ):
+    ) -> 'SegmentedCalculation':
         logger.info(f'{"":#^80}')
         logger.info(f'{" Segmented Solving ":#^80}')
         self._create_sub_calculations()
@@ -504,6 +508,8 @@ class SegmentedCalculation(Calculation):
                 self.durations[key] += value
 
         self.results = SegmentedCalculationResults.from_calculation(self)
+
+        return self
 
     def _transfer_start_values(self, i: int):
         """
