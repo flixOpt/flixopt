@@ -106,7 +106,7 @@ class SystemModel(linopy.Model):
         self,
         dims: Optional[Tuple[FlowSystemDimensions]] = None,
         extra_timestep=False,
-    ) -> Optional[Union[Tuple[pd.Index], Tuple[pd.Index, pd.Index]]]:
+    ) -> Optional[xr.Coordinates]:
         """
         Returns the coordinates of the model
 
@@ -131,10 +131,7 @@ class SystemModel(linopy.Model):
         if not coords:
             return None
 
-        if len(coords) == 1:
-            return (coords.popitem()[1],)
-
-        return tuple(coords.values())
+        return xr.Coordinates(coords)
 
     @property
     def weights(self) -> Union[int, xr.DataArray]:
