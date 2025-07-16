@@ -46,8 +46,8 @@ def test_xarray_conversions():
     """Test with xarray DataArrays that have dimensions."""
     # Create DataArrays with a time dimension
     time_points = [1, 2, 3]
-    a_to_b = xr.DataArray([2.0, 2.1, 2.2], dims=['time'], coords={'time': time_points})
-    b_to_c = xr.DataArray([3.0, 3.1, 3.2], dims=['time'], coords={'time': time_points})
+    a_to_b = xr.DataArray([2.0, 2.1, 2.2], dims='time', coords={'time': time_points})
+    b_to_c = xr.DataArray([3.0, 3.1, 3.2], dims='time', coords={'time': time_points})
 
     conversion_dict = {
         'A': {'B': a_to_b},

@@ -104,7 +104,7 @@ class SystemModel(linopy.Model):
 
     def get_coords(
         self,
-        dims: Optional[FlowSystemDimensions] = None,
+        dims: Optional[Tuple[FlowSystemDimensions]] = None,
         extra_timestep=False,
     ) -> Optional[Union[Tuple[pd.Index], Tuple[pd.Index, pd.Index]]]:
         """

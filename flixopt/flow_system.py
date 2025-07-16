@@ -171,7 +171,7 @@ class FlowSystem(Interface):
         """Calculate duration of each timestep as a 1D DataArray."""
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
-            hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=['time'], name='hours_per_timestep'
+            hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='hours_per_timestep'
         )
 
     @staticmethod

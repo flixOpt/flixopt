@@ -823,11 +823,12 @@ class PieceModel(Model):
         self._as_time_series = as_time_series
 
     def do_modeling(self):
+        dims =('time', 'year','scenario') if self._as_time_series else ('year','scenario')
         self.inside_piece = self.add(
             self._model.add_variables(
                 binary=True,
                 name=f'{self.label_full}|inside_piece',
-                coords=self._model.get_coords(time_dim=self._as_time_series),
+                coords=self._model.get_coords(dims=dims),
             ),
             'inside_piece',
         )
@@ -837,7 +838,7 @@ class PieceModel(Model):
                 lower=0,
                 upper=1,
                 name=f'{self.label_full}|lambda0',
-                coords=self._model.get_coords(time_dim=self._as_time_series),
+                coords=self._model.get_coords(dims=dims),
             ),
             'lambda0',
         )
@@ -847,7 +848,7 @@ class PieceModel(Model):
                 lower=0,
                 upper=1,
                 name=f'{self.label_full}|lambda1',
-                coords=self._model.get_coords(time_dim=self._as_time_series),
+                coords=self._model.get_coords(dims=dims),
             ),
             'lambda1',
         )

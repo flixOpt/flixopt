@@ -191,7 +191,7 @@ class DataConverter:
         # Try to match Series index to coordinates
         for dim_name in target_dims:
             if data.index.equals(coords[dim_name]):
-                return xr.DataArray(data.values.copy(), coords={dim_name: coords[dim_name]}, dims=[dim_name])
+                return xr.DataArray(data.values.copy(), coords={dim_name: coords[dim_name]}, dims=dim_name)
 
         # If no index matches, raise error
         raise ConversionError(f'Series index does not match any target dimension coordinates: {target_dims}')
@@ -237,7 +237,7 @@ class DataConverter:
 
         # Match to the single matching dimension
         match_dim = matching_dims[0]
-        return xr.DataArray(data.copy(), coords={match_dim: coords[match_dim]}, dims=[match_dim])
+        return xr.DataArray(data.copy(), coords={match_dim: coords[match_dim]}, dims=match_dim)
 
     @staticmethod
     def _match_multidim_array_to_dimensions(

@@ -447,7 +447,7 @@ class TestDataArrayConversion:
 
     def test_compatible_dataarray(self, time_coords):
         """Compatible DataArray should pass through."""
-        original = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims=['time'])
+        original = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims='time')
         result = DataConverter.to_dataarray(original, coords={'time': time_coords})
 
         assert result.shape == (5,)
@@ -461,14 +461,14 @@ class TestDataArrayConversion:
     def test_incompatible_dataarray_coords(self, time_coords):
         """DataArray with wrong coordinates should fail."""
         wrong_times = pd.date_range('2025-01-01', periods=5, freq='D', name='time')
-        original = xr.DataArray([10, 20, 30, 40, 50], coords={'time': wrong_times}, dims=['time'])
+        original = xr.DataArray([10, 20, 30, 40, 50], coords={'time': wrong_times}, dims='time')
 
         with pytest.raises(ConversionError):
             DataConverter.to_dataarray(original, coords={'time': time_coords})
 
     def test_incompatible_dataarray_dims(self, time_coords):
         """DataArray with wrong dimensions should fail."""
-        original = xr.DataArray([10, 20, 30, 40, 50], coords={'wrong_dim': range(5)}, dims=['wrong_dim'])
+        original = xr.DataArray([10, 20, 30, 40, 50], coords={'wrong_dim': range(5)}, dims='wrong_dim')
 
         with pytest.raises(ConversionError):
             DataConverter.to_dataarray(original, coords={'time': time_coords})
@@ -476,7 +476,7 @@ class TestDataArrayConversion:
     def test_dataarray_broadcast(self, time_coords, scenario_coords):
         """DataArray should broadcast to additional dimensions."""
         # 1D time DataArray to 2D time+scenario
-        original = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims=['time'])
+        original = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims='time')
         result = DataConverter.to_dataarray(original, coords={'time': time_coords, 'scenario': scenario_coords})
 
         assert result.shape == (5, 3)
@@ -499,7 +499,7 @@ class TestDataArrayConversion:
         original = xr.DataArray(
             [[10, 20, 30], [40, 50, 60], [70, 80, 90], [100, 110, 120], [130, 140, 150]],
             coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']},
-            dims=['time', 'scenario']
+            dims=('time', 'scenario')
         )
 
         # Broadcast to 3D
@@ -521,7 +521,7 @@ class TestTimeSeriesDataConversion:
 
     def test_timeseries_data_basic(self, time_coords):
         """TimeSeriesData should work like DataArray."""
-        data_array = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims=['time'])
+        data_array = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims='time')
         ts_data = TimeSeriesData(data_array, aggregation_group='test')
 
         result = DataConverter.to_dataarray(ts_data, coords={'time': time_coords})
@@ -532,7 +532,7 @@ class TestTimeSeriesDataConversion:
 
     def test_timeseries_data_broadcast(self, time_coords, scenario_coords):
         """TimeSeriesData should broadcast to additional dimensions."""
-        data_array = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims=['time'])
+        data_array = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims='time')
         ts_data = TimeSeriesData(data_array)
 
         result = DataConverter.to_dataarray(ts_data, coords={'time': time_coords, 'scenario': scenario_coords})

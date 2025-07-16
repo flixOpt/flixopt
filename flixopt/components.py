@@ -635,7 +635,7 @@ class StorageModel(ComponentModel):
             ).assign_coords(time=final_timestep)
         else:
             min_final = xr.DataArray(
-                [self.element.relative_minimum_final_charge_state], coords=final_coords, dims=['time']
+                [self.element.relative_minimum_final_charge_state], coords=final_coords, dims='time'
             )
 
         # Get final maximum charge state
@@ -645,7 +645,7 @@ class StorageModel(ComponentModel):
             ).assign_coords(time=final_timestep)
         else:
             max_final = xr.DataArray(
-                [self.element.relative_maximum_final_charge_state], coords=final_coords, dims=['time']
+                [self.element.relative_maximum_final_charge_state], coords=final_coords, dims='time'
             )
 
         # Concatenate with original bounds
