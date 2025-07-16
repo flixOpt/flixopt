@@ -138,9 +138,11 @@ class SystemModel(linopy.Model):
 
     @property
     def weights(self) -> Union[int, xr.DataArray]:
-        """Returns the scenario weights of the FlowSystem."""
+        """Returns the scenario weights of the FlowSystem. If None, return weights that are normalized to 1 (one)"""
         if self.flow_system.weights is None:
-            return 1
+            weights = self.flow_system.fit_to_model_coords('weights', 1, has_time_dim=False)
+
+            return weights / weights.sum()
 
         return self.flow_system.weights
 

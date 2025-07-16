@@ -406,6 +406,10 @@ class FlowSystem(Interface):
 
     def connect_and_transform(self):
         """Transform data for all elements using the new simplified approach."""
+        if self.connected_and_transformed:
+            logger.debug('FlowSystem already connected and transformed')
+            return
+
         self.weights = self.fit_to_model_coords(
             'weights', self.weights, has_time_dim=False
         )
@@ -413,10 +417,9 @@ class FlowSystem(Interface):
             logger.warning(f'Scenario weights are not normalized to 1. This is recomended for a better scaled model. '
                            f'Sum of weights={self.weights.sum().item()}')
 
-        if not self.connected_and_transformed:
-            self._connect_network()
-            for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
-                element.transform_data(self)
+        self._connect_network()
+        for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
+            element.transform_data(self)
         self._connected_and_transformed = True
 
     def add_elements(self, *elements: Element) -> None:
