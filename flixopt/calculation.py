@@ -180,6 +180,29 @@ class FullCalculation(Calculation):
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self.model
 
+    def fix_sizes(self, ds: xr.Dataset, decimal_rounding: Optional[int] = 5):
+        """Fix the sizes of the calculations to specified values.
+
+        Args:
+            ds: The dataset that contains the variable names mapped to their sizes. If None, the dataset is loaded from the results.
+            decimal_rounding: The number of decimal places to round the sizes to. If no rounding is applied, numerical errors might lead to infeasibility.
+        """
+        if decimal_rounding is not None:
+            ds = ds.round(decimal_rounding)
+
+        for name, da in ds.data_vars.items():
+            if '|size' not in name:
+                continue
+            if name not in self.model.variables:
+                logger.debug(f'Variable {name} not found in calculation model. Skipping.')
+                continue
+
+            con = self.model.add_constraints(
+                self.model[name] == da,
+                name=f'{name}-fixed',
+            )
+            logger.debug(f'Fixed "{name}":\n{con}')
+
     def solve(self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = True):
         t_start = timeit.default_timer()
 

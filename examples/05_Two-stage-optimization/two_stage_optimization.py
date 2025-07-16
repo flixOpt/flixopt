@@ -1,6 +1,10 @@
 """
-This script demonstrates how to use the different calcualtion types in the flixOPt framework
-to model the same energy system. THe Results will be compared to each other.
+This script demonstrates how to use downsampling of a FlowSystem to effectively reduce the size of a model.
+This can be very useful when working with large models or during developement state,
+as it can drastically reduce the computational time.
+This leads to faster results and easier debugging.
+A common use case is to do optimize the investments of a model with a downsampled version of the original model, and than fix the computed sizes when calculating th actual dispatch.
+While the final optimum might differ from the fglobal optimum, the solving will be much faster.
 """
 
 import logging
@@ -38,17 +42,17 @@ if __name__ == '__main__':
         fx.Effect('CO2', 'kg', 'CO2_e-Emissionen'),
         fx.Effect('PE', 'kWh_PE', 'Primärenergie'),
         fx.linear_converters.Boiler(
-        'Kessel',
-        eta=0.85,
-        Q_th=fx.Flow(label='Q_th', bus='Fernwärme'),
-        Q_fu=fx.Flow(
-            label='Q_fu',
-            bus='Gas',
-            size=fx.InvestParameters(specific_effects={'costs': 1_000}, minimum_size=10, maximum_size=500),
-            relative_minimum=0.2,
-            previous_flow_rate=20,
-            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=300),
-        ),
+            'Kessel',
+            eta=0.85,
+            Q_th=fx.Flow(label='Q_th', bus='Fernwärme'),
+            Q_fu=fx.Flow(
+                label='Q_fu',
+                bus='Gas',
+                size=fx.InvestParameters(specific_effects={'costs': 1_000}, minimum_size=10, maximum_size=500),
+                relative_minimum=0.2,
+                previous_flow_rate=20,
+                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=300),
+            ),
         ),
         fx.linear_converters.CHP(
             'BHKW2',
@@ -63,10 +67,8 @@ if __name__ == '__main__':
         ),
         fx.Storage(
             'Speicher',
-            capacity_in_flow_hours=684,
-            initial_charge_state=137,
-            minimal_final_charge_state=137,
-            maximal_final_charge_state=158,
+            capacity_in_flow_hours=fx.InvestParameters(minimum_size=10, maximum_size=1000, specific_effects={'costs': 60}),
+            initial_charge_state='lastValueOfSim',
             eta_charge=1,
             eta_discharge=1,
             relative_loss_per_hour=0.001,
@@ -109,14 +111,7 @@ if __name__ == '__main__':
 
     calculation_dispatch = fx.FullCalculation('Sizing', flow_system)
     calculation_dispatch.do_modeling()
-    for name, da in flow_sizes.data_vars.items():
-        if name in calculation_dispatch.model.variables:
-            con = calculation_dispatch.model.add_constraints(
-                calculation_dispatch.model[name] == da,
-                name=f'{name}_fixing',
-            )
-            logger.info(f'Constraint {con.name} added:\n{con}')
-
+    calculation_dispatch.fix_sizes(calculation_sizing.results.solution)
     calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_dispatch = timeit.default_timer() - start
 
