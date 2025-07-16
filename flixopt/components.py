@@ -129,14 +129,14 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: Union[Scalar, InvestParameters],
+        capacity_in_flow_hours: Union[NonTemporalDataUser, InvestParameters],
         relative_minimum_charge_state: TemporalDataUser = 0,
         relative_maximum_charge_state: TemporalDataUser = 1,
-        initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
-        minimal_final_charge_state: Optional[Scalar] = None,
-        maximal_final_charge_state: Optional[Scalar] = None,
-        relative_minimum_final_charge_state: Optional[Scalar] = None,
-        relative_maximum_final_charge_state: Optional[Scalar] = None,
+        initial_charge_state: Union[NonTemporalDataUser, Literal['lastValueOfSim']] = 0,
+        minimal_final_charge_state: Optional[NonTemporalDataUser] = None,
+        maximal_final_charge_state: Optional[NonTemporalDataUser] = None,
+        relative_minimum_final_charge_state: Optional[NonTemporalDataUser] = None,
+        relative_maximum_final_charge_state: Optional[NonTemporalDataUser] = None,
         eta_charge: TemporalDataUser = 1,
         eta_discharge: TemporalDataUser = 1,
         relative_loss_per_hour: TemporalDataUser = 0,
@@ -187,8 +187,8 @@ class Storage(Component):
         self.relative_minimum_charge_state: TemporalDataUser = relative_minimum_charge_state
         self.relative_maximum_charge_state: TemporalDataUser = relative_maximum_charge_state
 
-        self.relative_minimum_final_charge_state: Scalar = relative_minimum_final_charge_state
-        self.relative_maximum_final_charge_state: Scalar = relative_maximum_final_charge_state
+        self.relative_minimum_final_charge_state = relative_minimum_final_charge_state
+        self.relative_maximum_final_charge_state = relative_maximum_final_charge_state
 
         self.initial_charge_state = initial_charge_state
         self.minimal_final_charge_state = minimal_final_charge_state
@@ -229,6 +229,12 @@ class Storage(Component):
         )
         self.maximal_final_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|maximal_final_charge_state', self.maximal_final_charge_state, has_time_dim=False
+        )
+        self.relative_minimum_final_charge_state = flow_system.fit_to_model_coords(
+            f'{self.label_full}|relative_minimum_final_charge_state', self.relative_minimum_final_charge_state, has_time_dim=False
+        )
+        self.relative_maximum_final_charge_state = flow_system.fit_to_model_coords(
+            f'{self.label_full}|relative_maximum_final_charge_state', self.relative_maximum_final_charge_state, has_time_dim=False
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
             self.capacity_in_flow_hours.transform_data(flow_system, f'{self.label_full}|InvestParameters')
@@ -625,29 +631,21 @@ class StorageModel(ComponentModel):
         Returns:
             Tuple of (minimum_bounds, maximum_bounds) DataArrays extending to final timestep
         """
-        final_timestep = self._model.flow_system.timesteps_extra[-1]
-        final_coords = {'time': [final_timestep]}
+        final_coords = {'time': [self._model.flow_system.timesteps_extra[-1]]}
 
         # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
-            min_final = self.element.relative_minimum_charge_state.isel(
-                time=-1, drop=True
-            ).assign_coords(time=final_timestep)
+            min_final = self.element.relative_minimum_charge_state.isel(time=-1, drop=True)
         else:
-            min_final = xr.DataArray(
-                [self.element.relative_minimum_final_charge_state], coords=final_coords, dims='time'
-            )
+            min_final = self.element.relative_minimum_final_charge_state
+        min_final = min_final.expand_dims('time').assign_coords(time=final_coords['time'])
 
         # Get final maximum charge state
         if self.element.relative_maximum_final_charge_state is None:
-            max_final = self.element.relative_maximum_charge_state.isel(
-                time=-1, drop=True
-            ).assign_coords(time=final_timestep)
+            max_final = self.element.relative_maximum_charge_state.isel(time=-1, drop=True)
         else:
-            max_final = xr.DataArray(
-                [self.element.relative_maximum_final_charge_state], coords=final_coords, dims='time'
-            )
-
+            max_final = self.element.relative_maximum_final_charge_state
+        max_final = max_final.expand_dims('time').assign_coords(time=final_coords['time'])
         # Concatenate with original bounds
         min_bounds = xr.concat([self.element.relative_minimum_charge_state, min_final], dim='time')
         max_bounds = xr.concat([self.element.relative_maximum_charge_state, max_final], dim='time')
