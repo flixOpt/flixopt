@@ -208,7 +208,7 @@ class FlowSystem(Interface):
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
         """
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             logger.warning('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
@@ -278,7 +278,7 @@ class FlowSystem(Interface):
             path: The path to the netCDF file.
             compression: The compression level to use when saving the file.
         """
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             logger.warning('FlowSystem is not connected. Calling connect_and_transform() now.')
             self.connect_and_transform()
 
@@ -294,7 +294,7 @@ class FlowSystem(Interface):
             clean: If True, remove None and empty dicts and lists.
             stats: If True, replace DataArray references with statistics
         """
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             logger.warning('FlowSystem is not connected. Calling connect_and_transform() now.')
             self.connect_and_transform()
 
@@ -308,7 +308,7 @@ class FlowSystem(Interface):
         Args:
             path: The path to the JSON file.
         """
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             logger.warning('FlowSystem needs to be connected and transformed before saving to JSON. Calling connect_and_transform() now.')
             self.connect_and_transform()
 
@@ -387,7 +387,7 @@ class FlowSystem(Interface):
             logger.warning(f'Scenario weights are not normalized to 1. This is reccomended for a better scaled model. '
                            f'Sum of weights={self.scenario_weights.sum().item()}')
 
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             self._connect_network()
             for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
                 element.transform_data(self)
@@ -401,7 +401,7 @@ class FlowSystem(Interface):
             *elements: childs of  Element like Boiler, HeatPump, Bus,...
                 modeling Elements
         """
-        if self._connected_and_transformed:
+        if self.connected_and_transformed:
             warnings.warn(
                 'You are adding elements to an already connected FlowSystem. This is not recommended (But it works).',
                 stacklevel=2,
@@ -420,7 +420,7 @@ class FlowSystem(Interface):
                 )
 
     def create_model(self) -> SystemModel:
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             raise RuntimeError('FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.')
         self.model = SystemModel(self)
         return self.model
@@ -445,7 +445,7 @@ class FlowSystem(Interface):
         return plotting.plot_network(node_infos, edge_infos, path, controls, show)
 
     def network_infos(self) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             self.connect_and_transform()
         nodes = {
             node.label_full: {
@@ -532,7 +532,7 @@ class FlowSystem(Interface):
 
     def __repr__(self) -> str:
         """Compact representation for debugging."""
-        status = '✓' if self._connected_and_transformed else '⚠'
+        status = '✓' if self.connected_and_transformed else '⚠'
         return (
             f'FlowSystem({len(self.timesteps)} timesteps '
             f'[{self.timesteps[0].strftime("%Y-%m-%d")} to {self.timesteps[-1].strftime("%Y-%m-%d")}], '
@@ -562,7 +562,7 @@ class FlowSystem(Interface):
             format_elements(list(self.components.keys()), 'Components'),
             format_elements(list(self.buses.keys()), 'Buses'),
             format_elements(list(self.effects.effects.keys()), 'Effects'),
-            f'Status:      {"Connected & Transformed" if self._connected_and_transformed else "Not connected"}',
+            f'Status:      {"Connected & Transformed" if self.connected_and_transformed else "Not connected"}',
         ]
 
         return '\n'.join(lines)
@@ -641,7 +641,7 @@ class FlowSystem(Interface):
         Returns:
             FlowSystem: New FlowSystem with selected data
         """
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             self.connect_and_transform()
 
         # Build indexers dict from non-None parameters
@@ -669,7 +669,7 @@ class FlowSystem(Interface):
         Returns:
             FlowSystem: New FlowSystem with selected data
         """
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             self.connect_and_transform()
 
         # Build indexers dict from non-None parameters
@@ -704,7 +704,7 @@ class FlowSystem(Interface):
         Returns:
             FlowSystem: New FlowSystem with resampled data
         """
-        if not self._connected_and_transformed:
+        if not self.connected_and_transformed:
             self.connect_and_transform()
 
         dataset = self.to_dataset()
@@ -737,3 +737,7 @@ class FlowSystem(Interface):
             resampled_dataset = resampled_time_data
 
         return self.__class__.from_dataset(resampled_dataset)
+    
+    @property
+    def connected_and_transformed(self) -> bool:
+        return self._connected_and_transformed
