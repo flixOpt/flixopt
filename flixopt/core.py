@@ -27,7 +27,7 @@ TemporalData = Union[xr.DataArray, 'TimeSeriesData']
 NonTemporalDataUser = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
 """User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension."""
 
-NonTemporalData = Union[Scalar, xr.DataArray]
+NonTemporalData = xr.DataArray
 """Internally used datatypes for non-temporal data. Can be a Scalar or an xr.DataArray."""
 
 FlowSystemDimensions = Literal['time', 'year', 'scenario']
