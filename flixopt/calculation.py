@@ -95,6 +95,8 @@ class Calculation:
                     f'Folder {self.folder} and its parent do not exist. Please create them first.'
                 ) from e
 
+        self._modeled = False
+
     @property
     def main_results(self) -> Dict[str, Union[Scalar, Dict]]:
         from flixopt.features import InvestmentModel
@@ -164,6 +166,10 @@ class Calculation:
         )
         return self._active_timesteps
 
+    @property
+    def modeled(self) -> bool:
+        return True if self.model is not None else False
+
 
 class FullCalculation(Calculation):
     """
@@ -187,6 +193,8 @@ class FullCalculation(Calculation):
             ds: The dataset that contains the variable names mapped to their sizes. If None, the dataset is loaded from the results.
             decimal_rounding: The number of decimal places to round the sizes to. If no rounding is applied, numerical errors might lead to infeasibility.
         """
+        if not self.modeled:
+            raise RuntimeError('Model was not created. Call do_modeling() first.')
         if decimal_rounding is not None:
             ds = ds.round(decimal_rounding)
 
