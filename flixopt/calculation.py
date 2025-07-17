@@ -1,11 +1,11 @@
 """
 This module contains the Calculation functionality for the flixopt framework.
-It is used to calculate a SystemModel for a given FlowSystem through a solver.
+It is used to calculate a FlowSystemModel for a given FlowSystem through a solver.
 There are three different Calculation types:
-    1. FullCalculation: Calculates the SystemModel for the full FlowSystem
-    2. AggregatedCalculation: Calculates the SystemModel for the full FlowSystem, but aggregates the TimeSeriesData.
+    1. FullCalculation: Calculates the FlowSystemModel for the full FlowSystem
+    2. AggregatedCalculation: Calculates the FlowSystemModel for the full FlowSystem, but aggregates the TimeSeriesData.
         This simplifies the mathematical model and usually speeds up the solving process.
-    3. SegmentedCalculation: Solves a SystemModel for each individual Segment of the FlowSystem.
+    3. SegmentedCalculation: Solves a FlowSystemModel for each individual Segment of the FlowSystem.
 """
 
 import logging
@@ -32,7 +32,7 @@ from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
 from .solvers import _Solver
-from .structure import SystemModel
+from .structure import FlowSystemModel
 
 logger = logging.getLogger('flixopt')
 
@@ -81,7 +81,7 @@ class Calculation:
         flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
-        self.model: Optional[SystemModel] = None
+        self.model: Optional[FlowSystemModel] = None
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)

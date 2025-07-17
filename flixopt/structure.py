@@ -43,9 +43,9 @@ def register_class_for_io(cls):
     return cls
 
 
-class SystemModel(linopy.Model):
+class FlowSystemModel(linopy.Model):
     """
-    The SystemModel is the linopy Model that is used to create the mathematical model of the flow_system.
+    The FlowSystemModel is the linopy Model that is used to create the mathematical model of the flow_system.
     It is used to create and store the variables and constraints for the flow_system.
     """
 
@@ -667,7 +667,7 @@ class Element(Interface):
         """This function is used to do some basic plausibility checks for each Element during initialization"""
         raise NotImplementedError('Every Element needs a _plausibility_checks() method')
 
-    def create_model(self, model: SystemModel) -> 'ElementModel':
+    def create_model(self, model: FlowSystemModel) -> 'ElementModel':
         raise NotImplementedError('Every Element needs a create_model() method')
 
     @property
@@ -700,11 +700,11 @@ class Model:
     """Stores Variables and Constraints."""
 
     def __init__(
-        self, model: SystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None
+        self, model: FlowSystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None
     ):
         """
         Args:
-            model: The SystemModel that is used to create the model.
+            model: The FlowSystemModel that is used to create the model.
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             label: The label of the model. Used to construct the full label of the model.
             label_full: The full label of the model. Can overwrite the full label constructed from the other labels.
@@ -834,10 +834,10 @@ class Model:
 class ElementModel(Model):
     """Stores the mathematical Variables and Constraints for Elements"""
 
-    def __init__(self, model: SystemModel, element: Element):
+    def __init__(self, model: FlowSystemModel, element: Element):
         """
         Args:
-            model: The SystemModel that is used to create the model.
+            model: The FlowSystemModel that is used to create the model.
             element: The element this model is created for.
         """
         super().__init__(model, label_of_element=element.label_full, label=element.label, label_full=element.label_full)

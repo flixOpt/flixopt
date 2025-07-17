@@ -15,7 +15,7 @@ import xarray as xr
 
 from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
+from .structure import Element, ElementModel, Interface, Model, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -127,7 +127,7 @@ class Effect(Element):
             has_time_dim=False
         )
 
-    def create_model(self, model: SystemModel) -> 'EffectModel':
+    def create_model(self, model: FlowSystemModel) -> 'EffectModel':
         self._plausibility_checks()
         self.model = EffectModel(model, self)
         return self.model
@@ -138,7 +138,7 @@ class Effect(Element):
 
 
 class EffectModel(ElementModel):
-    def __init__(self, model: SystemModel, element: Effect):
+    def __init__(self, model: FlowSystemModel, element: Effect):
         super().__init__(model, element)
         self.element: Effect = element
         self.total: Optional[linopy.Variable] = None
@@ -222,7 +222,7 @@ class EffectCollection:
         self.model: Optional[EffectCollectionModel] = None
         self.add_effects(*effects)
 
-    def create_model(self, model: SystemModel) -> 'EffectCollectionModel':
+    def create_model(self, model: FlowSystemModel) -> 'EffectCollectionModel':
         self._plausibility_checks()
         self.model = EffectCollectionModel(model, self)
         return self.model
@@ -388,7 +388,7 @@ class EffectCollectionModel(Model):
     Handling all Effects
     """
 
-    def __init__(self, model: SystemModel, effects: EffectCollection):
+    def __init__(self, model: FlowSystemModel, effects: EffectCollection):
         super().__init__(model, label_of_element='Effects')
         self.effects = effects
         self.penalty: Optional[ShareAllocationModel] = None

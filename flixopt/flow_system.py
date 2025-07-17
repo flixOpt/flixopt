@@ -32,7 +32,7 @@ from .effects import (
     TemporalEffectsUser,
 )
 from .elements import Bus, Component, Flow
-from .structure import Element, Interface, SystemModel
+from .structure import Element, Interface, FlowSystemModel
 
 if TYPE_CHECKING:
     import pyvis
@@ -98,7 +98,7 @@ class FlowSystem(Interface):
         self.components: Dict[str, Component] = {}
         self.buses: Dict[str, Bus] = {}
         self.effects: EffectCollection = EffectCollection()
-        self.model: Optional[SystemModel] = None
+        self.model: Optional[FlowSystemModel] = None
 
         self._connected_and_transformed = False
         self._used_in_calculation = False
@@ -448,10 +448,10 @@ class FlowSystem(Interface):
                     f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
                 )
 
-    def create_model(self) -> SystemModel:
+    def create_model(self) -> FlowSystemModel:
         if not self.connected_and_transformed:
             raise RuntimeError('FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.')
-        self.model = SystemModel(self)
+        self.model = FlowSystemModel(self)
         return self.model
 
     def plot_network(

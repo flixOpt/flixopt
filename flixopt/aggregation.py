@@ -28,7 +28,7 @@ from .flow_system import FlowSystem
 from .structure import (
     Element,
     Model,
-    SystemModel,
+    FlowSystemModel,
 )
 
 if TYPE_CHECKING:
@@ -292,7 +292,7 @@ class AggregationModel(Model):
 
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         aggregation_parameters: AggregationParameters,
         flow_system: FlowSystem,
         aggregation_data: Aggregation,

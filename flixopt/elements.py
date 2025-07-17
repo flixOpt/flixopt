@@ -14,7 +14,7 @@ from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .effects import TemporalEffectsUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
-from .structure import Element, ElementModel, SystemModel, register_class_for_io
+from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -63,7 +63,7 @@ class Component(Element):
 
         self.flows: Dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
-    def create_model(self, model: SystemModel) -> 'ComponentModel':
+    def create_model(self, model: FlowSystemModel) -> 'ComponentModel':
         self._plausibility_checks()
         self.model = ComponentModel(model, self)
         return self.model
@@ -108,7 +108,7 @@ class Bus(Element):
         self.inputs: List[Flow] = []
         self.outputs: List[Flow] = []
 
-    def create_model(self, model: SystemModel) -> 'BusModel':
+    def create_model(self, model: FlowSystemModel) -> 'BusModel':
         self._plausibility_checks()
         self.model = BusModel(model, self)
         return self.model
@@ -227,7 +227,7 @@ class Flow(Element):
             self.bus = bus
             self._bus_object = None
 
-    def create_model(self, model: SystemModel) -> 'FlowModel':
+    def create_model(self, model: FlowSystemModel) -> 'FlowModel':
         self._plausibility_checks()
         self.model = FlowModel(model, self)
         return self.model
@@ -308,7 +308,7 @@ class Flow(Element):
 
 
 class FlowModel(ElementModel):
-    def __init__(self, model: SystemModel, element: Flow):
+    def __init__(self, model: FlowSystemModel, element: Flow):
         super().__init__(model, element)
         self.element: Flow = element
         self.flow_rate: Optional[linopy.Variable] = None
@@ -490,7 +490,7 @@ class FlowModel(ElementModel):
 
 
 class BusModel(ElementModel):
-    def __init__(self, model: SystemModel, element: Bus):
+    def __init__(self, model: FlowSystemModel, element: Bus):
         super().__init__(model, element)
         self.element: Bus = element
         self.excess_input: Optional[linopy.Variable] = None
@@ -538,7 +538,7 @@ class BusModel(ElementModel):
 
 
 class ComponentModel(ElementModel):
-    def __init__(self, model: SystemModel, element: Component):
+    def __init__(self, model: FlowSystemModel, element: Component):
         super().__init__(model, element)
         self.element: Component = element
         self.on_off: Optional[OnOffModel] = None

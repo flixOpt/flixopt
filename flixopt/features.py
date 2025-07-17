@@ -12,7 +12,7 @@ import numpy as np
 from .config import CONFIG
 from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
 from .interface import InvestParameters, OnOffParameters, Piecewise
-from .structure import Model, SystemModel
+from .structure import Model, FlowSystemModel
 
 logger = logging.getLogger('flixopt')
 
@@ -22,7 +22,7 @@ class InvestmentModel(Model):
 
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         label_of_element: str,
         parameters: InvestParameters,
         defining_variable: [linopy.Variable],
@@ -240,7 +240,7 @@ class StateModel(Model):
 
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
         defining_bounds: List[Tuple[TemporalData, TemporalData]],
@@ -255,7 +255,7 @@ class StateModel(Model):
         Models binary state variables based on a continous variable.
 
         Args:
-            model: The SystemModel that is used to create the model.
+            model: The FlowSystemModel that is used to create the model.
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             defining_variables: List of Variables that are used to define the state
             defining_bounds: List of Tuples, defining the absolute bounds of each defining variable
@@ -404,7 +404,7 @@ class SwitchStateModel(Model):
 
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         label_of_element: str,
         state_variable: linopy.Variable,
         previous_state=0,
@@ -488,7 +488,7 @@ class ConsecutiveStateModel(Model):
 
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         label_of_element: str,
         state_variable: linopy.Variable,
         minimum_duration: Optional[TemporalData] = None,
@@ -500,7 +500,7 @@ class ConsecutiveStateModel(Model):
         Model and constraint the consecutive duration of a state variable.
 
         Args:
-            model: The SystemModel that is used to create the model.
+            model: The FlowSystemModel that is used to create the model.
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             state_variable: The state variable that is used to model the duration. state = {0, 1}
             minimum_duration: The minimum duration of the state variable.
@@ -665,7 +665,7 @@ class OnOffModel(Model):
 
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         on_off_parameters: OnOffParameters,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
@@ -677,7 +677,7 @@ class OnOffModel(Model):
         Constructor for OnOffModel
 
         Args:
-            model: Reference to the SystemModel
+            model: Reference to the FlowSystemModel
             on_off_parameters: Parameters for the OnOffModel
             label_of_element: Label of the Parent
             defining_variables: List of Variables that are used to define the OnOffModel
@@ -811,7 +811,7 @@ class PieceModel(Model):
 
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         label_of_element: str,
         label: str,
         as_time_series: bool = True,
@@ -865,7 +865,7 @@ class PieceModel(Model):
 class PiecewiseModel(Model):
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         label_of_element: str,
         piecewise_variables: Dict[str, Piecewise],
         zero_point: Optional[Union[bool, linopy.Variable]],
@@ -878,7 +878,7 @@ class PiecewiseModel(Model):
         Each Piece is a tuple of (start, end).
 
         Args:
-            model: The SystemModel that is used to create the model.
+            model: The FlowSystemModel that is used to create the model.
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             label: The label of the model. Used to construct the full label of the model.
             piecewise_variables: The variables to which the Pieces are assigned.
@@ -952,7 +952,7 @@ class PiecewiseModel(Model):
 class ShareAllocationModel(Model):
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         dims: List[FlowSystemDimensions],
         label_of_element: Optional[str] = None,
         label: Optional[str] = None,
@@ -1065,7 +1065,7 @@ class ShareAllocationModel(Model):
 class PiecewiseEffectsModel(Model):
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         label_of_element: str,
         piecewise_origin: Tuple[str, Piecewise],
         piecewise_shares: Dict[str, Piecewise],
@@ -1143,7 +1143,7 @@ class PreventSimultaneousUsageModel(Model):
 
     def __init__(
         self,
-        model: SystemModel,
+        model: FlowSystemModel,
         variables: List[linopy.Variable],
         label_of_element: str,
         label: str = 'PreventSimultaneousUsage',

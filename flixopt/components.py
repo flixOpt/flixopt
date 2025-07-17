@@ -14,7 +14,7 @@ from .core import NonTemporalDataUser, PlausibilityError, Scalar, TemporalData, 
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
-from .structure import SystemModel, register_class_for_io
+from .structure import FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -58,7 +58,7 @@ class LinearConverter(Component):
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
-    def create_model(self, model: SystemModel) -> 'LinearConverterModel':
+    def create_model(self, model: FlowSystemModel) -> 'LinearConverterModel':
         self._plausibility_checks()
         self.model = LinearConverterModel(model, self)
         return self.model
@@ -200,7 +200,7 @@ class Storage(Component):
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
         self.balanced = balanced
 
-    def create_model(self, model: SystemModel) -> 'StorageModel':
+    def create_model(self, model: FlowSystemModel) -> 'StorageModel':
         self._plausibility_checks()
         self.model = StorageModel(model, self)
         return self.model
@@ -393,7 +393,7 @@ class Transmission(Component):
 
 
 class TransmissionModel(ComponentModel):
-    def __init__(self, model: SystemModel, element: Transmission):
+    def __init__(self, model: FlowSystemModel, element: Transmission):
         super().__init__(model, element)
         self.element: Transmission = element
         self.on_off: Optional[OnOffModel] = None
@@ -444,7 +444,7 @@ class TransmissionModel(ComponentModel):
 
 
 class LinearConverterModel(ComponentModel):
-    def __init__(self, model: SystemModel, element: LinearConverter):
+    def __init__(self, model: FlowSystemModel, element: LinearConverter):
         super().__init__(model, element)
         self.element: LinearConverter = element
         self.on_off: Optional[OnOffModel] = None
@@ -494,7 +494,7 @@ class LinearConverterModel(ComponentModel):
 class StorageModel(ComponentModel):
     """Model of Storage"""
 
-    def __init__(self, model: SystemModel, element: Storage):
+    def __init__(self, model: FlowSystemModel, element: Storage):
         super().__init__(model, element)
         self.element: Storage = element
         self.charge_state: Optional[linopy.Variable] = None

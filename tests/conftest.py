@@ -13,7 +13,7 @@ import pytest
 import xarray as xr
 
 import flixopt as fx
-from flixopt.structure import SystemModel
+from flixopt.structure import FlowSystemModel
 
 
 @pytest.fixture()
@@ -496,7 +496,7 @@ def create_calculation_and_solve(flow_system: fx.FlowSystem, solver, name: str, 
     return calculation
 
 
-def create_linopy_model(flow_system: fx.FlowSystem) -> SystemModel:
+def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
     calculation = fx.FullCalculation('GenericName', flow_system)
     calculation.do_modeling()
     return calculation.model
