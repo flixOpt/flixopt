@@ -8,7 +8,7 @@ import json
 import logging
 import pathlib
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union, Collection
 
 import linopy
 import numpy as np
@@ -104,34 +104,34 @@ class SystemModel(linopy.Model):
 
     def get_coords(
         self,
-        dims: Optional[Tuple[FlowSystemDimensions]] = None,
-        extra_timestep=False,
+        dims: Optional[Collection[str]] = None,
+        extra_timestep: bool = False,
     ) -> Optional[xr.Coordinates]:
         """
         Returns the coordinates of the model
 
         Args:
-            dims: The dimensions to include in the coordinates. Defaults to all dimensions. Coords are ordered automatically
-            extra_timestep: If True, the extra timesteps are used instead of the regular timesteps
+            dims: The dimensions to include in the coordinates. If None, includes all dimensions
+            extra_timestep: If True, uses extra timesteps instead of regular timesteps
 
         Returns:
-            The coordinates of the model. Might also be None if no scenarios are present and time_dim is False
+            The coordinates of the model, or None if no coordinates are available
+
+        Raises:
+            ValueError: If extra_timestep=True but 'time' is not in dims
         """
-        if dims is not None and extra_timestep and 'time' not in dims:
-            raise ValueError('extra_timestep=True requires time to be included in dims')
+        if extra_timestep and dims is not None and 'time' not in dims:
+            raise ValueError('extra_timestep=True requires "time" to be included in dims')
 
         if dims is None:
-            coords = self.flow_system.coords
+            coords = dict(self.flow_system.coords)
         else:
             coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
 
-        if extra_timestep:
+        if extra_timestep and coords:
             coords['time'] = self.flow_system.timesteps_extra
 
-        if not coords:
-            return None
-
-        return xr.Coordinates(coords)
+        return xr.Coordinates(coords) if coords else None
 
     @property
     def weights(self) -> Union[int, xr.DataArray]:
