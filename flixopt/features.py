@@ -17,6 +17,140 @@ from .structure import Model, FlowSystemModel, BaseFeatureModel
 logger = logging.getLogger('flixopt')
 
 
+class ModelingUtilities:
+    """Utility functions for modeling calculations - used across different classes"""
+
+    @staticmethod
+    def compute_consecutive_hours_in_state(
+        binary_values: TemporalData, hours_per_timestep: Union[int, float, np.ndarray]
+    ) -> Scalar:
+        """
+        Computes the final consecutive duration in state 'on' (=1) in hours, from a binary array.
+
+        Args:
+            binary_values: An int or 1D binary array containing only `0`s and `1`s.
+            hours_per_timestep: The duration of each timestep in hours.
+                If a scalar is provided, it is used for all timesteps.
+                If an array is provided, it must be as long as the last consecutive duration in binary_values.
+
+        Returns:
+            The duration of the binary variable in hours.
+
+        Raises
+        ------
+        TypeError
+            If the length of binary_values and dt_in_hours is not equal, but None is a scalar.
+        """
+        if np.isscalar(binary_values) and np.isscalar(hours_per_timestep):
+            return binary_values * hours_per_timestep
+        elif np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
+            return binary_values * hours_per_timestep[-1]
+
+        if np.isclose(binary_values[-1], 0, atol=CONFIG.modeling.EPSILON):
+            return 0
+
+        if np.isscalar(hours_per_timestep):
+            hours_per_timestep = np.ones(len(binary_values)) * hours_per_timestep
+        hours_per_timestep: np.ndarray
+
+        indexes_with_zero_values = np.where(np.isclose(binary_values, 0, atol=CONFIG.modeling.EPSILON))[0]
+        if len(indexes_with_zero_values) == 0:
+            nr_of_indexes_with_consecutive_ones = len(binary_values)
+        else:
+            nr_of_indexes_with_consecutive_ones = len(binary_values) - indexes_with_zero_values[-1] - 1
+
+        if len(hours_per_timestep) < nr_of_indexes_with_consecutive_ones:
+            raise ValueError(
+                f'When trying to calculate the consecutive duration, the length of the last duration '
+                f'({nr_of_indexes_with_consecutive_ones}) is longer than the provided hours_per_timestep ({len(hours_per_timestep)}), '
+                f'as {binary_values=}'
+            )
+
+        return np.sum(
+            binary_values[-nr_of_indexes_with_consecutive_ones:]
+            * hours_per_timestep[-nr_of_indexes_with_consecutive_ones:]
+        )
+
+    @staticmethod
+    def compute_previous_states(previous_values: List[TemporalData], epsilon: float = None) -> np.ndarray:
+        """
+        Computes the previous states {0, 1} of defining variables as a binary array from their previous values.
+
+        Args:
+            previous_values: List of previous values for variables
+            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
+
+        Returns:
+            Binary array of previous states
+        """
+        if epsilon is None:
+            epsilon = CONFIG.modeling.EPSILON
+
+        if not previous_values or all(val is None for val in previous_values):
+            return np.array([0])
+
+        # Convert to 2D-array and compute binary on/off states
+        previous_values = np.array([values for values in previous_values if values is not None])  # Filter out None
+        if previous_values.ndim > 1:
+            return np.any(~np.isclose(previous_values, 0, atol=epsilon), axis=0).astype(int)
+
+        return (~np.isclose(previous_values, 0, atol=epsilon)).astype(int)
+
+    @staticmethod
+    def compute_previous_on_duration(previous_values: List[TemporalData], hours_per_step: Union[int, float]) -> Scalar:
+        """
+        Convenience method to compute previous consecutive 'on' duration.
+
+        Args:
+            previous_values: List of previous values for variables
+            hours_per_step: Duration of each timestep in hours
+
+        Returns:
+            Previous consecutive on duration in hours
+        """
+        if not previous_values:
+            return 0
+
+        previous_states = ModelingUtilities.compute_previous_states(previous_values)
+        return ModelingUtilities.compute_consecutive_hours_in_state(previous_states, hours_per_step)
+
+    @staticmethod
+    def compute_previous_off_duration(previous_values: List[TemporalData], hours_per_step: Union[int, float]) -> Scalar:
+        """
+        Convenience method to compute previous consecutive 'off' duration.
+
+        Args:
+            previous_values: List of previous values for variables
+            hours_per_step: Duration of each timestep in hours
+
+        Returns:
+            Previous consecutive off duration in hours
+        """
+        if not previous_values:
+            return 0
+
+        previous_states = ModelingUtilities.compute_previous_states(previous_values)
+        previous_off_states = 1 - previous_states
+        return ModelingUtilities.compute_consecutive_hours_in_state(previous_off_states, hours_per_step)
+
+    @staticmethod
+    def get_most_recent_state(previous_values: List[TemporalData]) -> int:
+        """
+        Get the most recent binary state from previous values.
+
+        Args:
+            previous_values: List of previous values for variables
+
+        Returns:
+            Most recent binary state (0 or 1)
+        """
+        if not previous_values:
+            return 0
+
+        previous_states = ModelingUtilities.compute_previous_states(previous_values)
+        return int(previous_states[-1])
+
+
 class ModelingPrimitives:
     """Mathematical modeling primitives returning (variables, constraints) tuples"""
 
@@ -105,12 +239,15 @@ class ModelingPrimitives:
         """
         coords = coords or ['year', 'scenario']
 
-        if bounds:
-            tracker = model.add_variables(
-                lower=bounds[0], upper=bounds[1], name=f'{name}|tracker', coords=model.get_coords(coords)
-            )
-        else:
+        if not bounds:
             tracker = model.add_variables(name=f'{name}|tracker', coords=model.get_coords(coords))
+        else:
+            tracker = model.add_variables(
+                lower=bounds[0] if bounds[0] is not None else -np.inf,
+                upper=bounds[1] if bounds[1] is not None else np.inf,
+                name=f'{name}|tracker',
+                coords=model.get_coords(coords),
+            )
 
         # Constraint: tracker = expression
         tracking = model.add_constraints(tracker == tracked_expression, name=f'{name}|tracking_eq')
@@ -298,6 +435,49 @@ class ModelingPrimitives:
 
         return variables, constraints
 
+    @staticmethod
+    def mutual_exclusivity_constraint(
+        model: FlowSystemModel, name: str, binary_variables: List[linopy.Variable], tolerance: float = 1.1
+    ) -> Tuple[Dict, Dict[str, linopy.Constraint]]:
+        """
+        Creates mutual exclusivity constraint for binary variables.
+
+        Mathematical formulation:
+            Σ(binary_vars[i]) ≤ tolerance  ∀t
+
+        Ensures at most one binary variable can be 1 at any time.
+        Tolerance > 1.0 accounts for binary variable numerical precision.
+
+        Args:
+            binary_variables: List of binary variables that should be mutually exclusive
+            tolerance: Upper bound (typically 1.1 for numerical stability)
+
+        Returns:
+            variables: {} (no new variables created)
+            constraints: {'mutual_exclusivity': constraint}
+
+        Raises:
+            AssertionError: If fewer than 2 variables provided or variables aren't binary
+        """
+        assert len(binary_variables) >= 2, (
+            f'Mutual exclusivity requires at least 2 variables, got {len(binary_variables)}'
+        )
+
+        for var in binary_variables:
+            assert var.attrs.get('binary', False), (
+                f'Variable {var.name} must be binary for mutual exclusivity constraint'
+            )
+
+        # Create mutual exclusivity constraint
+        mutual_exclusivity = model.add_constraints(
+            sum(binary_variables) <= tolerance, name=f'{name}|mutual_exclusivity'
+        )
+
+        variables = {}  # No new variables created
+        constraints = {'mutual_exclusivity': mutual_exclusivity}
+
+        return variables, constraints
+
 
 class ModelingPatterns:
     """High-level patterns that compose primitives and return (variables, constraints) tuples"""
@@ -373,68 +553,6 @@ class ModelingPatterns:
         track_switches: bool = False,
         previous_state=0,
         duration_bounds: Tuple[TemporalData, TemporalData] = None,
-    ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
-        """
-        Operational binary control with optional features.
-
-        Returns:
-            variables: {'on': binary_var, 'off': binary_var (optional), 'total_duration': var (optional), ...}
-            constraints: {'complementary': constraint, 'control_0_lower': constraint, ...}
-        """
-        variables = {}
-        constraints = {}
-
-        # Main binary state
-        if use_complement:
-            state_vars, state_constraints = ModelingPrimitives.binary_state_pair(model, name)
-            variables.update(state_vars)
-            constraints.update(state_constraints)
-        else:
-            variables['on'] = model.add_variables(binary=True, name=f'{name}|on', coords=model.get_coords(['time']))
-
-        # Control variables with binary state
-        for i, (var, (lower_bound, upper_bound)) in enumerate(zip(controlled_variables, variable_bounds)):
-            # Lower bound constraint
-            constraints[f'control_{i}_lower'] = model.add_constraints(
-                variables['on'] * max(CONFIG.modeling.EPSILON, lower_bound) <= var, name=f'{name}|control_{i}_lower'
-            )
-            # Upper bound constraint
-            constraints[f'control_{i}_upper'] = model.add_constraints(
-                var <= variables['on'] * upper_bound, name=f'{name}|control_{i}_upper'
-            )
-
-        # Total duration tracking
-        if track_total_duration:
-            duration_expr = (variables['on'] * model.hours_per_step).sum('time')
-            duration_vars, duration_constraints = ModelingPrimitives.expression_tracking_variable(
-                model, f'{name}|duration', duration_expr, duration_bounds
-            )
-            variables['total_duration'] = duration_vars['tracker']
-            constraints['duration_tracking'] = duration_constraints['tracking']
-
-        # Switch tracking
-        if track_switches:
-            switch_vars, switch_constraints = ModelingPrimitives.state_transition_variables(
-                model, f'{name}|switches', variables['on'], previous_state
-            )
-            variables.update(switch_vars)
-            # Add switch constraints with prefixed names
-            for switch_name, switch_constraint in switch_constraints.items():
-                constraints[f'switch_{switch_name}'] = switch_constraint
-
-        return variables, constraints
-
-    @staticmethod
-    def operational_binary_control_pattern(
-        model: FlowSystemModel,
-        name: str,
-        controlled_variables: List[linopy.Variable],
-        variable_bounds: List[Tuple[TemporalData, TemporalData]],
-        use_complement: bool = False,
-        track_total_duration: bool = False,
-        track_switches: bool = False,
-        previous_state=0,
-        duration_bounds: Tuple[TemporalData, TemporalData] = None,
         track_consecutive_on: bool = False,
         consecutive_on_bounds: Tuple[Optional[TemporalData], Optional[TemporalData]] = (None, None),
         previous_on_duration: TemporalData = 0,
@@ -467,7 +585,7 @@ class ModelingPatterns:
         # Control variables (existing logic)
         for i, (var, (lower_bound, upper_bound)) in enumerate(zip(controlled_variables, variable_bounds)):
             constraints[f'control_{i}_lower'] = model.add_constraints(
-                variables['on'] * max(CONFIG.modeling.EPSILON, lower_bound) <= var, name=f'{name}|control_{i}_lower'
+                variables['on'] * np.maximum(lower_bound, CONFIG.modeling.EPSILON) <= var, name=f'{name}|control_{i}_lower'
             )
             constraints[f'control_{i}_upper'] = model.add_constraints(
                 var <= variables['on'] * upper_bound, name=f'{name}|control_{i}_upper'
@@ -525,8 +643,30 @@ class ModelingPatterns:
 
 
 class InvestmentModel(BaseFeatureModel):
-    def create_variables(self):
-        # Clean tuple unpacking
+    """Investment model using factory patterns but keeping old interface"""
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        label_of_element: str,
+        parameters: InvestParameters,
+        defining_variable: linopy.Variable,
+        relative_bounds_of_defining_variable: Tuple[TemporalData, TemporalData],
+        label: Optional[str] = None,
+        on_variable: Optional[linopy.Variable] = None,
+    ):
+        super().__init__(model, label_of_element, parameters, label)
+
+        self._defining_variable = defining_variable
+        self._relative_bounds_of_defining_variable = relative_bounds_of_defining_variable
+        self._on_variable = on_variable
+
+        # Only keep non-variable attributes
+        self.scenario_of_investment: Optional[linopy.Variable] = None
+        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
+
+    def create_variables_and_constraints(self):
+        # Use factory patterns
         variables, constraints = ModelingPatterns.investment_sizing_pattern(
             model=self._model,
             name=self.label_full,
@@ -539,14 +679,75 @@ class InvestmentModel(BaseFeatureModel):
             optional=self.parameters.optional,
         )
 
-        # Register variables
-        self.size = self.add(variables['size'], 'size')
+        # Register variables (stored in Model's variable tracking)
+        self.add(variables['size'], 'size')
         if 'is_invested' in variables:
-            self.is_invested = self.add(variables['is_invested'], 'is_invested')
+            self.add(variables['is_invested'], 'is_invested')
 
-        # Register all constraints
+        # Register constraints
         for constraint_name, constraint in constraints.items():
             self.add(constraint, constraint_name)
+
+        # Handle scenarios and piecewise effects...
+        if self._model.flow_system.scenarios is not None:
+            self._create_bounds_for_scenarios()
+
+        if self.parameters.piecewise_effects:
+            self.piecewise_effects = self.add(
+                PiecewiseEffectsModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
+                    zero_point=self.is_invested,
+                ),
+                'segments',
+            )
+            self.piecewise_effects.do_modeling()
+
+    # Properties access variables from Model's tracking system
+    @property
+    def size(self) -> Optional[linopy.Variable]:
+        """Investment size variable"""
+        return self.get_variable_by_short_name('size')
+
+    @property
+    def is_invested(self) -> Optional[linopy.Variable]:
+        """Binary investment decision variable"""
+        return self.get_variable_by_short_name('is_invested')
+
+    def add_effects(self):
+        """Add investment effects"""
+        if self.parameters.fix_effects:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.is_invested * factor if self.is_invested is not None else factor
+                    for effect, factor in self.parameters.fix_effects.items()
+                },
+                target='invest',
+            )
+
+        if self.parameters.divest_effects and self.parameters.optional:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: -self.is_invested * factor + factor
+                    for effect, factor in self.parameters.divest_effects.items()
+                },
+                target='invest',
+            )
+
+        if self.parameters.specific_effects:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
+                target='invest',
+            )
+
+    def _create_bounds_for_scenarios(self):
+        """Keep existing scenario logic"""
+        pass
 
 
 class OnOffModel(BaseFeatureModel):
@@ -555,8 +756,8 @@ class OnOffModel(BaseFeatureModel):
     def __init__(
         self,
         model: FlowSystemModel,
-        on_off_parameters: OnOffParameters,
         label_of_element: str,
+        on_off_parameters: OnOffParameters,
         defining_variables: List[linopy.Variable],
         defining_bounds: List[Tuple[TemporalData, TemporalData]],
         previous_values: List[Optional[TemporalData]],
@@ -568,17 +769,8 @@ class OnOffModel(BaseFeatureModel):
         self._defining_bounds = defining_bounds
         self._previous_values = previous_values
 
-        # All variables set by factory
-        self.on: Optional[linopy.Variable] = None
-        self.off: Optional[linopy.Variable] = None
-        self.total_on_hours: Optional[linopy.Variable] = None
-        self.switch_on: Optional[linopy.Variable] = None
-        self.switch_off: Optional[linopy.Variable] = None
-        self.consecutive_on_hours: Optional[linopy.Variable] = None
-        self.consecutive_off_hours: Optional[linopy.Variable] = None
-
     def create_variables_and_constraints(self):
-        # Use enhanced factory pattern
+        # Use factory patterns
         variables, constraints = ModelingPatterns.operational_binary_control_pattern(
             model=self._model,
             name=self.label_full,
@@ -600,35 +792,97 @@ class OnOffModel(BaseFeatureModel):
             previous_off_duration=self._get_previous_off_duration(),
         )
 
-        # Register all variables
-        self.on = self.add(variables['on'], 'on')
+        # Register all variables (stored in Model's variable tracking)
+        self.add(variables['on'], 'on')
         if 'off' in variables:
-            self.off = self.add(variables['off'], 'off')
+            self.add(variables['off'], 'off')
         if 'total_duration' in variables:
-            self.total_on_hours = self.add(variables['total_duration'], 'total_duration')
+            self.add(variables['total_duration'], 'total_duration')
         if 'switch_on' in variables:
-            self.switch_on = self.add(variables['switch_on'], 'switch_on')
-            self.switch_off = self.add(variables['switch_off'], 'switch_off')
+            self.add(variables['switch_on'], 'switch_on')
+            self.add(variables['switch_off'], 'switch_off')
         if 'consecutive_on_duration' in variables:
-            self.consecutive_on_hours = self.add(variables['consecutive_on_duration'], 'consecutive_on_hours')
+            self.add(variables['consecutive_on_duration'], 'consecutive_on_hours')
         if 'consecutive_off_duration' in variables:
-            self.consecutive_off_hours = self.add(variables['consecutive_off_duration'], 'consecutive_off_hours')
+            self.add(variables['consecutive_off_duration'], 'consecutive_off_hours')
 
         # Register all constraints
         for constraint_name, constraint in constraints.items():
             self.add(constraint, constraint_name)
 
+    # Properties access variables from Model's tracking system
+    @property
+    def on(self) -> Optional[linopy.Variable]:
+        """Binary on state variable"""
+        return self.get_variable_by_short_name('on')
+
+    @property
+    def off(self) -> Optional[linopy.Variable]:
+        """Binary off state variable"""
+        return self.get_variable_by_short_name('off')
+
+    @property
+    def total_on_hours(self) -> Optional[linopy.Variable]:
+        """Total on hours variable"""
+        return self.get_variable_by_short_name('total_duration')
+
+    @property
+    def switch_on(self) -> Optional[linopy.Variable]:
+        """Switch on variable"""
+        return self.get_variable_by_short_name('switch_on')
+
+    @property
+    def switch_off(self) -> Optional[linopy.Variable]:
+        """Switch off variable"""
+        return self.get_variable_by_short_name('switch_off')
+
+    @property
+    def switch_on_nr(self) -> Optional[linopy.Variable]:
+        """Number of switch-ons variable"""
+        # This could be added to factory if needed
+        return None
+
+    @property
+    def consecutive_on_hours(self) -> Optional[linopy.Variable]:
+        """Consecutive on hours variable"""
+        return self.get_variable_by_short_name('consecutive_on_hours')
+
+    @property
+    def consecutive_off_hours(self) -> Optional[linopy.Variable]:
+        """Consecutive off hours variable"""
+        return self.get_variable_by_short_name('consecutive_off_hours')
+
+    def add_effects(self):
+        """Add operational effects"""
+        if self.parameters.effects_per_running_hour:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.on * factor * self._model.hours_per_step
+                    for effect, factor in self.parameters.effects_per_running_hour.items()
+                },
+                target='operation',
+            )
+
+        if self.parameters.effects_per_switch_on and self.switch_on:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.switch_on * factor for effect, factor in self.parameters.effects_per_switch_on.items()
+                },
+                target='operation',
+            )
+
     def _get_previous_on_duration(self):
-        """Calculate previous consecutive on duration"""
-        # Implementation based on _previous_values
-        return 0  # Placeholder
+        hours_per_step = self._model.hours_per_step.isel(time=0).values.flatten()[0]
+        return ModelingUtilities.compute_previous_on_duration(self._previous_values, hours_per_step)
 
     def _get_previous_off_duration(self):
-        """Calculate previous consecutive off duration"""
-        # Implementation based on _previous_values
-        return 0  # Placeholder
+        hours_per_step = self._model.hours_per_step.isel(time=0).values.flatten()[0]
+        return ModelingUtilities.compute_previous_off_duration(self._previous_values, hours_per_step)
 
-    # Remove the old placeholder methods - no longer needed!
+    def _get_previous_state(self):
+        return ModelingUtilities.get_most_recent_state(self._previous_values)
 
 
 class StateModel(Model):
