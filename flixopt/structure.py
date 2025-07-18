@@ -739,10 +739,10 @@ class Model:
         # TODO: Check uniquenes of short names
         if isinstance(item, linopy.Variable):
             self._variables_direct.append(item.name)
-            self._variables_short[item.name] = short_name or item.name
+            self._variables_short[short_name] = item.name
         elif isinstance(item, linopy.Constraint):
             self._constraints_direct.append(item.name)
-            self._constraints_short[item.name] = short_name or item.name
+            self._constraints_short[short_name] = item.name
         elif isinstance(item, Model):
             self.sub_models.append(item)
             self._sub_models_short[item.label_full] = short_name or item.label_full
@@ -829,6 +829,18 @@ class Model:
     @property
     def all_sub_models(self) -> List['Model']:
         return [model for sub_model in self.sub_models for model in [sub_model] + sub_model.all_sub_models]
+
+    def get_variable_by_short_name(self, short_name: str, default_return = None) -> Optional[linopy.Variable]:
+        """Get variable by short name"""
+        if short_name not in self._variables_short:
+            return default_return
+        return self._model.variables[self._variables_short.get(short_name)]
+
+    def get_constraint_by_short_name(self, short_name: str, default_return = None) -> Optional[linopy.Constraint]:
+        """Get variable by short name"""
+        if short_name not in self._constraints_short:
+            return default_return
+        return self._model.constraints[self._constraints_short.get(short_name)]
 
 
 class BaseFeatureModel(Model):
