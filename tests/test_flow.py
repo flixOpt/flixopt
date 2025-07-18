@@ -143,8 +143,8 @@ class TestFlowInvestModel:
         assert set(flow.model.constraints) == set(
             [
                 'Sink(Wärme)|total_flow_hours',
-                'Sink(Wärme)|lb_Sink(Wärme)|flow_rate',
-                'Sink(Wärme)|ub_Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|flow_rate|upper_bound',
+                'Sink(Wärme)|flow_rate|lower_bound',
             ]
         )
 
@@ -161,13 +161,13 @@ class TestFlowInvestModel:
             ),
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|lb_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|lower_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             >= flow.model.variables['Sink(Wärme)|size']
             * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|ub_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|upper_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             <= flow.model.variables['Sink(Wärme)|size']
             * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
@@ -194,10 +194,10 @@ class TestFlowInvestModel:
         assert set(flow.model.constraints) == set(
             [
                 'Sink(Wärme)|total_flow_hours',
-                'Sink(Wärme)|is_invested_ub',
-                'Sink(Wärme)|is_invested_lb',
-                'Sink(Wärme)|lb_Sink(Wärme)|flow_rate',
-                'Sink(Wärme)|ub_Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|size|lower_bound',
+                'Sink(Wärme)|size|upper_bound',
+                'Sink(Wärme)|flow_rate|lower_bound',
+                'Sink(Wärme)|flow_rate|upper_bound',
             ]
         )
 
@@ -215,13 +215,13 @@ class TestFlowInvestModel:
             ),
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|lb_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|lower_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             >= flow.model.variables['Sink(Wärme)|size']
             * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|ub_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|upper_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             <= flow.model.variables['Sink(Wärme)|size']
             * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
@@ -229,11 +229,11 @@ class TestFlowInvestModel:
 
         # Is invested
         assert_conequal(
-            model.constraints['Sink(Wärme)|is_invested_ub'],
+            model.constraints['Sink(Wärme)|size|upper_bound'],
             flow.model.variables['Sink(Wärme)|size'] <= flow.model.variables['Sink(Wärme)|is_invested'] * 100,
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|is_invested_lb'],
+            model.constraints['Sink(Wärme)|size|lower_bound'],
             flow.model.variables['Sink(Wärme)|size'] >= flow.model.variables['Sink(Wärme)|is_invested'] * 20,
         )
 
@@ -258,10 +258,10 @@ class TestFlowInvestModel:
         assert set(flow.model.constraints) == set(
             [
                 'Sink(Wärme)|total_flow_hours',
-                'Sink(Wärme)|is_invested_ub',
-                'Sink(Wärme)|is_invested_lb',
-                'Sink(Wärme)|lb_Sink(Wärme)|flow_rate',
-                'Sink(Wärme)|ub_Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|size|upper_bound',
+                'Sink(Wärme)|size|lower_bound',
+                'Sink(Wärme)|flow_rate|lower_bound',
+                'Sink(Wärme)|flow_rate|upper_bound',
             ]
         )
 
@@ -279,13 +279,13 @@ class TestFlowInvestModel:
             ),
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|lb_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|lower_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             >= flow.model.variables['Sink(Wärme)|size']
             * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|ub_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|upper_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             <= flow.model.variables['Sink(Wärme)|size']
             * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
@@ -293,11 +293,11 @@ class TestFlowInvestModel:
 
         # Is invested
         assert_conequal(
-            model.constraints['Sink(Wärme)|is_invested_ub'],
+            model.constraints['Sink(Wärme)|size|upper_bound'],
             flow.model.variables['Sink(Wärme)|size'] <= flow.model.variables['Sink(Wärme)|is_invested'] * 100,
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|is_invested_lb'],
+            model.constraints['Sink(Wärme)|size|lower_bound'],
             flow.model.variables['Sink(Wärme)|size'] >= flow.model.variables['Sink(Wärme)|is_invested'] * 1e-5,
         )
 
@@ -322,8 +322,8 @@ class TestFlowInvestModel:
         assert set(flow.model.constraints) == set(
             [
                 'Sink(Wärme)|total_flow_hours',
-                'Sink(Wärme)|lb_Sink(Wärme)|flow_rate',
-                'Sink(Wärme)|ub_Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|flow_rate|lower_bound',
+                'Sink(Wärme)|flow_rate|upper_bound',
             ]
         )
 
@@ -339,13 +339,13 @@ class TestFlowInvestModel:
             ),
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|lb_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|lower_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             >= flow.model.variables['Sink(Wärme)|size']
             * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|ub_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|upper_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             <= flow.model.variables['Sink(Wärme)|size']
             * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
@@ -935,10 +935,10 @@ class TestFlowOnInvestModel:
                 'Sink(Wärme)|on_hours_total',
                 'Sink(Wärme)|on_con1',
                 'Sink(Wärme)|on_con2',
-                'Sink(Wärme)|is_invested_lb',
-                'Sink(Wärme)|is_invested_ub',
-                'Sink(Wärme)|lb_Sink(Wärme)|flow_rate',
-                'Sink(Wärme)|ub_Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|size|lower_bound',
+                'Sink(Wärme)|size|upper_bound',
+                'Sink(Wärme)|flow_rate|lower_bound',
+                'Sink(Wärme)|flow_rate|upper_bound',
             ]
         )
 
@@ -980,12 +980,12 @@ class TestFlowOnInvestModel:
 
         mega = 0.2 * 200  # Relative minimum * maximum size
         assert_conequal(
-            model.constraints['Sink(Wärme)|lb_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|lower_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             >= flow.model.variables['Sink(Wärme)|on'] * mega + flow.model.variables['Sink(Wärme)|size'] * 0.2 - mega,
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|ub_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|upper_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate'] <= flow.model.variables['Sink(Wärme)|size'] * 0.8,
         )
 
@@ -1019,8 +1019,8 @@ class TestFlowOnInvestModel:
                 'Sink(Wärme)|on_hours_total',
                 'Sink(Wärme)|on_con1',
                 'Sink(Wärme)|on_con2',
-                'Sink(Wärme)|lb_Sink(Wärme)|flow_rate',
-                'Sink(Wärme)|ub_Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|flow_rate|lower_bound',
+                'Sink(Wärme)|flow_rate|upper_bound',
             ]
         )
 
@@ -1062,12 +1062,12 @@ class TestFlowOnInvestModel:
 
         mega = 0.2 * 200  # Relative minimum * maximum size
         assert_conequal(
-            model.constraints['Sink(Wärme)|lb_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|lower_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate']
             >= flow.model.variables['Sink(Wärme)|on'] * mega + flow.model.variables['Sink(Wärme)|size'] * 0.2 - mega,
         )
         assert_conequal(
-            model.constraints['Sink(Wärme)|ub_Sink(Wärme)|flow_rate'],
+            model.constraints['Sink(Wärme)|flow_rate|upper_bound'],
             flow.model.variables['Sink(Wärme)|flow_rate'] <= flow.model.variables['Sink(Wärme)|size'] * 0.8,
         )
 

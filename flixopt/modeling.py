@@ -323,14 +323,15 @@ class ModelingPrimitives:
         # Upper bound: variable ≤ size * upper_factor
         upper_bound = model.add_constraints(variable <= size_variable * rel_upper, name=upper_bound_name)
 
-        if binary_control is not None:
+        if binary_control is None:
+            lower_bound = model.add_constraints(variable >= size_variable * rel_lower, name=lower_bound_name)
+        else:
             # Big-M lower bound: variable ≥ M*(binary-1) + size*lower_factor
-            big_m = size_variable.max() * rel_upper.max()  # Conservative big-M
+            big_m = CONFIG.modeling.BIG  #size_variable.max() * rel_upper.max()  # Conservative big-M
             lower_bound = model.add_constraints(
                 variable >= big_m * (binary_control - 1) + size_variable * rel_lower, name=lower_bound_name
             )
-        else:
-            lower_bound = model.add_constraints(variable >= size_variable * rel_lower, name=lower_bound_name)
+
 
         variables = {}  # No new variables created
         constraints = {'upper_bound': upper_bound, 'lower_bound': lower_bound}
@@ -482,10 +483,20 @@ class ModelingPatterns:
         size_bounds: Tuple[TemporalData, TemporalData],
         controlled_variables: List[linopy.Variable] = None,
         control_factors: List[Tuple[TemporalData, TemporalData]] = None,
+        state_variables: List[linopy.Variable] = None,
         optional: bool = False,
     ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
         """
         Complete investment sizing pattern with optional binary decision.
+
+        Args:
+            model: The model to add the variables to.
+            name: The name of the investment variable.
+            size_bounds: The minimum and maximum investment size.
+            controlled_variables: The variables that are controlled by the investment decision.
+            control_factors: The control factors for the controlled variables.
+            state_variables: State variable defining the state of the controlled variables.
+            optional: Whether the investment decision is optional.
 
         Returns:
             variables: {'size': size_var, 'is_invested': binary_var (if optional)}
@@ -497,7 +508,7 @@ class ModelingPatterns:
         # Investment size variable
         size_min, size_max = size_bounds
         variables['size'] = model.add_variables(
-            lower=size_min,
+            lower=0 if optional else size_min,
             upper=size_max,
             name=f'{name}|size',
             coords=model.get_coords(['year', 'scenario']),
@@ -516,22 +527,30 @@ class ModelingPatterns:
                 )
             else:  # Variable size case
                 constraints['upper_bound'] = model.add_constraints(
-                    variables['size'] <= variables['is_invested'] * size_max, name=f'{name}|upper_bound'
+                    variables['size'] <= variables['is_invested'] * size_max, name=f'{name}|size|upper_bound'
                 )
                 constraints['lower_bound'] = model.add_constraints(
-                    variables['size'] >= variables['is_invested'] * max(CONFIG.modeling.EPSILON, size_min),
-                    name=f'{name}|lower_bound',
+                    variables['size'] >= variables['is_invested'] * np.maximum(CONFIG.modeling.EPSILON, size_min),
+                    name=f'{name}|size|lower_bound',
                 )
 
         # Control dependent variables
         if controlled_variables and control_factors:
-            for i, (var, factors) in enumerate(zip(controlled_variables, control_factors)):
+            for i, (var, factors, state_variable) in enumerate(zip(controlled_variables, control_factors, state_variables)):
+                upper_bound_name = f'{var.name}|upper_bound'
+                lower_bound_name = f'{var.name}|lower_bound'
                 _, control_constraints = ModelingPrimitives.big_m_binary_bounds(
-                    model, f'{name}|control_{i}', var, variables.get('is_invested'), variables['size'], factors
+                    model=model,
+                    variable=var,
+                    binary_control=state_variable,
+                    size_variable=variables['size'],
+                    relative_bounds=factors,
+                    upper_bound_name=upper_bound_name,
+                    lower_bound_name=lower_bound_name,
                 )
                 # Flatten control constraints with indexed names
-                constraints[f'control_{i}_upper_bound'] = control_constraints['upper_bound']
-                constraints[f'control_{i}_lower_bound'] = control_constraints['lower_bound']
+                constraints[upper_bound_name] = control_constraints['upper_bound']
+                constraints[lower_bound_name] = control_constraints['lower_bound']
 
         return variables, constraints
 

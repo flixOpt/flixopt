@@ -46,12 +46,10 @@ class InvestmentModel(BaseFeatureModel):
         variables, constraints = ModelingPatterns.investment_sizing_pattern(
             model=self._model,
             name=self.label_full,
-            size_bounds=(
-                0 if self.parameters.optional else self.parameters.minimum_or_fixed_size,
-                self.parameters.maximum_or_fixed_size,
-            ),
+            size_bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size,),
             controlled_variables=[self._defining_variable],
             control_factors=[self._relative_bounds_of_defining_variable],
+            state_variables=[self._on_variable],
             optional=self.parameters.optional,
         )
 
