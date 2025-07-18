@@ -150,7 +150,7 @@ class ModelingPrimitives:
 
     @staticmethod
     def binary_state_pair(
-        model: FlowSystemModel, name: str, coords: List[str] = None
+        model: FlowSystemModel, name: str, coords: List[str] = None, use_complement: bool = True
     ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
         """
         Creates complementary binary variables with completeness constraint.
@@ -166,15 +166,16 @@ class ModelingPrimitives:
         coords = coords or ['time']
 
         on = model.add_variables(binary=True, name=f'{name}|on', coords=model.get_coords(coords))
-        off = model.add_variables(binary=True, name=f'{name}|off', coords=model.get_coords(coords))
+        if use_complement:
+            off = model.add_variables(binary=True, name=f'{name}|off', coords=model.get_coords(coords))
 
-        # Constraint: on + off = 1
-        complementary = model.add_constraints(on + off == 1, name=f'{name}|complementary')
+            # Constraint: on + off = 1
+            complementary = model.add_constraints(on + off == 1, name=f'{name}|complementary')
 
-        variables = {'on': on, 'off': off}
-        constraints = {'complementary': complementary}
-
-        return variables, constraints
+            variables = {'on': on, 'off': off}
+            constraints = {'complementary': complementary}
+            return variables, constraints
+        return {'on': on}, {}
 
     @staticmethod
     def proportionally_bounded_variable(
@@ -573,20 +574,12 @@ class ModelingPatterns:
         previous_off_duration: TemporalData = 0,
     ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
         """
-        Enhanced operational binary control with consecutive duration tracking.
-
-        New Args:
-            track_consecutive_on: Whether to track consecutive on duration
-            consecutive_on_bounds: (min_duration, max_duration) for consecutive on
-            previous_on_duration: Previous consecutive on duration
-            track_consecutive_off: Whether to track consecutive off duration
-            consecutive_off_bounds: (min_duration, max_duration) for consecutive off
-            previous_off_duration: Previous consecutive off duration
+        Enhanced operational binary control using composable patterns.
         """
         variables = {}
         constraints = {}
 
-        # Main binary state (existing logic)
+        # 1. Main binary state using existing pattern
         if use_complement:
             state_vars, state_constraints = ModelingPrimitives.binary_state_pair(model, name)
             variables.update(state_vars)
@@ -594,25 +587,31 @@ class ModelingPatterns:
         else:
             variables['on'] = model.add_variables(binary=True, name=f'{name}|on', coords=model.get_coords(['time']))
 
-        # Control variables (existing logic)
+        # 2. Control variables - use big_m_binary_bounds pattern for consistency
         for i, (var, (lower_bound, upper_bound)) in enumerate(zip(controlled_variables, variable_bounds)):
-            constraints[f'control_{i}_lower'] = model.add_constraints(
-                variables['on'] * np.maximum(lower_bound, CONFIG.modeling.EPSILON) <= var, name=f'{name}|control_{i}_lower'
+            # Use the big_m pattern but without binary control (None)
+            _, control_constraints = ModelingPrimitives.big_m_binary_bounds(
+                model=model,
+                variable=var,
+                binary_control=variables['on'],  # The on state controls the variables
+                size_variable=1,  # No size scaling, just on/off
+                relative_bounds=(lower_bound, upper_bound),
+                upper_bound_name=f'{name}|control_{i}_upper',
+                lower_bound_name=f'{name}|control_{i}_lower',
             )
-            constraints[f'control_{i}_upper'] = model.add_constraints(
-                var <= variables['on'] * upper_bound, name=f'{name}|control_{i}_upper'
-            )
+            constraints[f'control_{i}_upper'] = control_constraints['upper_bound']
+            constraints[f'control_{i}_lower'] = control_constraints['lower_bound']
 
-        # Total duration tracking (existing logic)
+        # 3. Total duration tracking using existing pattern
         if track_total_duration:
             duration_expr = (variables['on'] * model.hours_per_step).sum('time')
             duration_vars, duration_constraints = ModelingPrimitives.expression_tracking_variable(
-                model, f'{name}|duration', duration_expr, duration_bounds
+                model, f'{name}|on_hours_total', duration_expr, duration_bounds
             )
             variables['total_duration'] = duration_vars['tracker']
             constraints['duration_tracking'] = duration_constraints['tracking']
 
-        # Switch tracking (existing logic)
+        # 4. Switch tracking using existing pattern
         if track_switches:
             switch_vars, switch_constraints = ModelingPrimitives.state_transition_variables(
                 model, f'{name}|switches', variables['on'], previous_state
@@ -621,7 +620,7 @@ class ModelingPatterns:
             for switch_name, switch_constraint in switch_constraints.items():
                 constraints[f'switch_{switch_name}'] = switch_constraint
 
-        # NEW: Consecutive on duration tracking
+        # 5. Consecutive on duration using existing pattern
         if track_consecutive_on:
             min_on, max_on = consecutive_on_bounds
             consecutive_on_vars, consecutive_on_constraints = ModelingPrimitives.consecutive_duration_tracking(
@@ -636,7 +635,7 @@ class ModelingPatterns:
             for cons_name, cons_constraint in consecutive_on_constraints.items():
                 constraints[f'consecutive_on_{cons_name}'] = cons_constraint
 
-        # NEW: Consecutive off duration tracking
+        # 6. Consecutive off duration using existing pattern
         if track_consecutive_off and 'off' in variables:
             min_off, max_off = consecutive_off_bounds
             consecutive_off_vars, consecutive_off_constraints = ModelingPrimitives.consecutive_duration_tracking(

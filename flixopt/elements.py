@@ -334,10 +334,11 @@ class FlowModel(ElementModel):
                 OnOffModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    on_off_parameters=self.element.on_off_parameters,
-                    defining_variables=[self.flow_rate],
-                    defining_bounds=[self.flow_rate_bounds_on],
-                    previous_values=[self.element.previous_flow_rate],
+                    parameters=self.element.on_off_parameters,
+                    flow_rates=[self.flow_rate],
+                    flow_rate_bounds=[self.flow_rate_bounds_on],
+                    previous_flow_rates=[self.element.previous_flow_rate],
+                    label_of_model=self.label_of_element,
                 ),
                 'on_off',
             )
