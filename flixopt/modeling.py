@@ -439,6 +439,9 @@ class BoundingPatterns:
     ):
         """Create simple bounds.
 
+        Mathematical Formulation:
+            lower_bound ≤ variable ≤ upper_bound
+
         Args:
             model: The optimization model instance
             variable: Variable to be bounded
@@ -446,10 +449,8 @@ class BoundingPatterns:
 
         Returns:
             Tuple containing:
-                - variables (Dict): Empty dict (no new variables created)
-                - constraints (Dict[str, linopy.Constraint]): Dictionary with keys:
-                    - 'ub': Upper bound constraint
-                    - 'lb': Lower bound constraint
+                - variables (Dict): Empty dict
+                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
         lower_bound, upper_bound = bounds
 
@@ -463,64 +464,40 @@ class BoundingPatterns:
         model: FlowSystemModel,
         variable: linopy.Variable,
         bounds: Tuple[TemporalData, TemporalData],
-        binary_control: linopy.Variable,
+        variable_state: linopy.Variable,
     ) -> Tuple[Dict, Dict[str, linopy.Constraint]]:
-        """Create bounds controlled by a binary variable with epsilon handling.
-
-        This method implements binary-controlled bounds where a binary variable acts as an on/off
-        switch for the bounded variable. When the binary is 1, normal bounds apply; when 0, the
-        variable is forced to zero.
+        """Create bounds controlled by a binary variable.
 
         Mathematical Formulation:
-            binary * max(ε, lower_bound) ≤ variable ≤ binary * upper_bound
-
-        Where:
-            - binary ∈ {0, 1}: Control variable
-            - ε: Small positive constant (CONFIG.modeling.EPSILON)
-            - When binary = 1: Normal bounds apply
-            - When binary = 0: Variable is forced to 0
+            variable_state * max(ε, lower_bound) ≤ variable ≤ variable_state * upper_bound
 
         Use Cases:
-            - Investment decisions (invest or don't invest)
-            - Unit commitment (on/off operational states)
-            - Feature selection in optimization models
-
-        Example:
-            Investment bounds where β_inv controls whether investment occurs:
-            β_inv * max(ε, V^L) ≤ V ≤ β_inv * V^U
+            - Investment decisions
+            - Unit commitment (on/off states)
 
         Args:
             model: The optimization model instance
             variable: Variable to be bounded
             bounds: Tuple of (lower_bound, upper_bound) absolute bounds
-            binary_control: Binary variable controlling the bounds
+            variable_state: Binary variable controlling the bounds
 
         Returns:
             Tuple containing:
-                - variables (Dict): Empty dict (no new variables created)
-                - constraints (Dict[str, linopy.Constraint]): Dictionary with keys:
-                    - 'ub': Upper bound constraint
-                    - 'lb': Lower bound constraint
-                    - 'fix': Fix constraint, if upper bound is equal to lower bound
-
-        Note:
-            The epsilon value is applied to the lower bound to distinguish between
-            zero and "very small positive" values, which is important for numerical
-            stability in optimization solvers.
+                - variables (Dict): Empty dict
+                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
         lower_bound, upper_bound = bounds
 
         if np.all(lower_bound - upper_bound) < 1e-10:
             fix_constraint = model.add_constraints(
-                variable == binary_control * upper_bound, name=f'{variable.name}|fixed_size'
+                variable == variable_state * upper_bound, name=f'{variable.name}|fixed_size'
             )
             return {}, {'ub': fix_constraint, 'lb': fix_constraint}
 
-        # Apply epsilon to lower bound to distinguish 0 from "very small positive"
         epsilon = np.maximum(CONFIG.modeling.EPSILON, lower_bound)
 
-        upper_constraint = model.add_constraints(variable <= binary_control * upper_bound, name=f'{variable.name}|ub')
-        lower_constraint = model.add_constraints(variable >= binary_control * epsilon, name=f'{variable.name}|lb')
+        upper_constraint = model.add_constraints(variable <= variable_state * upper_bound, name=f'{variable.name}|ub')
+        lower_constraint = model.add_constraints(variable >= variable_state * epsilon, name=f'{variable.name}|lb')
 
         return {}, {'ub': upper_constraint, 'lb': lower_constraint}
 
@@ -531,28 +508,14 @@ class BoundingPatterns:
         scaling_variable: linopy.Variable,
         relative_bounds: Tuple[TemporalData, TemporalData],
     ) -> Tuple[Dict, Dict[str, linopy.Constraint]]:
-        """Create simple bounds scaled by another variable.
-
-        This method creates proportional bounds where the actual bounds are determined
-        by multiplying relative factors with a scaling variable. This is useful for
-        capacity-dependent constraints.
+        """Create bounds scaled by another variable.
 
         Mathematical Formulation:
-            scaling * lower_factor ≤ variable ≤ scaling * upper_factor
-
-        Where:
-            - scaling: Continuous scaling variable (e.g., capacity, size)
-            - lower_factor, upper_factor: Relative bound multipliers
+            scaling_variable * lower_factor ≤ variable ≤ scaling_variable * upper_factor
 
         Use Cases:
             - Flow rates bounded by equipment capacity
             - Production levels scaled by plant size
-            - Resource consumption proportional to activity level
-
-        Example:
-            Flow rate bounded by equipment size:
-            P * p_rel^L(t) ≤ p(t) ≤ P * p_rel^U(t)
-            where P is equipment size, p is flow rate
 
         Args:
             model: The optimization model instance
@@ -562,19 +525,13 @@ class BoundingPatterns:
 
         Returns:
             Tuple containing:
-                - variables (Dict): Empty dict (no new variables created)
-                - constraints (Dict[str, linopy.Constraint]): Dictionary with keys:
-                    - 'ub': Upper bound constraint
-                    - 'lb': Lower bound constraint
-
-        Note:
-            This method assumes the scaling variable is always non-negative.
-            For negative scaling variables, the inequality directions would need adjustment.
+                - variables (Dict): Empty dict
+                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
         rel_lower, rel_upper = relative_bounds
 
-        upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{variable}|ub')
-        lower_constraint = model.add_constraints(variable >= scaling_variable * rel_lower, name=f'{variable}|lb')
+        upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{variable.name}|ub')
+        lower_constraint = model.add_constraints(variable >= scaling_variable * rel_lower, name=f'{variable.name}|lb')
 
         variables = {}
         constraints = {'ub': upper_constraint, 'lb': lower_constraint}
@@ -586,94 +543,57 @@ class BoundingPatterns:
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
         relative_bounds: Tuple[TemporalData, TemporalData],
-        binary_control: linopy.Variable,
+        variable_state: linopy.Variable,
         scaling_bounds: Tuple[TemporalData, TemporalData],
     ) -> Tuple[Dict, Dict[str, linopy.Constraint]]:
-        """Create scaled bounds controlled by a binary variable using linear big-M formulation.
+        """Create scaled bounds controlled by a binary variable.
 
-        Desired (Non-Linear) Formulation:
-            binary * max(ε, scaling * lower_factor) ≤ variable ≤ binary * scaling * upper_factor
+        Mathematical Formulation (Big-M):
+            scaling_variable * lower_factor ≤ variable ≤ scaling_variable * upper_factor
+            variable ≤ variable_state * M_upper
+            variable ≥ variable_state * M_lower
 
-        Actual Linear Big-M Formulation:
-            # When binary = 1: scaling bounds apply
-            scaling * lower_factor ≤ variable ≤ scaling * upper_factor
-
-            # When binary = 0: variable forced to 0
-            variable ≤ binary * M_upper
-            variable ≥ binary * M_lower
-
-            Where:
-                M_upper = scaling_max * upper_factor
-                M_lower = max(ε, scaling_min * lower_factor)
-
-        Behavior:
-            - When binary = 1: Variable bounded by scaling * factors (normal operation)
-            - When binary = 0: Variable forced to 0 (off state)
+        Where: M_upper = scaling_max * upper_factor, M_lower = max(ε, scaling_min * lower_factor)
 
         Use Cases:
-            - Fixed-size units with on/off control
-            - Capacity-scaled operations with binary states
-            - Process units with binary operational modes
-
-        Example:
-            Power plant with capacity P ∈ [P_min, P_max] and on/off control β_on:
-            Linear formulation replaces: β_on(t) * P * p_rel^L(t) ≤ p(t) ≤ β_on(t) * P * p_rel^U(t)
+            - Equipment with capacity and on/off control
+            - Variable-size units with operational states
 
         Args:
             model: The optimization model instance
             variable: Variable to be bounded
             scaling_variable: Variable that scales the bound factors
             relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling variable
-            binary_control: Binary variable for on/off control
+            variable_state: Binary variable for on/off control
             scaling_bounds: Tuple of (scaling_min, scaling_max) bounds of the scaling variable
 
         Returns:
             Tuple containing:
-                - variables (Dict): Empty dict (no new variables created)
-                - constraints (Dict[str, linopy.Constraint]): Dictionary with keys:
-                    - 'ub': Upper bound constraint
-                    - 'lb': Lower bound constraint
-
-        Note:
-            This method now requires scaling_bounds to compute appropriate big-M values.
-            The big-M formulation maintains linearity while preserving the intended behavior.
+                - variables (Dict): Empty dict
+                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb', 'binary_upper', 'binary_lower'
         """
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
 
-        # Calculate big-M values for upper and lower bounds
         big_m_upper = scaling_max * rel_upper
         big_m_lower = np.maximum(CONFIG.modeling.EPSILON, scaling_min * rel_lower)
 
-        # Linear constraints using big-M technique:
-        # When binary = 1: normal scaling bounds apply
-        # When binary = 0: variable forced to 0
-
-        # Upper bound: variable ≤ min(scaling * rel_upper, binary * big_m_upper)
-        # Implemented as two constraints:
         scaling_upper = model.add_constraints(
-            variable <= scaling_variable * rel_upper, name=f'{scaling_variable.name}|ub'
+            variable <= scaling_variable * rel_upper, name=f'{variable.name}|scaling_ub'
         )
-        binary_upper = model.add_constraints(
-            variable <= binary_control * big_m_upper, name=f'{variable.name}|ub'
-        )
+        binary_upper = model.add_constraints(variable <= variable_state * big_m_upper, name=f'{variable.name}|ub')
 
-        # Lower bound: variable ≥ max(scaling * rel_lower, binary * big_m_lower)
-        # When binary = 0: second constraint gives variable ≥ 0
-        # When binary = 1: first constraint is active
         scaling_lower = model.add_constraints(
-            variable >= scaling_variable * rel_lower, name=f'{scaling_variable.name}|ub'
+            variable >= scaling_variable * rel_lower, name=f'{variable.name}|scaling_lb'
         )
-        binary_lower = model.add_constraints(
-            variable >= binary_control * big_m_lower, name=f'{variable.name}|lb'
-        )
+        binary_lower = model.add_constraints(variable >= variable_state * big_m_lower, name=f'{variable.name}|lb')
 
         variables = {}
         constraints = {
-            'ub': scaling_upper,  # Primary upper bound constraint
-            'lb': scaling_lower,  # Primary lower bound constraint
-            'binary_upper': binary_upper,  # Binary control upper bound
-            'binary_lower': binary_lower,  # Binary control lower bound
+            'ub': scaling_upper,
+            'lb': scaling_lower,
+            'binary_upper': binary_upper,
+            'binary_lower': binary_lower,
         }
         return variables, constraints
 
@@ -683,121 +603,76 @@ class BoundingPatterns:
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
         relative_bounds: Tuple[TemporalData, TemporalData],
-        scaling_binary: linopy.Variable,
-        secondary_binary: linopy.Variable,
+        scaling_state: linopy.Variable,
+        variable_state: linopy.Variable,
         scaling_bounds: Tuple[TemporalData, TemporalData],
     ) -> Tuple[Dict, Dict[str, linopy.Constraint]]:
         """Create bounds with dual binary control over a scaled variable.
 
-        This method implements the most complex bounding case where you have two binary variables
-        controlling a scaled relationship between variables. This is commonly used for investment
-        and operational control scenarios.
-
-        Hierarchical Control:
-        1. scaling_binary: Controls whether the scaling variable can be non-zero
-        2. Secondary binary: Controls whether the main variable can be non-zero (given scaling exists)
-
         Mathematical Formulation:
-
-        Scaling variable bounds:
-            scaling_binary * max(ε, scaling_min) ≤ scaling_variable ≤ scaling_binary * scaling_max
-
-        Main variable bounds with dual control:
-            secondary_binary * max(ε, rel_lower * scaling_min) ≤ variable ≤ secondary_binary * M
-            M * (secondary_binary - 1) + scaling_variable * rel_lower ≤ variable ≤ scaling_variable * rel_upper
+            scaling_state * max(ε, scaling_min) ≤ scaling_variable ≤ scaling_state * scaling_max
+            variable_state * max(ε, rel_lower * scaling_min) ≤ variable ≤ variable_state * M
+            M * (variable_state - 1) + scaling_variable * rel_lower ≤ variable ≤ scaling_variable * rel_upper
 
         Where: M = rel_upper * scaling_max
 
-        Logical Behavior:
-        - scaling_binary = 0: No scaling capacity (scaling_variable = 0), no main variable (variable = 0)
-        - scaling_binary = 1, secondary_binary = 0: Scaling exists but main variable is off (variable = 0)
-        - scaling_binary = 1, secondary_binary = 1: Normal scaled operation
-
         Use Cases:
-        - Investment + operational control (capacity sizing + on/off dispatch)
-        - Resource allocation + activation (budget + spending)
-        - Equipment sizing + utilization (capacity + operation)
-        - Feature selection + intensity (enable + level)
-
-        Examples:
-        - Power plant: Build capacity? (primary) How big? (scaling) When to run? (secondary)
-        - Marketing: Enter market? (primary) Budget size? (scaling) Campaign active? (secondary)
-        - Production: Install line? (primary) Line capacity? (scaling) Line running? (secondary)
+            - Investment + operational control (capacity sizing + on/off dispatch)
+            - Equipment sizing + utilization
 
         Args:
             model: The optimization model instance
-            variable: Main variable to be bounded
-            scaling_variable: Variable that scales the bounds (e.g., capacity, size, budget)
+            variable: Variable to be bounded
+            scaling_variable: Variable that scales the bounds
             relative_bounds: Tuple of (rel_lower, rel_upper) relative bound multipliers
-            scaling_binary: Binary controlling scaling_variable existence (e.g., investment decision)
-            secondary_binary: Binary controlling variable operation (e.g., operational on/off)
+            scaling_state: Binary controlling scaling_variable existence
+            variable_state: Binary controlling variable operation
             scaling_bounds: Tuple of (scaling_min, scaling_max) bounds for scaling_variable
 
         Returns:
             Tuple containing:
-                - variables (Dict): Empty dict (no new variables created)
-                - constraints (Dict[str, linopy.Constraint]): Dictionary with keys:
-                    - 'primary_scaling_ub': Primary control upper bound for scaling variable
-                    - 'primary_scaling_lb': Primary control lower bound for scaling variable
-                    - 'secondary_variable_ub': Secondary control upper bound for main variable
-                    - 'secondary_variable_lb': Secondary control lower bound for main variable
-                    - 'scaling_variable_ub': Scaling-dependent upper bound for main variable
-                    - 'scaling_variable_lb': Scaling-dependent lower bound for main variable
-
-        Note:
-            This implements hierarchical binary control where the primary binary enables the scaling
-            variable, and the secondary binary controls the main variable's operation within the
-            scaled bounds. Both binaries must be active for normal operation.
+                - variables (Dict): Empty dict
+                - constraints (Dict[str, linopy.Constraint]): Multiple constraint keys
         """
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
 
-        # Calculate big-M value for secondary control constraints
-        # M = rel_upper * scaling_max (maximum possible variable value)
         big_m = rel_upper * scaling_max
 
-        # 1. PRIMARY BINARY CONSTRAINTS FOR SCALING VARIABLE
-        # scaling_binary * max(ε, scaling_min) ≤ scaling_variable ≤ scaling_binary * scaling_max
+        # 1. SCALING VARIABLE CONSTRAINTS
         epsilon_scaling = np.maximum(CONFIG.modeling.EPSILON, scaling_min)
 
-        primary_scaling_ub = model.add_constraints(
-            scaling_variable <= scaling_binary * scaling_max, name=f'{scaling_variable.name}|primary_ub'
+        scaling_ub = model.add_constraints(
+            scaling_variable <= scaling_state * scaling_max, name=f'{scaling_variable.name}|ub'
         )
 
-        primary_scaling_lb = model.add_constraints(
-            scaling_variable >= scaling_binary * epsilon_scaling, name=f'{scaling_variable.name}|primary_lb'
+        scaling_lb = model.add_constraints(
+            scaling_variable >= scaling_state * epsilon_scaling, name=f'{scaling_variable.name}|lb'
         )
 
-        # 2. SECONDARY BINARY CONSTRAINTS FOR MAIN VARIABLE
-        # secondary_binary * max(ε, rel_lower * scaling_min) ≤ variable ≤ secondary_binary * M
+        # 2. VARIABLE STATE CONSTRAINTS
         epsilon_variable = np.maximum(CONFIG.modeling.EPSILON, rel_lower * scaling_min)
 
-        secondary_variable_ub = model.add_constraints(
-            variable <= secondary_binary * big_m, name=f'{variable.name}|secondary_ub'
-        )
+        variable_ub = model.add_constraints(variable <= variable_state * big_m, name=f'{variable.name}|ub')
 
-        secondary_variable_lb = model.add_constraints(
-            variable >= secondary_binary * epsilon_variable, name=f'{variable.name}|secondary_lb'
-        )
+        variable_lb = model.add_constraints(variable >= variable_state * epsilon_variable, name=f'{variable.name}|lb')
 
-        # 3. SCALING-DEPENDENT CONSTRAINTS FOR MAIN VARIABLE
-        # M * (secondary_binary - 1) + scaling_variable * rel_lower ≤ variable ≤ scaling_variable * rel_upper
-
+        # 3. SCALING-DEPENDENT CONSTRAINTS
         scaling_variable_ub = model.add_constraints(
             variable <= scaling_variable * rel_upper, name=f'{variable.name}|scaling_ub'
         )
 
         scaling_variable_lb = model.add_constraints(
-            big_m * (secondary_binary - 1) + scaling_variable * rel_lower <= variable,
+            big_m * (variable_state - 1) + scaling_variable * rel_lower <= variable,
             name=f'{variable.name}|scaling_lb',
         )
 
         variables = {}
         constraints = {
-            'primary_scaling_ub': primary_scaling_ub,
-            'primary_scaling_lb': primary_scaling_lb,
-            'secondary_variable_ub': secondary_variable_ub,
-            'secondary_variable_lb': secondary_variable_lb,
+            'scaling_ub': scaling_ub,
+            'scaling_lb': scaling_lb,
+            'variable_ub': variable_ub,
+            'variable_lb': variable_lb,
             'scaling_variable_ub': scaling_variable_ub,
             'scaling_variable_lb': scaling_variable_lb,
         }
@@ -808,123 +683,84 @@ class BoundingPatterns:
     def auto_bounds(
         model: FlowSystemModel,
         variable: linopy.Variable,
-        variable_bounds: Tuple[TemporalData, TemporalData],
+        bounds: Tuple[TemporalData, TemporalData],
         scaling_variable: linopy.Variable = None,
         scaling_state: linopy.Variable = None,
         scaling_bounds: Tuple[TemporalData, TemporalData] = None,
         variable_state: linopy.Variable = None,
     ) -> Tuple[Dict, Dict[str, linopy.Constraint]]:
-        """Automatically select the appropriate bounds method based on provided parameters.
+        """Automatically select the appropriate bounds method.
 
-        This intelligent dispatcher analyzes the provided parameters and automatically
-        selects the most appropriate bounding method. It simplifies the API by providing
-        a single entry point for all bounding scenarios.
-
-        Parameter Combinations and Method Selection:
-
-        1. **Simple Bounds**: Only `bounds` provided
-           → Creates: lower_bound ≤ variable ≤ upper_bound
-
-        2. **Scaled Bounds**: `bounds` + `scaling_variable`
-           → Calls: scaled_bounds()
-           → Creates: scaling * lower_factor ≤ variable ≤ scaling * upper_factor
-
-        3. **Binary Controlled**: `bounds` + `binary_control`
-           → Calls: binary_controlled_bounds()
-           → Creates: binary * max(ε, lower_bound) ≤ variable ≤ binary * upper_bound
-
-        4. **Binary + Scaling**: `bounds` + `scaling_variable` + `binary_control`
-           → Calls: binary_scaled_bounds()
-           → Creates: binary * max(ε, scaling * lower_factor) ≤ variable ≤ binary * scaling * upper_factor
-
-        5. **Big-M Dual Control**: All parameters provided
-           → Calls: big_m_dual_control_bounds()
-           → Creates: Complex big-M formulation for binary + variable scaling control
-
-        Usage Examples:
-            ```python
-            # Simple bounds
-            auto_bounds(model, var, (0, 100), 'upper', 'lower')
-
-            # Capacity-scaled bounds
-            auto_bounds(model, flow_var, (0.2, 0.8), 'upper', 'lower', scaling_variable=capacity_var)
-
-            # Binary on/off control
-            auto_bounds(model, var, (10, 100), 'upper', 'lower', binary_control=on_off_var)
-
-            # Full dual control
-            auto_bounds(
-                model,
-                var,
-                (0.1, 0.9),
-                'upper',
-                'lower',
-                scaling_variable=size_var,
-                binary_control=on_var,
-                scaling_bounds=(0, 1000),
-                constraint_name_prefix='dual',
-            )
-            ```
+        Parameter Combinations:
+        1. Only bounds → basic_bounds()
+        2. bounds + scaling_variable → scaled_bounds()
+        3. bounds + variable_state → binary_controlled_bounds()
+        4. bounds + scaling_variable + variable_state → binary_scaled_bounds()
+        5. bounds + scaling_variable + scaling_state + variable_state → dual_binary_scaled_bounds()
 
         Args:
             model: The optimization model instance
             variable: Variable to be bounded
-            variable_bounds: Tuple of (lower, upper) - absolute bounds or relative factors if scaling
+            bounds: Tuple of (lower, upper) bounds or relative factors
             scaling_variable: Optional variable to scale bounds by
-            scaling_state: Optional binary variable for the state of the scaling variable
-            scaling_bounds: Required for big-M case - bounds of scaling variable
-            variable_state: Optional variable that controls the variable state (e.g., on/off)
+            scaling_state: Optional binary variable for scaling_variable state
+            scaling_bounds: Required for cases 4,5 - bounds of scaling variable
+            variable_state: Optional binary variable for variable state
 
         Returns:
-            Tuple containing:
-                - variables (Dict): Variable dictionary from the selected method
-                - constraints (Dict[str, linopy.Constraint]): Constraint dictionary from the selected method
+            Tuple from the selected method
 
         Raises:
-            ValueError: If big-M dual control is detected but required parameters are missing
-
-        Note:
-            The method prioritizes more complex formulations when multiple options are available.
-            Parameter validation ensures all required arguments are provided for each case.
+            ValueError: If required parameters are missing
         """
-        # Case 1: Scaled bounds with state and a state for the variable
-        if variable_state is not None and scaling_variable is None and scaling_state is None:
+        # Case 5: Dual binary control
+        if scaling_variable is not None and scaling_state is not None and variable_state is not None:
+            if scaling_bounds is None:
+                raise ValueError('scaling_bounds is required for dual binary control')
             return BoundingPatterns.dual_binary_scaled_bounds(
                 model=model,
                 variable=variable,
-                scaling_variable=variable_state,
-                relative_bounds=variable_bounds,
-                scaling_binary=variable_state,
-                secondary_binary=variable_state,
+                scaling_variable=scaling_variable,
+                relative_bounds=bounds,
+                scaling_state=scaling_state,
+                variable_state=variable_state,
                 scaling_bounds=scaling_bounds,
             )
 
-        # Case 2: Scaled Bounds with state for the scaled variable
-        if variable_state is not None and scaling_variable is not None:
+        # Case 4: Binary scaled bounds
+        if scaling_variable is not None and variable_state is not None:
             if scaling_bounds is None:
-                raise ValueError('scaling_bounds is required when using binary_scaled_bounds to compute big-M values')
-
+                raise ValueError('scaling_bounds is required for binary scaled bounds')
             return BoundingPatterns.binary_scaled_bounds(
                 model=model,
                 variable=variable,
                 scaling_variable=scaling_variable,
-                relative_bounds=variable_bounds,
-                binary_control=variable_state,
+                relative_bounds=bounds,
+                variable_state=variable_state,
                 scaling_bounds=scaling_bounds,
             )
 
-        # Case 3: Binary controlled variable with fixed bounds
+        # Case 3: Binary controlled bounds
         if variable_state is not None and scaling_variable is None:
             return BoundingPatterns.binary_controlled_bounds(
                 model=model,
                 variable=variable,
-                bounds=variable_bounds,
-                binary_control=variable_state,
+                bounds=bounds,
+                variable_state=variable_state,
             )
 
-        # Case 4: Simple absolute bounds
+        # Case 2: Scaled bounds
+        if scaling_variable is not None and variable_state is None:
+            return BoundingPatterns.scaled_bounds(
+                model=model,
+                variable=variable,
+                scaling_variable=scaling_variable,
+                relative_bounds=bounds,
+            )
+
+        # Case 1: Basic bounds
         if scaling_variable is None and variable_state is None:
-            return BoundingPatterns.basic_bounds(model, variable, variable_bounds)
+            return BoundingPatterns.basic_bounds(model, variable, bounds)
 
         raise ValueError('Invalid combination of arguments')
 
