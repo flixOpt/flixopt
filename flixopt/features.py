@@ -13,7 +13,7 @@ from .config import CONFIG
 from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
 from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects
 from .structure import Model, FlowSystemModel, BaseFeatureModel
-from .modeling import ModelingPatterns, ModelingUtilities, ModelingPrimitives
+from .modeling import ModelingPatterns, ModelingUtilities, ModelingPrimitives, BoundingPatterns
 
 logger = logging.getLogger('flixopt')
 
@@ -29,42 +29,82 @@ class InvestmentModel(BaseFeatureModel):
         defining_variable: linopy.Variable,
         relative_bounds_of_defining_variable: Tuple[TemporalData, TemporalData],
         label_of_model: Optional[str] = None,
-        on_variable: Optional[linopy.Variable] = None,
+        state_variable: Optional[linopy.Variable] = None,
     ):
+        """
+        This feature model is used to model the investment of a variable.
+        It applies the corresponding bounds to the variable and the on/off state of the variable.
+
+        Args:
+            model: The optimization model instance
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            parameters: The parameters of the feature model.
+            defining_variable: The variable to be invested
+            relative_bounds_of_defining_variable: The bounds of the variable, with respect to the minimum/maximum investment sizes
+            label_of_model: The label of the model. This is needed to construct the full label of the model.
+            state_variable: The variable tracking the state of the variable
+        """
         super().__init__(model, label_of_element=label_of_element, parameters=parameters, label_of_model=label_of_model)
 
         self._defining_variable = defining_variable
         self._relative_bounds_of_defining_variable = relative_bounds_of_defining_variable
-        self._on_variable = on_variable
+        self._state_variable = state_variable
 
         # Only keep non-variable attributes
         self.scenario_of_investment: Optional[linopy.Variable] = None
         self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
 
     def create_variables_and_constraints(self):
-        # Use factory patterns
-        variables, constraints = ModelingPatterns.investment_sizing_pattern(
-            model=self._model,
-            name=self.label_full,
-            size_bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size,),
-            controlled_variables=[self._defining_variable],
-            control_factors=[self._relative_bounds_of_defining_variable],
-            state_variables=[self._on_variable],
-            optional=self.parameters.optional,
+        constraints = []
+        size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
+        size = self.add(
+            self._model.add_variables(
+                lower=0 if self.parameters.optional else size_min,
+                upper=size_max,
+                name=f'{self.label_of_model}|size',
+                coords=self._model.get_coords(['year', 'scenario']),
+            ),
+            'size',
         )
 
-        # Register variables (stored in Model's variable tracking)
-        self.add(variables['size'], 'size')
-        if 'is_invested' in variables:
-            self.add(variables['is_invested'], 'is_invested')
+        constraints += BoundingPatterns.scaled_bounds(
+            self._model,
+            variable=self._defining_variable,
+            scaling_variable=size,
+            relative_bounds=self._relative_bounds_of_defining_variable,
+        )
+
+        # Optional binary investment decision
+        if self.parameters.optional:
+            is_invested = self.add(
+                self._model.add_variables(
+                    binary=True, name=f'{self.label_of_model}|is_invested', coords=self._model.get_coords(['year', 'scenario'])
+                ),
+                'is_invested',
+            )
+
+            if self._state_variable is None:
+                constraints += BoundingPatterns.bounds_with_state(
+                    self._model,
+                    variable=size,
+                    variable_state=is_invested,
+                    bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+                )
+
+            else:
+                constraints += BoundingPatterns.scaled_bounds_with_state(
+                    self._model,
+                    variable=self._defining_variable,
+                    variable_state=self._state_variable,
+                    scaling_variable=size,
+                    relative_bounds=self._relative_bounds_of_defining_variable,
+                    scaling_bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+                    scaling_state=is_invested,
+                )
 
         # Register constraints
-        for constraint_name, constraint in constraints.items():
-            self.add(constraint, constraint_name)
-
-        # Handle scenarios and piecewise effects...
-        if self._model.flow_system.scenarios is not None:
-            self._create_bounds_for_scenarios()
+        for constraint in constraints:
+            self.add(constraint)
 
         if self.parameters.piecewise_effects:
             self.piecewise_effects = self.add(
@@ -137,6 +177,19 @@ class OnOffModel(BaseFeatureModel):
         previous_flow_rates: List[Optional[TemporalData]],
         label_of_model: Optional[str] = None,
     ):
+        """
+        This feature model is used to model the on/off state of flow_rate(s). It does not matter of the flow_rates are
+        bounded by a size variable or by a hard bound. THe used bound here is the absolute highest/lowest bound!
+
+        Args:
+            model: The optimization model instance
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            parameters: The parameters of the feature model.
+            flow_rates: The flow_rates to be modeled
+            flow_rate_bounds: The bounds of the flow_rates, with respect to the minimum/maximum investment sizes
+            previous_flow_rates: The previous flow_rates
+            label_of_model: The label of the model. This is needed to construct the full label of the model.
+        """
         super().__init__(model, label_of_element, parameters=parameters, label_of_model=label_of_model)
         self._flow_rates = flow_rates
         self._flow_rate_bounds = flow_rate_bounds
@@ -155,17 +208,14 @@ class OnOffModel(BaseFeatureModel):
         for i, (flow_rate, (lower_bound, upper_bound)) in enumerate(zip(self._flow_rates, self._flow_rate_bounds)):
             suffix = f'_{i}' if len(self._flow_rates) > 1 else ''
             # Use the big_m pattern but without binary control (None)
-            _, control_constraints = ModelingPrimitives.big_m_binary_bounds(
+            _, control_constraints = BoundingPatterns.binary_controlled_bounds(
                 model=self._model,
                 variable=flow_rate,
-                binary_control=None,
-                size_variable=variables['on'],
-                relative_bounds=(lower_bound, upper_bound),
-                upper_bound_name=f'{variables['on'].name}|ub{suffix}',
-                lower_bound_name=f'{variables['on'].name}|lb{suffix}',
+                bounds=(lower_bound, upper_bound),
+                variable_state=variables['on'],
             )
-            constraints[f'ub_{i}'] = control_constraints['upper_bound']
-            constraints[f'lb_{i}'] = control_constraints['lower_bound']
+            constraints[f'ub{suffix}'] = control_constraints['ub']
+            constraints[f'lb{suffix}'] = control_constraints['lb']
 
         # 3. Total duration tracking using existing pattern
         duration_expr = (variables['on'] * self._model.hours_per_step).sum('time')
@@ -216,8 +266,8 @@ class OnOffModel(BaseFeatureModel):
                 constraints[f'consecutive_off_{cons_name}'] = cons_constraint
 
         # Register all constraints and variables
-        for constraint_name, constraint in constraints.items():
-            self.add(constraint, constraint_name)
+        for constraint in constraints:
+            self.add(constraint)
         for variable_name, variable in variables.items():
             self.add(variable, variable_name)
 

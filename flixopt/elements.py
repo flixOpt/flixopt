@@ -357,7 +357,7 @@ class FlowModel(ElementModel):
                         self.flow_rate_lower_bound_relative,
                         self.flow_rate_upper_bound_relative,
                     ),
-                    on_variable=self.on_off.on if self.on_off is not None else None,
+                    state_variable=self.on_off.on if self.on_off is not None else None,
                 ),
                 'investment',
             )
