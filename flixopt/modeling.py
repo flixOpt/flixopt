@@ -295,11 +295,12 @@ class ModelingPrimitives:
     @staticmethod
     def big_m_binary_bounds(
         model: FlowSystemModel,
-        name: str,
         variable,
         binary_control,
         size_variable,
         relative_bounds: Tuple[TemporalData, TemporalData],
+        upper_bound_name: str,
+        lower_bound_name: str,
     ) -> Tuple[Dict, Dict[str, linopy.Constraint]]:
         """
         Creates bounds controlled by both binary and continuous variables.
@@ -320,18 +321,16 @@ class ModelingPrimitives:
         rel_lower, rel_upper = relative_bounds
 
         # Upper bound: variable ≤ size * upper_factor
-        upper_bound = model.add_constraints(variable <= size_variable * rel_upper, name=f'{name}|size_upper_bound')
+        upper_bound = model.add_constraints(variable <= size_variable * rel_upper, name=upper_bound_name)
 
         if binary_control is not None:
             # Big-M lower bound: variable ≥ M*(binary-1) + size*lower_factor
             big_m = size_variable.max() * rel_upper.max()  # Conservative big-M
             lower_bound = model.add_constraints(
-                variable >= big_m * (binary_control - 1) + size_variable * rel_lower,
-                name=f'{name}|binary_controlled_lower_bound',
+                variable >= big_m * (binary_control - 1) + size_variable * rel_lower, name=lower_bound_name
             )
         else:
-            # Simple lower bound: variable ≥ size * lower_factor
-            lower_bound = model.add_constraints(variable >= size_variable * rel_lower, name=f'{name}|size_lower_bound')
+            lower_bound = model.add_constraints(variable >= size_variable * rel_lower, name=lower_bound_name)
 
         variables = {}  # No new variables created
         constraints = {'upper_bound': upper_bound, 'lower_bound': lower_bound}
