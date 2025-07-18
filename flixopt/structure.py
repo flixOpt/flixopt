@@ -831,6 +831,27 @@ class Model:
         return [model for sub_model in self.sub_models for model in [sub_model] + sub_model.all_sub_models]
 
 
+class BaseFeatureModel(Model):
+    """Minimal base class for feature models that use factory patterns"""
+
+    def __init__(self, model: FlowSystemModel, label_of_element: str, parameters, label: Optional[str] = None):
+        super().__init__(model, label_of_element, label or self.__class__.__name__)
+        self.parameters = parameters
+
+    def do_modeling(self):
+        """Template method - creates variables and constraints, then effects"""
+        self.create_variables_and_constraints()
+        self.add_effects()
+
+    def create_variables_and_constraints(self):
+        """Override in subclasses to create variables and constraints"""
+        raise NotImplementedError('Subclasses must implement create_variables_and_constraints()')
+
+    def add_effects(self):
+        """Override in subclasses to add effects"""
+        pass  # Default: no effects
+
+
 class ElementModel(Model):
     """Stores the mathematical Variables and Constraints for Elements"""
 
