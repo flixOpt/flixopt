@@ -67,15 +67,25 @@ class InvestmentModel(BaseFeatureModel):
             'size',
         )
 
-        constraints += BoundingPatterns.scaled_bounds(
-            self._model,
-            variable=self._defining_variable,
-            scaling_variable=size,
-            relative_bounds=self._relative_bounds_of_defining_variable,
-        )
+        if self._state_variable is None and not self.parameters.optional:
+            constraints += BoundingPatterns.scaled_bounds(
+                self._model,
+                variable=self._defining_variable,
+                scaling_variable=size,
+                relative_bounds=self._relative_bounds_of_defining_variable,
+                name=self._defining_variable.name if self._state_variable is None else f'{self._defining_variable.name}_state',
+            )
 
-        # Optional binary investment decision
-        if self.parameters.optional:
+        elif self._state_variable is not None and not self.parameters.optional:
+            constraints += BoundingPatterns.bounds_with_state(
+                self._model,
+                variable=self._defining_variable,
+                variable_state=self._state_variable,
+                bounds=self._relative_bounds_of_defining_variable,
+                name=self._defining_variable.name if self._state_variable is None else f'{self._defining_variable.name}_state',
+            )
+
+        elif self.parameters.optional:
             is_invested = self.add(
                 self._model.add_variables(
                     binary=True, name=f'{self.label_of_model}|is_invested', coords=self._model.get_coords(['year', 'scenario'])
@@ -91,6 +101,13 @@ class InvestmentModel(BaseFeatureModel):
                     bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
                 )
 
+                constraints += BoundingPatterns.scaled_bounds(
+                    self._model,
+                    variable=self._defining_variable,
+                    scaling_variable=size,
+                    relative_bounds=self._relative_bounds_of_defining_variable,
+                )
+
             else:
                 constraints += BoundingPatterns.scaled_bounds_with_state(
                     self._model,
@@ -99,7 +116,7 @@ class InvestmentModel(BaseFeatureModel):
                     scaling_variable=size,
                     relative_bounds=self._relative_bounds_of_defining_variable,
                     scaling_bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-                    scaling_state=is_invested,
+                    name=f'{self.label_of_model}|size+on',
                 )
 
         # Register constraints
@@ -197,25 +214,23 @@ class OnOffModel(BaseFeatureModel):
 
     def create_variables_and_constraints(self):
         variables = {}
-        constraints = {}
+        constraints = []
 
         # 1. Main binary state using existing pattern
         state_vars, state_constraints = ModelingPrimitives.binary_state_pair(self._model, self.label_of_model, use_complement=self.parameters.use_off)
         variables.update(state_vars)
-        constraints.update(state_constraints)
+        constraints += list(state_constraints.values())
 
         # 2. Control variables - use big_m_binary_bounds pattern for consistency
         for i, (flow_rate, (lower_bound, upper_bound)) in enumerate(zip(self._flow_rates, self._flow_rate_bounds)):
-            suffix = f'_{i}' if len(self._flow_rates) > 1 else ''
-            # Use the big_m pattern but without binary control (None)
-            _, control_constraints = BoundingPatterns.binary_controlled_bounds(
+            # TODO: Add suffix options
+            constraints += BoundingPatterns.bounds_with_state(
                 model=self._model,
                 variable=flow_rate,
                 bounds=(lower_bound, upper_bound),
                 variable_state=variables['on'],
+                name=flow_rate.name,
             )
-            constraints[f'ub{suffix}'] = control_constraints['ub']
-            constraints[f'lb{suffix}'] = control_constraints['lb']
 
         # 3. Total duration tracking using existing pattern
         duration_expr = (variables['on'] * self._model.hours_per_step).sum('time')
@@ -225,45 +240,43 @@ class OnOffModel(BaseFeatureModel):
              self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf),#TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
         )
         variables['on_hours_total'] = duration_vars['tracker']
-        constraints['on_hours_total'] = duration_constraints['tracking']
+        constraints += [duration_constraints['tracking']]
 
         # 4. Switch tracking using existing pattern
         if self.parameters.use_switch_on:
             switch_vars, switch_constraints = ModelingPrimitives.state_transition_variables(
-                self._model, f'{self.label_of_model}|switches', variables['on'],
-                previous_state=ModelingUtilities.get_most_recent_state(self._previous_flow_rates)
+                self._model, f'{self.label_of_model}|switch', variables['on'],
+                previous_state=ModelingUtilities.get_most_recent_state(self._previous_flow_rates),
+                max_count=self.parameters.switch_on_total_max,
             )
-            variables.update(switch_vars)
-            for switch_name, switch_constraint in switch_constraints.items():
-                constraints[f'switch_{switch_name}'] = switch_constraint
+            variables.update({'switch|on': switch_vars['on'], 'switch|off': switch_vars['off'], 'switch|count': switch_vars['count']})
+            constraints += list(switch_constraints.values())
 
         # 5. Consecutive on duration using existing pattern
         if self.parameters.use_consecutive_on_hours:
             consecutive_on_vars, consecutive_on_constraints = ModelingPrimitives.consecutive_duration_tracking(
                 self._model,
-                f'{self.label_of_model}|consecutive_on',
+                f'{self.label_of_model}|consecutive_on_hours', #TODO: Change name
                 variables['on'],
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
                 previous_duration=ModelingUtilities.compute_previous_on_duration(self._previous_flow_rates, self._model.hours_per_step),
             )
-            variables['consecutive_on_duration'] = consecutive_on_vars['duration']
-            for cons_name, cons_constraint in consecutive_on_constraints.items():
-                constraints[f'consecutive_on_{cons_name}'] = cons_constraint
+            variables['consecutive_on_hours'] = consecutive_on_vars['duration']
+            constraints += list(consecutive_on_constraints.values())
 
         # 6. Consecutive off duration using existing pattern
         if self.parameters.use_consecutive_off_hours:
             consecutive_off_vars, consecutive_off_constraints = ModelingPrimitives.consecutive_duration_tracking(
                 self._model,
-                f'{self.label_of_model}|consecutive_off',
+                f'{self.label_of_model}|consecutive_off_hours',
                 variables['off'],
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
                 previous_duration=ModelingUtilities.compute_previous_off_duration(self._previous_flow_rates, self._model.hours_per_step),
             )
-            variables['consecutive_off_duration'] = consecutive_off_vars['duration']
-            for cons_name, cons_constraint in consecutive_off_constraints.items():
-                constraints[f'consecutive_off_{cons_name}'] = cons_constraint
+            variables['consecutive_off_hours'] = consecutive_off_vars['duration']
+            constraints += list(consecutive_off_constraints.values())
 
         # Register all constraints and variables
         for constraint in constraints:
@@ -285,23 +298,23 @@ class OnOffModel(BaseFeatureModel):
     @property
     def total_on_hours(self) -> Optional[linopy.Variable]:
         """Total on hours variable"""
-        return self.get_variable_by_short_name('total_duration')
+        return self.get_variable_by_short_name('total_on_hours')
 
     @property
     def switch_on(self) -> Optional[linopy.Variable]:
         """Switch on variable"""
-        return self.get_variable_by_short_name('switch_on')
+        return self.get_variable_by_short_name('switch|on')
 
     @property
     def switch_off(self) -> Optional[linopy.Variable]:
         """Switch off variable"""
-        return self.get_variable_by_short_name('switch_off')
+        return self.get_variable_by_short_name('switch|off')
 
     @property
     def switch_on_nr(self) -> Optional[linopy.Variable]:
         """Number of switch-ons variable"""
         # This could be added to factory if needed
-        return None
+        return self.get_variable_by_short_name('switch|count')
 
     @property
     def consecutive_on_hours(self) -> Optional[linopy.Variable]:
@@ -325,7 +338,7 @@ class OnOffModel(BaseFeatureModel):
                 target='operation',
             )
 
-        if self.parameters.effects_per_switch_on and self.switch_on:
+        if self.parameters.effects_per_switch_on:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={

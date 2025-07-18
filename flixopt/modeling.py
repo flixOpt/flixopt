@@ -254,7 +254,8 @@ class ModelingPrimitives:
 
     @staticmethod
     def state_transition_variables(
-        model: FlowSystemModel, name: str, state_variable, previous_state=0
+        model: FlowSystemModel, name: str, state_variable, previous_state=0,
+        max_count: Optional[int] = None,
     ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
         """
         Creates switch-on/off variables with state transition logic.
@@ -269,27 +270,36 @@ class ModelingPrimitives:
             variables: {'switch_on': binary_var, 'switch_off': binary_var}
             constraints: {'transition': constraint, 'initial': constraint, 'mutex': constraint}
         """
-        switch_on = model.add_variables(binary=True, name=f'{name}|switch_on', coords=model.get_coords(['time']))
-        switch_off = model.add_variables(binary=True, name=f'{name}|switch_off', coords=model.get_coords(['time']))
+        switch_on = model.add_variables(binary=True, name=f'{name}|on', coords=model.get_coords(['time']))
+        switch_off = model.add_variables(binary=True, name=f'{name}|off', coords=model.get_coords(['time']))
 
         # State transition constraints for t > 0
         transition = model.add_constraints(
             switch_on.isel(time=slice(1, None)) - switch_off.isel(time=slice(1, None))
             == state_variable.isel(time=slice(1, None)) - state_variable.isel(time=slice(None, -1)),
-            name=f'{name}|state_transition',
+            name=name,
         )
 
         # Initial state transition for t = 0
         initial = model.add_constraints(
             switch_on.isel(time=0) - switch_off.isel(time=0) == state_variable.isel(time=0) - previous_state,
-            name=f'{name}|initial_transition',
+            name=f'{name}|initial',
         )
 
         # At most one switch per timestep
-        mutex = model.add_constraints(switch_on + switch_off <= 1, name=f'{name}|switch_mutex')
+        mutex = model.add_constraints(switch_on + switch_off <= 1, name=f'{name}|mutex')
 
-        variables = {'switch_on': switch_on, 'switch_off': switch_off}
-        constraints = {'transition': transition, 'initial': initial, 'mutex': mutex}
+        count = model.add_variables(
+            lower=0,
+            upper=max_count if max_count is not None else np.inf,
+            coords=model.get_coords(['year', 'scenario']),
+            name=f'{name}|count',
+        )
+
+        count_constraint = model.add_constraints(count == switch_on.sum('time'), name=f'{name}|count')
+
+        variables = {'on': switch_on, 'off': switch_off, 'count': count}
+        constraints = {'transition': transition, 'initial': initial, 'mutex': mutex, 'count': count_constraint}
 
         return variables, constraints
 
@@ -437,6 +447,7 @@ class BoundingPatterns:
         model: FlowSystemModel,
         variable: linopy.Variable,
         bounds: Tuple[TemporalData, TemporalData],
+        name: str = None,
     ):
         """Create simple bounds.
         variable ∈ [lower_bound, upper_bound]
@@ -455,9 +466,10 @@ class BoundingPatterns:
                 - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
         lower_bound, upper_bound = bounds
+        name = name or f'{variable.name}'
 
-        upper_constraint = model.add_constraints(variable <= upper_bound, name=f'{variable.name}|ub')
-        lower_constraint = model.add_constraints(variable >= lower_bound, name=f'{variable.name}|lb')
+        upper_constraint = model.add_constraints(variable <= upper_bound, name=f'{name}|ub')
+        lower_constraint = model.add_constraints(variable >= lower_bound, name=f'{name}|lb')
 
         return [lower_constraint, upper_constraint]
 
@@ -467,6 +479,7 @@ class BoundingPatterns:
         variable: linopy.Variable,
         bounds: Tuple[TemporalData, TemporalData],
         variable_state: linopy.Variable,
+        name: str = None,
     ) -> List[linopy.Constraint]:
         """Constraint a variable to bounds, that can be escaped from to 0 by a binary variable.
         variable ∈ {0, [max(ε, lower_bound), upper_bound]}
@@ -490,17 +503,18 @@ class BoundingPatterns:
                 - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
         lower_bound, upper_bound = bounds
+        name = name or f'{variable.name}'
 
         if np.all(lower_bound - upper_bound) < 1e-10:
             fix_constraint = model.add_constraints(
-                variable == variable_state * upper_bound, name=f'{variable.name}|fix'
+                variable == variable_state * upper_bound, name=f'{name}|fix'
             )
             return [fix_constraint]
 
         epsilon = np.maximum(CONFIG.modeling.EPSILON, lower_bound)
 
-        upper_constraint = model.add_constraints(variable <= variable_state * upper_bound, name=f'{variable.name}|ub')
-        lower_constraint = model.add_constraints(variable >= variable_state * epsilon, name=f'{variable.name}|lb')
+        upper_constraint = model.add_constraints(variable <= variable_state * upper_bound, name=f'{name}|ub')
+        lower_constraint = model.add_constraints(variable >= variable_state * epsilon, name=f'{name}|lb')
 
         return [lower_constraint, upper_constraint]
 
@@ -510,6 +524,7 @@ class BoundingPatterns:
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
         relative_bounds: Tuple[TemporalData, TemporalData],
+        name: str = None,
     ) -> List[linopy.Constraint]:
         """Constraint a variable by scaling bounds, dependent on another variable.
         variable ∈ [lower_bound * scaling_variable, upper_bound * scaling_variable]
@@ -533,9 +548,10 @@ class BoundingPatterns:
                 - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
         rel_lower, rel_upper = relative_bounds
+        name = name or f'{variable.name}'
 
-        upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{variable.name}|ub')
-        lower_constraint = model.add_constraints(variable >= scaling_variable * rel_lower, name=f'{variable.name}|lb')
+        upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub')
+        lower_constraint = model.add_constraints(variable >= scaling_variable * rel_lower, name=f'{name}|lb')
 
         return [lower_constraint, upper_constraint]
 
@@ -547,62 +563,51 @@ class BoundingPatterns:
         relative_bounds: Tuple[TemporalData, TemporalData],
         scaling_bounds: Tuple[TemporalData, TemporalData],
         variable_state: linopy.Variable,
-        scaling_state: linopy.Variable,
+        name: str = None,
     ) -> List[linopy.Constraint]:
-        """Constraint a variable by scaling bounds, dependent on another variable.
-        The bounds only apply if variable_state is 1.
+        """Constraint a variable by scaling bounds with binary state control.
 
-        variable ∈ {0,
-                    [max(ε, lower_relative_bound) * scaling_variable, upper_relative_bound * scaling_variable]
-                    }
+        variable ∈ {0, [max(ε, lower_relative_bound) * scaling_variable, upper_relative_bound * scaling_variable]}
 
         Mathematical Formulation (Big-M):
-            scaling_variable * lower_factor ≤ variable ≤ scaling_variable * upper_factor
-            variable ≤ variable_state * M_upper
-            variable ≥ variable_state * M_lower
+            (variable_state - 1) * M_misc + scaling_variable * rel_lower ≤ variable ≤ scaling_variable * rel_upper
+            variable_state * big_m_lower ≤ variable ≤ variable_state * big_m_upper
 
-        Where: M_upper = scaling_max * upper_factor, M_lower = max(ε, scaling_min * lower_factor)
-
-        Use Cases:
-            - Equipment with capacity and on/off control
-            - Variable-size units with operational states
+        Where:
+            M_misc = scaling_max * rel_lower
+            big_m_upper = scaling_max * rel_upper
+            big_m_lower = max(ε, scaling_min * rel_lower)
 
         Args:
             model: The optimization model instance
             variable: Variable to be bounded
             scaling_variable: Variable that scales the bound factors
             relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling variable
-            variable_state: Binary variable for on/off control
             scaling_bounds: Tuple of (scaling_min, scaling_max) bounds of the scaling variable
+            variable_state: Binary variable for on/off control
+            name: Optional name prefix for constraints
 
         Returns:
-            Tuple containing:
-                - variables (Dict): Empty dict
-                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb', 'binary_upper', 'binary_lower'
+            List[linopy.Constraint]: List of constraint objects
         """
-
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
+        name = name or f'{variable.name}'
+
+        big_m_misc = scaling_max * rel_lower
+
+        scaling_lower = model.add_constraints(
+            variable >= (variable_state - 1) * big_m_misc + scaling_variable * rel_lower, name=f'{name}|lb2'
+        )
+        scaling_upper = model.add_constraints(
+            variable <= scaling_variable * rel_upper, name=f'{name}|ub2'
+        )
 
         big_m_upper = scaling_max * rel_upper
         big_m_lower = np.maximum(CONFIG.modeling.EPSILON, scaling_min * rel_lower)
 
-        _, constraints = BoundingPatterns.bounds_with_state(
-            model,
-            variable=scaling_variable,
-            bounds=scaling_bounds,
-            variable_state=scaling_state,
-        )
-
-        scaling_upper = model.add_constraints(
-            variable <= scaling_variable * rel_upper, name=f'{variable.name}|ub'
-        )
-        binary_upper = model.add_constraints(variable <= variable_state * big_m_upper, name=f'{variable_state.name}|ub')
-
-        scaling_lower = model.add_constraints(
-            variable >= scaling_variable * rel_lower, name=f'{variable.name}|lb'
-        )
-        binary_lower = model.add_constraints(variable >= variable_state * big_m_lower, name=f'{variable_state.name}|lb')
+        binary_upper = model.add_constraints(variable_state * big_m_upper >= variable, name=f'{name}|ub1')
+        binary_lower = model.add_constraints(variable_state * big_m_lower <= variable, name=f'{name}|lb1')
 
         return [scaling_lower, scaling_upper, binary_lower, binary_upper]
 
