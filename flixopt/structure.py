@@ -700,19 +700,17 @@ class Model:
     """Stores Variables and Constraints."""
 
     def __init__(
-        self, model: FlowSystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None
+        self, model: FlowSystemModel, label_of_element: str, label_of_model = None
     ):
         """
         Args:
             model: The FlowSystemModel that is used to create the model.
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            label: The label of the model. Used to construct the full label of the model.
-            label_full: The full label of the model. Can overwrite the full label constructed from the other labels.
+            label_of_model: The label of the model. Used as a prefix in all variables and constraints.
         """
         self._model = model
         self.label_of_element = label_of_element
-        self._label = label
-        self._label_full = label_full
+        self.label_of_model = label_of_model if label_of_model is not None else self.label_of_element
 
         self._variables_direct: List[str] = []
         self._constraints_direct: List[str] = []
@@ -777,16 +775,11 @@ class Model:
 
     @property
     def label(self) -> str:
-        return self._label if self._label else self.label_of_element
+        return self.label_of_model
 
     @property
     def label_full(self) -> str:
-        """Used to construct the names of variables and constraints"""
-        if self._label_full:
-            return self._label_full
-        elif self._label:
-            return f'{self.label_of_element}|{self.label}'
-        return self.label_of_element
+        return self.label_of_model
 
     @property
     def variables_direct(self) -> linopy.Variables:
@@ -846,8 +839,16 @@ class Model:
 class BaseFeatureModel(Model):
     """Minimal base class for feature models that use factory patterns"""
 
-    def __init__(self, model: FlowSystemModel, label_of_element: str, parameters, label: Optional[str] = None):
-        super().__init__(model, label_of_element, label or self.__class__.__name__)
+    def __init__(self, model: FlowSystemModel, label_of_element: str, parameters, label_of_model: Optional[str] = None):
+        """Initialize the BaseFeatureModel.
+        Args:
+            model: The FlowSystemModel that is used to create the model.
+            label_of_element: The label of the parent (Element). Used to create shares.
+            label_of_model: The label of the model. Used as a prefix in all variables and constraints.
+                Defaults to {label_of_element}|{self.__class__.__name__}
+            parameters: The parameters of the feature model.
+            """
+        super().__init__(model, label_of_element, label_of_model or f'{label_of_element}|{self.__class__.__name__}')
         self.parameters = parameters
 
     def do_modeling(self):
@@ -873,7 +874,7 @@ class ElementModel(Model):
             model: The FlowSystemModel that is used to create the model.
             element: The element this model is created for.
         """
-        super().__init__(model, label_of_element=element.label_full, label=element.label, label_full=element.label_full)
+        super().__init__(model, label_of_element=element.label_full)
         self.element = element
 
     def results_structure(self):

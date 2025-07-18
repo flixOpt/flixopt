@@ -12,7 +12,7 @@ import numpy as np
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .effects import TemporalEffectsUser
-from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
+from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel, ModelingPatterns, ModelingPrimitives
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
@@ -311,15 +311,14 @@ class FlowModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Flow):
         super().__init__(model, element)
         self.element: Flow = element
-        self.flow_rate: Optional[linopy.Variable] = None
-        self.total_flow_hours: Optional[linopy.Variable] = None
 
+        # Feature models (set by do_modeling)
         self.on_off: Optional[OnOffModel] = None
         self._investment: Optional[InvestmentModel] = None
 
     def do_modeling(self):
-        # eq relative_minimum(t) * size <= flow_rate(t) <= relative_maximum(t) * size
-        self.flow_rate: linopy.Variable = self.add(
+        # Main flow rate variable
+        self.add(
             self._model.add_variables(
                 lower=self.flow_rate_lower_bound,
                 upper=self.flow_rate_upper_bound,
@@ -329,7 +328,7 @@ class FlowModel(ElementModel):
             'flow_rate',
         )
 
-        # OnOff
+        # OnOff feature
         if self.element.on_off_parameters is not None:
             self.on_off: OnOffModel = self.add(
                 OnOffModel(
@@ -344,45 +343,56 @@ class FlowModel(ElementModel):
             )
             self.on_off.do_modeling()
 
-        # Investment
+        # Investment feature
         if isinstance(self.element.size, InvestParameters):
             self._investment: InvestmentModel = self.add(
                 InvestmentModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
+                    label_of_model=self.label_of_element,
                     parameters=self.element.size,
                     defining_variable=self.flow_rate,
-                    relative_bounds_of_defining_variable=(self.flow_rate_lower_bound_relative,
-                                                          self.flow_rate_upper_bound_relative),
+                    relative_bounds_of_defining_variable=(
+                        self.flow_rate_lower_bound_relative,
+                        self.flow_rate_upper_bound_relative,
+                    ),
                     on_variable=self.on_off.on if self.on_off is not None else None,
                 ),
                 'investment',
             )
             self._investment.do_modeling()
 
-        self.total_flow_hours = self.add(
-            self._model.add_variables(
-                lower=self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else 0,
-                upper=self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else np.inf,
-                coords=self._model.get_coords(['year', 'scenario']),
-                name=f'{self.label_full}|total_flow_hours',
+        # Total flow hours tracking (could use factory pattern)
+        variables, constraints = ModelingPrimitives.expression_tracking_variable(
+            model=self._model,
+            name=f'{self.label_full}|total_flow_hours',
+            tracked_expression=(self.flow_rate * self._model.hours_per_step).sum('time'),
+            bounds=(
+                self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else 0,
+                self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else None,
             ),
-            'total_flow_hours',
+            coords=['year', 'scenario'],
         )
 
-        self.add(
-            self._model.add_constraints(
-                self.total_flow_hours == (self.flow_rate * self._model.hours_per_step).sum('time'),
-                name=f'{self.label_full}|total_flow_hours',
-            ),
-            'total_flow_hours',
-        )
+        self.add(variables['tracker'], 'total_flow_hours')
+        self.add(constraints['tracking'], 'total_flow_hours_tracking')
 
-        # Load factor
+        # Load factor constraints
         self._create_bounds_for_load_factor()
 
-        # Shares
+        # Effects
         self._create_shares()
+
+    # Properties for clean access to variables
+    @property
+    def flow_rate(self) -> Optional[linopy.Variable]:
+        """Main flow rate variable"""
+        return self.get_variable_by_short_name('flow_rate')
+
+    @property
+    def total_flow_hours(self) -> Optional[linopy.Variable]:
+        """Total flow hours variable"""
+        return self.get_variable_by_short_name('total_flow_hours')
 
     def results_structure(self):
         return {
@@ -393,10 +403,10 @@ class FlowModel(ElementModel):
         }
 
     def _create_shares(self):
-        # Arbeitskosten:
-        if self.element.effects_per_flow_hour != {}:
+        # Effects per flow hour
+        if self.element.effects_per_flow_hour:
             self._model.effects.add_share_to_effects(
-                name=self.label_full,  # Use the full label of the element
+                name=self.label_full,
                 expressions={
                     effect: self.flow_rate * self._model.hours_per_step * factor
                     for effect, factor in self.element.effects_per_flow_hour.items()
@@ -405,39 +415,35 @@ class FlowModel(ElementModel):
             )
 
     def _create_bounds_for_load_factor(self):
-        # TODO: Add Variable load_factor for better evaluation?
+        """Create load factor constraints using current approach"""
+        # Get the size (either from element or investment)
+        size = self.element.size if self._investment is None else self._investment.size
 
-        # eq: var_sumFlowHours <= size * dt_tot * load_factor_max
+        # Maximum load factor constraint
         if self.element.load_factor_max is not None:
-            name_short = 'load_factor_max'
             flow_hours_per_size_max = self._model.hours_per_step.sum('time') * self.element.load_factor_max
-            size = self.element.size if self._investment is None else self._investment.size
-
             self.add(
                 self._model.add_constraints(
                     self.total_flow_hours <= size * flow_hours_per_size_max,
-                    name=f'{self.label_full}|{name_short}',
+                    name=f'{self.label_full}|load_factor_max',
                 ),
-                name_short,
+                'load_factor_max',
             )
 
-        #  eq: size * sum(dt)* load_factor_min <= var_sumFlowHours
+        # Minimum load factor constraint
         if self.element.load_factor_min is not None:
-            name_short = 'load_factor_min'
             flow_hours_per_size_min = self._model.hours_per_step.sum('time') * self.element.load_factor_min
-            size = self.element.size if self._investment is None else self._investment.size
-
             self.add(
                 self._model.add_constraints(
                     self.total_flow_hours >= size * flow_hours_per_size_min,
-                    name=f'{self.label_full}|{name_short}',
+                    name=f'{self.label_full}|load_factor_min',
                 ),
-                name_short,
+                'load_factor_min',
             )
 
     @property
     def flow_rate_bounds_on(self) -> Tuple[TemporalData, TemporalData]:
-        """Returns absolute flow rate bounds. Important for OnOffModel"""
+        """Returns absolute flow rate bounds for OnOffModel"""
         relative_minimum, relative_maximum = self.flow_rate_lower_bound_relative, self.flow_rate_upper_bound_relative
         size = self.element.size
         if not isinstance(size, InvestParameters):
@@ -458,7 +464,7 @@ class FlowModel(ElementModel):
 
     @property
     def flow_rate_upper_bound_relative(self) -> TemporalData:
-        """ Returns the upper bound of the flow_rate relative to its size"""
+        """Returns the upper bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
             return self.element.relative_maximum
@@ -566,8 +572,8 @@ class ComponentModel(ElementModel):
             self.on_off = self.add(
                 OnOffModel(
                     self._model,
-                    self.element.on_off_parameters,
-                    self.label_of_element,
+                    on_off_parameters=self.element.on_off_parameters,
+                    label_of_element=self.label_of_element,
                     defining_variables=[flow.model.flow_rate for flow in all_flows],
                     defining_bounds=[flow.model.flow_rate_bounds_on for flow in all_flows],
                     previous_values=[flow.previous_flow_rate for flow in all_flows],

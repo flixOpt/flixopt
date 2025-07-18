@@ -147,8 +147,7 @@ class EffectModel(ElementModel):
                 model=self._model,
                 dims=('year', 'scenario'),
                 label_of_element=self.label_of_element,
-                label='invest',
-                label_full=f'{self.label_full}(invest)',
+                label_of_model=f'{self.label_of_model}(invest)',
                 total_max=self.element.maximum_invest,
                 total_min=self.element.minimum_invest,
             )
@@ -159,8 +158,7 @@ class EffectModel(ElementModel):
                 model=self._model,
                 dims=('time', 'year', 'scenario'),
                 label_of_element=self.label_of_element,
-                label='operation',
-                label_full=f'{self.label_full}(operation)',
+                label_of_model=f'{self.label_of_model}|(operation)',
                 total_max=self.element.maximum_operation,
                 total_min=self.element.minimum_operation,
                 min_per_hour=self.element.minimum_operation_per_hour
