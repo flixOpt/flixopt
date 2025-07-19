@@ -185,77 +185,112 @@ class OnOffModel(BaseFeatureModel):
         self._apply_bounds_to_flow_rates = apply_bounds_to_flow_rates
 
     def create_variables_and_constraints(self):
-        variables = {}
-        constraints = []
-
         # 1. Main binary state using existing pattern
         state_vars, state_constraints = ModelingPrimitives.binary_state_pair(self._model, self.label_of_model, use_complement=self.parameters.use_off)
-        variables.update(state_vars)
-        constraints += list(state_constraints.values())
+        for k, v in state_vars.items():
+            self.add(v, k)
+        for k, v in state_constraints.items():
+            self.add(v, k)
 
         # 2. Control variables - use big_m_binary_bounds pattern for consistency
         if self._apply_bounds_to_flow_rates:
-            for i, (flow_rate, flow_rate_bounds) in enumerate(
-                    zip(self._flow_rates, self._flow_rate_bounds, strict=True)
-            ):
-                constraints += BoundingPatterns.bounds_with_state(
-                    model=self._model,
-                    variable=flow_rate,
-                    bounds=flow_rate_bounds,
-                    variable_state=variables['on'],
-                )
+            self._add_defining_constraints()
 
         # 3. Total duration tracking using existing pattern
-        duration_expr = (variables['on'] * self._model.hours_per_step).sum('time')
+        duration_expr = (self.on * self._model.hours_per_step).sum('time')
         duration_vars, duration_constraints = ModelingPrimitives.expression_tracking_variable(
             self._model, f'{self.label_of_model}|on_hours_total', duration_expr,
             (self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
              self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf),#TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
         )
-        variables['on_hours_total'] = duration_vars['tracker']
-        constraints += [duration_constraints['tracking']]
+        self.add(duration_vars['tracker'], 'on_hours_total')
+        self.add(duration_constraints['tracking'])
 
         # 4. Switch tracking using existing pattern
         if self.parameters.use_switch_on:
             switch_vars, switch_constraints = ModelingPrimitives.state_transition_variables(
-                self._model, f'{self.label_of_model}|switch', variables['on'],
+                self._model, f'{self.label_of_model}|switch', self.on,
                 previous_state=ModelingUtilities.get_most_recent_state(self._previous_flow_rates),
                 max_count=self.parameters.switch_on_total_max,
             )
-            variables.update({'switch|on': switch_vars['on'], 'switch|off': switch_vars['off'], 'switch|count': switch_vars['count']})
-            constraints += list(switch_constraints.values())
+            self.add(switch_vars['on'], 'switch|on')
+            self.add(switch_vars['off'], 'switch|off')
+            self.add(switch_vars['count'], 'switch|count')
+            self.add(switch_constraints['transition'])
+            self.add(switch_constraints['initial'])
+            self.add(switch_constraints['mutex'])
 
         # 5. Consecutive on duration using existing pattern
         if self.parameters.use_consecutive_on_hours:
             consecutive_on_vars, consecutive_on_constraints = ModelingPrimitives.consecutive_duration_tracking(
                 self._model,
                 f'{self.label_of_model}|consecutive_on_hours', #TODO: Change name
-                variables['on'],
+                self.on,
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
                 previous_duration=ModelingUtilities.compute_previous_on_duration(self._previous_flow_rates, self._model.hours_per_step),
             )
-            variables['consecutive_on_hours'] = consecutive_on_vars['duration']
-            constraints += list(consecutive_on_constraints.values())
+            self.add(consecutive_on_vars['duration'], 'consecutive_on_hours')
+            for constraint in consecutive_on_constraints.values():
+                self.add(constraint)
 
         # 6. Consecutive off duration using existing pattern
         if self.parameters.use_consecutive_off_hours:
             consecutive_off_vars, consecutive_off_constraints = ModelingPrimitives.consecutive_duration_tracking(
                 self._model,
                 f'{self.label_of_model}|consecutive_off_hours',
-                variables['off'],
+                self.off,
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
                 previous_duration=ModelingUtilities.compute_previous_off_duration(self._previous_flow_rates, self._model.hours_per_step),
             )
-            variables['consecutive_off_hours'] = consecutive_off_vars['duration']
-            constraints += list(consecutive_off_constraints.values())
+            self.add(consecutive_off_vars['duration'], 'consecutive_off_hours')
+            for constraint in consecutive_off_constraints.values():
+                self.add(constraint)
 
-        # Register all constraints and variables
-        for constraint in constraints:
-            self.add(constraint)
-        for variable_name, variable in variables.items():
-            self.add(variable, variable_name)
+    def _add_defining_constraints(self):
+        """Add constraints that link defining variables to the on state"""
+        count = len(self._flow_rates)
+
+        if count == 1:
+            # Case for a single defining variable
+            flow_rate = self._flow_rates[0]
+            lb, ub = self._flow_rate_bounds[0]
+
+            # Constraint: on * lower_bound <= def_var
+            self.add(
+                self._model.add_constraints(
+                    self.on * np.maximum(CONFIG.modeling.EPSILON, lb) <= flow_rate, name=f'{self.label_full}|on|lb'
+                ),
+                'on|lb',
+            )
+
+            # Constraint: on * upper_bound >= def_var
+            self.add(
+                self._model.add_constraints(self.on * ub >= flow_rate, name=f'{self.label_full}|on|ub'), 'on|ub'
+            )
+        else:
+            # Case for multiple defining variables
+            ub = sum(bound[1] for bound in self._flow_rate_bounds) / count
+            lb = CONFIG.modeling.EPSILON  #TODO: Can this be a bigger value? (maybe the smallest bound?)
+
+            # Constraint: on * epsilon <= sum(all_defining_variables)
+            self.add(
+                self._model.add_constraints(
+                    self.on * lb <= sum(self._flow_rates), name=f'{self.label_full}|on|lb'
+                ),
+                'on|lb',
+            )
+
+            # Constraint to ensure all variables are zero when off.
+            # Divide by count to improve numerical stability (smaller factors)
+            self.add(
+                self._model.add_constraints(
+                    self.on * ub >= sum([def_var / count for def_var in self._flow_rates]),
+                    name=f'{self.label_full}|on|ub',
+                ),
+                'on|ub',
+            )
 
     # Properties access variables from Model's tracking system
     @property

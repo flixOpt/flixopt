@@ -361,7 +361,7 @@ class FlowModel(ElementModel):
                         self.flow_rate_lower_bound_relative,
                         self.flow_rate_upper_bound_relative,
                     ),
-                    apply_bounds_to_flow_rates=default_cons,
+                    apply_bounds_to_defining_variable=default_cons,
                 ),
                 'investment',
             )
@@ -589,13 +589,15 @@ class ComponentModel(ElementModel):
         if self.element.on_off_parameters:
             self.on_off = self.add(
                 OnOffModel(
-                    self._model,
-                    on_off_parameters=self.element.on_off_parameters,
+                    model=self._model,
                     label_of_element=self.label_of_element,
-                    defining_variables=[flow.model.flow_rate for flow in all_flows],
-                    defining_bounds=[flow.model.flow_rate_bounds_on for flow in all_flows],
-                    previous_values=[flow.previous_flow_rate for flow in all_flows],
-                )
+                    parameters=self.element.on_off_parameters,
+                    flow_rates=[flow.model.flow_rate for flow in all_flows],
+                    flow_rate_bounds=[flow.model.flow_rate_bounds_on for flow in all_flows],
+                    previous_flow_rates=[flow.previous_flow_rate for flow in all_flows],
+                    label_of_model=self.label_of_element,
+                    apply_bounds_to_flow_rates=True,
+                ),
             )
 
             self.on_off.do_modeling()
