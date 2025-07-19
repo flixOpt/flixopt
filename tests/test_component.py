@@ -78,7 +78,7 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert {
+        assert set(comp.model.variables) == {
             'TestComponent(In1)|flow_rate',
             'TestComponent(In1)|total_flow_hours',
             'TestComponent(In1)|on',
@@ -93,38 +93,38 @@ class TestComponentModel:
             'TestComponent(Out2)|on_hours_total',
             'TestComponent|on',
             'TestComponent|on_hours_total',
-        } == set(comp.model.variables)
+        }
 
-        assert {
+        assert  set(comp.model.constraints) == {
             'TestComponent(In1)|total_flow_hours',
-            'TestComponent(In1)|on_con1',
-            'TestComponent(In1)|on_con2',
+            'TestComponent(In1)|on|lb',
+            'TestComponent(In1)|on|ub',
             'TestComponent(In1)|on_hours_total',
             'TestComponent(Out1)|total_flow_hours',
-            'TestComponent(Out1)|on_con1',
-            'TestComponent(Out1)|on_con2',
+            'TestComponent(Out1)|on|lb',
+            'TestComponent(Out1)|on|ub',
             'TestComponent(Out1)|on_hours_total',
             'TestComponent(Out2)|total_flow_hours',
-            'TestComponent(Out2)|on_con1',
-            'TestComponent(Out2)|on_con2',
+            'TestComponent(Out2)|on|lb',
+            'TestComponent(Out2)|on|ub',
             'TestComponent(Out2)|on_hours_total',
-            'TestComponent|on_con1',
-            'TestComponent|on_con2',
+            'TestComponent|on|lb',
+            'TestComponent|on|ub',
             'TestComponent|on_hours_total',
-        } == set(comp.model.constraints)
+        }
 
         assert_var_equal(model['TestComponent(Out2)|flow_rate'],
                          model.add_variables(lower=0, upper=300 * ub_out2, coords=(timesteps,)))
         assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords = (timesteps,)))
         assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=(timesteps,)))
 
-        assert_conequal(model.constraints['TestComponent(Out2)|on_con1'], model.variables['TestComponent(Out2)|on'] * 0.3 * 300 <= model.variables['TestComponent(Out2)|flow_rate'])
-        assert_conequal(model.constraints['TestComponent(Out2)|on_con2'], model.variables['TestComponent(Out2)|on'] * 300 * ub_out2 >= model.variables['TestComponent(Out2)|flow_rate'])
+        assert_conequal(model.constraints['TestComponent(Out2)|on|lb'], model.variables['TestComponent(Out2)|on'] * 0.3 * 300 <= model.variables['TestComponent(Out2)|flow_rate'])
+        assert_conequal(model.constraints['TestComponent(Out2)|on|ub'], model.variables['TestComponent(Out2)|on'] * 300 * ub_out2 >= model.variables['TestComponent(Out2)|flow_rate'])
 
-        assert_conequal(model.constraints['TestComponent|on_con1'],
+        assert_conequal(model.constraints['TestComponent|on|lb'],
                         model.variables['TestComponent|on'] * 1e-5 <= model.variables['TestComponent(In1)|flow_rate'] + model.variables['TestComponent(Out1)|flow_rate'] + model.variables['TestComponent(Out2)|flow_rate'])
         # TODO: Might there be a better way to no use 1e-5?
-        assert_conequal(model.constraints['TestComponent|on_con2'],
+        assert_conequal(model.constraints['TestComponent|on|ub'],
                         model.variables['TestComponent|on'] * (100 + 200 + 300 * ub_out2)/3
                         >= (model.variables['TestComponent(In1)|flow_rate']
                             + model.variables['TestComponent(Out1)|flow_rate']
@@ -145,24 +145,24 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert {
+        assert set(comp.model.variables) == {
             'TestComponent(In1)|flow_rate',
             'TestComponent(In1)|total_flow_hours',
             'TestComponent(In1)|on',
             'TestComponent(In1)|on_hours_total',
             'TestComponent|on',
             'TestComponent|on_hours_total',
-        } == set(comp.model.variables)
+        }
 
-        assert {
+        assert set(comp.model.constraints) == {
             'TestComponent(In1)|total_flow_hours',
-            'TestComponent(In1)|on_con1',
-            'TestComponent(In1)|on_con2',
+            'TestComponent(In1)|on|lb',
+            'TestComponent(In1)|on|ub',
             'TestComponent(In1)|on_hours_total',
-            'TestComponent|on_con1',
-            'TestComponent|on_con2',
+            'TestComponent|on|lb',
+            'TestComponent|on|ub',
             'TestComponent|on_hours_total',
-        } == set(comp.model.constraints)
+        }
 
         assert_var_equal(
             model['TestComponent(In1)|flow_rate'], model.add_variables(lower=0, upper=100, coords=(timesteps,))
@@ -171,20 +171,20 @@ class TestComponentModel:
         assert_var_equal(model['TestComponent(In1)|on'], model.add_variables(binary=True, coords=(timesteps,)))
 
         assert_conequal(
-            model.constraints['TestComponent(In1)|on_con1'],
+            model.constraints['TestComponent(In1)|on|lb'],
             model.variables['TestComponent(In1)|on'] * 0.1 * 100 <= model.variables['TestComponent(In1)|flow_rate'],
         )
         assert_conequal(
-            model.constraints['TestComponent(In1)|on_con2'],
+            model.constraints['TestComponent(In1)|on|ub'],
             model.variables['TestComponent(In1)|on'] * 100 >= model.variables['TestComponent(In1)|flow_rate'],
         )
 
         assert_conequal(
-            model.constraints['TestComponent|on_con1'],
+            model.constraints['TestComponent|on|lb'],
             model.variables['TestComponent|on'] * 0.1 * 100 <= model.variables['TestComponent(In1)|flow_rate'],
         )
         assert_conequal(
-            model.constraints['TestComponent|on_con2'],
+            model.constraints['TestComponent|on|ub'],
             model.variables['TestComponent|on'] * 100 >= model.variables['TestComponent(In1)|flow_rate'],
         )
 
