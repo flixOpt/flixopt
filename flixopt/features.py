@@ -29,7 +29,7 @@ class InvestmentModel(BaseFeatureModel):
         defining_variable: linopy.Variable,
         relative_bounds_of_defining_variable: Tuple[TemporalData, TemporalData],
         label_of_model: Optional[str] = None,
-        state_variable: Optional[linopy.Variable] = None,
+        apply_bounds_to_defining_variable: bool = True,
     ):
         """
         This feature model is used to model the investment of a variable.
@@ -42,13 +42,13 @@ class InvestmentModel(BaseFeatureModel):
             defining_variable: The variable to be invested
             relative_bounds_of_defining_variable: The bounds of the variable, with respect to the minimum/maximum investment sizes
             label_of_model: The label of the model. This is needed to construct the full label of the model.
-            state_variable: The variable tracking the state of the variable
+
         """
         super().__init__(model, label_of_element=label_of_element, parameters=parameters, label_of_model=label_of_model)
 
         self._defining_variable = defining_variable
         self._relative_bounds_of_defining_variable = relative_bounds_of_defining_variable
-        self._state_variable = state_variable
+        self._apply_bounds_to_defining_variable = apply_bounds_to_defining_variable
 
         # Only keep non-variable attributes
         self.scenario_of_investment: Optional[linopy.Variable] = None
@@ -81,23 +81,12 @@ class InvestmentModel(BaseFeatureModel):
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
-        if self._state_variable is None:
+        if self._apply_bounds_to_defining_variable:
             constraints += BoundingPatterns.scaled_bounds(
                 self._model,
                 variable=self._defining_variable,
-                scaling_variable=size,
+                scaling_variable=self.size,
                 relative_bounds=self._relative_bounds_of_defining_variable,
-            )
-
-        else:
-            constraints += BoundingPatterns.scaled_bounds_with_state(
-                self._model,
-                variable=self._defining_variable,
-                variable_state=self._state_variable,
-                scaling_variable=size,
-                relative_bounds=self._relative_bounds_of_defining_variable,
-                scaling_bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-                name=f'{self.label_of_model}|size+on',
             )
 
         # Register constraints
@@ -174,6 +163,7 @@ class OnOffModel(BaseFeatureModel):
         flow_rate_bounds: List[Tuple[TemporalData, TemporalData]],
         previous_flow_rates: List[Optional[TemporalData]],
         label_of_model: Optional[str] = None,
+        apply_bounds_to_flow_rates: bool = True,
     ):
         """
         This feature model is used to model the on/off state of flow_rate(s). It does not matter of the flow_rates are
@@ -192,6 +182,7 @@ class OnOffModel(BaseFeatureModel):
         self._flow_rates = flow_rates
         self._flow_rate_bounds = flow_rate_bounds
         self._previous_flow_rates = previous_flow_rates
+        self._apply_bounds_to_flow_rates = apply_bounds_to_flow_rates
 
     def create_variables_and_constraints(self):
         variables = {}
@@ -203,14 +194,16 @@ class OnOffModel(BaseFeatureModel):
         constraints += list(state_constraints.values())
 
         # 2. Control variables - use big_m_binary_bounds pattern for consistency
-        for i, (flow_rate, (lower_bound, upper_bound)) in enumerate(zip(self._flow_rates, self._flow_rate_bounds)):
-            # TODO: Add suffix options
-            constraints += BoundingPatterns.bounds_with_state(
-                model=self._model,
-                variable=flow_rate,
-                bounds=(lower_bound, upper_bound),
-                variable_state=variables['on'],
-            )
+        if self._apply_bounds_to_flow_rates:
+            for i, (flow_rate, flow_rate_bounds) in enumerate(
+                    zip(self._flow_rates, self._flow_rate_bounds, strict=True)
+            ):
+                constraints += BoundingPatterns.bounds_with_state(
+                    model=self._model,
+                    variable=flow_rate,
+                    bounds=flow_rate_bounds,
+                    variable_state=variables['on'],
+                )
 
         # 3. Total duration tracking using existing pattern
         duration_expr = (variables['on'] * self._model.hours_per_step).sum('time')

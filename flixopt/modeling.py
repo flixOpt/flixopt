@@ -550,6 +550,9 @@ class BoundingPatterns:
         rel_lower, rel_upper = relative_bounds
         name = name or f'{variable.name}'
 
+        if np.abs(rel_lower - rel_upper).all() < 10e-10:
+            return [model.add_constraints(variable == scaling_variable * rel_lower, name=f'{name}|fixed')]
+
         upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub')
         lower_constraint = model.add_constraints(variable >= scaling_variable * rel_lower, name=f'{name}|lb')
 

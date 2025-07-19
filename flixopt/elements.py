@@ -15,6 +15,7 @@ from .effects import TemporalEffectsUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel, ModelingPatterns, ModelingPrimitives
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
+from .modeling import BoundingPatterns
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -328,6 +329,8 @@ class FlowModel(ElementModel):
             'flow_rate',
         )
 
+        default_cons = not (self.element.on_off_parameters is not None and isinstance(self.element.size, InvestParameters))
+
         # OnOff feature
         if self.element.on_off_parameters is not None:
             self.on_off: OnOffModel = self.add(
@@ -339,6 +342,7 @@ class FlowModel(ElementModel):
                     flow_rate_bounds=[self.flow_rate_bounds_on],
                     previous_flow_rates=[self.element.previous_flow_rate],
                     label_of_model=self.label_of_element,
+                    apply_bounds_to_flow_rates=default_cons,
                 ),
                 'on_off',
             )
@@ -357,11 +361,24 @@ class FlowModel(ElementModel):
                         self.flow_rate_lower_bound_relative,
                         self.flow_rate_upper_bound_relative,
                     ),
-                    state_variable=self.on_off.on if self.on_off is not None else None,
+                    apply_bounds_to_flow_rates=default_cons,
                 ),
                 'investment',
             )
             self._investment.do_modeling()
+
+        if not default_cons:
+            constraints = BoundingPatterns.scaled_bounds_with_state(
+                model=self._model,
+                variable=self.flow_rate,
+                scaling_variable=self._investment.size,
+                relative_bounds=(self.flow_rate_lower_bound_relative, self.flow_rate_upper_bound_relative),
+                scaling_bounds=(self.element.size.minimum_or_fixed_size, self.element.size.maximum_or_fixed_size),
+                variable_state=self.on_off.on,
+            )
+
+            for constraint in constraints:
+                self.add(constraint)
 
         # Total flow hours tracking (could use factory pattern)
         variables, constraints = ModelingPrimitives.expression_tracking_variable(
