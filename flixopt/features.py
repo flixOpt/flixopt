@@ -67,57 +67,38 @@ class InvestmentModel(BaseFeatureModel):
             'size',
         )
 
-        if self._state_variable is None and not self.parameters.optional:
-            constraints += BoundingPatterns.scaled_bounds(
-                self._model,
-                variable=self._defining_variable,
-                scaling_variable=size,
-                relative_bounds=self._relative_bounds_of_defining_variable,
-                name=self._defining_variable.name if self._state_variable is None else f'{self._defining_variable.name}_state',
-            )
-
-        elif self._state_variable is not None and not self.parameters.optional:
-            constraints += BoundingPatterns.bounds_with_state(
-                self._model,
-                variable=self._defining_variable,
-                variable_state=self._state_variable,
-                bounds=self._relative_bounds_of_defining_variable,
-                name=self._defining_variable.name if self._state_variable is None else f'{self._defining_variable.name}_state',
-            )
-
-        elif self.parameters.optional:
+        if self.parameters.optional:
             is_invested = self.add(
                 self._model.add_variables(
                     binary=True, name=f'{self.label_of_model}|is_invested', coords=self._model.get_coords(['year', 'scenario'])
                 ),
                 'is_invested',
             )
+            constraints += BoundingPatterns.bounds_with_state(
+                self._model,
+                variable=size,
+                variable_state=is_invested,
+                bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+            )
 
-            if self._state_variable is None:
-                constraints += BoundingPatterns.bounds_with_state(
-                    self._model,
-                    variable=size,
-                    variable_state=is_invested,
-                    bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-                )
+        if self._state_variable is None:
+            constraints += BoundingPatterns.scaled_bounds(
+                self._model,
+                variable=self._defining_variable,
+                scaling_variable=size,
+                relative_bounds=self._relative_bounds_of_defining_variable,
+            )
 
-                constraints += BoundingPatterns.scaled_bounds(
-                    self._model,
-                    variable=self._defining_variable,
-                    scaling_variable=size,
-                    relative_bounds=self._relative_bounds_of_defining_variable,
-                )
-
-            else:
-                constraints += BoundingPatterns.scaled_bounds_with_state(
-                    self._model,
-                    variable=self._defining_variable,
-                    variable_state=self._state_variable,
-                    scaling_variable=size,
-                    relative_bounds=self._relative_bounds_of_defining_variable,
-                    scaling_bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-                    name=f'{self.label_of_model}|size+on',
-                )
+        else:
+            constraints += BoundingPatterns.scaled_bounds_with_state(
+                self._model,
+                variable=self._defining_variable,
+                variable_state=self._state_variable,
+                scaling_variable=size,
+                relative_bounds=self._relative_bounds_of_defining_variable,
+                scaling_bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+                name=f'{self.label_of_model}|size+on',
+            )
 
         # Register constraints
         for constraint in constraints:
@@ -229,7 +210,6 @@ class OnOffModel(BaseFeatureModel):
                 variable=flow_rate,
                 bounds=(lower_bound, upper_bound),
                 variable_state=variables['on'],
-                name=flow_rate.name,
             )
 
         # 3. Total duration tracking using existing pattern
