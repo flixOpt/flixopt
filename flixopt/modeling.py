@@ -151,31 +151,23 @@ class ModelingPrimitives:
     @staticmethod
     def binary_state_pair(
         model: FlowSystemModel, name: str, coords: List[str] = None, use_complement: bool = True
-    ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
+    ) -> Tuple[Tuple[linopy.Variable, linopy.Variable], linopy.Constraint]:
         """
         Creates complementary binary variables with completeness constraint.
 
         Mathematical formulation:
             on[t] + off[t] = 1  ∀t
             on[t], off[t] ∈ {0, 1}
-
-        Returns:
-            variables: {'on': binary_var, 'off': binary_var}
-            constraints: {'complementary': constraint}
         """
         coords = coords or ['time']
 
         on = model.add_variables(binary=True, name=f'{name}|on', coords=model.get_coords(coords))
-        if use_complement:
-            off = model.add_variables(binary=True, name=f'{name}|off', coords=model.get_coords(coords))
+        off = model.add_variables(binary=True, name=f'{name}|off', coords=model.get_coords(coords))
 
-            # Constraint: on + off = 1
-            complementary = model.add_constraints(on + off == 1, name=f'{name}|complementary')
+        # Constraint: on + off = 1
+        complementary = model.add_constraints(on + off == 1, name=f'{name}|complementary')
 
-            variables = {'on': on, 'off': off}
-            constraints = {'complementary': complementary}
-            return variables, constraints
-        return {'on': on}, {}
+        return (on, off), complementary
 
     @staticmethod
     def proportionally_bounded_variable(
@@ -220,7 +212,7 @@ class ModelingPrimitives:
         tracked_expression,
         bounds: Tuple[TemporalData, TemporalData] = None,
         coords: List[str] = None,
-    ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
+    ) -> Tuple[linopy.Variable, linopy.Constraint]:
         """
         Creates variable that equals a given expression.
 
@@ -247,15 +239,14 @@ class ModelingPrimitives:
         # Constraint: tracker = expression
         tracking = model.add_constraints(tracker == tracked_expression, name=f'{name}')
 
-        variables = {'tracker': tracker}
-        constraints = {'tracking': tracking}
-
-        return variables, constraints
+        return tracker, tracking
 
     @staticmethod
     def state_transition_variables(
-        model: FlowSystemModel, name: str, state_variable, previous_state=0,
-        max_count: Optional[int] = None,
+        model: FlowSystemModel,
+        name: str,
+        state_variable: linopy.Variable,
+        previous_state=0,
     ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
         """
         Creates switch-on/off variables with state transition logic.
@@ -289,19 +280,41 @@ class ModelingPrimitives:
         # At most one switch per timestep
         mutex = model.add_constraints(switch_on + switch_off <= 1, name=f'{name}|mutex')
 
+        return {'on': switch_on, 'off': switch_off}, {'transition': transition, 'initial': initial, 'mutex': mutex}
+
+    @staticmethod
+    def sum_up_variable(
+        model: FlowSystemModel,
+        variable_to_count: linopy.Variable,
+        name: str,
+        bounds: Tuple[NonTemporalData, NonTemporalData] = None,
+        factor: TemporalData = 1,
+    ) -> Tuple[linopy.Variable, linopy.Constraint]:
+        """
+        SUms up a variable over time, applying a factor to the variable.
+
+        Args:
+            model: The optimization model instance
+            variable_to_count: The variable to be summed up
+            name: The name of the constraint
+            bounds: The bounds of the constraint
+            factor: The factor to be applied to the variable
+        """
+        if bounds is None:
+            bounds = (0, np.inf)
+        else:
+            bounds = (bounds[0] if bounds[0] is not None else 0, bounds[1] if bounds[1] is not None else np.inf)
+
         count = model.add_variables(
-            lower=0,
-            upper=max_count if max_count is not None else np.inf,
+            lower=bounds[0],
+            upper=bounds[1],
             coords=model.get_coords(['year', 'scenario']),
-            name=f'{name}|count',
+            name=name,
         )
 
-        count_constraint = model.add_constraints(count == switch_on.sum('time'), name=f'{name}|count')
+        count_constraint = model.add_constraints(count == (variable_to_count * factor).sum('time'), name=name)
 
-        variables = {'on': switch_on, 'off': switch_off, 'count': count}
-        constraints = {'transition': transition, 'initial': initial, 'mutex': mutex, 'count': count_constraint}
-
-        return variables, constraints
+        return count, count_constraint
 
     @staticmethod
     def consecutive_duration_tracking(
@@ -397,8 +410,8 @@ class ModelingPrimitives:
 
     @staticmethod
     def mutual_exclusivity_constraint(
-        model: FlowSystemModel, name: str, binary_variables: List[linopy.Variable], tolerance: float = 1.1
-    ) -> Tuple[Dict, Dict[str, linopy.Constraint]]:
+        model: FlowSystemModel, name: str, binary_variables: List[linopy.Variable], tolerance: float = 1
+    ) -> linopy.Constraint:
         """
         Creates mutual exclusivity constraint for binary variables.
 
@@ -410,7 +423,7 @@ class ModelingPrimitives:
 
         Args:
             binary_variables: List of binary variables that should be mutually exclusive
-            tolerance: Upper bound (typically 1.1 for numerical stability)
+            tolerance: Upper bound
 
         Returns:
             variables: {} (no new variables created)
@@ -433,10 +446,7 @@ class ModelingPrimitives:
             sum(binary_variables) <= tolerance, name=f'{name}|mutual_exclusivity'
         )
 
-        variables = {}  # No new variables created
-        constraints = {'mutual_exclusivity': mutual_exclusivity}
-
-        return variables, constraints
+        return mutual_exclusivity
 
 
 class BoundingPatterns:

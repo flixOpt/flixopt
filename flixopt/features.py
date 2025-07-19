@@ -159,9 +159,9 @@ class OnOffModel(BaseFeatureModel):
         model: FlowSystemModel,
         label_of_element: str,
         parameters: OnOffParameters,
-        flow_rates: List[linopy.Variable],
-        flow_rate_bounds: List[Tuple[TemporalData, TemporalData]],
-        previous_flow_rates: List[Optional[TemporalData]],
+        flow_rate: linopy.Variable,
+        flow_rate_bounds: Tuple[TemporalData, TemporalData],
+        previous_flow_rate: Optional[TemporalData],
         label_of_model: Optional[str] = None,
         apply_bounds_to_flow_rates: bool = True,
     ):
@@ -173,52 +173,58 @@ class OnOffModel(BaseFeatureModel):
             model: The optimization model instance
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             parameters: The parameters of the feature model.
-            flow_rates: The flow_rates to be modeled
+            flow_rate: The flow_rates to be modeled
             flow_rate_bounds: The bounds of the flow_rates, with respect to the minimum/maximum investment sizes
-            previous_flow_rates: The previous flow_rates
+            previous_flow_rate: The previous flow_rates
             label_of_model: The label of the model. This is needed to construct the full label of the model.
         """
         super().__init__(model, label_of_element, parameters=parameters, label_of_model=label_of_model)
-        self._flow_rates = flow_rates
+        self._flow_rate = flow_rate
         self._flow_rate_bounds = flow_rate_bounds
-        self._previous_flow_rates = previous_flow_rates
+        self._previous_flow_rate = previous_flow_rate
         self._apply_bounds_to_flow_rates = apply_bounds_to_flow_rates
 
     def create_variables_and_constraints(self):
         # 1. Main binary state using existing pattern
-        state_vars, state_constraints = ModelingPrimitives.binary_state_pair(self._model, self.label_of_model, use_complement=self.parameters.use_off)
-        for k, v in state_vars.items():
-            self.add(v, k)
-        for k, v in state_constraints.items():
-            self.add(v, k)
+        on = self.add(self._model.add_variables(binary=True, name=f'{self.label_of_model}|on', coords=self._model.get_coords()), 'on')
+        if self.parameters.use_off:
+            off = self.add(self._model.add_variables(binary=True, name=f'{self.label_of_model}|off', coords=self._model.get_coords()), 'off')
+            self.add(self._model.add_constraints(on + off == 1, name=f'{self.label_of_model}|complementary'), 'complementary')
 
-        # 2. Control variables - use big_m_binary_bounds pattern for consistency
+        # 2. Control variables
         if self._apply_bounds_to_flow_rates:
-            self._add_defining_constraints()
+            self.add_batch(*BoundingPatterns.bounds_with_state(
+                self._model,
+                variable=self._flow_rate,
+                bounds=self._flow_rate_bounds,
+                variable_state=self.on,
+            ))
 
         # 3. Total duration tracking using existing pattern
         duration_expr = (self.on * self._model.hours_per_step).sum('time')
-        duration_vars, duration_constraints = ModelingPrimitives.expression_tracking_variable(
+        var, con = ModelingPrimitives.expression_tracking_variable(
             self._model, f'{self.label_of_model}|on_hours_total', duration_expr,
             (self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
              self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf),#TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
         )
-        self.add(duration_vars['tracker'], 'on_hours_total')
-        self.add(duration_constraints['tracking'])
+        self.add(var, 'on_hours_total')
+        self.add(con)
 
         # 4. Switch tracking using existing pattern
         if self.parameters.use_switch_on:
             switch_vars, switch_constraints = ModelingPrimitives.state_transition_variables(
                 self._model, f'{self.label_of_model}|switch', self.on,
-                previous_state=ModelingUtilities.get_most_recent_state(self._previous_flow_rates),
-                max_count=self.parameters.switch_on_total_max,
+                previous_state=ModelingUtilities.get_most_recent_state(self._previous_flow_rate),
             )
             self.add(switch_vars['on'], 'switch|on')
             self.add(switch_vars['off'], 'switch|off')
-            self.add(switch_vars['count'], 'switch|count')
             self.add(switch_constraints['transition'])
             self.add(switch_constraints['initial'])
             self.add(switch_constraints['mutex'])
+
+            if self.parameters.switch_on_total_max is not None:
+                count = self.add(self._model.add_variables(lower=0, upper=self.parameters.switch_on_total_max, coords=self._model.get_coords(('year', 'scenario')), name=f'{self.label_of_model}|switch|count'), 'switch|count')
+                self.add(self._model.add_constraints(count == self.switch_on.sum('time'), name=f'{self.label_of_model}|switch|count'), 'switch|count')
 
         # 5. Consecutive on duration using existing pattern
         if self.parameters.use_consecutive_on_hours:
@@ -228,7 +234,7 @@ class OnOffModel(BaseFeatureModel):
                 self.on,
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
-                previous_duration=ModelingUtilities.compute_previous_on_duration(self._previous_flow_rates, self._model.hours_per_step),
+                previous_duration=ModelingUtilities.compute_previous_on_duration([self._previous_flow_rate], self._model.hours_per_step),
             )
             self.add(consecutive_on_vars['duration'], 'consecutive_on_hours')
             for constraint in consecutive_on_constraints.values():
@@ -242,54 +248,31 @@ class OnOffModel(BaseFeatureModel):
                 self.off,
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
-                previous_duration=ModelingUtilities.compute_previous_off_duration(self._previous_flow_rates, self._model.hours_per_step),
+                previous_duration=ModelingUtilities.compute_previous_off_duration([self._previous_flow_rate], self._model.hours_per_step),
             )
             self.add(consecutive_off_vars['duration'], 'consecutive_off_hours')
             for constraint in consecutive_off_constraints.values():
                 self.add(constraint)
 
-    def _add_defining_constraints(self):
-        """Add constraints that link defining variables to the on state"""
-        count = len(self._flow_rates)
-
-        if count == 1:
-            # Case for a single defining variable
-            flow_rate = self._flow_rates[0]
-            lb, ub = self._flow_rate_bounds[0]
-
-            # Constraint: on * lower_bound <= def_var
-            self.add(
-                self._model.add_constraints(
-                    self.on * np.maximum(CONFIG.modeling.EPSILON, lb) <= flow_rate, name=f'{self.label_full}|on|lb'
-                ),
-                'on|lb',
+    def add_effects(self):
+        """Add operational effects"""
+        if self.parameters.effects_per_running_hour:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.on * factor * self._model.hours_per_step
+                    for effect, factor in self.parameters.effects_per_running_hour.items()
+                },
+                target='operation',
             )
 
-            # Constraint: on * upper_bound >= def_var
-            self.add(
-                self._model.add_constraints(self.on * ub >= flow_rate, name=f'{self.label_full}|on|ub'), 'on|ub'
-            )
-        else:
-            # Case for multiple defining variables
-            ub = sum(bound[1] for bound in self._flow_rate_bounds) / count
-            lb = CONFIG.modeling.EPSILON  #TODO: Can this be a bigger value? (maybe the smallest bound?)
-
-            # Constraint: on * epsilon <= sum(all_defining_variables)
-            self.add(
-                self._model.add_constraints(
-                    self.on * lb <= sum(self._flow_rates), name=f'{self.label_full}|on|lb'
-                ),
-                'on|lb',
-            )
-
-            # Constraint to ensure all variables are zero when off.
-            # Divide by count to improve numerical stability (smaller factors)
-            self.add(
-                self._model.add_constraints(
-                    self.on * ub >= sum([def_var / count for def_var in self._flow_rates]),
-                    name=f'{self.label_full}|on|ub',
-                ),
-                'on|ub',
+        if self.parameters.effects_per_switch_on:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.switch_on * factor for effect, factor in self.parameters.effects_per_switch_on.items()
+                },
+                target='operation',
             )
 
     # Properties access variables from Model's tracking system
@@ -334,30 +317,9 @@ class OnOffModel(BaseFeatureModel):
         """Consecutive off hours variable"""
         return self.get_variable_by_short_name('consecutive_off_hours')
 
-    def add_effects(self):
-        """Add operational effects"""
-        if self.parameters.effects_per_running_hour:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.on * factor * self._model.hours_per_step
-                    for effect, factor in self.parameters.effects_per_running_hour.items()
-                },
-                target='operation',
-            )
-
-        if self.parameters.effects_per_switch_on:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.switch_on * factor for effect, factor in self.parameters.effects_per_switch_on.items()
-                },
-                target='operation',
-            )
-
     def _get_previous_on_duration(self):
         hours_per_step = self._model.hours_per_step.isel(time=0).values.flatten()[0]
-        return ModelingUtilities.compute_previous_on_duration(self._previous_flow_rates, hours_per_step)
+        return ModelingUtilities.compute_previous_on_duration([self._previous_flow_rate], hours_per_step)
 
     def _get_previous_off_duration(self):
         hours_per_step = self._model.hours_per_step.isel(time=0).values.flatten()[0]

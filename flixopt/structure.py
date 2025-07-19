@@ -750,6 +750,12 @@ class Model:
             )
         return item
 
+    def add_batch(self, *con_or_var: Union[linopy.Constraint, linopy.Variable]) -> None:
+        """Add constraints to the model"""
+        con_or_var = list(con_or_var)
+        for c_o_v in con_or_var:
+            self.add(c_o_v)
+
     def filter_variables(
         self,
         filter_by: Optional[Literal['binary', 'continuous', 'integer']] = None,

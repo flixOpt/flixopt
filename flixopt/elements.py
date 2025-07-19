@@ -338,9 +338,9 @@ class FlowModel(ElementModel):
                     model=self._model,
                     label_of_element=self.label_of_element,
                     parameters=self.element.on_off_parameters,
-                    flow_rates=[self.flow_rate],
-                    flow_rate_bounds=[self.flow_rate_bounds_on],
-                    previous_flow_rates=[self.element.previous_flow_rate],
+                    flow_rate=self.flow_rate,
+                    flow_rate_bounds=self.flow_rate_bounds_on,
+                    previous_flow_rate=self.element.previous_flow_rate,
                     label_of_model=self.label_of_element,
                     apply_bounds_to_flow_rates=default_cons,
                 ),
@@ -381,7 +381,7 @@ class FlowModel(ElementModel):
                 self.add(constraint)
 
         # Total flow hours tracking (could use factory pattern)
-        variables, constraints = ModelingPrimitives.expression_tracking_variable(
+        variable, constraint = ModelingPrimitives.expression_tracking_variable(
             model=self._model,
             name=f'{self.label_full}|total_flow_hours',
             tracked_expression=(self.flow_rate * self._model.hours_per_step).sum('time'),
@@ -392,8 +392,8 @@ class FlowModel(ElementModel):
             coords=['year', 'scenario'],
         )
 
-        self.add(variables['tracker'], 'total_flow_hours')
-        self.add(constraints['tracking'], 'total_flow_hours_tracking')
+        self.add(variable, 'total_flow_hours')
+        self.add(constraint, 'total_flow_hours_tracking')
 
         # Load factor constraints
         self._create_bounds_for_load_factor()
