@@ -721,40 +721,102 @@ class Model:
         self._sub_models_short: Dict[str, str] = {}
         logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
 
+    def __getitem__(self, key: str) -> linopy.Variable:
+        if key in self._variables:
+            return self.variables_direct[key]
+        if key in self._variables_short:
+            return self.variables_direct[self._variables_short[key]]
+        raise KeyError(f'Variable "{key}" not found in model "{self.label_full}"')
+
     def do_modeling(self):
         raise NotImplementedError('Every Model needs a do_modeling() method')
 
     def add(
+        self,
+        item: Union[
+            linopy.Variable, linopy.Constraint, 'Model', Dict[str, Union[linopy.Variable, linopy.Constraint, 'Model']]
+        ],
+        short_name: Optional[str] = None,
+    ) -> Union[
+        linopy.Variable, linopy.Constraint, 'Model', Dict[str, Union[linopy.Variable, linopy.Constraint, 'Model']]
+    ]:
+        """
+        Add a variable, constraint, sub-model, or batch of items to the model
+
+        Args:
+            item: The variable, constraint, sub-model, or dictionary of items to add
+            short_name: The short name for single items. Ignored for dictionary inputs.
+
+        Returns:
+            The added item(s) - same type as input
+
+        Examples:
+            # Single item
+            self.add(my_variable, 'var_name')
+
+            # Batch of items
+            self.add({
+                'on': on_variable,
+                'off': off_variable,
+                'duration': duration_constraint
+            })
+        """
+        # Handle dictionary input (batch mode)
+        if isinstance(item, dict):
+            return self._add_batch(item)
+
+        # Handle single item
+        return self._add_single(item, short_name)
+
+    def _add_batch(
+        self, items: Dict[str, Union[linopy.Variable, linopy.Constraint, 'Model']]
+    ) -> Dict[str, Union[linopy.Variable, linopy.Constraint, 'Model']]:
+        """
+        Add a batch of items using their dictionary keys as short names
+
+        Args:
+            items: Dictionary with short_name -> item mapping
+
+        Returns:
+            The same dictionary for chaining
+        """
+        for short_name, item in items.items():
+            self._add_single(item, short_name)
+        return items
+
+    def _add_single(
         self, item: Union[linopy.Variable, linopy.Constraint, 'Model'], short_name: Optional[str] = None
     ) -> Union[linopy.Variable, linopy.Constraint, 'Model']:
         """
-        Add a variable, constraint or sub-model to the model
+        Add a single variable, constraint or sub-model to the model
 
         Args:
             item: The variable, constraint or sub-model to add to the model
             short_name: The short name of the variable, constraint or sub-model. If not provided, the full name is used.
+
+        Returns:
+            The added item for chaining
         """
-        # TODO: Check uniquenes of short names
+        if short_name is not None and (short_name in self._variables_short or short_name in self._constraints_short or short_name in self._sub_models_short):
+            raise ValueError(f'Short name "{short_name}" already assigned to model')
+        # TODO: Check uniqueness of short names
         if isinstance(item, linopy.Variable):
             self._variables_direct.append(item.name)
-            self._variables_short[short_name] = item.name
+            if short_name is not None:
+                self._variables_short[short_name] = item.name
         elif isinstance(item, linopy.Constraint):
             self._constraints_direct.append(item.name)
-            self._constraints_short[short_name] = item.name
+            if short_name is not None:
+                self._constraints_short[short_name] = item.name
         elif isinstance(item, Model):
             self.sub_models.append(item)
-            self._sub_models_short[item.label_full] = short_name or item.label_full
+            if short_name is not None:
+                self._sub_models_short[short_name] = item.label_full
         else:
             raise ValueError(
                 f'Item must be a linopy.Variable, linopy.Constraint or flixopt.structure.Model, got {type(item)}'
             )
         return item
-
-    def add_batch(self, *con_or_var: Union[linopy.Constraint, linopy.Variable]) -> None:
-        """Add constraints to the model"""
-        con_or_var = list(con_or_var)
-        for c_o_v in con_or_var:
-            self.add(c_o_v)
 
     def filter_variables(
         self,
