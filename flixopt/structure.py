@@ -712,111 +712,59 @@ class Model:
         self.label_of_element = label_of_element
         self.label_of_model = label_of_model if label_of_model is not None else self.label_of_element
 
-        self._variables_direct: List[str] = []
-        self._constraints_direct: List[str] = []
-        self.sub_models: List[Model] = []
+        self._variables: Dict[str, linopy.Variable] = {}  # Mapping from short name to variable
+        self._constraints: Dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
+        self.sub_models: Dict[str, 'Model'] = {}
 
-        self._variables_short: Dict[str, str] = {}
-        self._constraints_short: Dict[str, str] = {}
-        self._sub_models_short: Dict[str, str] = {}
         logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
 
-    def __getitem__(self, key: str) -> linopy.Variable:
-        if key in self._variables:
-            return self.variables_direct[key]
-        if key in self._variables_short:
-            return self.variables_direct[self._variables_short[key]]
-        raise KeyError(f'Variable "{key}" not found in model "{self.label_full}"')
+    def add_variable(self, short_name: str, **kwargs) -> linopy.Variable:
+        """Create and add a variable in one step"""
+        if 'name' not in kwargs:
+            kwargs['name'] = f'{self.label_of_model}|{short_name}'
 
-    def do_modeling(self):
-        raise NotImplementedError('Every Model needs a do_modeling() method')
+        variable = self._model.add_variables(**kwargs)
+        self.register_variable(variable, short_name)
+        return variable
 
-    def add(
-        self,
-        item: Union[
-            linopy.Variable, linopy.Constraint, 'Model', Dict[str, Union[linopy.Variable, linopy.Constraint, 'Model']]
-        ],
-        short_name: Optional[str] = None,
-    ) -> Union[
-        linopy.Variable, linopy.Constraint, 'Model', Dict[str, Union[linopy.Variable, linopy.Constraint, 'Model']]
-    ]:
-        """
-        Add a variable, constraint, sub-model, or batch of items to the model
+    def add_constraint(self, short_name: str, expression, **kwargs) -> linopy.Constraint:
+        """Create and add a constraint in one step"""
+        if 'name' not in kwargs:
+            kwargs['name'] = f'{self.label_of_model}|{short_name}'
 
-        Args:
-            item: The variable, constraint, sub-model, or dictionary of items to add
-            short_name: The short name for single items. Ignored for dictionary inputs.
+        constraint = self._model.add_constraints(expression, **kwargs)
+        self.register_constraint(constraint, short_name)
+        return constraint
 
-        Returns:
-            The added item(s) - same type as input
-
-        Examples:
-            # Single item
-            self.add(my_variable, 'var_name')
-
-            # Batch of items
-            self.add({
-                'on': on_variable,
-                'off': off_variable,
-                'duration': duration_constraint
-            })
-        """
-        # Handle dictionary input (batch mode)
-        if isinstance(item, dict):
-            return self._add_batch(item)
-
-        # Handle single item
-        return self._add_single(item, short_name)
-
-    def _add_batch(
-        self, items: Dict[str, Union[linopy.Variable, linopy.Constraint, 'Model']]
-    ) -> Dict[str, Union[linopy.Variable, linopy.Constraint, 'Model']]:
-        """
-        Add a batch of items using their dictionary keys as short names
-
-        Args:
-            items: Dictionary with short_name -> item mapping
-
-        Returns:
-            The same dictionary for chaining
-        """
-        for short_name, item in items.items():
-            self._add_single(item, short_name)
-        return items
-
-    def _add_single(
-        self, item: Union[linopy.Variable, linopy.Constraint, 'Model'], short_name: Optional[str] = None
-    ) -> Union[linopy.Variable, linopy.Constraint, 'Model']:
-        """
-        Add a single variable, constraint or sub-model to the model
-
-        Args:
-            item: The variable, constraint or sub-model to add to the model
-            short_name: The short name of the variable, constraint or sub-model. If not provided, the full name is used.
-
-        Returns:
-            The added item for chaining
-        """
-        if short_name is not None and (short_name in self._variables_short or short_name in self._constraints_short or short_name in self._sub_models_short):
+    def register_variable(self, variable: linopy.Variable, short_name: str = None) -> None:
+        """Register a variable with the model"""
+        if short_name is None:
+            short_name = self._extract_short_name(variable)
+        if short_name in self._variables:
             raise ValueError(f'Short name "{short_name}" already assigned to model')
-        # TODO: Check uniqueness of short names
-        if isinstance(item, linopy.Variable):
-            self._variables_direct.append(item.name)
-            if short_name is not None:
-                self._variables_short[short_name] = item.name
-        elif isinstance(item, linopy.Constraint):
-            self._constraints_direct.append(item.name)
-            if short_name is not None:
-                self._constraints_short[short_name] = item.name
-        elif isinstance(item, Model):
-            self.sub_models.append(item)
-            if short_name is not None:
-                self._sub_models_short[short_name] = item.label_full
-        else:
-            raise ValueError(
-                f'Item must be a linopy.Variable, linopy.Constraint or flixopt.structure.Model, got {type(item)}'
-            )
-        return item
+        self._variables[short_name] = variable
+
+    def register_constraint(self, constraint: linopy.Constraint, short_name: str = None) -> None:
+        """Register a constraint with the model"""
+        if short_name is None:
+            short_name = self._extract_short_name(constraint)
+        if short_name in self._constraints:
+            raise ValueError(f'Short name "{short_name}" already assigned to model')
+        self._constraints[short_name] = constraint
+
+    def register_sub_model(self, sub_model: 'Model', short_name: str) -> None:
+        """Register a sub-model with the model"""
+        if short_name is None:
+            short_name = sub_model.__class__.__name__
+        if short_name in self.sub_models:
+            raise ValueError(f'Short name "{short_name}" already assigned to model')
+        self.sub_models[short_name] = sub_model
+
+    def __getitem__(self, key: str) -> linopy.Variable:
+        """Get a variable by its short name"""
+        if key in self._variables:
+            return self._variables[key]
+        raise KeyError(f'Variable "{key}" not found in model "{self.label_full}"')
 
     def filter_variables(
         self,
@@ -842,66 +790,50 @@ class Model:
         raise ValueError(f'Invalid length "{length}", must be one of "scalar", "time" or None')
 
     @property
-    def label(self) -> str:
-        return self.label_of_model
-
-    @property
     def label_full(self) -> str:
         return self.label_of_model
 
     @property
-    def variables_direct(self) -> linopy.Variables:
-        return self._model.variables[self._variables_direct]
-
-    @property
-    def constraints_direct(self) -> linopy.Constraints:
-        return self._model.constraints[self._constraints_direct]
-
-    @property
-    def _variables(self) -> List[str]:
-        all_variables = self._variables_direct.copy()
-        for sub_model in self.sub_models:
-            for variable in sub_model._variables:
-                if variable in all_variables:
-                    raise KeyError(
-                        f"Duplicate key found: '{variable}' in both {self.label_full} and {sub_model.label_full}!"
-                    )
-                all_variables.append(variable)
-        return all_variables
-
-    @property
-    def _constraints(self) -> List[str]:
-        all_constraints = self._constraints_direct.copy()
-        for sub_model in self.sub_models:
-            for constraint in sub_model._constraints:
-                if constraint in all_constraints:
-                    raise KeyError(f"Duplicate key found: '{constraint}' in both main model and submodel!")
-                all_constraints.append(constraint)
-        return all_constraints
-
-    @property
     def variables(self) -> linopy.Variables:
-        return self._model.variables[self._variables]
+        return self._model.variables[[var.name for var in self._variables.values()]]
 
     @property
     def constraints(self) -> linopy.Constraints:
-        return self._model.constraints[self._constraints]
+        return self._model.constraints[[con.name for con in self._constraints.values()]]
 
     @property
     def all_sub_models(self) -> List['Model']:
-        return [model for sub_model in self.sub_models for model in [sub_model] + sub_model.all_sub_models]
+        return [model for sub_model in self.sub_models.values() for model in [sub_model] + sub_model.all_sub_models]
 
-    def get_variable_by_short_name(self, short_name: str, default_return = None) -> Optional[linopy.Variable]:
-        """Get variable by short name"""
-        if short_name not in self._variables_short:
-            return default_return
-        return self._model.variables[self._variables_short.get(short_name)]
+    @property
+    def all_constraints(self) -> linopy.Constraints:
+        names = [constraint_name for constraint_name in self.constraints] + [
+            constraint.name
+            for sub_model in self.all_sub_models
+            for constraint in sub_model.constraints.values()
+        ]
 
-    def get_constraint_by_short_name(self, short_name: str, default_return = None) -> Optional[linopy.Constraint]:
-        """Get variable by short name"""
-        if short_name not in self._constraints_short:
-            return default_return
-        return self._model.constraints[self._constraints_short.get(short_name)]
+        return self._model.constraints[names]
+
+    @property
+    def all_variables(self) -> linopy.Variables:
+        names = [variable_name for variable_name in self.variables] + [
+            variable.name
+            for sub_model in self.all_sub_models
+            for variable in sub_model.constraints.values()
+        ]
+
+        return self._model.variables[names]
+
+    @staticmethod
+    def _extract_short_name(item: Union[linopy.Variable, linopy.Constraint]) -> str:
+        """Extract short name from variable's full name"""
+        # Assumes format like "model_prefix|short_name"
+        name = str(item.name)
+        if '|' in name:
+            return name.split('|')[-1]  # Take last part after |
+        else:
+            return name  # Use full name if no | separator
 
 
 class BaseFeatureModel(Model):
