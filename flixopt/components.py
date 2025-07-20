@@ -418,23 +418,17 @@ class TransmissionModel(ComponentModel):
         # equate size of both directions
         if self.element.balanced:
             # eq: in1.size = in2.size
-            self.add(
-                self._model.add_constraints(
-                    self.element.in1.model._investment.size == self.element.in2.model._investment.size,
-                    name=f'{self.label_full}|same_size',
-                ),
-                'same_size',
+            self.add_constraints(
+                self.element.in1.model._investment.size == self.element.in2.model._investment.size,
+                short_name='same_size',
             )
 
     def create_transmission_equation(self, name: str, in_flow: Flow, out_flow: Flow) -> linopy.Constraint:
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
-        con_transmission = self.add(
-            self._model.add_constraints(
-                out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses - 1),
-                name=f'{self.label_full}|{name}',
-            ),
-            name,
+        con_transmission = self.add_constraints(
+            out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses - 1),
+            short_name=name,
         )
 
         if self.element.absolute_losses is not None:
@@ -464,12 +458,10 @@ class LinearConverterModel(ComponentModel):
                 used_inputs: Set = all_input_flows & used_flows
                 used_outputs: Set = all_output_flows & used_flows
 
-                self.add(
-                    self._model.add_constraints(
-                        sum([flow.model.flow_rate * conv_factors[flow.label] for flow in used_inputs])
-                        == sum([flow.model.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
-                        name=f'{self.label_full}|conversion_{i}',
-                    )
+                self.add_constraints(
+                    sum([flow.model.flow_rate * conv_factors[flow.label] for flow in used_inputs])
+                    == sum([flow.model.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
+                    short_name=f'conversion_{i}',
                 )
 
         else:
@@ -479,14 +471,15 @@ class LinearConverterModel(ComponentModel):
                 for flow, piecewise in self.element.piecewise_conversion.items()
             }
 
-            self.piecewise_conversion = self.add(
+            self.piecewise_conversion = self.register_sub_model(
                 PiecewiseModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     piecewise_variables=piecewise_conversion,
                     zero_point=self.on_off.on if self.on_off is not None else False,
                     as_time_series=True,
-                )
+                ),
+                short_name='PiecewiseConversion',
             )
             self.piecewise_conversion.do_modeling()
 
@@ -497,36 +490,26 @@ class StorageModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: Storage):
         super().__init__(model, element)
         self.element: Storage = element
-        self.charge_state: Optional[linopy.Variable] = None
-        self.netto_discharge: Optional[linopy.Variable] = None
-        self._investment: Optional[InvestmentModel] = None
 
     def do_modeling(self):
         super().do_modeling()
 
         lb, ub = self.absolute_charge_state_bounds
-        self.charge_state = self.add(
-            self._model.add_variables(
-                lower=lb,
-                upper=ub,
-                coords=self._model.get_coords(extra_timestep=True),
-                name=f'{self.label_full}|charge_state',
-            ),
-            'charge_state',
+        self.add_variables(
+            lower=lb,
+            upper=ub,
+            coords=self._model.get_coords(extra_timestep=True),
+            short_name='charge_state',
         )
-        self.netto_discharge = self.add(
-            self._model.add_variables(coords=self._model.get_coords(), name=f'{self.label_full}|netto_discharge'),
-            'netto_discharge',
-        )
+
+        self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
+
         # netto_discharge:
         # eq: nettoFlow(t) - discharging(t) + charging(t) = 0
-        self.add(
-            self._model.add_constraints(
-                self.netto_discharge
-                == self.element.discharging.model.flow_rate - self.element.charging.model.flow_rate,
-                name=f'{self.label_full}|netto_discharge',
-            ),
-            'netto_discharge',
+        self.add_constraints(
+            self.netto_discharge
+            == self.element.discharging.model.flow_rate - self.element.charging.model.flow_rate,
+            short_name='netto_discharge',
         )
 
         charge_state = self.charge_state
@@ -537,76 +520,57 @@ class StorageModel(ComponentModel):
         eff_charge = self.element.eta_charge
         eff_discharge = self.element.eta_discharge
 
-        self.add(
-            self._model.add_constraints(
-                charge_state.isel(time=slice(1, None))
-                == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** hours_per_step)
-                + charge_rate * eff_charge * hours_per_step
-                - discharge_rate * eff_discharge * hours_per_step,
-                name=f'{self.label_full}|charge_state',
-            ),
-            'charge_state',
+        self.add_constraints(
+            charge_state.isel(time=slice(1, None))
+            == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** hours_per_step)
+            + charge_rate * eff_charge * hours_per_step
+            - discharge_rate * eff_discharge * hours_per_step,
+            short_name='charge_state',
         )
 
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            self._investment = InvestmentModel(
-                model=self._model,
-                label_of_element=self.label_of_element,
-                parameters=self.element.capacity_in_flow_hours,
-                defining_variable=self.charge_state,
-                relative_bounds_of_defining_variable=self.relative_charge_state_bounds,
+            self.register_sub_model(
+                InvestmentModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    parameters=self.element.capacity_in_flow_hours,
+                    defining_variable=self.charge_state,
+                    relative_bounds_of_defining_variable=self.relative_charge_state_bounds,
+                ),
+                short_name='investment',
             )
-            self.sub_models.append(self._investment)
             self._investment.do_modeling()
 
         # Initial charge state
         self._initial_and_final_charge_state()
 
         if self.element.balanced:
-            self.add(
-                self._model.add_constraints(
-                    self.element.charging.model._investment.size * 1 == self.element.discharging.model._investment.size * 1,
-                    name=f'{self.label_full}|balanced_sizes',
-                ),
-                'balanced_sizes'
+            self.add_constraints(
+                self.element.charging.model._investment.size * 1 == self.element.discharging.model._investment.size * 1,
+                short_name='balanced_sizes',
             )
 
     def _initial_and_final_charge_state(self):
         if self.element.initial_charge_state is not None:
-            name_short = 'initial_charge_state'
-            name = f'{self.label_full}|{name_short}'
-
             if isinstance(self.element.initial_charge_state, str):
-                self.add(
-                    self._model.add_constraints(
-                        self.charge_state.isel(time=0) == self.charge_state.isel(time=-1), name=name
-                    ),
-                    name_short,
+                self.add_constraints(
+                    self.charge_state.isel(time=0) == self.charge_state.isel(time=-1), short_name='initial_charge_state'
                 )
             else:
-                self.add(
-                    self._model.add_constraints(
-                        self.charge_state.isel(time=0) == self.element.initial_charge_state, name=name
-                    ),
-                    name_short,
+                self.add_constraints(
+                    self.charge_state.isel(time=0) == self.element.initial_charge_state, short_name='initial_charge_state'
                 )
 
         if self.element.maximal_final_charge_state is not None:
-            self.add(
-                self._model.add_constraints(
-                    self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
-                    name=f'{self.label_full}|final_charge_max',
-                ),
-                'final_charge_max',
+            self.add_constraints(
+                self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
+                short_name='final_charge_max',
             )
 
         if self.element.minimal_final_charge_state is not None:
-            self.add(
-                self._model.add_constraints(
-                    self.charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
-                    name=f'{self.label_full}|final_charge_min',
-                ),
-                'final_charge_min',
+            self.add_constraints(
+                self.charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
+                short_name='final_charge_min',
             )
 
     @property
@@ -651,6 +615,28 @@ class StorageModel(ComponentModel):
         max_bounds = xr.concat([self.element.relative_maximum_charge_state, max_final], dim='time')
 
         return min_bounds, max_bounds
+
+    @property
+    def _investment(self) -> Optional[InvestmentModel]:
+        """Deprecated alias for investment"""
+        return self.investment
+
+    @property
+    def investment(self) -> Optional[InvestmentModel]:
+        """OnOff feature"""
+        if 'investment' not in self.sub_models_direct:
+            return None
+        return self.sub_models_direct['investment']
+
+    @property
+    def charge_state(self) -> linopy.Variable:
+        """Charge state variable"""
+        return self['charge_state']
+
+    @property
+    def netto_discharge(self) -> linopy.Variable:
+        """Netto discharge variable"""
+        return self['netto_discharge']
 
 
 @register_class_for_io

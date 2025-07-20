@@ -324,7 +324,7 @@ class ModelingPrimitives:
         minimum_duration: Optional[TemporalData] = None,
         maximum_duration: Optional[TemporalData] = None,
         previous_duration: TemporalData = 0,
-    ) -> Tuple[Dict[str, linopy.Variable], Dict[str, linopy.Constraint]]:
+    ) -> Tuple[linopy.Variable, Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]]:
         """
         Creates consecutive duration tracking for a binary state variable.
 

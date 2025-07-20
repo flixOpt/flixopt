@@ -142,7 +142,7 @@ class EffectModel(ElementModel):
         super().__init__(model, element)
         self.element: Effect = element
         self.total: Optional[linopy.Variable] = None
-        self.invest: ShareAllocationModel = self.add(
+        self.invest: ShareAllocationModel = self.register_sub_model(
             ShareAllocationModel(
                 model=self._model,
                 dims=('year', 'scenario'),
@@ -150,10 +150,11 @@ class EffectModel(ElementModel):
                 label_of_model=f'{self.label_of_model}(invest)',
                 total_max=self.element.maximum_invest,
                 total_min=self.element.minimum_invest,
-            )
+            ),
+            short_name='invest',
         )
 
-        self.operation: ShareAllocationModel = self.add(
+        self.operation: ShareAllocationModel = self.register_sub_model(
             ShareAllocationModel(
                 model=self._model,
                 dims=('time', 'year', 'scenario'),
@@ -167,29 +168,22 @@ class EffectModel(ElementModel):
                 max_per_hour=self.element.maximum_operation_per_hour
                 if self.element.maximum_operation_per_hour is not None
                 else None,
-            )
+            ),
+            short_name='operation',
         )
 
     def do_modeling(self):
         for model in self.sub_models:
             model.do_modeling()
 
-        self.total = self.add(
-            self._model.add_variables(
-                lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
-                upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
-                coords=self._model.get_coords(['year', 'scenario']),
-                name=f'{self.label_full}|total',
-            ),
-            'total',
+        self.total = self.add_variables(
+            lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
+            upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='total',
         )
 
-        self.add(
-            self._model.add_constraints(
-                self.total == self.operation.total + self.invest.total, name=f'{self.label_full}|total'
-            ),
-            'total',
-        )
+        self.add_constraints(self.total == self.operation.total + self.invest.total, short_name='total')
 
 
 TemporalEffectsUser = Union[TemporalDataUser, Dict[str, TemporalDataUser]]  # User-specified Shares to Effects
@@ -421,8 +415,9 @@ class EffectCollectionModel(Model):
     def do_modeling(self):
         for effect in self.effects:
             effect.create_model(self._model)
-        self.penalty = self.add(
-            ShareAllocationModel(self._model, dims=(), label_of_element='Penalty')
+        self.penalty = self.register_sub_model(
+            ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
+            short_name='penalty',
         )
         for model in [effect.model for effect in self.effects] + [self.penalty]:
             model.do_modeling()

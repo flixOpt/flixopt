@@ -714,57 +714,82 @@ class Model:
 
         self._variables: Dict[str, linopy.Variable] = {}  # Mapping from short name to variable
         self._constraints: Dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
-        self.sub_models: Dict[str, 'Model'] = {}
+        self._sub_models: Dict[str, 'Model'] = {}
 
         logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
 
-    def add_variable(self, short_name: str, **kwargs) -> linopy.Variable:
-        """Create and add a variable in one step"""
+    def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
+        """Create and register a variable in one step"""
         if 'name' not in kwargs:
+            if short_name is None:
+                raise ValueError('Short name must be provided when no name is given')
             kwargs['name'] = f'{self.label_of_model}|{short_name}'
 
         variable = self._model.add_variables(**kwargs)
         self.register_variable(variable, short_name)
         return variable
 
-    def add_constraint(self, short_name: str, expression, **kwargs) -> linopy.Constraint:
-        """Create and add a constraint in one step"""
+    def add_constraints(self, expression, short_name: str = None, **kwargs) -> linopy.Constraint:
+        """Create and register a constraint in one step"""
         if 'name' not in kwargs:
+            if short_name is None:
+                raise ValueError('Short name must be provided when no name is given')
             kwargs['name'] = f'{self.label_of_model}|{short_name}'
 
         constraint = self._model.add_constraints(expression, **kwargs)
         self.register_constraint(constraint, short_name)
         return constraint
 
-    def register_variable(self, variable: linopy.Variable, short_name: str = None) -> None:
+    def register_variable(self, variable: linopy.Variable, short_name: str = None) -> linopy.Variable:
         """Register a variable with the model"""
         if short_name is None:
             short_name = self._extract_short_name(variable)
         if short_name in self._variables:
             raise ValueError(f'Short name "{short_name}" already assigned to model')
         self._variables[short_name] = variable
+        return variable
 
-    def register_constraint(self, constraint: linopy.Constraint, short_name: str = None) -> None:
+    def register_constraint(self, constraint: linopy.Constraint, short_name: str = None) -> linopy.Constraint:
         """Register a constraint with the model"""
         if short_name is None:
             short_name = self._extract_short_name(constraint)
         if short_name in self._constraints:
             raise ValueError(f'Short name "{short_name}" already assigned to model')
         self._constraints[short_name] = constraint
+        return constraint
 
-    def register_sub_model(self, sub_model: 'Model', short_name: str) -> None:
+    def register_sub_model(self, sub_model: 'Model', short_name: str) -> 'Model':
         """Register a sub-model with the model"""
         if short_name is None:
             short_name = sub_model.__class__.__name__
-        if short_name in self.sub_models:
+        if short_name in self._sub_models:
             raise ValueError(f'Short name "{short_name}" already assigned to model')
-        self.sub_models[short_name] = sub_model
+        self._sub_models[short_name] = sub_model
+        return sub_model
 
     def __getitem__(self, key: str) -> linopy.Variable:
         """Get a variable by its short name"""
         if key in self._variables:
             return self._variables[key]
         raise KeyError(f'Variable "{key}" not found in model "{self.label_full}"')
+
+    def __contains__(self, name: str) -> bool:
+        """Check if a variable exists in the model"""
+        return name in self._variables or name in self.variables
+
+    def get(self, name: str, default=None):
+        """Get variable by short name, returning default if not found"""
+        try:
+            return self[name]
+        except KeyError:
+            return default
+
+    def get_coords(
+        self,
+        dims: Optional[Collection[str]] = None,
+        extra_timestep: bool = False,
+    ) -> Optional[xr.Coordinates]:
+        return self._model.get_coords(dims=dims, extra_timestep=extra_timestep)
 
     def filter_variables(
         self,
@@ -794,33 +819,44 @@ class Model:
         return self.label_of_model
 
     @property
-    def variables(self) -> linopy.Variables:
+    def variables_direct(self) -> linopy.Variables:
+        """Variables of the model, excluding those of sub-models"""
         return self._model.variables[[var.name for var in self._variables.values()]]
 
     @property
-    def constraints(self) -> linopy.Constraints:
+    def constraints_direct(self) -> linopy.Constraints:
+        """Costraints of the model, excluding those of sub-models"""
         return self._model.constraints[[con.name for con in self._constraints.values()]]
 
     @property
-    def all_sub_models(self) -> List['Model']:
-        return [model for sub_model in self.sub_models.values() for model in [sub_model] + sub_model.all_sub_models]
+    def sub_models_direct(self) -> Dict[str, 'Model']:
+        """All sub-models of the model, excluding those of sub-models"""
+        return self._sub_models
 
     @property
-    def all_constraints(self) -> linopy.Constraints:
-        names = [constraint_name for constraint_name in self.constraints] + [
-            constraint.name
-            for sub_model in self.all_sub_models
-            for constraint in sub_model.constraints.values()
+    def sub_models(self) -> List['Model']:
+        """All sub-models of the model"""
+        direct = list(self.sub_models_direct.values())
+        return direct + [model for sub_model in direct for model in sub_model.sub_models]
+
+    @property
+    def constraints(self) -> linopy.Constraints:
+        """All constraints of the model, including those of sub-models"""
+        names = list(self.constraints_direct) + [
+            constraint_name
+            for sub_model in self.sub_models
+            for constraint_name in sub_model.constraints_direct
         ]
 
         return self._model.constraints[names]
 
     @property
-    def all_variables(self) -> linopy.Variables:
-        names = [variable_name for variable_name in self.variables] + [
-            variable.name
-            for sub_model in self.all_sub_models
-            for variable in sub_model.constraints.values()
+    def variables(self) -> linopy.Variables:
+        """All variables of the model, including those of sub-models"""
+        names = list(self.variables_direct) + [
+            variable_name
+            for sub_model in self.sub_models
+            for variable_name in sub_model.variables_direct
         ]
 
         return self._model.variables[names]
