@@ -535,6 +535,7 @@ class StorageModel(ComponentModel):
                 InvestmentModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
+                    label_of_model=self.label_of_element,
                     parameters=self.element.capacity_in_flow_hours,
                 ),
                 short_name='investment',

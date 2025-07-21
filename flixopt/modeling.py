@@ -387,7 +387,8 @@ class ModelingPrimitives:
 
     @staticmethod
     def mutual_exclusivity_constraint(
-        model: FlowSystemModel, name: str, binary_variables: List[linopy.Variable], tolerance: float = 1
+        model: Model, binary_variables: List[linopy.Variable], tolerance: float = 1,
+        short_name: str = 'mutual_exclusivity',
     ) -> linopy.Constraint:
         """
         Creates mutual exclusivity constraint for binary variables.
@@ -401,6 +402,7 @@ class ModelingPrimitives:
         Args:
             binary_variables: List of binary variables that should be mutually exclusive
             tolerance: Upper bound
+            short_name: Short name of the constraint
 
         Returns:
             variables: {} (no new variables created)
@@ -419,9 +421,7 @@ class ModelingPrimitives:
             )
 
         # Create mutual exclusivity constraint
-        mutual_exclusivity = model.add_constraints(
-            sum(binary_variables) <= tolerance, name=f'{name}|mutual_exclusivity'
-        )
+        mutual_exclusivity = model.add_constraints(sum(binary_variables) <= tolerance, short_name=short_name)
 
         return mutual_exclusivity
 
