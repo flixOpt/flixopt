@@ -836,14 +836,14 @@ class Submodel:
         return self._sub_models
 
     @property
-    def sub_models(self) -> List['Submodel']:
+    def submodels(self) -> List['Submodel']:
         """All sub-models of the model"""
         direct_submodels = list(self._sub_models.values())
 
         # Recursively collect nested sub-models
         nested_submodels = []
         for submodel in direct_submodels:
-            nested_submodels.extend(submodel.sub_models)  # This calls the property recursively
+            nested_submodels.extend(submodel.submodels)  # This calls the property recursively
 
         return direct_submodels + nested_submodels
 
@@ -852,7 +852,7 @@ class Submodel:
         """All constraints of the model, including those of sub-models"""
         names = list(self.constraints_direct) + [
             constraint_name
-            for submodel in self.sub_models
+            for submodel in self.submodels
             for constraint_name in submodel.constraints_direct
         ]
 
@@ -863,7 +863,7 @@ class Submodel:
         """All variables of the model, including those of sub-models"""
         names = list(self.variables_direct) + [
             variable_name
-            for submodel in self.sub_models
+            for submodel in self.submodels
             for variable_name in submodel.variables_direct
         ]
 
@@ -877,7 +877,7 @@ class Submodel:
         con_string = self.constraints.__repr__().split("\n", 2)[2]
         model_string = f"Linopy {self._model.type} submodel: {self.label_of_model}"
 
-        if len(self.sub_models) == 0:
+        if len(self.submodels) == 0:
             sub_models_string = ' <empty>\n'
         else:
             sub_models_string = ''

@@ -173,7 +173,7 @@ class EffectModel(ElementModel):
         )
 
     def do_modeling(self):
-        for model in self.sub_models:
+        for model in self.submodels:
             model.do_modeling()
 
         self.total = self.add_variables(
