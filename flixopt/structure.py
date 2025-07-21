@@ -895,6 +895,10 @@ class Model:
             f"Submodels:\n----------\n{sub_models_string}"
         )
 
+    @property
+    def hours_per_step(self):
+        return self._model.hours_per_step
+
 
 class BaseFeatureModel(Model):
     """Minimal base class for feature models that use factory patterns"""
@@ -923,10 +927,6 @@ class BaseFeatureModel(Model):
     def add_effects(self):
         """Override in subclasses to add effects"""
         pass  # Default: no effects
-
-    @property
-    def hours_per_step(self):
-        return self._model.hours_per_step
 
 
 class ElementModel(Model):

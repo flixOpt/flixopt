@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import linopy
 import numpy as np
+import xarray as xr
 
 from .config import CONFIG
 from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
@@ -11,138 +12,166 @@ from .structure import Model, FlowSystemModel, BaseFeatureModel
 logger = logging.getLogger('flixopt')
 
 
-class ModelingUtilities:
-    """Utility functions for modeling calculations - used across different classes"""
+class ModelingUtilitiesAbstract:
+    """Utility functions for modeling calculations - leveraging xarray for temporal data"""
 
     @staticmethod
-    def compute_consecutive_hours_in_state(
-        binary_values: TemporalData, hours_per_timestep: Union[int, float, np.ndarray]
-    ) -> Scalar:
+    def to_binary(
+        values: xr.DataArray,
+        epsilon: Optional[float] = None,
+        dims: Optional[Union[str, List[str]]] = None,
+    ) -> xr.DataArray:
         """
-        Computes the final consecutive duration in state 'on' (=1) in hours, from a binary array.
+        Converts a DataArray to binary {0, 1} values.
 
         Args:
-            binary_values: An int or 1D binary array containing only `0`s and `1`s.
-            hours_per_timestep: The duration of each timestep in hours.
-                If a scalar is provided, it is used for all timesteps.
-                If an array is provided, it must be as long as the last consecutive duration in binary_values.
+            values: Input DataArray to convert to binary
+            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
+            dims: Dims to keep. Other dimensions are collapsed using .any() -> If any value is 1, all are 1.
 
         Returns:
-            The duration of the binary variable in hours.
-
-        Raises
-        ------
-        TypeError
-            If the length of binary_values and dt_in_hours is not equal, but None is a scalar.
+            Binary DataArray with same shape (or collapsed if collapse_non_time=True)
         """
-        if np.isscalar(binary_values) and np.isscalar(hours_per_timestep):
-            return binary_values * hours_per_timestep
-        elif np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
-            return binary_values * hours_per_timestep[-1]
+        if not isinstance(values, xr.DataArray):
+            values = xr.DataArray(values, dims=['time'], coords={'time': range(len(values))})
 
-        if np.isclose(binary_values[-1], 0, atol=CONFIG.modeling.EPSILON):
-            return 0
+        if epsilon is None:
+            epsilon = CONFIG.modeling.EPSILON
 
-        if np.isscalar(hours_per_timestep):
-            hours_per_timestep = np.ones(len(binary_values)) * hours_per_timestep
-        hours_per_timestep: np.ndarray
+        if values.size == 0:
+            return xr.DataArray(0) if values.item() < epsilon else xr.DataArray(1)
 
-        indexes_with_zero_values = np.where(np.isclose(binary_values, 0, atol=CONFIG.modeling.EPSILON))[0]
-        if len(indexes_with_zero_values) == 0:
-            nr_of_indexes_with_consecutive_ones = len(binary_values)
-        else:
-            nr_of_indexes_with_consecutive_ones = len(binary_values) - indexes_with_zero_values[-1] - 1
+        # Convert to binary states
+        binary_states = (np.abs(values) >= epsilon)
 
-        if len(hours_per_timestep) < nr_of_indexes_with_consecutive_ones:
-            raise ValueError(
-                f'When trying to calculate the consecutive duration, the length of the last duration '
-                f'({nr_of_indexes_with_consecutive_ones}) is longer than the provided hours_per_timestep ({len(hours_per_timestep)}), '
-                f'as {binary_values=}'
-            )
+        # Optionally collapse dimensions using .any()
+        if dims is not None:
+            dims = [dims] if isinstance(dims, str) else dims
 
-        return np.sum(
-            binary_values[-nr_of_indexes_with_consecutive_ones:]
-            * hours_per_timestep[-nr_of_indexes_with_consecutive_ones:]
-        )
+            binary_states = binary_states.any(dim=[d for d in binary_states.dims if d not in dims])
+
+        return binary_states.astype(int)
 
     @staticmethod
-    def compute_previous_states(previous_values: List[TemporalData], epsilon: float = None) -> np.ndarray:
+    def count_consecutive_states(
+        binary_values: xr.DataArray,
+        epsilon: float = None,
+    ) -> float:
         """
-        Computes the previous states {0, 1} of defining variables as a binary array from their previous values.
+        Counts the number of consecutive states in a binary time series.
 
         Args:
-            previous_values: List of previous values for variables
+            binary_values: Binary DataArray with 'time' dim
             epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
 
         Returns:
-            Binary array of previous states
+            The consecutive number of steps spent in the final state of the timeseries
         """
         if epsilon is None:
             epsilon = CONFIG.modeling.EPSILON
 
-        if not previous_values or all(val is None for val in previous_values):
-            return np.array([0])
+        binary_values = binary_values.any(dim=[d for d in binary_values.dims if d != 'time'])
 
-        # Convert to 2D-array and compute binary on/off states
-        previous_values = np.array([values for values in previous_values if values is not None])  # Filter out None
-        if previous_values.ndim > 1:
-            return np.any(~np.isclose(previous_values, 0, atol=epsilon), axis=0).astype(int)
+        # Handle scalar case
+        if binary_values.ndim == 0:
+            return float(binary_values.item())
 
-        return (~np.isclose(previous_values, 0, atol=epsilon)).astype(int)
+        # Check if final state is off
+        if np.isclose(binary_values.isel(time=-1).item(), 0, atol=epsilon):
+            return 0.0
+
+        # Find consecutive 'on' period from the end
+        is_zero = np.isclose(binary_values, 0, atol=epsilon)
+
+        # Find the last zero, then sum everything after it
+        zero_indices = np.where(is_zero)[0]
+        if len(zero_indices) == 0:
+            # All 'on' - sum everything
+            start_idx = 0
+        else:
+            # Start after last zero
+            start_idx = zero_indices[-1] + 1
+
+        consecutive_values = binary_values.isel(time=slice(start_idx, None))
+
+        return float(consecutive_values.sum().item())
+
+
+class ModelingUtilities:
 
     @staticmethod
-    def compute_previous_on_duration(previous_values: List[TemporalData], hours_per_step: Union[int, float]) -> Scalar:
+    def compute_consecutive_hours_in_state(
+        binary_values: Union[xr.DataArray, np.ndarray, int],
+        hours_per_timestep: Union[int, float],
+        epsilon: float = None,
+    ) -> float:
         """
-        Convenience method to compute previous consecutive 'on' duration.
+        Computes the final consecutive duration in state 'on' (=1) in hours.
 
         Args:
-            previous_values: List of previous values for variables
-            hours_per_step: Duration of each timestep in hours
+            binary_values: Binary DataArray with 'time' dim, or scalar/array
+            hours_per_timestep: Duration of each timestep in hours
+            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
 
         Returns:
-            Previous consecutive on duration in hours
+            The duration of the final consecutive 'on' period in hours
         """
-        if not previous_values:
-            return 0
+        if not isinstance(hours_per_timestep, (int, float)):
+            raise TypeError(f'hours_per_timestep must be a scalar, got {type(hours_per_timestep)}')
 
-        previous_states = ModelingUtilities.compute_previous_states(previous_values)
-        return ModelingUtilities.compute_consecutive_hours_in_state(previous_states, hours_per_step)
+        return ModelingUtilitiesAbstract.count_consecutive_states(
+            binary_values=binary_values, epsilon=epsilon
+        ) * hours_per_timestep
 
     @staticmethod
-    def compute_previous_off_duration(previous_values: List[TemporalData], hours_per_step: Union[int, float]) -> Scalar:
+    def compute_previous_states(previous_values: Optional[xr.DataArray], epsilon: Optional[float] = None) -> xr.DataArray:
+        return ModelingUtilitiesAbstract.to_binary(values=previous_values, epsilon=epsilon, dims='time')
+
+    @staticmethod
+    def compute_previous_on_duration(
+        previous_values: xr.DataArray, hours_per_step: Union[xr.DataArray, float, int]
+    ) -> float:
+        return ModelingUtilitiesAbstract.count_consecutive_states(
+            ModelingUtilitiesAbstract.to_binary(previous_values)
+        ) * hours_per_step
+
+    @staticmethod
+    def compute_previous_off_duration(
+        previous_values: xr.DataArray, hours_per_step: Union[xr.DataArray, float, int]
+    ) -> float:
         """
-        Convenience method to compute previous consecutive 'off' duration.
+        Compute previous consecutive 'off' duration.
 
         Args:
-            previous_values: List of previous values for variables
+            previous_values: DataArray with 'time' dimension
             hours_per_step: Duration of each timestep in hours
 
         Returns:
             Previous consecutive off duration in hours
         """
-        if not previous_values:
-            return 0
+        if previous_values is None or previous_values.size == 0:
+            return 0.0
 
         previous_states = ModelingUtilities.compute_previous_states(previous_values)
         previous_off_states = 1 - previous_states
         return ModelingUtilities.compute_consecutive_hours_in_state(previous_off_states, hours_per_step)
 
     @staticmethod
-    def get_most_recent_state(previous_values: List[TemporalData]) -> int:
+    def get_most_recent_state(previous_values: Optional[xr.DataArray]) -> int:
         """
         Get the most recent binary state from previous values.
 
         Args:
-            previous_values: List of previous values for variables
+            previous_values: DataArray with 'time' dimension
 
         Returns:
             Most recent binary state (0 or 1)
         """
-        if not previous_values:
+        if previous_values is None or previous_values.size == 0:
             return 0
 
         previous_states = ModelingUtilities.compute_previous_states(previous_values)
-        return int(previous_states[-1])
+        return int(previous_states.isel(time=-1).item())
 
 
 class ModelingPrimitives:

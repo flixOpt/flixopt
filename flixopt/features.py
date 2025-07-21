@@ -26,10 +26,7 @@ class InvestmentModel(BaseFeatureModel):
         model: FlowSystemModel,
         label_of_element: str,
         parameters: InvestParameters,
-        defining_variable: linopy.Variable,
-        relative_bounds_of_defining_variable: Tuple[TemporalData, TemporalData],
         label_of_model: Optional[str] = None,
-        apply_bounds_to_defining_variable: bool = True,
     ):
         """
         This feature model is used to model the investment of a variable.
@@ -46,11 +43,6 @@ class InvestmentModel(BaseFeatureModel):
         """
         super().__init__(model, label_of_element=label_of_element, parameters=parameters, label_of_model=label_of_model)
 
-        self._defining_variable = defining_variable
-        self._relative_bounds_of_defining_variable = relative_bounds_of_defining_variable
-        self._apply_bounds_to_defining_variable = apply_bounds_to_defining_variable
-
-        # Only keep non-variable attributes
         self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
 
 
@@ -73,14 +65,6 @@ class InvestmentModel(BaseFeatureModel):
                 variable=self.size,
                 variable_state=self.is_invested,
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-            )
-
-        if self._apply_bounds_to_defining_variable:
-            BoundingPatterns.scaled_bounds(
-                self,
-                variable=self._defining_variable,
-                scaling_variable=self.size,
-                relative_bounds=self._relative_bounds_of_defining_variable,
             )
 
         if self.parameters.piecewise_effects:
@@ -146,11 +130,9 @@ class OnOffModel(BaseFeatureModel):
         model: FlowSystemModel,
         label_of_element: str,
         parameters: OnOffParameters,
-        flow_rate: linopy.Variable,
-        flow_rate_bounds: Tuple[TemporalData, TemporalData],
-        previous_flow_rate: Optional[TemporalData],
+        on_variable: linopy.Variable,
+        previous_states: Optional[TemporalData],
         label_of_model: Optional[str] = None,
-        apply_bounds_to_flow_rates: bool = True,
     ):
         """
         This feature model is used to model the on/off state of flow_rate(s). It does not matter of the flow_rates are
@@ -160,32 +142,18 @@ class OnOffModel(BaseFeatureModel):
             model: The optimization model instance
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             parameters: The parameters of the feature model.
-            flow_rate: The flow_rates to be modeled
-            flow_rate_bounds: The bounds of the flow_rates, with respect to the minimum/maximum investment sizes
-            previous_flow_rate: The previous flow_rates
+            on_variable: The variable that determines the on state
+            previous_states: The previous flow_rates
             label_of_model: The label of the model. This is needed to construct the full label of the model.
         """
         super().__init__(model, label_of_element, parameters=parameters, label_of_model=label_of_model)
-        self._flow_rate = flow_rate
-        self._flow_rate_bounds = flow_rate_bounds
-        self._previous_flow_rate = previous_flow_rate
-        self._apply_bounds_to_flow_rates = apply_bounds_to_flow_rates
+        self.on = on_variable
+        self._previous_states = previous_states
 
     def create_variables_and_constraints(self):
-        # 1. Main binary state using existing pattern
-        on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
         if self.parameters.use_off:
             off = self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
-            self.add_constraints(on + off == 1, short_name='complementary')
-
-        # 2. Control variables
-        if self._apply_bounds_to_flow_rates:
-            BoundingPatterns.bounds_with_state(
-                self,
-                variable=self._flow_rate,
-                bounds=self._flow_rate_bounds,
-                variable_state=self.on,
-            )
+            self.add_constraints(self.on + off == 1, short_name='complementary')
 
         # 3. Total duration tracking using existing pattern
         duration_expr = (self.on * self._model.hours_per_step).sum('time')
@@ -208,7 +176,9 @@ class OnOffModel(BaseFeatureModel):
                 switch_on=self.switch_on,
                 switch_off=self.switch_off,
                 name=f'{self.label_of_model}|switch',
-                previous_state=ModelingUtilities.get_most_recent_state(self._previous_flow_rate),
+                previous_state=ModelingUtilities.get_most_recent_state(
+                    self._previous_states.isel(time=-1)
+                ) if self._previous_states is not None else 0,
             )
 
             if self.parameters.switch_on_total_max is not None:
@@ -223,7 +193,7 @@ class OnOffModel(BaseFeatureModel):
                 short_name='consecutive_on_hours',
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
-                previous_duration=ModelingUtilities.compute_previous_on_duration([self._previous_flow_rate], self._model.hours_per_step),
+                previous_duration=self._get_previous_on_duration(),
             )
 
         # 6. Consecutive off duration using existing pattern
@@ -234,10 +204,9 @@ class OnOffModel(BaseFeatureModel):
                 short_name='consecutive_off_hours',
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
-                previous_duration=ModelingUtilities.compute_previous_off_duration(
-                    [self._previous_flow_rate], self._model.hours_per_step
-                ),
+                previous_duration=self._get_previous_off_duration(),
             )
+            #TODO:
 
     def add_effects(self):
         """Add operational effects"""
@@ -261,10 +230,6 @@ class OnOffModel(BaseFeatureModel):
             )
 
     # Properties access variables from Model's tracking system
-    @property
-    def on(self) -> Optional[linopy.Variable]:
-        """Binary on state variable"""
-        return self['on']
 
     @property
     def total_on_hours(self) -> Optional[linopy.Variable]:
@@ -302,15 +267,20 @@ class OnOffModel(BaseFeatureModel):
         return self.get('consecutive_off_hours')
 
     def _get_previous_on_duration(self):
-        hours_per_step = self._model.hours_per_step.isel(time=0).values.flatten()[0]
-        return ModelingUtilities.compute_previous_on_duration([self._previous_flow_rate], hours_per_step)
+        """Get previous on duration. Previously OFF by default, for one timestep"""
+        hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
+        if self._previous_states is None:
+            return 0
+        else:
+            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_states, hours_per_step)
 
     def _get_previous_off_duration(self):
-        hours_per_step = self._model.hours_per_step.isel(time=0).values.flatten()[0]
-        return ModelingUtilities.compute_previous_off_duration(self._previous_flow_rates, hours_per_step)
-
-    def _get_previous_state(self):
-        return ModelingUtilities.get_most_recent_state(self._previous_flow_rates)
+        """Get previous off duration. Previously OFF by default, for one timestep"""
+        hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
+        if self._previous_states is None:
+            return hours_per_step
+        else:
+            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_states  * -1 + 1, hours_per_step)
 
 
 class PieceModel(Model):
