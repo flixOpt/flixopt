@@ -13,7 +13,7 @@ from .config import CONFIG
 from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
 from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects
 from .structure import Model, FlowSystemModel, BaseFeatureModel
-from .modeling import ModelingPatterns, ModelingUtilities, ModelingPrimitives, BoundingPatterns
+from .modeling import ModelingUtilities, ModelingPrimitives, BoundingPatterns
 
 logger = logging.getLogger('flixopt')
 
@@ -57,15 +57,15 @@ class InvestmentModel(BaseFeatureModel):
     def create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         self.add_variables(
+            short_name='size',
             lower=0 if self.parameters.optional else size_min,
             upper=size_max,
-            name=f'{self.label_of_model}|size',
             coords=self._model.get_coords(['year', 'scenario']),
         )
 
         if self.parameters.optional:
             self.add_variables(
-                binary=True, name=f'{self.label_of_model}|is_invested', coords=self._model.get_coords(['year', 'scenario'])
+                binary=True, coords=self._model.get_coords(['year', 'scenario']), short_name='is_invested',
             )
 
             BoundingPatterns.bounds_with_state(
@@ -190,15 +190,24 @@ class OnOffModel(BaseFeatureModel):
         # 3. Total duration tracking using existing pattern
         duration_expr = (self.on * self._model.hours_per_step).sum('time')
         ModelingPrimitives.expression_tracking_variable(
-            self, f'{self.label_of_model}|on_hours_total', duration_expr,
-            (self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
-             self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf),#TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
+            self, duration_expr, short_name='on_hours_total',
+            bounds=(
+                self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
+                self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
+            ),   #TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
         )
 
         # 4. Switch tracking using existing pattern
         if self.parameters.use_switch_on:
+            self.add_variables(binary=True, short_name='switch|on', coords=self.get_coords())
+            self.add_variables(binary=True, short_name='switch|off', coords=self.get_coords())
+
             ModelingPrimitives.state_transition_variables(
-                self, f'{self.label_of_model}|switch', self.on,
+                self,
+                state_variable=self.on,
+                switch_on=self.switch_on,
+                switch_off=self.switch_off,
+                name=f'{self.label_of_model}|switch',
                 previous_state=ModelingUtilities.get_most_recent_state(self._previous_flow_rate),
             )
 
@@ -210,8 +219,8 @@ class OnOffModel(BaseFeatureModel):
         if self.parameters.use_consecutive_on_hours:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
-                f'{self.label_of_model}|consecutive_on_hours', #TODO: Change name
-                self.on,
+                state_variable=self.on,
+                short_name='consecutive_on_hours',
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
                 previous_duration=ModelingUtilities.compute_previous_on_duration([self._previous_flow_rate], self._model.hours_per_step),
@@ -221,11 +230,13 @@ class OnOffModel(BaseFeatureModel):
         if self.parameters.use_consecutive_off_hours:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
-                f'{self.label_of_model}|consecutive_off_hours',
-                self.off,
+                state_variable=self.off,
+                short_name='consecutive_off_hours',
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
-                previous_duration=ModelingUtilities.compute_previous_off_duration([self._previous_flow_rate], self._model.hours_per_step),
+                previous_duration=ModelingUtilities.compute_previous_off_duration(
+                    [self._previous_flow_rate], self._model.hours_per_step
+                ),
             )
 
     def add_effects(self):
@@ -328,7 +339,7 @@ class PieceModel(Model):
         self.lambda0 = self.add_variables(
             lower=0,
             upper=1,
-            name='lambda0',
+            short_name='lambda0',
             coords=self._model.get_coords(dims=dims),
         )
 
@@ -568,11 +579,12 @@ class ShareAllocationModel(Model):
         else:
             self.shares[name] = self.add_variables(
                 coords=self._model.get_coords(dims),
-                short_name=f'{name}->{self.label_full}',
+                name=f'{name}->{self.label_full}',
+                short_name=name,
             )
 
             self.share_constraints[name] = self.add_constraints(
-                self.shares[name] == expression, short_name=f'{name}->{self.label_full}'
+                self.shares[name] == expression, name=f'{name}->{self.label_full}'
             )
 
             if 'time' not in dims:

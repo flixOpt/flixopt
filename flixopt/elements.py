@@ -12,7 +12,7 @@ import numpy as np
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .effects import TemporalEffectsUser
-from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel, ModelingPatterns, ModelingPrimitives
+from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel, ModelingPrimitives
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 from .modeling import BoundingPatterns
@@ -378,6 +378,7 @@ class FlowModel(ElementModel):
                 self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else None,
             ),
             coords=['year', 'scenario'],
+            short_name='total_flow_hours',
         )
 
         # Load factor constraints

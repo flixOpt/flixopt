@@ -720,7 +720,7 @@ class Model:
 
     def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
         """Create and register a variable in one step"""
-        if 'name' not in kwargs:
+        if kwargs.get('name') is None:
             if short_name is None:
                 raise ValueError('Short name must be provided when no name is given')
             kwargs['name'] = f'{self.label_of_model}|{short_name}'
@@ -731,7 +731,7 @@ class Model:
 
     def add_constraints(self, expression, short_name: str = None, **kwargs) -> linopy.Constraint:
         """Create and register a constraint in one step"""
-        if 'name' not in kwargs:
+        if kwargs.get('name') is None:
             if short_name is None:
                 raise ValueError('Short name must be provided when no name is given')
             kwargs['name'] = f'{self.label_of_model}|{short_name}'
@@ -743,18 +743,20 @@ class Model:
     def register_variable(self, variable: linopy.Variable, short_name: str = None) -> linopy.Variable:
         """Register a variable with the model"""
         if short_name is None:
-            short_name = self._extract_short_name(variable)
-        if short_name in self._variables:
-            raise ValueError(f'Short name "{short_name}" already assigned to model')
+            short_name = variable.name
+        elif short_name in self._variables:
+            raise ValueError(f'Short name "{short_name}" already assigned to model variables')
+
         self._variables[short_name] = variable
         return variable
 
     def register_constraint(self, constraint: linopy.Constraint, short_name: str = None) -> linopy.Constraint:
         """Register a constraint with the model"""
         if short_name is None:
-            short_name = self._extract_short_name(constraint)
-        if short_name in self._constraints:
-            raise ValueError(f'Short name "{short_name}" already assigned to model')
+            short_name = constraint.name
+        elif short_name in self._constraints:
+            raise ValueError(f'Short name "{short_name}" already assigned to model constraint')
+
         self._constraints[short_name] = constraint
         return constraint
 
@@ -871,6 +873,28 @@ class Model:
         else:
             return name  # Use full name if no | separator
 
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the linopy model.
+        """
+        var_string = self.variables.__repr__().split("\n", 2)[2]
+        con_string = self.constraints.__repr__().split("\n", 2)[2]
+        model_string = f"Linopy {self._model.type} submodel: {self.label_of_model}"
+
+        if len(self.sub_models) == 0:
+            sub_models_string = ' <empty>\n'
+        else:
+            sub_models_string = ''
+            for sub_model in self.sub_models:
+                sub_models_string += f'\n * {sub_model.label_of_model}'
+
+        return (
+            f"{model_string}\n{'=' * len(model_string)}\n\n"
+            f"Variables:\n----------\n{var_string}\n"
+            f"Constraints:\n------------\n{con_string}\n"
+            f"Submodels:\n----------\n{sub_models_string}"
+        )
+
 
 class BaseFeatureModel(Model):
     """Minimal base class for feature models that use factory patterns"""
@@ -899,6 +923,10 @@ class BaseFeatureModel(Model):
     def add_effects(self):
         """Override in subclasses to add effects"""
         pass  # Default: no effects
+
+    @property
+    def hours_per_step(self):
+        return self._model.hours_per_step
 
 
 class ElementModel(Model):
