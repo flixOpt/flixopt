@@ -838,8 +838,14 @@ class Model:
     @property
     def sub_models(self) -> List['Model']:
         """All sub-models of the model"""
-        direct = list(self.sub_models_direct.values())
-        return direct + [model for sub_model in direct for model in sub_model.sub_models]
+        direct_submodels = list(self._sub_models.values())
+
+        # Recursively collect nested sub-models
+        nested_submodels = []
+        for submodel in direct_submodels:
+            nested_submodels.extend(submodel.sub_models)  # This calls the property recursively
+
+        return direct_submodels + nested_submodels
 
     @property
     def constraints(self) -> linopy.Constraints:
@@ -863,16 +869,6 @@ class Model:
 
         return self._model.variables[names]
 
-    @staticmethod
-    def _extract_short_name(item: Union[linopy.Variable, linopy.Constraint]) -> str:
-        """Extract short name from variable's full name"""
-        # Assumes format like "model_prefix|short_name"
-        name = str(item.name)
-        if '|' in name:
-            return name.split('|')[-1]  # Take last part after |
-        else:
-            return name  # Use full name if no | separator
-
     def __repr__(self) -> str:
         """
         Return a string representation of the linopy model.
@@ -885,14 +881,14 @@ class Model:
             sub_models_string = ' <empty>\n'
         else:
             sub_models_string = ''
-            for sub_model in self.sub_models:
-                sub_models_string += f'\n * {sub_model.label_of_model}'
+            for sub_model_name, sub_model in self.sub_models_direct.items():
+                sub_models_string += f'\n * {sub_model_name} [{sub_model.__class__.__name__}]'
 
         return (
             f"{model_string}\n{'=' * len(model_string)}\n\n"
             f"Variables:\n----------\n{var_string}\n"
             f"Constraints:\n------------\n{con_string}\n"
-            f"Submodels:\n----------\n{sub_models_string}"
+            f"Submodels:\n----------{sub_models_string}"
         )
 
     @property
