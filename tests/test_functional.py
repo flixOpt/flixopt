@@ -155,21 +155,21 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
     boiler = flow_system.all_elements['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         80 + 1000 * 1 + 10,
         rtol=1e-5,
         atol=1e-10,
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model._investment.size.solution.item(),
+        boiler.Q_th.submodel._investment.size.solution.item(),
         1000,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model._investment.is_invested.solution.item(),
+        boiler.Q_th.submodel._investment.is_invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -196,21 +196,21 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
     boiler = flow_system.all_elements['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         80 + 20 * 1 + 10,
         rtol=1e-5,
         atol=1e-10,
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model._investment.size.solution.item(),
+        boiler.Q_th.submodel._investment.size.solution.item(),
         20,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model._investment.is_invested.solution.item(),
+        boiler.Q_th.submodel._investment.is_invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -237,21 +237,21 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
     boiler = flow_system.all_elements['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         80 + 40 * 1 + 10,
         rtol=1e-5,
         atol=1e-10,
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model._investment.size.solution.item(),
+        boiler.Q_th.submodel._investment.size.solution.item(),
         40,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model._investment.is_invested.solution.item(),
+        boiler.Q_th.submodel._investment.is_invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -289,21 +289,21 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
     boiler_optional = flow_system.all_elements['Boiler_optional']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         80 + 40 * 1 + 10,
         rtol=1e-5,
         atol=1e-10,
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model._investment.size.solution.item(),
+        boiler.Q_th.submodel._investment.size.solution.item(),
         40,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model._investment.is_invested.solution.item(),
+        boiler.Q_th.submodel._investment.is_invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -311,14 +311,14 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler_optional.Q_th.model._investment.size.solution.item(),
+        boiler_optional.Q_th.submodel._investment.size.solution.item(),
         0,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler_optional.Q_th.model._investment.is_invested.solution.item(),
+        boiler_optional.Q_th.submodel._investment.is_invested.solution.item(),
         0,
         rtol=1e-5,
         atol=1e-10,
@@ -342,7 +342,7 @@ def test_on(solver_fixture, time_steps_fixture):
     boiler = flow_system.all_elements['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         80,
         rtol=1e-5,
         atol=1e-10,
@@ -350,14 +350,14 @@ def test_on(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.model.on_off.on.solution.values,
+        boiler.Q_th.submodel.on_off.on.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.flow_rate.solution.values,
+        boiler.Q_th.submodel.flow_rate.solution.values,
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -386,7 +386,7 @@ def test_off(solver_fixture, time_steps_fixture):
     boiler = flow_system.all_elements['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         80,
         rtol=1e-5,
         atol=1e-10,
@@ -394,21 +394,21 @@ def test_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.model.on_off.on.solution.values,
+        boiler.Q_th.submodel.on_off.on.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.on_off.off.solution.values,
-        1 - boiler.Q_th.model.on_off.on.solution.values,
+        boiler.Q_th.submodel.on_off.off.solution.values,
+        1 - boiler.Q_th.submodel.on_off.on.solution.values,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__off" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.flow_rate.solution.values,
+        boiler.Q_th.submodel.flow_rate.solution.values,
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -437,7 +437,7 @@ def test_switch_on_off(solver_fixture, time_steps_fixture):
     boiler = flow_system.all_elements['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         80,
         rtol=1e-5,
         atol=1e-10,
@@ -445,28 +445,28 @@ def test_switch_on_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.model.on_off.on.solution.values,
+        boiler.Q_th.submodel.on_off.on.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.on_off.switch_on.solution.values,
+        boiler.Q_th.submodel.on_off.switch_on.solution.values,
         [0, 1, 0, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__switch_on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.on_off.switch_off.solution.values,
+        boiler.Q_th.submodel.on_off.switch_off.solution.values,
         [0, 0, 0, 1, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__switch_on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.flow_rate.solution.values,
+        boiler.Q_th.submodel.flow_rate.solution.values,
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -501,7 +501,7 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
     boiler = flow_system.all_elements['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         140,
         rtol=1e-5,
         atol=1e-10,
@@ -509,14 +509,14 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.model.on_off.on.solution.values,
+        boiler.Q_th.submodel.on_off.on.solution.values,
         [0, 0, 1, 0, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.flow_rate.solution.values,
+        boiler.Q_th.submodel.flow_rate.solution.values,
         [0, 0, 20, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -560,7 +560,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     boiler_backup = flow_system.all_elements['Boiler_backup']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         114,
         rtol=1e-5,
         atol=1e-10,
@@ -568,14 +568,14 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.model.on_off.on.solution.values,
+        boiler.Q_th.submodel.on_off.on.solution.values,
         [0, 0, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.flow_rate.solution.values,
+        boiler.Q_th.submodel.flow_rate.solution.values,
         [0, 0, 20, 0, 12 - 1e-5],
         rtol=1e-5,
         atol=1e-10,
@@ -583,14 +583,14 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        sum(boiler_backup.Q_th.model.on_off.on.solution.values),
+        sum(boiler_backup.Q_th.submodel.on_off.on.solution.values),
         3,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler_backup.Q_th.model.flow_rate.solution.values,
+        boiler_backup.Q_th.submodel.flow_rate.solution.values,
         [0, 10, 1.0e-05, 0, 1.0e-05],
         rtol=1e-5,
         atol=1e-10,
@@ -628,7 +628,7 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
     boiler_backup = flow_system.all_elements['Boiler_backup']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         190,
         rtol=1e-5,
         atol=1e-10,
@@ -636,14 +636,14 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.model.on_off.on.solution.values,
+        boiler.Q_th.submodel.on_off.on.solution.values,
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.model.flow_rate.solution.values,
+        boiler.Q_th.submodel.flow_rate.solution.values,
         [5, 10, 0, 18, 12],
         rtol=1e-5,
         atol=1e-10,
@@ -651,7 +651,7 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler_backup.Q_th.model.flow_rate.solution.values,
+        boiler_backup.Q_th.submodel.flow_rate.solution.values,
         [0, 0, 20, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -691,7 +691,7 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     boiler_backup = flow_system.all_elements['Boiler_backup']
     costs = flow_system.effects['costs']
     assert_allclose(
-        costs.model.total.solution.item(),
+        costs.submodel.total.solution.item(),
         110,
         rtol=1e-5,
         atol=1e-10,
@@ -699,21 +699,21 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler_backup.Q_th.model.on_off.on.solution.values,
+        boiler_backup.Q_th.submodel.on_off.on.solution.values,
         [0, 0, 1, 0, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler_backup.Q_th.model.on_off.off.solution.values,
+        boiler_backup.Q_th.submodel.on_off.off.solution.values,
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__off" does not have the right value',
     )
     assert_allclose(
-        boiler_backup.Q_th.model.flow_rate.solution.values,
+        boiler_backup.Q_th.submodel.flow_rate.solution.values,
         [0, 0, 1e-5, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -721,7 +721,7 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.model.flow_rate.solution.values,
+        boiler.Q_th.submodel.flow_rate.solution.values,
         [5, 0, 20 - 1e-5, 18, 12],
         rtol=1e-5,
         atol=1e-10,

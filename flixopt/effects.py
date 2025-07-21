@@ -130,7 +130,7 @@ class Effect(Element):
     def create_model(self, model: FlowSystemModel) -> 'EffectModel':
         self._plausibility_checks()
         self.submodel = EffectModel(model, self)
-        return self.model
+        return self.submodel
 
     def _plausibility_checks(self) -> None:
         # TODO: Check for plausibility
@@ -211,13 +211,13 @@ class EffectCollection:
         self._standard_effect: Optional[Effect] = None
         self._objective_effect: Optional[Effect] = None
 
-        self.model: Optional[EffectCollectionModel] = None
+        self.submodel: Optional[EffectCollectionModel] = None
         self.add_effects(*effects)
 
     def create_model(self, model: FlowSystemModel) -> 'EffectCollectionModel':
         self._plausibility_checks()
         self.submodel = EffectCollectionModel(model, self)
-        return self.model
+        return self.submodel
 
     def add_effects(self, *effects: Effect) -> None:
         for effect in list(effects):
@@ -393,13 +393,13 @@ class EffectCollectionModel(Submodel):
     ) -> None:
         for effect, expression in expressions.items():
             if target == 'operation':
-                self.effects[effect].model.operation.add_share(
+                self.effects[effect].submodel.operation.add_share(
                     name,
                     expression,
                     dims=('time', 'year', 'scenario'),
                 )
             elif target == 'invest':
-                self.effects[effect].model.invest.add_share(
+                self.effects[effect].submodel.invest.add_share(
                     name,
                     expression,
                     dims=('year', 'scenario'),
@@ -419,13 +419,13 @@ class EffectCollectionModel(Submodel):
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
             short_name='penalty',
         )
-        for model in [effect.model for effect in self.effects] + [self.penalty]:
+        for model in [effect.submodel for effect in self.effects] + [self.penalty]:
             model.do_modeling()
 
         self._add_share_between_effects()
 
         self._model.add_objective(
-            (self.effects.objective_effect.model.total * self._model.weights).sum()
+            (self.effects.objective_effect.submodel.total * self._model.weights).sum()
             + self.penalty.total.sum()
         )
 
@@ -433,16 +433,16 @@ class EffectCollectionModel(Submodel):
         for origin_effect in self.effects:
             # 1. operation: -> hier sind es Zeitreihen (share_TS)
             for target_effect, time_series in origin_effect.specific_share_to_other_effects_operation.items():
-                self.effects[target_effect].model.operation.add_share(
-                    origin_effect.model.operation.label_full,
-                    origin_effect.model.operation.total_per_timestep * time_series,
+                self.effects[target_effect].submodel.operation.add_share(
+                    origin_effect.submodel.operation.label_full,
+                    origin_effect.submodel.operation.total_per_timestep * time_series,
                     dims=('time', 'year', 'scenario'),
                 )
             # 2. invest:    -> hier ist es Scalar (share)
             for target_effect, factor in origin_effect.specific_share_to_other_effects_invest.items():
-                self.effects[target_effect].model.invest.add_share(
-                    origin_effect.model.invest.label_full,
-                    origin_effect.model.invest.total * factor,
+                self.effects[target_effect].submodel.invest.add_share(
+                    origin_effect.submodel.invest.label_full,
+                    origin_effect.submodel.invest.total * factor,
                     dims=('year', 'scenario'),
                 )
 

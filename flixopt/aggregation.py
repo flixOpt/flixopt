@@ -323,14 +323,14 @@ class AggregationModel(Submodel):
             if isinstance(component, Storage) and not self.aggregation_parameters.fix_storage_flows:
                 continue  # Fix Nothing in The Storage
 
-            all_variables_of_component = set(component.model.variables)
+            all_variables_of_component = set(component.submodel.variables)
 
             if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
-                relevant_variables = component.model.variables[all_variables_of_component & time_variables]
+                relevant_variables = component.submodel.variables[all_variables_of_component & time_variables]
             else:
-                relevant_variables = component.model.variables[all_variables_of_component & binary_time_variables]
+                relevant_variables = component.submodel.variables[all_variables_of_component & binary_time_variables]
             for variable in relevant_variables:
-                self._equate_indices(component.model.variables[variable], indices)
+                self._equate_indices(component.submodel.variables[variable], indices)
 
         penalty = self.aggregation_parameters.penalty_of_period_freedom
         if (self.aggregation_parameters.percentage_of_period_freedom > 0) and penalty != 0:

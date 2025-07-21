@@ -74,21 +74,21 @@ class FlowSystemModel(linopy.Model):
         solution['objective'] = self.objective.value
         solution.attrs = {
             'Components': {
-                comp.label_full: comp.model.results_structure()
+                comp.label_full: comp.submodel.results_structure()
                 for comp in sorted(
                     self.flow_system.components.values(), key=lambda component: component.label_full.upper()
                 )
             },
             'Buses': {
-                bus.label_full: bus.model.results_structure()
+                bus.label_full: bus.submodel.results_structure()
                 for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
             },
             'Effects': {
-                effect.label_full: effect.model.results_structure()
+                effect.label_full: effect.submodel.results_structure()
                 for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
             },
             'Flows': {
-                flow.label_full: flow.model.results_structure()
+                flow.label_full: flow.submodel.results_structure()
                 for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
             },
         }
@@ -661,7 +661,7 @@ class Element(Interface):
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
-        self.model: Optional[ElementModel] = None
+        self.submodel: Optional[ElementModel] = None
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization"""

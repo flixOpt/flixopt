@@ -62,7 +62,7 @@ class LinearConverter(Component):
     def create_model(self, model: FlowSystemModel) -> 'LinearConverterModel':
         self._plausibility_checks()
         self.submodel = LinearConverterModel(model, self)
-        return self.model
+        return self.submodel
 
     def _plausibility_checks(self) -> None:
         super()._plausibility_checks()
@@ -204,7 +204,7 @@ class Storage(Component):
     def create_model(self, model: FlowSystemModel) -> 'StorageModel':
         self._plausibility_checks()
         self.submodel = StorageModel(model, self)
-        return self.model
+        return self.submodel
 
     def transform_data(self, flow_system: 'FlowSystem') -> None:
         super().transform_data(flow_system)
@@ -381,7 +381,7 @@ class Transmission(Component):
     def create_model(self, model) -> 'TransmissionModel':
         self._plausibility_checks()
         self.submodel = TransmissionModel(model, self)
-        return self.model
+        return self.submodel
 
     def transform_data(self, flow_system: 'FlowSystem') -> None:
         super().transform_data(flow_system)
@@ -420,7 +420,7 @@ class TransmissionModel(ComponentModel):
         if self.element.balanced:
             # eq: in1.size = in2.size
             self.add_constraints(
-                self.element.in1.model._investment.size == self.element.in2.model._investment.size,
+                self.element.in1.submodel._investment.size == self.element.in2.submodel._investment.size,
                 short_name='same_size',
             )
 
@@ -428,12 +428,12 @@ class TransmissionModel(ComponentModel):
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
         con_transmission = self.add_constraints(
-            out_flow.model.flow_rate == -in_flow.model.flow_rate * (self.element.relative_losses - 1),
+            out_flow.submodel.flow_rate == -in_flow.submodel.flow_rate * (self.element.relative_losses - 1),
             short_name=name,
         )
 
         if self.element.absolute_losses is not None:
-            con_transmission.lhs += in_flow.model.on_off.on * self.element.absolute_losses
+            con_transmission.lhs += in_flow.submodel.on_off.on * self.element.absolute_losses
 
         return con_transmission
 
@@ -460,15 +460,15 @@ class LinearConverterModel(ComponentModel):
                 used_outputs: Set = all_output_flows & used_flows
 
                 self.add_constraints(
-                    sum([flow.model.flow_rate * conv_factors[flow.label] for flow in used_inputs])
-                    == sum([flow.model.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
+                    sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_inputs])
+                    == sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
                     short_name=f'conversion_{i}',
                 )
 
         else:
             # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             piecewise_conversion = {
-                self.element.flows[flow].model.flow_rate.name: piecewise
+                self.element.flows[flow].submodel.flow_rate.name: piecewise
                 for flow, piecewise in self.element.piecewise_conversion.items()
             }
 
@@ -510,15 +510,15 @@ class StorageModel(ComponentModel):
         # eq: nettoFlow(t) - discharging(t) + charging(t) = 0
         self.add_constraints(
             self.netto_discharge
-            == self.element.discharging.model.flow_rate - self.element.charging.model.flow_rate,
+            == self.element.discharging.submodel.flow_rate - self.element.charging.submodel.flow_rate,
             short_name='netto_discharge',
         )
 
         charge_state = self.charge_state
         rel_loss = self.element.relative_loss_per_hour
         hours_per_step = self._model.hours_per_step
-        charge_rate = self.element.charging.model.flow_rate
-        discharge_rate = self.element.discharging.model.flow_rate
+        charge_rate = self.element.charging.submodel.flow_rate
+        discharge_rate = self.element.discharging.submodel.flow_rate
         eff_charge = self.element.eta_charge
         eff_discharge = self.element.eta_discharge
 

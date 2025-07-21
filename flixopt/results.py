@@ -167,7 +167,7 @@ class CalculationResults:
         self.flow_system_data = flow_system_data
         self.summary = summary
         self.name = name
-        self.submodel = model
+        self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {
             label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()

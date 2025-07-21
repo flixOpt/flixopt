@@ -53,12 +53,12 @@ class TestComponentModel:
  'TestComponent(Out1)|flow_rate',
  'TestComponent(Out1)|total_flow_hours',
  'TestComponent(Out2)|flow_rate',
- 'TestComponent(Out2)|total_flow_hours'} == set(comp.model.variables)
+ 'TestComponent(Out2)|total_flow_hours'} == set(comp.submodel.variables)
 
         assert {'TestComponent(In1)|total_flow_hours',
  'TestComponent(In2)|total_flow_hours',
  'TestComponent(Out1)|total_flow_hours',
- 'TestComponent(Out2)|total_flow_hours'} == set(comp.model.constraints)
+ 'TestComponent(Out2)|total_flow_hours'} == set(comp.submodel.constraints)
 
     def test_on_with_multiple_flows(self, basic_flow_system_linopy):
         """Test that flow model constraints are correctly generated."""
@@ -78,7 +78,7 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert set(comp.model.variables) == {
+        assert set(comp.submodel.variables) == {
             'TestComponent(In1)|flow_rate',
             'TestComponent(In1)|total_flow_hours',
             'TestComponent(In1)|on',
@@ -95,7 +95,7 @@ class TestComponentModel:
             'TestComponent|on_hours_total',
         }
 
-        assert  set(comp.model.constraints) == {
+        assert  set(comp.submodel.constraints) == {
             'TestComponent(In1)|total_flow_hours',
             'TestComponent(In1)|flow_rate|lb',
             'TestComponent(In1)|flow_rate|ub',
@@ -158,7 +158,7 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert set(comp.model.variables) == {
+        assert set(comp.submodel.variables) == {
             'TestComponent(In1)|flow_rate',
             'TestComponent(In1)|total_flow_hours',
             'TestComponent(In1)|on',
@@ -167,7 +167,7 @@ class TestComponentModel:
             'TestComponent|on_hours_total',
         }
 
-        assert set(comp.model.constraints) == {
+        assert set(comp.submodel.constraints) == {
             'TestComponent(In1)|total_flow_hours',
             'TestComponent(In1)|flow_rate|lb',
             'TestComponent(In1)|flow_rate|ub',
@@ -214,7 +214,7 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert set(comp.model.variables) == {
+        assert set(comp.submodel.variables) == {
             'TestComponent(In1)|flow_rate',
             'TestComponent(In1)|total_flow_hours',
             'TestComponent(In1)|on',
@@ -231,7 +231,7 @@ class TestComponentModel:
             'TestComponent|on_hours_total',
         }
 
-        assert  set(comp.model.constraints) == {
+        assert  set(comp.submodel.constraints) == {
             'TestComponent(In1)|total_flow_hours',
             'TestComponent(In1)|flow_rate|lb',
             'TestComponent(In1)|flow_rate|ub',
@@ -296,14 +296,14 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.model.on_off.on.solution.values,
+            transmission.in1.submodel.on_off.on.solution.values,
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
             'On does not work properly',
         )
 
         assert_almost_equal_numeric(
-            transmission.in1.model.flow_rate.solution.values * 0.8 - 20,
-            transmission.out1.model.flow_rate.solution.values,
+            transmission.in1.submodel.flow_rate.solution.values * 0.8 - 20,
+            transmission.out1.submodel.flow_rate.solution.values,
             'Losses are not computed correctly',
             )
 
@@ -351,27 +351,27 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.model.on_off.on.solution.values,
+            transmission.in1.submodel.on_off.on.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'On does not work properly',
         )
 
         assert_almost_equal_numeric(
             calculation.results.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
-            transmission.out1.model.flow_rate.solution.values,
+            transmission.out1.submodel.flow_rate.solution.values,
             'Flow rate of Rohr__Rohr1b is not correct',
         )
 
         assert_almost_equal_numeric(
-            transmission.in1.model.flow_rate.solution.values * 0.8
-            - np.array([20 if val > 0.1 else 0 for val in transmission.in1.model.flow_rate.solution.values]),
-            transmission.out1.model.flow_rate.solution.values,
+            transmission.in1.submodel.flow_rate.solution.values * 0.8
+            - np.array([20 if val > 0.1 else 0 for val in transmission.in1.submodel.flow_rate.solution.values]),
+            transmission.out1.submodel.flow_rate.solution.values,
             'Losses are not computed correctly',
             )
 
         assert_almost_equal_numeric(
-            transmission.in1.model._investment.size.solution.item(),
-            transmission.in2.model._investment.size.solution.item(),
+            transmission.in1.submodel._investment.size.solution.item(),
+            transmission.in2.submodel._investment.size.solution.item(),
             'The Investments are not equated correctly',
         )
 
@@ -419,28 +419,28 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.model.on_off.on.solution.values,
+            transmission.in1.submodel.on_off.on.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'On does not work properly',
         )
 
         assert_almost_equal_numeric(
             calculation.results.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
-            transmission.out1.model.flow_rate.solution.values,
+            transmission.out1.submodel.flow_rate.solution.values,
             'Flow rate of Rohr__Rohr1b is not correct',
         )
 
         assert_almost_equal_numeric(
-            transmission.in1.model.flow_rate.solution.values * 0.8
-            - np.array([20 if val > 0.1 else 0 for val in transmission.in1.model.flow_rate.solution.values]),
-            transmission.out1.model.flow_rate.solution.values,
+            transmission.in1.submodel.flow_rate.solution.values * 0.8
+            - np.array([20 if val > 0.1 else 0 for val in transmission.in1.submodel.flow_rate.solution.values]),
+            transmission.out1.submodel.flow_rate.solution.values,
             'Losses are not computed correctly',
             )
 
-        assert transmission.in1.model._investment.size.solution.item() > 11
+        assert transmission.in1.submodel._investment.size.solution.item() > 11
 
         assert_almost_equal_numeric(
-            transmission.in2.model._investment.size.solution.item(),
+            transmission.in2.submodel._investment.size.solution.item(),
             10,
             'Sizing does not work properly',
         )

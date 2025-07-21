@@ -23,12 +23,12 @@ class TestFlowSystem:
 
         # Cost assertions
         assert_almost_equal_numeric(
-            effects['costs'].model.total.solution.item(), 81.88394666666667, 'costs doesnt match expected value'
+            effects['costs'].submodel.total.solution.item(), 81.88394666666667, 'costs doesnt match expected value'
         )
 
         # CO2 assertions
         assert_almost_equal_numeric(
-            effects['CO2'].model.total.solution.item(), 255.09184, 'CO2 doesnt match expected value'
+            effects['CO2'].submodel.total.solution.item(), 255.09184, 'CO2 doesnt match expected value'
         )
 
     def test_model_components(self, simple_flow_system, highs_solver):
@@ -40,14 +40,14 @@ class TestFlowSystem:
 
         # Boiler assertions
         assert_almost_equal_numeric(
-            comps['Boiler'].Q_th.model.flow_rate.solution.values,
+            comps['Boiler'].Q_th.submodel.flow_rate.solution.values,
             [0, 0, 0, 28.4864, 35, 0, 0, 0, 0],
             'Q_th doesnt match expected value',
         )
 
         # CHP unit assertions
         assert_almost_equal_numeric(
-            comps['CHP_unit'].Q_th.model.flow_rate.solution.values,
+            comps['CHP_unit'].Q_th.submodel.flow_rate.solution.values,
             [30.0, 26.66666667, 75.0, 75.0, 75.0, 20.0, 20.0, 20.0, 20.0],
             'Q_th doesnt match expected value',
         )
@@ -217,36 +217,36 @@ class TestComplex:
 
         # Compare expected values with actual values
         assert_almost_equal_numeric(
-            effects['costs'].model.total.solution.item(), -10710.997365760755, 'costs doesnt match expected value'
+            effects['costs'].submodel.total.solution.item(), -10710.997365760755, 'costs doesnt match expected value'
         )
         assert_almost_equal_numeric(
-            effects['CO2'].model.total.solution.item(), 1278.7939026086956, 'CO2 doesnt match expected value'
+            effects['CO2'].submodel.total.solution.item(), 1278.7939026086956, 'CO2 doesnt match expected value'
         )
         assert_almost_equal_numeric(
-            comps['Kessel'].Q_th.model.flow_rate.solution.values,
+            comps['Kessel'].Q_th.submodel.flow_rate.solution.values,
             [0, 0, 0, 45, 0, 0, 0, 0, 0],
             'Kessel doesnt match expected value',
         )
         kwk_flows = {flow.label: flow for flow in comps['KWK'].inputs + comps['KWK'].outputs}
         assert_almost_equal_numeric(
-            kwk_flows['Q_th'].model.flow_rate.solution.values,
+            kwk_flows['Q_th'].submodel.flow_rate.solution.values,
             [45.0, 45.0, 64.5962087, 100.0, 61.3136, 45.0, 45.0, 12.86469565, 0.0],
             'KWK Q_th doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            kwk_flows['P_el'].model.flow_rate.solution.values,
+            kwk_flows['P_el'].submodel.flow_rate.solution.values,
             [40.0, 40.0, 47.12589407, 60.0, 45.93221818, 40.0, 40.0, 10.91784108, -0.0],
             'KWK P_el doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            comps['Speicher'].model.netto_discharge.solution.values,
+            comps['Speicher'].submodel.netto_discharge.solution.values,
             [-15.0, -45.0, 25.4037913, -35.0, 48.6864, -25.0, -25.0, 7.13530435, 20.0],
             'Speicher nettoFlow doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            comps['Speicher'].model.variables['Speicher|PiecewiseEffects|costs'].solution.values,
+            comps['Speicher'].submodel.variables['Speicher|PiecewiseEffects|costs'].solution.values,
             454.74666666666667,
             'Speicher investCosts_segmented_costs doesnt match expected value',
         )

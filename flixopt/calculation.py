@@ -81,7 +81,7 @@ class Calculation:
         flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
-        self.model: Optional[FlowSystemModel] = None
+        self.submodel: Optional[FlowSystemModel] = None
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
@@ -106,9 +106,9 @@ class Calculation:
             'Penalty': self.model.effects.penalty.total.solution.values,
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
-                    'operation': effect.model.operation.total.solution.values,
-                    'invest': effect.model.invest.total.solution.values,
-                    'total': effect.model.total.solution.values,
+                    'operation': effect.submodel.operation.total.solution.values,
+                    'invest': effect.submodel.invest.total.solution.values,
+                    'total': effect.submodel.total.solution.values,
                 }
                 for effect in self.flow_system.effects
             },
@@ -116,28 +116,28 @@ class Calculation:
                 'Invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
-                    for model in component.model.sub_models
+                    for model in component.submodel.sub_models
                     if isinstance(model, InvestmentModel) and model.size.solution.max() >= CONFIG.modeling.EPSILON
                 },
                 'Not invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
-                    for model in component.model.sub_models
+                    for model in component.submodel.sub_models
                     if isinstance(model, InvestmentModel) and model.size.solution.max() < CONFIG.modeling.EPSILON
                 },
             },
             'Buses with excess': [
                 {
                     bus.label_full: {
-                        'input': bus.model.excess_input.solution.sum('time'),
-                        'output': bus.model.excess_output.solution.sum('time'),
+                        'input': bus.submodel.excess_input.solution.sum('time'),
+                        'output': bus.submodel.excess_output.solution.sum('time'),
                     }
                 }
                 for bus in self.flow_system.buses.values()
                 if bus.with_excess
                 and (
-                    bus.model.excess_input.solution.sum() > 1e-3
-                    or bus.model.excess_output.solution.sum() > 1e-3
+                    bus.submodel.excess_input.solution.sum() > 1e-3
+                    or bus.submodel.excess_output.solution.sum() > 1e-3
                 )
             ],
         }
@@ -180,7 +180,7 @@ class FullCalculation(Calculation):
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
-        self.submodel = self.flow_system.create_model()
+        self.model = self.flow_system.create_model()
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
@@ -298,7 +298,7 @@ class AggregatedCalculation(FullCalculation):
         self._perform_aggregation()
 
         # Model the System
-        self.submodel = self.flow_system.create_model()
+        self.model = self.flow_system.create_model()
         self.model.do_modeling()
         # Add Aggregation Submodel after modeling the rest
         self.aggregation = AggregationModel(
@@ -488,7 +488,7 @@ class SegmentedCalculation(Calculation):
                 invest_elements = [
                     model.label_full
                     for component in calculation.flow_system.components.values()
-                    for model in component.model.sub_models
+                    for model in component.submodel.sub_models
                     if isinstance(model, InvestmentModel)
                 ]
                 if invest_elements:
@@ -532,7 +532,7 @@ class SegmentedCalculation(Calculation):
 
         for current_flow in current_flow_system.flows.values():
             next_flow = next_flow_system.flows[current_flow.label_full]
-            next_flow.previous_flow_rate = current_flow.model.flow_rate.solution.sel(
+            next_flow.previous_flow_rate = current_flow.submodel.flow_rate.solution.sel(
                 time=slice(start_previous_values, end_previous_values)
             ).values
             start_values_of_this_segment[current_flow.label_full] = next_flow.previous_flow_rate

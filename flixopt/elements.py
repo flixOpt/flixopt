@@ -68,7 +68,7 @@ class Component(Element):
     def create_model(self, model: FlowSystemModel) -> 'ComponentModel':
         self._plausibility_checks()
         self.submodel = ComponentModel(model, self)
-        return self.model
+        return self.submodel
 
     def transform_data(self, flow_system: 'FlowSystem') -> None:
         if self.on_off_parameters is not None:
@@ -113,7 +113,7 @@ class Bus(Element):
     def create_model(self, model: FlowSystemModel) -> 'BusModel':
         self._plausibility_checks()
         self.submodel = BusModel(model, self)
-        return self.model
+        return self.submodel
 
     def transform_data(self, flow_system: 'FlowSystem'):
         self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
@@ -230,7 +230,7 @@ class Flow(Element):
     def create_model(self, model: FlowSystemModel) -> 'FlowModel':
         self._plausibility_checks()
         self.submodel = FlowModel(model, self)
-        return self.model
+        return self.submodel
 
     def transform_data(self, flow_system: 'FlowSystem'):
         self.relative_minimum = flow_system.fit_to_model_coords(
@@ -551,9 +551,9 @@ class BusModel(ElementModel):
     def do_modeling(self) -> None:
         # inputs == outputs
         for flow in self.element.inputs + self.element.outputs:
-            self.register_variable(flow.model.flow_rate, flow.label_full)
-        inputs = sum([flow.model.flow_rate for flow in self.element.inputs])
-        outputs = sum([flow.model.flow_rate for flow in self.element.outputs])
+            self.register_variable(flow.submodel.flow_rate, flow.label_full)
+        inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs])
+        outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
 
         # Fehlerplus/-minus:
@@ -570,8 +570,8 @@ class BusModel(ElementModel):
             self._model.effects.add_share_to_penalty(self.label_of_element, (self.excess_output * excess_penalty).sum())
 
     def results_structure(self):
-        inputs = [flow.model.flow_rate.name for flow in self.element.inputs]
-        outputs = [flow.model.flow_rate.name for flow in self.element.outputs]
+        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
+        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
         if self.excess_input is not None:
             inputs.append(self.excess_input.name)
         if self.excess_output is not None:
@@ -606,9 +606,9 @@ class ComponentModel(ElementModel):
         if self.element.on_off_parameters:
             on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
             if len(all_flows) == 1:
-                self.add_constraints(on == all_flows[0].model.on_off.on, short_name='on')
+                self.add_constraints(on == all_flows[0].submodel.on_off.on, short_name='on')
             else:
-                flow_ons = [flow.model.on_off.on for flow in all_flows]
+                flow_ons = [flow.submodel.on_off.on for flow in all_flows]
                 #TODO: Is the EPSILON even necessary?
                 self.add_constraints(on <= sum(flow_ons) + CONFIG.modeling.EPSILON, short_name='on|ub')
                 self.add_constraints(on >= sum(flow_ons) / (len(flow_ons) + CONFIG.modeling.EPSILON), short_name='on|lb')
@@ -629,18 +629,18 @@ class ComponentModel(ElementModel):
 
         if self.element.prevent_simultaneous_flows:
             # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
-            on_variables = [flow.model.on_off.on for flow in self.element.prevent_simultaneous_flows]
+            on_variables = [flow.submodel.on_off.on for flow in self.element.prevent_simultaneous_flows]
             ModelingPrimitives.mutual_exclusivity_constraint(
                 self,
-                binary_variables=[flow.model.on_off.on for flow in self.element.prevent_simultaneous_flows],
+                binary_variables=[flow.submodel.on_off.on for flow in self.element.prevent_simultaneous_flows],
                 short_name='prevent_simultaneous_use',
             )
 
     def results_structure(self):
         return {
             **super().results_structure(),
-            'inputs': [flow.model.flow_rate.name for flow in self.element.inputs],
-            'outputs': [flow.model.flow_rate.name for flow in self.element.outputs],
+            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs],
+            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs],
             'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
         }
 
@@ -650,7 +650,7 @@ class ComponentModel(ElementModel):
         if self.element.on_off_parameters is None:
             raise ValueError(f'OnOffModel not present in \n{self}\nCant access previous_states')
 
-        previous_states = [flow.model.on_off._previous_states for flow in self.element.inputs + self.element.outputs]
+        previous_states = [flow.submodel.on_off._previous_states for flow in self.element.inputs + self.element.outputs]
         previous_states = [da for da in previous_states if da is not None]
 
         if not previous_states:  # Empty list
