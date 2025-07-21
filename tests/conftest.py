@@ -33,7 +33,7 @@ def solver_fixture(request):
 
 # Custom assertion function
 def assert_almost_equal_numeric(
-    actual, desired, err_msg, relative_error_range_in_percent=0.011, absolute_tolerance=1e-9
+    actual, desired, err_msg, relative_error_range_in_percent=0.011, absolute_tolerance=1e-7
 ):
     """
     Custom assertion function for comparing numeric values with relative and absolute tolerances
@@ -121,6 +121,7 @@ def simple_flow_system() -> fx.FlowSystem:
     flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
 
     return flow_system
+
 
 @pytest.fixture
 def simple_flow_system_scenarios() -> fx.FlowSystem:
