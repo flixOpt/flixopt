@@ -488,7 +488,7 @@ class SegmentedCalculation(Calculation):
                 invest_elements = [
                     model.label_full
                     for component in calculation.flow_system.components.values()
-                    for model in component.model.all_sub_models
+                    for model in component.model.sub_models
                     if isinstance(model, InvestmentModel)
                 ]
                 if invest_elements:
