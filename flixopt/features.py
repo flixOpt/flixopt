@@ -72,6 +72,7 @@ class InvestmentModel(BaseFeatureModel):
                 PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
+                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
                     piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
                     piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
                     zero_point=self.is_invested,
@@ -176,10 +177,8 @@ class OnOffModel(BaseFeatureModel):
                 switch_on=self.switch_on,
                 switch_off=self.switch_off,
                 name=f'{self.label_of_model}|switch',
-                previous_state=ModelingUtilities.get_most_recent_state(
-                    self._previous_states.isel(time=-1)
-                ) if self._previous_states is not None else 0,
-            )
+                previous_state=self._previous_states.isel(time=-1) if self._previous_states is not None else 0,
+        )
 
             if self.parameters.switch_on_total_max is not None:
                 count = self.add_variables(lower=0, upper=self.parameters.switch_on_total_max, coords=self._model.get_coords(('year', 'scenario')), short_name='switch|count')
@@ -410,12 +409,12 @@ class PiecewiseEffectsModel(Model):
         self,
         model: FlowSystemModel,
         label_of_element: str,
+        label_of_model: str,
         piecewise_origin: Tuple[str, Piecewise],
         piecewise_shares: Dict[str, Piecewise],
         zero_point: Optional[Union[bool, linopy.Variable]],
-        label: str = 'PiecewiseEffects',
     ):
-        super().__init__(model, label_of_element, label)
+        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
         assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
             'Piece length of variable_segments and share_segments must be equal'
         )

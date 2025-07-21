@@ -15,6 +15,7 @@ from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
 from .structure import FlowSystemModel, register_class_for_io
+from.modeling import BoundingPatterns
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -535,12 +536,16 @@ class StorageModel(ComponentModel):
                     model=self._model,
                     label_of_element=self.label_of_element,
                     parameters=self.element.capacity_in_flow_hours,
-                    defining_variable=self.charge_state,
-                    relative_bounds_of_defining_variable=self.relative_charge_state_bounds,
                 ),
                 short_name='investment',
             )
             self._investment.do_modeling()
+            BoundingPatterns.scaled_bounds(
+                self,
+                variable=self.charge_state,
+                scaling_variable=self.investment.size,
+                relative_bounds=self.relative_charge_state_bounds,
+            )
 
         # Initial charge state
         self._initial_and_final_charge_state()
