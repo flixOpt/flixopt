@@ -129,7 +129,7 @@ class Effect(Element):
 
     def create_model(self, model: FlowSystemModel) -> 'EffectModel':
         self._plausibility_checks()
-        self.model = EffectModel(model, self)
+        self.submodel = EffectModel(model, self)
         return self.model
 
     def _plausibility_checks(self) -> None:
@@ -216,7 +216,7 @@ class EffectCollection:
 
     def create_model(self, model: FlowSystemModel) -> 'EffectCollectionModel':
         self._plausibility_checks()
-        self.model = EffectCollectionModel(model, self)
+        self.submodel = EffectCollectionModel(model, self)
         return self.model
 
     def add_effects(self, *effects: Effect) -> None:

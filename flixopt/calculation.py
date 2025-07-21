@@ -180,7 +180,7 @@ class FullCalculation(Calculation):
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
-        self.model = self.flow_system.create_model()
+        self.submodel = self.flow_system.create_model()
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
@@ -298,7 +298,7 @@ class AggregatedCalculation(FullCalculation):
         self._perform_aggregation()
 
         # Model the System
-        self.model = self.flow_system.create_model()
+        self.submodel = self.flow_system.create_model()
         self.model.do_modeling()
         # Add Aggregation Submodel after modeling the rest
         self.aggregation = AggregationModel(

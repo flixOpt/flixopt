@@ -67,7 +67,7 @@ class Component(Element):
 
     def create_model(self, model: FlowSystemModel) -> 'ComponentModel':
         self._plausibility_checks()
-        self.model = ComponentModel(model, self)
+        self.submodel = ComponentModel(model, self)
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem') -> None:
@@ -112,7 +112,7 @@ class Bus(Element):
 
     def create_model(self, model: FlowSystemModel) -> 'BusModel':
         self._plausibility_checks()
-        self.model = BusModel(model, self)
+        self.submodel = BusModel(model, self)
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem'):
@@ -229,7 +229,7 @@ class Flow(Element):
 
     def create_model(self, model: FlowSystemModel) -> 'FlowModel':
         self._plausibility_checks()
-        self.model = FlowModel(model, self)
+        self.submodel = FlowModel(model, self)
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem'):

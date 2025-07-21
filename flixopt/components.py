@@ -61,7 +61,7 @@ class LinearConverter(Component):
 
     def create_model(self, model: FlowSystemModel) -> 'LinearConverterModel':
         self._plausibility_checks()
-        self.model = LinearConverterModel(model, self)
+        self.submodel = LinearConverterModel(model, self)
         return self.model
 
     def _plausibility_checks(self) -> None:
@@ -203,7 +203,7 @@ class Storage(Component):
 
     def create_model(self, model: FlowSystemModel) -> 'StorageModel':
         self._plausibility_checks()
-        self.model = StorageModel(model, self)
+        self.submodel = StorageModel(model, self)
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem') -> None:
@@ -380,7 +380,7 @@ class Transmission(Component):
 
     def create_model(self, model) -> 'TransmissionModel':
         self._plausibility_checks()
-        self.model = TransmissionModel(model, self)
+        self.submodel = TransmissionModel(model, self)
         return self.model
 
     def transform_data(self, flow_system: 'FlowSystem') -> None:
