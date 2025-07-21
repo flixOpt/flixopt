@@ -16,7 +16,7 @@ from .effects import TemporalEffectsUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel, ModelingPrimitives
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
-from .modeling import BoundingPatterns, ModelingUtilities
+from .modeling import BoundingPatterns, ModelingUtilitiesAbstract
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -163,7 +163,7 @@ class Flow(Element):
         flow_hours_total_min: Optional[Scalar] = None,
         load_factor_min: Optional[Scalar] = None,
         load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[TemporalDataUser] = None,
+        previous_flow_rate: Optional[Union[Scalar, List[Scalar]]] = None,
         meta_data: Optional[Dict] = None,
     ):
         r"""
@@ -210,9 +210,7 @@ class Flow(Element):
         self.flow_hours_total_min = flow_hours_total_min
         self.on_off_parameters = on_off_parameters
 
-        self.previous_flow_rate = (
-            previous_flow_rate if not isinstance(previous_flow_rate, list) else np.array(previous_flow_rate)
-        )
+        self.previous_flow_rate = previous_flow_rate
 
         self.component: str = 'UnknownComponent'
         self.is_input_in_component: Optional[bool] = None
@@ -293,6 +291,11 @@ class Flow(Element):
                 f'This prevents the flow_rate from switching off (flow_rate = 0). '
                 f'Consider using on_off_parameters to allow the flow to be switched on and off.'
             )
+
+        if self.previous_flow_rate is not None:
+            if not any([isinstance(self.previous_flow_rate, np.ndarray) and self.previous_flow_rate.ndim == 1,
+                       isinstance(self.previous_flow_rate, (int, float, list))]):
+                raise TypeError(f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}')
 
     @property
     def label_full(self) -> str:
@@ -523,10 +526,19 @@ class FlowModel(ElementModel):
     @property
     def previous_states(self) -> Optional[xr.DataArray]:
         """Previous states of the flow rate"""
-        if self.element.previous_flow_rate is None:
+        #TODO: This would be nicer to handle in the Flow itself, and allow DataArrays as well.
+        previous_flow_rate = self.element.previous_flow_rate
+        if previous_flow_rate is None:
             return None
 
-        return ModelingUtilities.compute_previous_states(self.element.previous_flow_rate)
+        return ModelingUtilitiesAbstract.to_binary(
+            values=xr.DataArray(
+                [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate,
+                dims='time'
+            ),
+            epsilon=CONFIG.modeling.EPSILON,
+            dims='time',
+        )
 
 
 class BusModel(ElementModel):
@@ -588,22 +600,27 @@ class ComponentModel(ElementModel):
                     flow.on_off_parameters = OnOffParameters()
 
         for flow in all_flows:
-            self.register_sub_model(flow.create_model(self._model), short_name=flow.label)
-
-        for sub_model in self.sub_models:
-            sub_model.do_modeling()
+            flow_model = self.register_sub_model(flow.create_model(self._model), short_name=flow.label)
+            flow_model.do_modeling()
 
         if self.element.on_off_parameters:
+            on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
+            if len(all_flows) == 1:
+                self.add_constraints(on == all_flows[0].model.on_off.on, short_name='on')
+            else:
+                flow_ons = [flow.model.on_off.on for flow in all_flows]
+                #TODO: Is the EPSILON even necessary?
+                self.add_constraints(on <= sum(flow_ons) + CONFIG.modeling.EPSILON, short_name='on|ub')
+                self.add_constraints(on >= sum(flow_ons) / (len(flow_ons) + CONFIG.modeling.EPSILON), short_name='on|lb')
+
             self.on_off = self.register_sub_model(
                 OnOffModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     parameters=self.element.on_off_parameters,
-                    flow_rates=[flow.model.flow_rate for flow in all_flows],
-                    flow_rate_bounds=[flow.model.flow_rate_bounds_on for flow in all_flows],
-                    previous_flow_rates=[flow.previous_flow_rate for flow in all_flows],
+                    on_variable=on,
                     label_of_model=self.label_of_element,
-                    apply_bounds_to_flow_rates=True,
+                    previous_states=self.previous_states,
                 ),
                 short_name='on_off',
             )
@@ -623,3 +640,25 @@ class ComponentModel(ElementModel):
             'outputs': [flow.model.flow_rate.name for flow in self.element.outputs],
             'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
         }
+
+    @property
+    def previous_states(self) -> Optional[xr.DataArray]:
+        """Previous state of the component, derived from its flows"""
+        if self.element.on_off_parameters is None:
+            raise ValueError(f'OnOffModel not present in \n{self}\nCant access previous_states')
+
+        previous_states = [flow.model.on_off._previous_states for flow in self.element.inputs + self.element.outputs]
+        previous_states = [da for da in previous_states if da is not None]
+
+        if not previous_states:  # Empty list
+            return None
+
+        max_len = max(da.sizes['time'] for da in previous_states)
+
+        padded_previous_states = [
+            da.assign_coords(
+                time=range(-da.sizes['time'], 0)
+            ).reindex(time=range(-max_len, 0), fill_value=0)
+            for da in previous_states
+        ]
+        return xr.concat(padded_previous_states, dim='flow').any(dim='flow').astype(int)

@@ -55,13 +55,15 @@ class ModelingUtilitiesAbstract:
     @staticmethod
     def count_consecutive_states(
         binary_values: xr.DataArray,
+        dim: str = 'time',
         epsilon: float = None,
     ) -> float:
         """
         Counts the number of consecutive states in a binary time series.
 
         Args:
-            binary_values: Binary DataArray with 'time' dim
+            binary_values: Binary DataArray
+            dim: Dimension to count consecutive states over
             epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
 
         Returns:
@@ -70,14 +72,14 @@ class ModelingUtilitiesAbstract:
         if epsilon is None:
             epsilon = CONFIG.modeling.EPSILON
 
-        binary_values = binary_values.any(dim=[d for d in binary_values.dims if d != 'time'])
+        binary_values = binary_values.any(dim=[d for d in binary_values.dims if d != dim])
 
         # Handle scalar case
         if binary_values.ndim == 0:
             return float(binary_values.item())
 
         # Check if final state is off
-        if np.isclose(binary_values.isel(time=-1).item(), 0, atol=epsilon):
+        if np.isclose(binary_values.isel({dim: -1}).item(), 0, atol=epsilon).all():
             return 0.0
 
         # Find consecutive 'on' period from the end
@@ -92,9 +94,9 @@ class ModelingUtilitiesAbstract:
             # Start after last zero
             start_idx = zero_indices[-1] + 1
 
-        consecutive_values = binary_values.isel(time=slice(start_idx, None))
+        consecutive_values = binary_values.isel({dim:slice(start_idx, None)})
 
-        return float(consecutive_values.sum().item())
+        return float(consecutive_values.sum().item())  #TODO: Som only over one dim?
 
 
 class ModelingUtilities:
@@ -260,7 +262,6 @@ class ModelingPrimitives:
         model: FlowSystemModel,
         variable_to_count: linopy.Variable,
         name: str = None,
-        short_name: str = None,
         bounds: Tuple[NonTemporalData, NonTemporalData] = None,
         factor: TemporalData = 1,
     ) -> Tuple[linopy.Variable, linopy.Constraint]:
