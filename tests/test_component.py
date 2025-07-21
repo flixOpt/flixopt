@@ -205,7 +205,7 @@ class TestComponentModel:
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100, previous_flow_rate=np.array([0, 0, 1e-6, 1e-5, 1e-4, 3,4])),
         ]
         outputs = [
-            fx.Flow('Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=xr.DataArray([3,4,5], dims='time')),
+            fx.Flow('Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=[3,4,5]),
             fx.Flow('Out2', 'Gas', relative_minimum=np.ones(10) * 0.3,
                     relative_maximum = ub_out2, size=300, previous_flow_rate=20),
         ]
