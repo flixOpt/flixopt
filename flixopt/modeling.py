@@ -7,7 +7,7 @@ import xarray as xr
 
 from .config import CONFIG
 from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
-from .structure import Model, FlowSystemModel, BaseFeatureModel
+from .structure import Submodel, FlowSystemModel, BaseFeatureModel
 
 logger = logging.getLogger('flixopt')
 
@@ -181,7 +181,7 @@ class ModelingPrimitives:
 
     @staticmethod
     def expression_tracking_variable(
-        model: Model,
+        model: Submodel,
         tracked_expression,
         name: str = None,
         short_name: str = None,
@@ -219,7 +219,7 @@ class ModelingPrimitives:
 
     @staticmethod
     def state_transition_variables(
-        model: Union[FlowSystemModel, Model],
+        model: Submodel,
         state_variable: linopy.Variable,
         switch_on: linopy.Variable,
         switch_off: linopy.Variable,
@@ -387,7 +387,7 @@ class ModelingPrimitives:
 
     @staticmethod
     def mutual_exclusivity_constraint(
-        model: Model, binary_variables: List[linopy.Variable], tolerance: float = 1,
+        model: Submodel, binary_variables: List[linopy.Variable], tolerance: float = 1,
         short_name: str = 'mutual_exclusivity',
     ) -> linopy.Constraint:
         """

@@ -27,7 +27,7 @@ from .elements import Component
 from .flow_system import FlowSystem
 from .structure import (
     Element,
-    Model,
+    Submodel,
     FlowSystemModel,
 )
 
@@ -285,7 +285,7 @@ class AggregationParameters:
         return self.time_series_for_low_peaks is not None
 
 
-class AggregationModel(Model):
+class AggregationModel(Submodel):
     """The AggregationModel holds equations and variables related to the Aggregation of a FLowSystem.
     It creates Equations that equates indices of variables, and introduces penalties related to binary variables, that
     escape the equation to their related binaries in other periods"""

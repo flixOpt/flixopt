@@ -300,7 +300,7 @@ class AggregatedCalculation(FullCalculation):
         # Model the System
         self.model = self.flow_system.create_model()
         self.model.do_modeling()
-        # Add Aggregation Model after modeling the rest
+        # Add Aggregation Submodel after modeling the rest
         self.aggregation = AggregationModel(
             self.model, self.aggregation_parameters, self.flow_system, self.aggregation, self.components_to_clusterize
         )

@@ -12,7 +12,7 @@ import numpy as np
 from .config import CONFIG
 from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
 from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects
-from .structure import Model, FlowSystemModel, BaseFeatureModel
+from .structure import Submodel, FlowSystemModel, BaseFeatureModel
 from .modeling import ModelingUtilities, ModelingPrimitives, BoundingPatterns
 
 logger = logging.getLogger('flixopt')
@@ -228,7 +228,7 @@ class OnOffModel(BaseFeatureModel):
                 target='operation',
             )
 
-    # Properties access variables from Model's tracking system
+    # Properties access variables from Submodel's tracking system
 
     @property
     def total_on_hours(self) -> Optional[linopy.Variable]:
@@ -282,7 +282,7 @@ class OnOffModel(BaseFeatureModel):
             return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_states  * -1 + 1, hours_per_step)
 
 
-class PieceModel(Model):
+class PieceModel(Submodel):
     """Class for modeling a linear piece of one or more variables in parallel"""
 
     def __init__(
@@ -323,7 +323,7 @@ class PieceModel(Model):
         self.add_constraints(self.inside_piece == self.lambda0 + self.lambda1, short_name='inside_piece')
 
 
-class PiecewiseModel(Model):
+class PiecewiseModel(Submodel):
     def __init__(
         self,
         model: FlowSystemModel,
@@ -404,7 +404,7 @@ class PiecewiseModel(Model):
             )
 
 
-class PiecewiseEffectsModel(Model):
+class PiecewiseEffectsModel(Submodel):
     def __init__(
         self,
         model: FlowSystemModel,
@@ -461,7 +461,7 @@ class PiecewiseEffectsModel(Model):
         )
 
 
-class ShareAllocationModel(Model):
+class ShareAllocationModel(Submodel):
     def __init__(
         self,
         model: FlowSystemModel,

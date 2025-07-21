@@ -487,7 +487,7 @@ class LinearConverterModel(ComponentModel):
 
 
 class StorageModel(ComponentModel):
-    """Model of Storage"""
+    """Submodel of Storage"""
 
     def __init__(self, model: FlowSystemModel, element: Storage):
         super().__init__(model, element)

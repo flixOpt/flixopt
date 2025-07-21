@@ -30,7 +30,7 @@ class Component(Element):
     A Component contains incoming and outgoing [`Flows`][flixopt.elements.Flow]. It defines how these Flows interact with each other.
     The On or Off state of the Component is defined by all its Flows. Its on, if any of its FLows is On.
     It's mathematically advisable to define the On/Off state in a FLow rather than a Component if possible,
-    as this introduces less binary variables to the Model
+    as this introduces less binary variables to the Submodel
     Constraints to the On/Off state are defined by the [`on_off_parameters`][flixopt.interface.OnOffParameters].
     """
 

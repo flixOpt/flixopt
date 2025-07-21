@@ -696,7 +696,7 @@ class Element(Interface):
         return label
 
 
-class Model:
+class Submodel:
     """Stores Variables and Constraints."""
 
     def __init__(
@@ -714,7 +714,7 @@ class Model:
 
         self._variables: Dict[str, linopy.Variable] = {}  # Mapping from short name to variable
         self._constraints: Dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
-        self._sub_models: Dict[str, 'Model'] = {}
+        self._sub_models: Dict[str, 'Submodel'] = {}
 
         logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
 
@@ -760,7 +760,7 @@ class Model:
         self._constraints[short_name] = constraint
         return constraint
 
-    def register_sub_model(self, sub_model: 'Model', short_name: str) -> 'Model':
+    def register_sub_model(self, sub_model: 'Submodel', short_name: str) -> 'Submodel':
         """Register a sub-model with the model"""
         if short_name is None:
             short_name = sub_model.__class__.__name__
@@ -831,12 +831,12 @@ class Model:
         return self._model.constraints[[con.name for con in self._constraints.values()]]
 
     @property
-    def sub_models_direct(self) -> Dict[str, 'Model']:
+    def sub_models_direct(self) -> Dict[str, 'Submodel']:
         """All sub-models of the model, excluding those of sub-models"""
         return self._sub_models
 
     @property
-    def sub_models(self) -> List['Model']:
+    def sub_models(self) -> List['Submodel']:
         """All sub-models of the model"""
         direct_submodels = list(self._sub_models.values())
 
@@ -896,7 +896,7 @@ class Model:
         return self._model.hours_per_step
 
 
-class BaseFeatureModel(Model):
+class BaseFeatureModel(Submodel):
     """Minimal base class for feature models that use factory patterns"""
 
     def __init__(self, model: FlowSystemModel, label_of_element: str, parameters, label_of_model: Optional[str] = None):
@@ -925,7 +925,7 @@ class BaseFeatureModel(Model):
         pass  # Default: no effects
 
 
-class ElementModel(Model):
+class ElementModel(Submodel):
     """Stores the mathematical Variables and Constraints for Elements"""
 
     def __init__(self, model: FlowSystemModel, element: Element):

@@ -15,7 +15,7 @@ import xarray as xr
 
 from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, Interface, Model, FlowSystemModel, register_class_for_io
+from .structure import Element, ElementModel, Interface, Submodel, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -375,7 +375,7 @@ class EffectCollection:
         return shares_operation, shares_invest
 
 
-class EffectCollectionModel(Model):
+class EffectCollectionModel(Submodel):
     """
     Handling all Effects
     """
