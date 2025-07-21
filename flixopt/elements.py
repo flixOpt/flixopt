@@ -524,7 +524,7 @@ class FlowModel(ElementModel):
         return self.sub_models_direct['investment']
 
     @property
-    def previous_states(self) -> Optional[xr.DataArray]:
+    def previous_states(self) -> Optional[TemporalData]:
         """Previous states of the flow rate"""
         #TODO: This would be nicer to handle in the Flow itself, and allow DataArrays as well.
         previous_flow_rate = self.element.previous_flow_rate

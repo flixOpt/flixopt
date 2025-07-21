@@ -103,7 +103,7 @@ class ModelingUtilities:
 
     @staticmethod
     def compute_consecutive_hours_in_state(
-        binary_values: Union[xr.DataArray, np.ndarray, int],
+        binary_values: TemporalData,
         hours_per_timestep: Union[int, float],
         epsilon: float = None,
     ) -> float:
