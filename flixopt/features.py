@@ -329,10 +329,10 @@ class PiecewiseModel(Model):
         self,
         model: FlowSystemModel,
         label_of_element: str,
+        label_of_model: str,
         piecewise_variables: Dict[str, Piecewise],
         zero_point: Optional[Union[bool, linopy.Variable]],
         as_time_series: bool,
-        label_of_model: str = '',
     ):
         """
         Modeling a Piecewise relation between miultiple variables.

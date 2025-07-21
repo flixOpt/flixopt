@@ -189,8 +189,8 @@ class TestLinearConverterModel:
         # Check on_hours_total constraint
         assert_conequal(
             model.constraints['Converter|on_hours_total'],
-            converter.model.on_off.variables['Converter|on_hours_total'] ==
-            (converter.model.on_off.variables['Converter|on'] * model.hours_per_step).sum()
+            model.variables['Converter|on_hours_total'] ==
+            (model.variables['Converter|on'] * model.hours_per_step).sum()
         )
 
         # Check conversion constraint
@@ -204,7 +204,7 @@ class TestLinearConverterModel:
         assert_conequal(
             model.constraints['Converter->Costs(operation)'],
             model.variables['Converter->Costs(operation)'] ==
-            converter.model.on_off.variables['Converter|on'] * model.hours_per_step * 5
+            model.variables['Converter|on'] * model.hours_per_step * 5
         )
 
     def test_linear_converter_multidimensional(self, basic_flow_system_linopy):
@@ -539,8 +539,8 @@ class TestLinearConverterModel:
         assert 'Converter|on_hours_total' in model.constraints
         assert_conequal(
             model.constraints['Converter|on_hours_total'],
-            converter.model.on_off.variables['Converter|on_hours_total'] ==
-            (converter.model.on_off.variables['Converter|on'] * model.hours_per_step).sum()
+            model['Converter|on_hours_total'] ==
+            (model['Converter|on'] * model.hours_per_step).sum()
         )
 
         # Verify that the costs effect is applied
@@ -548,7 +548,7 @@ class TestLinearConverterModel:
         assert_conequal(
             model.constraints['Converter->Costs(operation)'],
             model.variables['Converter->Costs(operation)'] ==
-            converter.model.on_off.variables['Converter|on'] * model.hours_per_step * 5
+            model.variables['Converter|on'] * model.hours_per_step * 5
         )
 
 
