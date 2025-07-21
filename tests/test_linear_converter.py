@@ -360,7 +360,7 @@ class TestLinearConverterModel:
         # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify that PiecewiseModel was created and added as a sub_model
+        # Verify that PiecewiseModel was created and added as a submodel
         assert converter.model.piecewise_conversion is not None
 
         # Get the PiecewiseModel instance
@@ -472,7 +472,7 @@ class TestLinearConverterModel:
         # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify that PiecewiseModel was created and added as a sub_model
+        # Verify that PiecewiseModel was created and added as a submodel
         assert converter.model.piecewise_conversion is not None
 
         # Get the PiecewiseModel instance

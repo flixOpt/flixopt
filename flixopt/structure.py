@@ -760,14 +760,14 @@ class Submodel:
         self._constraints[short_name] = constraint
         return constraint
 
-    def register_sub_model(self, sub_model: 'Submodel', short_name: str) -> 'Submodel':
+    def register_sub_model(self, submodel: 'Submodel', short_name: str) -> 'Submodel':
         """Register a sub-model with the model"""
         if short_name is None:
-            short_name = sub_model.__class__.__name__
+            short_name = submodel.__class__.__name__
         if short_name in self._sub_models:
             raise ValueError(f'Short name "{short_name}" already assigned to model')
-        self._sub_models[short_name] = sub_model
-        return sub_model
+        self._sub_models[short_name] = submodel
+        return submodel
 
     def __getitem__(self, key: str) -> linopy.Variable:
         """Get a variable by its short name"""
@@ -852,8 +852,8 @@ class Submodel:
         """All constraints of the model, including those of sub-models"""
         names = list(self.constraints_direct) + [
             constraint_name
-            for sub_model in self.sub_models
-            for constraint_name in sub_model.constraints_direct
+            for submodel in self.sub_models
+            for constraint_name in submodel.constraints_direct
         ]
 
         return self._model.constraints[names]
@@ -863,8 +863,8 @@ class Submodel:
         """All variables of the model, including those of sub-models"""
         names = list(self.variables_direct) + [
             variable_name
-            for sub_model in self.sub_models
-            for variable_name in sub_model.variables_direct
+            for submodel in self.sub_models
+            for variable_name in submodel.variables_direct
         ]
 
         return self._model.variables[names]
@@ -881,8 +881,8 @@ class Submodel:
             sub_models_string = ' <empty>\n'
         else:
             sub_models_string = ''
-            for sub_model_name, sub_model in self.sub_models_direct.items():
-                sub_models_string += f'\n * {sub_model_name} [{sub_model.__class__.__name__}]'
+            for submodel_name, submodel in self.sub_models_direct.items():
+                sub_models_string += f'\n * {submodel_name} [{submodel.__class__.__name__}]'
 
         return (
             f"{model_string}\n{'=' * len(model_string)}\n\n"
