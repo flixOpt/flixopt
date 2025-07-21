@@ -491,11 +491,11 @@ class TestFlowOnModel:
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb'],
-             flow.model.variables['Sink(Wärme)|flow_rate'] >= flow.model.variables['Sink(Wärme)|on'] * 0.2 * 100,
+            flow.model.variables['Sink(Wärme)|flow_rate'] >= flow.model.variables['Sink(Wärme)|on'] * 0.2 * 100,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|ub'],
-             flow.model.variables['Sink(Wärme)|flow_rate']<= flow.model.variables['Sink(Wärme)|on'] * 0.8 * 100,
+             flow.model.variables['Sink(Wärme)|flow_rate'] <= flow.model.variables['Sink(Wärme)|on'] * 0.8 * 100,
         )
 
         assert_conequal(
@@ -842,7 +842,7 @@ class TestFlowOnModel:
 
         # Check that constraints exist
         assert {
-            'Sink(Wärme)|switch',
+            'Sink(Wärme)|switch|transition',
             'Sink(Wärme)|switch|initial',
             'Sink(Wärme)|switch|mutex',
             'Sink(Wärme)|switch|count',

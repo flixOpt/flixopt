@@ -97,16 +97,16 @@ class TestComponentModel:
 
         assert  set(comp.model.constraints) == {
             'TestComponent(In1)|total_flow_hours',
-            'TestComponent(In1)|on|lb',
-            'TestComponent(In1)|on|ub',
+            'TestComponent(In1)|flow_rate|lb',
+            'TestComponent(In1)|flow_rate|ub',
             'TestComponent(In1)|on_hours_total',
             'TestComponent(Out1)|total_flow_hours',
-            'TestComponent(Out1)|on|lb',
-            'TestComponent(Out1)|on|ub',
+            'TestComponent(Out1)|flow_rate|lb',
+            'TestComponent(Out1)|flow_rate|ub',
             'TestComponent(Out1)|on_hours_total',
             'TestComponent(Out2)|total_flow_hours',
-            'TestComponent(Out2)|on|lb',
-            'TestComponent(Out2)|on|ub',
+            'TestComponent(Out2)|flow_rate|lb',
+            'TestComponent(Out2)|flow_rate|ub',
             'TestComponent(Out2)|on_hours_total',
             'TestComponent|on|lb',
             'TestComponent|on|ub',
@@ -118,8 +118,8 @@ class TestComponentModel:
         assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords = (timesteps,)))
         assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=(timesteps,)))
 
-        assert_conequal(model.constraints['TestComponent(Out2)|on|lb'], model.variables['TestComponent(Out2)|on'] * 0.3 * 300 <= model.variables['TestComponent(Out2)|flow_rate'])
-        assert_conequal(model.constraints['TestComponent(Out2)|on|ub'], model.variables['TestComponent(Out2)|on'] * 300 * ub_out2 >= model.variables['TestComponent(Out2)|flow_rate'])
+        assert_conequal(model.constraints['TestComponent(Out2)|flow_rate|lb'], model.variables['TestComponent(Out2)|flow_rate'] >= model.variables['TestComponent(Out2)|on'] * 0.3 * 300)
+        assert_conequal(model.constraints['TestComponent(Out2)|flow_rate|ub'], model.variables['TestComponent(Out2)|flow_rate'] <= model.variables['TestComponent(Out2)|on'] * 300 * ub_out2)
 
         assert_conequal(model.constraints['TestComponent|on|lb'],
                         model.variables['TestComponent|on'] * 1e-5 <= model.variables['TestComponent(In1)|flow_rate'] + model.variables['TestComponent(Out1)|flow_rate'] + model.variables['TestComponent(Out2)|flow_rate'])
@@ -156,8 +156,8 @@ class TestComponentModel:
 
         assert set(comp.model.constraints) == {
             'TestComponent(In1)|total_flow_hours',
-            'TestComponent(In1)|on|lb',
-            'TestComponent(In1)|on|ub',
+            'TestComponent(In1)|flow_rate|lb',
+            'TestComponent(In1)|flow_rate|ub',
             'TestComponent(In1)|on_hours_total',
             'TestComponent|on|lb',
             'TestComponent|on|ub',
@@ -171,11 +171,11 @@ class TestComponentModel:
         assert_var_equal(model['TestComponent(In1)|on'], model.add_variables(binary=True, coords=(timesteps,)))
 
         assert_conequal(
-            model.constraints['TestComponent(In1)|on|lb'],
+            model.constraints['TestComponent(In1)|flow_rate|lb'],
             model.variables['TestComponent(In1)|on'] * 0.1 * 100 <= model.variables['TestComponent(In1)|flow_rate'],
         )
         assert_conequal(
-            model.constraints['TestComponent(In1)|on|ub'],
+            model.constraints['TestComponent(In1)|flow_rate|ub'],
             model.variables['TestComponent(In1)|on'] * 100 >= model.variables['TestComponent(In1)|flow_rate'],
         )
 
