@@ -652,15 +652,9 @@ class CalculationResults:
         """
         dataarray = self.solution[variable_name]
 
-        dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer)
-
-        # Create name
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-        name = variable_name if not suffix_parts else f'{variable_name}--{'-'.join(suffix_parts)}' if suffix else variable_name
-
         return plot_heatmap(
             dataarray=dataarray,
-            name=name,
+            name=variable_name,
             folder=self.folder,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
@@ -668,6 +662,7 @@ class CalculationResults:
             save=save,
             show=show,
             engine=engine,
+            indexer=indexer,
         )
 
     def plot_network(
@@ -1330,6 +1325,7 @@ def plot_heatmap(
     save: Union[bool, pathlib.Path] = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
+    indexer: Optional[Dict[str, Any]] = None,
 ):
     """
     Plots a heatmap of the solution of a variable.
@@ -1345,6 +1341,10 @@ def plot_heatmap(
         show: Whether to show the plot or not.
         engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
     """
+    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer, drop=True)
+    suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+    name = name if not suffix_parts else name + suffix
+
     heatmap_data = plotting.heat_map_data_from_df(
         dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
     )
@@ -1608,7 +1608,7 @@ def filter_dataarray_by_coord(
     return da
 
 
-def _apply_indexer_to_data(data: Union[xr.DataArray, xr.Dataset], indexer: Optional[Dict[str, Any]] = None):
+def _apply_indexer_to_data(data: Union[xr.DataArray, xr.Dataset], indexer: Optional[Dict[str, Any]] = None, drop=False):
     """
     Apply indexer selection or auto-select first values for non-time dimensions.
 
@@ -1623,7 +1623,7 @@ def _apply_indexer_to_data(data: Union[xr.DataArray, xr.Dataset], indexer: Optio
 
     if indexer is not None:
         # User provided indexer
-        data = data.sel(indexer)
+        data = data.sel(indexer, drop=drop)
         selection_string.extend(f"{v}[{k}]" for k, v in indexer.items())
     else:
         # Auto-select first value for each dimension except 'time'
@@ -1634,6 +1634,6 @@ def _apply_indexer_to_data(data: Union[xr.DataArray, xr.Dataset], indexer: Optio
                 selection[dim] = first_value
                 selection_string.append(f"{first_value}[{dim}]")
         if selection:
-            data = data.sel(selection)
+            data = data.sel(selection, drop=drop)
 
     return data, selection_string
