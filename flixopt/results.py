@@ -652,15 +652,9 @@ class CalculationResults:
         """
         dataarray = self.solution[variable_name]
 
-        dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer)
-
-        # Create name
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-        name = variable_name if not suffix_parts else f'{variable_name}--{'-'.join(suffix_parts)}' if suffix else variable_name
-
         return plot_heatmap(
             dataarray=dataarray,
-            name=name,
+            name=variable_name,
             folder=self.folder,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
@@ -668,6 +662,7 @@ class CalculationResults:
             save=save,
             show=show,
             engine=engine,
+            indexer=indexer,
         )
 
     def plot_network(
@@ -848,7 +843,8 @@ class _NodeResults(_ElementResults):
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                     If None, uses first value for each dimension (except time).
             mode: The mode to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
@@ -856,12 +852,10 @@ class _NodeResults(_ElementResults):
         """
         ds = self.node_balance(with_last_timestep=True, mode=mode, drop_suffix=drop_suffix)
 
-        title = f'{self.label} (flow rates)' if mode == 'flow_rate' else f'{self.label} (flow hours)'
+        ds, suffix_parts = _apply_indexer_to_data(ds, indexer)
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        if 'scenario' in ds.indexes:
-            chosen_scenario = scenario or self._calculation_results.scenarios[0]
-            ds = ds.sel(scenario=chosen_scenario).drop_vars('scenario')
-            title = f'{title} - {chosen_scenario}'
+        title = f'{self.label} (flow rates){suffix}' if mode == 'flow_rate' else f'{self.label} (flow hours){suffix}'
 
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
@@ -911,8 +905,8 @@ class _NodeResults(_ElementResults):
             save: Whether to save the figure.
             show: Whether to show the figure.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
-            scenario: If scenarios are present: The scenario to plot. If None, the first scenario is used.
-            drop_suffix: Whether to drop the suffix from the variable names.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                     If None, uses first value for each dimension.
         """
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
@@ -928,16 +922,15 @@ class _NodeResults(_ElementResults):
             zero_small_values=True,
             drop_suffix='|',
         )
+
+        inputs, suffix_parts = _apply_indexer_to_data(inputs, indexer)
+        outputs, suffix_parts = _apply_indexer_to_data(outputs, indexer)
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+
+        title = f'{self.label} (total flow hours){suffix}'
+
         inputs = inputs.sum('time')
         outputs = outputs.sum('time')
-
-        title = f'{self.label} (total flow hours)'
-
-        if 'scenario' in inputs.indexes:
-            chosen_scenario = scenario or self._calculation_results.scenarios[0]
-            inputs = inputs.sel(scenario=chosen_scenario).drop_vars('scenario')
-            outputs = outputs.sel(scenario=chosen_scenario).drop_vars('scenario')
-            title = f'{title} - {chosen_scenario}'
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -1060,7 +1053,8 @@ class ComponentResults(_NodeResults):
             colors: The c
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             style: The plotting mode for the flow_rate
-            scenario: The scenario to plot. Defaults to the first scenario. Has no effect without scenarios present
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                     If None, uses first value for each dimension.
 
         Raises:
             ValueError: If the Component is not a Storage.
@@ -1071,18 +1065,18 @@ class ComponentResults(_NodeResults):
         ds = self.node_balance(with_last_timestep=True)
         charge_state = self.charge_state
 
-        scenario_suffix = ''
-        if 'scenario' in ds.indexes:
-            chosen_scenario = scenario or self._calculation_results.scenarios[0]
-            ds = ds.sel(scenario=chosen_scenario).drop_vars('scenario')
-            charge_state = charge_state.sel(scenario=chosen_scenario).drop_vars('scenario')
-            scenario_suffix = f'--{chosen_scenario}'
+        ds, suffix_parts = _apply_indexer_to_data(ds, indexer)
+        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, indexer)
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+
+        title=f'Operation Balance of {self.label}{suffix}'
+
         if engine == 'plotly':
             fig = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
                 style=style,
-                title=f'Operation Balance of {self.label}{scenario_suffix}',
+                title=title,
             )
 
             # TODO: Use colors for charge state?
@@ -1098,7 +1092,7 @@ class ComponentResults(_NodeResults):
                 ds.to_dataframe(),
                 colors=colors,
                 style=style,
-                title=f'Operation Balance of {self.label}{scenario_suffix}',
+                title=title,
             )
 
             charge_state = charge_state.to_dataframe()
@@ -1108,7 +1102,7 @@ class ComponentResults(_NodeResults):
 
         return plotting.export_figure(
             fig,
-            default_path=self._calculation_results.folder / f'{self.label} (charge state){scenario_suffix}',
+            default_path=self._calculation_results.folder / title,
             default_filetype='.html',
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -1331,6 +1325,7 @@ def plot_heatmap(
     save: Union[bool, pathlib.Path] = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
+    indexer: Optional[Dict[str, Any]] = None,
 ):
     """
     Plots a heatmap of the solution of a variable.
@@ -1346,6 +1341,10 @@ def plot_heatmap(
         show: Whether to show the plot or not.
         engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
     """
+    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer, drop=True)
+    suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+    name = name if not suffix_parts else name + suffix
+
     heatmap_data = plotting.heat_map_data_from_df(
         dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
     )
@@ -1609,7 +1608,7 @@ def filter_dataarray_by_coord(
     return da
 
 
-def _apply_indexer_to_data(data: xr.DataArray, indexer: Optional[Dict[str, Any]] = None):
+def _apply_indexer_to_data(data: Union[xr.DataArray, xr.Dataset], indexer: Optional[Dict[str, Any]] = None, drop=False):
     """
     Apply indexer selection or auto-select first values for non-time dimensions.
 
@@ -1618,14 +1617,14 @@ def _apply_indexer_to_data(data: xr.DataArray, indexer: Optional[Dict[str, Any]]
         indexer: Optional selection dict
 
     Returns:
-        Tuple of (selected_data, suffix_parts_list)
+        Tuple of (selected_data, selection_string)
     """
-    suffix_parts = []
+    selection_string = []
 
     if indexer is not None:
         # User provided indexer
-        data = data.sel(indexer)
-        suffix_parts.extend(f"{v}[{k}]" for k, v in indexer.items())
+        data = data.sel(indexer, drop=drop)
+        selection_string.extend(f"{v}[{k}]" for k, v in indexer.items())
     else:
         # Auto-select first value for each dimension except 'time'
         selection = {}
@@ -1633,8 +1632,8 @@ def _apply_indexer_to_data(data: xr.DataArray, indexer: Optional[Dict[str, Any]]
             if dim != 'time' and dim in data.coords:
                 first_value = data.coords[dim].values[0]
                 selection[dim] = first_value
-                suffix_parts.append(f"{first_value}[{dim}]")
+                selection_string.append(f"{first_value}[{dim}]")
         if selection:
-            data = data.sel(selection)
+            data = data.sel(selection, drop=drop)
 
-    return data, suffix_parts
+    return data, selection_string
