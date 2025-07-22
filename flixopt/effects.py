@@ -138,6 +138,8 @@ class Effect(Element):
 
 
 class EffectModel(ElementModel):
+    element: Effect  # Type hint
+
     def __init__(self, model: FlowSystemModel, element: Effect):
         super().__init__(model, element)
 

@@ -313,6 +313,8 @@ class Flow(Element):
 
 
 class FlowModel(ElementModel):
+    element: Flow  # Type hint
+
     def __init__(self, model: FlowSystemModel, element: Flow):
         super().__init__(model, element)
 
@@ -542,6 +544,8 @@ class FlowModel(ElementModel):
 
 
 class BusModel(ElementModel):
+    element: Bus  # Type hint
+
     def __init__(self, model: FlowSystemModel, element: Bus):
         self.excess_input: Optional[linopy.Variable] = None
         self.excess_output: Optional[linopy.Variable] = None
@@ -581,6 +585,8 @@ class BusModel(ElementModel):
 
 
 class ComponentModel(ElementModel):
+    element: Component  # Type hint
+
     def __init__(self, model: FlowSystemModel, element: Component):
         self.on_off: Optional[OnOffModel] = None
         super().__init__(model, element)
