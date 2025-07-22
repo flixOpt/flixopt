@@ -83,6 +83,22 @@ This might occur when scenarios represent years or months, while an investment d
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
 
+## [2.1.5] - 2025-07-08
+
+### Fixed
+- Fixed Docs deployment
+
+## [2.1.4] - 2025-07-08
+
+### Fixed
+- Fixing release notes of 2.1.3, as well as documentation build.
+
+
+## [2.1.3] - 2025-07-08
+
+### Fixed
+- Using `Effect.maximum_operation_per_hour` raised an error, needing an extra timestep. This has been fixed thanks to @PRse4.
+
 ## [2.1.2] - 2025-06-14
 
 ### Fixed
