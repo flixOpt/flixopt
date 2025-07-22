@@ -875,21 +875,21 @@ class Submodel:
         """
         var_string = self.variables.__repr__().split("\n", 2)[2]
         con_string = self.constraints.__repr__().split("\n", 2)[2]
-        model_string = f"Linopy {self._model.type} submodel: {self.label_of_model}"
+        model_string = f"Submodel of Linopy {self._model.type}:"
 
         if len(self.submodels) == 0:
             sub_models_string = ' <empty>\n'
         else:
             sub_models_string = ''
             for submodel_name, submodel in self.sub_models_direct.items():
-                sub_models_string += f'\n * {submodel_name} [{submodel.__class__.__name__}]'
+                sub_models_string += f'\n * {submodel.__class__.__name__}: "{submodel_name}" [{len(submodel.variables)} Vars + {len(submodel.constraints)} Cons]'
 
-        return (
-            f"{model_string}\n{'=' * len(model_string)}\n\n"
-            f"Variables:\n----------\n{var_string}\n"
-            f"Constraints:\n------------\n{con_string}\n"
-            f"Submodels:\n----------{sub_models_string}"
-        )
+        text = {f"Variables: [{len(self.variables)}/{len(self._model.variables)}]": var_string,
+                f"Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]": con_string,
+                f"Submodels: [{len(self.submodels)}]": sub_models_string}
+        comb = '\n'.join(f"{key}\n{'-' * len(key)}\n{value}" for key, value in text.items())
+
+        return f"{model_string}\n{'=' * len(model_string)}\n\n{comb}"
 
     @property
     def hours_per_step(self):
