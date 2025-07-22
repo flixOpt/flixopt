@@ -81,7 +81,7 @@ class Calculation:
         flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
-        self.submodel: Optional[FlowSystemModel] = None
+        self.model: Optional[FlowSystemModel] = None
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
@@ -540,7 +540,7 @@ class SegmentedCalculation(Calculation):
         for current_comp in current_flow_system.components.values():
             next_comp = next_flow_system.components[current_comp.label_full]
             if isinstance(next_comp, Storage):
-                next_comp.initial_charge_state = current_comp.model.charge_state.solution.sel(time=start).item()
+                next_comp.initial_charge_state = current_comp.submodel.charge_state.solution.sel(time=start).item()
                 start_values_of_this_segment[current_comp.label_full] = next_comp.initial_charge_state
 
         self._transfered_start_values.append(start_values_of_this_segment)
