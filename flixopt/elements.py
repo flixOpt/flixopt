@@ -13,10 +13,10 @@ import xarray as xr
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .effects import TemporalEffectsUser
-from .features import InvestmentModel, OnOffModel, ModelingPrimitives
+from .features import InvestmentModel, ModelingPrimitives, OnOffModel
 from .interface import InvestParameters, OnOffParameters
-from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 from .modeling import BoundingPatterns, ModelingUtilitiesAbstract
+from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -626,7 +626,6 @@ class ComponentModel(ElementModel):
 
         if self.element.prevent_simultaneous_flows:
             # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
-            on_variables = [flow.submodel.on_off.on for flow in self.element.prevent_simultaneous_flows]
             ModelingPrimitives.mutual_exclusivity_constraint(
                 self,
                 binary_variables=[flow.submodel.on_off.on for flow in self.element.prevent_simultaneous_flows],

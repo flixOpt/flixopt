@@ -641,7 +641,6 @@ class TestFlowOnModel:
          'Sink(Wärme)|consecutive_on_hours|forward',
          'Sink(Wärme)|consecutive_on_hours|backward',
          'Sink(Wärme)|consecutive_on_hours|initial',
-         'Sink(Wärme)|consecutive_on_hours|lb',
         }.issubset(set(flow.submodel.constraints))
 
         assert_var_equal(

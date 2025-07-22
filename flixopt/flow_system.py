@@ -32,7 +32,7 @@ from .effects import (
     TemporalEffectsUser,
 )
 from .elements import Bus, Component, Flow
-from .structure import Element, Interface, FlowSystemModel
+from .structure import Element, FlowSystemModel, Interface
 
 if TYPE_CHECKING:
     import pyvis

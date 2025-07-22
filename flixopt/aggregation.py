@@ -27,8 +27,8 @@ from .elements import Component
 from .flow_system import FlowSystem
 from .structure import (
     Element,
-    Submodel,
     FlowSystemModel,
+    Submodel,
 )
 
 if TYPE_CHECKING:

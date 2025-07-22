@@ -10,10 +10,10 @@ import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
+from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
 from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects
-from .structure import Submodel, FlowSystemModel
-from .modeling import ModelingUtilities, ModelingPrimitives, BoundingPatterns
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
+from .structure import FlowSystemModel, Submodel
 
 logger = logging.getLogger('flixopt')
 

@@ -14,8 +14,8 @@ from .core import NonTemporalDataUser, PlausibilityError, Scalar, TemporalData, 
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, OnOffModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
+from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
-from.modeling import BoundingPatterns
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem

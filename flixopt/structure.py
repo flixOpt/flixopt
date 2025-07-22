@@ -8,7 +8,7 @@ import json
 import logging
 import pathlib
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union, Collection
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Literal, Optional, Tuple, Union
 
 import linopy
 import numpy as np
@@ -19,7 +19,7 @@ from rich.pretty import Pretty
 
 from . import io as fx_io
 from .config import CONFIG
-from .core import NonTemporalData, Scalar, TemporalDataUser, TimeSeriesData, get_dataarray_stats, FlowSystemDimensions
+from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalDataUser, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel

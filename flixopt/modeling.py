@@ -6,8 +6,8 @@ import numpy as np
 import xarray as xr
 
 from .config import CONFIG
-from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
-from .structure import Submodel, FlowSystemModel
+from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
+from .structure import FlowSystemModel, Submodel
 
 logger = logging.getLogger('flixopt')
 
