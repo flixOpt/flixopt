@@ -492,7 +492,7 @@ class StorageModel(ComponentModel):
     def _do_modeling(self):
         super()._do_modeling()
 
-        lb, ub = self.absolute_charge_state_bounds
+        lb, ub = self._absolute_charge_state_bounds
         self.add_variables(
             lower=lb,
             upper=ub,
@@ -541,7 +541,7 @@ class StorageModel(ComponentModel):
                 self,
                 variable=self.charge_state,
                 scaling_variable=self.investment.size,
-                relative_bounds=self.relative_charge_state_bounds,
+                relative_bounds=self._relative_charge_state_bounds,
             )
 
         # Initial charge state
@@ -577,8 +577,8 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def absolute_charge_state_bounds(self) -> Tuple[TemporalData, TemporalData]:
-        relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
+    def _absolute_charge_state_bounds(self) -> Tuple[TemporalData, TemporalData]:
+        relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (
                 relative_lower_bound * self.element.capacity_in_flow_hours,
@@ -591,7 +591,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def relative_charge_state_bounds(self) -> Tuple[xr.DataArray, xr.DataArray]:
+    def _relative_charge_state_bounds(self) -> Tuple[xr.DataArray, xr.DataArray]:
         """
         Get relative charge state bounds with final timestep values.
 
