@@ -873,23 +873,40 @@ class Submodel:
         """
         Return a string representation of the linopy model.
         """
-        var_string = self.variables.__repr__().split("\n", 2)[2]
-        con_string = self.constraints.__repr__().split("\n", 2)[2]
-        model_string = f"Submodel of Linopy {self._model.type}:"
+        # Extract content from variables and constraints representations
+        var_string = self.variables.__repr__().split('\n', 2)[2]
+        con_string = self.constraints.__repr__().split('\n', 2)[2]
+        model_string = f'Submodel of Linopy {self._model.type}:'
 
+        # Build submodels section
         if len(self.submodels) == 0:
             sub_models_string = ' <empty>\n'
         else:
-            sub_models_string = ''
+            submodel_lines = []
             for submodel_name, submodel in self.sub_models_direct.items():
-                sub_models_string += f'\n * {submodel.__class__.__name__}: "{submodel_name}" [{len(submodel.variables)} Vars + {len(submodel.constraints)} Cons]'
+                class_name = submodel.__class__.__name__
+                submodel_lines.append(f' * {class_name}: "{submodel_name}" [{len(submodel.variables)} Vars + {len(submodel.constraints)} Cons]')
+            sub_models_string = '\n' + '\n'.join(submodel_lines)
 
-        text = {f"Variables: [{len(self.variables)}/{len(self._model.variables)}]": var_string,
-                f"Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]": con_string,
-                f"Submodels: [{len(self.submodels)}]": sub_models_string}
-        comb = '\n'.join(f"{key}\n{'-' * len(key)}\n{value}" for key, value in text.items())
+        # Create sections with counts and content
+        sections = {
+            f'Variables: [{len(self.variables)}/{len(self._model.variables)}]': var_string,
+            f'Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]': con_string,
+            f'Submodels: [{len(self.sub_models_direct)}]': sub_models_string,
+        }
 
-        return f"{model_string}\n{'=' * len(model_string)}\n\n{comb}"
+        # Format sections with headers and underlines
+        formatted_sections = []
+        for section_header, section_content in sections.items():
+            underline = '-' * len(section_header)
+            formatted_section = f'{section_header}\n{underline}\n{section_content}'
+            formatted_sections.append(formatted_section)
+
+        # Combine everything with proper formatting
+        all_sections = '\n'.join(formatted_sections)
+        header_separator = '=' * len(model_string)
+
+        return f'{model_string}\n{header_separator}\n\n{all_sections}'
 
     @property
     def hours_per_step(self):
