@@ -19,11 +19,11 @@ class TestEffectModel:
         flow_system.add_elements(effect)
         model = create_linopy_model(flow_system)
 
-        assert set(effect.model.variables) == {'Effect1(invest)|total',
+        assert set(effect.submodel.variables) == {'Effect1(invest)|total',
                                                  'Effect1(operation)|total',
                                                  'Effect1(operation)|total_per_timestep',
                                                  'Effect1|total',}
-        assert set(effect.model.constraints) == {'Effect1(invest)|total',
+        assert set(effect.submodel.constraints) == {'Effect1(invest)|total',
                                                  'Effect1(operation)|total',
                                                  'Effect1(operation)|total_per_timestep',
                                                  'Effect1|total',}
@@ -58,11 +58,11 @@ class TestEffectModel:
         flow_system.add_elements(effect)
         model = create_linopy_model(flow_system)
 
-        assert set(effect.model.variables) == {'Effect1(invest)|total',
+        assert set(effect.submodel.variables) == {'Effect1(invest)|total',
                                                  'Effect1(operation)|total',
                                                  'Effect1(operation)|total_per_timestep',
                                                  'Effect1|total',}
-        assert set(effect.model.constraints) == {'Effect1(invest)|total',
+        assert set(effect.submodel.constraints) == {'Effect1(invest)|total',
                                                  'Effect1(operation)|total',
                                                  'Effect1(operation)|total_per_timestep',
                                                  'Effect1|total',}
@@ -100,7 +100,7 @@ class TestEffectModel:
         flow_system.add_elements(effect1, effect2, effect3)
         model = create_linopy_model(flow_system)
 
-        assert set(effect2.model.variables) == {
+        assert set(effect2.submodel.variables) == {
             'Effect2(invest)|total',
             'Effect2(operation)|total',
             'Effect2(operation)|total_per_timestep',
@@ -108,7 +108,7 @@ class TestEffectModel:
             'Effect1(invest)->Effect2(invest)',
             'Effect1(operation)->Effect2(operation)',
         }
-        assert set(effect2.model.constraints) == {
+        assert set(effect2.submodel.constraints) == {
             'Effect2(invest)|total',
             'Effect2(operation)|total',
             'Effect2(operation)|total_per_timestep',

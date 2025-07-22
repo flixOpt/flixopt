@@ -20,8 +20,8 @@ class TestBusModel:
                                  fx.Source('GastarifTest', source=fx.Flow('Q_Gas', 'TestBus')))
         model = create_linopy_model(flow_system)
 
-        assert set(bus.model.variables) == {'WärmelastTest(Q_th_Last)|flow_rate', 'GastarifTest(Q_Gas)|flow_rate'}
-        assert set(bus.model.constraints) == {'TestBus|balance'}
+        assert set(bus.submodel.variables) == {'WärmelastTest(Q_th_Last)|flow_rate', 'GastarifTest(Q_Gas)|flow_rate'}
+        assert set(bus.submodel.constraints) == {'TestBus|balance'}
 
         assert_conequal(
             model.constraints['TestBus|balance'],
@@ -38,11 +38,11 @@ class TestBusModel:
                                  fx.Source('GastarifTest', source=fx.Flow('Q_Gas', 'TestBus')))
         model = create_linopy_model(flow_system)
 
-        assert set(bus.model.variables) == {'TestBus|excess_input',
+        assert set(bus.submodel.variables) == {'TestBus|excess_input',
                                             'TestBus|excess_output',
                                             'WärmelastTest(Q_th_Last)|flow_rate',
                                             'GastarifTest(Q_Gas)|flow_rate'}
-        assert set(bus.model.constraints) == {'TestBus|balance'}
+        assert set(bus.submodel.constraints) == {'TestBus|balance'}
 
         assert_var_equal(model.variables['TestBus|excess_input'], model.add_variables(lower=0, coords = (timesteps,)))
         assert_var_equal(model.variables['TestBus|excess_output'], model.add_variables(lower=0, coords=(timesteps,)))

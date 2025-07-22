@@ -291,7 +291,7 @@ class TestStorageModel:
             assert var_name in model.variables, f"Missing investment variable: {var_name}"
 
         # Check investment constraints exist
-        for con_name in {'InvestStorage|is_invested_ub', 'InvestStorage|is_invested_lb'}:
+        for con_name in {'InvestStorage|size|ub', 'InvestStorage|size|lb'}:
             assert con_name in model.constraints, f"Missing investment constraint: {con_name}"
 
         # Check variable properties
@@ -303,9 +303,9 @@ class TestStorageModel:
             model['InvestStorage|is_invested'],
             model.add_variables(binary=True)
         )
-        assert_conequal(model.constraints['InvestStorage|is_invested_ub'],
+        assert_conequal(model.constraints['InvestStorage|size|ub'],
                         model.variables['InvestStorage|size'] <= model.variables['InvestStorage|is_invested'] * 100)
-        assert_conequal(model.constraints['InvestStorage|is_invested_lb'],
+        assert_conequal(model.constraints['InvestStorage|size|lb'],
                         model.variables['InvestStorage|size'] >= model.variables['InvestStorage|is_invested'] * 20)
 
     def test_storage_with_final_state_constraints(self, basic_flow_system_linopy):
@@ -417,17 +417,17 @@ class TestStorageModel:
                 assert var_name in model.variables, f'Missing binary variable: {var_name}'
 
             # Check for constraints that enforce either charging or discharging
-            constraint_name = 'SimultaneousStorage|PreventSimultaneousUsage|prevent_simultaneous_use'
+            constraint_name = 'SimultaneousStorage|prevent_simultaneous_use'
             assert constraint_name in model.constraints, 'Missing constraint to prevent simultaneous operation'
 
-            assert_conequal(model.constraints['SimultaneousStorage|PreventSimultaneousUsage|prevent_simultaneous_use'],
-                            model.variables['SimultaneousStorage(Q_th_in)|on'] + model.variables['SimultaneousStorage(Q_th_out)|on'] <= 1.1)
+            assert_conequal(model.constraints['SimultaneousStorage|prevent_simultaneous_use'],
+                            model.variables['SimultaneousStorage(Q_th_in)|on'] + model.variables['SimultaneousStorage(Q_th_out)|on'] <= 1)
 
     @pytest.mark.parametrize(
         'optional,minimum_size,expected_vars,expected_constraints',
         [
-            (True, None, {'InvestStorage|is_invested'}, {'InvestStorage|is_invested_lb'}),
-            (True, 20, {'InvestStorage|is_invested'}, {'InvestStorage|is_invested_lb'}),
+            (True, None, {'InvestStorage|is_invested'}, {'InvestStorage|size|lb'}),
+            (True, 20, {'InvestStorage|is_invested'}, {'InvestStorage|size|lb'}),
             (False, None, set(), set()),
             (False, 20, set(), set()),
         ],

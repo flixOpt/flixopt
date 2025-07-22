@@ -451,8 +451,8 @@ class FlowSystem(Interface):
     def create_model(self) -> FlowSystemModel:
         if not self.connected_and_transformed:
             raise RuntimeError('FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.')
-        self.model = FlowSystemModel(self)
-        return self.model
+        self.submodel = FlowSystemModel(self)
+        return self.submodel
 
     def plot_network(
         self,

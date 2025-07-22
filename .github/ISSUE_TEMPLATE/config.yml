@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: ❓ Questions & Discussion
+    url: https://github.com/flixOpt/flixopt/discussions
+    about: Ask questions and discuss with the community
+  - name: 📖 Documentation
+    url: https://flixopt.github.io/flixopt/latest/
+    about: Check our documentation for guides and examples

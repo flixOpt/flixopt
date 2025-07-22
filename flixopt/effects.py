@@ -15,7 +15,7 @@ import xarray as xr
 
 from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, Interface, Model, FlowSystemModel, register_class_for_io
+from .structure import Element, ElementModel, Interface, Submodel, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -129,8 +129,8 @@ class Effect(Element):
 
     def create_model(self, model: FlowSystemModel) -> 'EffectModel':
         self._plausibility_checks()
-        self.model = EffectModel(model, self)
-        return self.model
+        self.submodel = EffectModel(model, self)
+        return self.submodel
 
     def _plausibility_checks(self) -> None:
         # TODO: Check for plausibility
@@ -140,27 +140,27 @@ class Effect(Element):
 class EffectModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Effect):
         super().__init__(model, element)
-        self.element: Effect = element
+
+    def _do_modeling(self):
         self.total: Optional[linopy.Variable] = None
-        self.invest: ShareAllocationModel = self.add(
+        self.invest: ShareAllocationModel = self.register_sub_model(
             ShareAllocationModel(
                 model=self._model,
                 dims=('year', 'scenario'),
                 label_of_element=self.label_of_element,
-                label='invest',
-                label_full=f'{self.label_full}(invest)',
+                label_of_model=f'{self.label_of_model}(invest)',
                 total_max=self.element.maximum_invest,
                 total_min=self.element.minimum_invest,
-            )
+            ),
+            short_name='invest',
         )
 
-        self.operation: ShareAllocationModel = self.add(
+        self.operation: ShareAllocationModel = self.register_sub_model(
             ShareAllocationModel(
                 model=self._model,
                 dims=('time', 'year', 'scenario'),
                 label_of_element=self.label_of_element,
-                label='operation',
-                label_full=f'{self.label_full}(operation)',
+                label_of_model=f'{self.label_of_model}(operation)',
                 total_max=self.element.maximum_operation,
                 total_min=self.element.minimum_operation,
                 min_per_hour=self.element.minimum_operation_per_hour
@@ -169,29 +169,18 @@ class EffectModel(ElementModel):
                 max_per_hour=self.element.maximum_operation_per_hour
                 if self.element.maximum_operation_per_hour is not None
                 else None,
-            )
-        )
-
-    def do_modeling(self):
-        for model in self.sub_models:
-            model.do_modeling()
-
-        self.total = self.add(
-            self._model.add_variables(
-                lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
-                upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
-                coords=self._model.get_coords(['year', 'scenario']),
-                name=f'{self.label_full}|total',
             ),
-            'total',
+            short_name='operation',
         )
 
-        self.add(
-            self._model.add_constraints(
-                self.total == self.operation.total + self.invest.total, name=f'{self.label_full}|total'
-            ),
-            'total',
+        self.total = self.add_variables(
+            lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
+            upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='total',
         )
+
+        self.add_constraints(self.total == self.operation.total + self.invest.total, short_name='total')
 
 
 TemporalEffectsUser = Union[TemporalDataUser, Dict[str, TemporalDataUser]]  # User-specified Shares to Effects
@@ -219,13 +208,13 @@ class EffectCollection:
         self._standard_effect: Optional[Effect] = None
         self._objective_effect: Optional[Effect] = None
 
-        self.model: Optional[EffectCollectionModel] = None
+        self.submodel: Optional[EffectCollectionModel] = None
         self.add_effects(*effects)
 
     def create_model(self, model: FlowSystemModel) -> 'EffectCollectionModel':
         self._plausibility_checks()
-        self.model = EffectCollectionModel(model, self)
-        return self.model
+        self.submodel = EffectCollectionModel(model, self)
+        return self.submodel
 
     def add_effects(self, *effects: Effect) -> None:
         for effect in list(effects):
@@ -383,15 +372,15 @@ class EffectCollection:
         return shares_operation, shares_invest
 
 
-class EffectCollectionModel(Model):
+class EffectCollectionModel(Submodel):
     """
     Handling all Effects
     """
 
     def __init__(self, model: FlowSystemModel, effects: EffectCollection):
-        super().__init__(model, label_of_element='Effects')
         self.effects = effects
         self.penalty: Optional[ShareAllocationModel] = None
+        super().__init__(model, label_of_element='Effects')
 
     def add_share_to_effects(
         self,
@@ -401,13 +390,13 @@ class EffectCollectionModel(Model):
     ) -> None:
         for effect, expression in expressions.items():
             if target == 'operation':
-                self.effects[effect].model.operation.add_share(
+                self.effects[effect].submodel.operation.add_share(
                     name,
                     expression,
                     dims=('time', 'year', 'scenario'),
                 )
             elif target == 'invest':
-                self.effects[effect].model.invest.add_share(
+                self.effects[effect].submodel.invest.add_share(
                     name,
                     expression,
                     dims=('year', 'scenario'),
@@ -420,19 +409,19 @@ class EffectCollectionModel(Model):
             raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
         self.penalty.add_share(name, expression, dims=())
 
-    def do_modeling(self):
+    def _do_modeling(self):
+        super()._do_modeling()
         for effect in self.effects:
             effect.create_model(self._model)
-        self.penalty = self.add(
-            ShareAllocationModel(self._model, dims=(), label_of_element='Penalty')
+        self.penalty = self.register_sub_model(
+            ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
+            short_name='penalty',
         )
-        for model in [effect.model for effect in self.effects] + [self.penalty]:
-            model.do_modeling()
 
         self._add_share_between_effects()
 
         self._model.add_objective(
-            (self.effects.objective_effect.model.total * self._model.weights).sum()
+            (self.effects.objective_effect.submodel.total * self._model.weights).sum()
             + self.penalty.total.sum()
         )
 
@@ -440,16 +429,16 @@ class EffectCollectionModel(Model):
         for origin_effect in self.effects:
             # 1. operation: -> hier sind es Zeitreihen (share_TS)
             for target_effect, time_series in origin_effect.specific_share_to_other_effects_operation.items():
-                self.effects[target_effect].model.operation.add_share(
-                    origin_effect.model.operation.label_full,
-                    origin_effect.model.operation.total_per_timestep * time_series,
+                self.effects[target_effect].submodel.operation.add_share(
+                    origin_effect.submodel.operation.label_full,
+                    origin_effect.submodel.operation.total_per_timestep * time_series,
                     dims=('time', 'year', 'scenario'),
                 )
             # 2. invest:    -> hier ist es Scalar (share)
             for target_effect, factor in origin_effect.specific_share_to_other_effects_invest.items():
-                self.effects[target_effect].model.invest.add_share(
-                    origin_effect.model.invest.label_full,
-                    origin_effect.model.invest.total * factor,
+                self.effects[target_effect].submodel.invest.add_share(
+                    origin_effect.submodel.invest.label_full,
+                    origin_effect.submodel.invest.total * factor,
                     dims=('year', 'scenario'),
                 )
 

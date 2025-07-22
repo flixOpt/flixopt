@@ -46,7 +46,7 @@ class TestLinearConverterModel:
         # Check conversion constraint (input * 0.8 == output * 1.0)
         assert_conequal(
             model.constraints['Converter|conversion_0'],
-            input_flow.model.flow_rate * 0.8 == output_flow.model.flow_rate * 1.0
+            input_flow.submodel.flow_rate * 0.8 == output_flow.submodel.flow_rate * 1.0
         )
 
     def test_linear_converter_time_varying(self, basic_flow_system_linopy):
@@ -88,7 +88,7 @@ class TestLinearConverterModel:
         # Check conversion constraint (input * efficiency_series == output * 1.0)
         assert_conequal(
             model.constraints['Converter|conversion_0'],
-            input_flow.model.flow_rate * efficiency_series == output_flow.model.flow_rate * 1.0
+            input_flow.submodel.flow_rate * efficiency_series == output_flow.submodel.flow_rate * 1.0
         )
 
     def test_linear_converter_multiple_factors(self, basic_flow_system_linopy):
@@ -133,19 +133,19 @@ class TestLinearConverterModel:
         # Check conversion constraint 1 (input1 * 0.8 == output1 * 1.0)
         assert_conequal(
             model.constraints['Converter|conversion_0'],
-            input_flow1.model.flow_rate * 0.8 == output_flow1.model.flow_rate * 1.0
+            input_flow1.submodel.flow_rate * 0.8 == output_flow1.submodel.flow_rate * 1.0
         )
 
         # Check conversion constraint 2 (input2 * 0.5 == output2 * 1.0)
         assert_conequal(
             model.constraints['Converter|conversion_1'],
-            input_flow2.model.flow_rate * 0.5 == output_flow2.model.flow_rate * 1.0
+            input_flow2.submodel.flow_rate * 0.5 == output_flow2.submodel.flow_rate * 1.0
         )
 
         # Check conversion constraint 3 (input1 * 0.2 == output2 * 0.3)
         assert_conequal(
             model.constraints['Converter|conversion_2'],
-            input_flow1.model.flow_rate * 0.2 == output_flow2.model.flow_rate * 0.3
+            input_flow1.submodel.flow_rate * 0.2 == output_flow2.submodel.flow_rate * 0.3
         )
 
     def test_linear_converter_with_on_off(self, basic_flow_system_linopy):
@@ -189,14 +189,14 @@ class TestLinearConverterModel:
         # Check on_hours_total constraint
         assert_conequal(
             model.constraints['Converter|on_hours_total'],
-            converter.model.on_off.variables['Converter|on_hours_total'] ==
-            (converter.model.on_off.variables['Converter|on'] * model.hours_per_step).sum()
+            model.variables['Converter|on_hours_total'] ==
+            (model.variables['Converter|on'] * model.hours_per_step).sum()
         )
 
         # Check conversion constraint
         assert_conequal(
             model.constraints['Converter|conversion_0'],
-            input_flow.model.flow_rate * 0.8 == output_flow.model.flow_rate * 1.0
+            input_flow.submodel.flow_rate * 0.8 == output_flow.submodel.flow_rate * 1.0
         )
 
         # Check on_off effects
@@ -204,7 +204,7 @@ class TestLinearConverterModel:
         assert_conequal(
             model.constraints['Converter->Costs(operation)'],
             model.variables['Converter->Costs(operation)'] ==
-            converter.model.on_off.variables['Converter|on'] * model.hours_per_step * 5
+            model.variables['Converter|on'] * model.hours_per_step * 5
         )
 
     def test_linear_converter_multidimensional(self, basic_flow_system_linopy):
@@ -252,17 +252,17 @@ class TestLinearConverterModel:
         # Check the conversion equations
         assert_conequal(
             model.constraints['MultiConverter|conversion_0'],
-            input_flow1.model.flow_rate * 0.7 == output_flow1.model.flow_rate * 1.0
+            input_flow1.submodel.flow_rate * 0.7 == output_flow1.submodel.flow_rate * 1.0
         )
 
         assert_conequal(
             model.constraints['MultiConverter|conversion_1'],
-            input_flow2.model.flow_rate * 0.3 == output_flow2.model.flow_rate * 1.0
+            input_flow2.submodel.flow_rate * 0.3 == output_flow2.submodel.flow_rate * 1.0
         )
 
         assert_conequal(
             model.constraints['MultiConverter|conversion_2'],
-            input_flow1.model.flow_rate * 0.1 == output_flow2.model.flow_rate * 0.5
+            input_flow1.submodel.flow_rate * 0.1 == output_flow2.submodel.flow_rate * 0.5
         )
 
     def test_edge_case_time_varying_conversion(self, basic_flow_system_linopy):
@@ -311,7 +311,7 @@ class TestLinearConverterModel:
         # Verify the constraint has the time-varying coefficient
         assert_conequal(
             model.constraints['VariableConverter|conversion_0'],
-            input_flow.model.flow_rate * fluctuating_cop == output_flow.model.flow_rate * 1.0
+            input_flow.submodel.flow_rate * fluctuating_cop == output_flow.submodel.flow_rate * 1.0
         )
 
     def test_piecewise_conversion(self, basic_flow_system_linopy):
@@ -360,11 +360,11 @@ class TestLinearConverterModel:
         # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify that PiecewiseModel was created and added as a sub_model
-        assert converter.model.piecewise_conversion is not None
+        # Verify that PiecewiseModel was created and added as a submodel
+        assert converter.submodel.piecewise_conversion is not None
 
         # Get the PiecewiseModel instance
-        piecewise_model = converter.model.piecewise_conversion
+        piecewise_model = converter.submodel.piecewise_conversion
 
         # Check that we have the expected pieces (2 in this case)
         assert len(piecewise_model.pieces) == 2
@@ -472,11 +472,11 @@ class TestLinearConverterModel:
         # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify that PiecewiseModel was created and added as a sub_model
-        assert converter.model.piecewise_conversion is not None
+        # Verify that PiecewiseModel was created and added as a submodel
+        assert converter.submodel.piecewise_conversion is not None
 
         # Get the PiecewiseModel instance
-        piecewise_model = converter.model.piecewise_conversion
+        piecewise_model = converter.submodel.piecewise_conversion
 
         # Check that we have the expected pieces (2 in this case)
         assert len(piecewise_model.pieces) == 2
@@ -539,8 +539,8 @@ class TestLinearConverterModel:
         assert 'Converter|on_hours_total' in model.constraints
         assert_conequal(
             model.constraints['Converter|on_hours_total'],
-            converter.model.on_off.variables['Converter|on_hours_total'] ==
-            (converter.model.on_off.variables['Converter|on'] * model.hours_per_step).sum()
+            model['Converter|on_hours_total'] ==
+            (model['Converter|on'] * model.hours_per_step).sum()
         )
 
         # Verify that the costs effect is applied
@@ -548,7 +548,7 @@ class TestLinearConverterModel:
         assert_conequal(
             model.constraints['Converter->Costs(operation)'],
             model.variables['Converter->Costs(operation)'] ==
-            converter.model.on_off.variables['Converter|on'] * model.hours_per_step * 5
+            model.variables['Converter|on'] * model.hours_per_step * 5
         )
 
 

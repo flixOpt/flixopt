@@ -60,13 +60,10 @@ class FlowSystemModel(linopy.Model):
 
     def do_modeling(self):
         self.effects = self.flow_system.effects.create_model(self)
-        self.effects.do_modeling()
-        component_models = [component.create_model(self) for component in self.flow_system.components.values()]
-        bus_models = [bus.create_model(self) for bus in self.flow_system.buses.values()]
-        for component_model in component_models:
-            component_model.do_modeling()
-        for bus_model in bus_models:  # Buses after Components, because FlowModels are created in ComponentModels
-            bus_model.do_modeling()
+        for component in self.flow_system.components.values():
+            component.create_model(self)
+        for bus in self.flow_system.buses.values():
+            bus.create_model(self)
 
     @property
     def solution(self):
@@ -74,21 +71,21 @@ class FlowSystemModel(linopy.Model):
         solution['objective'] = self.objective.value
         solution.attrs = {
             'Components': {
-                comp.label_full: comp.model.results_structure()
+                comp.label_full: comp.submodel.results_structure()
                 for comp in sorted(
                     self.flow_system.components.values(), key=lambda component: component.label_full.upper()
                 )
             },
             'Buses': {
-                bus.label_full: bus.model.results_structure()
+                bus.label_full: bus.submodel.results_structure()
                 for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
             },
             'Effects': {
-                effect.label_full: effect.model.results_structure()
+                effect.label_full: effect.submodel.results_structure()
                 for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
             },
             'Flows': {
-                flow.label_full: flow.model.results_structure()
+                flow.label_full: flow.submodel.results_structure()
                 for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
             },
         }
@@ -661,7 +658,7 @@ class Element(Interface):
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
-        self.model: Optional[ElementModel] = None
+        self.submodel: Optional[ElementModel] = None
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization"""
@@ -696,61 +693,104 @@ class Element(Interface):
         return label
 
 
-class Model:
+class Submodel:
     """Stores Variables and Constraints."""
 
     def __init__(
-        self, model: FlowSystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None
+        self, model: FlowSystemModel, label_of_element: str, label_of_model = None
     ):
         """
         Args:
             model: The FlowSystemModel that is used to create the model.
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            label: The label of the model. Used to construct the full label of the model.
-            label_full: The full label of the model. Can overwrite the full label constructed from the other labels.
+            label_of_model: The label of the model. Used as a prefix in all variables and constraints.
         """
         self._model = model
         self.label_of_element = label_of_element
-        self._label = label
-        self._label_full = label_full
+        self.label_of_model = label_of_model if label_of_model is not None else self.label_of_element
 
-        self._variables_direct: List[str] = []
-        self._constraints_direct: List[str] = []
-        self.sub_models: List[Model] = []
+        self._variables: Dict[str, linopy.Variable] = {}  # Mapping from short name to variable
+        self._constraints: Dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
+        self._sub_models: Dict[str, 'Submodel'] = {}
 
-        self._variables_short: Dict[str, str] = {}
-        self._constraints_short: Dict[str, str] = {}
-        self._sub_models_short: Dict[str, str] = {}
-        logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
 
-    def do_modeling(self):
-        raise NotImplementedError('Every Model needs a do_modeling() method')
+        logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
+        self._do_modeling()
 
-    def add(
-        self, item: Union[linopy.Variable, linopy.Constraint, 'Model'], short_name: Optional[str] = None
-    ) -> Union[linopy.Variable, linopy.Constraint, 'Model']:
-        """
-        Add a variable, constraint or sub-model to the model
+    def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
+        """Create and register a variable in one step"""
+        if kwargs.get('name') is None:
+            if short_name is None:
+                raise ValueError('Short name must be provided when no name is given')
+            kwargs['name'] = f'{self.label_of_model}|{short_name}'
 
-        Args:
-            item: The variable, constraint or sub-model to add to the model
-            short_name: The short name of the variable, constraint or sub-model. If not provided, the full name is used.
-        """
-        # TODO: Check uniquenes of short names
-        if isinstance(item, linopy.Variable):
-            self._variables_direct.append(item.name)
-            self._variables_short[item.name] = short_name or item.name
-        elif isinstance(item, linopy.Constraint):
-            self._constraints_direct.append(item.name)
-            self._constraints_short[item.name] = short_name or item.name
-        elif isinstance(item, Model):
-            self.sub_models.append(item)
-            self._sub_models_short[item.label_full] = short_name or item.label_full
-        else:
-            raise ValueError(
-                f'Item must be a linopy.Variable, linopy.Constraint or flixopt.structure.Model, got {type(item)}'
-            )
-        return item
+        variable = self._model.add_variables(**kwargs)
+        self.register_variable(variable, short_name)
+        return variable
+
+    def add_constraints(self, expression, short_name: str = None, **kwargs) -> linopy.Constraint:
+        """Create and register a constraint in one step"""
+        if kwargs.get('name') is None:
+            if short_name is None:
+                raise ValueError('Short name must be provided when no name is given')
+            kwargs['name'] = f'{self.label_of_model}|{short_name}'
+
+        constraint = self._model.add_constraints(expression, **kwargs)
+        self.register_constraint(constraint, short_name)
+        return constraint
+
+    def register_variable(self, variable: linopy.Variable, short_name: str = None) -> linopy.Variable:
+        """Register a variable with the model"""
+        if short_name is None:
+            short_name = variable.name
+        elif short_name in self._variables:
+            raise ValueError(f'Short name "{short_name}" already assigned to model variables')
+
+        self._variables[short_name] = variable
+        return variable
+
+    def register_constraint(self, constraint: linopy.Constraint, short_name: str = None) -> linopy.Constraint:
+        """Register a constraint with the model"""
+        if short_name is None:
+            short_name = constraint.name
+        elif short_name in self._constraints:
+            raise ValueError(f'Short name "{short_name}" already assigned to model constraint')
+
+        self._constraints[short_name] = constraint
+        return constraint
+
+    def register_sub_model(self, submodel: 'Submodel', short_name: str) -> 'Submodel':
+        """Register a sub-model with the model"""
+        if short_name is None:
+            short_name = submodel.__class__.__name__
+        if short_name in self._sub_models:
+            raise ValueError(f'Short name "{short_name}" already assigned to model')
+        self._sub_models[short_name] = submodel
+        return submodel
+
+    def __getitem__(self, key: str) -> linopy.Variable:
+        """Get a variable by its short name"""
+        if key in self._variables:
+            return self._variables[key]
+        raise KeyError(f'Variable "{key}" not found in model "{self.label_full}"')
+
+    def __contains__(self, name: str) -> bool:
+        """Check if a variable exists in the model"""
+        return name in self._variables or name in self.variables
+
+    def get(self, name: str, default=None):
+        """Get variable by short name, returning default if not found"""
+        try:
+            return self[name]
+        except KeyError:
+            return default
+
+    def get_coords(
+        self,
+        dims: Optional[Collection[str]] = None,
+        extra_timestep: bool = False,
+    ) -> Optional[xr.Coordinates]:
+        return self._model.get_coords(dims=dims, extra_timestep=extra_timestep)
 
     def filter_variables(
         self,
@@ -776,62 +816,106 @@ class Model:
         raise ValueError(f'Invalid length "{length}", must be one of "scalar", "time" or None')
 
     @property
-    def label(self) -> str:
-        return self._label if self._label else self.label_of_element
-
-    @property
     def label_full(self) -> str:
-        """Used to construct the names of variables and constraints"""
-        if self._label_full:
-            return self._label_full
-        elif self._label:
-            return f'{self.label_of_element}|{self.label}'
-        return self.label_of_element
+        return self.label_of_model
 
     @property
     def variables_direct(self) -> linopy.Variables:
-        return self._model.variables[self._variables_direct]
+        """Variables of the model, excluding those of sub-models"""
+        return self._model.variables[[var.name for var in self._variables.values()]]
 
     @property
     def constraints_direct(self) -> linopy.Constraints:
-        return self._model.constraints[self._constraints_direct]
+        """Costraints of the model, excluding those of sub-models"""
+        return self._model.constraints[[con.name for con in self._constraints.values()]]
 
     @property
-    def _variables(self) -> List[str]:
-        all_variables = self._variables_direct.copy()
-        for sub_model in self.sub_models:
-            for variable in sub_model._variables:
-                if variable in all_variables:
-                    raise KeyError(
-                        f"Duplicate key found: '{variable}' in both {self.label_full} and {sub_model.label_full}!"
-                    )
-                all_variables.append(variable)
-        return all_variables
+    def sub_models_direct(self) -> Dict[str, 'Submodel']:
+        """All sub-models of the model, excluding those of sub-models"""
+        return self._sub_models
 
     @property
-    def _constraints(self) -> List[str]:
-        all_constraints = self._constraints_direct.copy()
-        for sub_model in self.sub_models:
-            for constraint in sub_model._constraints:
-                if constraint in all_constraints:
-                    raise KeyError(f"Duplicate key found: '{constraint}' in both main model and submodel!")
-                all_constraints.append(constraint)
-        return all_constraints
+    def submodels(self) -> List['Submodel']:
+        """All sub-models of the model"""
+        direct_submodels = list(self._sub_models.values())
 
-    @property
-    def variables(self) -> linopy.Variables:
-        return self._model.variables[self._variables]
+        # Recursively collect nested sub-models
+        nested_submodels = []
+        for submodel in direct_submodels:
+            nested_submodels.extend(submodel.submodels)  # This calls the property recursively
+
+        return direct_submodels + nested_submodels
 
     @property
     def constraints(self) -> linopy.Constraints:
-        return self._model.constraints[self._constraints]
+        """All constraints of the model, including those of sub-models"""
+        names = list(self.constraints_direct) + [
+            constraint_name
+            for submodel in self.submodels
+            for constraint_name in submodel.constraints_direct
+        ]
+
+        return self._model.constraints[names]
 
     @property
-    def all_sub_models(self) -> List['Model']:
-        return [model for sub_model in self.sub_models for model in [sub_model] + sub_model.all_sub_models]
+    def variables(self) -> linopy.Variables:
+        """All variables of the model, including those of sub-models"""
+        names = list(self.variables_direct) + [
+            variable_name
+            for submodel in self.submodels
+            for variable_name in submodel.variables_direct
+        ]
 
+        return self._model.variables[names]
 
-class ElementModel(Model):
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the linopy model.
+        """
+        # Extract content from variables and constraints representations
+        var_string = self.variables.__repr__().split('\n', 2)[2]
+        con_string = self.constraints.__repr__().split('\n', 2)[2]
+        model_string = f'Submodel of Linopy {self._model.type}:'
+
+        # Build submodels section
+        if len(self.submodels) == 0:
+            sub_models_string = ' <empty>\n'
+        else:
+            submodel_lines = []
+            for submodel_name, submodel in self.sub_models_direct.items():
+                class_name = submodel.__class__.__name__
+                submodel_lines.append(f' * {class_name}: "{submodel_name}" [{len(submodel.variables)} Vars + {len(submodel.constraints)} Cons]')
+            sub_models_string = '\n' + '\n'.join(submodel_lines)
+
+        # Create sections with counts and content
+        sections = {
+            f'Variables: [{len(self.variables)}/{len(self._model.variables)}]': var_string,
+            f'Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]': con_string,
+            f'Submodels: [{len(self.sub_models_direct)}]': sub_models_string,
+        }
+
+        # Format sections with headers and underlines
+        formatted_sections = []
+        for section_header, section_content in sections.items():
+            underline = '-' * len(section_header)
+            formatted_section = f'{section_header}\n{underline}\n{section_content}'
+            formatted_sections.append(formatted_section)
+
+        # Combine everything with proper formatting
+        all_sections = '\n'.join(formatted_sections)
+        header_separator = '=' * len(model_string)
+
+        return f'{model_string}\n{header_separator}\n\n{all_sections}'
+
+    @property
+    def hours_per_step(self):
+        return self._model.hours_per_step
+
+    def _do_modeling(self):
+        """Called at the end of initialization. Override in subclasses to create variables and constraints."""
+        pass
+
+class ElementModel(Submodel):
     """Stores the mathematical Variables and Constraints for Elements"""
 
     def __init__(self, model: FlowSystemModel, element: Element):
@@ -840,8 +924,8 @@ class ElementModel(Model):
             model: The FlowSystemModel that is used to create the model.
             element: The element this model is created for.
         """
-        super().__init__(model, label_of_element=element.label_full, label=element.label, label_full=element.label_full)
         self.element = element
+        super().__init__(model, label_of_element=element.label_full)
 
     def results_structure(self):
         return {
