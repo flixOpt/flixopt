@@ -7,7 +7,7 @@ import xarray as xr
 
 from .config import CONFIG
 from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
-from .structure import Submodel, FlowSystemModel, BaseFeatureModel
+from .structure import Submodel, FlowSystemModel
 
 logger = logging.getLogger('flixopt')
 

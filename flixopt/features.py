@@ -12,13 +12,13 @@ import numpy as np
 from .config import CONFIG
 from .core import NonTemporalData, Scalar, TemporalData, FlowSystemDimensions
 from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects
-from .structure import Submodel, FlowSystemModel, BaseFeatureModel
+from .structure import Submodel, FlowSystemModel
 from .modeling import ModelingUtilities, ModelingPrimitives, BoundingPatterns
 
 logger = logging.getLogger('flixopt')
 
 
-class InvestmentModel(BaseFeatureModel):
+class InvestmentModel(Submodel):
     """Investment model using factory patterns but keeping old interface"""
 
     def __init__(
@@ -40,7 +40,8 @@ class InvestmentModel(BaseFeatureModel):
 
         """
         self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
-        super().__init__(model, label_of_element=label_of_element, parameters=parameters, label_of_model=label_of_model)
+        self.parameters = parameters
+        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
         super()._do_modeling()
@@ -123,7 +124,7 @@ class InvestmentModel(BaseFeatureModel):
         return self._variables['is_invested']
 
 
-class OnOffModel(BaseFeatureModel):
+class OnOffModel(Submodel):
     """OnOff model using factory patterns"""
 
     def __init__(
@@ -149,7 +150,8 @@ class OnOffModel(BaseFeatureModel):
         """
         self.on = on_variable
         self._previous_states = previous_states
-        super().__init__(model, label_of_element, parameters=parameters, label_of_model=label_of_model)
+        self.parameters = parameters
+        super().__init__(model, label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
         super()._do_modeling()

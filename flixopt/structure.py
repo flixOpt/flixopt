@@ -912,25 +912,8 @@ class Submodel:
         return self._model.hours_per_step
 
     def _do_modeling(self):
-        """Template method"""
+        """Called at the end of initialization. Override in subclasses to create variables and constraints."""
         pass
-
-
-class BaseFeatureModel(Submodel):
-    """Minimal base class for feature models that use factory patterns"""
-
-    def __init__(self, model: FlowSystemModel, label_of_element: str, parameters, label_of_model: Optional[str] = None):
-        """Initialize the BaseFeatureModel.
-        Args:
-            model: The FlowSystemModel that is used to create the model.
-            label_of_element: The label of the parent (Element). Used to create shares.
-            label_of_model: The label of the model. Used as a prefix in all variables and constraints.
-                Defaults to {label_of_element}|{self.__class__.__name__}
-            parameters: The parameters of the feature model.
-            """
-        self.parameters = parameters
-        super().__init__(model, label_of_element, label_of_model or f'{label_of_element}|{self.__class__.__name__}')
-
 
 class ElementModel(Submodel):
     """Stores the mathematical Variables and Constraints for Elements"""
