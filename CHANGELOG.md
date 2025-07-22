@@ -7,45 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased - New Model dimensions]
 
-## What's New
-
-### Scenarios
-Scenarios are a new feature of flixopt. They can be used to model uncertainties in the flow system, such as:
-* Different demand profiles
-* Different price forecasts
-* Different weather conditions
-They might also be used to model an evolving system with multiple investment periods. Each **scenario** might be a new year, a new month, or a new day, with a different set of investment decisions to take.
-
-The weighted sum of the total objective effect of each scenario is used as the objective of the optimization.
-
-#### Investments and scenarios
-Scenarios allow for more flexibility in investment decisions.
-You can decide to allow different investment decisions for each scenario, or to allow a single investment decision for a subset of all scenarios, while not allowing for an invest in others.
-This enables the following use cases:
-* Find the best investment decision for each scenario individually
-* Find the best overall investment decision for possible scenarios (robust decision-making)
-* Find the best overall investment decision for a subset of all scenarios
-
-The last one might be useful if you want to model a system with multiple investment periods, where one investment decision is made for more than one scenario.
-This might occur when scenarios represent years or months, while an investment decision influences the system for multiple years or months.
-
-
-### Other new features
-* Balanced storage - Storage charging and discharging sizes can now be forced to be equal in when optimizing their size.
-* Feature 2 - Description
-
-
-## [Unreleased - Data Management and IO]
 
 ### Changed
 * **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
 * **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
+* **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
+* **BREAKING**: Renamed class `Model` to `Submodel`
 * FlowSystems can not be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
+* Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
 * Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
-* FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
 * Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
 
+#### Internal:
+* **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
+* **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
+* **BREAKING**: Renamed class `Model` to `Submodel`
+* FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
+* Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
+* Added new module `.modeling`that contains Modelling primitives and utilities
+
+
 ### Added
+
+#### Scenarios
+Scenarios are a new feature of flixopt. They can be used to model uncertainties in the flow system, such as:
+* Different demand profiles
+* Different price forecasts
+* Different weather conditions
+
+Common use cases are:
+* Find the best overall investment decision for possible scenarios (robust decision-making)
+* Find the best dispatch for the most important assets under uncertain price and weather conditions
+
+The weighted sum of the total objective effect of each scenario is used as the objective of the optimization.
+
+#### Years (Investment periods)
+A flixopt model might be modeled with a "year" dimension.
+This enables to model transformation pathways over multiple years.
+
+%%%%% TODO: New Interfaces to model sizes changing over time, annuity, etc.
+
+#### Improved Data handling: IO, resampling and more through xarray
 * Complete serialization infrastructure through `Interface` base class
    * IO for all Interfaces and the FlowSystem with round-trip serialization support
    * Automatic DataArray extraction and restoration
@@ -68,20 +70,37 @@ This might occur when scenarios represent years or months, while an investment d
    * `fit_effects_to_model_coords()` method for effect data processing
    * `connect_and_transform()` method replacing several operations
 
+#### Internal: Improved Model organisation and access
+* Clearer separation between the main Model and "Submodels"
+* Improved access to the Submodels and their variables, constraints and submodels
+* Added __repr__() for Submodels to easily inspect its content
+* 
+
+
+#### Other new features
+* Balanced storage - Storage charging and discharging sizes can now be forced to be equal in when optimizing their size.
+
+#### Examples:
+* Added Example for 2-stage Investment decisions leveraging the resampling of a FlowSystem
+
+
 ### Fixed
 * Enhanced NetCDF I/O with proper attribute preservation for DataArrays
 * Improved error handling and validation in serialization processes
 * Better type consistency across all framework components
 
+
 ### Know Issues
 * Plotly >= 6 may raise errors if "nbformat" is not installed. We pinned plotly to <6, but this may be fixed in the future.
 * IO for single Interfaces/Elemenets to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arrises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem thats connected and transformed.
+
 
 ### Deprecated
 * The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
 * The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
+
 
 ## [2.1.5] - 2025-07-08
 
