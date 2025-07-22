@@ -36,17 +36,18 @@ class InvestmentModel(BaseFeatureModel):
             model: The optimization model instance
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             parameters: The parameters of the feature model.
-            defining_variable: The variable to be invested
-            relative_bounds_of_defining_variable: The bounds of the variable, with respect to the minimum/maximum investment sizes
             label_of_model: The label of the model. This is needed to construct the full label of the model.
 
         """
+        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
         super().__init__(model, label_of_element=label_of_element, parameters=parameters, label_of_model=label_of_model)
 
-        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
+    def _do_modeling(self):
+        super()._do_modeling()
+        self._create_variables_and_constraints()
+        self._add_effects()
 
-
-    def create_variables_and_constraints(self):
+    def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         self.add_variables(
             short_name='size',
@@ -79,9 +80,8 @@ class InvestmentModel(BaseFeatureModel):
                 ),
                 short_name='segments',
             )
-            self.piecewise_effects.do_modeling()
 
-    def add_effects(self):
+    def _add_effects(self):
         """Add investment effects"""
         if self.parameters.fix_effects:
             self._model.effects.add_share_to_effects(
@@ -147,11 +147,13 @@ class OnOffModel(BaseFeatureModel):
             previous_states: The previous flow_rates
             label_of_model: The label of the model. This is needed to construct the full label of the model.
         """
-        super().__init__(model, label_of_element, parameters=parameters, label_of_model=label_of_model)
         self.on = on_variable
         self._previous_states = previous_states
+        super().__init__(model, label_of_element, parameters=parameters, label_of_model=label_of_model)
 
-    def create_variables_and_constraints(self):
+    def _do_modeling(self):
+        super()._do_modeling()
+
         if self.parameters.use_off:
             off = self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
             self.add_constraints(self.on + off == 1, short_name='complementary')
@@ -207,7 +209,9 @@ class OnOffModel(BaseFeatureModel):
             )
             #TODO:
 
-    def add_effects(self):
+        self._add_effects()
+
+    def _add_effects(self):
         """Add operational effects"""
         if self.parameters.effects_per_running_hour:
             self._model.effects.add_share_to_effects(
@@ -292,13 +296,15 @@ class PieceModel(Submodel):
         label_of_model: str,
         as_time_series: bool = True,
     ):
-        super().__init__(model, label_of_element, label_of_model)
         self.inside_piece: Optional[linopy.Variable] = None
         self.lambda0: Optional[linopy.Variable] = None
         self.lambda1: Optional[linopy.Variable] = None
         self._as_time_series = as_time_series
 
-    def do_modeling(self):
+        super().__init__(model, label_of_element, label_of_model)
+
+    def _do_modeling(self):
+        super()._do_modeling()
         dims =('time', 'year','scenario') if self._as_time_series else ('year','scenario')
         self.inside_piece = self.add_variables(
             binary=True,
@@ -346,15 +352,16 @@ class PiecewiseModel(Submodel):
             zero_point: A variable that can be used to define a zero point for the Piecewise relation. If None or False, no zero point is defined.
             as_time_series: Whether the Piecewise relation is defined for a TimeSeries or a single variable.
         """
-        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
         self._piecewise_variables = piecewise_variables
         self._zero_point = zero_point
         self._as_time_series = as_time_series
 
         self.pieces: List[PieceModel] = []
         self.zero_point: Optional[linopy.Variable] = None
+        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def do_modeling(self):
+    def _do_modeling(self):
+        super()._do_modeling()
         for i in range(len(list(self._piecewise_variables.values())[0])):
             new_piece = self.register_sub_model(
                 PieceModel(
@@ -366,7 +373,6 @@ class PiecewiseModel(Submodel):
                 short_name=f'Piece_{i}',
             )
             self.pieces.append(new_piece)
-            new_piece.do_modeling()
 
         for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
@@ -414,7 +420,6 @@ class PiecewiseEffectsModel(Submodel):
         piecewise_shares: Dict[str, Piecewise],
         zero_point: Optional[Union[bool, linopy.Variable]],
     ):
-        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
         assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
             'Piece length of variable_segments and share_segments must be equal'
         )
@@ -425,7 +430,9 @@ class PiecewiseEffectsModel(Submodel):
 
         self.piecewise_model: Optional[PiecewiseModel] = None
 
-    def do_modeling(self):
+        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+
+    def _do_modeling(self):
         self.shares = {
             effect: self.add_variables(coords=self._model.get_coords(['year', 'scenario']), short_name=effect)
             for effect in self._piecewise_shares
@@ -451,8 +458,6 @@ class PiecewiseEffectsModel(Submodel):
             short_name='PiecewiseEffects',
         )
 
-        self.piecewise_model.do_modeling()
-
         # Shares
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
@@ -473,8 +478,6 @@ class ShareAllocationModel(Submodel):
         max_per_hour: Optional[TemporalData] = None,
         min_per_hour: Optional[TemporalData] = None,
     ):
-        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
-
         if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
             raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')
 
@@ -493,7 +496,10 @@ class ShareAllocationModel(Submodel):
         self._max_per_hour = max_per_hour if max_per_hour is not None else np.inf
         self._min_per_hour = min_per_hour if min_per_hour is not None else -np.inf
 
-    def do_modeling(self):
+        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+
+    def _do_modeling(self):
+        super()._do_modeling()
         self.total = self.add_variables(
             lower=self._total_min,
             upper=self._total_max,

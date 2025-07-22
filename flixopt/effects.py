@@ -140,7 +140,8 @@ class Effect(Element):
 class EffectModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Effect):
         super().__init__(model, element)
-        self.element: Effect = element
+
+    def _do_modeling(self):
         self.total: Optional[linopy.Variable] = None
         self.invest: ShareAllocationModel = self.register_sub_model(
             ShareAllocationModel(
@@ -171,10 +172,6 @@ class EffectModel(ElementModel):
             ),
             short_name='operation',
         )
-
-    def do_modeling(self):
-        for model in self.submodels:
-            model.do_modeling()
 
         self.total = self.add_variables(
             lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
@@ -381,9 +378,9 @@ class EffectCollectionModel(Submodel):
     """
 
     def __init__(self, model: FlowSystemModel, effects: EffectCollection):
-        super().__init__(model, label_of_element='Effects')
         self.effects = effects
         self.penalty: Optional[ShareAllocationModel] = None
+        super().__init__(model, label_of_element='Effects')
 
     def add_share_to_effects(
         self,
@@ -412,15 +409,14 @@ class EffectCollectionModel(Submodel):
             raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
         self.penalty.add_share(name, expression, dims=())
 
-    def do_modeling(self):
+    def _do_modeling(self):
+        super()._do_modeling()
         for effect in self.effects:
             effect.create_model(self._model)
         self.penalty = self.register_sub_model(
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
             short_name='penalty',
         )
-        for model in [effect.submodel for effect in self.effects] + [self.penalty]:
-            model.do_modeling()
 
         self._add_share_between_effects()
 

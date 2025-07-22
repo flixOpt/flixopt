@@ -395,19 +395,18 @@ class Transmission(Component):
 
 class TransmissionModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: Transmission):
-        super().__init__(model, element)
+        if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
+            for flow in element.inputs + element.outputs:
+                if flow.on_off_parameters is None:
+                    flow.on_off_parameters = OnOffParameters()
         self.element: Transmission = element
         self.on_off: Optional[OnOffModel] = None
 
-    def do_modeling(self):
-        """Initiates all FlowModels"""
-        # Force On Variable if absolute losses are present
-        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
-            for flow in self.element.inputs + self.element.outputs:
-                if flow.on_off_parameters is None:
-                    flow.on_off_parameters = OnOffParameters()
+        super().__init__(model, element)
 
-        super().do_modeling()
+    def _do_modeling(self):
+        """Initiates all FlowModels"""
+        super()._do_modeling()
 
         # first direction
         self.create_transmission_equation('dir1', self.element.in1, self.element.out1)
@@ -440,14 +439,13 @@ class TransmissionModel(ComponentModel):
 
 class LinearConverterModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: LinearConverter):
-        super().__init__(model, element)
         self.element: LinearConverter = element
         self.on_off: Optional[OnOffModel] = None
         self.piecewise_conversion: Optional[PiecewiseConversion] = None
+        super().__init__(model, element)
 
-    def do_modeling(self):
-        super().do_modeling()
-
+    def _do_modeling(self):
+        super()._do_modeling()
         # conversion_factors:
         if self.element.conversion_factors:
             all_input_flows = set(self.element.inputs)
@@ -483,7 +481,6 @@ class LinearConverterModel(ComponentModel):
                 ),
                 short_name='PiecewiseConversion',
             )
-            self.piecewise_conversion.do_modeling()
 
 
 class StorageModel(ComponentModel):
@@ -491,10 +488,9 @@ class StorageModel(ComponentModel):
 
     def __init__(self, model: FlowSystemModel, element: Storage):
         super().__init__(model, element)
-        self.element: Storage = element
 
-    def do_modeling(self):
-        super().do_modeling()
+    def _do_modeling(self):
+        super()._do_modeling()
 
         lb, ub = self.absolute_charge_state_bounds
         self.add_variables(
@@ -540,7 +536,7 @@ class StorageModel(ComponentModel):
                 ),
                 short_name='investment',
             )
-            self._investment.do_modeling()
+
             BoundingPatterns.scaled_bounds(
                 self,
                 variable=self.charge_state,

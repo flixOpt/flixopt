@@ -315,9 +315,9 @@ class Flow(Element):
 class FlowModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Flow):
         super().__init__(model, element)
-        self.element: Flow = element
 
-    def do_modeling(self):
+    def _do_modeling(self):
+        super()._do_modeling()
         # Main flow rate variable
         self.add_variables(
             lower=self.absolute_flow_rate_bounds[0],
@@ -359,7 +359,7 @@ class FlowModel(ElementModel):
                 label_of_model=self.label_of_element,
             ),
             short_name='on_off',
-        ).do_modeling()
+        )
 
     def _create_investment_model(self):
         self.register_sub_model(
@@ -370,7 +370,7 @@ class FlowModel(ElementModel):
                 label_of_model=self.label_of_element,
             ),
             'investment',
-        ).do_modeling()
+        )
 
     def _constraint_flow_rate(self):
         if not self.with_investment and not self.with_on_off:
@@ -543,12 +543,12 @@ class FlowModel(ElementModel):
 
 class BusModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Bus):
-        super().__init__(model, element)
-        self.element: Bus = element
         self.excess_input: Optional[linopy.Variable] = None
         self.excess_output: Optional[linopy.Variable] = None
+        super().__init__(model, element)
 
-    def do_modeling(self) -> None:
+    def _do_modeling(self) -> None:
+        super()._do_modeling()
         # inputs == outputs
         for flow in self.element.inputs + self.element.outputs:
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
@@ -582,12 +582,12 @@ class BusModel(ElementModel):
 
 class ComponentModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Component):
-        super().__init__(model, element)
-        self.element: Component = element
         self.on_off: Optional[OnOffModel] = None
+        super().__init__(model, element)
 
-    def do_modeling(self):
+    def _do_modeling(self):
         """Initiates all FlowModels"""
+        super()._do_modeling()
         all_flows = self.element.inputs + self.element.outputs
         if self.element.on_off_parameters:
             for flow in all_flows:
@@ -600,8 +600,7 @@ class ComponentModel(ElementModel):
                     flow.on_off_parameters = OnOffParameters()
 
         for flow in all_flows:
-            flow_model = self.register_sub_model(flow.create_model(self._model), short_name=flow.label)
-            flow_model.do_modeling()
+            self.register_sub_model(flow.create_model(self._model), short_name=flow.label)
 
         if self.element.on_off_parameters:
             on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
@@ -624,8 +623,6 @@ class ComponentModel(ElementModel):
                 ),
                 short_name='on_off',
             )
-
-            self.on_off.do_modeling()
 
         if self.element.prevent_simultaneous_flows:
             # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow

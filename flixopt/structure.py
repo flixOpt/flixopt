@@ -60,13 +60,10 @@ class FlowSystemModel(linopy.Model):
 
     def do_modeling(self):
         self.effects = self.flow_system.effects.create_model(self)
-        self.effects.do_modeling()
-        component_models = [component.create_model(self) for component in self.flow_system.components.values()]
-        bus_models = [bus.create_model(self) for bus in self.flow_system.buses.values()]
-        for component_model in component_models:
-            component_model.do_modeling()
-        for bus_model in bus_models:  # Buses after Components, because FlowModels are created in ComponentModels
-            bus_model.do_modeling()
+        for component in self.flow_system.components.values():
+            component.create_model(self)
+        for bus in self.flow_system.buses.values():
+            bus.create_model(self)
 
     @property
     def solution(self):
@@ -716,7 +713,9 @@ class Submodel:
         self._constraints: Dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
         self._sub_models: Dict[str, 'Submodel'] = {}
 
-        logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
+
+        logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
+        self._do_modeling()
 
     def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
         """Create and register a variable in one step"""
@@ -912,6 +911,10 @@ class Submodel:
     def hours_per_step(self):
         return self._model.hours_per_step
 
+    def _do_modeling(self):
+        """Template method"""
+        pass
+
 
 class BaseFeatureModel(Submodel):
     """Minimal base class for feature models that use factory patterns"""
@@ -925,21 +928,8 @@ class BaseFeatureModel(Submodel):
                 Defaults to {label_of_element}|{self.__class__.__name__}
             parameters: The parameters of the feature model.
             """
-        super().__init__(model, label_of_element, label_of_model or f'{label_of_element}|{self.__class__.__name__}')
         self.parameters = parameters
-
-    def do_modeling(self):
-        """Template method - creates variables and constraints, then effects"""
-        self.create_variables_and_constraints()
-        self.add_effects()
-
-    def create_variables_and_constraints(self):
-        """Override in subclasses to create variables and constraints"""
-        raise NotImplementedError('Subclasses must implement create_variables_and_constraints()')
-
-    def add_effects(self):
-        """Override in subclasses to add effects"""
-        pass  # Default: no effects
+        super().__init__(model, label_of_element, label_of_model or f'{label_of_element}|{self.__class__.__name__}')
 
 
 class ElementModel(Submodel):
@@ -951,8 +941,8 @@ class ElementModel(Submodel):
             model: The FlowSystemModel that is used to create the model.
             element: The element this model is created for.
         """
-        super().__init__(model, label_of_element=element.label_full)
         self.element = element
+        super().__init__(model, label_of_element=element.label_full)
 
     def results_structure(self):
         return {
