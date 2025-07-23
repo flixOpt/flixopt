@@ -189,7 +189,7 @@ class ModelingPrimitives:
         name: str = None,
         short_name: str = None,
         bounds: Tuple[TemporalData, TemporalData] = None,
-        coords: List[str] = None,
+        coords: Optional[Union[str, List[str]]] = None,
     ) -> Tuple[linopy.Variable, linopy.Constraint]:
         """
         Creates variable that equals a given expression.
@@ -204,8 +204,6 @@ class ModelingPrimitives:
         """
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.expression_tracking_variable() can only be used with a Submodel')
-
-        coords = coords or ['year', 'scenario']
 
         if not bounds:
             tracker = model.add_variables(name=name, coords=model.get_coords(coords), short_name=short_name)
@@ -222,86 +220,6 @@ class ModelingPrimitives:
         tracking = model.add_constraints(tracker == tracked_expression, name=name, short_name=short_name)
 
         return tracker, tracking
-
-    @staticmethod
-    def state_transition_variables(
-        model: Submodel,
-        state_variable: linopy.Variable,
-        switch_on: linopy.Variable,
-        switch_off: linopy.Variable,
-        name: str,
-        previous_state=0,
-    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
-        """
-        Creates switch-on/off variables with state transition logic.
-
-        Mathematical formulation:
-            switch_on[t] - switch_off[t] = state[t] - state[t-1]  ∀t > 0
-            switch_on[0] - switch_off[0] = state[0] - previous_state
-            switch_on[t] + switch_off[t] ≤ 1  ∀t
-            switch_on[t], switch_off[t] ∈ {0, 1}
-
-        Returns:
-            variables: {'switch_on': binary_var, 'switch_off': binary_var}
-            constraints: {'transition': constraint, 'initial': constraint, 'mutex': constraint}
-        """
-        if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.state_transition_variables() can only be used with a Submodel')
-
-        # State transition constraints for t > 0
-        transition = model.add_constraints(
-            switch_on.isel(time=slice(1, None)) - switch_off.isel(time=slice(1, None))
-            == state_variable.isel(time=slice(1, None)) - state_variable.isel(time=slice(None, -1)),
-            name=f'{name}|transition',
-        )
-
-        # Initial state transition for t = 0
-        initial = model.add_constraints(
-            switch_on.isel(time=0) - switch_off.isel(time=0) == state_variable.isel(time=0) - previous_state,
-            name=f'{name}|initial',
-        )
-
-        # At most one switch per timestep
-        mutex = model.add_constraints(switch_on + switch_off <= 1, name=f'{name}|mutex')
-
-        return transition, initial, mutex
-
-    @staticmethod
-    def sum_up_variable(
-        model: Submodel,
-        variable_to_count: linopy.Variable,
-        name: str = None,
-        bounds: Tuple[NonTemporalData, NonTemporalData] = None,
-        factor: TemporalData = 1,
-    ) -> Tuple[linopy.Variable, linopy.Constraint]:
-        """
-        SUms up a variable over time, applying a factor to the variable.
-
-        Args:
-            model: The optimization model instance
-            variable_to_count: The variable to be summed up
-            name: The name of the constraint
-            bounds: The bounds of the constraint
-            factor: The factor to be applied to the variable
-        """
-        if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
-
-        if bounds is None:
-            bounds = (0, np.inf)
-        else:
-            bounds = (bounds[0] if bounds[0] is not None else 0, bounds[1] if bounds[1] is not None else np.inf)
-
-        count = model.add_variables(
-            lower=bounds[0],
-            upper=bounds[1],
-            coords=model.get_coords(['year', 'scenario']),
-            name=name,
-        )
-
-        count_constraint = model.add_constraints(count == (variable_to_count * factor).sum('time'), name=name)
-
-        return count, count_constraint
 
     @staticmethod
     def consecutive_duration_tracking(
@@ -346,7 +264,7 @@ class ModelingPrimitives:
         duration = model.add_variables(
             lower=0,
             upper=maximum_duration if maximum_duration is not None else mega,
-            coords=model.get_coords(['time']),
+            coords=model.get_coords(),
             name=name,
             short_name=short_name,
         )
@@ -625,3 +543,48 @@ class BoundingPatterns:
         binary_lower = model.add_constraints(variable_state * big_m_lower <= variable, name=f'{name}|lb1')
 
         return [scaling_lower, scaling_upper, binary_lower, binary_upper]
+
+    @staticmethod
+    def state_transition_bounds(
+        model: Submodel,
+        state_variable: linopy.Variable,
+        switch_on: linopy.Variable,
+        switch_off: linopy.Variable,
+        name: str,
+        previous_state=0,
+        coord: str = 'time',
+    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+        """
+        Creates switch-on/off variables with state transition logic.
+
+        Mathematical formulation:
+            switch_on[t] - switch_off[t] = state[t] - state[t-1]  ∀t > 0
+            switch_on[0] - switch_off[0] = state[0] - previous_state
+            switch_on[t] + switch_off[t] ≤ 1  ∀t
+            switch_on[t], switch_off[t] ∈ {0, 1}
+
+        Returns:
+            variables: {'switch_on': binary_var, 'switch_off': binary_var}
+            constraints: {'transition': constraint, 'initial': constraint, 'mutex': constraint}
+        """
+        if not isinstance(model, Submodel):
+            raise ValueError('ModelingPrimitives.state_transition_variables() can only be used with a Submodel')
+
+        # State transition constraints for t > 0
+        transition = model.add_constraints(
+            switch_on.isel({coord: slice(1, None)}) - switch_off.isel({coord: slice(1, None)})
+            == state_variable.isel({coord: slice(1, None)}) - state_variable.isel({coord: slice(None, -1)}),
+            name=f'{name}|transition',
+        )
+
+        # Initial state transition for t = 0
+        initial = model.add_constraints(
+            switch_on.isel({coord: 0}) - switch_off.isel({coord: 0})
+            == state_variable.isel({coord: 0}) - previous_state,
+            name=f'{name}|initial',
+        )
+
+        # At most one switch per timestep
+        mutex = model.add_constraints(switch_on + switch_off <= 1, name=f'{name}|mutex')
+
+        return transition, initial, mutex
