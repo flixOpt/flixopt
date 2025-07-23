@@ -36,6 +36,32 @@ def solver_fixture(request):
     return request.getfixturevalue(request.param.__name__)
 
 
+# =================================
+# COORDINATE CONFIGURATION FIXTURES
+# =================================
+
+
+@pytest.fixture(
+    params=[
+        {'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'), 'years': None, 'scenarios': None},
+        {
+            'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'),
+            'years': pd.Index([2020, 2030, 2040], name='year'),
+            'scenarios': None,
+        },
+        {
+            'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'),
+            'years': pd.Index([2020, 2030, 2040], name='year'),
+            'scenarios': pd.Index(['A', 'B'], name='scenario'),
+        },
+    ],
+    ids=['time_only', 'time+years', 'time+years+scenarios'],
+)
+def coords_config(request):
+    """Coordinate configurations for parametrized testing."""
+    return request.param
+
+
 # ============================================================================
 # HIERARCHICAL ELEMENT LIBRARY
 # ============================================================================
@@ -600,6 +626,25 @@ def timesteps_linopy(request):
 def basic_flow_system_linopy(timesteps_linopy) -> fx.FlowSystem:
     """Create basic elements for component testing"""
     flow_system = fx.FlowSystem(timesteps_linopy)
+
+    thermal_load = LoadProfiles.random_thermal(10)
+    p_el = LoadProfiles.random_electrical(10)
+
+    costs = Effects.costs()
+    heat_load = Sinks.heat_load(thermal_load)
+    gas_source = Sources.gas_with_costs()
+    electricity_sink = Sinks.electricity_feed_in(p_el)
+
+    flow_system.add_elements(*Buses.defaults())
+    flow_system.add_elements(costs, heat_load, gas_source, electricity_sink)
+
+    return flow_system
+
+
+@pytest.fixture
+def basic_flow_system_linopy_coords(coords_config) -> fx.FlowSystem:
+    """Create basic elements for component testing with coordinate parametrization."""
+    flow_system = fx.FlowSystem(**coords_config)
 
     thermal_load = LoadProfiles.random_thermal(10)
     p_el = LoadProfiles.random_electrical(10)
