@@ -9,7 +9,21 @@ import logging
 import pathlib
 from dataclasses import dataclass
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Collection, Dict, List, Literal, Optional, Tuple, Union, Protocol, runtime_checkable, ItemsView, Iterator
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Collection,
+    Dict,
+    ItemsView,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    Tuple,
+    Union,
+    runtime_checkable,
+)
 
 import linopy
 import numpy as np
@@ -46,8 +60,8 @@ def register_class_for_io(cls):
 
 class SubmodelsMixin:
     """Mixin that provides submodel functionality for both FlowSystemModel and Submodel."""
-
     submodels: 'Submodels'
+
     @property
     def all_submodels(self) -> List['Submodel']:
         """Get all submodels including nested ones recursively."""
@@ -871,27 +885,27 @@ class Submodel(SubmodelsMixin):
 
     @property
     def constraints_direct(self) -> linopy.Constraints:
-        """Costraints of the model, excluding those of sub-models"""
+        """Constraints of the model, excluding those of sub-models"""
         return self._model.constraints[[con.name for con in self._constraints.values()]]
 
     @property
     def constraints(self) -> linopy.Constraints:
-        """All constraints of the model, including those of sub-models"""
+        """All constraints of the model, including those of all sub-models"""
         names = list(self.constraints_direct) + [
             constraint_name
             for submodel in self.submodels.values()
-            for constraint_name in submodel.constraints_direct
+            for constraint_name in submodel.constraints
         ]
 
         return self._model.constraints[names]
 
     @property
     def variables(self) -> linopy.Variables:
-        """All variables of the model, including those of sub-models"""
+        """All variables of the model, including those of all sub-models"""
         names = list(self.variables_direct) + [
             variable_name
             for submodel in self.submodels.values()
-            for variable_name in submodel.variables_direct
+            for variable_name in submodel.variables
         ]
 
         return self._model.variables[names]

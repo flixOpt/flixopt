@@ -161,13 +161,15 @@ class OnOffModel(Submodel):
             self.add_constraints(self.on + off == 1, short_name='complementary')
 
         # 3. Total duration tracking using existing pattern
-        duration_expr = (self.on * self._model.hours_per_step).sum('time')
         ModelingPrimitives.expression_tracking_variable(
-            self, duration_expr, short_name='on_hours_total',
+            self,
+            tracked_expression=(self.on * self._model.hours_per_step).sum('time'),
             bounds=(
                 self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
                 self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
-            ),   #TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
+            ),#TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
+            short_name='on_hours_total',
+            coords=self.get_coords(['year', 'scenario']),
         )
 
         # 4. Switch tracking using existing pattern

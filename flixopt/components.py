@@ -394,13 +394,13 @@ class Transmission(Component):
 
 
 class TransmissionModel(ComponentModel):
+    element: Transmission
+
     def __init__(self, model: FlowSystemModel, element: Transmission):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
             for flow in element.inputs + element.outputs:
                 if flow.on_off_parameters is None:
                     flow.on_off_parameters = OnOffParameters()
-        self.element: Transmission = element
-        self.on_off: Optional[OnOffModel] = None
 
         super().__init__(model, element)
 
@@ -438,9 +438,9 @@ class TransmissionModel(ComponentModel):
 
 
 class LinearConverterModel(ComponentModel):
+    element: LinearConverter
+
     def __init__(self, model: FlowSystemModel, element: LinearConverter):
-        self.element: LinearConverter = element
-        self.on_off: Optional[OnOffModel] = None
         self.piecewise_conversion: Optional[PiecewiseConversion] = None
         super().__init__(model, element)
 
@@ -485,6 +485,7 @@ class LinearConverterModel(ComponentModel):
 
 class StorageModel(ComponentModel):
     """Submodel of Storage"""
+    element: Storage
 
     def __init__(self, model: FlowSystemModel, element: Storage):
         super().__init__(model, element)
@@ -549,7 +550,7 @@ class StorageModel(ComponentModel):
 
         if self.element.balanced:
             self.add_constraints(
-                self.element.charging.model._investment.size * 1 == self.element.discharging.model._investment.size * 1,
+                self.element.charging.submodel._investment.size * 1 == self.element.discharging.submodel._investment.size * 1,
                 short_name='balanced_sizes',
             )
 
