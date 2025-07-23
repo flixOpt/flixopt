@@ -169,6 +169,32 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         return self.flow_system.weights
 
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the FlowSystemModel, borrowed from linopy.Model.
+        """
+        # Extract content from existing representations
+        sections = {
+            f'Variables: [{len(self.variables)}]': self.variables.__repr__().split('\n', 2)[2],
+            f'Constraints: [{len(self.constraints)}]': self.constraints.__repr__().split('\n', 2)[2],
+            f'Submodels: [{len(self.submodels)}]': self.submodels.__repr__().split('\n', 2)[2],
+            'Status': self.status,
+        }
+
+        # Format sections with headers and underlines
+        formatted_sections = []
+        for section_header, section_content in sections.items():
+            formatted_sections.append(
+                (f'{section_header}\n'
+                 f'{"-" * len(section_header)}\n'
+                 f'{section_content}')
+            )
+
+        title = f'FlowSystemModel ({self.type})'
+        return (f'{title}\n'
+                f'{"=" * len(title)}\n\n'
+                f'{"\n".join(formatted_sections)}')
+
 
 class Interface:
     """
@@ -874,40 +900,27 @@ class Submodel(SubmodelsMixin):
         """
         Return a string representation of the linopy model.
         """
-        # Extract content from variables and constraints representations
-        var_string = self.variables.__repr__().split('\n', 2)[2]
-        con_string = self.constraints.__repr__().split('\n', 2)[2]
-        model_string = f'Submodel of Linopy {self._model.type}:'
-
-        # Build submodels section
-        if len(self.submodels) == 0:
-            sub_models_string = ' <empty>\n'
-        else:
-            submodel_lines = []
-            for submodel_name, submodel in self.sub_models_direct.items():
-                class_name = submodel.__class__.__name__
-                submodel_lines.append(f' * {class_name}: "{submodel_name}" [{len(submodel.variables)} Vars + {len(submodel.constraints)} Cons]')
-            sub_models_string = '\n' + '\n'.join(submodel_lines)
-
-        # Create sections with counts and content
+        # Extract content from existing representations
         sections = {
-            f'Variables: [{len(self.variables)}/{len(self._model.variables)}]': var_string,
-            f'Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]': con_string,
-            f'Submodels: [{len(self.sub_models_direct)}]': sub_models_string,
+            f'Variables: [{len(self.variables)}/{len(self._model.variables)}]': self.variables.__repr__().split('\n', 2)[2],
+            f'Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]': self.constraints.__repr__().split('\n', 2)[2],
+            f'Submodels: [{len(self.submodels)}]': self.submodels.__repr__().split('\n', 2)[2],
         }
 
         # Format sections with headers and underlines
         formatted_sections = []
         for section_header, section_content in sections.items():
-            underline = '-' * len(section_header)
-            formatted_section = f'{section_header}\n{underline}\n{section_content}'
-            formatted_sections.append(formatted_section)
+            formatted_sections.append(
+                (f'{section_header}\n'
+                 f'{"-" * len(section_header)}\n'
+                 f'{section_content}')
+            )
 
-        # Combine everything with proper formatting
-        all_sections = '\n'.join(formatted_sections)
-        header_separator = '=' * len(model_string)
+        model_string = f'Submodel "{self.label_of_model}":'
 
-        return f'{model_string}\n{header_separator}\n\n{all_sections}'
+        return (f'{model_string}\n'
+                f'{"=" * len(model_string)}\n\n'
+                f'{"\n".join(formatted_sections)}')
 
     @property
     def hours_per_step(self):
@@ -945,14 +958,17 @@ class Submodels:
 
     def __repr__(self) -> str:
         """Simple representation of the submodels collection."""
+        title = 'flixopt.structure.Submodels:'
+        underline = '-' * len(title)
+
         if not self.data:
-            return 'Submodels:\n----------\n <empty>\n'
+            return f'{title}\n{underline}\n <empty>\n'
 
         sub_models_string = ''
         for name, submodel in self.data.items():
             sub_models_string += f'\n * {name} ({submodel.__class__.__name__}) [{len(submodel.variables)} Vars + {len(submodel.constraints)} Cons)'
 
-        return f'Submodels:\n----------{sub_models_string}\n'
+        return f'{title}\n{underline}{sub_models_string}\n'
 
     def items(self) -> ItemsView[str, 'Submodel']:
         return self.data.items()
