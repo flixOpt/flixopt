@@ -763,7 +763,10 @@ class Element(Interface):
 
 
 class Submodel(SubmodelsMixin):
-    """Stores Variables and Constraints."""
+    """Stores Variables and Constraints. Its a subset of a FlowSystemModel.
+    Variables and constraints are stored in the main FLowSystemModel, and are referenced here.
+    Can have other Submodels assigned, and can be a Submodel of another Submodel.
+    """
 
     def __init__(
         self, model: FlowSystemModel, label_of_element: str, label_of_model = None
@@ -1003,7 +1006,10 @@ class Submodels:
 
 
 class ElementModel(Submodel):
-    """Stores the mathematical Variables and Constraints for Elements"""
+    """
+    Stores the mathematical Variables and Constraints for Elements.
+    ElementModels are directly registered in the main FLowSystemModel
+    """
 
     def __init__(self, model: FlowSystemModel, element: Element):
         """
@@ -1012,7 +1018,8 @@ class ElementModel(Submodel):
             element: The element this model is created for.
         """
         self.element = element
-        super().__init__(model, label_of_element=element.label_full)
+        super().__init__(model, label_of_element=element.label_full, label_of_model=element.label_full)
+        self._model.add_submodels(self, short_name=self.label_of_model)
 
     def results_structure(self):
         return {
