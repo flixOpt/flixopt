@@ -146,7 +146,7 @@ class TestLinearConverterModel:
 
         # Create OnOffParameters
         on_off_params = fx.OnOffParameters(
-            on_hours_total_min=10, on_hours_total_max=40, effects_per_running_hour={'Costs': 5}
+            on_hours_total_min=10, on_hours_total_max=40, effects_per_running_hour={'costs': 5}
         )
 
         # Create a linear converter with OnOffParameters
@@ -186,10 +186,10 @@ class TestLinearConverterModel:
         )
 
         # Check on_off effects
-        assert 'Converter->Costs(operation)' in model.constraints
+        assert 'Converter->costs(operation)' in model.constraints
         assert_conequal(
-            model.constraints['Converter->Costs(operation)'],
-            model.variables['Converter->Costs(operation)']
+            model.constraints['Converter->costs(operation)'],
+            model.variables['Converter->costs(operation)']
             == model.variables['Converter|on'] * model.hours_per_step * 5,
         )
 
@@ -398,7 +398,7 @@ class TestLinearConverterModel:
 
         # Create OnOffParameters
         on_off_params = fx.OnOffParameters(
-            on_hours_total_min=10, on_hours_total_max=40, effects_per_running_hour={'Costs': 5}
+            on_hours_total_min=10, on_hours_total_max=40, effects_per_running_hour={'costs': 5}
         )
 
         # Create a linear converter with piecewise conversion and on/off parameters
@@ -489,10 +489,10 @@ class TestLinearConverterModel:
         )
 
         # Verify that the costs effect is applied
-        assert 'Converter->Costs(operation)' in model.constraints
+        assert 'Converter->costs(operation)' in model.constraints
         assert_conequal(
-            model.constraints['Converter->Costs(operation)'],
-            model.variables['Converter->Costs(operation)']
+            model.constraints['Converter->costs(operation)'],
+            model.variables['Converter->costs(operation)']
             == model.variables['Converter|on'] * model.hours_per_step * 5,
         )
 

@@ -204,7 +204,7 @@ class TestEffectModel:
 class TestEffectResults:
     def test_shares(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
-        flow_system.effects['Costs'].specific_share_to_other_effects_operation['Effect1'] = 0.5
+        flow_system.effects['costs'].specific_share_to_other_effects_operation['Effect1'] = 0.5
         flow_system.add_elements(
             fx.Effect(
                 'Effect1',
@@ -230,9 +230,9 @@ class TestEffectResults:
 
         effect_share_factors = {
             'operation': {
-                ('Costs', 'Effect1'): 0.5,
-                ('Costs', 'Effect2'): 0.5 * 1.1,
-                ('Costs', 'Effect3'): 0.5 * 1.1 * 5 + 0.5 * 1.2,  # This is where the issue lies
+                ('costs', 'Effect1'): 0.5,
+                ('costs', 'Effect2'): 0.5 * 1.1,
+                ('costs', 'Effect3'): 0.5 * 1.1 * 5 + 0.5 * 1.2,  # This is where the issue lies
                 ('Effect1', 'Effect2'): 1.1,
                 ('Effect1', 'Effect3'): 1.2 + 1.1 * 5,
                 ('Effect2', 'Effect3'): 5,
@@ -249,8 +249,8 @@ class TestEffectResults:
             np.testing.assert_allclose(results.effect_share_factors['invest'][key].values, value)
 
         xr.testing.assert_allclose(
-            results.effects_per_component('operation').sum('component')['Costs'],
-            results.solution['Costs(operation)|total_per_timestep'].fillna(0),
+            results.effects_per_component('operation').sum('component')['costs'],
+            results.solution['costs(operation)|total_per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
@@ -270,7 +270,7 @@ class TestEffectResults:
 
         # Invest mode checks
         xr.testing.assert_allclose(
-            results.effects_per_component('invest').sum('component')['Costs'], results.solution['Costs(invest)|total']
+            results.effects_per_component('invest').sum('component')['costs'], results.solution['costs(invest)|total']
         )
 
         xr.testing.assert_allclose(
@@ -290,7 +290,7 @@ class TestEffectResults:
 
         # Total mode checks
         xr.testing.assert_allclose(
-            results.effects_per_component('total').sum('component')['Costs'], results.solution['Costs|total']
+            results.effects_per_component('total').sum('component')['costs'], results.solution['costs|total']
         )
 
         xr.testing.assert_allclose(
