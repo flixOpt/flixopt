@@ -188,7 +188,7 @@ if __name__ == '__main__':
             if calc.name == 'Segmented':
                 dataarrays.append(calc.results.solution_without_overlap(variable).rename(calc.name))
             else:
-                dataarrays.append(calc.results.submodel.variables[variable].solution.rename(calc.name))
+                dataarrays.append(calc.results.model.variables[variable].solution.rename(calc.name))
         return xr.merge(dataarrays)
 
     # --- Plotting for comparison ---
