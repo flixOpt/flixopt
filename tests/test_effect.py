@@ -25,14 +25,23 @@ class TestEffectModel:
         flow_system.add_elements(effect)
         model = create_linopy_model(flow_system)
 
-        assert set(effect.submodel.variables) == {'Effect1(invest)|total',
-                                                 'Effect1(operation)|total',
-                                                 'Effect1(operation)|total_per_timestep',
-                                                 'Effect1|total',}
-        assert set(effect.submodel.constraints) == {'Effect1(invest)|total',
-                                                 'Effect1(operation)|total',
-                                                 'Effect1(operation)|total_per_timestep',
-                                                 'Effect1|total',}
+        assert_sets_equal(
+            set(effect.submodel.variables),
+            {'Effect1(invest)|total',
+             'Effect1(operation)|total',
+             'Effect1(operation)|total_per_timestep',
+             'Effect1|total'},
+            msg='Incorrect variables'
+        )
+
+        assert_sets_equal(
+            set(effect.submodel.constraints),
+            {'Effect1(invest)|total',
+             'Effect1(operation)|total',
+             'Effect1(operation)|total_per_timestep',
+             'Effect1|total'},
+            msg='Incorrect constraints'
+        )
 
         assert_var_equal(model.variables['Effect1|total'], model.add_variables())
         assert_var_equal(model.variables['Effect1(invest)|total'], model.add_variables())
@@ -64,14 +73,23 @@ class TestEffectModel:
         flow_system.add_elements(effect)
         model = create_linopy_model(flow_system)
 
-        assert set(effect.submodel.variables) == {'Effect1(invest)|total',
-                                                 'Effect1(operation)|total',
-                                                 'Effect1(operation)|total_per_timestep',
-                                                 'Effect1|total',}
-        assert set(effect.submodel.constraints) == {'Effect1(invest)|total',
-                                                 'Effect1(operation)|total',
-                                                 'Effect1(operation)|total_per_timestep',
-                                                 'Effect1|total',}
+        assert_sets_equal(
+            set(effect.submodel.variables),
+            {'Effect1(invest)|total',
+             'Effect1(operation)|total',
+             'Effect1(operation)|total_per_timestep',
+             'Effect1|total'},
+            msg='Incorrect variables'
+        )
+
+        assert_sets_equal(
+            set(effect.submodel.constraints),
+            {'Effect1(invest)|total',
+             'Effect1(operation)|total',
+             'Effect1(operation)|total_per_timestep',
+             'Effect1|total'},
+            msg='Incorrect constraints'
+        )
 
         assert_var_equal(model.variables['Effect1|total'], model.add_variables(lower=3.0, upper=3.1))
         assert_var_equal(model.variables['Effect1(invest)|total'], model.add_variables(lower=2.0, upper=2.1))
@@ -106,22 +124,31 @@ class TestEffectModel:
         flow_system.add_elements(effect1, effect2, effect3)
         model = create_linopy_model(flow_system)
 
-        assert set(effect2.submodel.variables) == {
-            'Effect2(invest)|total',
-            'Effect2(operation)|total',
-            'Effect2(operation)|total_per_timestep',
-            'Effect2|total',
-            'Effect1(invest)->Effect2(invest)',
-            'Effect1(operation)->Effect2(operation)',
-        }
-        assert set(effect2.submodel.constraints) == {
-            'Effect2(invest)|total',
-            'Effect2(operation)|total',
-            'Effect2(operation)|total_per_timestep',
-            'Effect2|total',
-            'Effect1(invest)->Effect2(invest)',
-            'Effect1(operation)->Effect2(operation)',
-        }
+        assert_sets_equal(
+            set(effect2.submodel.variables),
+            {
+                'Effect2(invest)|total',
+                'Effect2(operation)|total',
+                'Effect2(operation)|total_per_timestep',
+                'Effect2|total',
+                'Effect1(invest)->Effect2(invest)',
+                'Effect1(operation)->Effect2(operation)',
+            },
+            msg='Incorrect variables for effect2'
+        )
+
+        assert_sets_equal(
+            set(effect2.submodel.constraints),
+            {
+                'Effect2(invest)|total',
+                'Effect2(operation)|total',
+                'Effect2(operation)|total_per_timestep',
+                'Effect2|total',
+                'Effect1(invest)->Effect2(invest)',
+                'Effect1(operation)->Effect2(operation)',
+            },
+            msg='Incorrect constraints for effect2'
+        )
 
         assert_conequal(
             model.constraints['Effect2(invest)|total'],
@@ -227,4 +254,3 @@ class TestEffectResults:
 
         xr.testing.assert_allclose(results.effects_per_component('total').sum('component')['Effect3'],
                                    results.solution['Effect3|total'])
-

@@ -47,19 +47,27 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         _ = create_linopy_model(flow_system)
 
-        assert {'TestComponent(In1)|flow_rate',
- 'TestComponent(In1)|total_flow_hours',
- 'TestComponent(In2)|flow_rate',
- 'TestComponent(In2)|total_flow_hours',
- 'TestComponent(Out1)|flow_rate',
- 'TestComponent(Out1)|total_flow_hours',
- 'TestComponent(Out2)|flow_rate',
- 'TestComponent(Out2)|total_flow_hours'} == set(comp.submodel.variables)
+        assert_sets_equal(
+            set(comp.submodel.variables),
+            {'TestComponent(In1)|flow_rate',
+             'TestComponent(In1)|total_flow_hours',
+             'TestComponent(In2)|flow_rate',
+             'TestComponent(In2)|total_flow_hours',
+             'TestComponent(Out1)|flow_rate',
+             'TestComponent(Out1)|total_flow_hours',
+             'TestComponent(Out2)|flow_rate',
+             'TestComponent(Out2)|total_flow_hours'},
+            msg='Incorrect variables'
+        )
 
-        assert {'TestComponent(In1)|total_flow_hours',
- 'TestComponent(In2)|total_flow_hours',
- 'TestComponent(Out1)|total_flow_hours',
- 'TestComponent(Out2)|total_flow_hours'} == set(comp.submodel.constraints)
+        assert_sets_equal(
+            set(comp.submodel.constraints),
+            {'TestComponent(In1)|total_flow_hours',
+             'TestComponent(In2)|total_flow_hours',
+             'TestComponent(Out1)|total_flow_hours',
+             'TestComponent(Out2)|total_flow_hours'},
+            msg='Incorrect constraints'
+        )
 
     def test_on_with_multiple_flows(self, basic_flow_system_linopy):
         """Test that flow model constraints are correctly generated."""
@@ -167,23 +175,31 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert set(comp.submodel.variables) == {
-            'TestComponent(In1)|flow_rate',
-            'TestComponent(In1)|total_flow_hours',
-            'TestComponent(In1)|on',
-            'TestComponent(In1)|on_hours_total',
-            'TestComponent|on',
-            'TestComponent|on_hours_total',
-        }
+        assert_sets_equal(
+            set(comp.submodel.variables),
+            {
+                'TestComponent(In1)|flow_rate',
+                'TestComponent(In1)|total_flow_hours',
+                'TestComponent(In1)|on',
+                'TestComponent(In1)|on_hours_total',
+                'TestComponent|on',
+                'TestComponent|on_hours_total',
+            },
+            msg='Incorrect variables'
+        )
 
-        assert set(comp.submodel.constraints) == {
-            'TestComponent(In1)|total_flow_hours',
-            'TestComponent(In1)|flow_rate|lb',
-            'TestComponent(In1)|flow_rate|ub',
-            'TestComponent(In1)|on_hours_total',
-            'TestComponent|on',
-            'TestComponent|on_hours_total',
-        }
+        assert_sets_equal(
+            set(comp.submodel.constraints),
+            {
+                'TestComponent(In1)|total_flow_hours',
+                'TestComponent(In1)|flow_rate|lb',
+                'TestComponent(In1)|flow_rate|ub',
+                'TestComponent(In1)|on_hours_total',
+                'TestComponent|on',
+                'TestComponent|on_hours_total',
+            },
+            msg='Incorrect constraints'
+        )
 
         assert_var_equal(
             model['TestComponent(In1)|flow_rate'], model.add_variables(lower=0, upper=100, coords=(timesteps,))
@@ -223,40 +239,48 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert set(comp.submodel.variables) == {
-            'TestComponent(In1)|flow_rate',
-            'TestComponent(In1)|total_flow_hours',
-            'TestComponent(In1)|on',
-            'TestComponent(In1)|on_hours_total',
-            'TestComponent(Out1)|flow_rate',
-            'TestComponent(Out1)|total_flow_hours',
-            'TestComponent(Out1)|on',
-            'TestComponent(Out1)|on_hours_total',
-            'TestComponent(Out2)|flow_rate',
-            'TestComponent(Out2)|total_flow_hours',
-            'TestComponent(Out2)|on',
-            'TestComponent(Out2)|on_hours_total',
-            'TestComponent|on',
-            'TestComponent|on_hours_total',
-        }
+        assert_sets_equal(
+            set(comp.submodel.variables),
+            {
+                'TestComponent(In1)|flow_rate',
+                'TestComponent(In1)|total_flow_hours',
+                'TestComponent(In1)|on',
+                'TestComponent(In1)|on_hours_total',
+                'TestComponent(Out1)|flow_rate',
+                'TestComponent(Out1)|total_flow_hours',
+                'TestComponent(Out1)|on',
+                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out2)|flow_rate',
+                'TestComponent(Out2)|total_flow_hours',
+                'TestComponent(Out2)|on',
+                'TestComponent(Out2)|on_hours_total',
+                'TestComponent|on',
+                'TestComponent|on_hours_total',
+            },
+            msg='Incorrect variables'
+        )
 
-        assert  set(comp.submodel.constraints) == {
-            'TestComponent(In1)|total_flow_hours',
-            'TestComponent(In1)|flow_rate|lb',
-            'TestComponent(In1)|flow_rate|ub',
-            'TestComponent(In1)|on_hours_total',
-            'TestComponent(Out1)|total_flow_hours',
-            'TestComponent(Out1)|flow_rate|lb',
-            'TestComponent(Out1)|flow_rate|ub',
-            'TestComponent(Out1)|on_hours_total',
-            'TestComponent(Out2)|total_flow_hours',
-            'TestComponent(Out2)|flow_rate|lb',
-            'TestComponent(Out2)|flow_rate|ub',
-            'TestComponent(Out2)|on_hours_total',
-            'TestComponent|on|lb',
-            'TestComponent|on|ub',
-            'TestComponent|on_hours_total',
-        }
+        assert_sets_equal(
+            set(comp.submodel.constraints),
+            {
+                'TestComponent(In1)|total_flow_hours',
+                'TestComponent(In1)|flow_rate|lb',
+                'TestComponent(In1)|flow_rate|ub',
+                'TestComponent(In1)|on_hours_total',
+                'TestComponent(Out1)|total_flow_hours',
+                'TestComponent(Out1)|flow_rate|lb',
+                'TestComponent(Out1)|flow_rate|ub',
+                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out2)|total_flow_hours',
+                'TestComponent(Out2)|flow_rate|lb',
+                'TestComponent(Out2)|flow_rate|ub',
+                'TestComponent(Out2)|on_hours_total',
+                'TestComponent|on|lb',
+                'TestComponent|on|ub',
+                'TestComponent|on_hours_total',
+            },
+            msg='Incorrect constraints'
+        )
 
         assert_var_equal(model['TestComponent(Out2)|flow_rate'],
                          model.add_variables(lower=0, upper=300 * ub_out2, coords=(timesteps,)))

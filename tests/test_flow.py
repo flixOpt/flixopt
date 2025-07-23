@@ -5,7 +5,7 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_var_equal, create_linopy_model
+from .conftest import assert_conequal, assert_sets_equal, assert_var_equal, create_linopy_model
 
 
 class TestFlowModel:
@@ -29,8 +29,16 @@ class TestFlowModel:
                             model.add_variables(lower=0, upper=100, coords=(timesteps,)))
         assert_var_equal(flow.submodel.total_flow_hours, model.add_variables(lower=0))
 
-        assert set(flow.submodel.variables) == set(['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'])
-        assert set(flow.submodel.constraints) == set(['Sink(Wärme)|total_flow_hours'])
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'},
+            msg='Incorrect variables'
+        )
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {'Sink(Wärme)|total_flow_hours'},
+            msg='Incorrect constraints'
+        )
 
     def test_flow(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
@@ -81,8 +89,16 @@ class TestFlowModel:
             <= model.hours_per_step.sum('time') * 0.9 * 100,
         )
 
-        assert set(flow.submodel.variables) == set(['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'])
-        assert set(flow.submodel.constraints) == set(['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|load_factor_max', 'Sink(Wärme)|load_factor_min'])
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'},
+            msg='Incorrect variables'
+        )
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|load_factor_max', 'Sink(Wärme)|load_factor_min'},
+            msg='Incorrect constraints'
+        )
 
     def test_effects_per_flow_hour(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
@@ -100,8 +116,16 @@ class TestFlowModel:
         model = create_linopy_model(flow_system)
         costs, co2 = flow_system.effects['Costs'], flow_system.effects['CO2']
 
-        assert set(flow.submodel.variables) == {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'}
-        assert set(flow.submodel.constraints) == {'Sink(Wärme)|total_flow_hours'}
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'},
+            msg='Incorrect variables'
+        )
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {'Sink(Wärme)|total_flow_hours'},
+            msg='Incorrect constraints'
+        )
 
         assert 'Sink(Wärme)->Costs(operation)' in set(costs.submodel.constraints)
         assert 'Sink(Wärme)->CO2(operation)' in set(co2.submodel.constraints)
@@ -133,19 +157,23 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
         model = create_linopy_model(flow_system)
 
-        assert set(flow.submodel.variables) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|flow_rate',
                 'Sink(Wärme)|size',
-            ]
+            },
+            msg='Incorrect variables'
         )
-        assert set(flow.submodel.constraints) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|flow_rate|ub',
                 'Sink(Wärme)|flow_rate|lb',
-            ]
+            },
+            msg='Incorrect constraints'
         )
 
         # size
@@ -188,17 +216,21 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
         model = create_linopy_model(flow_system)
 
-        assert set(flow.submodel.variables) == set(
-            ['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|is_invested']
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|is_invested'},
+            msg='Incorrect variables'
         )
-        assert set(flow.submodel.constraints) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|size|lb',
                 'Sink(Wärme)|size|ub',
                 'Sink(Wärme)|flow_rate|lb',
                 'Sink(Wärme)|flow_rate|ub',
-            ]
+            },
+            msg='Incorrect constraints'
         )
 
         assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=0, upper=100))
@@ -252,17 +284,21 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
         model = create_linopy_model(flow_system)
 
-        assert set(flow.submodel.variables) == set(
-            ['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|is_invested']
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|is_invested'},
+            msg='Incorrect variables'
         )
-        assert set(flow.submodel.constraints) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|size|ub',
                 'Sink(Wärme)|size|lb',
                 'Sink(Wärme)|flow_rate|lb',
                 'Sink(Wärme)|flow_rate|ub',
-            ]
+            },
+            msg='Incorrect constraints'
         )
 
         assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=0, upper=100))
@@ -316,15 +352,19 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
         model = create_linopy_model(flow_system)
 
-        assert set(flow.submodel.variables) == set(
-            ['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size']
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size'},
+            msg='Incorrect variables'
         )
-        assert set(flow.submodel.constraints) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|flow_rate|lb',
                 'Sink(Wärme)|flow_rate|ub',
-            ]
+            },
+            msg='Incorrect constraints'
         )
 
         assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=1e-5, upper=100))
@@ -367,7 +407,11 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
         model = create_linopy_model(flow_system)
 
-        assert set(flow.submodel.variables) == {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size'}
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size'},
+            msg='Incorrect variables'
+        )
 
         # Check that size is fixed to 75
         assert_var_equal(flow.submodel.variables['Sink(Wärme)|size'], model.add_variables(lower=75, upper=75))
@@ -458,17 +502,21 @@ class TestFlowOnModel:
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
         model = create_linopy_model(flow_system)
 
-        assert set(flow.submodel.variables) == set(
-            ['Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|on', 'Sink(Wärme)|on_hours_total']
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|on', 'Sink(Wärme)|on_hours_total'},
+            msg='Incorrect variables'
         )
 
-        assert set(flow.submodel.constraints) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|on_hours_total',
                 'Sink(Wärme)|flow_rate|lb',
                 'Sink(Wärme)|flow_rate|ub',
-            ]
+            },
+            msg='Incorrect constraints'
         )
         # flow_rate
         assert_var_equal(
@@ -522,18 +570,26 @@ class TestFlowOnModel:
         model = create_linopy_model(flow_system)
         costs, co2 = flow_system.effects['Costs'], flow_system.effects['CO2']
 
-        assert set(flow.submodel.variables) == {
-            'Sink(Wärme)|total_flow_hours',
-            'Sink(Wärme)|flow_rate',
-            'Sink(Wärme)|on',
-            'Sink(Wärme)|on_hours_total',
-        }
-        assert set(flow.submodel.constraints) == {
-            'Sink(Wärme)|total_flow_hours',
-            'Sink(Wärme)|flow_rate|lb',
-            'Sink(Wärme)|flow_rate|ub',
-            'Sink(Wärme)|on_hours_total',
-        }
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {
+                'Sink(Wärme)|total_flow_hours',
+                'Sink(Wärme)|flow_rate',
+                'Sink(Wärme)|on',
+                'Sink(Wärme)|on_hours_total',
+            },
+            msg='Incorrect variables'
+        )
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {
+                'Sink(Wärme)|total_flow_hours',
+                'Sink(Wärme)|flow_rate|lb',
+                'Sink(Wärme)|flow_rate|ub',
+                'Sink(Wärme)|on_hours_total',
+            },
+            msg='Incorrect constraints'
+        )
 
         assert 'Sink(Wärme)->Costs(operation)' in set(costs.submodel.constraints)
         assert 'Sink(Wärme)->CO2(operation)' in set(co2.submodel.constraints)
@@ -570,12 +626,19 @@ class TestFlowOnModel:
 
         assert {'Sink(Wärme)|consecutive_on_hours', 'Sink(Wärme)|on'}.issubset(set(flow.submodel.variables))
 
-        assert {'Sink(Wärme)|consecutive_on_hours|ub',
-         'Sink(Wärme)|consecutive_on_hours|forward',
-         'Sink(Wärme)|consecutive_on_hours|backward',
-         'Sink(Wärme)|consecutive_on_hours|initial',
-         'Sink(Wärme)|consecutive_on_hours|lb',
-        }.issubset(set(flow.submodel.constraints))
+        assert_sets_equal(
+            {'Sink(Wärme)|consecutive_on_hours|ub',
+             'Sink(Wärme)|consecutive_on_hours|forward',
+             'Sink(Wärme)|consecutive_on_hours|backward',
+             'Sink(Wärme)|consecutive_on_hours|initial',
+             'Sink(Wärme)|consecutive_on_hours|lb'} & set(flow.submodel.constraints),
+            {'Sink(Wärme)|consecutive_on_hours|ub',
+             'Sink(Wärme)|consecutive_on_hours|forward',
+             'Sink(Wärme)|consecutive_on_hours|backward',
+             'Sink(Wärme)|consecutive_on_hours|initial',
+             'Sink(Wärme)|consecutive_on_hours|lb'},
+            msg='Missing consecutive on hours constraints'
+        )
 
         assert_var_equal(
             model.variables['Sink(Wärme)|consecutive_on_hours'],
@@ -637,11 +700,17 @@ class TestFlowOnModel:
 
         assert {'Sink(Wärme)|consecutive_on_hours', 'Sink(Wärme)|on'}.issubset(set(flow.submodel.variables))
 
-        assert {'Sink(Wärme)|consecutive_on_hours|lb',
-         'Sink(Wärme)|consecutive_on_hours|forward',
-         'Sink(Wärme)|consecutive_on_hours|backward',
-         'Sink(Wärme)|consecutive_on_hours|initial',
-        }.issubset(set(flow.submodel.constraints))
+        assert_sets_equal(
+            {'Sink(Wärme)|consecutive_on_hours|lb',
+             'Sink(Wärme)|consecutive_on_hours|forward',
+             'Sink(Wärme)|consecutive_on_hours|backward',
+             'Sink(Wärme)|consecutive_on_hours|initial'} & set(flow.submodel.constraints),
+            {'Sink(Wärme)|consecutive_on_hours|lb',
+             'Sink(Wärme)|consecutive_on_hours|forward',
+             'Sink(Wärme)|consecutive_on_hours|backward',
+             'Sink(Wärme)|consecutive_on_hours|initial'},
+            msg='Missing consecutive on hours constraints for previous states'
+        )
 
         assert_var_equal(
             model.variables['Sink(Wärme)|consecutive_on_hours'],
@@ -702,13 +771,23 @@ class TestFlowOnModel:
 
         assert {'Sink(Wärme)|consecutive_off_hours', 'Sink(Wärme)|off'}.issubset(set(flow.submodel.variables))
 
-        assert {
-            'Sink(Wärme)|consecutive_off_hours|ub',
-         'Sink(Wärme)|consecutive_off_hours|forward',
-         'Sink(Wärme)|consecutive_off_hours|backward',
-         'Sink(Wärme)|consecutive_off_hours|initial',
-         'Sink(Wärme)|consecutive_off_hours|lb'
-        }.issubset(set(flow.submodel.constraints))
+        assert_sets_equal(
+            {
+                'Sink(Wärme)|consecutive_off_hours|ub',
+                'Sink(Wärme)|consecutive_off_hours|forward',
+                'Sink(Wärme)|consecutive_off_hours|backward',
+                'Sink(Wärme)|consecutive_off_hours|initial',
+                'Sink(Wärme)|consecutive_off_hours|lb'
+            } & set(flow.submodel.constraints),
+            {
+                'Sink(Wärme)|consecutive_off_hours|ub',
+                'Sink(Wärme)|consecutive_off_hours|forward',
+                'Sink(Wärme)|consecutive_off_hours|backward',
+                'Sink(Wärme)|consecutive_off_hours|initial',
+                'Sink(Wärme)|consecutive_off_hours|lb'
+            },
+            msg='Missing consecutive off hours constraints'
+        )
 
         assert_var_equal(
             model.variables['Sink(Wärme)|consecutive_off_hours'],
@@ -770,13 +849,23 @@ class TestFlowOnModel:
 
         assert {'Sink(Wärme)|consecutive_off_hours', 'Sink(Wärme)|off'}.issubset(set(flow.submodel.variables))
 
-        assert {
-            'Sink(Wärme)|consecutive_off_hours|ub',
-         'Sink(Wärme)|consecutive_off_hours|forward',
-         'Sink(Wärme)|consecutive_off_hours|backward',
-         'Sink(Wärme)|consecutive_off_hours|initial',
-         'Sink(Wärme)|consecutive_off_hours|lb'
-        }.issubset(set(flow.submodel.constraints))
+        assert_sets_equal(
+            {
+                'Sink(Wärme)|consecutive_off_hours|ub',
+                'Sink(Wärme)|consecutive_off_hours|forward',
+                'Sink(Wärme)|consecutive_off_hours|backward',
+                'Sink(Wärme)|consecutive_off_hours|initial',
+                'Sink(Wärme)|consecutive_off_hours|lb'
+            } & set(flow.submodel.constraints),
+            {
+                'Sink(Wärme)|consecutive_off_hours|ub',
+                'Sink(Wärme)|consecutive_off_hours|forward',
+                'Sink(Wärme)|consecutive_off_hours|backward',
+                'Sink(Wärme)|consecutive_off_hours|initial',
+                'Sink(Wärme)|consecutive_off_hours|lb'
+            },
+            msg='Missing consecutive off hours constraints for previous states'
+        )
 
         assert_var_equal(
             model.variables['Sink(Wärme)|consecutive_off_hours'],
@@ -840,12 +929,21 @@ class TestFlowOnModel:
         )
 
         # Check that constraints exist
-        assert {
-            'Sink(Wärme)|switch|transition',
-            'Sink(Wärme)|switch|initial',
-            'Sink(Wärme)|switch|mutex',
-            'Sink(Wärme)|switch|count',
-        }.issubset(set(flow.submodel.constraints))
+        assert_sets_equal(
+            {
+                'Sink(Wärme)|switch|transition',
+                'Sink(Wärme)|switch|initial',
+                'Sink(Wärme)|switch|mutex',
+                'Sink(Wärme)|switch|count',
+            } & set(flow.submodel.constraints),
+            {
+                'Sink(Wärme)|switch|transition',
+                'Sink(Wärme)|switch|initial',
+                'Sink(Wärme)|switch|mutex',
+                'Sink(Wärme)|switch|count',
+            },
+            msg='Missing switch constraints'
+        )
 
         # Check switch_on_nr variable bounds
         assert_var_equal(flow.submodel.variables['Sink(Wärme)|switch|count'], model.add_variables(lower=0, upper=5))
@@ -917,19 +1015,22 @@ class TestFlowOnInvestModel:
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
         model = create_linopy_model(flow_system)
 
-        assert set(flow.submodel.variables) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|flow_rate',
                 'Sink(Wärme)|is_invested',
                 'Sink(Wärme)|size',
                 'Sink(Wärme)|on',
                 'Sink(Wärme)|on_hours_total',
-            ]
+            },
+            msg='Incorrect variables'
         )
 
-        assert set(flow.submodel.constraints) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|on_hours_total',
                 'Sink(Wärme)|flow_rate|lb1',
@@ -938,7 +1039,8 @@ class TestFlowOnInvestModel:
                 'Sink(Wärme)|size|ub',
                 'Sink(Wärme)|flow_rate|lb2',
                 'Sink(Wärme)|flow_rate|ub2',
-            ]
+            },
+            msg='Incorrect constraints'
         )
 
         # flow_rate
@@ -1010,25 +1112,29 @@ class TestFlowOnInvestModel:
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
         model = create_linopy_model(flow_system)
 
-        assert set(flow.submodel.variables) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.variables),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|flow_rate',
                 'Sink(Wärme)|size',
                 'Sink(Wärme)|on',
                 'Sink(Wärme)|on_hours_total',
-            ]
+            },
+            msg='Incorrect variables'
         )
 
-        assert set(flow.submodel.constraints) == set(
-            [
+        assert_sets_equal(
+            set(flow.submodel.constraints),
+            {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|on_hours_total',
                 'Sink(Wärme)|flow_rate|lb1',
                 'Sink(Wärme)|flow_rate|ub1',
                 'Sink(Wärme)|flow_rate|lb2',
                 'Sink(Wärme)|flow_rate|ub2',
-            ]
+            },
+            msg='Incorrect constraints'
         )
 
         # flow_rate
