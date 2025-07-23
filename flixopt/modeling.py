@@ -199,6 +199,9 @@ class ModelingPrimitives:
             variables: {'tracker': tracker_var}
             constraints: {'tracking': constraint}
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('ModelingPrimitives.expression_tracking_variable() can only be used with a Submodel')
+
         coords = coords or ['year', 'scenario']
 
         if not bounds:
@@ -239,6 +242,9 @@ class ModelingPrimitives:
             variables: {'switch_on': binary_var, 'switch_off': binary_var}
             constraints: {'transition': constraint, 'initial': constraint, 'mutex': constraint}
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('ModelingPrimitives.state_transition_variables() can only be used with a Submodel')
+
         # State transition constraints for t > 0
         transition = model.add_constraints(
             switch_on.isel(time=slice(1, None)) - switch_off.isel(time=slice(1, None))
@@ -259,7 +265,7 @@ class ModelingPrimitives:
 
     @staticmethod
     def sum_up_variable(
-        model: FlowSystemModel,
+        model: Submodel,
         variable_to_count: linopy.Variable,
         name: str = None,
         bounds: Tuple[NonTemporalData, NonTemporalData] = None,
@@ -275,6 +281,9 @@ class ModelingPrimitives:
             bounds: The bounds of the constraint
             factor: The factor to be applied to the variable
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
+
         if bounds is None:
             bounds = (0, np.inf)
         else:
@@ -293,7 +302,7 @@ class ModelingPrimitives:
 
     @staticmethod
     def consecutive_duration_tracking(
-        model: FlowSystemModel,
+        model: Submodel,
         state_variable: linopy.Variable,
         name: str = None,
         short_name: str = None,
@@ -324,6 +333,9 @@ class ModelingPrimitives:
             variables: {'duration': duration_var}
             constraints: {'ub': constraint, 'forward': constraint, 'backward': constraint, ...}
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
+
         hours_per_step = model.hours_per_step
         mega = hours_per_step.sum('time') + previous_duration  # Big-M value
 
@@ -411,6 +423,9 @@ class ModelingPrimitives:
         Raises:
             AssertionError: If fewer than 2 variables provided or variables aren't binary
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
+
         assert len(binary_variables) >= 2, (
             f'Mutual exclusivity requires at least 2 variables, got {len(binary_variables)}'
         )
@@ -431,7 +446,7 @@ class BoundingPatterns:
 
     @staticmethod
     def basic_bounds(
-        model: FlowSystemModel,
+        model: Submodel,
         variable: linopy.Variable,
         bounds: Tuple[TemporalData, TemporalData],
         name: str = None,
@@ -452,6 +467,9 @@ class BoundingPatterns:
                 - variables (Dict): Empty dict
                 - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('BoundingPatterns.basic_bounds() can only be used with a Submodel')
+
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
@@ -462,7 +480,7 @@ class BoundingPatterns:
 
     @staticmethod
     def bounds_with_state(
-        model: FlowSystemModel,
+        model: Submodel,
         variable: linopy.Variable,
         bounds: Tuple[TemporalData, TemporalData],
         variable_state: linopy.Variable,
@@ -489,6 +507,9 @@ class BoundingPatterns:
                 - variables (Dict): Empty dict
                 - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('BoundingPatterns.bounds_with_state() can only be used with a Submodel')
+
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
@@ -507,7 +528,7 @@ class BoundingPatterns:
 
     @staticmethod
     def scaled_bounds(
-        model: FlowSystemModel,
+        model: Submodel,
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
         relative_bounds: Tuple[TemporalData, TemporalData],
@@ -534,6 +555,9 @@ class BoundingPatterns:
                 - variables (Dict): Empty dict
                 - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('BoundingPatterns.scaled_bounds() can only be used with a Submodel')
+
         rel_lower, rel_upper = relative_bounds
         name = name or f'{variable.name}'
 
@@ -547,7 +571,7 @@ class BoundingPatterns:
 
     @staticmethod
     def scaled_bounds_with_state(
-        model: FlowSystemModel,
+        model: Submodel,
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
         relative_bounds: Tuple[TemporalData, TemporalData],
@@ -580,6 +604,9 @@ class BoundingPatterns:
         Returns:
             List[linopy.Constraint]: List of constraint objects
         """
+        if not isinstance(model, Submodel):
+            raise ValueError('BoundingPatterns.active_bounds_with_state() can only be used with a Submodel')
+
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
         name = name or f'{variable.name}'
@@ -600,88 +627,3 @@ class BoundingPatterns:
         binary_lower = model.add_constraints(variable_state * big_m_lower <= variable, name=f'{name}|lb1')
 
         return [scaling_lower, scaling_upper, binary_lower, binary_upper]
-
-    @staticmethod
-    def auto_bounds(
-        model: FlowSystemModel,
-        variable: linopy.Variable,
-        bounds: Tuple[TemporalData, TemporalData],
-        scaling_variable: linopy.Variable = None,
-        scaling_state: linopy.Variable = None,
-        scaling_bounds: Tuple[TemporalData, TemporalData] = None,
-        variable_state: linopy.Variable = None,
-    ) -> List[linopy.Constraint]:
-        """Automatically select the appropriate bounds method.
-
-        Parameter Combinations:
-        1. Only bounds → basic_bounds()
-        2. bounds + scaling_variable → scaled_bounds()
-        3. bounds + variable_state → bounds_with_state()
-        4. bounds + scaling_variable + variable_state → binary_scaled_bounds()
-        5. bounds + scaling_variable + scaling_state + variable_state → scaled_bounds_with_state_on_both_scaling_and_variable()
-
-        Args:
-            model: The optimization model instance
-            variable: Variable to be bounded
-            bounds: Tuple of (lower, upper) bounds or relative factors
-            scaling_variable: Optional variable to scale bounds by
-            scaling_state: Optional binary variable for scaling_variable state
-            scaling_bounds: Required for cases 4,5 - bounds of scaling variable
-            variable_state: Optional binary variable for variable state
-
-        Returns:
-            Tuple from the selected method
-
-        Raises:
-            ValueError: If required parameters are missing
-        """
-        # Case 5: Dual binary control
-        if scaling_variable is not None and scaling_state is not None and variable_state is not None:
-            if scaling_bounds is None:
-                raise ValueError('scaling_bounds is required for dual binary control')
-            return BoundingPatterns.scaled_bounds_with_state_on_both_scaling_and_variable(
-                model=model,
-                variable=variable,
-                scaling_variable=scaling_variable,
-                relative_bounds=bounds,
-                scaling_state=scaling_state,
-                variable_state=variable_state,
-                scaling_bounds=scaling_bounds,
-            )
-
-        # Case 4: Binary scaled bounds
-        if scaling_variable is not None and variable_state is not None:
-            if scaling_bounds is None:
-                raise ValueError('scaling_bounds is required for binary scaled bounds')
-            return BoundingPatterns.binary_scaled_bounds(
-                model=model,
-                variable=variable,
-                scaling_variable=scaling_variable,
-                relative_bounds=bounds,
-                variable_state=variable_state,
-                scaling_bounds=scaling_bounds,
-            )
-
-        # Case 3: Binary controlled bounds
-        if variable_state is not None and scaling_variable is None:
-            return BoundingPatterns.bounds_with_state(
-                model=model,
-                variable=variable,
-                bounds=bounds,
-                variable_state=variable_state,
-            )
-
-        # Case 2: Scaled bounds
-        if scaling_variable is not None and variable_state is None:
-            return BoundingPatterns.scaled_bounds(
-                model=model,
-                variable=variable,
-                scaling_variable=scaling_variable,
-                relative_bounds=bounds,
-            )
-
-        # Case 1: Basic bounds
-        if scaling_variable is None and variable_state is None:
-            return BoundingPatterns.basic_bounds(model, variable, bounds)
-
-        raise ValueError('Invalid combination of arguments')
