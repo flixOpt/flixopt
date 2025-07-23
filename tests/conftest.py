@@ -5,6 +5,7 @@ It helps avoid redundancy and centralizes reusable test logic.
 """
 
 import os
+from typing import Iterable
 
 import linopy.testing
 import numpy as np
@@ -575,3 +576,24 @@ def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
 
     if actual.coord_dims != desired.coord_dims:
         raise AssertionError(f"{name} coordinate dimensions don't match: {actual.coord_dims} != {desired.coord_dims}")
+
+
+def assert_sets_equal(set1: Iterable, set2: Iterable, msg=""):
+    """Assert two sets are equal with custom error message."""
+    set1, set2 = set(set1), set(set2)
+
+    extra = set1 - set2
+    missing = set2 - set1
+
+    if extra or missing:
+        parts = []
+        if extra:
+            parts.append(f"Extra: {sorted(extra)}")
+        if missing:
+            parts.append(f"Missing: {sorted(missing)}")
+
+        error_msg = ", ".join(parts)
+        if msg:
+            error_msg = f"{msg}: {error_msg}"
+
+        raise AssertionError(error_msg)
