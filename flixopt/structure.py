@@ -975,15 +975,23 @@ class Submodels:
 
     def __repr__(self) -> str:
         """Simple representation of the submodels collection."""
-        title = 'flixopt.structure.Submodels:'
+        if not self.data:
+            return 'flixopt.structure.Submodels:\n----------------------------\n <empty>\n'
+
+        total_vars = sum(len(submodel.variables) for submodel in self.data.values())
+        total_cons = sum(len(submodel.constraints) for submodel in self.data.values())
+
+        title = f'flixopt.structure.Submodels ({total_vars} vars, {total_cons} constraints, {len(self.data)} submodels):'
         underline = '-' * len(title)
 
         if not self.data:
             return f'{title}\n{underline}\n <empty>\n'
-
         sub_models_string = ''
         for name, submodel in self.data.items():
-            sub_models_string += f'\n * {name} ({submodel.__class__.__name__}) [{len(submodel.variables)} Vars + {len(submodel.constraints)} Cons)'
+            type_name = submodel.__class__.__name__
+            var_count = len(submodel.variables)
+            con_count = len(submodel.constraints)
+            sub_models_string += f'\n * {name} [{type_name}] ({var_count}v/{con_count}c)'
 
         return f'{title}\n{underline}{sub_models_string}\n'
 
