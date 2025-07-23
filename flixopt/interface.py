@@ -339,15 +339,13 @@ class OnOffParameters(Interface):
     @property
     def use_switch_on(self) -> bool:
         """Determines wether a Variable for SWITCH-ON is needed or not"""
-        return (
-            any(
-                param not in (None, {})
-                for param in [
-                    self.effects_per_switch_on,
-                    self.switch_on_total_max,
-                    self.on_hours_total_min,
-                    self.on_hours_total_max,
-                ]
-            )
-            or self.force_switch_on
+        if self.force_switch_on:
+            return True
+
+        return any(
+            param is not None or param != {}
+            for param in [
+                self.effects_per_switch_on,
+                self.switch_on_total_max,
+            ]
         )
