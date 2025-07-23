@@ -470,7 +470,7 @@ class LinearConverterModel(ComponentModel):
                 for flow, piecewise in self.element.piecewise_conversion.items()
             }
 
-            self.piecewise_conversion = self.register_sub_model(
+            self.piecewise_conversion = self.add_submodels(
                 PiecewiseModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
@@ -527,7 +527,7 @@ class StorageModel(ComponentModel):
         )
 
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            self.register_sub_model(
+            self.add_submodels(
                 InvestmentModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
@@ -627,9 +627,9 @@ class StorageModel(ComponentModel):
     @property
     def investment(self) -> Optional[InvestmentModel]:
         """OnOff feature"""
-        if 'investment' not in self.sub_models_direct:
+        if 'investment' not in self.submodels:
             return None
-        return self.sub_models_direct['investment']
+        return self.submodels['investment']
 
     @property
     def charge_state(self) -> linopy.Variable:

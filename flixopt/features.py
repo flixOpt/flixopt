@@ -70,7 +70,7 @@ class InvestmentModel(Submodel):
             )
 
         if self.parameters.piecewise_effects:
-            self.piecewise_effects = self.register_sub_model(
+            self.piecewise_effects = self.add_submodels(
                 PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
@@ -365,7 +365,7 @@ class PiecewiseModel(Submodel):
     def _do_modeling(self):
         super()._do_modeling()
         for i in range(len(list(self._piecewise_variables.values())[0])):
-            new_piece = self.register_sub_model(
+            new_piece = self.add_submodels(
                 PieceModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
@@ -448,7 +448,7 @@ class PiecewiseEffectsModel(Submodel):
             },
         }
 
-        self.piecewise_model = self.register_sub_model(
+        self.piecewise_model = self.add_submodels(
             PiecewiseModel(
                 model=self._model,
                 label_of_element=self.label_of_element,

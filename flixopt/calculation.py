@@ -116,13 +116,13 @@ class Calculation:
                 'Invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
-                    for model in component.submodel.submodels
+                    for model in component.submodel.all_submodels
                     if isinstance(model, InvestmentModel) and model.size.solution.max() >= CONFIG.modeling.EPSILON
                 },
                 'Not invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
-                    for model in component.submodel.submodels
+                    for model in component.submodel.all_submodels
                     if isinstance(model, InvestmentModel) and model.size.solution.max() < CONFIG.modeling.EPSILON
                 },
             },
@@ -488,7 +488,7 @@ class SegmentedCalculation(Calculation):
                 invest_elements = [
                     model.label_full
                     for component in calculation.flow_system.components.values()
-                    for model in component.submodel.submodels
+                    for model in component.submodel.all_submodels
                     if isinstance(model, InvestmentModel)
                 ]
                 if invest_elements:

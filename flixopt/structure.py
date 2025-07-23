@@ -7,8 +7,9 @@ import inspect
 import json
 import logging
 import pathlib
+from dataclasses import dataclass
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Collection, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Literal, Optional, Tuple, Union, Protocol, runtime_checkable, ItemsView, Iterator
 
 import linopy
 import numpy as np
@@ -43,7 +44,34 @@ def register_class_for_io(cls):
     return cls
 
 
-class FlowSystemModel(linopy.Model):
+class SubmodelsMixin:
+    """Mixin that provides submodel functionality for both FlowSystemModel and Submodel."""
+
+    submodels: 'Submodels'
+    @property
+    def all_submodels(self) -> List['Submodel']:
+        """Get all submodels including nested ones recursively."""
+        direct_submodels = list(self.submodels.values())
+
+        # Recursively collect nested sub-models
+        nested_submodels = []
+        for submodel in direct_submodels:
+            nested_submodels.extend(submodel.all_submodels)
+
+        return direct_submodels + nested_submodels
+
+    def add_submodels(self, submodel: 'Submodel', short_name: str = None) -> 'Submodel':
+        """Register a sub-model with the model"""
+        if short_name is None:
+            short_name = submodel.__class__.__name__
+        if short_name in self.submodels:
+            raise ValueError(f'Short name "{short_name}" already assigned to model')
+        self.submodels.add(submodel, name=short_name)
+
+        return submodel
+
+
+class FlowSystemModel(linopy.Model, SubmodelsMixin):
     """
     The FlowSystemModel is the linopy Model that is used to create the mathematical model of the flow_system.
     It is used to create and store the variables and constraints for the flow_system.
@@ -57,6 +85,7 @@ class FlowSystemModel(linopy.Model):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
         self.effects: Optional[EffectCollectionModel] = None
+        self.submodels: Submodels = Submodels({})
 
     def do_modeling(self):
         self.effects = self.flow_system.effects.create_model(self)
@@ -693,7 +722,7 @@ class Element(Interface):
         return label
 
 
-class Submodel:
+class Submodel(SubmodelsMixin):
     """Stores Variables and Constraints."""
 
     def __init__(
@@ -711,8 +740,7 @@ class Submodel:
 
         self._variables: Dict[str, linopy.Variable] = {}  # Mapping from short name to variable
         self._constraints: Dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
-        self._sub_models: Dict[str, 'Submodel'] = {}
-
+        self.submodels: Submodels = Submodels({})
 
         logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
         self._do_modeling()
@@ -758,15 +786,6 @@ class Submodel:
 
         self._constraints[short_name] = constraint
         return constraint
-
-    def register_sub_model(self, submodel: 'Submodel', short_name: str) -> 'Submodel':
-        """Register a sub-model with the model"""
-        if short_name is None:
-            short_name = submodel.__class__.__name__
-        if short_name in self._sub_models:
-            raise ValueError(f'Short name "{short_name}" already assigned to model')
-        self._sub_models[short_name] = submodel
-        return submodel
 
     def __getitem__(self, key: str) -> linopy.Variable:
         """Get a variable by its short name"""
@@ -830,28 +849,11 @@ class Submodel:
         return self._model.constraints[[con.name for con in self._constraints.values()]]
 
     @property
-    def sub_models_direct(self) -> Dict[str, 'Submodel']:
-        """All sub-models of the model, excluding those of sub-models"""
-        return self._sub_models
-
-    @property
-    def submodels(self) -> List['Submodel']:
-        """All sub-models of the model"""
-        direct_submodels = list(self._sub_models.values())
-
-        # Recursively collect nested sub-models
-        nested_submodels = []
-        for submodel in direct_submodels:
-            nested_submodels.extend(submodel.submodels)  # This calls the property recursively
-
-        return direct_submodels + nested_submodels
-
-    @property
     def constraints(self) -> linopy.Constraints:
         """All constraints of the model, including those of sub-models"""
         names = list(self.constraints_direct) + [
             constraint_name
-            for submodel in self.submodels
+            for submodel in self.submodels.values()
             for constraint_name in submodel.constraints_direct
         ]
 
@@ -862,7 +864,7 @@ class Submodel:
         """All variables of the model, including those of sub-models"""
         names = list(self.variables_direct) + [
             variable_name
-            for submodel in self.submodels
+            for submodel in self.submodels.values()
             for variable_name in submodel.variables_direct
         ]
 
@@ -914,6 +916,61 @@ class Submodel:
     def _do_modeling(self):
         """Called at the end of initialization. Override in subclasses to create variables and constraints."""
         pass
+
+
+@dataclass(repr=False)
+class Submodels:
+    """A simple collection for storing submodels with easy access and representation."""
+
+    data: Dict[str, 'Submodel']
+
+    def __getitem__(self, name: str) -> 'Submodel':
+        """Get a submodel by its name."""
+        return self.data[name]
+
+    def __getattr__(self, name: str) -> 'Submodel':
+        """Get a submodel by attribute access."""
+        if name in self.data:
+            return self.data[name]
+        raise AttributeError(f"Submodels has no attribute '{name}'")
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.data)
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.data
+
+    def __repr__(self) -> str:
+        """Simple representation of the submodels collection."""
+        if not self.data:
+            return 'Submodels:\n----------\n <empty>\n'
+
+        sub_models_string = ''
+        for name, submodel in self.data.items():
+            sub_models_string += f'\n * {name} ({submodel.__class__.__name__}) [{len(submodel.variables)} Vars + {len(submodel.constraints)} Cons)'
+
+        return f'Submodels:\n----------{sub_models_string}\n'
+
+    def items(self) -> ItemsView[str, 'Submodel']:
+        return self.data.items()
+
+    def keys(self):
+        return self.data.keys()
+
+    def values(self):
+        return self.data.values()
+
+    def add(self, submodel: 'Submodel', name: str) -> None:
+        """Add a submodel to the collection."""
+        self.data[name] = submodel
+
+    def get(self, name: str, default=None):
+        """Get submodel by name, returning default if not found."""
+        return self.data.get(name, default)
+
 
 class ElementModel(Submodel):
     """Stores the mathematical Variables and Constraints for Elements"""

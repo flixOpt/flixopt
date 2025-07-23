@@ -145,7 +145,7 @@ class EffectModel(ElementModel):
 
     def _do_modeling(self):
         self.total: Optional[linopy.Variable] = None
-        self.invest: ShareAllocationModel = self.register_sub_model(
+        self.invest: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
                 model=self._model,
                 dims=('year', 'scenario'),
@@ -157,7 +157,7 @@ class EffectModel(ElementModel):
             short_name='invest',
         )
 
-        self.operation: ShareAllocationModel = self.register_sub_model(
+        self.operation: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
                 model=self._model,
                 dims=('time', 'year', 'scenario'),
@@ -415,7 +415,7 @@ class EffectCollectionModel(Submodel):
         super()._do_modeling()
         for effect in self.effects:
             effect.create_model(self._model)
-        self.penalty = self.register_sub_model(
+        self.penalty = self.add_submodels(
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
             short_name='penalty',
         )

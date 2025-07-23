@@ -351,7 +351,7 @@ class FlowModel(ElementModel):
 
     def _create_on_off_model(self):
         on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
-        self.register_sub_model(
+        self.add_submodels(
             OnOffModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
@@ -364,7 +364,7 @@ class FlowModel(ElementModel):
         )
 
     def _create_investment_model(self):
-        self.register_sub_model(
+        self.add_submodels(
             InvestmentModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
@@ -509,9 +509,9 @@ class FlowModel(ElementModel):
     @property
     def on_off(self) -> Optional[OnOffModel]:
         """OnOff feature"""
-        if 'on_off' not in self.sub_models_direct:
+        if 'on_off' not in self.submodels:
             return None
-        return self.sub_models_direct['on_off']
+        return self.submodels['on_off']
 
     @property
     def _investment(self) -> Optional[InvestmentModel]:
@@ -521,9 +521,9 @@ class FlowModel(ElementModel):
     @property
     def investment(self) -> Optional[InvestmentModel]:
         """OnOff feature"""
-        if 'investment' not in self.sub_models_direct:
+        if 'investment' not in self.submodels:
             return None
-        return self.sub_models_direct['investment']
+        return self.submodels['investment']
 
     @property
     def previous_states(self) -> Optional[TemporalData]:
@@ -606,7 +606,7 @@ class ComponentModel(ElementModel):
                     flow.on_off_parameters = OnOffParameters()
 
         for flow in all_flows:
-            self.register_sub_model(flow.create_model(self._model), short_name=flow.label)
+            self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
         if self.element.on_off_parameters:
             on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
@@ -618,7 +618,7 @@ class ComponentModel(ElementModel):
                 self.add_constraints(on <= sum(flow_ons) + CONFIG.modeling.EPSILON, short_name='on|ub')
                 self.add_constraints(on >= sum(flow_ons) / (len(flow_ons) + CONFIG.modeling.EPSILON), short_name='on|lb')
 
-            self.on_off = self.register_sub_model(
+            self.on_off = self.add_submodels(
                 OnOffModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
