@@ -5,7 +5,13 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_var_equal, create_calculation_and_solve, create_linopy_model
+from .conftest import (
+    assert_conequal,
+    assert_sets_equal,
+    assert_var_equal,
+    create_calculation_and_solve,
+    create_linopy_model,
+)
 
 
 class TestEffectModel:
