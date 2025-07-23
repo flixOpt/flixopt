@@ -36,11 +36,11 @@ body:
       Please provide a minimal reproducible example. See how to [craft minimal bug reports](https://matthewrocklin.com/minimal-bug-reports).
     placeholder: >
       import flixopt as fx
-      
+
       # Create simple energy system that reproduces the bug
       timesteps = pd.date_range('2024-01-01', periods=24, freq='h')
       flow_system = fx.FlowSystem(timesteps)
-      
+
       # Add your components here...
     render: python
 - type: textarea
@@ -69,13 +69,13 @@ body:
   attributes:
     label: Installed Versions
     description: >
-      Please share information on your environment. Paste the output below. 
+      Please share information on your environment. Paste the output below.
       For conda: `conda env export` and for pip: `pip freeze`.
     value: >
       <details>
-      
+
       ```
       Replace this with your environment info
       ```
-      
+
       </details>

@@ -60,6 +60,7 @@ def register_class_for_io(cls):
 
 class SubmodelsMixin:
     """Mixin that provides submodel functionality for both FlowSystemModel and Submodel."""
+
     submodels: 'Submodels'
 
     @property
@@ -198,16 +199,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Format sections with headers and underlines
         formatted_sections = []
         for section_header, section_content in sections.items():
-            formatted_sections.append(
-                (f'{section_header}\n'
-                 f'{"-" * len(section_header)}\n'
-                 f'{section_content}')
-            )
+            formatted_sections.append((f'{section_header}\n{"-" * len(section_header)}\n{section_content}'))
 
         title = f'FlowSystemModel ({self.type})'
-        return (f'{title}\n'
-                f'{"=" * len(title)}\n\n'
-                f'{"\n".join(formatted_sections)}')
+        all_sections = '\n'.join(formatted_sections)
+
+        return f'{title}\n{"=" * len(title)}\n\n{all_sections}'
 
 
 class Interface:
@@ -523,7 +520,8 @@ class Interface:
             raise ValueError(
                 f'Failed to convert {self.__class__.__name__} to dataset. Its recommended to only call this method on '
                 f'a fully connected and transformed FlowSystem, or Interfaces inside such a FlowSystem.'
-                f'Original Error: {e}') from e
+                f'Original Error: {e}'
+            ) from e
 
     def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
         """
@@ -768,9 +766,7 @@ class Submodel(SubmodelsMixin):
     Can have other Submodels assigned, and can be a Submodel of another Submodel.
     """
 
-    def __init__(
-        self, model: FlowSystemModel, label_of_element: str, label_of_model = None
-    ):
+    def __init__(self, model: FlowSystemModel, label_of_element: str, label_of_model=None):
         """
         Args:
             model: The FlowSystemModel that is used to create the model.
@@ -895,9 +891,7 @@ class Submodel(SubmodelsMixin):
     def constraints(self) -> linopy.Constraints:
         """All constraints of the model, including those of all sub-models"""
         names = list(self.constraints_direct) + [
-            constraint_name
-            for submodel in self.submodels.values()
-            for constraint_name in submodel.constraints
+            constraint_name for submodel in self.submodels.values() for constraint_name in submodel.constraints
         ]
 
         return self._model.constraints[names]
@@ -906,9 +900,7 @@ class Submodel(SubmodelsMixin):
     def variables(self) -> linopy.Variables:
         """All variables of the model, including those of all sub-models"""
         names = list(self.variables_direct) + [
-            variable_name
-            for submodel in self.submodels.values()
-            for variable_name in submodel.variables
+            variable_name for submodel in self.submodels.values() for variable_name in submodel.variables
         ]
 
         return self._model.variables[names]
@@ -919,25 +911,24 @@ class Submodel(SubmodelsMixin):
         """
         # Extract content from existing representations
         sections = {
-            f'Variables: [{len(self.variables)}/{len(self._model.variables)}]': self.variables.__repr__().split('\n', 2)[2],
-            f'Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]': self.constraints.__repr__().split('\n', 2)[2],
+            f'Variables: [{len(self.variables)}/{len(self._model.variables)}]': self.variables.__repr__().split(
+                '\n', 2
+            )[2],
+            f'Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]': self.constraints.__repr__().split(
+                '\n', 2
+            )[2],
             f'Submodels: [{len(self.submodels)}]': self.submodels.__repr__().split('\n', 2)[2],
         }
 
         # Format sections with headers and underlines
         formatted_sections = []
         for section_header, section_content in sections.items():
-            formatted_sections.append(
-                (f'{section_header}\n'
-                 f'{"-" * len(section_header)}\n'
-                 f'{section_content}')
-            )
+            formatted_sections.append((f'{section_header}\n{"-" * len(section_header)}\n{section_content}'))
 
         model_string = f'Submodel "{self.label_of_model}":'
+        all_sections = '\n'.join(formatted_sections)
 
-        return (f'{model_string}\n'
-                f'{"=" * len(model_string)}\n\n'
-                f'{"\n".join(formatted_sections)}')
+        return f'{model_string}\n{"=" * len(model_string)}\n\n{all_sections}'
 
     @property
     def hours_per_step(self):
@@ -981,7 +972,9 @@ class Submodels:
         total_vars = sum(len(submodel.variables) for submodel in self.data.values())
         total_cons = sum(len(submodel.constraints) for submodel in self.data.values())
 
-        title = f'flixopt.structure.Submodels ({total_vars} vars, {total_cons} constraints, {len(self.data)} submodels):'
+        title = (
+            f'flixopt.structure.Submodels ({total_vars} vars, {total_cons} constraints, {len(self.data)} submodels):'
+        )
         underline = '-' * len(title)
 
         if not self.data:

@@ -15,13 +15,22 @@ from .conftest import (
 )
 
 
-@pytest.fixture(params=[flow_system_base, simple_flow_system_scenarios, flow_system_segments_of_flows_2, simple_flow_system, flow_system_long])
+@pytest.fixture(
+    params=[
+        flow_system_base,
+        simple_flow_system_scenarios,
+        flow_system_segments_of_flows_2,
+        simple_flow_system,
+        flow_system_long,
+    ]
+)
 def flow_system(request):
     fs = request.getfixturevalue(request.param.__name__)
     if isinstance(fs, fx.FlowSystem):
         return fs
     else:
         return fs[0]
+
 
 @pytest.mark.slow
 def test_flow_system_file_io(flow_system, highs_solver):

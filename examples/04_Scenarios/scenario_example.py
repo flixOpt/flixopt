@@ -16,8 +16,10 @@ if __name__ == '__main__':
 
     # --- Create Time Series Data ---
     # Heat demand profile (e.g., kW) over time and corresponding power prices
-    heat_demand_per_h = pd.DataFrame({'Base Case':[30, 0, 90, 110, 110, 20, 20, 20, 20],
-                                      'High Demand':[30, 0, 100, 118, 125, 20, 20, 20, 20]}, index=timesteps)
+    heat_demand_per_h = pd.DataFrame(
+        {'Base Case': [30, 0, 90, 110, 110, 20, 20, 20, 20], 'High Demand': [30, 0, 100, 118, 125, 20, 20, 20, 20]},
+        index=timesteps,
+    )
     power_prices = np.array([0.08, 0.09, 0.10])
 
     flow_system = fx.FlowSystem(timesteps=timesteps, years=years, scenarios=scenarios, weights=np.array([0.5, 0.6]))
@@ -50,7 +52,14 @@ if __name__ == '__main__':
     boiler = fx.linear_converters.Boiler(
         label='Boiler',
         eta=0.5,
-        Q_th=fx.Flow(label='Q_th', bus='Fernwärme', size=50, relative_minimum=0.1, relative_maximum=1, on_off_parameters=fx.OnOffParameters()),
+        Q_th=fx.Flow(
+            label='Q_th',
+            bus='Fernwärme',
+            size=50,
+            relative_minimum=0.1,
+            relative_maximum=1,
+            on_off_parameters=fx.OnOffParameters(),
+        ),
         Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
     )
 

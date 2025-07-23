@@ -58,16 +58,24 @@ if __name__ == '__main__':
             'BHKW2',
             eta_th=0.58,
             eta_el=0.22,
-            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=1_000, consecutive_on_hours_min=10, consecutive_off_hours_min=10),
+            on_off_parameters=fx.OnOffParameters(
+                effects_per_switch_on=1_000, consecutive_on_hours_min=10, consecutive_off_hours_min=10
+            ),
             P_el=fx.Flow('P_el', bus='Strom'),
             Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-            Q_fu=fx.Flow('Q_fu', bus='Kohle',
-                         size=fx.InvestParameters(specific_effects={'costs':3_000}, minimum_size=10, maximum_size=500),
-                         relative_minimum=0.3, previous_flow_rate=100),
+            Q_fu=fx.Flow(
+                'Q_fu',
+                bus='Kohle',
+                size=fx.InvestParameters(specific_effects={'costs': 3_000}, minimum_size=10, maximum_size=500),
+                relative_minimum=0.3,
+                previous_flow_rate=100,
+            ),
         ),
         fx.Storage(
             'Speicher',
-            capacity_in_flow_hours=fx.InvestParameters(minimum_size=10, maximum_size=1000, specific_effects={'costs': 60}),
+            capacity_in_flow_hours=fx.InvestParameters(
+                minimum_size=10, maximum_size=1000, specific_effects={'costs': 60}
+            ),
             initial_charge_state='lastValueOfSim',
             eta_charge=1,
             eta_discharge=1,
@@ -76,9 +84,7 @@ if __name__ == '__main__':
             charging=fx.Flow('Q_th_load', size=137, bus='Fernwärme'),
             discharging=fx.Flow('Q_th_unload', size=158, bus='Fernwärme'),
         ),
-        fx.Sink(
-        'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)
-        ),
+        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)),
         fx.Source(
             'Gastarif',
             source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3}),
@@ -89,7 +95,9 @@ if __name__ == '__main__':
         ),
         fx.Source(
             'Einspeisung',
-            source=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3}),
+            source=fx.Flow(
+                'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3}
+            ),
         ),
         fx.Sink(
             'Stromlast',
@@ -97,7 +105,9 @@ if __name__ == '__main__':
         ),
         fx.Source(
             'Stromtarif',
-            source=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price, 'CO2': 0.3}),
+            source=fx.Flow(
+                'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price, 'CO2': 0.3}
+            ),
         ),
     )
 
@@ -105,7 +115,7 @@ if __name__ == '__main__':
     start = timeit.default_timer()
     calculation_sizing = fx.FullCalculation('Sizing', flow_system.resample('4h'))
     calculation_sizing.do_modeling()
-    calculation_sizing.solve(fx.solvers.HighsSolver(0.1/100, 600))
+    calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_sizing = timeit.default_timer() - start
 
     calculation_dispatch = fx.FullCalculation('Sizing', flow_system)
@@ -123,7 +133,7 @@ if __name__ == '__main__':
     start = timeit.default_timer()
     calculation_combined = fx.FullCalculation('Sizing', flow_system)
     calculation_combined.do_modeling()
-    calculation_combined.solve(fx.solvers.HighsSolver(0.1/100, 600))
+    calculation_combined.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_combined = timeit.default_timer() - start
 
     # Comparison of results
@@ -132,11 +142,27 @@ if __name__ == '__main__':
     ).assign_coords(mode=['Combined', 'Two-stage'])
     comparison['Duration [s]'] = xr.DataArray([timer_combined, timer_sizing + timer_dispatch], dims='mode')
 
-    comparison_main = comparison[['Duration [s]', 'costs|total', 'costs(invest)|total', 'costs(operation)|total', 'BHKW2(Q_fu)|size', 'Kessel(Q_fu)|size', 'Speicher|size']]
-    comparison_main = xr.concat([
-        comparison_main,
-        ((comparison_main.sel(mode='Two-stage') - comparison_main.sel(mode='Combined'))
-         / comparison_main.sel(mode='Combined') * 100).assign_coords(mode='Diff [%]')
-    ], dim='mode')
+    comparison_main = comparison[
+        [
+            'Duration [s]',
+            'costs|total',
+            'costs(invest)|total',
+            'costs(operation)|total',
+            'BHKW2(Q_fu)|size',
+            'Kessel(Q_fu)|size',
+            'Speicher|size',
+        ]
+    ]
+    comparison_main = xr.concat(
+        [
+            comparison_main,
+            (
+                (comparison_main.sel(mode='Two-stage') - comparison_main.sel(mode='Combined'))
+                / comparison_main.sel(mode='Combined')
+                * 100
+            ).assign_coords(mode='Diff [%]'),
+        ],
+        dim='mode',
+    )
 
     print(comparison_main.to_pandas().T.round(2))

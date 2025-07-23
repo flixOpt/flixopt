@@ -80,7 +80,9 @@ class FlowSystem(Interface):
         self.timesteps = self._validate_timesteps(timesteps)
 
         self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
-        self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
+        self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
+            timesteps, hours_of_previous_timesteps
+        )
 
         self.years = None if years is None else self._validate_years(years)
 
@@ -157,7 +159,7 @@ class FlowSystem(Interface):
 
     @staticmethod
     def _create_timesteps_with_extra(
-            timesteps: pd.DatetimeIndex, hours_of_last_timestep: Optional[float]
+        timesteps: pd.DatetimeIndex, hours_of_last_timestep: Optional[float]
     ) -> pd.DatetimeIndex:
         """Create timesteps with an extra step at the end."""
         if hours_of_last_timestep is None:
@@ -176,7 +178,7 @@ class FlowSystem(Interface):
 
     @staticmethod
     def _calculate_hours_of_previous_timesteps(
-            timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: Optional[Union[float, np.ndarray]]
+        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: Optional[Union[float, np.ndarray]]
     ) -> Union[float, np.ndarray]:
         """Calculate duration of regular timesteps."""
         if hours_of_previous_timesteps is not None:
@@ -335,7 +337,9 @@ class FlowSystem(Interface):
             path: The path to the JSON file.
         """
         if not self.connected_and_transformed:
-            logger.warning('FlowSystem needs to be connected and transformed before saving to JSON. Calling connect_and_transform() now.')
+            logger.warning(
+                'FlowSystem needs to be connected and transformed before saving to JSON. Calling connect_and_transform() now.'
+            )
             self.connect_and_transform()
 
         super().to_json(path)
@@ -372,13 +376,13 @@ class FlowSystem(Interface):
                 return data.fit_to_coords(coords)
             except ConversionError as e:
                 raise ConversionError(
-                    f'Could not convert time series data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
+                    f'Could not convert time series data "{name}" to DataArray:\n{data}\nOriginal Error: {e}'
+                ) from e
 
         try:
             return DataConverter.to_dataarray(data, coords=coords).rename(name)
         except ConversionError as e:
-            raise ConversionError(
-                f'Could not convert data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
+            raise ConversionError(f'Could not convert data "{name}" to DataArray:\n{data}\nOriginal Error: {e}') from e
 
     def fit_effects_to_model_coords(
         self,
@@ -397,9 +401,7 @@ class FlowSystem(Interface):
 
         return {
             effect: self.fit_to_model_coords(
-                '|'.join(filter(None, [label_prefix, effect, label_suffix])),
-                value,
-                has_time_dim=has_time_dim
+                '|'.join(filter(None, [label_prefix, effect, label_suffix])), value, has_time_dim=has_time_dim
             )
             for effect, value in effect_values_dict.items()
         }
@@ -410,12 +412,12 @@ class FlowSystem(Interface):
             logger.debug('FlowSystem already connected and transformed')
             return
 
-        self.weights = self.fit_to_model_coords(
-            'weights', self.weights, has_time_dim=False
-        )
+        self.weights = self.fit_to_model_coords('weights', self.weights, has_time_dim=False)
         if self.weights is not None and self.weights.sum() != 1:
-            logger.warning(f'Scenario weights are not normalized to 1. This is recomended for a better scaled model. '
-                           f'Sum of weights={self.weights.sum().item()}')
+            logger.warning(
+                f'Scenario weights are not normalized to 1. This is recomended for a better scaled model. '
+                f'Sum of weights={self.weights.sum().item()}'
+            )
 
         self._connect_network()
         for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
@@ -450,7 +452,9 @@ class FlowSystem(Interface):
 
     def create_model(self) -> FlowSystemModel:
         if not self.connected_and_transformed:
-            raise RuntimeError('FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.')
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
         self.submodel = FlowSystemModel(self)
         return self.submodel
 
@@ -699,7 +703,7 @@ class FlowSystem(Interface):
         self,
         time: Optional[Union[int, slice, List[int]]] = None,
         year: Optional[Union[int, slice, List[int]]] = None,
-        scenario: Optional[Union[int, slice, List[int]]] = None
+        scenario: Optional[Union[int, slice, List[int]]] = None,
     ) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by integer indices.
@@ -734,7 +738,7 @@ class FlowSystem(Interface):
         self,
         time: str,
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
-        **kwargs: Any
+        **kwargs: Any,
     ) -> 'FlowSystem':
         """
         Create a resampled FlowSystem by resampling data along the time dimension (like xr.Dataset.resample()).

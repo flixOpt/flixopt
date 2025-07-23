@@ -17,12 +17,10 @@ from .conftest import create_calculation_and_solve, create_linopy_model
 def test_system():
     """Create a basic test system with scenarios."""
     # Create a two-day time index with hourly resolution
-    timesteps = pd.date_range(
-        "2023-01-01", periods=48, freq="h", name="time"
-    )
+    timesteps = pd.date_range('2023-01-01', periods=48, freq='h', name='time')
 
     # Create two scenarios
-    scenarios = pd.Index(["Scenario A", "Scenario B"], name="scenario")
+    scenarios = pd.Index(['Scenario A', 'Scenario B'], name='scenario')
 
     # Create scenario weights
     weights = np.array([0.7, 0.3])
@@ -31,108 +29,89 @@ def test_system():
     flow_system = FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        weights=weights  # Use TimeSeriesData for weights
+        weights=weights,  # Use TimeSeriesData for weights
     )
 
     # Create demand profiles that differ between scenarios
     # Scenario A: Higher demand in first day, lower in second day
     # Scenario B: Lower demand in first day, higher in second day
-    demand_profile_a = np.concatenate([
-        np.sin(np.linspace(0, 2*np.pi, 24)) * 5 + 10,  # Day 1, max ~15
-        np.sin(np.linspace(0, 2*np.pi, 24)) * 2 + 5    # Day 2, max ~7
-    ])
+    demand_profile_a = np.concatenate(
+        [
+            np.sin(np.linspace(0, 2 * np.pi, 24)) * 5 + 10,  # Day 1, max ~15
+            np.sin(np.linspace(0, 2 * np.pi, 24)) * 2 + 5,  # Day 2, max ~7
+        ]
+    )
 
-    demand_profile_b = np.concatenate([
-        np.sin(np.linspace(0, 2*np.pi, 24)) * 2 + 5,   # Day 1, max ~7
-        np.sin(np.linspace(0, 2*np.pi, 24)) * 5 + 10   # Day 2, max ~15
-    ])
+    demand_profile_b = np.concatenate(
+        [
+            np.sin(np.linspace(0, 2 * np.pi, 24)) * 2 + 5,  # Day 1, max ~7
+            np.sin(np.linspace(0, 2 * np.pi, 24)) * 5 + 10,  # Day 2, max ~15
+        ]
+    )
 
     # Stack the profiles into a 2D array (time, scenario)
     demand_profiles = np.column_stack([demand_profile_a, demand_profile_b])
 
     # Create the necessary model elements
     # Create buses
-    electricity_bus = Bus("Electricity")
+    electricity_bus = Bus('Electricity')
 
     # Create a demand sink with scenario-dependent profiles
-    demand = Flow(
-        label="Demand",
-        bus=electricity_bus.label_full,
-        fixed_relative_profile=demand_profiles
-    )
-    demand_sink = Sink("Demand", sink=demand)
+    demand = Flow(label='Demand', bus=electricity_bus.label_full, fixed_relative_profile=demand_profiles)
+    demand_sink = Sink('Demand', sink=demand)
 
     # Create a power source with investment option
     power_gen = Flow(
-        label="Generation",
+        label='Generation',
         bus=electricity_bus.label_full,
         size=InvestParameters(
             minimum_size=0,
             maximum_size=20,
-            specific_effects={"Costs": 100}  # €/kW
+            specific_effects={'Costs': 100},  # €/kW
         ),
-        effects_per_flow_hour={"Costs": 20}  # €/MWh
+        effects_per_flow_hour={'Costs': 20},  # €/MWh
     )
-    generator = Source("Generator", source=power_gen)
+    generator = Source('Generator', source=power_gen)
 
     # Create a storage for electricity
-    storage_charge = Flow(
-        label="Charge",
-        bus=electricity_bus.label_full,
-        size=10
-    )
-    storage_discharge = Flow(
-        label="Discharge",
-        bus=electricity_bus.label_full,
-        size=10
-    )
+    storage_charge = Flow(label='Charge', bus=electricity_bus.label_full, size=10)
+    storage_discharge = Flow(label='Discharge', bus=electricity_bus.label_full, size=10)
     storage = Storage(
-        label="Battery",
+        label='Battery',
         charging=storage_charge,
         discharging=storage_discharge,
         capacity_in_flow_hours=InvestParameters(
             minimum_size=0,
             maximum_size=50,
-            specific_effects={"Costs": 50}  # €/kWh
+            specific_effects={'Costs': 50},  # €/kWh
         ),
         eta_charge=0.95,
         eta_discharge=0.95,
-        initial_charge_state="lastValueOfSim"
+        initial_charge_state='lastValueOfSim',
     )
 
     # Create effects and objective
-    cost_effect = Effect(
-        label="Costs",
-        unit="€",
-        description="Total costs",
-        is_standard=True,
-        is_objective=True
-    )
+    cost_effect = Effect(label='Costs', unit='€', description='Total costs', is_standard=True, is_objective=True)
 
     # Add all elements to the flow system
-    flow_system.add_elements(
-        electricity_bus,
-        generator,
-        demand_sink,
-        storage,
-        cost_effect
-    )
+    flow_system.add_elements(electricity_bus, generator, demand_sink, storage, cost_effect)
 
     # Return the created system and its components
     return {
-        "flow_system": flow_system,
-        "timesteps": timesteps,
-        "scenarios": scenarios,
-        "electricity_bus": electricity_bus,
-        "demand": demand,
-        "demand_sink": demand_sink,
-        "generator": generator,
-        "power_gen": power_gen,
-        "storage": storage,
-        "storage_charge": storage_charge,
-        "storage_discharge": storage_discharge,
-        "cost_effect": cost_effect
+        'flow_system': flow_system,
+        'timesteps': timesteps,
+        'scenarios': scenarios,
+        'electricity_bus': electricity_bus,
+        'demand': demand,
+        'demand_sink': demand_sink,
+        'generator': generator,
+        'power_gen': power_gen,
+        'storage': storage,
+        'storage_charge': storage_charge,
+        'storage_discharge': storage_discharge,
+        'cost_effect': cost_effect,
     }
+
 
 @pytest.fixture
 def flow_system_complex_scenarios() -> fx.FlowSystem:
@@ -141,8 +120,10 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     """
     thermal_load = np.array([30, 0, 90, 110, 110, 20, 20, 20, 20])
     electrical_load = np.array([40, 40, 40, 40, 40, 40, 40, 40, 40])
-    flow_system = fx.FlowSystem(pd.date_range('2020-01-01', periods=9, freq='h', name='time'),
-                                scenarios=pd.Index(['A', 'B', 'C'], name='scenario'))
+    flow_system = fx.FlowSystem(
+        pd.date_range('2020-01-01', periods=9, freq='h', name='time'),
+        scenarios=pd.Index(['A', 'B', 'C'], name='scenario'),
+    )
     # Define the components and flow_system
     flow_system.add_elements(
         fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True),
@@ -260,9 +241,11 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
     flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     np.testing.assert_allclose(model.weights.values, weights)
-    assert_linequal(model.objective.expression,
-                    (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total'])
+    assert_linequal(
+        model.objective.expression, (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total']
+    )
     assert np.isclose(model.weights.sum().item(), 2.25)
+
 
 def test_weights_io(flow_system_piecewise_conversion_scenarios):
     """Test that scenario weights are correctly used in the model."""
@@ -271,24 +254,29 @@ def test_weights_io(flow_system_piecewise_conversion_scenarios):
     flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     np.testing.assert_allclose(model.weights.values, weights)
-    assert_linequal(model.objective.expression,
-                    (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total'])
+    assert_linequal(
+        model.objective.expression, (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total']
+    )
     assert np.isclose(model.weights.sum().item(), 1.0)
+
 
 def test_scenario_dimensions_in_variables(flow_system_piecewise_conversion_scenarios):
     """Test that all time variables are correctly broadcasted to scenario dimensions."""
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     for var in model.variables:
-        assert  model.variables[var].dims in [('time', 'scenario'), ('scenario',), ()]
+        assert model.variables[var].dims in [('time', 'scenario'), ('scenario',), ()]
+
 
 def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.weights = weights
-    calc = create_calculation_and_solve(flow_system_piecewise_conversion_scenarios,
-                                        solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
-                                        name='test_full_scenario')
+    calc = create_calculation_and_solve(
+        flow_system_piecewise_conversion_scenarios,
+        solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
+        name='test_full_scenario',
+    )
     calc.results.to_file()
 
     res = fx.results.CalculationResults.from_file('results', 'test_full_scenario')
@@ -299,15 +287,18 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
         name='test_full_scenario',
     )
 
-@pytest.mark.skip(reason="This test is taking too long with highs and is too big for gurobipy free")
+
+@pytest.mark.skip(reason='This test is taking too long with highs and is too big for gurobipy free')
 def test_io_persistance(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.weights = weights
-    calc = create_calculation_and_solve(flow_system_piecewise_conversion_scenarios,
-                                        solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
-                                        name='test_full_scenario')
+    calc = create_calculation_and_solve(
+        flow_system_piecewise_conversion_scenarios,
+        solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
+        name='test_full_scenario',
+    )
     calc.results.to_file()
 
     res = fx.results.CalculationResults.from_file('results', 'test_full_scenario')
@@ -332,13 +323,17 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     np.testing.assert_allclose(flow_system.weights.values, flow_system_full.weights[0:2])
 
-
     calc = fx.FullCalculation(flow_system=flow_system, name='test_full_scenario')
     calc.do_modeling()
     calc.solve(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
 
     calc.results.to_file()
 
-    np.testing.assert_allclose(calc.results.objective, ((calc.results.solution['costs|total'] * flow_system.weights).sum() + calc.results.solution['Penalty|total']).item()) ## Acount for rounding errors
+    np.testing.assert_allclose(
+        calc.results.objective,
+        (
+            (calc.results.solution['costs|total'] * flow_system.weights).sum() + calc.results.solution['Penalty|total']
+        ).item(),
+    )  ## Acount for rounding errors
 
     assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])

@@ -117,14 +117,15 @@ class Effect(Element):
             f'{self.label_full}|maximum_invest', self.maximum_invest, has_time_dim=False
         )
         self.minimum_total = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_total', self.minimum_total, has_time_dim=False,
+            f'{self.label_full}|minimum_total',
+            self.minimum_total,
+            has_time_dim=False,
         )
         self.maximum_total = flow_system.fit_to_model_coords(
             f'{self.label_full}|maximum_total', self.maximum_total, has_time_dim=False
         )
         self.specific_share_to_other_effects_invest = flow_system.fit_effects_to_model_coords(
-            f'{self.label_full}|invest->', self.specific_share_to_other_effects_invest, 'invest',
-            has_time_dim=False
+            f'{self.label_full}|invest->', self.specific_share_to_other_effects_invest, 'invest', has_time_dim=False
         )
 
     def create_model(self, model: FlowSystemModel) -> 'EffectModel':
@@ -230,8 +231,7 @@ class EffectCollection:
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
-        self,
-        effect_values_user: Union[NonTemporalEffectsUser, TemporalEffectsUser]
+        self, effect_values_user: Union[NonTemporalEffectsUser, TemporalEffectsUser]
     ) -> Optional[Dict[str, Union[Scalar, TemporalDataUser]]]:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
@@ -277,11 +277,11 @@ class EffectCollection:
         invest_cycles = detect_cycles(tuples_to_adjacency_list([key for key in invest]))
 
         if operation_cycles:
-            cycle_str = "\n".join([" -> ".join(cycle) for cycle in operation_cycles])
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in operation_cycles])
             raise ValueError(f'Error: circular operation-shares detected:\n{cycle_str}')
 
         if invest_cycles:
-            cycle_str = "\n".join([" -> ".join(cycle) for cycle in invest_cycles])
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in invest_cycles])
             raise ValueError(f'Error: circular invest-shares detected:\n{cycle_str}')
 
     def __getitem__(self, effect: Union[str, Effect]) -> 'Effect':
@@ -349,7 +349,9 @@ class EffectCollection:
             raise ValueError(f'An objective-effect already exists! ({self._objective_effect.label=})')
         self._objective_effect = value
 
-    def calculate_effect_share_factors(self) -> Tuple[
+    def calculate_effect_share_factors(
+        self,
+    ) -> Tuple[
         Dict[Tuple[str, str], xr.DataArray],
         Dict[Tuple[str, str], xr.DataArray],
     ]:
@@ -357,8 +359,7 @@ class EffectCollection:
         for name, effect in self.effects.items():
             if effect.specific_share_to_other_effects_invest:
                 shares_invest[name] = {
-                    target: data
-                    for target, data in effect.specific_share_to_other_effects_invest.items()
+                    target: data for target, data in effect.specific_share_to_other_effects_invest.items()
                 }
         shares_invest = calculate_all_conversion_paths(shares_invest)
 
@@ -366,8 +367,7 @@ class EffectCollection:
         for name, effect in self.effects.items():
             if effect.specific_share_to_other_effects_operation:
                 shares_operation[name] = {
-                    target: data
-                    for target, data in effect.specific_share_to_other_effects_operation.items()
+                    target: data for target, data in effect.specific_share_to_other_effects_operation.items()
                 }
         shares_operation = calculate_all_conversion_paths(shares_operation)
 
@@ -423,8 +423,7 @@ class EffectCollectionModel(Submodel):
         self._add_share_between_effects()
 
         self._model.add_objective(
-            (self.effects.objective_effect.submodel.total * self._model.weights).sum()
-            + self.penalty.total.sum()
+            (self.effects.objective_effect.submodel.total * self._model.weights).sum() + self.penalty.total.sum()
         )
 
     def _add_share_between_effects(self):
@@ -446,7 +445,7 @@ class EffectCollectionModel(Submodel):
 
 
 def calculate_all_conversion_paths(
-        conversion_dict: Dict[str, Dict[str, xr.DataArray]],
+    conversion_dict: Dict[str, Dict[str, xr.DataArray]],
 ) -> Dict[Tuple[str, str], xr.DataArray]:
     """
     Calculates all possible direct and indirect conversion factors between units/domains.
@@ -511,8 +510,7 @@ def calculate_all_conversion_paths(
                 queue.append((target, indirect_factor, new_path))
 
     # Convert all values to DataArrays
-    result = {key: value if isinstance(value, xr.DataArray) else xr.DataArray(value)
-              for key, value in result.items()}
+    result = {key: value if isinstance(value, xr.DataArray) else xr.DataArray(value) for key, value in result.items()}
 
     return result
 

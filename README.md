@@ -18,7 +18,7 @@
 
 **flixopt** provides a user-friendly interface with options for advanced users.
 
-It was originally developed by [TU Dresden](https://github.com/gewv-tu-dresden) as part of the SMARTBIOGRID project, funded by the German Federal Ministry for Economic Affairs and Energy (FKZ: 03KB159B). Building on the Matlab-based flixOptMat framework (developed in the FAKS project), FlixOpt also incorporates concepts from [oemof/solph](https://github.com/oemof/oemof-solph). 
+It was originally developed by [TU Dresden](https://github.com/gewv-tu-dresden) as part of the SMARTBIOGRID project, funded by the German Federal Ministry for Economic Affairs and Energy (FKZ: 03KB159B). Building on the Matlab-based flixOptMat framework (developed in the FAKS project), FlixOpt also incorporates concepts from [oemof/solph](https://github.com/oemof/oemof-solph).
 
 ---
 
@@ -43,7 +43,7 @@ It was originally developed by [TU Dresden](https://github.com/gewv-tu-dresden) 
 
 - **Calculation Modes**
     - **Full** - Solve the model with highest accuracy and computational requirements.
-    - **Segmented** - Speed up solving by using a rolling horizon. 
+    - **Segmented** - Speed up solving by using a rolling horizon.
     - **Aggregated** - Speed up solving by identifying typical periods using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam). Suitable for large models.
 
 ---
@@ -67,14 +67,14 @@ The documentation is available at [https://flixopt.github.io/flixopt/latest/](ht
 
 ## 🎯️ Solver Integration
 
-By default, FlixOpt uses the open-source solver [HiGHS](https://highs.dev/) which is installed by default. However, it is compatible with additional solvers such as:  
+By default, FlixOpt uses the open-source solver [HiGHS](https://highs.dev/) which is installed by default. However, it is compatible with additional solvers such as:
 
-- [Gurobi](https://www.gurobi.com/)  
-- [CBC](https://github.com/coin-or/Cbc)  
+- [Gurobi](https://www.gurobi.com/)
+- [CBC](https://github.com/coin-or/Cbc)
 - [GLPK](https://www.gnu.org/software/glpk/)
 - [CPLEX](https://www.ibm.com/analytics/cplex-optimizer)
 
-For detailed licensing and installation instructions, refer to the respective solver documentation.  
+For detailed licensing and installation instructions, refer to the respective solver documentation.
 
 ---
 
@@ -85,7 +85,7 @@ Look into our docs for [development setup](https://flixopt.github.io/flixopt/lat
 
 ## 📖 Citation
 
-If you use FlixOpt in your research or project, please cite the following:  
+If you use FlixOpt in your research or project, please cite the following:
 
-- **Main Citation:** [DOI:10.18086/eurosun.2022.04.07](https://doi.org/10.18086/eurosun.2022.04.07)  
-- **Short Overview:** [DOI:10.13140/RG.2.2.14948.24969](https://doi.org/10.13140/RG.2.2.14948.24969)  
+- **Main Citation:** [DOI:10.18086/eurosun.2022.04.07](https://doi.org/10.18086/eurosun.2022.04.07)
+- **Short Overview:** [DOI:10.13140/RG.2.2.14948.24969](https://doi.org/10.13140/RG.2.2.14948.24969)

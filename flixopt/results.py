@@ -29,6 +29,7 @@ logger = logging.getLogger('flixopt')
 
 class _FlowSystemRestorationError(Exception):
     """Exception raised when a FlowSystem cannot be restored from dataset."""
+
     pass
 
 
@@ -175,15 +176,13 @@ class CalculationResults:
 
         self.buses = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
 
-        self.effects = {
-            label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()
-        }
+        self.effects = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
 
         if 'Flows' not in self.solution.attrs:
             warnings.warn(
                 'No Data about flows found in the results. This data is only included since v2.2.0. Some functionality '
                 'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
-            stacklevel=2,
+                stacklevel=2,
             )
             self.flows = {}
         else:
@@ -247,24 +246,26 @@ class CalculationResults:
     def effect_share_factors(self):
         if self._effect_share_factors is None:
             effect_share_factors = self.flow_system.effects.calculate_effect_share_factors()
-            self._effect_share_factors = {'operation': effect_share_factors[0],
-                                          'invest': effect_share_factors[1]}
+            self._effect_share_factors = {'operation': effect_share_factors[0], 'invest': effect_share_factors[1]}
         return self._effect_share_factors
 
     @property
     def flow_system(self) -> 'FlowSystem':
-        """ The restored flow_system that was used to create the calculation.
+        """The restored flow_system that was used to create the calculation.
         Contains all input parameters."""
         if self._flow_system is None:
             try:
                 from . import FlowSystem
+
                 current_logger_level = logger.getEffectiveLevel()
                 logger.setLevel(logging.CRITICAL)
                 self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
                 self._flow_system._connect_network()
                 logger.setLevel(current_logger_level)
             except Exception as e:
-                logger.critical(f'Not able to restore FlowSystem from dataset. Some functionality is not availlable. {e}')
+                logger.critical(
+                    f'Not able to restore FlowSystem from dataset. Some functionality is not availlable. {e}'
+                )
                 raise _FlowSystemRestorationError(f'Not able to restore FlowSystem from dataset. {e}') from e
         return self._flow_system
 
@@ -351,8 +352,10 @@ class CalculationResults:
         """
         if self._flow_rates is None:
             self._flow_rates = self._assign_flow_coords(
-                xr.concat([flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
-                          dim=pd.Index(self.flows.keys(), name='flow'))
+                xr.concat(
+                    [flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
+                    dim=pd.Index(self.flows.keys(), name='flow'),
+                )
             ).rename('flow_rates')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
         return filter_dataarray_by_coord(self._flow_rates, **filters)
@@ -393,7 +396,7 @@ class CalculationResults:
         self,
         start: Optional[Union[str, List[str]]] = None,
         end: Optional[Union[str, List[str]]] = None,
-        component: Optional[Union[str, List[str]]] = None
+        component: Optional[Union[str, List[str]]] = None,
     ) -> xr.DataArray:
         """Returns a dataset with the sizes of the Flows.
         Args:
@@ -410,19 +413,23 @@ class CalculationResults:
         """
         if self._sizes is None:
             self._sizes = self._assign_flow_coords(
-                xr.concat([flow.size.rename(flow.label) for flow in self.flows.values()],
-                          dim=pd.Index(self.flows.keys(), name='flow'))
+                xr.concat(
+                    [flow.size.rename(flow.label) for flow in self.flows.values()],
+                    dim=pd.Index(self.flows.keys(), name='flow'),
+                )
             ).rename('flow_sizes')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
         return filter_dataarray_by_coord(self._sizes, **filters)
 
     def _assign_flow_coords(self, da: xr.DataArray):
         # Add start and end coordinates
-        da = da.assign_coords({
-            'start': ('flow', [flow.start for flow in self.flows.values()]),
-            'end': ('flow', [flow.end for flow in self.flows.values()]),
-            'component': ('flow', [flow.component for flow in self.flows.values()]),
-        })
+        da = da.assign_coords(
+            {
+                'start': ('flow', [flow.start for flow in self.flows.values()]),
+                'end': ('flow', [flow.end for flow in self.flows.values()]),
+                'component': ('flow', [flow.component for flow in self.flows.values()]),
+            }
+        )
 
         # Ensure flow is the last dimension if needed
         existing_dims = [d for d in da.dims if d != 'flow']
@@ -434,7 +441,7 @@ class CalculationResults:
         element: str,
         effect: str,
         mode: Optional[Literal['operation', 'invest']] = None,
-        include_flows: bool = False
+        include_flows: bool = False,
     ) -> xr.Dataset:
         """Retrieves individual effect shares for a specific element and effect.
         Either for operation, investment, or both modes combined.
@@ -457,8 +464,14 @@ class CalculationResults:
             raise ValueError(f'Effect {effect} is not available.')
 
         if mode is None:
-            return xr.merge([self.get_effect_shares(element=element, effect=effect, mode='operation', include_flows=include_flows),
-                             self.get_effect_shares(element=element, effect=effect, mode='invest', include_flows=include_flows)])
+            return xr.merge(
+                [
+                    self.get_effect_shares(
+                        element=element, effect=effect, mode='operation', include_flows=include_flows
+                    ),
+                    self.get_effect_shares(element=element, effect=effect, mode='invest', include_flows=include_flows),
+                ]
+            )
 
         if mode not in ['operation', 'invest']:
             raise ValueError(f'Mode {mode} is not available. Choose between "operation" and "invest".')
@@ -467,15 +480,20 @@ class CalculationResults:
 
         label = f'{element}->{effect}({mode})'
         if label in self.solution:
-            ds =  xr.Dataset({label: self.solution[label]})
+            ds = xr.Dataset({label: self.solution[label]})
 
         if include_flows:
             if element not in self.components:
                 raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
-            flows = [label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs]
+            flows = [
+                label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs
+            ]
             return xr.merge(
-                [ds] + [self.get_effect_shares(element=flow, effect=effect, mode=mode, include_flows=False)
-                        for flow in flows]
+                [ds]
+                + [
+                    self.get_effect_shares(element=flow, effect=effect, mode=mode, include_flows=False)
+                    for flow in flows
+                ]
             )
 
         return ds
@@ -514,8 +532,12 @@ class CalculationResults:
             raise ValueError(f'Effect {effect} is not available.')
 
         if mode == 'total':
-            operation = self._compute_effect_total(element=element, effect=effect, mode='operation', include_flows=include_flows)
-            invest = self._compute_effect_total(element=element, effect=effect, mode='invest', include_flows=include_flows)
+            operation = self._compute_effect_total(
+                element=element, effect=effect, mode='operation', include_flows=include_flows
+            )
+            invest = self._compute_effect_total(
+                element=element, effect=effect, mode='invest', include_flows=include_flows
+            )
             if invest.isnull().all() and operation.isnull().all():
                 return xr.DataArray(np.nan)
             if operation.isnull().all():
@@ -545,8 +567,9 @@ class CalculationResults:
             if include_flows:
                 if element not in self.components:
                     raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
-                flows = [label.split('|')[0] for label in
-                         self.components[element].inputs + self.components[element].outputs]
+                flows = [
+                    label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs
+                ]
                 for flow in flows:
                     label = f'{flow}->{target_effect}({mode})'
                     if label in self.solution:
@@ -640,16 +663,19 @@ class CalculationResults:
 
             Time filtering (summer months only):
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={
-            ...     'scenario': 'base',
-            ...     'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])]
-            ... })
+            >>> results.plot_heatmap(
+            ...     'Boiler(Qth)|flow_rate',
+            ...     indexer={
+            ...         'scenario': 'base',
+            ...         'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])],
+            ...     },
+            ... )
 
             Save to specific location:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate',
-            ...                      indexer={'scenario': 'base'},
-            ...                      save='path/to/my_heatmap.html')
+            >>> results.plot_heatmap(
+            ...     'Boiler(Qth)|flow_rate', indexer={'scenario': 'base'}, save='path/to/my_heatmap.html'
+            ... )
         """
         dataarray = self.solution[variable_name]
 
@@ -1079,7 +1105,7 @@ class ComponentResults(_NodeResults):
         charge_state, suffix_parts = _apply_indexer_to_data(charge_state, indexer, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        title=f'Operation Balance of {self.label}{suffix}'
+        title = f'Operation Balance of {self.label}{suffix}'
 
         if engine == 'plotly':
             fig = plotting.with_plotly(
@@ -1097,7 +1123,7 @@ class ComponentResults(_NodeResults):
                     x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
                 )
             )
-        elif engine=='matplotlib':
+        elif engine == 'matplotlib':
             fig, ax = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
@@ -1562,10 +1588,7 @@ def filter_dataset(
     return filtered_ds
 
 
-def filter_dataarray_by_coord(
-    da: xr.DataArray,
-    **kwargs: Optional[Union[str, List[str]]]
-) -> xr.DataArray:
+def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: Optional[Union[str, List[str]]]) -> xr.DataArray:
     """Filter flows by node and component attributes.
 
     Filters are applied in the order they are specified. All filters must match for an edge to be included.
@@ -1585,6 +1608,7 @@ def filter_dataarray_by_coord(
         AttributeError: If required coordinates are missing.
         ValueError: If specified nodes don't exist or no matches found.
     """
+
     # Helper function to process filters
     def apply_filter(array, coord_name: str, coord_values: Union[Any, List[Any]]):
         # Verify coord exists
@@ -1598,12 +1622,12 @@ def filter_dataarray_by_coord(
         available = set(array[coord_name].values)
         missing = [v for v in val_list if v not in available]
         if missing:
-            raise ValueError(f"{coord_name.title()} value(s) not found: {missing}")
+            raise ValueError(f'{coord_name.title()} value(s) not found: {missing}')
 
         # Apply filter
         return array.where(
             array[coord_name].isin(val_list) if isinstance(coord_values, list) else array[coord_name] == coord_values,
-            drop=True
+            drop=True,
         )
 
     # Apply filters from kwargs
@@ -1612,20 +1636,18 @@ def filter_dataarray_by_coord(
         for coord, values in filters.items():
             da = apply_filter(da, coord, values)
     except ValueError as e:
-        raise ValueError(f"No edges match criteria: {filters}") from e
+        raise ValueError(f'No edges match criteria: {filters}') from e
 
     # Verify results exist
     if da.size == 0:
-        raise ValueError(f"No edges match criteria: {filters}")
+        raise ValueError(f'No edges match criteria: {filters}')
 
     return da
 
 
 def _apply_indexer_to_data(
-    data: Union[xr.DataArray, xr.Dataset],
-    indexer: Optional[Dict[str, Any]] = None,
-    drop=False
-    ) -> Tuple[Union[xr.DataArray, xr.Dataset], List[str]]:
+    data: Union[xr.DataArray, xr.Dataset], indexer: Optional[Dict[str, Any]] = None, drop=False
+) -> Tuple[Union[xr.DataArray, xr.Dataset], List[str]]:
     """
     Apply indexer selection or auto-select first values for non-time dimensions.
 
@@ -1643,7 +1665,7 @@ def _apply_indexer_to_data(
     if indexer is not None:
         # User provided indexer
         data = data.sel(indexer, drop=drop)
-        selection_string.extend(f"{v}[{k}]" for k, v in indexer.items())
+        selection_string.extend(f'{v}[{k}]' for k, v in indexer.items())
     else:
         # Auto-select first value for each dimension except 'time'
         selection = {}
@@ -1651,7 +1673,7 @@ def _apply_indexer_to_data(
             if dim != 'time' and dim in data.coords:
                 first_value = data.coords[dim].values[0]
                 selection[dim] = first_value
-                selection_string.append(f"{first_value}[{dim}]")
+                selection_string.append(f'{first_value}[{dim}]')
         if selection:
             data = data.sel(selection, drop=drop)
 

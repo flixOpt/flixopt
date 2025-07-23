@@ -52,13 +52,13 @@ class TimeSeriesData(xr.DataArray):
     __slots__ = ()  # No additional instance attributes - everything goes in attrs
 
     def __init__(
-            self,
-            *args,
-            aggregation_group: Optional[str] = None,
-            aggregation_weight: Optional[float] = None,
-            agg_group: Optional[str] = None,
-            agg_weight: Optional[float] = None,
-            **kwargs
+        self,
+        *args,
+        aggregation_group: Optional[str] = None,
+        aggregation_weight: Optional[float] = None,
+        agg_group: Optional[str] = None,
+        agg_weight: Optional[float] = None,
+        **kwargs,
     ):
         """
         Args:
@@ -105,7 +105,7 @@ class TimeSeriesData(xr.DataArray):
             da,
             aggregation_group=self.aggregation_group,
             aggregation_weight=self.aggregation_weight,
-            name=name if name is not None else self.name
+            name=name if name is not None else self.name,
         )
 
     @property
@@ -117,11 +117,17 @@ class TimeSeriesData(xr.DataArray):
         return self.attrs.get('aggregation_weight')
 
     @classmethod
-    def from_dataarray(cls, da: xr.DataArray, aggregation_group: Optional[str] = None, aggregation_weight: Optional[float] = None):
+    def from_dataarray(
+        cls, da: xr.DataArray, aggregation_group: Optional[str] = None, aggregation_weight: Optional[float] = None
+    ):
         """Create TimeSeriesData from DataArray, extracting metadata from attrs."""
         # Get aggregation metadata from attrs or parameters
-        final_aggregation_group = aggregation_group if aggregation_group is not None else da.attrs.get('aggregation_group')
-        final_aggregation_weight = aggregation_weight if aggregation_weight is not None else da.attrs.get('aggregation_weight')
+        final_aggregation_group = (
+            aggregation_group if aggregation_group is not None else da.attrs.get('aggregation_group')
+        )
+        final_aggregation_weight = (
+            aggregation_weight if aggregation_weight is not None else da.attrs.get('aggregation_weight')
+        )
 
         return cls(da, aggregation_group=final_aggregation_group, aggregation_weight=final_aggregation_weight)
 
@@ -185,7 +191,9 @@ class DataConverter:
         """
         if len(target_dims) == 0:
             if len(data) != 1:
-                raise ConversionError(f'Cannot convert multi-element Series without target dimensions. Got \n{data}\n and \n{coords}')
+                raise ConversionError(
+                    f'Cannot convert multi-element Series without target dimensions. Got \n{data}\n and \n{coords}'
+                )
             return xr.DataArray(data.iloc[0])
 
         # Try to match Series index to coordinates

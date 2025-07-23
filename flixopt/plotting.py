@@ -251,8 +251,9 @@ def with_plotly(
                     x=data.index,
                     y=data[column],
                     name=column,
-                    marker=dict(color=processed_colors[i],
-                                line=dict(width=0, color='rgba(0,0,0,0)')),  #Transparent line with 0 width
+                    marker=dict(
+                        color=processed_colors[i], line=dict(width=0, color='rgba(0,0,0,0)')
+                    ),  # Transparent line with 0 width
                 )
             )
 
@@ -263,14 +264,7 @@ def with_plotly(
         )
     if style == 'grouped_bar':
         for i, column in enumerate(data.columns):
-            fig.add_trace(
-                go.Bar(
-                    x=data.index,
-                    y=data[column],
-                    name=column,
-                    marker=dict(color=processed_colors[i])
-                )
-            )
+            fig.add_trace(go.Bar(x=data.index, y=data[column], name=column, marker=dict(color=processed_colors[i])))
 
         fig.update_layout(
             barmode='group',

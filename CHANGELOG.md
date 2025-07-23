@@ -74,7 +74,6 @@ This enables to model transformation pathways over multiple years.
 * Clearer separation between the main Model and "Submodels"
 * Improved access to the Submodels and their variables, constraints and submodels
 * Added __repr__() for Submodels to easily inspect its content
-* 
 
 
 #### Other new features
@@ -121,7 +120,7 @@ This enables to model transformation pathways over multiple years.
 ## [2.1.2] - 2025-06-14
 
 ### Fixed
-- Storage losses per hour where not calculated correctly, as mentioned by @brokenwings01. This might have lead to issues with modeling large losses and long timesteps. 
+- Storage losses per hour where not calculated correctly, as mentioned by @brokenwings01. This might have lead to issues with modeling large losses and long timesteps.
   - Old implementation:     $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) \cdot \Delta \text{t}_{i}$
   - Correct implementation: $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) ^{\Delta \text{t}_{i}}$
 

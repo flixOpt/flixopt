@@ -42,7 +42,7 @@ class ModelingUtilitiesAbstract:
             return xr.DataArray(0) if values.item() < epsilon else xr.DataArray(1)
 
         # Convert to binary states
-        binary_states = (np.abs(values) >= epsilon)
+        binary_states = np.abs(values) >= epsilon
 
         # Optionally collapse dimensions using .any()
         if dims is not None:
@@ -94,13 +94,12 @@ class ModelingUtilitiesAbstract:
             # Start after last zero
             start_idx = zero_indices[-1] + 1
 
-        consecutive_values = binary_values.isel({dim:slice(start_idx, None)})
+        consecutive_values = binary_values.isel({dim: slice(start_idx, None)})
 
-        return float(consecutive_values.sum().item())  #TODO: Som only over one dim?
+        return float(consecutive_values.sum().item())  # TODO: Som only over one dim?
 
 
 class ModelingUtilities:
-
     @staticmethod
     def compute_consecutive_hours_in_state(
         binary_values: TemporalData,
@@ -121,21 +120,25 @@ class ModelingUtilities:
         if not isinstance(hours_per_timestep, (int, float)):
             raise TypeError(f'hours_per_timestep must be a scalar, got {type(hours_per_timestep)}')
 
-        return ModelingUtilitiesAbstract.count_consecutive_states(
-            binary_values=binary_values, epsilon=epsilon
-        ) * hours_per_timestep
+        return (
+            ModelingUtilitiesAbstract.count_consecutive_states(binary_values=binary_values, epsilon=epsilon)
+            * hours_per_timestep
+        )
 
     @staticmethod
-    def compute_previous_states(previous_values: Optional[xr.DataArray], epsilon: Optional[float] = None) -> xr.DataArray:
+    def compute_previous_states(
+        previous_values: Optional[xr.DataArray], epsilon: Optional[float] = None
+    ) -> xr.DataArray:
         return ModelingUtilitiesAbstract.to_binary(values=previous_values, epsilon=epsilon, dims='time')
 
     @staticmethod
     def compute_previous_on_duration(
         previous_values: xr.DataArray, hours_per_step: Union[xr.DataArray, float, int]
     ) -> float:
-        return ModelingUtilitiesAbstract.count_consecutive_states(
-            ModelingUtilitiesAbstract.to_binary(previous_values)
-        ) * hours_per_step
+        return (
+            ModelingUtilitiesAbstract.count_consecutive_states(ModelingUtilitiesAbstract.to_binary(previous_values))
+            * hours_per_step
+        )
 
     @staticmethod
     def compute_previous_off_duration(
@@ -351,9 +354,7 @@ class ModelingPrimitives:
         constraints = {}
 
         # Upper bound: duration[t] ≤ state[t] * M
-        constraints['ub'] = model.add_constraints(
-            duration <= state_variable * mega, name=f'{duration.name}|ub'
-        )
+        constraints['ub'] = model.add_constraints(duration <= state_variable * mega, name=f'{duration.name}|ub')
 
         # Forward constraint: duration[t+1] ≤ duration[t] + hours_per_step[t]
         constraints['forward'] = model.add_constraints(
@@ -373,8 +374,7 @@ class ModelingPrimitives:
 
         # Initial condition: duration[0] = (hours_per_step[0] + previous_duration) * state[0]
         constraints['initial'] = model.add_constraints(
-            duration.isel(time=0)
-            == (hours_per_step.isel(time=0) + previous_duration) * state_variable.isel(time=0),
+            duration.isel(time=0) == (hours_per_step.isel(time=0) + previous_duration) * state_variable.isel(time=0),
             name=f'{duration.name}|initial',
         )
 
@@ -399,7 +399,9 @@ class ModelingPrimitives:
 
     @staticmethod
     def mutual_exclusivity_constraint(
-        model: Submodel, binary_variables: List[linopy.Variable], tolerance: float = 1,
+        model: Submodel,
+        binary_variables: List[linopy.Variable],
+        tolerance: float = 1,
         short_name: str = 'mutual_exclusivity',
     ) -> linopy.Constraint:
         """
@@ -514,9 +516,7 @@ class BoundingPatterns:
         name = name or f'{variable.name}'
 
         if np.all(lower_bound - upper_bound) < 1e-10:
-            fix_constraint = model.add_constraints(
-                variable == variable_state * upper_bound, name=f'{name}|fix'
-            )
+            fix_constraint = model.add_constraints(variable == variable_state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
         epsilon = np.maximum(CONFIG.modeling.EPSILON, lower_bound)
@@ -616,9 +616,7 @@ class BoundingPatterns:
         scaling_lower = model.add_constraints(
             variable >= (variable_state - 1) * big_m_misc + scaling_variable * rel_lower, name=f'{name}|lb2'
         )
-        scaling_upper = model.add_constraints(
-            variable <= scaling_variable * rel_upper, name=f'{name}|ub2'
-        )
+        scaling_upper = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub2')
 
         big_m_upper = scaling_max * rel_upper
         big_m_lower = np.maximum(CONFIG.modeling.EPSILON, scaling_min * rel_lower)

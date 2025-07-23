@@ -164,12 +164,12 @@ if __name__ == '__main__':
     if full:
         calculation = fx.FullCalculation('Full', flow_system)
         calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0.01/100, 60))
+        calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)
 
     if segmented:
         calculation = fx.SegmentedCalculation('Segmented', flow_system, segment_length, overlap_length)
-        calculation.do_modeling_and_solve(fx.solvers.HighsSolver(0.01/100, 60))
+        calculation.do_modeling_and_solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)
 
     if aggregated:
@@ -178,7 +178,7 @@ if __name__ == '__main__':
             aggregation_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
         calculation = fx.AggregatedCalculation('Aggregated', flow_system, aggregation_parameters)
         calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0.01/100, 60))
+        calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)
 
     # Get solutions for plotting for different calculations
@@ -221,7 +221,8 @@ if __name__ == '__main__':
     ).update_layout(barmode='group').write_html('results/Total Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]), 'stacked_bar'
+        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]),
+        'stacked_bar',
     ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
         'results/Speed Comparison.html'
     )

@@ -136,8 +136,7 @@ class Calculation:
                 for bus in self.flow_system.buses.values()
                 if bus.with_excess
                 and (
-                    bus.submodel.excess_input.solution.sum() > 1e-3
-                    or bus.submodel.excess_output.solution.sum() > 1e-3
+                    bus.submodel.excess_input.solution.sum() > 1e-3 or bus.submodel.excess_output.solution.sum() > 1e-3
                 )
             ],
         }
@@ -213,7 +212,9 @@ class FullCalculation(Calculation):
 
         return self
 
-    def solve(self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = True) -> 'FullCalculation':
+    def solve(
+        self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = True
+    ) -> 'FullCalculation':
         t_start = timeit.default_timer()
 
         self.model.solve(
@@ -323,13 +324,9 @@ class AggregatedCalculation(FullCalculation):
                 f'Aggregation failed due to inconsistent time step sizes:'
                 f'delta_t varies from {dt_min} to {dt_max} hours.'
             )
-        steps_per_period = (
-            self.aggregation_parameters.hours_per_period
-            / self.flow_system.hours_per_timestep.max()
-        )
+        steps_per_period = self.aggregation_parameters.hours_per_period / self.flow_system.hours_per_timestep.max()
         is_integer = (
-            self.aggregation_parameters.hours_per_period
-            % self.flow_system.hours_per_timestep.max()
+            self.aggregation_parameters.hours_per_period % self.flow_system.hours_per_timestep.max()
         ).item() == 0
         if not (steps_per_period.size == 1 and is_integer):
             raise ValueError(
@@ -360,7 +357,11 @@ class AggregatedCalculation(FullCalculation):
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
             ds = self.flow_system.to_dataset()
             for name, series in self.aggregation.aggregated_data.items():
-                da = DataConverter.to_dataarray(series, self.flow_system.coords).rename(name).assign_attrs(ds[name].attrs)
+                da = (
+                    DataConverter.to_dataarray(series, self.flow_system.coords)
+                    .rename(name)
+                    .assign_attrs(ds[name].attrs)
+                )
                 if TimeSeriesData.is_timeseries_data(da):
                     da = TimeSeriesData.from_dataarray(da)
 
@@ -428,7 +429,6 @@ class SegmentedCalculation(Calculation):
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
         self.sub_calculations: List[FullCalculation] = []
-
 
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
@@ -525,7 +525,7 @@ class SegmentedCalculation(Calculation):
         logger.debug(
             f'Start of next segment: {start}. Indices of previous values: {start_previous_values} -> {end_previous_values}'
         )
-        current_flow_system = self.sub_calculations[i -1].flow_system
+        current_flow_system = self.sub_calculations[i - 1].flow_system
         next_flow_system = self.sub_calculations[i].flow_system
 
         start_values_of_this_segment = {}
@@ -560,9 +560,9 @@ class SegmentedCalculation(Calculation):
     @property
     def start_values_of_segments(self) -> List[Dict[str, Any]]:
         """Gives an overview of the start values of all Segments"""
-        return [
-            {name: value for name, value in self._original_start_values.items()}
-        ] + [start_values for start_values in self._transfered_start_values]
+        return [{name: value for name, value in self._original_start_values.items()}] + [
+            start_values for start_values in self._transfered_start_values
+        ]
 
     @property
     def all_timesteps(self) -> pd.DatetimeIndex:

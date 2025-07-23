@@ -15,9 +15,11 @@ class TestBusModel:
         """Test that flow model constraints are correctly generated."""
         flow_system = basic_flow_system_linopy
         bus = fx.Bus('TestBus', excess_penalty_per_flow_hour=None)
-        flow_system.add_elements(bus,
-                                 fx.Sink('WärmelastTest', sink=fx.Flow('Q_th_Last', 'TestBus')),
-                                 fx.Source('GastarifTest', source=fx.Flow('Q_Gas', 'TestBus')))
+        flow_system.add_elements(
+            bus,
+            fx.Sink('WärmelastTest', sink=fx.Flow('Q_th_Last', 'TestBus')),
+            fx.Source('GastarifTest', source=fx.Flow('Q_Gas', 'TestBus')),
+        )
         model = create_linopy_model(flow_system)
 
         assert set(bus.submodel.variables) == {'WärmelastTest(Q_th_Last)|flow_rate', 'GastarifTest(Q_Gas)|flow_rate'}
@@ -25,7 +27,7 @@ class TestBusModel:
 
         assert_conequal(
             model.constraints['TestBus|balance'],
-            model.variables['GastarifTest(Q_Gas)|flow_rate'] == model.variables['WärmelastTest(Q_th_Last)|flow_rate']
+            model.variables['GastarifTest(Q_Gas)|flow_rate'] == model.variables['WärmelastTest(Q_th_Last)|flow_rate'],
         )
 
     def test_bus_penalty(self, basic_flow_system_linopy):
@@ -33,26 +35,36 @@ class TestBusModel:
         flow_system = basic_flow_system_linopy
         timesteps = flow_system.timesteps
         bus = fx.Bus('TestBus')
-        flow_system.add_elements(bus,
-                                 fx.Sink('WärmelastTest', sink=fx.Flow('Q_th_Last', 'TestBus')),
-                                 fx.Source('GastarifTest', source=fx.Flow('Q_Gas', 'TestBus')))
+        flow_system.add_elements(
+            bus,
+            fx.Sink('WärmelastTest', sink=fx.Flow('Q_th_Last', 'TestBus')),
+            fx.Source('GastarifTest', source=fx.Flow('Q_Gas', 'TestBus')),
+        )
         model = create_linopy_model(flow_system)
 
-        assert set(bus.submodel.variables) == {'TestBus|excess_input',
-                                            'TestBus|excess_output',
-                                            'WärmelastTest(Q_th_Last)|flow_rate',
-                                            'GastarifTest(Q_Gas)|flow_rate'}
+        assert set(bus.submodel.variables) == {
+            'TestBus|excess_input',
+            'TestBus|excess_output',
+            'WärmelastTest(Q_th_Last)|flow_rate',
+            'GastarifTest(Q_Gas)|flow_rate',
+        }
         assert set(bus.submodel.constraints) == {'TestBus|balance'}
 
-        assert_var_equal(model.variables['TestBus|excess_input'], model.add_variables(lower=0, coords = (timesteps,)))
+        assert_var_equal(model.variables['TestBus|excess_input'], model.add_variables(lower=0, coords=(timesteps,)))
         assert_var_equal(model.variables['TestBus|excess_output'], model.add_variables(lower=0, coords=(timesteps,)))
 
         assert_conequal(
             model.constraints['TestBus|balance'],
-            model.variables['GastarifTest(Q_Gas)|flow_rate'] - model.variables['WärmelastTest(Q_th_Last)|flow_rate'] + model.variables['TestBus|excess_input'] -  model.variables['TestBus|excess_output'] ==  0
+            model.variables['GastarifTest(Q_Gas)|flow_rate']
+            - model.variables['WärmelastTest(Q_th_Last)|flow_rate']
+            + model.variables['TestBus|excess_input']
+            - model.variables['TestBus|excess_output']
+            == 0,
         )
 
         assert_conequal(
             model.constraints['TestBus->Penalty'],
-            model.variables['TestBus->Penalty'] == (model.variables['TestBus|excess_input'] * 1e5 * model.hours_per_step).sum() + (model.variables['TestBus|excess_output'] * 1e5 * model.hours_per_step).sum(),
+            model.variables['TestBus->Penalty']
+            == (model.variables['TestBus|excess_input'] * 1e5 * model.hours_per_step).sum()
+            + (model.variables['TestBus|excess_output'] * 1e5 * model.hours_per_step).sum(),
         )

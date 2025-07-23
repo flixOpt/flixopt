@@ -9,10 +9,7 @@ from flixopt.effects import calculate_all_conversion_paths
 
 def test_direct_conversions():
     """Test direct conversions with simple scalar values."""
-    conversion_dict = {
-        'A': {'B': xr.DataArray(2.0)},
-        'B': {'C': xr.DataArray(3.0)}
-    }
+    conversion_dict = {'A': {'B': xr.DataArray(2.0)}, 'B': {'C': xr.DataArray(3.0)}}
 
     result = calculate_all_conversion_paths(conversion_dict)
 
@@ -32,7 +29,7 @@ def test_multiple_paths():
     conversion_dict = {
         'A': {'B': xr.DataArray(2.0), 'C': xr.DataArray(3.0)},
         'B': {'D': xr.DataArray(4.0)},
-        'C': {'D': xr.DataArray(5.0)}
+        'C': {'D': xr.DataArray(5.0)},
     }
 
     result = calculate_all_conversion_paths(conversion_dict)
@@ -49,10 +46,7 @@ def test_xarray_conversions():
     a_to_b = xr.DataArray([2.0, 2.1, 2.2], dims='time', coords={'time': time_points})
     b_to_c = xr.DataArray([3.0, 3.1, 3.2], dims='time', coords={'time': time_points})
 
-    conversion_dict = {
-        'A': {'B': a_to_b},
-        'B': {'C': b_to_c}
-    }
+    conversion_dict = {'A': {'B': a_to_b}, 'B': {'C': b_to_c}}
 
     result = calculate_all_conversion_paths(conversion_dict)
 
@@ -72,7 +66,7 @@ def test_long_paths():
         'A': {'B': xr.DataArray(2.0)},
         'B': {'C': xr.DataArray(3.0)},
         'C': {'D': xr.DataArray(4.0)},
-        'D': {'E': xr.DataArray(5.0)}
+        'D': {'E': xr.DataArray(5.0)},
     }
 
     result = calculate_all_conversion_paths(conversion_dict)
@@ -89,7 +83,7 @@ def test_diamond_paths():
         'A': {'B': xr.DataArray(2.0), 'C': xr.DataArray(3.0)},
         'B': {'D': xr.DataArray(4.0)},
         'C': {'D': xr.DataArray(5.0)},
-        'D': {'E': xr.DataArray(6.0)}
+        'D': {'E': xr.DataArray(6.0)},
     }
 
     result = calculate_all_conversion_paths(conversion_dict)
@@ -107,7 +101,7 @@ def test_effect_shares_example():
     conversion_dict = {
         'Costs': {'Effect1': xr.DataArray(0.5)},
         'Effect1': {'Effect2': xr.DataArray(1.1), 'Effect3': xr.DataArray(1.2)},
-        'Effect2': {'Effect3': xr.DataArray(5.0)}
+        'Effect2': {'Effect3': xr.DataArray(5.0)},
     }
 
     result = calculate_all_conversion_paths(conversion_dict)
@@ -142,10 +136,7 @@ def test_empty_conversion_dict():
 
 def test_no_indirect_paths():
     """Test with a dictionary that has no indirect paths."""
-    conversion_dict = {
-        'A': {'B': xr.DataArray(2.0)},
-        'C': {'D': xr.DataArray(3.0)}
-    }
+    conversion_dict = {'A': {'B': xr.DataArray(2.0)}, 'C': {'D': xr.DataArray(3.0)}}
 
     result = calculate_all_conversion_paths(conversion_dict)
 
@@ -178,7 +169,7 @@ def test_complex_network():
         'N': {'R': xr.DataArray(1.7)},
         'O': {'R': xr.DataArray(2.9), 'S': xr.DataArray(1.0)},
         'P': {'S': xr.DataArray(2.4)},
-        'Q': {'S': xr.DataArray(1.5)}
+        'Q': {'S': xr.DataArray(1.5)},
     }
 
     result = calculate_all_conversion_paths(conversion_dict)
@@ -231,6 +222,7 @@ def test_complex_network():
     # But we won't have all possible connections due to the structure
     # Just verify we have a reasonable number
     assert len(result) > 50
+
 
 if __name__ == '__main__':
     pytest.main()

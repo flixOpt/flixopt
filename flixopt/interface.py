@@ -277,8 +277,12 @@ class OnOffParameters(Interface):
             switch_on_total_max: max nr of switchOn operations
             force_switch_on: force creation of switch on variable, even if there is no switch_on_total_max
         """
-        self.effects_per_switch_on: 'TemporalEffectsUser' = effects_per_switch_on if effects_per_switch_on is not None else {}
-        self.effects_per_running_hour: 'TemporalEffectsUser' = effects_per_running_hour if effects_per_running_hour is not None else {}
+        self.effects_per_switch_on: 'TemporalEffectsUser' = (
+            effects_per_switch_on if effects_per_switch_on is not None else {}
+        )
+        self.effects_per_running_hour: 'TemporalEffectsUser' = (
+            effects_per_running_hour if effects_per_running_hour is not None else {}
+        )
         self.on_hours_total_min: Scalar = on_hours_total_min
         self.on_hours_total_max: Scalar = on_hours_total_max
         self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min

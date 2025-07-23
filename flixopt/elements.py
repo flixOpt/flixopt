@@ -95,7 +95,10 @@ class Bus(Element):
     """
 
     def __init__(
-        self, label: str, excess_penalty_per_flow_hour: Optional[TemporalDataUser] = 1e5, meta_data: Optional[Dict] = None
+        self,
+        label: str,
+        excess_penalty_per_flow_hour: Optional[TemporalDataUser] = 1e5,
+        meta_data: Optional[Dict] = None,
     ):
         """
         Args:
@@ -122,7 +125,9 @@ class Bus(Element):
 
     def _plausibility_checks(self) -> None:
         if self.excess_penalty_per_flow_hour is not None and (self.excess_penalty_per_flow_hour == 0).all():
-            logger.warning(f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.')
+            logger.warning(
+                f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
+            )
 
     @property
     def with_excess(self) -> bool:
@@ -271,7 +276,7 @@ class Flow(Element):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if not isinstance(self.size, InvestParameters) and (
-                np.any(self.size == CONFIG.modeling.BIG) and self.fixed_relative_profile is not None
+            np.any(self.size == CONFIG.modeling.BIG) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
                 f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
@@ -293,9 +298,15 @@ class Flow(Element):
             )
 
         if self.previous_flow_rate is not None:
-            if not any([isinstance(self.previous_flow_rate, np.ndarray) and self.previous_flow_rate.ndim == 1,
-                       isinstance(self.previous_flow_rate, (int, float, list))]):
-                raise TypeError(f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}')
+            if not any(
+                [
+                    isinstance(self.previous_flow_rate, np.ndarray) and self.previous_flow_rate.ndim == 1,
+                    isinstance(self.previous_flow_rate, (int, float, list)),
+                ]
+            ):
+                raise TypeError(
+                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}'
+                )
 
     @property
     def label_full(self) -> str:
@@ -458,7 +469,7 @@ class FlowModel(ElementModel):
     def _create_bounds_for_load_factor(self):
         """Create load factor constraints using current approach"""
         # Get the size (either from element or investment)
-        size = self.investment.size  if self.with_investment else self.element.size
+        size = self.investment.size if self.with_investment else self.element.size
 
         # Maximum load factor constraint
         if self.element.load_factor_max is not None:
@@ -528,15 +539,14 @@ class FlowModel(ElementModel):
     @property
     def previous_states(self) -> Optional[TemporalData]:
         """Previous states of the flow rate"""
-        #TODO: This would be nicer to handle in the Flow itself, and allow DataArrays as well.
+        # TODO: This would be nicer to handle in the Flow itself, and allow DataArrays as well.
         previous_flow_rate = self.element.previous_flow_rate
         if previous_flow_rate is None:
             return None
 
         return ModelingUtilitiesAbstract.to_binary(
             values=xr.DataArray(
-                [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate,
-                dims='time'
+                [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
             ),
             epsilon=CONFIG.modeling.EPSILON,
             dims='time',
@@ -566,7 +576,9 @@ class BusModel(ElementModel):
 
             self.excess_input = self.add_variables(lower=0, coords=self._model.get_coords(), short_name='excess_input')
 
-            self.excess_output = self.add_variables(lower=0, coords=self._model.get_coords(), short_name='excess_output')
+            self.excess_output = self.add_variables(
+                lower=0, coords=self._model.get_coords(), short_name='excess_output'
+            )
 
             eq_bus_balance.lhs -= -self.excess_input + self.excess_output
 
@@ -580,8 +592,12 @@ class BusModel(ElementModel):
             inputs.append(self.excess_input.name)
         if self.excess_output is not None:
             outputs.append(self.excess_output.name)
-        return {**super().results_structure(), 'inputs': inputs, 'outputs': outputs,
-                'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs]}
+        return {
+            **super().results_structure(),
+            'inputs': inputs,
+            'outputs': outputs,
+            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
+        }
 
 
 class ComponentModel(ElementModel):
@@ -614,9 +630,11 @@ class ComponentModel(ElementModel):
                 self.add_constraints(on == all_flows[0].submodel.on_off.on, short_name='on')
             else:
                 flow_ons = [flow.submodel.on_off.on for flow in all_flows]
-                #TODO: Is the EPSILON even necessary?
+                # TODO: Is the EPSILON even necessary?
                 self.add_constraints(on <= sum(flow_ons) + CONFIG.modeling.EPSILON, short_name='on|ub')
-                self.add_constraints(on >= sum(flow_ons) / (len(flow_ons) + CONFIG.modeling.EPSILON), short_name='on|lb')
+                self.add_constraints(
+                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.modeling.EPSILON), short_name='on|lb'
+                )
 
             self.on_off = self.add_submodels(
                 OnOffModel(
@@ -661,9 +679,7 @@ class ComponentModel(ElementModel):
         max_len = max(da.sizes['time'] for da in previous_states)
 
         padded_previous_states = [
-            da.assign_coords(
-                time=range(-da.sizes['time'], 0)
-            ).reindex(time=range(-max_len, 0), fill_value=0)
+            da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
             for da in previous_states
         ]
         return xr.concat(padded_previous_states, dim='flow').any(dim='flow').astype(int)

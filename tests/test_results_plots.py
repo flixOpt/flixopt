@@ -40,6 +40,7 @@ def plotting_engine(request):
 def color_spec(request):
     return request.param
 
+
 @pytest.mark.slow
 def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
     calculation = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
@@ -61,6 +62,7 @@ def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
     results['Speicher'].plot_charge_state(engine=plotting_engine)
 
     plt.close('all')
+
 
 @pytest.mark.slow
 def test_color_handling_edge_cases(flow_system, plotting_engine, show, save):

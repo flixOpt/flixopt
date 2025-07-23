@@ -59,7 +59,9 @@ class InvestmentModel(Submodel):
 
         if self.parameters.optional:
             self.add_variables(
-                binary=True, coords=self._model.get_coords(['year', 'scenario']), short_name='is_invested',
+                binary=True,
+                coords=self._model.get_coords(['year', 'scenario']),
+                short_name='is_invested',
             )
 
             BoundingPatterns.bounds_with_state(
@@ -167,7 +169,7 @@ class OnOffModel(Submodel):
             bounds=(
                 self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
                 self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
-            ),#TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
+            ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
             short_name='on_hours_total',
             coords=self.get_coords(['year', 'scenario']),
         )
@@ -184,10 +186,15 @@ class OnOffModel(Submodel):
                 switch_off=self.switch_off,
                 name=f'{self.label_of_model}|switch',
                 previous_state=self._previous_states.isel(time=-1) if self._previous_states is not None else 0,
-        )
+            )
 
             if self.parameters.switch_on_total_max is not None:
-                count = self.add_variables(lower=0, upper=self.parameters.switch_on_total_max, coords=self._model.get_coords(('year', 'scenario')), short_name='switch|count')
+                count = self.add_variables(
+                    lower=0,
+                    upper=self.parameters.switch_on_total_max,
+                    coords=self._model.get_coords(('year', 'scenario')),
+                    short_name='switch|count',
+                )
                 self.add_constraints(count == self.switch_on.sum('time'), short_name='switch|count')
 
         # 5. Consecutive on duration using existing pattern
@@ -211,7 +218,7 @@ class OnOffModel(Submodel):
                 maximum_duration=self.parameters.consecutive_off_hours_max,
                 previous_duration=self._get_previous_off_duration(),
             )
-            #TODO:
+            # TODO:
 
         self._add_effects()
 
@@ -287,7 +294,7 @@ class OnOffModel(Submodel):
         if self._previous_states is None:
             return hours_per_step
         else:
-            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_states  * -1 + 1, hours_per_step)
+            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_states * -1 + 1, hours_per_step)
 
 
 class PieceModel(Submodel):
@@ -309,7 +316,7 @@ class PieceModel(Submodel):
 
     def _do_modeling(self):
         super()._do_modeling()
-        dims =('time', 'year','scenario') if self._as_time_series else ('year','scenario')
+        dims = ('time', 'year', 'scenario') if self._as_time_series else ('year', 'scenario')
         self.inside_piece = self.add_variables(
             binary=True,
             short_name='inside_piece',
@@ -392,7 +399,7 @@ class PiecewiseModel(Submodel):
                 ),
                 name=f'{self.label_full}|{var_name}|lambda',
                 short_name=f'{var_name}|lambda',
-                )
+            )
 
             # a) eq: Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 1                Aufenthalt nur in Segmenten erlaubt
             # b) eq: -On(t) + Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 0       zusätzlich kann alles auch Null sein
@@ -508,10 +515,10 @@ class ShareAllocationModel(Submodel):
             lower=self._total_min,
             upper=self._total_max,
             coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
-            short_name='total'
+            short_name='total',
         )
         # eq: sum = sum(share_i) # skalar
-        self._eq_total =  self.add_constraints(self.total == 0, short_name='total')
+        self._eq_total = self.add_constraints(self.total == 0, short_name='total')
 
         if 'time' in self._dims:
             self.total_per_timestep = self.add_variables(
@@ -521,7 +528,9 @@ class ShareAllocationModel(Submodel):
                 short_name='total_per_timestep',
             )
 
-            self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='total_per_timestep')
+            self._eq_total_per_timestep = self.add_constraints(
+                self.total_per_timestep == 0, short_name='total_per_timestep'
+            )
 
             # Add it to the total
             self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')

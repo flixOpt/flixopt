@@ -232,10 +232,14 @@ class Storage(Component):
             f'{self.label_full}|maximal_final_charge_state', self.maximal_final_charge_state, has_time_dim=False
         )
         self.relative_minimum_final_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_minimum_final_charge_state', self.relative_minimum_final_charge_state, has_time_dim=False
+            f'{self.label_full}|relative_minimum_final_charge_state',
+            self.relative_minimum_final_charge_state,
+            has_time_dim=False,
         )
         self.relative_maximum_final_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_maximum_final_charge_state', self.relative_maximum_final_charge_state, has_time_dim=False
+            f'{self.label_full}|relative_maximum_final_charge_state',
+            self.relative_maximum_final_charge_state,
+            has_time_dim=False,
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
             self.capacity_in_flow_hours.transform_data(flow_system, f'{self.label_full}|InvestParameters')
@@ -281,16 +285,21 @@ class Storage(Component):
             )
 
         if self.balanced:
-            if not isinstance(self.charging.size, InvestParameters) or not isinstance(self.discharging.size, InvestParameters):
+            if not isinstance(self.charging.size, InvestParameters) or not isinstance(
+                self.discharging.size, InvestParameters
+            ):
                 raise PlausibilityError(
-                    f'Balancing charging and discharging Flows in {self.label_full} '
-                    f'is only possible with Investments.')
-            if (self.charging.size.minimum_size > self.discharging.size.maximum_size or
-                self.charging.size.maximum_size < self.discharging.size.minimum_size):
+                    f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
+                )
+            if (
+                self.charging.size.minimum_size > self.discharging.size.maximum_size
+                or self.charging.size.maximum_size < self.discharging.size.minimum_size
+            ):
                 raise PlausibilityError(
                     f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
                     f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
-                    f'{self.charging.size.minimum_size=}, {self.charging.size.maximum_size=}.')
+                    f'{self.charging.size.minimum_size=}, {self.charging.size.maximum_size=}.'
+                )
 
 
 @register_class_for_io
@@ -369,14 +378,14 @@ class Transmission(Component):
                 raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
             if not isinstance(self.in1.size, InvestParameters) or not isinstance(self.in2.size, InvestParameters):
                 raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-            if (
-                    (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or
-                    (self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size).any()
-            ):
+            if (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or (
+                self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size
+            ).any():
                 raise ValueError(
                     f'Balanced Transmission needs compatible minimum and maximum sizes.'
                     f'Got: {self.in1.size.minimum_size=}, {self.in1.size.maximum_size=}, {self.in1.size.fixed_size=} and '
-                    f'{self.in2.size.minimum_size=}, {self.in2.size.maximum_size=}, {self.in2.size.fixed_size=}.')
+                    f'{self.in2.size.minimum_size=}, {self.in2.size.maximum_size=}, {self.in2.size.fixed_size=}.'
+                )
 
     def create_model(self, model) -> 'TransmissionModel':
         self._plausibility_checks()
@@ -485,6 +494,7 @@ class LinearConverterModel(ComponentModel):
 
 class StorageModel(ComponentModel):
     """Submodel of Storage"""
+
     element: Storage
 
     def __init__(self, model: FlowSystemModel, element: Storage):
@@ -550,7 +560,8 @@ class StorageModel(ComponentModel):
 
         if self.element.balanced:
             self.add_constraints(
-                self.element.charging.submodel._investment.size * 1 == self.element.discharging.submodel._investment.size * 1,
+                self.element.charging.submodel._investment.size * 1
+                == self.element.discharging.submodel._investment.size * 1,
                 short_name='balanced_sizes',
             )
 
@@ -562,7 +573,8 @@ class StorageModel(ComponentModel):
                 )
             else:
                 self.add_constraints(
-                    self.charge_state.isel(time=0) == self.element.initial_charge_state, short_name='initial_charge_state'
+                    self.charge_state.isel(time=0) == self.element.initial_charge_state,
+                    short_name='initial_charge_state',
                 )
 
         if self.element.maximal_final_charge_state is not None:

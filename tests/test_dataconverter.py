@@ -31,7 +31,7 @@ def standard_coords():
     return {
         'time': pd.date_range('2024-01-01', periods=5, freq='D', name='time'),  # length 5
         'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),  # length 3
-        'region': pd.Index(['north', 'south'], name='region')  # length 2
+        'region': pd.Index(['north', 'south'], name='region'),  # length 2
     }
 
 
@@ -68,10 +68,7 @@ class TestScalarConversion:
 
     def test_scalar_many_dimensions(self, standard_coords):
         """Scalar should broadcast to any number of dimensions."""
-        coords = {
-            **standard_coords,
-            'technology': pd.Index(['solar', 'wind'], name='technology')
-        }
+        coords = {**standard_coords, 'technology': pd.Index(['solar', 'wind'], name='technology')}
 
         result = DataConverter.to_dataarray(42, coords=coords)
         assert result.shape == (5, 3, 2, 2)
@@ -134,11 +131,11 @@ class TestOneDimensionalArrayConversion:
         # Both dimensions have length 3
         coords_3x3 = {
             'time': pd.date_range('2024-01-01', periods=3, freq='D', name='time'),
-            'scenario': pd.Index(['A', 'B', 'C'], name='scenario')
+            'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),
         }
         arr = np.array([1, 2, 3])
 
-        with pytest.raises(ConversionError, match="matches multiple dimensions"):
+        with pytest.raises(ConversionError, match='matches multiple dimensions'):
             DataConverter.to_dataarray(arr, coords=coords_3x3)
 
     def test_1d_array_broadcast_to_many_dimensions(self, standard_coords):
@@ -153,10 +150,7 @@ class TestOneDimensionalArrayConversion:
         # Check broadcasting - all scenarios and regions should have same time values
         for scenario in standard_coords['scenario']:
             for region in standard_coords['region']:
-                assert np.array_equal(
-                    result.sel(scenario=scenario, region=region).values,
-                    time_arr
-                )
+                assert np.array_equal(result.sel(scenario=scenario, region=region).values, time_arr)
 
 
 class TestSeriesConversion:
@@ -227,10 +221,7 @@ class TestSeriesConversion:
         # Check that all non-time dimensions have the same time series values
         for scenario in standard_coords['scenario']:
             for region in standard_coords['region']:
-                assert np.array_equal(
-                    result.sel(scenario=scenario, region=region).values,
-                    time_series.values
-                )
+                assert np.array_equal(result.sel(scenario=scenario, region=region).values, time_series.values)
 
 
 class TestDataFrameConversion:
@@ -247,11 +238,10 @@ class TestDataFrameConversion:
 
     def test_multi_column_dataframe_accepted(self, time_coords, scenario_coords):
         """Multi-column DataFrame should now be accepted and converted via numpy array path."""
-        df = pd.DataFrame({
-            'value1': [10, 20, 30, 40, 50],
-            'value2': [15, 25, 35, 45, 55],
-            'value3': [12, 22, 32, 42, 52]
-        }, index=time_coords)
+        df = pd.DataFrame(
+            {'value1': [10, 20, 30, 40, 50], 'value2': [15, 25, 35, 45, 55], 'value3': [12, 22, 32, 42, 52]},
+            index=time_coords,
+        )
 
         # Should work by converting to numpy array (5x3) and matching to time x scenario
         result = DataConverter.to_dataarray(df, coords={'time': time_coords, 'scenario': scenario_coords})
@@ -264,7 +254,7 @@ class TestDataFrameConversion:
         """Empty DataFrame should be rejected."""
         df = pd.DataFrame(index=time_coords)  # No columns
 
-        with pytest.raises(ConversionError, match="DataFrame must have at least one column"):
+        with pytest.raises(ConversionError, match='DataFrame must have at least one column'):
             DataConverter.to_dataarray(df, coords={'time': time_coords})
 
     def test_dataframe_broadcast(self, time_coords, scenario_coords):
@@ -284,10 +274,9 @@ class TestMultiDimensionalArrayConversion:
         """2D array with unique dimension lengths should work."""
         # 5x3 array should map to time x scenario
         data_2d = np.random.rand(5, 3)
-        result = DataConverter.to_dataarray(data_2d, coords={
-            'time': standard_coords['time'],
-            'scenario': standard_coords['scenario']
-        })
+        result = DataConverter.to_dataarray(
+            data_2d, coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']}
+        )
 
         assert result.shape == (5, 3)
         assert result.dims == ('time', 'scenario')
@@ -295,10 +284,9 @@ class TestMultiDimensionalArrayConversion:
 
         # 3x5 array should map to scenario x time
         data_2d_flipped = np.random.rand(3, 5)
-        result_flipped = DataConverter.to_dataarray(data_2d_flipped, coords={
-            'time': standard_coords['time'],
-            'scenario': standard_coords['scenario']
-        })
+        result_flipped = DataConverter.to_dataarray(
+            data_2d_flipped, coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']}
+        )
 
         assert result_flipped.shape == (5, 3)
         assert result_flipped.dims == ('time', 'scenario')
@@ -343,14 +331,14 @@ class TestMultiDimensionalArrayConversion:
             'time': pd.date_range('2024-01-01', periods=2, freq='D', name='time'),  # length 2
             'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),  # length 3
             'region': pd.Index(['north', 'south', 'east', 'west'], name='region'),  # length 4
-            'technology': pd.Index(['solar', 'wind', 'gas', 'coal', 'hydro'], name='technology')  # length 5
+            'technology': pd.Index(['solar', 'wind', 'gas', 'coal', 'hydro'], name='technology'),  # length 5
         }
 
         # 3x5x2x4 array should map to scenario x technology x time x region
         data_4d = np.random.rand(3, 5, 2, 4)
         result = DataConverter.to_dataarray(data_4d, coords=coords)
 
-        assert result.shape == (2,3,4,5)
+        assert result.shape == (2, 3, 4, 5)
         assert result.dims == ('time', 'scenario', 'region', 'technology')
         assert np.array_equal(result.transpose('scenario', 'technology', 'time', 'region').values, data_4d)
 
@@ -359,18 +347,18 @@ class TestMultiDimensionalArrayConversion:
         # Both dimensions have length 3
         coords_ambiguous = {
             'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),  # length 3
-            'region': pd.Index(['north', 'south', 'east'], name='region')  # length 3
+            'region': pd.Index(['north', 'south', 'east'], name='region'),  # length 3
         }
 
         data_2d = np.random.rand(3, 3)
-        with pytest.raises(ConversionError, match="matches multiple dimension orders"):
+        with pytest.raises(ConversionError, match='matches multiple dimension orders'):
             DataConverter.to_dataarray(data_2d, coords=coords_ambiguous)
 
     def test_multid_array_no_coords(self):
         """Multi-D arrays without coords should fail unless scalar."""
         # Multi-element fails
         data_2d = np.random.rand(2, 3)
-        with pytest.raises(ConversionError, match="Cannot convert multi-element array without target dimensions"):
+        with pytest.raises(ConversionError, match='Cannot convert multi-element array without target dimensions'):
             DataConverter.to_dataarray(data_2d)
 
         # Single element succeeds
@@ -385,25 +373,22 @@ class TestMultiDimensionalArrayConversion:
         data_2d = np.random.rand(7, 8)
         coords_2d = {
             'time': standard_coords['time'],  # length 5
-            'scenario': standard_coords['scenario']  # length 3
+            'scenario': standard_coords['scenario'],  # length 3
         }
 
-        with pytest.raises(ConversionError, match="Array dimensions do not match any coordinate lengths"):
+        with pytest.raises(ConversionError, match='Array dimensions do not match any coordinate lengths'):
             DataConverter.to_dataarray(data_2d, coords=coords_2d)
 
     def test_multid_array_special_values(self, standard_coords):
         """Multi-D arrays should preserve special values."""
         # Create 2D array with special values
-        data_2d = np.array([[1.0, np.nan, 3.0],
-                            [np.inf, 5.0, -np.inf],
-                            [7.0, 8.0, 9.0],
-                            [10.0, np.nan, 12.0],
-                            [13.0, 14.0, np.inf]])
+        data_2d = np.array(
+            [[1.0, np.nan, 3.0], [np.inf, 5.0, -np.inf], [7.0, 8.0, 9.0], [10.0, np.nan, 12.0], [13.0, 14.0, np.inf]]
+        )
 
-        result = DataConverter.to_dataarray(data_2d, coords={
-            'time': standard_coords['time'],
-            'scenario': standard_coords['scenario']
-        })
+        result = DataConverter.to_dataarray(
+            data_2d, coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']}
+        )
 
         assert result.shape == (5, 3)
         assert np.array_equal(np.isnan(result.values), np.isnan(data_2d))
@@ -412,31 +397,23 @@ class TestMultiDimensionalArrayConversion:
     def test_multid_array_dtype_preservation(self, standard_coords):
         """Multi-D arrays should preserve data types."""
         # Integer array
-        int_data = np.array([[1, 2, 3],
-                             [4, 5, 6],
-                             [7, 8, 9],
-                             [10, 11, 12],
-                             [13, 14, 15]], dtype=np.int32)
+        int_data = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]], dtype=np.int32)
 
-        result_int = DataConverter.to_dataarray(int_data, coords={
-            'time': standard_coords['time'],
-            'scenario': standard_coords['scenario']
-        })
+        result_int = DataConverter.to_dataarray(
+            int_data, coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']}
+        )
 
         assert result_int.dtype == np.int32
         assert np.array_equal(result_int.values, int_data)
 
         # Boolean array
-        bool_data = np.array([[True, False, True],
-                              [False, True, False],
-                              [True, True, False],
-                              [False, False, True],
-                              [True, False, True]])
+        bool_data = np.array(
+            [[True, False, True], [False, True, False], [True, True, False], [False, False, True], [True, False, True]]
+        )
 
-        result_bool = DataConverter.to_dataarray(bool_data, coords={
-            'time': standard_coords['time'],
-            'scenario': standard_coords['scenario']
-        })
+        result_bool = DataConverter.to_dataarray(
+            bool_data, coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']}
+        )
 
         assert result_bool.dtype == bool
         assert np.array_equal(result_bool.values, bool_data)
@@ -499,7 +476,7 @@ class TestDataArrayConversion:
         original = xr.DataArray(
             [[10, 20, 30], [40, 50, 60], [70, 80, 90], [100, 110, 120], [130, 140, 150]],
             coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']},
-            dims=('time', 'scenario')
+            dims=('time', 'scenario'),
         )
 
         # Broadcast to 3D
@@ -510,10 +487,7 @@ class TestDataArrayConversion:
 
         # Check that all regions have the same time+scenario values
         for region in standard_coords['region']:
-            assert np.array_equal(
-                result.sel(region=region).values,
-                original.values
-            )
+            assert np.array_equal(result.sel(region=region).values, original.values)
 
 
 class TestTimeSeriesDataConversion:
@@ -585,7 +559,7 @@ class TestCustomDimensions:
         coords = {
             'product': pd.Index(['A', 'B'], name='product'),
             'factory': pd.Index(['F1', 'F2', 'F3'], name='factory'),
-            'quarter': pd.Index(['Q1', 'Q2', 'Q3', 'Q4'], name='quarter')
+            'quarter': pd.Index(['Q1', 'Q2', 'Q3', 'Q4'], name='quarter'),
         }
 
         # Array matching factory dimension
@@ -626,7 +600,7 @@ class TestValidation:
         """Time coordinates must be DatetimeIndex."""
         # Non-datetime index with name 'time' should fail
         wrong_time = pd.Index([1, 2, 3], name='time')
-        with pytest.raises(ConversionError, match="time coordinates must be a DatetimeIndex"):
+        with pytest.raises(ConversionError, match='time coordinates must be a DatetimeIndex'):
             DataConverter.to_dataarray(42, coords={'time': wrong_time})
 
     def test_coord_naming(self, time_coords):
@@ -642,13 +616,7 @@ class TestErrorHandling:
 
     def test_unsupported_data_types(self, time_coords):
         """Unsupported data types should fail with clear messages."""
-        unsupported = [
-            'string',
-            object(),
-            None,
-            {'dict': 'value'},
-            [1, 2, 3]
-        ]
+        unsupported = ['string', object(), None, {'dict': 'value'}, [1, 2, 3]]
 
         for data in unsupported:
             with pytest.raises(ConversionError):
@@ -658,14 +626,14 @@ class TestErrorHandling:
         """Error messages should be informative."""
         # Array with wrong length
         wrong_arr = np.array([1, 2])  # Length 2, but no dimension has length 2
-        with pytest.raises(ConversionError, match="matches none of the target dimensions"):
+        with pytest.raises(ConversionError, match='matches none of the target dimensions'):
             DataConverter.to_dataarray(wrong_arr, coords={'time': time_coords, 'scenario': scenario_coords})
 
     def test_multidimensional_array_dimension_count_mismatch(self, standard_coords):
         """Array with wrong number of dimensions should fail with clear error."""
         # 4D array with 3D coordinates
         data_4d = np.random.rand(5, 3, 2, 4)
-        with pytest.raises(ConversionError, match="matches multiple dimension orders|Array dimensions do not match"):
+        with pytest.raises(ConversionError, match='matches multiple dimension orders|Array dimensions do not match'):
             DataConverter.to_dataarray(data_4d, coords=standard_coords)
 
     def test_error_message_quality(self, standard_coords):
@@ -674,7 +642,7 @@ class TestErrorHandling:
         data_2d = np.random.rand(7, 8)
         coords_2d = {
             'time': standard_coords['time'],  # length 5
-            'scenario': standard_coords['scenario']  # length 3
+            'scenario': standard_coords['scenario'],  # length 3
         }
 
         try:
@@ -682,8 +650,8 @@ class TestErrorHandling:
             raise AssertionError('Should have raised ConversionError')
         except ConversionError as e:
             error_msg = str(e)
-            assert "Array shape: (7, 8)" in error_msg
-            assert "Coordinate lengths:" in error_msg
+            assert 'Array shape: (7, 8)' in error_msg
+            assert 'Coordinate lengths:' in error_msg
 
 
 class TestDataIntegrity:
@@ -725,10 +693,9 @@ class TestDataIntegrity:
     def test_multid_array_copy_independence(self, standard_coords):
         """Multi-D arrays should be independent copies."""
         original_data = np.random.rand(5, 3)
-        result = DataConverter.to_dataarray(original_data, coords={
-            'time': standard_coords['time'],
-            'scenario': standard_coords['scenario']
-        })
+        result = DataConverter.to_dataarray(
+            original_data, coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']}
+        )
 
         # Modify result
         result[0, 0] = 999
@@ -810,7 +777,7 @@ class TestAdvancedBroadcasting:
         coords = {
             'time': pd.date_range('2024-01-01', periods=24, freq='H', name='time'),  # 24 hours
             'technology': pd.Index(['solar', 'wind', 'gas', 'coal'], name='technology'),  # 4 technologies
-            'region': pd.Index(['north', 'south', 'east'], name='region')  # 3 regions
+            'region': pd.Index(['north', 'south', 'east'], name='region'),  # 3 regions
         }
 
         # Capacity factors: 24 x 4 (will broadcast to 24 x 4 x 3)
@@ -832,22 +799,22 @@ class TestAdvancedBroadcasting:
         coords_3x3x3 = {
             'time': pd.date_range('2024-01-01', periods=3, freq='D', name='time'),
             'scenario': pd.Index(['A', 'B', 'C'], name='scenario'),
-            'region': pd.Index(['X', 'Y', 'Z'], name='region')
+            'region': pd.Index(['X', 'Y', 'Z'], name='region'),
         }
 
         # 1D array - should fail
         arr_1d = np.array([1, 2, 3])
-        with pytest.raises(ConversionError, match="matches multiple dimensions"):
+        with pytest.raises(ConversionError, match='matches multiple dimensions'):
             DataConverter.to_dataarray(arr_1d, coords=coords_3x3x3)
 
         # 2D array - should fail
         arr_2d = np.random.rand(3, 3)
-        with pytest.raises(ConversionError, match="matches multiple dimension orders"):
+        with pytest.raises(ConversionError, match='matches multiple dimension orders'):
             DataConverter.to_dataarray(arr_2d, coords=coords_3x3x3)
 
         # 3D array - should fail
         arr_3d = np.random.rand(3, 3, 3)
-        with pytest.raises(ConversionError, match="matches multiple dimension orders"):
+        with pytest.raises(ConversionError, match='matches multiple dimension orders'):
             DataConverter.to_dataarray(arr_3d, coords=coords_3x3x3)
 
     def test_mixed_broadcasting_scenarios(self):
@@ -856,7 +823,7 @@ class TestAdvancedBroadcasting:
             'time': pd.date_range('2024-01-01', periods=4, freq='D', name='time'),  # length 4
             'scenario': pd.Index(['A', 'B'], name='scenario'),  # length 2
             'region': pd.Index(['north', 'south', 'east'], name='region'),  # length 3
-            'product': pd.Index(['X', 'Y', 'Z', 'W', 'V'], name='product')  # length 5
+            'product': pd.Index(['X', 'Y', 'Z', 'W', 'V'], name='product'),  # length 5
         }
 
         # Scalar to 4D
@@ -873,8 +840,7 @@ class TestAdvancedBroadcasting:
             for region in coords['region']:
                 for product in coords['product']:
                     assert np.array_equal(
-                        arr_result.sel(scenario=scenario, region=region, product=product).values,
-                        arr_1d
+                        arr_result.sel(scenario=scenario, region=region, product=product).values, arr_1d
                     )
 
         # 2D array (4x2, matches time×scenario) to 4D
@@ -884,10 +850,8 @@ class TestAdvancedBroadcasting:
         # Verify broadcasting
         for region in coords['region']:
             for product in coords['product']:
-                assert np.array_equal(
-                    arr_2d_result.sel(region=region, product=product).values,
-                    arr_2d
-                )
+                assert np.array_equal(arr_2d_result.sel(region=region, product=product).values, arr_2d)
+
 
 class TestAmbiguousDimensionLengthHandling:
     """Test that DataConverter correctly raises errors when multiple dimensions have the same length."""
