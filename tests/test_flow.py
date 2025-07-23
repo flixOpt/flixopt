@@ -11,9 +11,9 @@ from .conftest import assert_conequal, assert_sets_equal, assert_var_equal, crea
 class TestFlowModel:
     """Test the FlowModel class."""
 
-    def test_flow_minimal(self, basic_flow_system_linopy):
+    def test_flow_minimal(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
         flow = fx.Flow('Wärme', bus='Fernwärme', size=100)
 
@@ -36,8 +36,8 @@ class TestFlowModel:
         )
         assert_sets_equal(set(flow.submodel.constraints), {'Sink(Wärme)|total_flow_hours'}, msg='Incorrect constraints')
 
-    def test_flow(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_flow(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
         flow = fx.Flow(
             'Wärme',
@@ -93,8 +93,8 @@ class TestFlowModel:
             msg='Incorrect constraints',
         )
 
-    def test_effects_per_flow_hour(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_effects_per_flow_hour(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         costs_per_flow_hour = xr.DataArray(np.linspace(1, 2, timesteps.size), coords=(timesteps,))
@@ -133,8 +133,8 @@ class TestFlowModel:
 class TestFlowInvestModel:
     """Test the FlowModel class."""
 
-    def test_flow_invest(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_flow_invest(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -192,8 +192,8 @@ class TestFlowInvestModel:
             * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
         )
 
-    def test_flow_invest_optional(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_flow_invest_optional(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -260,8 +260,8 @@ class TestFlowInvestModel:
             flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|is_invested'] * 20,
         )
 
-    def test_flow_invest_optional_wo_min_size(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_flow_invest_optional_wo_min_size(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -328,8 +328,8 @@ class TestFlowInvestModel:
             flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|is_invested'] * 1e-5,
         )
 
-    def test_flow_invest_wo_min_size_non_optional(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_flow_invest_wo_min_size_non_optional(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -382,9 +382,9 @@ class TestFlowInvestModel:
             * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
         )
 
-    def test_flow_invest_fixed_size(self, basic_flow_system_linopy):
+    def test_flow_invest_fixed_size(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with fixed size investment."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -412,9 +412,9 @@ class TestFlowInvestModel:
             flow.submodel.flow_rate, model.add_variables(lower=0.2 * 75, upper=0.9 * 75, coords=(timesteps,))
         )
 
-    def test_flow_invest_with_effects(self, basic_flow_system_linopy):
+    def test_flow_invest_with_effects(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with investment effects."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create effects
         co2 = fx.Effect(label='CO2', unit='ton', description='CO2 emissions')
@@ -453,9 +453,9 @@ class TestFlowInvestModel:
             + flow.submodel.variables['Sink(Wärme)|size'] * 0.1,
         )
 
-    def test_flow_invest_divest_effects(self, basic_flow_system_linopy):
+    def test_flow_invest_divest_effects(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with divestment effects."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
             'Wärme',
@@ -483,8 +483,8 @@ class TestFlowInvestModel:
 class TestFlowOnModel:
     """Test the FlowModel class."""
 
-    def test_flow_on(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_flow_on(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
         flow = fx.Flow(
             'Wärme',
@@ -547,8 +547,8 @@ class TestFlowOnModel:
             == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum(),
         )
 
-    def test_effects_per_running_hour(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_effects_per_running_hour(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         costs_per_running_hour = xr.DataArray(np.linspace(1, 2, timesteps.size), coords=(timesteps,))
@@ -601,9 +601,9 @@ class TestFlowOnModel:
             == flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step * co2_per_running_hour,
         )
 
-    def test_consecutive_on_hours(self, basic_flow_system_linopy):
+    def test_consecutive_on_hours(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive on hours."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -684,9 +684,9 @@ class TestFlowOnModel:
             * 2,
         )
 
-    def test_consecutive_on_hours_previous(self, basic_flow_system_linopy):
+    def test_consecutive_on_hours_previous(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive on hours."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -766,9 +766,9 @@ class TestFlowOnModel:
             * 2,
         )
 
-    def test_consecutive_off_hours(self, basic_flow_system_linopy):
+    def test_consecutive_off_hours(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive off hours."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -849,9 +849,9 @@ class TestFlowOnModel:
             * 4,
         )
 
-    def test_consecutive_off_hours_previous(self, basic_flow_system_linopy):
+    def test_consecutive_off_hours_previous(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive off hours."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
@@ -933,9 +933,9 @@ class TestFlowOnModel:
             * 4,
         )
 
-    def test_switch_on_constraints(self, basic_flow_system_linopy):
+    def test_switch_on_constraints(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with constraints on the number of startups."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
             'Wärme',
@@ -992,9 +992,9 @@ class TestFlowOnModel:
             model.variables['Sink(Wärme)->costs(operation)'] == flow.submodel.variables['Sink(Wärme)|switch|on'] * 100,
         )
 
-    def test_on_hours_limits(self, basic_flow_system_linopy):
+    def test_on_hours_limits(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with limits on total on hours."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
             'Wärme',
@@ -1031,8 +1031,8 @@ class TestFlowOnModel:
 class TestFlowOnInvestModel:
     """Test the FlowModel class."""
 
-    def test_flow_on_invest_optional(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_flow_on_invest_optional(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
         flow = fx.Flow(
             'Wärme',
@@ -1130,8 +1130,8 @@ class TestFlowOnInvestModel:
             flow.submodel.variables['Sink(Wärme)|flow_rate'] <= flow.submodel.variables['Sink(Wärme)|size'] * 0.8,
         )
 
-    def test_flow_on_invest_non_optional(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_flow_on_invest_non_optional(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
         flow = fx.Flow(
             'Wärme',
@@ -1222,9 +1222,9 @@ class TestFlowOnInvestModel:
 class TestFlowWithFixedProfile:
     """Test Flow with fixed relative profile."""
 
-    def test_fixed_relative_profile(self, basic_flow_system_linopy):
+    def test_fixed_relative_profile(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with a fixed relative profile."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         # Create a time-varying profile (e.g., for a load or renewable generation)
@@ -1242,9 +1242,9 @@ class TestFlowWithFixedProfile:
             model.add_variables(lower=profile * 100, upper=profile * 100, coords=(timesteps,)),
         )
 
-    def test_fixed_profile_with_investment(self, basic_flow_system_linopy):
+    def test_fixed_profile_with_investment(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with fixed profile and investment."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         # Create a fixed profile

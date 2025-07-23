@@ -17,9 +17,8 @@ from .conftest import (
 class TestEffectModel:
     """Test the FlowModel class."""
 
-    def test_minimal(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
-        timesteps = flow_system.timesteps
+    def test_minimal(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         effect = fx.Effect('Effect1', '€', 'Testing Effect')
 
         flow_system.add_elements(effect)
@@ -47,11 +46,18 @@ class TestEffectModel:
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(model.variables['Effect1|total'], model.add_variables())
-        assert_var_equal(model.variables['Effect1(invest)|total'], model.add_variables())
-        assert_var_equal(model.variables['Effect1(operation)|total'], model.add_variables())
         assert_var_equal(
-            model.variables['Effect1(operation)|total_per_timestep'], model.add_variables(coords=(timesteps,))
+            model.variables['Effect1|total'], model.add_variables(coords=model.get_coords(['year', 'scenario']))
+        )
+        assert_var_equal(
+            model.variables['Effect1(invest)|total'], model.add_variables(coords=model.get_coords(['year', 'scenario']))
+        )
+        assert_var_equal(
+            model.variables['Effect1(operation)|total'],
+            model.add_variables(coords=model.get_coords(['year', 'scenario'])),
+        )
+        assert_var_equal(
+            model.variables['Effect1(operation)|total_per_timestep'], model.add_variables(coords=model.get_coords())
         )
 
         assert_conequal(
@@ -63,16 +69,15 @@ class TestEffectModel:
         assert_conequal(
             model.constraints['Effect1(operation)|total'],
             model.variables['Effect1(operation)|total']
-            == model.variables['Effect1(operation)|total_per_timestep'].sum(),
+            == model.variables['Effect1(operation)|total_per_timestep'].sum('time'),
         )
         assert_conequal(
             model.constraints['Effect1(operation)|total_per_timestep'],
             model.variables['Effect1(operation)|total_per_timestep'] == 0,
         )
 
-    def test_bounds(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
-        timesteps = flow_system.timesteps
+    def test_bounds(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         effect = fx.Effect(
             'Effect1',
             '€',
@@ -112,13 +117,24 @@ class TestEffectModel:
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(model.variables['Effect1|total'], model.add_variables(lower=3.0, upper=3.1))
-        assert_var_equal(model.variables['Effect1(invest)|total'], model.add_variables(lower=2.0, upper=2.1))
-        assert_var_equal(model.variables['Effect1(operation)|total'], model.add_variables(lower=1.0, upper=1.1))
+        assert_var_equal(
+            model.variables['Effect1|total'],
+            model.add_variables(lower=3.0, upper=3.1, coords=model.get_coords(['year', 'scenario'])),
+        )
+        assert_var_equal(
+            model.variables['Effect1(invest)|total'],
+            model.add_variables(lower=2.0, upper=2.1, coords=model.get_coords(['year', 'scenario'])),
+        )
+        assert_var_equal(
+            model.variables['Effect1(operation)|total'],
+            model.add_variables(lower=1.0, upper=1.1, coords=model.get_coords(['year', 'scenario'])),
+        )
         assert_var_equal(
             model.variables['Effect1(operation)|total_per_timestep'],
             model.add_variables(
-                lower=4.0 * model.hours_per_step, upper=4.1 * model.hours_per_step, coords=(timesteps,)
+                lower=4.0 * model.hours_per_step,
+                upper=4.1 * model.hours_per_step,
+                coords=model.get_coords(['time', 'year', 'scenario']),
             ),
         )
 
@@ -131,15 +147,15 @@ class TestEffectModel:
         assert_conequal(
             model.constraints['Effect1(operation)|total'],
             model.variables['Effect1(operation)|total']
-            == model.variables['Effect1(operation)|total_per_timestep'].sum(),
+            == model.variables['Effect1(operation)|total_per_timestep'].sum('time'),
         )
         assert_conequal(
             model.constraints['Effect1(operation)|total_per_timestep'],
             model.variables['Effect1(operation)|total_per_timestep'] == 0,
         )
 
-    def test_shares(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_shares(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         effect1 = fx.Effect(
             'Effect1',
             '€',
@@ -202,8 +218,8 @@ class TestEffectModel:
 
 
 class TestEffectResults:
-    def test_shares(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_shares(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         flow_system.effects['costs'].specific_share_to_other_effects_operation['Effect1'] = 0.5
         flow_system.add_elements(
             fx.Effect(
@@ -221,6 +237,7 @@ class TestEffectResults:
                 Q_th=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
+                    size=fx.InvestParameters(specific_effects=10, minimum_size=20, optional=False),
                 ),
                 Q_fu=fx.Flow('Q_fu', bus='Gas'),
             ),

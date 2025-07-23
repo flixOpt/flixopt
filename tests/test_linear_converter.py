@@ -12,9 +12,9 @@ from .conftest import assert_conequal, assert_var_equal, create_linopy_model
 class TestLinearConverterModel:
     """Test the LinearConverterModel class."""
 
-    def test_basic_linear_converter(self, basic_flow_system_linopy):
+    def test_basic_linear_converter(self, basic_flow_system_linopy_coords, coords_config):
         """Test basic initialization and modeling of a LinearConverter."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
@@ -45,9 +45,9 @@ class TestLinearConverterModel:
             input_flow.submodel.flow_rate * 0.8 == output_flow.submodel.flow_rate * 1.0,
         )
 
-    def test_linear_converter_time_varying(self, basic_flow_system_linopy):
+    def test_linear_converter_time_varying(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with time-varying conversion factors."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         # Create time-varying efficiency (e.g., temperature-dependent)
@@ -83,9 +83,9 @@ class TestLinearConverterModel:
             input_flow.submodel.flow_rate * efficiency_series == output_flow.submodel.flow_rate * 1.0,
         )
 
-    def test_linear_converter_multiple_factors(self, basic_flow_system_linopy):
+    def test_linear_converter_multiple_factors(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with multiple conversion factors."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create flows
         input_flow1 = fx.Flow('input1', bus='input_bus1', size=100)
@@ -136,9 +136,9 @@ class TestLinearConverterModel:
             input_flow1.submodel.flow_rate * 0.2 == output_flow2.submodel.flow_rate * 0.3,
         )
 
-    def test_linear_converter_with_on_off(self, basic_flow_system_linopy):
+    def test_linear_converter_with_on_off(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with OnOffParameters."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
@@ -193,9 +193,9 @@ class TestLinearConverterModel:
             == model.variables['Converter|on'] * model.hours_per_step * 5,
         )
 
-    def test_linear_converter_multidimensional(self, basic_flow_system_linopy):
+    def test_linear_converter_multidimensional(self, basic_flow_system_linopy_coords, coords_config):
         """Test LinearConverter with multiple inputs, outputs, and connections between them."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create a more complex setup with multiple flows
         input_flow1 = fx.Flow('fuel', bus='fuel_bus', size=100)
@@ -247,9 +247,9 @@ class TestLinearConverterModel:
             input_flow1.submodel.flow_rate * 0.1 == output_flow2.submodel.flow_rate * 0.5,
         )
 
-    def test_edge_case_time_varying_conversion(self, basic_flow_system_linopy):
+    def test_edge_case_time_varying_conversion(self, basic_flow_system_linopy_coords, coords_config):
         """Test edge case with extreme time-varying conversion factors."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         # Create fluctuating conversion efficiency (e.g., for a heat pump)
@@ -288,9 +288,9 @@ class TestLinearConverterModel:
             input_flow.submodel.flow_rate * fluctuating_cop == output_flow.submodel.flow_rate * 1.0,
         )
 
-    def test_piecewise_conversion(self, basic_flow_system_linopy):
+    def test_piecewise_conversion(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with PiecewiseConversion."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         # Create input and output flows
@@ -377,9 +377,9 @@ class TestLinearConverterModel:
             <= 1,
         )
 
-    def test_piecewise_conversion_with_onoff(self, basic_flow_system_linopy):
+    def test_piecewise_conversion_with_onoff(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with PiecewiseConversion and OnOffParameters."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
         # Create input and output flows

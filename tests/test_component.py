@@ -17,9 +17,8 @@ from .conftest import (
 
 
 class TestComponentModel:
-    def test_flow_label_check(self, basic_flow_system_linopy):
+    def test_flow_label_check(self):
         """Test that flow model constraints are correctly generated."""
-        _ = basic_flow_system_linopy
         inputs = [
             fx.Flow('Q_th_Last', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
             fx.Flow('Q_Gas', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
@@ -31,9 +30,9 @@ class TestComponentModel:
         with pytest.raises(ValueError, match='Flow names must be unique!'):
             _ = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
 
-    def test_component(self, basic_flow_system_linopy):
+    def test_component(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
             fx.Flow('In2', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
@@ -72,9 +71,9 @@ class TestComponentModel:
             msg='Incorrect constraints',
         )
 
-    def test_on_with_multiple_flows(self, basic_flow_system_linopy):
+    def test_on_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
@@ -171,9 +170,9 @@ class TestComponentModel:
             + 1e-5,
         )
 
-    def test_on_with_single_flow(self, basic_flow_system_linopy):
+    def test_on_with_single_flow(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
@@ -231,9 +230,9 @@ class TestComponentModel:
             model.variables['TestComponent|on'] == model.variables['TestComponent(In1)|on'],
         )
 
-    def test_previous_states_with_multiple_flows(self, basic_flow_system_linopy):
+    def test_previous_states_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [

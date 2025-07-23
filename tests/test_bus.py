@@ -13,7 +13,7 @@ class TestBusModel:
 
     def test_bus(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy_coords
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         bus = fx.Bus('TestBus', excess_penalty_per_flow_hour=None)
         flow_system.add_elements(
             bus,
@@ -32,7 +32,7 @@ class TestBusModel:
 
     def test_bus_penalty(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy_coords
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         bus = fx.Bus('TestBus')
         flow_system.add_elements(
             bus,
@@ -74,7 +74,7 @@ class TestBusModel:
 
     def test_bus_with_coords(self, basic_flow_system_linopy_coords, coords_config):
         """Test bus behavior across different coordinate configurations."""
-        flow_system = basic_flow_system_linopy_coords
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         bus = fx.Bus('TestBus', excess_penalty_per_flow_hour=None)
         flow_system.add_elements(
             bus,
