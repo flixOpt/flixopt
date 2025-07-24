@@ -246,8 +246,8 @@ class InvestParameters(Interface):
 class OnOffParameters(Interface):
     def __init__(
         self,
-        effects_per_switch_on: Optional['NonTemporalEffectsUser'] = None,
-        effects_per_running_hour: Optional['NonTemporalEffectsUser'] = None,
+        effects_per_switch_on: Optional['TemporalEffectsUser'] = None,
+        effects_per_running_hour: Optional['TemporalEffectsUser'] = None,
         on_hours_total_min: Optional[int] = None,
         on_hours_total_max: Optional[int] = None,
         consecutive_on_hours_min: Optional[TemporalDataUser] = None,
@@ -343,7 +343,7 @@ class OnOffParameters(Interface):
             return True
 
         return any(
-            param is not None or param != {}
+            param is not None and param != {}
             for param in [
                 self.effects_per_switch_on,
                 self.switch_on_total_max,

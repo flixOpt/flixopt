@@ -14,7 +14,7 @@ class TestFlowModel:
     def test_flow_minimal(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
+
         flow = fx.Flow('Wärme', bus='Fernwärme', size=100)
 
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
@@ -24,10 +24,12 @@ class TestFlowModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|total_flow_hours'],
             flow.submodel.variables['Sink(Wärme)|total_flow_hours']
-            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step).sum(),
+            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step).sum('time'),
         )
-        assert_var_equal(flow.submodel.flow_rate, model.add_variables(lower=0, upper=100, coords=(timesteps,)))
-        assert_var_equal(flow.submodel.total_flow_hours, model.add_variables(lower=0))
+        assert_var_equal(flow.submodel.flow_rate, model.add_variables(lower=0, upper=100, coords=model.get_coords()))
+        assert_var_equal(
+            flow.submodel.total_flow_hours, model.add_variables(lower=0, coords=model.get_coords(['year', 'scenario']))
+        )
 
         assert_sets_equal(
             set(flow.submodel.variables),
@@ -39,6 +41,7 @@ class TestFlowModel:
     def test_flow(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
+
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
@@ -58,17 +61,23 @@ class TestFlowModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|total_flow_hours'],
             flow.submodel.variables['Sink(Wärme)|total_flow_hours']
-            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step).sum(),
+            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step).sum('time'),
         )
 
-        assert_var_equal(flow.submodel.total_flow_hours, model.add_variables(lower=10, upper=1000))
+        assert_var_equal(
+            flow.submodel.total_flow_hours,
+            model.add_variables(lower=10, upper=1000, coords=model.get_coords(['year', 'scenario'])),
+        )
+
+        assert flow.relative_minimum.dims == tuple(model.get_coords())
+        assert flow.relative_maximum.dims == tuple(model.get_coords())
 
         assert_var_equal(
             flow.submodel.flow_rate,
             model.add_variables(
-                lower=np.linspace(0, 0.5, timesteps.size) * 100,
-                upper=np.linspace(0.5, 1, timesteps.size) * 100,
-                coords=(timesteps,),
+                lower=flow.relative_minimum * 100,
+                upper=flow.relative_maximum * 100,
+                coords=model.get_coords(),
             ),
         )
 
@@ -168,28 +177,32 @@ class TestFlowInvestModel:
         )
 
         # size
-        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=20, upper=100))
+        assert_var_equal(
+            model['Sink(Wärme)|size'],
+            model.add_variables(lower=20, upper=100, coords=model.get_coords(['year', 'scenario'])),
+        )
+
+        assert flow.relative_minimum.dims == tuple(model.get_coords())
+        assert flow.relative_maximum.dims == tuple(model.get_coords())
 
         # flow_rate
         assert_var_equal(
             flow.submodel.flow_rate,
             model.add_variables(
-                lower=np.linspace(0.1, 0.5, timesteps.size) * 20,
-                upper=np.linspace(0.5, 1, timesteps.size) * 100,
-                coords=(timesteps,),
+                lower=flow.relative_minimum * 20,
+                upper=flow.relative_maximum * 100,
+                coords=model.get_coords(),
             ),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            >= flow.submodel.variables['Sink(Wärme)|size']
-            * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
+            >= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_minimum,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|ub'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            <= flow.submodel.variables['Sink(Wärme)|size']
-            * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
+            <= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_maximum,
         )
 
     def test_flow_invest_optional(self, basic_flow_system_linopy_coords, coords_config):
@@ -224,30 +237,37 @@ class TestFlowInvestModel:
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=0, upper=100))
+        assert_var_equal(
+            model['Sink(Wärme)|size'],
+            model.add_variables(lower=0, upper=100, coords=model.get_coords(['year', 'scenario'])),
+        )
 
-        assert_var_equal(model['Sink(Wärme)|is_invested'], model.add_variables(binary=True))
+        assert_var_equal(
+            model['Sink(Wärme)|is_invested'],
+            model.add_variables(binary=True, coords=model.get_coords(['year', 'scenario'])),
+        )
+
+        assert flow.relative_minimum.dims == tuple(model.get_coords())
+        assert flow.relative_maximum.dims == tuple(model.get_coords())
 
         # flow_rate
         assert_var_equal(
             flow.submodel.flow_rate,
             model.add_variables(
                 lower=0,  # Optional investment
-                upper=np.linspace(0.5, 1, timesteps.size) * 100,
-                coords=(timesteps,),
+                upper=flow.relative_maximum * 100,
+                coords=model.get_coords(),
             ),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            >= flow.submodel.variables['Sink(Wärme)|size']
-            * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
+            >= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_minimum,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|ub'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            <= flow.submodel.variables['Sink(Wärme)|size']
-            * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
+            <= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_maximum,
         )
 
         # Is invested
@@ -292,30 +312,37 @@ class TestFlowInvestModel:
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=0, upper=100))
+        assert_var_equal(
+            model['Sink(Wärme)|size'],
+            model.add_variables(lower=0, upper=100, coords=model.get_coords(['year', 'scenario'])),
+        )
 
-        assert_var_equal(model['Sink(Wärme)|is_invested'], model.add_variables(binary=True))
+        assert_var_equal(
+            model['Sink(Wärme)|is_invested'],
+            model.add_variables(binary=True, coords=model.get_coords(['year', 'scenario'])),
+        )
+
+        assert flow.relative_minimum.dims == tuple(model.get_coords())
+        assert flow.relative_maximum.dims == tuple(model.get_coords())
 
         # flow_rate
         assert_var_equal(
             flow.submodel.flow_rate,
             model.add_variables(
                 lower=0,  # Optional investment
-                upper=np.linspace(0.5, 1, timesteps.size) * 100,
-                coords=(timesteps,),
+                upper=flow.relative_maximum * 100,
+                coords=model.get_coords(),
             ),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            >= flow.submodel.variables['Sink(Wärme)|size']
-            * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
+            >= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_minimum,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|ub'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            <= flow.submodel.variables['Sink(Wärme)|size']
-            * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
+            <= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_maximum,
         )
 
         # Is invested
@@ -358,34 +385,37 @@ class TestFlowInvestModel:
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=1e-5, upper=100))
+        assert_var_equal(
+            model['Sink(Wärme)|size'],
+            model.add_variables(lower=1e-5, upper=100, coords=model.get_coords(['year', 'scenario'])),
+        )
+
+        assert flow.relative_minimum.dims == tuple(model.get_coords())
+        assert flow.relative_maximum.dims == tuple(model.get_coords())
 
         # flow_rate
         assert_var_equal(
             flow.submodel.flow_rate,
             model.add_variables(
-                lower=np.linspace(0.1, 0.5, timesteps.size) * 1e-5,
-                upper=np.linspace(0.5, 1, timesteps.size) * 100,
-                coords=(timesteps,),
+                lower=flow.relative_minimum * 1e-5,
+                upper=flow.relative_maximum * 100,
+                coords=model.get_coords(),
             ),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            >= flow.submodel.variables['Sink(Wärme)|size']
-            * xr.DataArray(np.linspace(0.1, 0.5, timesteps.size), coords=(timesteps,)),
+            >= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_minimum,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|ub'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            <= flow.submodel.variables['Sink(Wärme)|size']
-            * xr.DataArray(np.linspace(0.5, 1, timesteps.size), coords=(timesteps,)),
+            <= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_maximum,
         )
 
     def test_flow_invest_fixed_size(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with fixed size investment."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
 
         flow = fx.Flow(
             'Wärme',
@@ -405,11 +435,14 @@ class TestFlowInvestModel:
         )
 
         # Check that size is fixed to 75
-        assert_var_equal(flow.submodel.variables['Sink(Wärme)|size'], model.add_variables(lower=75, upper=75))
+        assert_var_equal(
+            flow.submodel.variables['Sink(Wärme)|size'],
+            model.add_variables(lower=75, upper=75, coords=model.get_coords(['year', 'scenario'])),
+        )
 
         # Check flow rate bounds
         assert_var_equal(
-            flow.submodel.flow_rate, model.add_variables(lower=0.2 * 75, upper=0.9 * 75, coords=(timesteps,))
+            flow.submodel.flow_rate, model.add_variables(lower=0.2 * 75, upper=0.9 * 75, coords=model.get_coords())
         )
 
     def test_flow_invest_with_effects(self, basic_flow_system_linopy_coords, coords_config):
@@ -485,13 +518,13 @@ class TestFlowOnModel:
 
     def test_flow_on(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
+
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
             size=100,
-            relative_minimum=xr.DataArray(0.2, coords=(timesteps,)),
-            relative_maximum=xr.DataArray(0.8, coords=(timesteps,)),
+            relative_minimum=0.2,
+            relative_maximum=0.8,
             on_off_parameters=fx.OnOffParameters(),
         )
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
@@ -519,18 +552,18 @@ class TestFlowOnModel:
             model.add_variables(
                 lower=0,
                 upper=0.8 * 100,
-                coords=(timesteps,),
+                coords=model.get_coords(),
             ),
         )
 
         # OnOff
         assert_var_equal(
             flow.submodel.on_off.on,
-            model.add_variables(binary=True, coords=(timesteps,)),
+            model.add_variables(binary=True, coords=model.get_coords()),
         )
         assert_var_equal(
             model.variables['Sink(Wärme)|on_hours_total'],
-            model.add_variables(lower=0),
+            model.add_variables(lower=0, coords=model.get_coords(['year', 'scenario'])),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb'],
@@ -544,15 +577,15 @@ class TestFlowOnModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|on_hours_total'],
             flow.submodel.variables['Sink(Wärme)|on_hours_total']
-            == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum(),
+            == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum('time'),
         )
 
     def test_effects_per_running_hour(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         timesteps = flow_system.timesteps
 
-        costs_per_running_hour = xr.DataArray(np.linspace(1, 2, timesteps.size), coords=(timesteps,))
-        co2_per_running_hour = xr.DataArray(np.linspace(4, 5, timesteps.size), coords=(timesteps,))
+        costs_per_running_hour = np.linspace(1, 2, timesteps.size)
+        co2_per_running_hour = np.linspace(4, 5, timesteps.size)
 
         flow = fx.Flow(
             'Wärme',
@@ -589,6 +622,12 @@ class TestFlowOnModel:
         assert 'Sink(Wärme)->costs(operation)' in set(costs.submodel.constraints)
         assert 'Sink(Wärme)->CO2(operation)' in set(co2.submodel.constraints)
 
+        costs_per_running_hour = flow.on_off_parameters.effects_per_running_hour['costs']
+        co2_per_running_hour = flow.on_off_parameters.effects_per_running_hour['CO2']
+
+        assert costs_per_running_hour.dims == tuple(model.get_coords())
+        assert co2_per_running_hour.dims == tuple(model.get_coords())
+
         assert_conequal(
             model.constraints['Sink(Wärme)->costs(operation)'],
             model.variables['Sink(Wärme)->costs(operation)']
@@ -604,7 +643,6 @@ class TestFlowOnModel:
     def test_consecutive_on_hours(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive on hours."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
 
         flow = fx.Flow(
             'Wärme',
@@ -642,7 +680,7 @@ class TestFlowOnModel:
 
         assert_var_equal(
             model.variables['Sink(Wärme)|consecutive_on_hours'],
-            model.add_variables(lower=0, upper=8, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=8, coords=model.get_coords()),
         )
 
         mega = model.hours_per_step.sum('time')
@@ -687,7 +725,6 @@ class TestFlowOnModel:
     def test_consecutive_on_hours_previous(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive on hours."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
 
         flow = fx.Flow(
             'Wärme',
@@ -724,7 +761,7 @@ class TestFlowOnModel:
 
         assert_var_equal(
             model.variables['Sink(Wärme)|consecutive_on_hours'],
-            model.add_variables(lower=0, upper=8, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=8, coords=model.get_coords()),
         )
 
         mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 3
@@ -769,7 +806,6 @@ class TestFlowOnModel:
     def test_consecutive_off_hours(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive off hours."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
 
         flow = fx.Flow(
             'Wärme',
@@ -807,7 +843,7 @@ class TestFlowOnModel:
 
         assert_var_equal(
             model.variables['Sink(Wärme)|consecutive_off_hours'],
-            model.add_variables(lower=0, upper=12, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=12, coords=model.get_coords()),
         )
 
         mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 1  # previously off for 1h
@@ -852,7 +888,6 @@ class TestFlowOnModel:
     def test_consecutive_off_hours_previous(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive off hours."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
 
         flow = fx.Flow(
             'Wärme',
@@ -891,7 +926,7 @@ class TestFlowOnModel:
 
         assert_var_equal(
             model.variables['Sink(Wärme)|consecutive_off_hours'],
-            model.add_variables(lower=0, upper=12, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=12, coords=model.get_coords()),
         )
 
         mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 2
@@ -974,7 +1009,10 @@ class TestFlowOnModel:
         )
 
         # Check switch_on_nr variable bounds
-        assert_var_equal(flow.submodel.variables['Sink(Wärme)|switch|count'], model.add_variables(lower=0, upper=5))
+        assert_var_equal(
+            flow.submodel.variables['Sink(Wärme)|switch|count'],
+            model.add_variables(lower=0, upper=5, coords=model.get_coords(['year', 'scenario'])),
+        )
 
         # Verify switch_on_nr constraint (limits number of startups)
         assert_conequal(
@@ -1017,14 +1055,15 @@ class TestFlowOnModel:
 
         # Check on_hours_total variable bounds
         assert_var_equal(
-            flow.submodel.variables['Sink(Wärme)|on_hours_total'], model.add_variables(lower=20, upper=100)
+            flow.submodel.variables['Sink(Wärme)|on_hours_total'],
+            model.add_variables(lower=20, upper=100, coords=model.get_coords(['year', 'scenario'])),
         )
 
         # Check on_hours_total constraint
         assert_conequal(
             model.constraints['Sink(Wärme)|on_hours_total'],
             flow.submodel.variables['Sink(Wärme)|on_hours_total']
-            == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum(),
+            == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum('time'),
         )
 
 
@@ -1033,13 +1072,12 @@ class TestFlowOnInvestModel:
 
     def test_flow_on_invest_optional(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
             size=fx.InvestParameters(minimum_size=20, maximum_size=200, optional=True),
-            relative_minimum=xr.DataArray(0.2, coords=(timesteps,)),
-            relative_maximum=xr.DataArray(0.8, coords=(timesteps,)),
+            relative_minimum=0.2,
+            relative_maximum=0.8,
             on_off_parameters=fx.OnOffParameters(),
         )
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
@@ -1079,18 +1117,18 @@ class TestFlowOnInvestModel:
             model.add_variables(
                 lower=0,
                 upper=0.8 * 200,
-                coords=(timesteps,),
+                coords=model.get_coords(),
             ),
         )
 
         # OnOff
         assert_var_equal(
             flow.submodel.on_off.on,
-            model.add_variables(binary=True, coords=(timesteps,)),
+            model.add_variables(binary=True, coords=model.get_coords()),
         )
         assert_var_equal(
             model.variables['Sink(Wärme)|on_hours_total'],
-            model.add_variables(lower=0),
+            model.add_variables(lower=0, coords=model.get_coords(['year', 'scenario'])),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|size|lb'],
@@ -1111,11 +1149,14 @@ class TestFlowOnInvestModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|on_hours_total'],
             flow.submodel.variables['Sink(Wärme)|on_hours_total']
-            == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum(),
+            == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum('time'),
         )
 
         # Investment
-        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=0, upper=200))
+        assert_var_equal(
+            model['Sink(Wärme)|size'],
+            model.add_variables(lower=0, upper=200, coords=model.get_coords(['year', 'scenario'])),
+        )
 
         mega = 0.2 * 200  # Relative minimum * maximum size
         assert_conequal(
@@ -1132,13 +1173,12 @@ class TestFlowOnInvestModel:
 
     def test_flow_on_invest_non_optional(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
             size=fx.InvestParameters(minimum_size=20, maximum_size=200, optional=False),
-            relative_minimum=xr.DataArray(0.2, coords=(timesteps,)),
-            relative_maximum=xr.DataArray(0.8, coords=(timesteps,)),
+            relative_minimum=0.2,
+            relative_maximum=0.8,
             on_off_parameters=fx.OnOffParameters(),
         )
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
@@ -1175,18 +1215,18 @@ class TestFlowOnInvestModel:
             model.add_variables(
                 lower=0,
                 upper=0.8 * 200,
-                coords=(timesteps,),
+                coords=model.get_coords(),
             ),
         )
 
         # OnOff
         assert_var_equal(
             flow.submodel.on_off.on,
-            model.add_variables(binary=True, coords=(timesteps,)),
+            model.add_variables(binary=True, coords=model.get_coords()),
         )
         assert_var_equal(
             model.variables['Sink(Wärme)|on_hours_total'],
-            model.add_variables(lower=0),
+            model.add_variables(lower=0, coords=model.get_coords(['year', 'scenario'])),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb1'],
@@ -1199,11 +1239,14 @@ class TestFlowOnInvestModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|on_hours_total'],
             flow.submodel.variables['Sink(Wärme)|on_hours_total']
-            == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum(),
+            == (flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step).sum('time'),
         )
 
         # Investment
-        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=20, upper=200))
+        assert_var_equal(
+            model['Sink(Wärme)|size'],
+            model.add_variables(lower=20, upper=200, coords=model.get_coords(['year', 'scenario'])),
+        )
 
         mega = 0.2 * 200  # Relative minimum * maximum size
         assert_conequal(
@@ -1231,7 +1274,10 @@ class TestFlowWithFixedProfile:
         profile = np.sin(np.linspace(0, 2 * np.pi, len(timesteps))) * 0.5 + 0.5  # Values between 0 and 1
 
         flow = fx.Flow(
-            'Wärme', bus='Fernwärme', size=100, fixed_relative_profile=xr.DataArray(profile, coords=(timesteps,))
+            'Wärme',
+            bus='Fernwärme',
+            size=100,
+            fixed_relative_profile=profile,
         )
 
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
@@ -1239,7 +1285,11 @@ class TestFlowWithFixedProfile:
 
         assert_var_equal(
             flow.submodel.variables['Sink(Wärme)|flow_rate'],
-            model.add_variables(lower=profile * 100, upper=profile * 100, coords=(timesteps,)),
+            model.add_variables(
+                lower=flow.fixed_relative_profile * 100,
+                upper=flow.fixed_relative_profile * 100,
+                coords=model.get_coords(),
+            ),
         )
 
     def test_fixed_profile_with_investment(self, basic_flow_system_linopy_coords, coords_config):
@@ -1254,7 +1304,7 @@ class TestFlowWithFixedProfile:
             'Wärme',
             bus='Fernwärme',
             size=fx.InvestParameters(minimum_size=50, maximum_size=200, optional=True),
-            fixed_relative_profile=xr.DataArray(profile, coords=(timesteps,)),
+            fixed_relative_profile=profile,
         )
 
         flow_system.add_elements(fx.Sink('Sink', sink=flow))
@@ -1262,14 +1312,14 @@ class TestFlowWithFixedProfile:
 
         assert_var_equal(
             flow.submodel.variables['Sink(Wärme)|flow_rate'],
-            model.add_variables(lower=0, upper=profile * 200, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=flow.fixed_relative_profile * 200, coords=model.get_coords()),
         )
 
         # The constraint should link flow_rate to size * profile
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|fixed'],
             flow.submodel.variables['Sink(Wärme)|flow_rate']
-            == flow.submodel.variables['Sink(Wärme)|size'] * xr.DataArray(profile, coords=(timesteps,)),
+            == flow.submodel.variables['Sink(Wärme)|size'] * flow.fixed_relative_profile,
         )
 
 

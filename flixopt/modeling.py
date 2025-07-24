@@ -536,8 +536,8 @@ class BoundingPatterns:
         )
         scaling_upper = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub2')
 
-        big_m_upper = scaling_max * rel_upper
-        big_m_lower = np.maximum(CONFIG.modeling.EPSILON, scaling_min * rel_lower)
+        big_m_upper = rel_upper * scaling_max
+        big_m_lower = np.maximum(CONFIG.modeling.EPSILON, rel_lower * scaling_min)
 
         binary_upper = model.add_constraints(variable_state * big_m_upper >= variable, name=f'{name}|ub1')
         binary_lower = model.add_constraints(variable_state * big_m_lower <= variable, name=f'{name}|lb1')
