@@ -176,7 +176,7 @@ class TestLinearConverterModel:
         assert_conequal(
             model.constraints['Converter|on_hours_total'],
             model.variables['Converter|on_hours_total']
-            == (model.variables['Converter|on'] * model.hours_per_step).sum(),
+            == (model.variables['Converter|on'] * model.hours_per_step).sum('time'),
         )
 
         # Check conversion constraint
@@ -282,16 +282,19 @@ class TestLinearConverterModel:
         # Check that the correct constraint was created
         assert 'VariableConverter|conversion_0' in model.constraints
 
+        factor = converter.conversion_factors[0]['electricity']
+
+        assert factor.dims == tuple(model.get_coords())
+
         # Verify the constraint has the time-varying coefficient
         assert_conequal(
             model.constraints['VariableConverter|conversion_0'],
-            input_flow.submodel.flow_rate * fluctuating_cop == output_flow.submodel.flow_rate * 1.0,
+            input_flow.submodel.flow_rate * factor == output_flow.submodel.flow_rate * 1.0,
         )
 
     def test_piecewise_conversion(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with PiecewiseConversion."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
@@ -339,9 +342,9 @@ class TestLinearConverterModel:
             lambda1 = model.variables[f'Converter|Piece_{i}|lambda1']
             inside_piece = model.variables[f'Converter|Piece_{i}|inside_piece']
 
-            assert_var_equal(inside_piece, model.add_variables(binary=True, coords=(timesteps,)))
-            assert_var_equal(lambda0, model.add_variables(lower=0, upper=1, coords=(timesteps,)))
-            assert_var_equal(lambda1, model.add_variables(lower=0, upper=1, coords=(timesteps,)))
+            assert_var_equal(inside_piece, model.add_variables(binary=True, coords=model.get_coords()))
+            assert_var_equal(lambda0, model.add_variables(lower=0, upper=1, coords=model.get_coords()))
+            assert_var_equal(lambda1, model.add_variables(lower=0, upper=1, coords=model.get_coords()))
 
             # Check that the inside_piece constraint exists
             assert f'Converter|Piece_{i}|inside_piece' in model.constraints
@@ -380,7 +383,6 @@ class TestLinearConverterModel:
     def test_piecewise_conversion_with_onoff(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with PiecewiseConversion and OnOffParameters."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
@@ -444,9 +446,9 @@ class TestLinearConverterModel:
             lambda1 = model.variables[f'Converter|Piece_{i}|lambda1']
             inside_piece = model.variables[f'Converter|Piece_{i}|inside_piece']
 
-            assert_var_equal(inside_piece, model.add_variables(binary=True, coords=(timesteps,)))
-            assert_var_equal(lambda0, model.add_variables(lower=0, upper=1, coords=(timesteps,)))
-            assert_var_equal(lambda1, model.add_variables(lower=0, upper=1, coords=(timesteps,)))
+            assert_var_equal(inside_piece, model.add_variables(binary=True, coords=model.get_coords()))
+            assert_var_equal(lambda0, model.add_variables(lower=0, upper=1, coords=model.get_coords()))
+            assert_var_equal(lambda1, model.add_variables(lower=0, upper=1, coords=model.get_coords()))
 
             # Check that the inside_piece constraint exists
             assert f'Converter|Piece_{i}|inside_piece' in model.constraints
@@ -485,7 +487,7 @@ class TestLinearConverterModel:
         assert 'Converter|on_hours_total' in model.constraints
         assert_conequal(
             model.constraints['Converter|on_hours_total'],
-            model['Converter|on_hours_total'] == (model['Converter|on'] * model.hours_per_step).sum(),
+            model['Converter|on_hours_total'] == (model['Converter|on'] * model.hours_per_step).sum('time'),
         )
 
         # Verify that the costs effect is applied
