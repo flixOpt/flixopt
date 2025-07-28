@@ -74,7 +74,7 @@ class TestComponentModel:
     def test_on_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
+
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
@@ -132,12 +132,16 @@ class TestComponentModel:
             msg='Incorrect constraints',
         )
 
+        upper_bound_flow_rate = outputs[1].relative_maximum
+
+        assert upper_bound_flow_rate.dims == tuple(model.get_coords())
+
         assert_var_equal(
             model['TestComponent(Out2)|flow_rate'],
-            model.add_variables(lower=0, upper=300 * ub_out2, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=300 * upper_bound_flow_rate, coords=model.get_coords()),
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=(timesteps,)))
-        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=(timesteps,)))
+        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=model.get_coords()))
 
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|lb'],
@@ -146,7 +150,7 @@ class TestComponentModel:
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|ub'],
             model.variables['TestComponent(Out2)|flow_rate']
-            <= model.variables['TestComponent(Out2)|on'] * 300 * ub_out2,
+            <= model.variables['TestComponent(Out2)|on'] * 300 * upper_bound_flow_rate,
         )
 
         assert_conequal(
@@ -173,7 +177,6 @@ class TestComponentModel:
     def test_on_with_single_flow(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
         ]
@@ -211,10 +214,10 @@ class TestComponentModel:
         )
 
         assert_var_equal(
-            model['TestComponent(In1)|flow_rate'], model.add_variables(lower=0, upper=100, coords=(timesteps,))
+            model['TestComponent(In1)|flow_rate'], model.add_variables(lower=0, upper=100, coords=model.get_coords())
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=(timesteps,)))
-        assert_var_equal(model['TestComponent(In1)|on'], model.add_variables(binary=True, coords=(timesteps,)))
+        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent(In1)|on'], model.add_variables(binary=True, coords=model.get_coords()))
 
         assert_conequal(
             model.constraints['TestComponent(In1)|flow_rate|lb'],
@@ -233,7 +236,7 @@ class TestComponentModel:
     def test_previous_states_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        timesteps = flow_system.timesteps
+
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
             fx.Flow(
@@ -304,12 +307,16 @@ class TestComponentModel:
             msg='Incorrect constraints',
         )
 
+        upper_bound_flow_rate = outputs[1].relative_maximum
+
+        assert upper_bound_flow_rate.dims == tuple(model.get_coords())
+
         assert_var_equal(
             model['TestComponent(Out2)|flow_rate'],
-            model.add_variables(lower=0, upper=300 * ub_out2, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=300 * upper_bound_flow_rate, coords=model.get_coords()),
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=(timesteps,)))
-        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=(timesteps,)))
+        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=model.get_coords()))
 
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|lb'],
@@ -318,7 +325,7 @@ class TestComponentModel:
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|ub'],
             model.variables['TestComponent(Out2)|flow_rate']
-            <= model.variables['TestComponent(Out2)|on'] * 300 * ub_out2,
+            <= model.variables['TestComponent(Out2)|on'] * 300 * upper_bound_flow_rate,
         )
 
         assert_conequal(
