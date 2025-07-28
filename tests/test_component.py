@@ -349,6 +349,47 @@ class TestComponentModel:
             + 1e-5,
         )
 
+    def test_previous_states_with_multiple_flows_2(self, basic_flow_system_linopy_coords, coords_config):
+        """Test that flow model constraints are correctly generated."""
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+
+        ub_out2 = np.linspace(1, 1.5, 10).round(2)
+        inputs = [
+            fx.Flow(
+                'In1',
+                'Fernwärme',
+                relative_minimum=np.ones(10) * 0.1,
+                size=100,
+                previous_flow_rate=np.array([0, 0, 1e-6, 1e-5, 1e-4, 3, 4]),
+                on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
+            ),
+        ]
+        outputs = [
+            fx.Flow('Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=[3, 4, 5]),
+            fx.Flow(
+                'Out2',
+                'Gas',
+                relative_minimum=np.ones(10) * 0.3,
+                relative_maximum=ub_out2,
+                size=300,
+                previous_flow_rate=20,
+            ),
+        ]
+        comp = flixopt.elements.Component(
+            'TestComponent',
+            inputs=inputs,
+            outputs=outputs,
+            on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
+        )
+        flow_system.add_elements(comp)
+        create_linopy_model(flow_system)
+
+        assert_conequal(
+            comp.submodel.constraints['TestComponent|consecutive_on_hours|initial'],
+            comp.submodel.variables['TestComponent|consecutive_on_hours'].isel(time=0)
+            == comp.submodel.variables['TestComponent|on'].isel(time=0) * 5,
+        )
+
 
 class TestTransmissionModel:
     def test_transmission_basic(self, basic_flow_system, highs_solver):
