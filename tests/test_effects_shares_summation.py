@@ -99,7 +99,7 @@ def test_effect_shares_example():
     """Test the specific example from the effects share factors test."""
     # Create the conversion dictionary based on test example
     conversion_dict = {
-        'Costs': {'Effect1': xr.DataArray(0.5)},
+        'costs': {'Effect1': xr.DataArray(0.5)},
         'Effect1': {'Effect2': xr.DataArray(1.1), 'Effect3': xr.DataArray(1.2)},
         'Effect2': {'Effect3': xr.DataArray(5.0)},
     }
@@ -107,19 +107,19 @@ def test_effect_shares_example():
     result = calculate_all_conversion_paths(conversion_dict)
 
     # Test direct paths
-    assert result[('Costs', 'Effect1')].item() == 0.5
+    assert result[('costs', 'Effect1')].item() == 0.5
     assert result[('Effect1', 'Effect2')].item() == 1.1
     assert result[('Effect2', 'Effect3')].item() == 5.0
 
     # Test indirect paths
-    # Costs -> Effect2 = Costs -> Effect1 -> Effect2 = 0.5 * 1.1
-    assert result[('Costs', 'Effect2')].item() == 0.5 * 1.1
+    # costs -> Effect2 = costs -> Effect1 -> Effect2 = 0.5 * 1.1
+    assert result[('costs', 'Effect2')].item() == 0.5 * 1.1
 
-    # Costs -> Effect3 has two paths:
-    # 1. Costs -> Effect1 -> Effect3 = 0.5 * 1.2 = 0.6
-    # 2. Costs -> Effect1 -> Effect2 -> Effect3 = 0.5 * 1.1 * 5 = 2.75
+    # costs -> Effect3 has two paths:
+    # 1. costs -> Effect1 -> Effect3 = 0.5 * 1.2 = 0.6
+    # 2. costs -> Effect1 -> Effect2 -> Effect3 = 0.5 * 1.1 * 5 = 2.75
     # Total = 0.6 + 2.75 = 3.35
-    assert result[('Costs', 'Effect3')].item() == 0.5 * 1.2 + 0.5 * 1.1 * 5
+    assert result[('costs', 'Effect3')].item() == 0.5 * 1.2 + 0.5 * 1.1 * 5
 
     # Effect1 -> Effect3 has two paths:
     # 1. Effect1 -> Effect2 -> Effect3 = 1.1 * 5.0 = 5.5

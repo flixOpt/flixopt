@@ -17,9 +17,8 @@ from .conftest import (
 class TestEffectModel:
     """Test the FlowModel class."""
 
-    def test_minimal(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
-        timesteps = flow_system.timesteps
+    def test_minimal(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         effect = fx.Effect('Effect1', '€', 'Testing Effect')
 
         flow_system.add_elements(effect)
@@ -47,11 +46,18 @@ class TestEffectModel:
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(model.variables['Effect1|total'], model.add_variables())
-        assert_var_equal(model.variables['Effect1(invest)|total'], model.add_variables())
-        assert_var_equal(model.variables['Effect1(operation)|total'], model.add_variables())
         assert_var_equal(
-            model.variables['Effect1(operation)|total_per_timestep'], model.add_variables(coords=(timesteps,))
+            model.variables['Effect1|total'], model.add_variables(coords=model.get_coords(['year', 'scenario']))
+        )
+        assert_var_equal(
+            model.variables['Effect1(invest)|total'], model.add_variables(coords=model.get_coords(['year', 'scenario']))
+        )
+        assert_var_equal(
+            model.variables['Effect1(operation)|total'],
+            model.add_variables(coords=model.get_coords(['year', 'scenario'])),
+        )
+        assert_var_equal(
+            model.variables['Effect1(operation)|total_per_timestep'], model.add_variables(coords=model.get_coords())
         )
 
         assert_conequal(
@@ -63,16 +69,15 @@ class TestEffectModel:
         assert_conequal(
             model.constraints['Effect1(operation)|total'],
             model.variables['Effect1(operation)|total']
-            == model.variables['Effect1(operation)|total_per_timestep'].sum(),
+            == model.variables['Effect1(operation)|total_per_timestep'].sum('time'),
         )
         assert_conequal(
             model.constraints['Effect1(operation)|total_per_timestep'],
             model.variables['Effect1(operation)|total_per_timestep'] == 0,
         )
 
-    def test_bounds(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
-        timesteps = flow_system.timesteps
+    def test_bounds(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         effect = fx.Effect(
             'Effect1',
             '€',
@@ -112,13 +117,24 @@ class TestEffectModel:
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(model.variables['Effect1|total'], model.add_variables(lower=3.0, upper=3.1))
-        assert_var_equal(model.variables['Effect1(invest)|total'], model.add_variables(lower=2.0, upper=2.1))
-        assert_var_equal(model.variables['Effect1(operation)|total'], model.add_variables(lower=1.0, upper=1.1))
+        assert_var_equal(
+            model.variables['Effect1|total'],
+            model.add_variables(lower=3.0, upper=3.1, coords=model.get_coords(['year', 'scenario'])),
+        )
+        assert_var_equal(
+            model.variables['Effect1(invest)|total'],
+            model.add_variables(lower=2.0, upper=2.1, coords=model.get_coords(['year', 'scenario'])),
+        )
+        assert_var_equal(
+            model.variables['Effect1(operation)|total'],
+            model.add_variables(lower=1.0, upper=1.1, coords=model.get_coords(['year', 'scenario'])),
+        )
         assert_var_equal(
             model.variables['Effect1(operation)|total_per_timestep'],
             model.add_variables(
-                lower=4.0 * model.hours_per_step, upper=4.1 * model.hours_per_step, coords=(timesteps,)
+                lower=4.0 * model.hours_per_step,
+                upper=4.1 * model.hours_per_step,
+                coords=model.get_coords(['time', 'year', 'scenario']),
             ),
         )
 
@@ -131,15 +147,15 @@ class TestEffectModel:
         assert_conequal(
             model.constraints['Effect1(operation)|total'],
             model.variables['Effect1(operation)|total']
-            == model.variables['Effect1(operation)|total_per_timestep'].sum(),
+            == model.variables['Effect1(operation)|total_per_timestep'].sum('time'),
         )
         assert_conequal(
             model.constraints['Effect1(operation)|total_per_timestep'],
             model.variables['Effect1(operation)|total_per_timestep'] == 0,
         )
 
-    def test_shares(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
+    def test_shares(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         effect1 = fx.Effect(
             'Effect1',
             '€',
@@ -202,9 +218,9 @@ class TestEffectModel:
 
 
 class TestEffectResults:
-    def test_shares(self, basic_flow_system_linopy):
-        flow_system = basic_flow_system_linopy
-        flow_system.effects['Costs'].specific_share_to_other_effects_operation['Effect1'] = 0.5
+    def test_shares(self, basic_flow_system_linopy_coords, coords_config):
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+        flow_system.effects['costs'].specific_share_to_other_effects_operation['Effect1'] = 0.5
         flow_system.add_elements(
             fx.Effect(
                 'Effect1',
@@ -221,6 +237,7 @@ class TestEffectResults:
                 Q_th=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
+                    size=fx.InvestParameters(specific_effects=10, minimum_size=20, optional=False),
                 ),
                 Q_fu=fx.Flow('Q_fu', bus='Gas'),
             ),
@@ -230,9 +247,9 @@ class TestEffectResults:
 
         effect_share_factors = {
             'operation': {
-                ('Costs', 'Effect1'): 0.5,
-                ('Costs', 'Effect2'): 0.5 * 1.1,
-                ('Costs', 'Effect3'): 0.5 * 1.1 * 5 + 0.5 * 1.2,  # This is where the issue lies
+                ('costs', 'Effect1'): 0.5,
+                ('costs', 'Effect2'): 0.5 * 1.1,
+                ('costs', 'Effect3'): 0.5 * 1.1 * 5 + 0.5 * 1.2,  # This is where the issue lies
                 ('Effect1', 'Effect2'): 1.1,
                 ('Effect1', 'Effect3'): 1.2 + 1.1 * 5,
                 ('Effect2', 'Effect3'): 5,
@@ -249,58 +266,63 @@ class TestEffectResults:
             np.testing.assert_allclose(results.effect_share_factors['invest'][key].values, value)
 
         xr.testing.assert_allclose(
-            results.effects_per_component('operation').sum('component')['Costs'],
-            results.solution['Costs(operation)|total_per_timestep'].fillna(0),
+            results.effects_per_component['operation'].sum('component').sel(effect='costs', drop=True),
+            results.solution['costs(operation)|total_per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('operation').sum('component')['Effect1'],
+            results.effects_per_component['operation'].sum('component').sel(effect='Effect1', drop=True),
             results.solution['Effect1(operation)|total_per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('operation').sum('component')['Effect2'],
+            results.effects_per_component['operation'].sum('component').sel(effect='Effect2', drop=True),
             results.solution['Effect2(operation)|total_per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('operation').sum('component')['Effect3'],
+            results.effects_per_component['operation'].sum('component').sel(effect='Effect3', drop=True),
             results.solution['Effect3(operation)|total_per_timestep'].fillna(0),
         )
 
         # Invest mode checks
         xr.testing.assert_allclose(
-            results.effects_per_component('invest').sum('component')['Costs'], results.solution['Costs(invest)|total']
+            results.effects_per_component['invest'].sum('component').sel(effect='costs', drop=True),
+            results.solution['costs(invest)|total'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('invest').sum('component')['Effect1'],
+            results.effects_per_component['invest'].sum('component').sel(effect='Effect1', drop=True),
             results.solution['Effect1(invest)|total'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('invest').sum('component')['Effect2'],
+            results.effects_per_component['invest'].sum('component').sel(effect='Effect2', drop=True),
             results.solution['Effect2(invest)|total'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('invest').sum('component')['Effect3'],
+            results.effects_per_component['invest'].sum('component').sel(effect='Effect3', drop=True),
             results.solution['Effect3(invest)|total'],
         )
 
         # Total mode checks
         xr.testing.assert_allclose(
-            results.effects_per_component('total').sum('component')['Costs'], results.solution['Costs|total']
+            results.effects_per_component['total'].sum('component').sel(effect='costs', drop=True),
+            results.solution['costs|total'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('total').sum('component')['Effect1'], results.solution['Effect1|total']
+            results.effects_per_component['total'].sum('component').sel(effect='Effect1', drop=True),
+            results.solution['Effect1|total'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('total').sum('component')['Effect2'], results.solution['Effect2|total']
+            results.effects_per_component['total'].sum('component').sel(effect='Effect2', drop=True),
+            results.solution['Effect2|total'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component('total').sum('component')['Effect3'], results.solution['Effect3|total']
+            results.effects_per_component['total'].sum('component').sel(effect='Effect3', drop=True),
+            results.solution['Effect3|total'],
         )

@@ -67,9 +67,9 @@ def test_system():
         size=InvestParameters(
             minimum_size=0,
             maximum_size=20,
-            specific_effects={'Costs': 100},  # €/kW
+            specific_effects={'costs': 100},  # €/kW
         ),
-        effects_per_flow_hour={'Costs': 20},  # €/MWh
+        effects_per_flow_hour={'costs': 20},  # €/MWh
     )
     generator = Source('Generator', source=power_gen)
 
@@ -83,7 +83,7 @@ def test_system():
         capacity_in_flow_hours=InvestParameters(
             minimum_size=0,
             maximum_size=50,
-            specific_effects={'Costs': 50},  # €/kWh
+            specific_effects={'costs': 50},  # €/kWh
         ),
         eta_charge=0.95,
         eta_discharge=0.95,
@@ -91,7 +91,7 @@ def test_system():
     )
 
     # Create effects and objective
-    cost_effect = Effect(label='Costs', unit='€', description='Total costs', is_standard=True, is_objective=True)
+    cost_effect = Effect(label='costs', unit='€', description='Total costs', is_standard=True, is_objective=True)
 
     # Add all elements to the flow system
     flow_system.add_elements(electricity_bus, generator, demand_sink, storage, cost_effect)

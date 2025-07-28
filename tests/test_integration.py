@@ -248,7 +248,7 @@ class TestComplex:
         assert_almost_equal_numeric(
             comps['Speicher'].submodel.variables['Speicher|PiecewiseEffects|costs'].solution.values,
             454.74666666666667,
-            'Speicher investCosts_segmented_costs doesnt match expected value',
+            'Speicher investcosts_segmented_costs doesnt match expected value',
         )
 
 
@@ -309,13 +309,13 @@ class TestModelingTypes:
             assert_almost_equal_numeric(
                 calc.results.model['costs|total'].solution.item(),
                 expected_costs[modeling_type],
-                f'Costs do not match for {modeling_type} modeling type',
+                f'costs do not match for {modeling_type} modeling type',
             )
         else:
             assert_almost_equal_numeric(
                 calc.results.solution_without_overlap('costs(operation)|total_per_timestep').sum(),
                 expected_costs[modeling_type],
-                f'Costs do not match for {modeling_type} modeling type',
+                f'costs do not match for {modeling_type} modeling type',
             )
 
     def test_segmented_io(self, modeling_calculation):

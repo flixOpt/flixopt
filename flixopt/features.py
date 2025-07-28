@@ -171,7 +171,7 @@ class OnOffModel(Submodel):
                 self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
             ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
             short_name='on_hours_total',
-            coords=self.get_coords(['year', 'scenario']),
+            coords=['year', 'scenario'],
         )
 
         # 4. Switch tracking using existing pattern
@@ -179,13 +179,14 @@ class OnOffModel(Submodel):
             self.add_variables(binary=True, short_name='switch|on', coords=self.get_coords())
             self.add_variables(binary=True, short_name='switch|off', coords=self.get_coords())
 
-            ModelingPrimitives.state_transition_variables(
+            BoundingPatterns.state_transition_bounds(
                 self,
                 state_variable=self.on,
                 switch_on=self.switch_on,
                 switch_off=self.switch_off,
                 name=f'{self.label_of_model}|switch',
                 previous_state=self._previous_states.isel(time=-1) if self._previous_states is not None else 0,
+                coord='time',
             )
 
             if self.parameters.switch_on_total_max is not None:
@@ -408,7 +409,9 @@ class PiecewiseModel(Submodel):
                 rhs = self.zero_point
             elif self._zero_point is True:
                 self.zero_point = self.add_variables(
-                    coords=self._model.get_coords(), binary=True, short_name='zero_point'
+                    coords=self._model.get_coords(('year', 'scenario') if self._as_time_series else None),
+                    binary=True,
+                    short_name='zero_point',
                 )
                 rhs = self.zero_point
             else:

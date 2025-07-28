@@ -17,9 +17,8 @@ from .conftest import (
 
 
 class TestComponentModel:
-    def test_flow_label_check(self, basic_flow_system_linopy):
+    def test_flow_label_check(self):
         """Test that flow model constraints are correctly generated."""
-        _ = basic_flow_system_linopy
         inputs = [
             fx.Flow('Q_th_Last', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
             fx.Flow('Q_Gas', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
@@ -31,9 +30,9 @@ class TestComponentModel:
         with pytest.raises(ValueError, match='Flow names must be unique!'):
             _ = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
 
-    def test_component(self, basic_flow_system_linopy):
+    def test_component(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
             fx.Flow('In2', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
@@ -72,10 +71,10 @@ class TestComponentModel:
             msg='Incorrect constraints',
         )
 
-    def test_on_with_multiple_flows(self, basic_flow_system_linopy):
+    def test_on_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
-        timesteps = flow_system.timesteps
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
@@ -133,12 +132,16 @@ class TestComponentModel:
             msg='Incorrect constraints',
         )
 
+        upper_bound_flow_rate = outputs[1].relative_maximum
+
+        assert upper_bound_flow_rate.dims == tuple(model.get_coords())
+
         assert_var_equal(
             model['TestComponent(Out2)|flow_rate'],
-            model.add_variables(lower=0, upper=300 * ub_out2, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=300 * upper_bound_flow_rate, coords=model.get_coords()),
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=(timesteps,)))
-        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=(timesteps,)))
+        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=model.get_coords()))
 
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|lb'],
@@ -147,7 +150,7 @@ class TestComponentModel:
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|ub'],
             model.variables['TestComponent(Out2)|flow_rate']
-            <= model.variables['TestComponent(Out2)|on'] * 300 * ub_out2,
+            <= model.variables['TestComponent(Out2)|on'] * 300 * upper_bound_flow_rate,
         )
 
         assert_conequal(
@@ -171,10 +174,9 @@ class TestComponentModel:
             + 1e-5,
         )
 
-    def test_on_with_single_flow(self, basic_flow_system_linopy):
+    def test_on_with_single_flow(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
-        timesteps = flow_system.timesteps
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
         ]
@@ -212,10 +214,10 @@ class TestComponentModel:
         )
 
         assert_var_equal(
-            model['TestComponent(In1)|flow_rate'], model.add_variables(lower=0, upper=100, coords=(timesteps,))
+            model['TestComponent(In1)|flow_rate'], model.add_variables(lower=0, upper=100, coords=model.get_coords())
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=(timesteps,)))
-        assert_var_equal(model['TestComponent(In1)|on'], model.add_variables(binary=True, coords=(timesteps,)))
+        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent(In1)|on'], model.add_variables(binary=True, coords=model.get_coords()))
 
         assert_conequal(
             model.constraints['TestComponent(In1)|flow_rate|lb'],
@@ -231,10 +233,10 @@ class TestComponentModel:
             model.variables['TestComponent|on'] == model.variables['TestComponent(In1)|on'],
         )
 
-    def test_previous_states_with_multiple_flows(self, basic_flow_system_linopy):
+    def test_previous_states_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
-        flow_system = basic_flow_system_linopy
-        timesteps = flow_system.timesteps
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
             fx.Flow(
@@ -305,12 +307,16 @@ class TestComponentModel:
             msg='Incorrect constraints',
         )
 
+        upper_bound_flow_rate = outputs[1].relative_maximum
+
+        assert upper_bound_flow_rate.dims == tuple(model.get_coords())
+
         assert_var_equal(
             model['TestComponent(Out2)|flow_rate'],
-            model.add_variables(lower=0, upper=300 * ub_out2, coords=(timesteps,)),
+            model.add_variables(lower=0, upper=300 * upper_bound_flow_rate, coords=model.get_coords()),
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=(timesteps,)))
-        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=(timesteps,)))
+        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=model.get_coords()))
 
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|lb'],
@@ -319,7 +325,7 @@ class TestComponentModel:
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|ub'],
             model.variables['TestComponent(Out2)|flow_rate']
-            <= model.variables['TestComponent(Out2)|on'] * 300 * ub_out2,
+            <= model.variables['TestComponent(Out2)|on'] * 300 * upper_bound_flow_rate,
         )
 
         assert_conequal(
@@ -341,6 +347,67 @@ class TestComponentModel:
                 + model.variables['TestComponent(Out2)|on']
             )
             + 1e-5,
+        )
+
+    @pytest.mark.parametrize(
+        'in1_previous_flow_rate, out1_previous_flow_rate, out2_previous_flow_rate, previous_on_hours',
+        [
+            (None, None, None, 0),
+            (np.array([0, 1e-6, 1e-4, 5]), None, None, 2),
+            (np.array([0, 5, 0, 5]), None, None, 1),
+            (np.array([0, 5, 0, 0]), 3, 0, 1),
+            (np.array([0, 0, 2, 0, 4, 5]), [3, 4, 5], None, 4),
+        ],
+    )
+    def test_previous_states_with_multiple_flows_parameterized(
+        self,
+        basic_flow_system_linopy_coords,
+        coords_config,
+        in1_previous_flow_rate,
+        out1_previous_flow_rate,
+        out2_previous_flow_rate,
+        previous_on_hours,
+    ):
+        """Test that flow model constraints are correctly generated with different previous flow rates and constraint factors."""
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+
+        ub_out2 = np.linspace(1, 1.5, 10).round(2)
+        inputs = [
+            fx.Flow(
+                'In1',
+                'Fernwärme',
+                relative_minimum=np.ones(10) * 0.1,
+                size=100,
+                previous_flow_rate=in1_previous_flow_rate,
+                on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
+            ),
+        ]
+        outputs = [
+            fx.Flow(
+                'Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=out1_previous_flow_rate
+            ),
+            fx.Flow(
+                'Out2',
+                'Gas',
+                relative_minimum=np.ones(10) * 0.3,
+                relative_maximum=ub_out2,
+                size=300,
+                previous_flow_rate=out2_previous_flow_rate,
+            ),
+        ]
+        comp = flixopt.elements.Component(
+            'TestComponent',
+            inputs=inputs,
+            outputs=outputs,
+            on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
+        )
+        flow_system.add_elements(comp)
+        create_linopy_model(flow_system)
+
+        assert_conequal(
+            comp.submodel.constraints['TestComponent|consecutive_on_hours|initial'],
+            comp.submodel.variables['TestComponent|consecutive_on_hours'].isel(time=0)
+            == comp.submodel.variables['TestComponent|on'].isel(time=0) * (previous_on_hours + 1),
         )
 
 

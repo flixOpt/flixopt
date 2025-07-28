@@ -200,7 +200,7 @@ class CalculationResults:
         self._flow_rates = None
         self._flow_hours = None
         self._sizes = None
-        self._effects_per_component = {'operation': None, 'invest': None, 'total': None}
+        self._effects_per_component = None
 
     def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults', 'FlowResults']:
         if key in self.components:
@@ -312,20 +312,24 @@ class CalculationResults:
             startswith=startswith,
         )
 
-    def effects_per_component(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
-        """Returns a dataset containing effect totals for each components (including their flows).
-
-        Args:
-            mode: Which effects to contain. (operation, invest, total)
+    @property
+    def effects_per_component(self) -> xr.Dataset:
+        """Returns a dataset containing effect results for each mode, aggregated by Component
 
         Returns:
             An xarray Dataset with an additional component dimension and effects as variables.
         """
-        if mode not in ['operation', 'invest', 'total']:
-            raise ValueError(f'Invalid mode {mode}')
-        if self._effects_per_component[mode] is None:
-            self._effects_per_component[mode] = self._create_effects_dataset(mode)
-        return self._effects_per_component[mode]
+        if self._effects_per_component is None:
+            self._effects_per_component = xr.Dataset(
+                {
+                    mode: self._create_effects_dataset(mode).to_dataarray('effect', name=mode)
+                    for mode in ['operation', 'invest', 'total']
+                }
+            )
+            dim_order = ['time', 'year', 'scenario', 'component', 'effect']
+            self._effects_per_component = self._effects_per_component.transpose(*dim_order, missing_dims='ignore')
+
+        return self._effects_per_component
 
     def flow_rates(
         self,
@@ -580,7 +584,7 @@ class CalculationResults:
             total = xr.DataArray(np.nan)
         return total.rename(f'{element}->{effect}({mode})')
 
-    def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total'] = 'total') -> xr.Dataset:
+    def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total']) -> xr.Dataset:
         """Creates a dataset containing effect totals for all components (including their flows).
         The dataset does contain the direct as well as the indirect effects of each component.
 
@@ -590,24 +594,44 @@ class CalculationResults:
         Returns:
             An xarray Dataset with components as dimension and effects as variables.
         """
-        # Create an empty dataset
         ds = xr.Dataset()
+        all_arrays = {}
+        template = None  # Template is needed to determine the dimensions of the arrays. This handles the case of no shares for an effect
 
-        # Add each effect as a variable to the dataset
+        components_list = list(self.components)
+
+        # First pass: collect arrays and find template
         for effect in self.effects:
-            # Create a list of DataArrays, one for each component
-            component_arrays = [
-                self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True).expand_dims(
-                    component=[component]
-                )  # Add component dimension to each array
-                for component in list(self.components)
-            ]
+            effect_arrays = []
+            for component in components_list:
+                da = self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
+                effect_arrays.append(da)
 
-            # Combine all components into one DataArray for this effect
-            if component_arrays:
-                effect_array = xr.concat(component_arrays, dim='component', coords='minimal')
-                # Add this effect as a variable to the dataset
-                ds[effect] = effect_array
+                if template is None and (da.dims or not da.isnull().all()):
+                    template = da
+
+            all_arrays[effect] = effect_arrays
+
+        # Ensure we have a template
+        if template is None:
+            raise ValueError(
+                f"No template with proper dimensions found for mode '{mode}'. "
+                f'All computed arrays are scalars, which indicates a data issue.'
+            )
+
+        # Second pass: process all effects (guaranteed to include all)
+        for effect in self.effects:
+            dataarrays = all_arrays[effect]
+            component_arrays = []
+
+            for component, arr in zip(components_list, dataarrays, strict=False):
+                # Expand scalar NaN arrays to match template dimensions
+                if not arr.dims and np.isnan(arr.item()):
+                    arr = xr.full_like(template, np.nan, dtype=float).rename(arr.name)
+
+                component_arrays.append(arr.expand_dims(component=[component]))
+
+            ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal')
 
         # For now include a test to ensure correctness
         suffix = {

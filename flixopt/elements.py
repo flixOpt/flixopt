@@ -199,6 +199,7 @@ class Flow(Element):
                 If the load-profile is just an upper limit, use relative_maximum instead.
             previous_flow_rate: previous flow rate of the flow. Used to determine if and how long the
                 flow is already on / off. If None, the flow is considered to be off for one timestep.
+                Currently does not support different values in different years or scenarios!
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, meta_data=meta_data)
@@ -305,7 +306,8 @@ class Flow(Element):
                 ]
             ):
                 raise TypeError(
-                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}'
+                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}.'
+                    f'Different values in different years or scenarios are not yetsupported.'
                 )
 
     @property
