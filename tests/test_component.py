@@ -349,8 +349,26 @@ class TestComponentModel:
             + 1e-5,
         )
 
-    def test_previous_states_with_multiple_flows_2(self, basic_flow_system_linopy_coords, coords_config):
-        """Test that flow model constraints are correctly generated."""
+    @pytest.mark.parametrize(
+        'in1_previous_flow_rate, out1_previous_flow_rate, out2_previous_flow_rate, previous_on_hours',
+        [
+            (None, None, None, 0),
+            (np.array([0, 1e-6, 1e-4, 5]), None, None, 2),
+            (np.array([0, 5, 0, 5]), None, None, 1),
+            (np.array([0, 5, 0, 0]), 3, 0, 1),
+            (np.array([0, 0, 2, 0, 4, 5]), [3, 4, 5], None, 4),
+        ],
+    )
+    def test_previous_states_with_multiple_flows_parameterized(
+        self,
+        basic_flow_system_linopy_coords,
+        coords_config,
+        in1_previous_flow_rate,
+        out1_previous_flow_rate,
+        out2_previous_flow_rate,
+        previous_on_hours,
+    ):
+        """Test that flow model constraints are correctly generated with different previous flow rates and constraint factors."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
@@ -360,19 +378,21 @@ class TestComponentModel:
                 'Fernwärme',
                 relative_minimum=np.ones(10) * 0.1,
                 size=100,
-                previous_flow_rate=np.array([0, 0, 1e-6, 1e-5, 1e-4, 3, 4]),
+                previous_flow_rate=in1_previous_flow_rate,
                 on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
             ),
         ]
         outputs = [
-            fx.Flow('Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=[3, 4, 5]),
+            fx.Flow(
+                'Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=out1_previous_flow_rate
+            ),
             fx.Flow(
                 'Out2',
                 'Gas',
                 relative_minimum=np.ones(10) * 0.3,
                 relative_maximum=ub_out2,
                 size=300,
-                previous_flow_rate=20,
+                previous_flow_rate=out2_previous_flow_rate,
             ),
         ]
         comp = flixopt.elements.Component(
@@ -387,7 +407,7 @@ class TestComponentModel:
         assert_conequal(
             comp.submodel.constraints['TestComponent|consecutive_on_hours|initial'],
             comp.submodel.variables['TestComponent|consecutive_on_hours'].isel(time=0)
-            == comp.submodel.variables['TestComponent|on'].isel(time=0) * 5,
+            == comp.submodel.variables['TestComponent|on'].isel(time=0) * (previous_on_hours + 1),
         )
 
 
