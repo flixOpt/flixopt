@@ -63,6 +63,7 @@ class FlowSystem(Interface):
         scenarios: Optional[pd.Index] = None,
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
+        years_of_last_year: Optional[int] = None,
         weights: Optional[NonTemporalDataUser] = None,
     ):
         """
@@ -85,6 +86,8 @@ class FlowSystem(Interface):
         )
 
         self.years = None if years is None else self._validate_years(years)
+
+        self.years_per_year = None if years is None else self.calculate_years_per_year(years, years_of_last_year)
 
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
@@ -174,6 +177,17 @@ class FlowSystem(Interface):
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
             hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='hours_per_timestep'
+        )
+
+    @staticmethod
+    def calculate_years_per_year(years: pd.Index, years_of_last_year: Optional[int] = None) -> xr.DataArray:
+        """Calculate duration of each timestep as a 1D DataArray."""
+        years_per_year = np.diff(years)
+        return xr.DataArray(
+            np.append(years_per_year, years_of_last_year or years_per_year[-1]),
+            coords={'year': years},
+            dims='year',
+            name='years_per_year',
         )
 
     @staticmethod

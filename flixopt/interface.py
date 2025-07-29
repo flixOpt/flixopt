@@ -243,6 +243,164 @@ class InvestParameters(Interface):
 
 
 @register_class_for_io
+class YearAwareInvestParameters(Interface):
+    """
+    Parameters for year-aware investment modeling with multi-year optimization and timing constraints.
+
+    This interface supports investment decisions that can change over time, with constraints on
+    when investments can be made, modified, or removed. Useful for modeling:
+    - Capacity expansion planning over multiple years
+    - Technology replacement strategies
+    - Retrofit and upgrade scheduling
+    - Investment timing optimization with changing costs/benefits
+    """
+
+    def __init__(
+        self,
+        # Basic sizing parameters
+        minimum_size: Optional[Scalar] = None,
+        maximum_size: Optional[Scalar] = None,
+        fixed_size: Optional[Scalar] = None,
+        previous_size: Scalar = 0,
+        # Timing constraints - flexible combinations
+        fixed_start_year: Optional[int] = None,
+        fixed_end_year: Optional[int] = None,
+        fixed_duration: Optional[int] = None,
+        earliest_start_year: Optional[int] = None,
+        latest_start_year: Optional[int] = None,
+        earliest_end_year: Optional[int] = None,
+        latest_end_year: Optional[int] = None,
+        minimum_duration: Optional[int] = None,
+        maximum_duration: Optional[int] = None,
+        # Direct effects
+        effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
+        effects_of_investment: Optional['NonTemporalEffectsUser'] = None,
+        # Divestment constraints
+        allow_divestment: bool = False,
+        effects_of_divestment_per_size: Optional['NonTemporalEffectsUser'] = None,
+        effects_of_divestment: Optional['NonTemporalEffectsUser'] = None,
+    ):
+        """
+        Initialize year-aware investment parameters.
+
+        Args:
+            minimum_size: Minimum investment size when invested. Defaults to CONFIG.modeling.EPSILON.
+            maximum_size: Maximum possible investment size. Defaults to CONFIG.modeling.BIG.
+            fixed_size: If specified, investment size is fixed to this value (if investment is taken).
+            previous_size: THe size previous to the evaluated period (relevant for divestment decisions).
+
+            fixed_start_year: If specified, investment must start in this exact year.
+            fixed_end_year: If specified, investment must end in this exact year.
+            fixed_duration: If specified, investment must last exactly this many years.
+            earliest_start_year: Earliest year investment can start.
+            latest_start_year: Latest year investment can start.
+            earliest_end_year: Earliest year investment can end.
+            latest_end_year: Latest year investment can end.
+            minimum_duration: Minimum duration investment must last (in years).
+            maximum_duration: Maximum duration investment can last (in years).
+
+            effects_per_size: Effects applied per unit of investment size for each year invested.
+                Example: {'costs': 100} applies 100 * size * years_invested to total costs.
+            effects_per_investment: One-time effects applied when investment decision is made.
+                Example: {'costs': 1000} applies 1000 to costs in the investment year.
+
+            allow_divestment: If True, investment can be terminated before the end of time horizon.
+                If False, once invested, remains invested until end of horizon.
+            effects_per_divestment: One-time effects applied when divestment decision is made.
+                Example: {'costs': 500} applies 500 to costs in the divestment year.
+        """
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG
+        self.fixed_size = fixed_size
+
+        self.fixed_start_year = fixed_start_year
+        self.fixed_end_year = fixed_end_year
+        self.fixed_duration = fixed_duration
+        self.earliest_start_year = earliest_start_year
+        self.latest_start_year = latest_start_year
+        self.earliest_end_year = earliest_end_year
+        self.latest_end_year = latest_end_year
+        self.minimum_duration = minimum_duration
+        self.maximum_duration = maximum_duration
+
+        self.effects_of_investment_per_size: 'NonTemporalEffectsUser' = (
+            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
+        )
+        self.effects_of_investment: 'NonTemporalEffectsUser' = (
+            effects_of_investment if effects_of_investment is not None else {}
+        )
+
+        self.allow_divestment = allow_divestment
+        self.effects_of_divestment: 'NonTemporalEffectsUser' = (
+            effects_of_divestment if effects_of_divestment is not None else {}
+        )
+        self.effects_of_divestment_per_size: 'NonTemporalEffectsUser' = (
+            effects_of_divestment_per_size if effects_of_divestment_per_size is not None else {}
+        )
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        """Transform all parameter data to match the flow system's coordinate structure."""
+        self._plausibility_checks(flow_system)
+
+        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_investment_per_size,
+            label_suffix='effects_of_investment_per_size',
+            has_time_dim=False,
+        )
+        self.effects_of_investment = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_investment,
+            label_suffix='effects_of_investment',
+            has_time_dim=False,
+        )
+        self.effects_of_divestment = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_divestment,
+            label_suffix='effects_of_divestment',
+            has_time_dim=False,
+        )
+
+        self.effects_of_divestment_per_size = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_divestment_per_size,
+            label_suffix='effects_of_divestment_per_size',
+            has_time_dim=False,
+        )
+
+        self.minimum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_size', self.minimum_size, has_time_dim=False
+        )
+        self.maximum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_size', self.maximum_size, has_time_dim=False
+        )
+        if self.fixed_size is not None:
+            self.fixed_size = flow_system.fit_to_model_coords(
+                f'{name_prefix}|fixed_size', self.fixed_size, has_time_dim=False
+            )
+
+    def _plausibility_checks(self, flow_system):
+        """Validate parameter consistency and compatibility with the flow system."""
+        if flow_system.years is None:
+            raise ValueError("YearAwareInvestParameters requires the flow_system to have a 'years' dimension.")
+
+    @property
+    def minimum_or_fixed_size(self) -> NonTemporalData:
+        """Get the effective minimum size (fixed size takes precedence)."""
+        return self.fixed_size if self.fixed_size is not None else self.minimum_size
+
+    @property
+    def maximum_or_fixed_size(self) -> NonTemporalData:
+        """Get the effective maximum size (fixed size takes precedence)."""
+        return self.fixed_size if self.fixed_size is not None else self.maximum_size
+
+    @property
+    def is_fixed_size(self) -> bool:
+        """Check if investment size is fixed."""
+        return self.fixed_size is not None
+
+
+@register_class_for_io
 class OnOffParameters(Interface):
     def __init__(
         self,
