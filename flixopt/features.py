@@ -153,7 +153,6 @@ class YearAwareInvestmentModel(Submodel):
         self._basic_modeling()
         self._custom_modeling()
         self._add_effects()
-
         super()._do_modeling()
 
     def _basic_modeling(self):
@@ -214,22 +213,65 @@ class YearAwareInvestmentModel(Submodel):
         )
 
     def _custom_modeling(self):
-        # Add usefull constraints for investment decisions, parameterized by the user
+        """Add timing constraints for investment decisions based on user parameters."""
 
-        pass
+        # Get the year dimension coordinates
+        year_coords = self._model.get_coords(['year'])[0] if self._model.get_coords(['year']) else None
+        if year_coords is None:
+            return  # No year dimension, skip timing constraints
 
-    def _add_effects(self):
-        if self.parameters.effects_of_investment:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.is_invested * factor if self.is_invested is not None else factor
-                    for effect, factor in self.parameters.fix_effects.items()
-                },
-                target='invest',
+        # Apply timing constraints based on parameters
+        self._apply_start_year_constraints(self.increase)
+        self._apply_end_year_constraints(self.decrease)
+
+    def _apply_start_year_constraints(self, increase):
+        """Apply start year related constraints."""
+        if self.parameters.earliest_start_year is not None:
+            # TODO: ensure that the year is present
+            self.add_constraints(
+                increase.sel(year=slice(None, self.parameters.earliest_start_year)) == 0,
+                name=f'{increase.name}|earliest_start',
+            )
+        if self.parameters.latest_start_year is not None:
+            # TODO: ensure that the year is present
+            self.add_constraints(
+                increase.sel(year=slice(self.parameters.latest_start_year + 1, None)) == 0,
+                name=f'{increase.name}|latest_start',
             )
 
+    def _apply_end_year_constraints(self, decrease):
+        """Apply end year related constraints."""
+
+        if self.parameters.earliest_end_year is not None:
+            # TODO: ensure that the year is present
+            self.add_constraints(
+                decrease.sel(year=slice(None, self.parameters.earliest_end_year)) == 0,
+                name=f'{decrease.name}|earliest_end',
+            )
+        if self.parameters.latest_end_year is not None:
+            # TODO: ensure that the year is present
+            self.add_constraints(
+                decrease.sel(year=slice(self.parameters.latest_end_year + 1, None)) == 0,
+                name=f'{decrease.name}|latest_end',
+            )
+
+    def _add_effects(self):
+        """Add investment effects to the model."""
+
+        if self.parameters.effects_of_investment:
+            # One-time effects when investment is made
+            increase = self._variables.get('increase')
+            if increase is not None:
+                self._model.effects.add_share_to_effects(
+                    name=self.label_of_element,
+                    expressions={
+                        effect: increase * factor for effect, factor in self.parameters.effects_of_investment.items()
+                    },
+                    target='invest',
+                )
+
         if self.parameters.effects_of_investment_per_size:
+            # Annual effects proportional to investment size
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
@@ -238,6 +280,18 @@ class YearAwareInvestmentModel(Submodel):
                 },
                 target='invest',
             )
+
+        if self.parameters.effects_of_divestment and self.parameters.allow_divestment:
+            # One-time effects when divestment is made
+            decrease = self._variables.get('decrease')
+            if decrease is not None:
+                self._model.effects.add_share_to_effects(
+                    name=self.label_of_element,
+                    expressions={
+                        effect: decrease * factor for effect, factor in self.parameters.effects_of_divestment.items()
+                    },
+                    target='invest',
+                )
 
     @property
     def size(self) -> linopy.Variable:
@@ -250,6 +304,16 @@ class YearAwareInvestmentModel(Submodel):
         if 'is_invested' not in self._variables:
             return None
         return self._variables['is_invested']
+
+    @property
+    def increase(self) -> linopy.Variable:
+        """Binary increase decision variable"""
+        return self._variables['increase']
+
+    @property
+    def decrease(self) -> linopy.Variable:
+        """Binary decrease decision variable"""
+        return self._variables['decrease']
 
 
 class OnOffModel(Submodel):
