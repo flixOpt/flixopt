@@ -19,8 +19,6 @@ logger = logging.getLogger('flixopt')
 
 
 class InvestmentModel(Submodel):
-    """Investment model using factory patterns but keeping old interface"""
-
     def __init__(
         self,
         model: FlowSystemModel,
@@ -112,6 +110,112 @@ class InvestmentModel(Submodel):
                 expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
                 target='invest',
             )
+
+    @property
+    def size(self) -> linopy.Variable:
+        """Investment size variable"""
+        return self._variables['size']
+
+    @property
+    def is_invested(self) -> Optional[linopy.Variable]:
+        """Binary investment decision variable"""
+        if 'is_invested' not in self._variables:
+            return None
+        return self._variables['is_invested']
+
+
+class YearAwareInvestmentModel(Submodel):
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        label_of_element: str,
+        parameters: InvestParameters,
+        label_of_model: Optional[str] = None,
+    ):
+        """
+        This feature model is used to model the investment of a variable.
+        It applies the corresponding bounds to the variable and the on/off state of the variable.
+
+        Args:
+            model: The optimization model instance
+            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+            parameters: The parameters of the feature model.
+            label_of_model: The label of the model. This is needed to construct the full label of the model.
+
+        """
+        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
+        self.parameters = parameters
+        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+
+    def _do_modeling(self):
+        self._basic_modeling()
+        self._custom_modeling()
+
+    def _basic_modeling(self):
+        size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
+        self.add_variables(
+            short_name='size',
+            lower=0 if self.parameters.optional else size_min,
+            upper=size_max,
+            coords=self._model.get_coords(['year', 'scenario']),
+        )
+
+        if self.parameters.optional or self.parameters.year_aware:
+            self.add_variables(
+                binary=True,
+                coords=self._model.get_coords(['year', 'scenario']),
+                short_name='is_invested',
+            )
+
+            BoundingPatterns.bounds_with_state(
+                self,
+                variable=self.size,
+                variable_state=self.is_invested,
+                bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+            )
+
+        if self.parameters.year_aware:
+            # Track when the investment/divestment happens
+            increase = self.add_variables(
+                binary=True,
+                coords=self._model.get_coords(['year', 'scenario']),
+                short_name='increase',
+            )
+            decrease = self.add_variables(
+                binary=True,
+                coords=self._model.get_coords(['year', 'scenario']),
+                short_name='decrease',
+            )
+            BoundingPatterns.state_transition_bounds(
+                self,
+                state_variable=self.is_invested,
+                switch_on=increase,
+                switch_off=decrease,
+                name=self.is_invested.name,
+                previous_state=0,
+                coord='year',
+            )
+
+            self.add_constraints(increase.sum('year') <= 1, name=f'{increase.name}|count')
+            self.add_constraints(decrease.sum('year') <= 1, name=f'{decrease.name}|count')
+
+            # Ensures size can only change when increase or decrease is 1
+            BoundingPatterns.continuous_transition_bounds(
+                model=self,
+                continuous_variable=self.size,
+                switch_on=increase,
+                switch_off=decrease,
+                name=self.size.name,
+                max_change=size_max,
+                previous_value=0,
+                coord='year',
+            )
+
+            super()._do_modeling()
+
+    def _custom_modeling(self):
+        # Add usefull constraints for investment decisions, parameterized by the user
+        pass
 
     @property
     def size(self) -> linopy.Variable:

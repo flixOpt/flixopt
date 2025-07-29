@@ -588,3 +588,69 @@ class BoundingPatterns:
         mutex = model.add_constraints(switch_on + switch_off <= 1, name=f'{name}|mutex')
 
         return transition, initial, mutex
+
+    @staticmethod
+    def continuous_transition_bounds(
+        model: Submodel,
+        continuous_variable: linopy.Variable,
+        switch_on: linopy.Variable,
+        switch_off: linopy.Variable,
+        name: str,
+        max_change: Union[float, xr.DataArray],
+        previous_value: Union[float, xr.DataArray] = 0,
+        coord: str = 'time',
+    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+        """
+        Constrains a continuous variable to only change when switch variables are active.
+
+        Mathematical formulation:
+            -max_change * (switch_on[t] + switch_off[t]) <= continuous[t] - continuous[t-1] <= max_change * (switch_on[t] + switch_off[t])  ∀t > 0
+            -max_change * (switch_on[0] + switch_off[0]) <= continuous[0] - previous_value <= max_change * (switch_on[0] + switch_off[0])
+            switch_on[t], switch_off[t] ∈ {0, 1}
+
+        This ensures the continuous variable can only change when switch_on or switch_off is 1.
+        When both switches are 0, the variable must stay exactly constant.
+
+        Args:
+            model: The submodel to add constraints to
+            continuous_variable: The continuous variable to constrain
+            switch_on: Binary variable indicating when changes are allowed (typically transitions to active state)
+            switch_off: Binary variable indicating when changes are allowed (typically transitions to inactive state)
+            name: Base name for the constraints
+            max_change: Maximum possible change in the continuous variable (Big-M value)
+            previous_value: Initial value of the continuous variable before first period
+            coord: Coordinate name for time dimension
+
+        Returns:
+            Tuple of constraints: (transition_upper, transition_lower, initial_upper, initial_lower)
+        """
+        if not isinstance(model, Submodel):
+            raise ValueError('BoundingPatterns.continuous_transition_bounds() can only be used with a Submodel')
+
+        # Transition constraints for t > 0: continuous variable can only change when switches are active
+        transition_upper = model.add_constraints(
+            continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)})
+            <= max_change * (switch_on.isel({coord: slice(1, None)}) + switch_off.isel({coord: slice(1, None)})),
+            name=f'{name}|transition_ub',
+        )
+
+        transition_lower = model.add_constraints(
+            continuous_variable.isel({coord: slice(None, -1)}) - continuous_variable.isel({coord: slice(1, None)})
+            <= max_change * (switch_on.isel({coord: slice(1, None)}) + switch_off.isel({coord: slice(1, None)})),
+            name=f'{name}|transition_lb',
+        )
+
+        # Initial constraints for t = 0
+        initial_upper = model.add_constraints(
+            continuous_variable.isel({coord: 0}) - previous_value
+            <= max_change * (switch_on.isel({coord: 0}) + switch_off.isel({coord: 0})),
+            name=f'{name}|initial_ub',
+        )
+
+        initial_lower = model.add_constraints(
+            previous_value - continuous_variable.isel({coord: 0})
+            <= max_change * (switch_on.isel({coord: 0}) + switch_off.isel({coord: 0})),
+            name=f'{name}|initial_lb',
+        )
+
+        return transition_upper, transition_lower, initial_upper, initial_lower
