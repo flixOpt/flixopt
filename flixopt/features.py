@@ -11,7 +11,7 @@ import numpy as np
 
 from .config import CONFIG
 from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
-from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects
+from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects, YearAwareInvestParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
@@ -125,11 +125,13 @@ class InvestmentModel(Submodel):
 
 
 class YearAwareInvestmentModel(Submodel):
+    parameters: YearAwareInvestParameters
+
     def __init__(
         self,
         model: FlowSystemModel,
         label_of_element: str,
-        parameters: InvestParameters,
+        parameters: YearAwareInvestParameters,
         label_of_model: Optional[str] = None,
     ):
         """
@@ -150,72 +152,92 @@ class YearAwareInvestmentModel(Submodel):
     def _do_modeling(self):
         self._basic_modeling()
         self._custom_modeling()
+        self._add_effects()
+
+        super()._do_modeling()
 
     def _basic_modeling(self):
-        size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
+        _, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         self.add_variables(
             short_name='size',
-            lower=0 if self.parameters.optional else size_min,
+            lower=0,
             upper=size_max,
             coords=self._model.get_coords(['year', 'scenario']),
         )
 
-        if self.parameters.optional or self.parameters.year_aware:
-            self.add_variables(
-                binary=True,
-                coords=self._model.get_coords(['year', 'scenario']),
-                short_name='is_invested',
-            )
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='is_invested',
+        )
 
-            BoundingPatterns.bounds_with_state(
-                self,
-                variable=self.size,
-                variable_state=self.is_invested,
-                bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-            )
+        BoundingPatterns.bounds_with_state(
+            self,
+            variable=self.size,
+            variable_state=self.is_invested,
+            bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+        )
 
-        if self.parameters.year_aware:
-            # Track when the investment/divestment happens
-            increase = self.add_variables(
-                binary=True,
-                coords=self._model.get_coords(['year', 'scenario']),
-                short_name='increase',
-            )
-            decrease = self.add_variables(
-                binary=True,
-                coords=self._model.get_coords(['year', 'scenario']),
-                short_name='decrease',
-            )
-            BoundingPatterns.state_transition_bounds(
-                self,
-                state_variable=self.is_invested,
-                switch_on=increase,
-                switch_off=decrease,
-                name=self.is_invested.name,
-                previous_state=0,
-                coord='year',
-            )
+        increase = self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='increase',
+        )
+        decrease = self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='decrease',
+        )
+        BoundingPatterns.state_transition_bounds(
+            self,
+            state_variable=self.is_invested,
+            switch_on=increase,
+            switch_off=decrease,
+            name=self.is_invested.name,
+            previous_state=0,
+            coord='year',
+        )
 
-            self.add_constraints(increase.sum('year') <= 1, name=f'{increase.name}|count')
-            self.add_constraints(decrease.sum('year') <= 1, name=f'{decrease.name}|count')
+        self.add_constraints(increase.sum('year') <= 1, name=f'{increase.name}|count')
+        self.add_constraints(decrease.sum('year') <= 1, name=f'{decrease.name}|count')
 
-            # Ensures size can only change when increase or decrease is 1
-            BoundingPatterns.continuous_transition_bounds(
-                model=self,
-                continuous_variable=self.size,
-                switch_on=increase,
-                switch_off=decrease,
-                name=self.size.name,
-                max_change=size_max,
-                previous_value=0,
-                coord='year',
-            )
-
-            super()._do_modeling()
+        # Ensures size can only change when increase or decrease is 1
+        BoundingPatterns.continuous_transition_bounds(
+            model=self,
+            continuous_variable=self.size,
+            switch_on=increase,
+            switch_off=decrease,
+            name=self.size.name,
+            max_change=size_max,
+            previous_value=0,
+            coord='year',
+        )
 
     def _custom_modeling(self):
         # Add usefull constraints for investment decisions, parameterized by the user
+
         pass
+
+    def _add_effects(self):
+        if self.parameters.effects_of_investment:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.is_invested * factor if self.is_invested is not None else factor
+                    for effect, factor in self.parameters.fix_effects.items()
+                },
+                target='invest',
+            )
+
+        if self.parameters.effects_of_investment_per_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.size * factor
+                    for effect, factor in self.parameters.effects_of_investment_per_size.items()
+                },
+                target='invest',
+            )
 
     @property
     def size(self) -> linopy.Variable:

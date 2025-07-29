@@ -25,6 +25,7 @@ from .commons import (
     Storage,
     TimeSeriesData,
     Transmission,
+    YearAwareInvestParameters,
     change_logging_level,
     linear_converters,
     plotting,

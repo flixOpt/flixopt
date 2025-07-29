@@ -648,7 +648,7 @@ class BoundingPatterns:
         )
 
         initial_lower = model.add_constraints(
-            previous_value - continuous_variable.isel({coord: 0})
+            -continuous_variable.isel({coord: 0}) + previous_value
             <= max_change * (switch_on.isel({coord: 0}) + switch_off.isel({coord: 0})),
             name=f'{name}|initial_lb',
         )
