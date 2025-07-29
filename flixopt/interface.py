@@ -261,24 +261,17 @@ class YearAwareInvestParameters(Interface):
         minimum_size: Optional[Scalar] = None,
         maximum_size: Optional[Scalar] = None,
         fixed_size: Optional[Scalar] = None,
-        previous_size: Scalar = 0,
         # Timing constraints - flexible combinations
-        fixed_start_year: Optional[int] = None,
-        fixed_end_year: Optional[int] = None,
-        fixed_duration: Optional[int] = None,
         earliest_start_year: Optional[int] = None,
         latest_start_year: Optional[int] = None,
         earliest_end_year: Optional[int] = None,
         latest_end_year: Optional[int] = None,
-        minimum_duration: Optional[int] = None,
-        maximum_duration: Optional[int] = None,
+        duration: Optional[int] = None,
+        # minimum_duration: Optional[int] = None,
+        # maximum_duration: Optional[int] = None,
         # Direct effects
         effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
         effects_of_investment: Optional['NonTemporalEffectsUser'] = None,
-        # Divestment constraints
-        allow_divestment: bool = False,
-        effects_of_divestment_per_size: Optional['NonTemporalEffectsUser'] = None,
-        effects_of_divestment: Optional['NonTemporalEffectsUser'] = None,
     ):
         """
         Initialize year-aware investment parameters.
@@ -313,29 +306,18 @@ class YearAwareInvestParameters(Interface):
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG
         self.fixed_size = fixed_size
 
-        self.fixed_start_year = fixed_start_year
-        self.fixed_end_year = fixed_end_year
-        self.fixed_duration = fixed_duration
         self.earliest_start_year = earliest_start_year
         self.latest_start_year = latest_start_year
         self.earliest_end_year = earliest_end_year
         self.latest_end_year = latest_end_year
-        self.minimum_duration = minimum_duration
-        self.maximum_duration = maximum_duration
+        # self.minimum_duration = minimum_duration
+        # self.maximum_duration = maximum_duration
 
         self.effects_of_investment_per_size: 'NonTemporalEffectsUser' = (
             effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
         )
         self.effects_of_investment: 'NonTemporalEffectsUser' = (
             effects_of_investment if effects_of_investment is not None else {}
-        )
-
-        self.allow_divestment = allow_divestment
-        self.effects_of_divestment: 'NonTemporalEffectsUser' = (
-            effects_of_divestment if effects_of_divestment is not None else {}
-        )
-        self.effects_of_divestment_per_size: 'NonTemporalEffectsUser' = (
-            effects_of_divestment_per_size if effects_of_divestment_per_size is not None else {}
         )
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
@@ -352,19 +334,6 @@ class YearAwareInvestParameters(Interface):
             label_prefix=name_prefix,
             effect_values=self.effects_of_investment,
             label_suffix='effects_of_investment',
-            has_time_dim=False,
-        )
-        self.effects_of_divestment = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_of_divestment,
-            label_suffix='effects_of_divestment',
-            has_time_dim=False,
-        )
-
-        self.effects_of_divestment_per_size = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_of_divestment_per_size,
-            label_suffix='effects_of_divestment_per_size',
             has_time_dim=False,
         )
 
