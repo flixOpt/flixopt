@@ -20,12 +20,12 @@ from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import (
     InvestParameters,
+    InvestTimingParameters,
     OnOffParameters,
     Piece,
     Piecewise,
     PiecewiseConversion,
     PiecewiseEffects,
-    YearAwareInvestParameters,
 )
 
 __all__ = [
@@ -56,5 +56,5 @@ __all__ = [
     'results',
     'linear_converters',
     'solvers',
-    'YearAwareInvestParameters',
+    'InvestTimingParameters',
 ]

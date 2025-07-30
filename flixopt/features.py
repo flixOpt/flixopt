@@ -8,10 +8,19 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import linopy
 import numpy as np
+import xarray as xr
 
 from .config import CONFIG
 from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
-from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects, YearAwareInvestParameters
+from .interface import (
+    FixedEndInvestTimingParameters,
+    FixedStartInvestTimingParameters,
+    InvestParameters,
+    InvestTimingParameters,
+    OnOffParameters,
+    Piecewise,
+    PiecewiseEffects,
+)
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
@@ -124,30 +133,18 @@ class InvestmentModel(Submodel):
         return self._variables['is_invested']
 
 
-class YearAwareInvestmentModel(Submodel):
-    parameters: YearAwareInvestParameters
+class InvestmentTimingModel(Submodel):
+    parameters: InvestTimingParameters
 
     def __init__(
         self,
         model: FlowSystemModel,
         label_of_element: str,
-        parameters: YearAwareInvestParameters,
+        parameters: InvestTimingParameters,
         label_of_model: Optional[str] = None,
     ):
-        """
-        This feature model is used to model the investment of a variable.
-        It applies the corresponding bounds to the variable and the on/off state of the variable.
-
-        Args:
-            model: The optimization model instance
-            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            parameters: The parameters of the feature model.
-            label_of_model: The label of the model. This is needed to construct the full label of the model.
-
-        """
-        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
         self.parameters = parameters
-        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+        super().__init__(model, label_of_element, label_of_model)
 
     def _do_modeling(self):
         self._basic_modeling()
@@ -156,7 +153,8 @@ class YearAwareInvestmentModel(Submodel):
         super()._do_modeling()
 
     def _basic_modeling(self):
-        _, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
+        size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
+
         self.add_variables(
             short_name='size',
             lower=0,
@@ -174,7 +172,7 @@ class YearAwareInvestmentModel(Submodel):
             self,
             variable=self.size,
             variable_state=self.is_invested,
-            bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+            bounds=(size_min, size_max),
         )
 
         increase = self.add_variables(
@@ -197,9 +195,6 @@ class YearAwareInvestmentModel(Submodel):
             coord='year',
         )
 
-        self.add_constraints(increase.sum('year') <= 1, name=f'{increase.name}|count')
-        self.add_constraints(decrease.sum('year') <= 1, name=f'{decrease.name}|count')
-
         # Ensures size can only change when increase or decrease is 1
         BoundingPatterns.continuous_transition_bounds(
             model=self,
@@ -212,47 +207,20 @@ class YearAwareInvestmentModel(Submodel):
             coord='year',
         )
 
+        self.add_constraints(self.increase.sum('year') <= 1, name=f'{self.increase.name}|count')
+        self.add_constraints(self.decrease.sum('year') <= 1, name=f'{self.decrease.name}|count')
+
     def _custom_modeling(self):
-        """Add timing constraints for investment decisions based on user parameters."""
+        # Fixed end and start year
+        self.add_constraints(
+            self.increase.sel(year=self.parameters.start_year) == self.decrease.sel(year=self.parameters.end_year),
+            name=f'{self.increase.name}|fixed_start_and_end',
+        )
 
-        # Get the year dimension coordinates
-        year_coords = self._model.get_coords(['year'])[0] if self._model.get_coords(['year']) else None
-        if year_coords is None:
-            return  # No year dimension, skip timing constraints
-
-        # Apply timing constraints based on parameters
-        self._apply_start_year_constraints(self.increase)
-        self._apply_end_year_constraints(self.decrease)
-
-    def _apply_start_year_constraints(self, increase):
-        """Apply start year related constraints."""
-        if self.parameters.earliest_start_year is not None:
-            # TODO: ensure that the year is present
+        if not self.parameters.optional:
             self.add_constraints(
-                increase.sel(year=slice(None, self.parameters.earliest_start_year)) == 0,
-                name=f'{increase.name}|earliest_start',
-            )
-        if self.parameters.latest_start_year is not None:
-            # TODO: ensure that the year is present
-            self.add_constraints(
-                increase.sel(year=slice(self.parameters.latest_start_year + 1, None)) == 0,
-                name=f'{increase.name}|latest_start',
-            )
-
-    def _apply_end_year_constraints(self, decrease):
-        """Apply end year related constraints."""
-
-        if self.parameters.earliest_end_year is not None:
-            # TODO: ensure that the year is present
-            self.add_constraints(
-                decrease.sel(year=slice(None, self.parameters.earliest_end_year)) == 0,
-                name=f'{decrease.name}|earliest_end',
-            )
-        if self.parameters.latest_end_year is not None:
-            # TODO: ensure that the year is present
-            self.add_constraints(
-                decrease.sel(year=slice(self.parameters.latest_end_year + 1, None)) == 0,
-                name=f'{decrease.name}|latest_end',
+                self.increase.sel(year=self.parameters.start_year) == 1,
+                name=f'{self.increase.name}|non_optional',
             )
 
     def _add_effects(self):
@@ -281,18 +249,6 @@ class YearAwareInvestmentModel(Submodel):
                 target='invest',
             )
 
-        if self.parameters.effects_of_divestment and self.parameters.allow_divestment:
-            # One-time effects when divestment is made
-            decrease = self._variables.get('decrease')
-            if decrease is not None:
-                self._model.effects.add_share_to_effects(
-                    name=self.label_of_element,
-                    expressions={
-                        effect: decrease * factor for effect, factor in self.parameters.effects_of_divestment.items()
-                    },
-                    target='invest',
-                )
-
     @property
     def size(self) -> linopy.Variable:
         """Investment size variable"""
@@ -314,6 +270,29 @@ class YearAwareInvestmentModel(Submodel):
     def decrease(self) -> linopy.Variable:
         """Binary decrease decision variable"""
         return self._variables['decrease']
+
+
+class FixedStartInvementTimingModel(InvestmentTimingModel):
+    parameters: FixedStartInvestTimingParameters
+
+    def _custom_modeling(self):
+        # Fixed start year
+        self.add_constraints(
+            (self.increase * 1).where(
+                xr.DataArray(
+                    self._model.flow_system.years != self.parameters.start_year,
+                    coords=self.get_coords(['year', 'scenario']),
+                )
+            )
+            == 0,
+            name=f'{self.increase.name}|fixed_start_and_end',
+        )
+
+        if not self.parameters.optional:
+            self.add_constraints(
+                self.increase.sel(year=self.parameters.start_year) == 1,
+                name=f'{self.increase.name}|non_optional',
+            )
 
 
 class OnOffModel(Submodel):

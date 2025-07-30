@@ -13,8 +13,8 @@ import xarray as xr
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .effects import TemporalEffectsUser
-from .features import InvestmentModel, ModelingPrimitives, OnOffModel, YearAwareInvestmentModel
-from .interface import InvestParameters, OnOffParameters, YearAwareInvestParameters
+from .features import InvestmentModel, InvestmentTimingModel, ModelingPrimitives, OnOffModel
+from .interface import InvestParameters, InvestTimingParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingUtilitiesAbstract
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
@@ -158,7 +158,7 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Union[Scalar, InvestParameters, YearAwareInvestParameters] = None,
+        size: Union[Scalar, InvestParameters, InvestTimingParameters] = None,
         fixed_relative_profile: Optional[TemporalDataUser] = None,
         relative_minimum: TemporalDataUser = 0,
         relative_maximum: TemporalDataUser = 1,
@@ -266,7 +266,7 @@ class Flow(Element):
 
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
-        if isinstance(self.size, (InvestParameters, YearAwareInvestParameters)):
+        if isinstance(self.size, (InvestParameters, InvestTimingParameters)):
             self.size.transform_data(flow_system, self.label_full)
         else:
             self.size = flow_system.fit_to_model_coords(f'{self.label_full}|size', self.size, has_time_dim=False)
@@ -276,7 +276,7 @@ class Flow(Element):
         if np.any(self.relative_minimum > self.relative_maximum):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
-        if not isinstance(self.size, (InvestParameters, YearAwareInvestParameters)) and (
+        if not isinstance(self.size, (InvestParameters, InvestTimingParameters)) and (
             np.any(self.size == CONFIG.modeling.BIG) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
@@ -387,9 +387,9 @@ class FlowModel(ElementModel):
                 ),
                 'investment',
             )
-        elif isinstance(self.element.size, YearAwareInvestParameters):
+        elif isinstance(self.element.size, InvestTimingParameters):
             self.add_submodels(
-                YearAwareInvestmentModel(
+                InvestmentTimingModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     parameters=self.element.size,
@@ -448,7 +448,7 @@ class FlowModel(ElementModel):
 
     @property
     def with_investment(self) -> bool:
-        return isinstance(self.element.size, (InvestParameters, YearAwareInvestParameters))
+        return isinstance(self.element.size, (InvestParameters, InvestTimingParameters))
 
     # Properties for clean access to variables
     @property
