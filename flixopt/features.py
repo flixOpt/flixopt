@@ -13,8 +13,6 @@ import xarray as xr
 from .config import CONFIG
 from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
 from .interface import (
-    FixedEndInvestTimingParameters,
-    FixedStartInvestTimingParameters,
     InvestParameters,
     InvestTimingParameters,
     OnOffParameters,
@@ -147,10 +145,14 @@ class InvestmentTimingModel(Submodel):
         super().__init__(model, label_of_element, label_of_model)
 
     def _do_modeling(self):
-        self._basic_modeling()
-        self._custom_modeling()
-        self._add_effects()
         super()._do_modeling()
+        self._basic_modeling()
+        self._add_effects()
+
+        if self.parameters.start_year is not None and self.parameters.end_year is not None:
+            self._fixed_start_fixed_end_constraints()
+        elif self.parameters.end_year is not None:
+            self._fixed_end_constraints()
 
     def _basic_modeling(self):
         size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
@@ -210,19 +212,6 @@ class InvestmentTimingModel(Submodel):
         self.add_constraints(self.increase.sum('year') <= 1, name=f'{self.increase.name}|count')
         self.add_constraints(self.decrease.sum('year') <= 1, name=f'{self.decrease.name}|count')
 
-    def _custom_modeling(self):
-        # Fixed end and start year
-        self.add_constraints(
-            self.increase.sel(year=self.parameters.start_year) == self.decrease.sel(year=self.parameters.end_year),
-            name=f'{self.increase.name}|fixed_start_and_end',
-        )
-
-        if not self.parameters.optional:
-            self.add_constraints(
-                self.increase.sel(year=self.parameters.start_year) == 1,
-                name=f'{self.increase.name}|non_optional',
-            )
-
     def _add_effects(self):
         """Add investment effects to the model."""
 
@@ -249,6 +238,25 @@ class InvestmentTimingModel(Submodel):
                 target='invest',
             )
 
+    def _fixed_start_fixed_end_constraints(self):
+        """Add constraints for fixed start year."""
+        self.add_constraints(
+            self.increase.sel(year=self.parameters.start_year) == self.decrease.sel(year=self.parameters.end_year),
+            name=f'{self.increase.name}|fixed_start_and_end',
+        )
+
+        if not self.parameters.optional:
+            self.add_constraints(
+                self.increase.sel(year=self.parameters.start_year) == 1,
+                name=f'{self.increase.name}|non_optional',
+            )
+
+    def _fixed_end_constraints(self):
+        pass
+
+    def _fixed_start_constraints(self):
+        pass
+
     @property
     def size(self) -> linopy.Variable:
         """Investment size variable"""
@@ -272,19 +280,14 @@ class InvestmentTimingModel(Submodel):
         return self._variables['decrease']
 
 
-class FixedStartInvementTimingModel(InvestmentTimingModel):
-    parameters: FixedStartInvestTimingParameters
+class FixedStartFixedEndInvestmentTimingModel(InvestmentTimingModel):
+    parameters: InvestTimingParameters
 
-    def _custom_modeling(self):
-        # Fixed start year
+    def _basic_modeling(self):
+        super()._basic_modeling()
+
         self.add_constraints(
-            (self.increase * 1).where(
-                xr.DataArray(
-                    self._model.flow_system.years != self.parameters.start_year,
-                    coords=self.get_coords(['year', 'scenario']),
-                )
-            )
-            == 0,
+            self.increase.sel(year=self.parameters.start_year) == self.decrease.sel(year=self.parameters.end_year),
             name=f'{self.increase.name}|fixed_start_and_end',
         )
 

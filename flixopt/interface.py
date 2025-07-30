@@ -346,8 +346,8 @@ class InvestTimingParameters(_BaseYearAwareInvestParameters):
 
     def __init__(
         self,
-        start_year: int,
-        end_year: int,
+        start_year: Optional[int] = None,
+        end_year: Optional[int] = None,
         # Base parameters
         minimum_size: Optional[Scalar] = None,
         maximum_size: Optional[Scalar] = None,
@@ -380,6 +380,9 @@ class InvestTimingParameters(_BaseYearAwareInvestParameters):
         """Validate parameter consistency."""
         super()._plausibility_checks(flow_system)
 
+        if self.start_year is None and self.end_year is None:
+            raise ValueError('Either start_year or end_year must be specified.')
+
         if self.start_year < flow_system.years[0] or self.start_year > flow_system.years[-1]:
             raise ValueError(
                 f'start_year ({self.start_year}) must be between {flow_system.years[0]} and {flow_system.years[-1]}'
@@ -395,199 +398,6 @@ class InvestTimingParameters(_BaseYearAwareInvestParameters):
     def duration(self) -> int:
         """Get the investment duration."""
         return self.end_year - self.start_year + 1
-
-
-# Variant 2: Fixed Start Year, Variable End Year
-@register_class_for_io
-class FixedStartInvestTimingParameters(_BaseYearAwareInvestParameters):
-    """
-    Investment with fixed start year but optimizable end year.
-
-    Start timing is known, but duration/end timing is optimized.
-    Good for modeling investments that must start at a specific time
-    but can run for different durations.
-    """
-
-    def __init__(
-        self,
-        start_year: int,
-        earliest_end_year: Optional[int] = None,
-        latest_end_year: Optional[int] = None,
-        # Base parameters
-        minimum_size: Optional[Scalar] = None,
-        maximum_size: Optional[Scalar] = None,
-        fixed_size: Optional[Scalar] = None,
-        effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
-        effects_of_investment: Optional['NonTemporalEffectsUser'] = None,
-        effects_of_divestment: Optional['NonTemporalEffectsUser'] = None,
-    ):
-        """
-        Initialize fixed start, variable end investment parameters.
-
-        Args:
-            start_year: Year when investment must start (0-indexed).
-            earliest_end_year: Earliest year investment can end (0-indexed).
-            latest_end_year: Latest year investment can end (0-indexed).
-            effects_of_divestment: One-time effects when investment ends.
-            **kwargs: Base parameters (size, effects)
-        """
-        super().__init__(
-            minimum_size=minimum_size,
-            maximum_size=maximum_size,
-            fixed_size=fixed_size,
-            effects_of_investment_per_size=effects_of_investment_per_size,
-            effects_of_investment=effects_of_investment,
-        )
-
-        self.start_year = start_year
-        self.earliest_end_year = earliest_end_year
-        self.latest_end_year = latest_end_year
-        self.effects_of_divestment: 'NonTemporalEffectsUser' = (
-            effects_of_divestment if effects_of_divestment is not None else {}
-        )
-
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        """Transform parameter data."""
-        super().transform_data(flow_system, name_prefix)
-
-        self.effects_of_divestment = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_of_divestment,
-            label_suffix='effects_of_divestment',
-            has_time_dim=False,
-        )
-
-    def _plausibility_checks(self, flow_system):
-        """Validate parameter consistency."""
-        super()._plausibility_checks(flow_system)
-
-        total_years = len(flow_system.years)
-
-        if self.start_year < 0 or self.start_year >= total_years:
-            raise ValueError(f'start_year ({self.start_year}) must be between 0 and {total_years - 1}')
-
-        if self.earliest_end_year is not None:
-            if self.earliest_end_year <= self.start_year or self.earliest_end_year >= total_years:
-                raise ValueError(
-                    f'earliest_end_year ({self.earliest_end_year}) must be after start_year and before {total_years}'
-                )
-
-        if self.latest_end_year is not None:
-            if self.latest_end_year <= self.start_year or self.latest_end_year >= total_years:
-                raise ValueError(
-                    f'latest_end_year ({self.latest_end_year}) must be after start_year and before {total_years}'
-                )
-
-        if (
-            self.earliest_end_year is not None
-            and self.latest_end_year is not None
-            and self.earliest_end_year > self.latest_end_year
-        ):
-            raise ValueError(
-                f'earliest_end_year ({self.earliest_end_year}) must be <= latest_end_year ({self.latest_end_year})'
-            )
-
-        if self.minimum_duration is not None and self.minimum_duration < 1:
-            raise ValueError(f'minimum_duration ({self.minimum_duration}) must be at least 1')
-
-        if self.maximum_duration is not None and self.maximum_duration < 1:
-            raise ValueError(f'maximum_duration ({self.maximum_duration}) must be at least 1')
-
-        if (
-            self.minimum_duration is not None
-            and self.maximum_duration is not None
-            and self.minimum_duration > self.maximum_duration
-        ):
-            raise ValueError(
-                f'minimum_duration ({self.minimum_duration}) must be <= maximum_duration ({self.maximum_duration})'
-            )
-
-
-# Variant 3: Variable Start Year, Fixed End Year
-@register_class_for_io
-class FixedEndInvestTimingParameters(_BaseYearAwareInvestParameters):
-    """
-    Investment with optimizable start year but fixed end year.
-
-    End timing is known (e.g., regulatory deadline), but start timing is optimized.
-    Good for modeling investments that must be completed by a specific deadline
-    but timing of start can be optimized.
-    """
-
-    def __init__(
-        self,
-        end_year: int,
-        earliest_start_year: Optional[int] = None,
-        latest_start_year: Optional[int] = None,
-        # Base parameters
-        minimum_size: Optional[Scalar] = None,
-        maximum_size: Optional[Scalar] = None,
-        fixed_size: Optional[Scalar] = None,
-        effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
-        effects_of_investment: Optional['NonTemporalEffectsUser'] = None,
-        effects_of_divestment: Optional['NonTemporalEffectsUser'] = None,
-    ):
-        """
-        Initialize variable start, fixed end investment parameters.
-
-        Args:
-            end_year: Year when investment must end (0-indexed).
-            earliest_start_year: Earliest year investment can start (0-indexed).
-            latest_start_year: Latest year investment can start (0-indexed).
-            effects_of_divestment: One-time effects when investment ends.
-            **kwargs: Base parameters (size, effects)
-        """
-        super().__init__(
-            minimum_size=minimum_size,
-            maximum_size=maximum_size,
-            fixed_size=fixed_size,
-            effects_of_investment_per_size=effects_of_investment_per_size,
-            effects_of_investment=effects_of_investment,
-        )
-
-        self.end_year = end_year
-        self.earliest_start_year = earliest_start_year
-        self.latest_start_year = latest_start_year
-        self.effects_of_divestment: 'NonTemporalEffectsUser' = (
-            effects_of_divestment if effects_of_divestment is not None else {}
-        )
-
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        """Transform parameter data."""
-        super().transform_data(flow_system, name_prefix)
-
-        self.effects_of_divestment = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_of_divestment,
-            label_suffix='effects_of_divestment',
-            has_time_dim=False,
-        )
-
-    def _plausibility_checks(self, flow_system):
-        """Validate parameter consistency."""
-        super()._plausibility_checks(flow_system)
-
-        total_years = len(flow_system.years)
-
-        if self.end_year < 0 or self.end_year >= total_years:
-            raise ValueError(f'end_year ({self.end_year}) must be between 0 and {total_years - 1}')
-
-        if self.earliest_start_year is not None:
-            if self.earliest_start_year < 0 or self.earliest_start_year >= self.end_year:
-                raise ValueError(f'earliest_start_year ({self.earliest_start_year}) must be >= 0 and < end_year')
-
-        if self.latest_start_year is not None:
-            if self.latest_start_year < 0 or self.latest_start_year >= self.end_year:
-                raise ValueError(f'latest_start_year ({self.latest_start_year}) must be >= 0 and < end_year')
-
-        if (
-            self.earliest_start_year is not None
-            and self.latest_start_year is not None
-            and self.earliest_start_year > self.latest_start_year
-        ):
-            raise ValueError(
-                f'earliest_start_year ({self.earliest_start_year}) must be <= latest_start_year ({self.latest_start_year})'
-            )
 
 
 @register_class_for_io
