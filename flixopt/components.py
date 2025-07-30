@@ -3,8 +3,8 @@ This module contains the basic components of the flixopt framework.
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Set, Tuple, Union
 import warnings
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import linopy
 import numpy as np
