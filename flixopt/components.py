@@ -4,6 +4,7 @@ This module contains the basic components of the flixopt framework.
 
 import logging
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Set, Tuple, Union
+import warnings
 
 import linopy
 import numpy as np
@@ -586,52 +587,160 @@ class SourceAndSink(Component):
     def __init__(
         self,
         label: str,
-        source: Flow,
-        sink: Flow,
-        prevent_simultaneous_sink_and_source: bool = True,
+        inputs: List[Flow] = None,
+        outputs: List[Flow] = None,
+        prevent_simultaneous_flow_rates: bool = True,
         meta_data: Optional[Dict] = None,
+        **kwargs,
     ):
         """
         Args:
             label: The label of the Element. Used to identify it in the FlowSystem
-            source: output-flow of this component
-            sink: input-flow of this component
-            prevent_simultaneous_sink_and_source: If True, inflow and outflow can not be active simultaniously.
+            outputs: output-flows of this component
+            inputs: input-flows of this component
+            prevent_simultaneous_flow_rates: If True, inflow and outflow can not be active simultaniously.
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
+        source = kwargs.pop('source', None)
+        sink = kwargs.pop('sink', None)
+        prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
+        if source is not None:
+            warnings.deprecated(
+                'The use of the source argument is deprecated. Use the outputs argument instead.',
+                stacklevel=2,
+            )
+            if outputs is not None:
+                raise ValueError('Either source or outputs can be specified, but not both.')
+            outputs = [source]
+
+        if sink is not None:
+            warnings.deprecated(
+                'The use of the sink argument is deprecated. Use the outputs argument instead.',
+                stacklevel=2,
+            )
+            if inputs is not None:
+                raise ValueError('Either sink or outputs can be specified, but not both.')
+            inputs = [sink]
+
+        if prevent_simultaneous_sink_and_source is not None:
+            warnings.deprecated(
+                'The use of the prevent_simultaneous_sink_and_source argument is deprecated. Use the prevent_simultaneous_flow_rates argument instead.',
+                stacklevel=2,
+            )
+            prevent_simultaneous_flow_rates = prevent_simultaneous_sink_and_source
+
         super().__init__(
             label,
-            inputs=[sink],
-            outputs=[source],
-            prevent_simultaneous_flows=[sink, source] if prevent_simultaneous_sink_and_source is True else None,
+            inputs=inputs,
+            outputs=outputs,
+            prevent_simultaneous_flows=inputs + outputs if prevent_simultaneous_flow_rates is True else None,
             meta_data=meta_data,
         )
-        self.source = source
-        self.sink = sink
-        self.prevent_simultaneous_sink_and_source = prevent_simultaneous_sink_and_source
+        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+
+    @property
+    def source(self) -> Flow:
+        warnings.warn(
+            'The source property is deprecated. Use the outputs property instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.outputs[0]
+
+    @property
+    def sink(self) -> Flow:
+        warnings.warn(
+            'The sink property is deprecated. Use the outputs property instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.inputs[0]
+
+    @property
+    def prevent_simultaneous_sink_and_source(self) -> bool:
+        warnings.warn(
+            'The prevent_simultaneous_sink_and_source property is deprecated. Use the prevent_simultaneous_flow_rates property instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.prevent_simultaneous_flow_rates
 
 
 @register_class_for_io
 class Source(Component):
-    def __init__(self, label: str, source: Flow, meta_data: Optional[Dict] = None):
+    def __init__(
+        self,
+        label: str,
+        outputs: List[Flow] = None,
+        meta_data: Optional[Dict] = None,
+        prevent_simultaneous_flow_rates: bool = False,
+        **kwargs
+    ):
         """
         Args:
             label: The label of the Element. Used to identify it in the FlowSystem
-            source: output-flow of source
+            outputs: output-flows of source
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
-        super().__init__(label, outputs=[source], meta_data=meta_data)
-        self.source = source
+        source = kwargs.pop('source', None)
+        if source is not None:
+            warnings.warn(
+                'The use of the source argument is deprecated. Use the outputs argument instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if outputs is not None:
+                raise ValueError('Either source or outputs can be specified, but not both.')
+            outputs = [source]
+
+        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+        super().__init__(label, outputs=outputs, meta_data=meta_data, prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None)
+
+    @property
+    def source(self) -> Flow:
+        warnings.warn(
+            'The source property is deprecated. Use the outputs property instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.outputs[0]
 
 
 @register_class_for_io
 class Sink(Component):
-    def __init__(self, label: str, sink: Flow, meta_data: Optional[Dict] = None):
+    def __init__(
+        self,
+        label: str,
+        inputs: List[Flow] = None,
+        meta_data: Optional[Dict] = None,
+        prevent_simultaneous_flow_rates: bool = False,
+        **kwargs
+    ):
         """
         Args:
             label: The label of the Element. Used to identify it in the FlowSystem
-            meta_data: used to store more information about the element. Is not used internally, but saved in the results
-            sink: input-flow of sink
+            inputs: output-flows of source
+            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
-        super().__init__(label, inputs=[sink], meta_data=meta_data)
-        self.sink = sink
+        sink = kwargs.pop('sink', None)
+        if sink is not None:
+            warnings.warn(
+                'The use of the sink argument is deprecated. Use the outputs argument instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if inputs is not None:
+                raise ValueError('Either sink or outputs can be specified, but not both.')
+            inputs = [sink]
+
+        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+        super().__init__(label, inputs=inputs, meta_data=meta_data, prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None)
+
+    @property
+    def sink(self) -> Flow:
+        warnings.warn(
+            'The sink property is deprecated. Use the outputs property instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.inputs[0]
