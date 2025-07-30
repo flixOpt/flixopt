@@ -78,19 +78,6 @@ class InvestmentModel(Submodel):
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
-        if self.parameters.piecewise_effects:
-            self.piecewise_effects = self.add_submodels(
-                PiecewiseEffectsModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
-                    zero_point=self.is_invested,
-                ),
-                short_name='segments',
-            )
-
     def _add_effects(self):
         """Add investment effects"""
         if self.parameters.fix_effects:
@@ -118,6 +105,19 @@ class InvestmentModel(Submodel):
                 name=self.label_of_element,
                 expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
                 target='invest',
+            )
+
+        if self.parameters.piecewise_effects:
+            self.piecewise_effects = self.add_submodels(
+                PiecewiseEffectsModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
+                    zero_point=self.is_invested,
+                ),
+                short_name='segments',
             )
 
     @property
