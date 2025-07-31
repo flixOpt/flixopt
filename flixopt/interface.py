@@ -336,7 +336,7 @@ class _BaseYearAwareInvestParameters(Interface):
 
 # Variant 1: Fixed Start and End Year
 @register_class_for_io
-class InvestTimingParameters(_BaseYearAwareInvestParameters):
+class InvestTimingParameters(Interface):
     """
     Investment with fixed start and end years.
 
@@ -348,11 +348,13 @@ class InvestTimingParameters(_BaseYearAwareInvestParameters):
         self,
         start_year: Optional[int] = None,
         end_year: Optional[int] = None,
-        # Base parameters
         minimum_size: Optional[Scalar] = None,
         maximum_size: Optional[Scalar] = None,
         fixed_size: Optional[Scalar] = None,
-        optional: bool = False,
+        optional_investment: bool = False,
+        optional_divestment: bool = False,
+        fix_effects: Optional['NonTemporalEffectsUser'] = None,
+        specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
         effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
         effects_of_investment: Optional['NonTemporalEffectsUser'] = None,
     ):
@@ -362,23 +364,41 @@ class InvestTimingParameters(_BaseYearAwareInvestParameters):
         Args:
             start_year: Year when investment must start (0-indexed).
             end_year: Year when investment must end (0-indexed).
-            **kwargs: Base parameters (size, effects)
+            minimum_size: Minimum possible size of the investment.
+            maximum_size: Maximum possible size of the investment.
+            fixed_size: If specified, investment size is fixed to this value.
+            optional_investment: If False, the investment is mandatory.
+            optional_divestment: If False, the divestment is mandatory.
+            specific_effects: Specific costs, e.g., in €/kW_nominal or €/m²_nominal.
+                Example: {costs: 3, CO2: 0.3} with costs and CO2 representing an Object of class Effect
+                (Attention: Annualize costs to chosen period!)
+            effects_of_investment: Effects depending on when an investment decision is made. These can occur in the investment year or in multiple years.
+                If the effects need to occur in multiple years, you need to pass an xr.DataArray with the coord 'year_of_investment'.
+                Example: {'costs': 1000} applies 1000 to costs in the investment year.
+
         """
-        super().__init__(
-            minimum_size=minimum_size,
-            maximum_size=maximum_size,
-            fixed_size=fixed_size,
-            optional=optional,
-            effects_of_investment_per_size=effects_of_investment_per_size,
-            effects_of_investment=effects_of_investment,
-        )
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG
+        self.fixed_size = fixed_size
+        self.optional_investment = optional_investment
+        self.optional_divestment = optional_divestment
 
         self.start_year = start_year
         self.end_year = end_year
 
+        self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
+        self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
+        self.effects_of_investment_per_size: 'NonTemporalEffectsUser' = (
+            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
+        )
+        self.effects_of_investment: 'NonTemporalEffectsUser' = (
+            effects_of_investment if effects_of_investment is not None else {}
+        )
+
     def _plausibility_checks(self, flow_system):
         """Validate parameter consistency."""
-        super()._plausibility_checks(flow_system)
+        if flow_system.years is None:
+            raise ValueError("YearAwareInvestParameters requires the flow_system to have a 'years' dimension.")
 
         if self.start_year is None and self.end_year is None:
             raise ValueError('Either start_year or end_year must be specified.')
@@ -398,6 +418,49 @@ class InvestTimingParameters(_BaseYearAwareInvestParameters):
     def duration(self) -> int:
         """Get the investment duration."""
         return self.end_year - self.start_year + 1
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+        """Transform all parameter data to match the flow system's coordinate structure."""
+        self._plausibility_checks(flow_system)
+
+        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_investment_per_size,
+            label_suffix='effects_of_investment_per_size',
+            has_time_dim=False,
+        )
+        self.effects_of_investment = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_investment,
+            label_suffix='effects_of_investment',
+            has_time_dim=False,
+        )
+
+        self.minimum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_size', self.minimum_size, has_time_dim=False
+        )
+        self.maximum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_size', self.maximum_size, has_time_dim=False
+        )
+        if self.fixed_size is not None:
+            self.fixed_size = flow_system.fit_to_model_coords(
+                f'{name_prefix}|fixed_size', self.fixed_size, has_time_dim=False
+            )
+
+    @property
+    def minimum_or_fixed_size(self) -> NonTemporalData:
+        """Get the effective minimum size (fixed size takes precedence)."""
+        return self.fixed_size if self.fixed_size is not None else self.minimum_size
+
+    @property
+    def maximum_or_fixed_size(self) -> NonTemporalData:
+        """Get the effective maximum size (fixed size takes precedence)."""
+        return self.fixed_size if self.fixed_size is not None else self.maximum_size
+
+    @property
+    def is_fixed_size(self) -> bool:
+        """Check if investment size is fixed."""
+        return self.fixed_size is not None
 
 
 @register_class_for_io

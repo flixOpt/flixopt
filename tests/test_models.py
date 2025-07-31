@@ -1,11 +1,22 @@
+import linopy
 import numpy as np
 import pandas as pd
 import pytest
-import linopy
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_sets_equal, assert_var_equal, create_linopy_model, LoadProfiles, Effects, Sinks, Sources, Buses
+from .conftest import (
+    Buses,
+    Effects,
+    LoadProfiles,
+    Sinks,
+    Sources,
+    assert_conequal,
+    assert_sets_equal,
+    assert_var_equal,
+    create_linopy_model,
+)
+
 
 @pytest.fixture
 def flow_system() -> fx.FlowSystem:
@@ -106,20 +117,20 @@ class TestYearAwareInvestmentModelDirect:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestTimingParameters(start_year=2021, end_year=2023, minimum_size=20, maximum_size=1000, effects_of_investment_per_size=200),
+            size=fx.InvestTimingParameters(
+                start_year=2021, end_year=2023, minimum_size=900, maximum_size=1000, effects_of_investment_per_size=200
+            ),
             relative_maximum=np.linspace(0.5, 1, flow_system.timesteps.size),
         )
 
         flow_system.add_elements(fx.Source('Source', source=flow))
         calculation = fx.FullCalculation('GenericName', flow_system)
         calculation.do_modeling()
-        #calculation.model.add_constraints(calculation.model['Source(Wärme)|decrease'].isel(year=2) == 1)
+        # calculation.model.add_constraints(calculation.model['Source(Wärme)|decrease'].isel(year=2) == 1)
         calculation.solve(fx.solvers.HighsSolver(0, 60))
 
         ds = calculation.results['Source'].solution
         filtered_ds = ds[[v for v in ds.data_vars if ds[v].dims == ('year',)]]
-        print(filtered_ds.to_pandas().T)
+        print(filtered_ds.round(0).to_pandas().T)
 
         print('##')
-
-
