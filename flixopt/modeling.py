@@ -654,3 +654,80 @@ class BoundingPatterns:
         )
 
         return transition_upper, transition_lower, initial_upper, initial_lower
+
+    @staticmethod
+    def link_changes_to_level_with_binaries(
+        model: Submodel,
+        level_variable: linopy.Variable,
+        increase_variable: linopy.Variable,
+        decrease_variable: linopy.Variable,
+        increase_binary: linopy.Variable,
+        decrease_binary: linopy.Variable,
+        name: str,
+        max_change: Union[float, xr.DataArray],
+        initial_level: Union[float, xr.DataArray] = 0,
+        coord: str = 'year',
+    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+        """
+        Link changes to level evolution with binary control and mutual exclusivity.
+
+        Creates the complete constraint system for ALL time periods:
+        1. level[0] = initial_level + increase[0] - decrease[0]
+        2. level[t] = level[t-1] + increase[t] - decrease[t]  ∀t > 0
+        3. increase[t] <= max_change * increase_binary[t]  ∀t
+        4. decrease[t] <= max_change * decrease_binary[t]  ∀t
+        5. increase_binary[t] + decrease_binary[t] <= 1  ∀t
+
+        Args:
+            model: The submodel to add constraints to
+            increase_variable: Incremental additions for ALL periods (>= 0)
+            decrease_variable: Incremental reductions for ALL periods (>= 0)
+            increase_binary: Binary indicators for increases for ALL periods
+            decrease_binary: Binary indicators for decreases for ALL periods
+            level_variable: Level variable for ALL periods
+            name: Base name for constraints
+            max_change: Maximum change per period
+            initial_level: Starting level before first period
+            coord: Time coordinate name
+
+        Returns:
+            Tuple of (initial_constraint, transition_constraints, increase_bounds, decrease_bounds, mutual_exclusion)
+        """
+        if not isinstance(model, Submodel):
+            raise ValueError('BoundingPatterns.link_changes_to_level_with_binaries() can only be used with a Submodel')
+
+        # 1. Initial period: level[0] = initial_level + increase[0] - decrease[0]
+        initial_constraint = model.add_constraints(
+            level_variable.isel({coord: 0})
+            == initial_level + increase_variable.isel({coord: 0}) - decrease_variable.isel({coord: 0}),
+            name=f'{name}|initial_level',
+        )
+
+        # 2. Transition periods: level[t] = level[t-1] + increase[t] - decrease[t] for t > 0
+        transition_constraints = model.add_constraints(
+            level_variable.isel({coord: slice(1, None)})
+            == level_variable.isel({coord: slice(None, -1)})
+            + increase_variable.isel({coord: slice(1, None)})
+            - decrease_variable.isel({coord: slice(1, None)}),
+            name=f'{name}|transitions',
+        )
+
+        # 3. Increase bounds: increase[t] <= max_change * increase_binary[t] for all t
+        increase_bounds = model.add_constraints(
+            increase_variable <= increase_binary * max_change,
+            name=f'{name}|increase_bounds',
+        )
+
+        # 4. Decrease bounds: decrease[t] <= max_change * decrease_binary[t] for all t
+        decrease_bounds = model.add_constraints(
+            decrease_variable <= decrease_binary * max_change,
+            name=f'{name}|decrease_bounds',
+        )
+
+        # 5. Mutual exclusivity: increase_binary[t] + decrease_binary[t] <= 1 for all t
+        mutual_exclusion = model.add_constraints(
+            increase_binary + decrease_binary <= 1,
+            name=f'{name}|mutual_exclusion',
+        )
+
+        return initial_constraint, transition_constraints, increase_bounds, decrease_bounds, mutual_exclusion

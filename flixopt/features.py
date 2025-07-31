@@ -177,85 +177,67 @@ class InvestmentTimingModel(Submodel):
             bounds=(size_min, size_max),
         )
 
-        increase = self.add_variables(
+        has_increase = self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
-            short_name='increase',
+            short_name='has_increase',
         )
-        decrease = self.add_variables(
+        has_decrease = self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
-            short_name='decrease',
+            short_name='has_decrease',
         )
         BoundingPatterns.state_transition_bounds(
             self,
             state_variable=self.is_invested,
-            switch_on=increase,
-            switch_off=decrease,
+            switch_on=has_increase,
+            switch_off=has_decrease,
             name=self.is_invested.name,
             previous_state=0,
             coord='year',
+        )
+
+        self.add_variables(
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size_increase',
+            lower=0,
+            upper=size_max,
+        )
+
+        self.add_variables(
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size_decrease',
+            lower=0,
+            upper=size_max,
         )
 
         # Ensures size can only change when increase or decrease is 1
         BoundingPatterns.continuous_transition_bounds(
             model=self,
             continuous_variable=self.size,
-            switch_on=increase,
-            switch_off=decrease,
+            switch_on=has_increase,
+            switch_off=has_decrease,
             name=self.size.name,
             max_change=size_max,
             previous_value=0,
             coord='year',
         )
 
-        self.add_constraints(self.increase.sum('year') <= 1, name=f'{self.increase.name}|count')
-        self.add_constraints(self.decrease.sum('year') <= 1, name=f'{self.decrease.name}|count')
+        self.add_constraints(self.has_increase.sum('year') <= 1, name=f'{self.has_increase.name}|count')
+        self.add_constraints(self.has_decrease.sum('year') <= 1, name=f'{self.has_decrease.name}|count')
 
-    def _add_effects(self):
-        """Add investment effects to the model."""
-
-        if self.parameters.effects_of_investment:
-            # One-time effects when investment is made
-            increase = self._variables.get('increase')
-            if increase is not None:
-                self._model.effects.add_share_to_effects(
-                    name=self.label_of_element,
-                    expressions={
-                        effect: increase * factor for effect, factor in self.parameters.effects_of_investment.items()
-                    },
-                    target='invest',
-                )
-
-        if self.parameters.effects_of_investment_per_size:
-            # Annual effects proportional to investment size
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.size * factor
-                    for effect, factor in self.parameters.effects_of_investment_per_size.items()
-                },
-                target='invest',
-            )
-
-    def _fixed_start_fixed_end_constraints(self):
-        """Add constraints for fixed start year."""
-        self.add_constraints(
-            self.increase.sel(year=self.parameters.start_year) == self.decrease.sel(year=self.parameters.end_year),
-            name=f'{self.increase.name}|fixed_start_and_end',
+        BoundingPatterns.link_changes_to_level_with_binaries(
+            self,
+            level_variable=self.size,
+            increase_variable=self.size_increase,
+            decrease_variable=self.size_decrease,
+            increase_binary=self.has_increase,
+            decrease_binary=self.has_decrease,
+            name=f'{self.label_of_element}|size_changes',
+            max_change=size_max,
+            initial_level=0,
+            coord='year',
         )
-
-        if not self.parameters.optional:
-            self.add_constraints(
-                self.increase.sel(year=self.parameters.start_year) == 1,
-                name=f'{self.increase.name}|non_optional',
-            )
-
-    def _fixed_end_constraints(self):
-        pass
-
-    def _fixed_start_constraints(self):
-        pass
 
     @property
     def size(self) -> linopy.Variable:
@@ -270,14 +252,24 @@ class InvestmentTimingModel(Submodel):
         return self._variables['is_invested']
 
     @property
-    def increase(self) -> linopy.Variable:
+    def has_increase(self) -> linopy.Variable:
         """Binary increase decision variable"""
-        return self._variables['increase']
+        return self._variables['has_increase']
 
     @property
-    def decrease(self) -> linopy.Variable:
+    def has_decrease(self) -> linopy.Variable:
         """Binary decrease decision variable"""
-        return self._variables['decrease']
+        return self._variables['has_decrease']
+
+    @property
+    def size_decrease(self) -> linopy.Variable:
+        """Binary decrease decision variable"""
+        return self._variables['size_decrease']
+
+    @property
+    def size_increase(self) -> linopy.Variable:
+        """Binary increase decision variable"""
+        return self._variables['size_increase']
 
 
 class FixedStartFixedEndInvestmentTimingModel(InvestmentTimingModel):
