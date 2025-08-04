@@ -341,25 +341,6 @@ class InvestmentTimingModel(Submodel):
         return self._variables['size|divestment_used']
 
 
-class FixedStartFixedEndInvestmentTimingModel(InvestmentTimingModel):
-    parameters: InvestTimingParameters
-
-    def _basic_modeling(self):
-        super()._basic_modeling()
-
-        self.add_constraints(
-            self.has_increase.sel(year=self.parameters.year_of_investment)
-            == self.has_decrease.sel(year=self.parameters.year_of_decommissioning),
-            short_name='size|changes|fixed_start_and_end',
-        )
-
-        if not self.parameters.optional:
-            self.add_constraints(
-                self.has_increase.sel(year=self.parameters.year_of_investment) == 1,
-                name='size|changes|non_optional',
-            )
-
-
 class OnOffModel(Submodel):
     """OnOff model using factory patterns"""
 
