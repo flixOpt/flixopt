@@ -157,6 +157,7 @@ class InvestmentTimingModel(Submodel):
     def _basic_modeling(self):
         size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
 
+        ########################################################################
         self.add_variables(
             short_name='size',
             lower=0,
@@ -170,20 +171,6 @@ class InvestmentTimingModel(Submodel):
             short_name='is_invested',
         )
 
-        if self.parameters.optional_investment:
-            self.add_variables(
-                binary=True,
-                coords=self._model.get_coords(['scenario']),
-                short_name='investment_used',
-            )
-
-        if self.parameters.optional_divestment:
-            self.add_variables(
-                binary=True,
-                coords=self._model.get_coords(['scenario']),
-                short_name='divestment_used',
-            )
-
         BoundingPatterns.bounds_with_state(
             self,
             variable=self.size,
@@ -191,6 +178,7 @@ class InvestmentTimingModel(Submodel):
             bounds=(size_min, size_max),
         )
 
+        ########################################################################
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
@@ -210,15 +198,38 @@ class InvestmentTimingModel(Submodel):
             previous_state=0,
             coord='year',
         )
+
+        ########################################################################
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['scenario']),
+            short_name='size|investment_used',
+        )
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['scenario']),
+            short_name='size|divestment_used',
+        )
         self.add_constraints(
-            self.has_increase.sum('year') == (self.investment_used if self.investment_used is not None else 1),
+            self.has_increase.sum('year') == self.investment_used,
             name=f'{self.has_increase.name}|count',
         )
         self.add_constraints(
-            self.has_decrease.sum('year') == (self.divestment_used if self.divestment_used is not None else 1),
+            self.has_decrease.sum('year') == self.divestment_used,
             name=f'{self.has_decrease.name}|count',
         )
+        if not self.parameters.optional_investment:
+            self.add_constraints(
+                self.investment_used == 1,
+                name='investment_used|fixed',
+            )
+        if not self.parameters.optional_divestment:
+            self.add_constraints(
+                self.divestment_used == 1,
+                name='divestment_used|fixed',
+            )
 
+        ########################################################################
         self.add_variables(
             coords=self._model.get_coords(['year', 'scenario']),
             short_name='size|increase',
@@ -319,16 +330,16 @@ class InvestmentTimingModel(Submodel):
     @property
     def investment_used(self) -> Optional[linopy.Variable]:
         """Binary investment decision variable"""
-        if 'investment_used' not in self._variables:
+        if 'size|investment_used' not in self._variables:
             return None
-        return self._variables['investment_used']
+        return self._variables['size|investment_used']
 
     @property
     def divestment_used(self) -> Optional[linopy.Variable]:
         """Binary investment decision variable"""
-        if 'divestment_used' not in self._variables:
+        if 'size|divestment_used' not in self._variables:
             return None
-        return self._variables['divestment_used']
+        return self._variables['size|divestment_used']
 
 
 class FixedStartFixedEndInvestmentTimingModel(InvestmentTimingModel):
