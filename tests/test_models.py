@@ -53,8 +53,8 @@ class TestYearAwareInvestParameters:
         assert params.maximum_size == 100
         assert params.fixed_size is None
         assert not params.allow_divestment
-        assert params.fixed_start_year is None
-        assert params.fixed_end_year is None
+        assert params.fixed_year_of_investment is None
+        assert params.fixed_year_of_decommissioning is None
         assert params.fixed_duration is None
 
     def test_fixed_size_initialization(self):
@@ -68,16 +68,16 @@ class TestYearAwareInvestParameters:
     def test_timing_constraints_initialization(self):
         """Test initialization with various timing constraints."""
         params = fx.YearAwareInvestParameters(
-            fixed_start_year=2,
+            fixed_year_of_investment=2,
             minimum_duration=3,
             maximum_duration=5,
-            earliest_end_year=4,
+            earliest_year_of_decommissioning=4,
         )
 
-        assert params.fixed_start_year == 2
+        assert params.fixed_year_of_investment == 2
         assert params.minimum_duration == 3
         assert params.maximum_duration == 5
-        assert params.earliest_end_year == 4
+        assert params.earliest_year_of_decommissioning == 4
 
     def test_effects_initialization(self):
         """Test initialization with effects."""
@@ -118,7 +118,11 @@ class TestYearAwareInvestmentModelDirect:
             'Wärme',
             bus='Fernwärme',
             size=fx.InvestTimingParameters(
-                start_year=2021, end_year=2023, minimum_size=900, maximum_size=1000, effects_of_investment_per_size=200
+                year_of_investment=2021,
+                year_of_decommissioning=2023,
+                minimum_size=900,
+                maximum_size=1000,
+                effects_of_investment_per_size=200,
             ),
             relative_maximum=np.linspace(0.5, 1, flow_system.timesteps.size),
         )

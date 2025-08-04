@@ -10,7 +10,6 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .config import CONFIG
 from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
 from .interface import (
     InvestParameters,
@@ -149,9 +148,9 @@ class InvestmentTimingModel(Submodel):
         self._basic_modeling()
         self._add_effects()
 
-        if self.parameters.start_year is not None:
+        if self.parameters.year_of_investment is not None:
             self._fixed_start_constraint()
-        if self.parameters.end_year is not None:
+        if self.parameters.year_of_decommissioning is not None:
             self._fixed_end_constraint()
 
     def _basic_modeling(self):
@@ -240,7 +239,7 @@ class InvestmentTimingModel(Submodel):
             coords=self._model.get_coords(['year', 'scenario']),
             short_name='size|decrease',
             lower=0,
-            upper=CONFIG.modeling.BIG,
+            upper=size_max,
         )
         BoundingPatterns.link_changes_to_level_with_binaries(
             self,
@@ -283,14 +282,14 @@ class InvestmentTimingModel(Submodel):
 
     def _fixed_start_constraint(self):
         self.add_constraints(
-            self.has_increase.sel(year=self.parameters.start_year)
+            self.has_increase.sel(year=self.parameters.year_of_investment)
             == (self.investment_used if self.investment_used is not None else 1),
             short_name='size|changes|fixed_start',
         )
 
     def _fixed_end_constraint(self):
         self.add_constraints(
-            self.has_decrease.sel(year=self.parameters.end_year)
+            self.has_decrease.sel(year=self.parameters.year_of_decommissioning)
             == (self.divestment_used if self.divestment_used is not None else 1),
             short_name='size|changes|fixed_end',
         )
@@ -349,14 +348,14 @@ class FixedStartFixedEndInvestmentTimingModel(InvestmentTimingModel):
         super()._basic_modeling()
 
         self.add_constraints(
-            self.has_increase.sel(year=self.parameters.start_year)
-            == self.has_decrease.sel(year=self.parameters.end_year),
+            self.has_increase.sel(year=self.parameters.year_of_investment)
+            == self.has_decrease.sel(year=self.parameters.year_of_decommissioning),
             short_name='size|changes|fixed_start_and_end',
         )
 
         if not self.parameters.optional:
             self.add_constraints(
-                self.has_increase.sel(year=self.parameters.start_year) == 1,
+                self.has_increase.sel(year=self.parameters.year_of_investment) == 1,
                 name='size|changes|non_optional',
             )
 
