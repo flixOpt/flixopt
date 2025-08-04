@@ -152,6 +152,8 @@ class InvestmentTimingModel(Submodel):
             self._fixed_start_constraint()
         if self.parameters.year_of_decommissioning is not None:
             self._fixed_end_constraint()
+        if self.parameters.duration_in_years is not None:
+            self._fixed_duration_constraint()
 
     def _basic_modeling(self):
         size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
@@ -211,22 +213,32 @@ class InvestmentTimingModel(Submodel):
         )
         self.add_constraints(
             self.has_increase.sum('year') == self.investment_used,
-            name=f'{self.has_increase.name}|count',
+            short_name='size|has_increase|count',
         )
         self.add_constraints(
             self.has_decrease.sum('year') == self.divestment_used,
-            name=f'{self.has_decrease.name}|count',
+            short_name='size|has_decrease|count',
         )
         if not self.parameters.optional_investment:
             self.add_constraints(
                 self.investment_used == 1,
-                name='investment_used|fixed',
+                short_name='investment_used|fixed',
             )
         if not self.parameters.optional_divestment:
             self.add_constraints(
                 self.divestment_used == 1,
-                name='divestment_used|fixed',
+                short_name='divestment_used|fixed',
             )
+        self.add_variables(
+            lower=0,
+            upper=self.parameters.duration_in_years if self.parameters.duration_in_years is not None else np.inf,
+            coords=self._model.get_coords(['scenario']),
+            short_name='duration',
+        )
+        self.add_constraints(
+            self.duration == (self.is_invested * self._model.flow_system.years_per_year).sum('year'),
+            short_name='duration|fixed',
+        )
 
         ########################################################################
         self.add_variables(
@@ -282,16 +294,20 @@ class InvestmentTimingModel(Submodel):
 
     def _fixed_start_constraint(self):
         self.add_constraints(
-            self.has_increase.sel(year=self.parameters.year_of_investment)
-            == (self.investment_used if self.investment_used is not None else 1),
+            self.has_increase.sel(year=self.parameters.year_of_investment) == self.investment_used,
             short_name='size|changes|fixed_start',
         )
 
     def _fixed_end_constraint(self):
         self.add_constraints(
-            self.has_decrease.sel(year=self.parameters.year_of_decommissioning)
-            == (self.divestment_used if self.divestment_used is not None else 1),
+            self.has_decrease.sel(year=self.parameters.year_of_decommissioning) == self.divestment_used,
             short_name='size|changes|fixed_end',
+        )
+
+    def _fixed_duration_constraint(self):
+        self.add_constraints(
+            self.duration == self.parameters.duration_in_years,
+            short_name='size|duration|fixed',
         )
 
     @property
@@ -327,18 +343,19 @@ class InvestmentTimingModel(Submodel):
         return self._variables['size|increase']
 
     @property
-    def investment_used(self) -> Optional[linopy.Variable]:
+    def investment_used(self) -> linopy.Variable:
         """Binary investment decision variable"""
-        if 'size|investment_used' not in self._variables:
-            return None
         return self._variables['size|investment_used']
 
     @property
-    def divestment_used(self) -> Optional[linopy.Variable]:
+    def divestment_used(self) -> linopy.Variable:
         """Binary investment decision variable"""
-        if 'size|divestment_used' not in self._variables:
-            return None
         return self._variables['size|divestment_used']
+
+    @property
+    def duration(self) -> linopy.Variable:
+        """Investment duration variable"""
+        return self._variables['duration']
 
 
 class OnOffModel(Submodel):

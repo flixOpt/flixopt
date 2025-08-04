@@ -348,6 +348,7 @@ class InvestTimingParameters(Interface):
         self,
         year_of_investment: Optional[int] = None,
         year_of_decommissioning: Optional[int] = None,
+        duration_in_years: Optional[int] = None,
         minimum_size: Optional[Scalar] = None,
         maximum_size: Optional[Scalar] = None,
         fixed_size: Optional[Scalar] = None,
@@ -362,8 +363,9 @@ class InvestTimingParameters(Interface):
         Initialize fixed start and end year investment parameters.
 
         Args:
-            year_of_investment: Year in which the investment occurs. The unit is there present from this year onwards.
-            year_of_decommissioning: Year in which the unit is decommissioned. The unit is there present up to this year (exclusive).
+            year_of_investment: Year in which the investment occurs (inclusive). Present from this year onwards.
+            year_of_decommissioning: Year in which the unit is decommissioned (exclusive). Present up to this year.
+            duration_in_years: Duration of the investment in years.
             minimum_size: Minimum possible size of the investment.
             maximum_size: Maximum possible size of the investment.
             fixed_size: If specified, investment size is fixed to this value.
@@ -385,6 +387,7 @@ class InvestTimingParameters(Interface):
 
         self.year_of_investment = year_of_investment
         self.year_of_decommissioning = year_of_decommissioning
+        self.duration_in_years = duration_in_years
 
         self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
         self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
@@ -400,15 +403,25 @@ class InvestTimingParameters(Interface):
         if flow_system.years is None:
             raise ValueError("YearAwareInvestParameters requires the flow_system to have a 'years' dimension.")
 
-        if self.year_of_investment is None and self.year_of_decommissioning is None:
-            raise ValueError('Either year_of_investment or year_of_decommissioning must be specified.')
+        if all(
+            [param is None for param in (self.year_of_investment, self.year_of_decommissioning, self.duration_in_years)]
+        ):
+            # TODO: Should this be an exception or rather a warning? Is there a valid use case for this?
+            # And a mathematically valid formulation (regarding the effects especially)?
+            raise ValueError(
+                'Either year_of_investment, year_of_decommissioning or duration_in_years must be specified.'
+            )
 
-        if self.year_of_investment < flow_system.years[0] or self.year_of_investment > flow_system.years[-1]:
+        if self.year_of_investment is not None and not (
+            flow_system.years[0] <= self.year_of_investment <= flow_system.years[-1]
+        ):
             raise ValueError(
                 f'year_of_investment ({self.year_of_investment}) must be between {flow_system.years[0]} and {flow_system.years[-1]}'
             )
 
-        if self.year_of_decommissioning < flow_system.years[0] or self.year_of_decommissioning > flow_system.years[-1]:
+        if self.year_of_decommissioning is not None and not (
+            flow_system.years[0] <= self.year_of_decommissioning <= flow_system.years[-1]
+        ):
             raise ValueError(
                 f'year_of_decommissioning ({self.year_of_decommissioning}) must be between {flow_system.years[0]} and {flow_system.years[-1]}'
             )
@@ -417,11 +430,6 @@ class InvestTimingParameters(Interface):
             raise ValueError(
                 f'year_of_investment ({self.year_of_investment}) must be before year_of_decommissioning ({self.year_of_decommissioning})'
             )
-
-    @property
-    def duration(self) -> int:
-        """Get the duration of the investment."""
-        return self.year_of_decommissioning - self.year_of_investment
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         """Transform all parameter data to match the flow system's coordinate structure."""
