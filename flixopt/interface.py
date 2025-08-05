@@ -456,6 +456,13 @@ class InvestTimingParameters(Interface):
                 f'year_of_investment ({self.year_of_investment}) must be before year_of_decommissioning ({self.year_of_decommissioning})'
             )
 
+        if self.previous_size != 0:
+            if not self.minimum_size <= self.previous_size <= self.maximum_size:
+                raise ValueError(
+                    f'previous_size ({self.previous_size}) must be zero orbetween minimum_size ({self.minimum_size}) '
+                    f'and maximum_size ({self.maximum_size})'
+                )
+
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         """Transform all parameter data to match the flow system's coordinate structure."""
         self._plausibility_checks(flow_system)
