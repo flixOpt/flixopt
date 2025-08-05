@@ -21,7 +21,7 @@ from .conftest import (
 @pytest.fixture
 def flow_system() -> fx.FlowSystem:
     """Create basic elements for component testing with coordinate parametrization."""
-    years = pd.Index([2020, 2021, 2022, 2023, 2024], name='year')
+    years = pd.Index([2020, 2021, 2022, 2023, 2024, 2030], name='year')
     timesteps = pd.date_range('2020-01-01', periods=24, freq='h', name='time')
     flow_system = fx.FlowSystem(timesteps=timesteps, years=years)
 
@@ -118,11 +118,13 @@ class TestYearAwareInvestmentModelDirect:
             'Wärme',
             bus='Fernwärme',
             size=fx.InvestTimingParameters(
-                year_of_investment=2021,
-                year_of_decommissioning=2023,
+                year_of_investment=2020,
+                year_of_decommissioning=2030,
+                # duration_in_years=3,
                 minimum_size=900,
                 maximum_size=1000,
-                effects_of_investment_per_size=200,
+                effects_of_investment_per_size=200 * 1e5,
+                previous_size=900,
             ),
             relative_maximum=np.linspace(0.5, 1, flow_system.timesteps.size),
         )
@@ -131,10 +133,13 @@ class TestYearAwareInvestmentModelDirect:
         calculation = fx.FullCalculation('GenericName', flow_system)
         calculation.do_modeling()
         # calculation.model.add_constraints(calculation.model['Source(Wärme)|decrease'].isel(year=2) == 1)
-        calculation.solve(fx.solvers.HighsSolver(0, 60))
+        calculation.solve(fx.solvers.GurobiSolver(0, 60))
 
         ds = calculation.results['Source'].solution
-        filtered_ds = ds[[v for v in ds.data_vars if ds[v].dims == ('year',)]]
-        print(filtered_ds.round(0).to_pandas().T)
+        filtered_ds_year = ds[[v for v in ds.data_vars if ds[v].dims == ('year',)]]
+        print(filtered_ds_year.round(0).to_pandas().T)
+
+        filtered_ds_scalar = ds[[v for v in ds.data_vars if ds[v].dims == tuple()]]
+        print(filtered_ds_scalar.round(0).to_pandas().T)
 
         print('##')
