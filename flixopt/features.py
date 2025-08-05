@@ -131,6 +131,16 @@ class InvestmentModel(Submodel):
 
 
 class InvestmentTimingModel(Submodel):
+    """
+    This feature model is used to model the timing of investments.
+
+    Such an Investment is defined by a size, a year_of_investment, and a year_of_decommissioning.
+    In between these years, the size of the investment cannot vary. Outside, its 0.
+    The year_of_investment is defined as the year, in which the size increases from 0 to the chosen size.
+    The year_of_decommissioning is defined as the year, in which the size returns to 0.
+    The year_of_decommissioning can be after the years in the FlowSystem. THis results in no decommissioning.
+    """
+
     parameters: InvestTimingParameters
 
     def __init__(
@@ -183,18 +193,18 @@ class InvestmentTimingModel(Submodel):
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
-            short_name='size|has_increase',
+            short_name='size|year_of_investment',
         )
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
-            short_name='size|has_decrease',
+            short_name='size|year_of_decommissioning',
         )
         BoundingPatterns.state_transition_bounds(
             self,
             state_variable=self.is_invested,
-            switch_on=self.has_increase,
-            switch_off=self.has_decrease,
+            switch_on=self.year_of_investment,
+            switch_off=self.year_of_decommissioning,
             name=self.is_invested.name,
             previous_state=0,
             coord='year',
@@ -212,12 +222,12 @@ class InvestmentTimingModel(Submodel):
             short_name='size|divestment_used',
         )
         self.add_constraints(
-            self.has_increase.sum('year') == self.investment_used,
-            short_name='size|has_increase|count',
+            self.year_of_investment.sum('year') == self.investment_used,
+            short_name='size|year_of_investment|count',
         )
         self.add_constraints(
-            self.has_decrease.sum('year') == self.divestment_used,
-            short_name='size|has_decrease|count',
+            self.year_of_decommissioning.sum('year') == self.divestment_used,
+            short_name='size|year_of_decommissioning|count',
         )
         if not self.parameters.optional_investment:
             self.add_constraints(
@@ -248,11 +258,11 @@ class InvestmentTimingModel(Submodel):
             level_variable=self.size,
             increase_variable=self.size_increase,
             decrease_variable=self.size_decrease,
-            increase_binary=self.has_increase,
-            decrease_binary=self.has_decrease,
+            increase_binary=self.year_of_investment,
+            decrease_binary=self.year_of_decommissioning,
             name=f'{self.label_of_element}|size|changes',
             max_change=size_max,
-            initial_level=0,
+            initial_level=self.parameters.previous_size if self.parameters.previous_size is not None else 0,
             coord='year',
         )
 
@@ -284,13 +294,13 @@ class InvestmentTimingModel(Submodel):
 
     def _fixed_start_constraint(self):
         self.add_constraints(
-            self.has_increase.sel(year=self.parameters.year_of_investment) == self.investment_used,
+            self.year_of_investment.sel(year=self.parameters.year_of_investment) == self.investment_used,
             short_name='size|changes|fixed_start',
         )
 
     def _fixed_end_constraint(self):
         self.add_constraints(
-            self.has_decrease.sel(year=self.parameters.year_of_decommissioning) == self.divestment_used,
+            self.year_of_decommissioning.sel(year=self.parameters.year_of_decommissioning) == self.divestment_used,
             short_name='size|changes|fixed_end',
         )
 
@@ -304,7 +314,9 @@ class InvestmentTimingModel(Submodel):
             valid_years_of_investment = years[valid_mask]
             valid_years_of_decommissioning = years_of_decommissioning[valid_mask]
             actual_years_of_decommissioning = (
-                self.has_decrease.sel(year=valid_years_of_decommissioning, method='bfill').coords['year'].values
+                self.years_of_decommissioning.sel(year=valid_years_of_decommissioning, method='bfill')
+                .coords['year']
+                .values
             )
 
             # Warning for mismatched years
@@ -328,12 +340,15 @@ class InvestmentTimingModel(Submodel):
 
             # Now you can use proper xarray groupby
             grouped_increases = (
-                self.has_increase.sel(year=valid_years_of_investment).groupby(group).sum('year_of_decommissioning')
+                self.year_of_investment.sel(year=valid_years_of_investment)
+                .groupby(group)
+                .sum('year_of_decommissioning')
             )
 
             # Create constraints
             self.add_constraints(
-                self.has_decrease.sel(year=grouped_increases.coords['year_of_decommissioning']) == grouped_increases,
+                self.year_of_decommissioning.sel(year=grouped_increases.coords['year_of_decommissioning'])
+                == grouped_increases,
                 short_name='size|changes|fixed_duration',
             )
 
@@ -350,14 +365,14 @@ class InvestmentTimingModel(Submodel):
         return self._variables['is_invested']
 
     @property
-    def has_increase(self) -> linopy.Variable:
+    def year_of_investment(self) -> linopy.Variable:
         """Binary increase decision variable"""
-        return self._variables['size|has_increase']
+        return self._variables['size|year_of_investment']
 
     @property
-    def has_decrease(self) -> linopy.Variable:
+    def year_of_decommissioning(self) -> linopy.Variable:
         """Binary decrease decision variable"""
-        return self._variables['size|has_decrease']
+        return self._variables['size|year_of_decommissioning']
 
     @property
     def size_decrease(self) -> linopy.Variable:

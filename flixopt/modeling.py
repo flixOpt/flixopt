@@ -696,10 +696,10 @@ class BoundingPatterns:
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.link_changes_to_level_with_binaries() can only be used with a Submodel')
 
-        # 1. Initial period: level[0] = initial_level + increase[0] - decrease[0]
+        # 1. Initial period: level[0] - initial_level =  increase[0] - decrease[0]
         initial_constraint = model.add_constraints(
-            level_variable.isel({coord: 0})
-            == initial_level + increase_variable.isel({coord: 0}) - decrease_variable.isel({coord: 0}),
+            level_variable.isel({coord: 0}) - initial_level
+            == increase_variable.isel({coord: 0}) - decrease_variable.isel({coord: 0}),
             name=f'{name}|initial_level',
         )
 

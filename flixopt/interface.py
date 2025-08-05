@@ -357,14 +357,19 @@ class InvestTimingParameters(Interface):
         specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
         effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
         effects_of_investment: Optional['NonTemporalEffectsUser'] = None,
+        previous_size: Scalar = 0,
     ):
         """
-        Initialize fixed start and end year investment parameters.
+        These parameters are used to include the timing of investments in the model.
+        Two out of three parameters (year_of_investment, year_of_decommissioning, duration_in_years) can be fixed.
 
         Args:
             year_of_investment: Year in which the investment occurs (inclusive). Present from this year onwards.
+                If None, the year_of_investment is not fixed.
             year_of_decommissioning: Year in which the unit is decommissioned (exclusive). Present up to this year.
-            duration_in_years: Duration of the investment in years.
+                If None, the year_of_decommissioning is not fixed.
+            duration_in_years: Duration between year_of_investment and year_of_decommissioning.
+                If None, the duration is not fixed.
             minimum_size: Minimum possible size of the investment.
             maximum_size: Maximum possible size of the investment.
             fixed_size: If specified, investment size is fixed to this value.
@@ -376,6 +381,7 @@ class InvestTimingParameters(Interface):
             effects_of_investment: Effects depending on when an investment decision is made. These can occur in the investment year or in multiple years.
                 If the effects need to occur in multiple years, you need to pass an xr.DataArray with the coord 'year_of_investment'.
                 Example: {'costs': 1000} applies 1000 to costs in the investment year.
+            previous_size: The size of the investment before the first period. Defaults to 0.
 
         """
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
@@ -396,6 +402,8 @@ class InvestTimingParameters(Interface):
         self.effects_of_investment: 'NonTemporalEffectsUser' = (
             effects_of_investment if effects_of_investment is not None else {}
         )
+
+        self.previous_size = previous_size
 
     def _plausibility_checks(self, flow_system):
         """Validate parameter consistency."""
@@ -442,7 +450,7 @@ class InvestTimingParameters(Interface):
         if (
             self.year_of_decommissioning is not None
             and self.year_of_investment is not None
-            and self.year_of_investment >= self.year_of_decommissioning
+            and not self.year_of_investment < self.year_of_decommissioning
         ):
             raise ValueError(
                 f'year_of_investment ({self.year_of_investment}) must be before year_of_decommissioning ({self.year_of_decommissioning})'
@@ -475,6 +483,8 @@ class InvestTimingParameters(Interface):
             self.fixed_size = flow_system.fit_to_model_coords(
                 f'{name_prefix}|fixed_size', self.fixed_size, has_time_dim=False
             )
+
+        # TODO: self.previous_size to only scenarios
 
     @property
     def minimum_or_fixed_size(self) -> NonTemporalData:
