@@ -334,7 +334,6 @@ class _BaseYearAwareInvestParameters(Interface):
         return self.fixed_size is not None
 
 
-# Variant 1: Fixed Start and End Year
 @register_class_for_io
 class InvestTimingParameters(Interface):
     """
@@ -352,8 +351,8 @@ class InvestTimingParameters(Interface):
         minimum_size: Optional[Scalar] = None,
         maximum_size: Optional[Scalar] = None,
         fixed_size: Optional[Scalar] = None,
-        optional_investment: bool = False,
-        optional_divestment: bool = False,
+        optional_investment: bool = True,
+        optional_divestment: bool = True,
         fix_effects: Optional['NonTemporalEffectsUser'] = None,
         specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
         effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
@@ -412,21 +411,39 @@ class InvestTimingParameters(Interface):
                 'Either year_of_investment, year_of_decommissioning or duration_in_years must be specified.'
             )
 
-        if self.year_of_investment is not None and not (
-            flow_system.years[0] <= self.year_of_investment <= flow_system.years[-1]
+        if (
+            sum(
+                [
+                    param is not None
+                    for param in (self.year_of_investment, self.year_of_decommissioning, self.duration_in_years)
+                ]
+            )
+            > 2
         ):
+            # TODO: Should this be an exception or rather a warning?
             raise ValueError(
-                f'year_of_investment ({self.year_of_investment}) must be between {flow_system.years[0]} and {flow_system.years[-1]}'
+                f'InvestmentParameters is overdefined. Not all of {self.year_of_investment=}, '
+                f'{self.year_of_decommissioning=} and {self.duration_in_years=} can be specified.'
             )
 
-        if self.year_of_decommissioning is not None and not (
-            flow_system.years[0] <= self.year_of_decommissioning <= flow_system.years[-1]
-        ):
-            raise ValueError(
-                f'year_of_decommissioning ({self.year_of_decommissioning}) must be between {flow_system.years[0]} and {flow_system.years[-1]}'
-            )
+        if self.year_of_investment is not None:
+            if not (flow_system.years[0] <= self.year_of_investment <= flow_system.years[-1]):
+                raise ValueError(
+                    f'year_of_investment ({self.year_of_investment}) must be between '
+                    f'{flow_system.years[0]} and {flow_system.years[-1]}'
+                )
 
-        if self.year_of_investment >= self.year_of_decommissioning:
+        if self.year_of_decommissioning is not None:
+            if not (flow_system.years[0] <= self.year_of_decommissioning <= flow_system.years[-1]):
+                raise ValueError(
+                    f'year_of_decommissioning ({self.year_of_decommissioning}) must be between {flow_system.years[0]} and {flow_system.years[-1]}'
+                )
+
+        if (
+            self.year_of_decommissioning is not None
+            and self.year_of_investment is not None
+            and self.year_of_investment >= self.year_of_decommissioning
+        ):
             raise ValueError(
                 f'year_of_investment ({self.year_of_investment}) must be before year_of_decommissioning ({self.year_of_decommissioning})'
             )
