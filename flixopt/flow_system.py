@@ -427,7 +427,7 @@ class FlowSystem(Interface):
             logger.debug('FlowSystem already connected and transformed')
             return
 
-        self.weights = self.fit_to_model_coords('weights', self.weights, has_time_dim=False)
+        self.weights = self.fit_to_model_coords('weights', self.weights, dims=['year', 'scenario'])
         if self.weights is not None and self.weights.sum() != 1:
             logger.warning(
                 f'Scenario weights are not normalized to 1. This is recomended for a better scaled model. '
