@@ -229,16 +229,6 @@ class InvestmentTimingModel(Submodel):
                 self.divestment_used == 1,
                 short_name='divestment_used|fixed',
             )
-        self.add_variables(
-            lower=0,
-            upper=self.parameters.duration_in_years if self.parameters.duration_in_years is not None else np.inf,
-            coords=self._model.get_coords(['scenario']),
-            short_name='duration',
-        )
-        self.add_constraints(
-            self.duration == (self.is_invested * self._model.flow_system.years_per_year).sum('year'),
-            short_name='duration|fixed',
-        )
 
         ########################################################################
         self.add_variables(
@@ -305,10 +295,47 @@ class InvestmentTimingModel(Submodel):
         )
 
     def _fixed_duration_constraint(self):
-        self.add_constraints(
-            self.duration == self.parameters.duration_in_years,
-            short_name='size|duration|fixed',
-        )
+        years = self._model.flow_system.years
+        years_of_decommissioning = years + self.parameters.duration_in_years
+
+        # Filter and get actual selected years in one step
+        valid_mask = years_of_decommissioning <= years[-1]
+        if valid_mask.any():
+            valid_years_of_investment = years[valid_mask]
+            valid_years_of_decommissioning = years_of_decommissioning[valid_mask]
+            actual_years_of_decommissioning = (
+                self.has_decrease.sel(year=valid_years_of_decommissioning, method='bfill').coords['year'].values
+            )
+
+            # Warning for mismatched years
+            mismatched = valid_years_of_decommissioning != actual_years_of_decommissioning
+            for inv_year, target_year, actual_year in zip(
+                valid_years_of_investment[mismatched],
+                valid_years_of_decommissioning[mismatched],
+                actual_years_of_decommissioning[mismatched],
+                strict=False,
+            ):
+                logger.warning(
+                    f'year_of_decommissioning {target_year} for {self.size.name} not in flow_system years. For an investment in year {inv_year}, the year_of_decommissioning is set to {actual_year}'
+                )
+
+            group = xr.DataArray(
+                actual_years_of_decommissioning,  # values: the actual decommissioning years
+                coords={'year': valid_years_of_investment},  # coordinates: investment years
+                dims=['year'],
+                name='year_of_decommissioning',
+            )
+
+            # Now you can use proper xarray groupby
+            grouped_increases = (
+                self.has_increase.sel(year=valid_years_of_investment).groupby(group).sum('year_of_decommissioning')
+            )
+
+            # Create constraints
+            self.add_constraints(
+                self.has_decrease.sel(year=grouped_increases.coords['year_of_decommissioning']) == grouped_increases,
+                short_name='size|changes|fixed_duration',
+            )
 
     @property
     def size(self) -> linopy.Variable:
