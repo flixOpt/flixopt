@@ -105,27 +105,30 @@ class Effect(Element):
         )
 
         self.minimum_operation = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_operation', self.minimum_operation, has_time_dim=False
+            f'{self.label_full}|minimum_operation', self.minimum_operation, dims=['year', 'scenario']
         )
         self.maximum_operation = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_operation', self.maximum_operation, has_time_dim=False
+            f'{self.label_full}|maximum_operation', self.maximum_operation, dims=['year', 'scenario']
         )
         self.minimum_invest = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_invest', self.minimum_invest, has_time_dim=False
+            f'{self.label_full}|minimum_invest', self.minimum_invest, dims=['year', 'scenario']
         )
         self.maximum_invest = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_invest', self.maximum_invest, has_time_dim=False
+            f'{self.label_full}|maximum_invest', self.maximum_invest, dims=['year', 'scenario']
         )
         self.minimum_total = flow_system.fit_to_model_coords(
             f'{self.label_full}|minimum_total',
             self.minimum_total,
-            has_time_dim=False,
+            dims=['year', 'scenario'],
         )
         self.maximum_total = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_total', self.maximum_total, has_time_dim=False
+            f'{self.label_full}|maximum_total', self.maximum_total, dims=['year', 'scenario']
         )
         self.specific_share_to_other_effects_invest = flow_system.fit_effects_to_model_coords(
-            f'{self.label_full}|invest->', self.specific_share_to_other_effects_invest, 'invest', has_time_dim=False
+            f'{self.label_full}|invest->',
+            self.specific_share_to_other_effects_invest,
+            'invest',
+            dims=['year', 'scenario'],
         )
 
     def create_model(self, model: FlowSystemModel) -> 'EffectModel':
