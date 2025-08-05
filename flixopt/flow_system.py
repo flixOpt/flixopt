@@ -7,7 +7,7 @@ import logging
 import pathlib
 import warnings
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -363,6 +363,7 @@ class FlowSystem(Interface):
         name: str,
         data: Optional[Union[TemporalDataUser, NonTemporalDataUser]],
         has_time_dim: bool = True,
+        dims: Optional[Collection[FlowSystemDimensions]] = None,
     ) -> Optional[Union[TemporalData, NonTemporalData]]:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -371,6 +372,7 @@ class FlowSystem(Interface):
             name: Name of the data
             data: Data to fit to model coordinates
             has_time_dim: Wether to use the time dimension or not
+            dims: Collection of dimension names to use for fitting. If None, all dimensions are used.
 
         Returns:
             xr.DataArray aligned to model coordinate system. If data is None, returns None.
@@ -378,10 +380,19 @@ class FlowSystem(Interface):
         if data is None:
             return None
 
-        coords = self.coords
+        if dims is None:
+            coords = self.coords
 
-        if not has_time_dim:
-            coords.pop('time')
+            if not has_time_dim:
+                warnings.warn(
+                    'has_time_dim is deprecated. Please pass dims to fit_to_model_coords instead.',
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                coords.pop('time')
+        else:
+            coords = self.coords
+            coords = {k: coords[k] for k in dims if k in coords}
 
         # Rest of your method stays the same, just pass coords
         if isinstance(data, TimeSeriesData):
@@ -404,6 +415,7 @@ class FlowSystem(Interface):
         effect_values: Optional[Union[TemporalEffectsUser, NonTemporalEffectsUser]],
         label_suffix: Optional[str] = None,
         has_time_dim: bool = True,
+        dims: Optional[Collection[FlowSystemDimensions]] = None,
     ) -> Optional[Union[TemporalEffects, NonTemporalEffects]]:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
@@ -415,7 +427,10 @@ class FlowSystem(Interface):
 
         return {
             effect: self.fit_to_model_coords(
-                '|'.join(filter(None, [label_prefix, effect, label_suffix])), value, has_time_dim=has_time_dim
+                '|'.join(filter(None, [label_prefix, effect, label_suffix])),
+                value,
+                has_time_dim=has_time_dim,
+                dims=dims,
             )
             for effect, value in effect_values_dict.items()
         }
