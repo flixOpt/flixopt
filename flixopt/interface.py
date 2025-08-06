@@ -32,7 +32,7 @@ class Piece(Interface):
         self.end = end
         self.has_time_dim = False
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         dims = None if self.has_time_dim else ['year', 'scenario']
         self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, dims=dims)
         self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, dims=dims)
@@ -69,7 +69,7 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         for i, piece in enumerate(self.pieces):
             piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
 
@@ -102,7 +102,7 @@ class PiecewiseConversion(Interface):
     def items(self):
         return self.piecewises.items()
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         for name, piecewise in self.piecewises.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
@@ -133,7 +133,7 @@ class PiecewiseEffects(Interface):
         for piecewise in self.piecewise_shares.values():
             piecewise.has_time_dim = value
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
         for effect, piecewise in self.piecewise_shares.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
@@ -184,7 +184,7 @@ class InvestParameters(Interface):
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
         self.investment_scenarios = investment_scenarios
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         self._plausibility_checks(flow_system)
         self.fix_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
@@ -286,7 +286,7 @@ class _BaseYearAwareInvestParameters(Interface):
             effects_of_investment if effects_of_investment is not None else {}
         )
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         """Transform all parameter data to match the flow system's coordinate structure."""
         self._plausibility_checks(flow_system)
 
@@ -356,8 +356,6 @@ class InvestTimingParameters(Interface):
         optional_divestment: bool = True,
         fix_effects: Optional['NonTemporalEffectsUser'] = None,
         specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
-        effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
-        effects_of_investment: Optional['NonTemporalEffectsUser'] = None,
         previous_size: Scalar = 0,
     ):
         """
@@ -397,12 +395,6 @@ class InvestTimingParameters(Interface):
 
         self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
         self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
-        self.effects_of_investment_per_size: 'NonTemporalEffectsUser' = (
-            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
-        )
-        self.effects_of_investment: 'NonTemporalEffectsUser' = (
-            effects_of_investment if effects_of_investment is not None else {}
-        )
 
         self.previous_size = previous_size
 
@@ -464,7 +456,7 @@ class InvestTimingParameters(Interface):
                     f'and maximum_size ({self.maximum_size})'
                 )
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         """Transform all parameter data to match the flow system's coordinate structure."""
         self._plausibility_checks(flow_system)
 
@@ -560,7 +552,7 @@ class OnOffParameters(Interface):
         self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         self.effects_per_switch_on = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_switch_on, 'per_switch_on'
         )
