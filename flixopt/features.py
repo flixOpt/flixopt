@@ -158,7 +158,7 @@ class InvestmentTimingModel(Submodel):
         self._constraint_investment()
         self._constraint_decommissioning()
         if self.parameters.duration_in_years is not None:
-            self._fixed_duration_constraint()
+            self._constraint_duration_between_investment_and_decommissioning()
 
     def _basic_modeling(self):
         size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
@@ -290,7 +290,7 @@ class InvestmentTimingModel(Submodel):
                 short_name='size|changes|restricted_end',
             )
 
-    def _fixed_duration_constraint(self):
+    def _constraint_duration_between_investment_and_decommissioning(self):
         years = self._model.flow_system.years
         years_of_decommissioning = years + self.parameters.duration_in_years
 
@@ -300,9 +300,7 @@ class InvestmentTimingModel(Submodel):
             valid_years_of_investment = years[valid_mask]
             valid_years_of_decommissioning = years_of_decommissioning[valid_mask]
             actual_years_of_decommissioning = (
-                self.years_of_decommissioning.sel(year=valid_years_of_decommissioning, method='bfill')
-                .coords['year']
-                .values
+                self.investment_occurs.sel(year=valid_years_of_decommissioning, method='bfill').coords['year'].values
             )
 
             # Warning for mismatched years
@@ -326,14 +324,12 @@ class InvestmentTimingModel(Submodel):
 
             # Now you can use proper xarray groupby
             grouped_increases = (
-                self.year_of_investment.sel(year=valid_years_of_investment)
-                .groupby(group)
-                .sum('year_of_decommissioning')
+                self.investment_occurs.sel(year=valid_years_of_investment).groupby(group).sum('year_of_decommissioning')
             )
 
             # Create constraints
             self.add_constraints(
-                self.year_of_decommissioning.sel(year=grouped_increases.coords['year_of_decommissioning'])
+                self.decommissioning_occurs.sel(year=grouped_increases.coords['year_of_decommissioning'])
                 == grouped_increases,
                 short_name='size|changes|fixed_duration',
             )

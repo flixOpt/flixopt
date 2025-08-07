@@ -372,24 +372,16 @@ class InvestTimingParameters(Interface):
             duration_between_investment_and_decommissioning: Duration between investment and decommissioning
 
         Args:
-            year_of_investment: Year in which the investment occurs (inclusive). Present from this year onwards.
-                If None, the year_of_investment is not fixed.
-            year_of_decommissioning: Year in which the unit is decommissioned (exclusive). Present up to this year.
-                If None, the year_of_decommissioning is not fixed.
-            duration_in_years: Duration between year_of_investment and year_of_decommissioning.
-                If None, the duration is not fixed.
-            minimum_size: Minimum possible size of the investment.
-            maximum_size: Maximum possible size of the investment.
-            fixed_size: If specified, investment size is fixed to this value.
-            optional_investment: If False, the investment is mandatory.
-            optional_divestment: If False, the divestment is mandatory.
-            specific_effects: Specific costs, e.g., in €/kW_nominal or €/m²_nominal.
-                Example: {costs: 3, CO2: 0.3} with costs and CO2 representing an Object of class Effect
-                (Attention: Annualize costs to chosen period!)
-            effects_of_investment: Effects depending on when an investment decision is made. These can occur in the investment year or in multiple years.
-                If the effects need to occur in multiple years, you need to pass an xr.DataArray with the coord 'year_of_investment'.
-                Example: {'costs': 1000} applies 1000 to costs in the investment year.
-            previous_size: The size of the investment before the first period. Defaults to 0.
+            allow_investment: Allow investment in a certain year. By default, allow it in all years.
+            allow_decommissioning: Allow decommissioning in a certain year. By default, allow it in all years.
+            force_investment: Force the investment to occur in a certain year.
+            force_decommissioning: Force the decommissioning to occur in a certain year.
+            duration_in_years: Fix the duration between the year of investment and the year ofdecommissioning.
+            minimum_size: Minimum possible size of the investment. Can depend on the year of investment.
+            maximum_size: Maximum possible size of the investment. Can depend on the year of investment.
+            fixed_size: Fix the size of the investment. Can depend on the year of investment. Can still be 0 if not forced.
+            specific_effects: Effects of the Investment, dependent on the size. Take care. These are not broadcasted internally!
+            fix_effects: Effects of the Investment, independent of the size. Take care. These are not broadcasted internally!
 
         """
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
@@ -416,7 +408,7 @@ class InvestTimingParameters(Interface):
             raise ValueError('force_decommissioning can only be True for a single year.')
 
         specify_timing = (
-            (self.duration_in_years is None)
+            (self.duration_in_years is not None)
             + bool((self.force_investment.sum('year') > 1).any())
             + bool((self.force_decommissioning.sum('year') > 1).any())
         )
