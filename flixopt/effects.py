@@ -13,7 +13,7 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .core import Scalar, TemporalData, TemporalDataUser
+from .core import NonTemporalDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, FlowSystemModel, Interface, Submodel, register_class_for_io
 
@@ -192,7 +192,7 @@ class EffectModel(ElementModel):
 TemporalEffectsUser = Union[TemporalDataUser, Dict[str, TemporalDataUser]]  # User-specified Shares to Effects
 """ This datatype is used to define a temporal share to an effect by a certain attribute. """
 
-NonTemporalEffectsUser = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
+NonTemporalEffectsUser = Union[NonTemporalDataUser, Dict[str, NonTemporalDataUser]]  # User-specified Shares to Effects
 """ This datatype is used to define a scalar share to an effect by a certain attribute. """
 
 TemporalEffects = Dict[str, TemporalData]  # User-specified Shares to Effects

@@ -337,8 +337,10 @@ class _BaseYearAwareInvestParameters(Interface):
         return self.fixed_size is not None
 
 
-YearOfInvestmentData = Union[int, float, xr.DataArray]
-YearOfInvestmentDataBool = Union[bool, xr.DataArray]
+YearOfInvestmentData = NonTemporalDataUser
+"""This datatype is used to define things related to the year of investment."""
+YearOfInvestmentDataBool = Union[bool, YearOfInvestmentData]
+"""This datatype is used to define things with boolean data related to the year of investment."""
 
 
 @register_class_for_io
@@ -356,12 +358,14 @@ class InvestTimingParameters(Interface):
         allow_decommissioning: YearOfInvestmentDataBool = True,
         force_investment: YearOfInvestmentDataBool = False,
         force_decommissioning: YearOfInvestmentDataBool = False,
-        duration_in_years: Optional[YearOfInvestmentData] = None,
+        duration_in_years: Optional[Scalar] = None,
         minimum_size: Optional[YearOfInvestmentData] = None,
         maximum_size: Optional[YearOfInvestmentData] = None,
         fixed_size: Optional[YearOfInvestmentData] = None,
         fix_effects: Optional['NonTemporalEffectsUser'] = None,
         specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
+        fixed_effects_by_investment_year: Optional[YearOfInvestmentData] = None,
+        specific_effects_by_investment_year: Optional[YearOfInvestmentData] = None,
     ):
         """
         These parameters are used to include the timing of investments in the model.
@@ -396,6 +400,12 @@ class InvestTimingParameters(Interface):
 
         self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
         self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
+        self.fixed_effects_by_investment_year = (
+            fixed_effects_by_investment_year if fixed_effects_by_investment_year is not None else {}
+        )
+        self.specific_effects_by_investment_year = (
+            specific_effects_by_investment_year if specific_effects_by_investment_year is not None else {}
+        )
 
     def _plausibility_checks(self, flow_system):
         """Validate parameter consistency."""
@@ -449,12 +459,24 @@ class InvestTimingParameters(Interface):
             effect_values=self.fix_effects,
             label_suffix='fix_effects',
             dims=['year', 'scenario'],
-            with_year_of_investment=True,
         )
         self.specific_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.specific_effects,
             label_suffix='specific_effects',
+            dims=['year', 'scenario'],
+        )
+        self.fixed_effects_by_investment_year = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.fixed_effects_by_investment_year,
+            label_suffix='fixed_effects_by_investment_year',
+            dims=['year', 'scenario'],
+            with_year_of_investment=True,
+        )
+        self.specific_effects_by_investment_year = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.specific_effects_by_investment_year,
+            label_suffix='specific_effects_by_investment_year',
             dims=['year', 'scenario'],
             with_year_of_investment=True,
         )

@@ -248,12 +248,12 @@ class InvestmentTimingModel(Submodel):
                 name=self.label_of_element,
                 expressions={
                     effect: (remapped_variable * factor).sum('year_of_investment')
-                    for effect, factor in self.parameters.fix_effects.items()
+                    for effect, factor in self.parameters.fixed_effects_by_investment_year.items()
                 },
                 target='invest',
             )
 
-        if self.parameters.specific_effects:
+        if self.parameters.specific_effects_by_investment_year:
             # Annual effects proportional to investment size
             remapped_variable = self.size_increase.rename({'year': 'year_of_investment'})
 
@@ -261,7 +261,7 @@ class InvestmentTimingModel(Submodel):
                 name=self.label_of_element,
                 expressions={
                     effect: (remapped_variable * factor).sum('year_of_investment')
-                    for effect, factor in self.parameters.specific_effects.items()
+                    for effect, factor in self.parameters.specific_effects_by_investment_year.items()
                 },
                 target='invest',
             )
