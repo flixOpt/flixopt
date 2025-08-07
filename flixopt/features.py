@@ -241,6 +241,23 @@ class InvestmentTimingModel(Submodel):
         """Add investment effects to the model."""
 
         if self.parameters.fix_effects:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.is_invested * factor if self.is_invested is not None else factor
+                    for effect, factor in self.parameters.fix_effects.items()
+                },
+                target='invest',
+            )
+
+        if self.parameters.specific_effects:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
+                target='invest',
+            )
+
+        if self.parameters.fixed_effects_by_investment_year:
             # Effects depending on when the investment is made
             remapped_variable = self.investment_occurs.rename({'year': 'year_of_investment'})
 
