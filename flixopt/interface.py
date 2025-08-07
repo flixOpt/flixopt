@@ -385,12 +385,18 @@ class InvestTimingParameters(Interface):
             maximum_size: Maximum possible size of the investment. Can depend on the year of investment.
             fixed_size: Fix the size of the investment. Can depend on the year of investment. Can still be 0 if not forced.
             specific_effects: Effects dependent on the size.
+                These will occur in each year, depending on the size in that year.
             fix_effects: Effects of the Investment, independent of the size.
+                These will occur in each year, depending on wether the size is greater zero in that year.
 
             fixed_effects_by_investment_year: Effects dependent on the year of investment.
+                These effects will depend on the year of the investment. The actual effects can occur in other years,
+                letting you model things like annuities, which depend on when an investment was taken.
                 The passed xr.DataArray needs to match the FlowSystem dimensions (except time, but including "year_of_investment"). No internal Broadcasting!
                 "year_of_investment" has the same values as the year dimension. Access it through `flow_system.year_of_investment`.
             specific_effects_by_investment_year: Effects dependent on the year of investment and the chosen size.
+                These effects will depend on the year of the investment. The actual effects can occur in other years,
+                letting you model things like annuities, which depend on when an investment was taken.
                 The passed xr.DataArray needs to match the FlowSystem dimensions (except time, but including "year_of_investment"). No internal Broadcasting!
                 "year_of_investment" has the same values as the year dimension. Access it through `flow_system.year_of_investment`.
 
@@ -495,17 +501,25 @@ class InvestTimingParameters(Interface):
         # TODO: self.previous_size to only scenarios
 
         # No Broadcasting! Until a safe way is established, we need to do check for this!
+        self.fixed_effects_by_investment_year = flow_system.effects.create_effect_values_dict(
+            self.fixed_effects_by_investment_year
+        )
         for effect, da in self.fixed_effects_by_investment_year.items():
-            if set(da.dims) != set(list(flow_system.coords) + ['year_of_investment']):
+            dims = set(da.coords)
+            if not {'year_of_investment', 'year'}.issubset(dims):
                 raise ValueError(
-                    f'fixed_effects_by_investment_year need to have the same dimensions as the FlowSystem. '
-                    f'Got {da.dims} and {list(flow_system.coords)} for effect {effect}'
+                    f'fixed_effects_by_investment_year need to have a "year_of_investment" dimension and a '
+                    f'"year" dimension. Got {dims} for effect {effect}'
                 )
+        self.specific_effects_by_investment_year = flow_system.effects.create_effect_values_dict(
+            self.specific_effects_by_investment_year
+        )
         for effect, da in self.specific_effects_by_investment_year.items():
-            if set(da.dims) != set(list(flow_system.coords) + ['year_of_investment']):
+            dims = set(da.coords)
+            if not {'year_of_investment', 'year'}.issubset(dims):
                 raise ValueError(
-                    f'specific_effects_by_investment_year need to have the same dimensions as the FlowSystem. '
-                    f'Got {da.dims} and {list(flow_system.coords)} for effect {effect}'
+                    f'specific_effects_by_investment_year need to have a "year_of_investment" dimension and a '
+                    f'"year" dimension. Got {dims} for effect {effect}'
                 )
         self.fixed_effects_by_investment_year = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
