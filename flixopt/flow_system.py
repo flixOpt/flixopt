@@ -61,6 +61,8 @@ class FlowSystem:
 
         self._connected = False
 
+        self._network_app = None
+
     @classmethod
     def from_dataset(cls, ds: xr.Dataset):
         timesteps_extra = pd.DatetimeIndex(ds.attrs['timesteps_extra'], name='time')
@@ -241,9 +243,16 @@ class FlowSystem:
         node_infos, edge_infos = self.network_infos()
         return plotting.plot_network(node_infos, edge_infos, path, controls, show)
 
-    def plot_network_dash(self):
+    def start_network_app(self):
         from .network import shownetwork, flow_graph
-        return shownetwork(flow_graph(self))
+        self._network_app = shownetwork(flow_graph(self))
+
+    def stop_network_app(self):
+        try:
+            self._network_app.server_instance.shutdown()
+            logger.info('Network App stopped.')
+        except Exception as e:
+            logger.critical(f'Failed to stop the network visualization app: {e}')
 
     def network_infos(self) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
         if not self._connected:

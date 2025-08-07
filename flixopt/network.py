@@ -4,6 +4,8 @@ import networkx
 import socket
 import logging
 import json
+import threading
+from werkzeug.serving import make_server
 
 from .flow_system import FlowSystem
 from .elements import Bus, Flow, Component
@@ -752,11 +754,21 @@ def shownetwork(graph: networkx.DiGraph):
         for port in range(start_port, end_port):
             if not is_port_in_use(port):
                 return port
-        raise Exception("No free port found")
+        raise Exception('No free port found')
 
-    # Run app
     port = find_free_port(8050, 8100)
-    print(f'Starting Network on port {port}')
-    app.run(debug=True, port=port)
+    server = make_server('127.0.0.1', port, app.server)
+
+    # Start server in background thread
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    print(f'Network visualization started on port {port}')
+    print(f'Access it at: http://127.0.0.1:{port}/')
+    print('The app is running in the background. You can continue using the console.')
+
+    # Store the actual server instance for shutdown
+    app.server_instance = server
+    app.port = port
 
     return app
