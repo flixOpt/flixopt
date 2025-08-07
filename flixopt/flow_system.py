@@ -726,6 +726,12 @@ class FlowSystem(Interface):
             return self.copy()  # Return a copy when no selection
 
         selected_dataset = ds.sel(**indexers)
+        if 'year_of_investment' in selected_dataset.coords and selected_dataset.coords['year_of_investment'].size == 1:
+            logger.critical(
+                'Selected a single year while using InvestmentTiming. This is not supported and will lead to Errors '
+                'when trying to create a Calculation from this FlowSystem. Please select multiple years instead, '
+                'or remove the InvestmentTimingParameters.'
+            )
         return self.__class__.from_dataset(selected_dataset)
 
     def isel(
@@ -765,6 +771,12 @@ class FlowSystem(Interface):
             return self.copy()  # Return a copy when no selection
 
         selected_dataset = ds.isel(**indexers)
+        if 'year_of_investment' in selected_dataset.coords and selected_dataset.coords['year_of_investment'].size == 1:
+            logger.critical(
+                'Selected a single year while using InvestmentTiming. This is not supported and will lead to Errors '
+                'when trying to create a Calculation from this FlowSystem. Please select multiple years instead, '
+                'or remove the InvestmentTimingParameters.'
+            )
         return self.__class__.from_dataset(selected_dataset)
 
     def resample(
