@@ -709,19 +709,23 @@ class FlowSystem(Interface):
         if not self.connected_and_transformed:
             self.connect_and_transform()
 
+        ds = self.to_dataset()
+
         # Build indexers dict from non-None parameters
         indexers = {}
         if time is not None:
             indexers['time'] = time
         if year is not None:
             indexers['year'] = year
+            if 'year_of_investment' in ds.dims:
+                indexers['year_of_investment'] = year
         if scenario is not None:
             indexers['scenario'] = scenario
 
         if not indexers:
             return self.copy()  # Return a copy when no selection
 
-        selected_dataset = self.to_dataset().sel(**indexers)
+        selected_dataset = ds.sel(**indexers)
         return self.__class__.from_dataset(selected_dataset)
 
     def isel(
@@ -744,19 +748,23 @@ class FlowSystem(Interface):
         if not self.connected_and_transformed:
             self.connect_and_transform()
 
+        ds = self.to_dataset()
+
         # Build indexers dict from non-None parameters
         indexers = {}
         if time is not None:
             indexers['time'] = time
         if year is not None:
             indexers['year'] = year
+            if 'year_of_investment' in ds.dims:
+                indexers['year_of_investment'] = year
         if scenario is not None:
             indexers['scenario'] = scenario
 
         if not indexers:
             return self.copy()  # Return a copy when no selection
 
-        selected_dataset = self.to_dataset().isel(**indexers)
+        selected_dataset = ds.isel(**indexers)
         return self.__class__.from_dataset(selected_dataset)
 
     def resample(
