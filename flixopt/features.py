@@ -136,9 +136,6 @@ class InvestmentTimingModel(Submodel):
 
     Such an Investment is defined by a size, a year_of_investment, and a year_of_decommissioning.
     In between these years, the size of the investment cannot vary. Outside, its 0.
-    The year_of_investment is defined as the year, in which the size increases from 0 to the chosen size.
-    The year_of_decommissioning is defined as the year, in which the size returns to 0.
-    The year_of_decommissioning can be after the years in the FlowSystem. THis results in no decommissioning.
     """
 
     parameters: InvestTimingParameters
@@ -158,10 +155,8 @@ class InvestmentTimingModel(Submodel):
         self._basic_modeling()
         self._add_effects()
 
-        if self.parameters.year_of_investment is not None:
-            self._fixed_start_constraint()
-        if self.parameters.year_of_decommissioning is not None:
-            self._fixed_end_constraint()
+        self._constraint_investment()
+        self._constraint_decommissioning()
         if self.parameters.duration_in_years is not None:
             self._fixed_duration_constraint()
 
@@ -175,13 +170,11 @@ class InvestmentTimingModel(Submodel):
             upper=size_max,
             coords=self._model.get_coords(['year', 'scenario']),
         )
-
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
             short_name='is_invested',
         )
-
         BoundingPatterns.bounds_with_state(
             self,
             variable=self.size,
@@ -193,52 +186,30 @@ class InvestmentTimingModel(Submodel):
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
-            short_name='size|year_of_investment',
+            short_name='size|investment_occurs',
         )
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
-            short_name='size|year_of_decommissioning',
+            short_name='size|decommissioning_occurs',
         )
         BoundingPatterns.state_transition_bounds(
             self,
             state_variable=self.is_invested,
-            switch_on=self.year_of_investment,
-            switch_off=self.year_of_decommissioning,
+            switch_on=self.investment_occurs,
+            switch_off=self.decommissioning_occurs,
             name=self.is_invested.name,
             previous_state=0,
             coord='year',
         )
-
-        ########################################################################
-        self.add_variables(
-            binary=True,
-            coords=self._model.get_coords(['scenario']),
-            short_name='size|investment_used',
-        )
-        self.add_variables(
-            binary=True,
-            coords=self._model.get_coords(['scenario']),
-            short_name='size|divestment_used',
+        self.add_constraints(
+            self.investment_occurs.sum('year') <= 1,
+            short_name='investment_occurs|once',
         )
         self.add_constraints(
-            self.year_of_investment.sum('year') == self.investment_used,
-            short_name='size|year_of_investment|count',
+            self.decommissioning_occurs.sum('year') <= 1,
+            short_name='decommissioning_occurs|once',
         )
-        self.add_constraints(
-            self.year_of_decommissioning.sum('year') == self.divestment_used,
-            short_name='size|year_of_decommissioning|count',
-        )
-        if not self.parameters.optional_investment:
-            self.add_constraints(
-                self.investment_used == 1,
-                short_name='investment_used|fixed',
-            )
-        if not self.parameters.optional_divestment:
-            self.add_constraints(
-                self.divestment_used == 1,
-                short_name='divestment_used|fixed',
-            )
 
         ########################################################################
         self.add_variables(
@@ -258,8 +229,8 @@ class InvestmentTimingModel(Submodel):
             level_variable=self.size,
             increase_variable=self.size_increase,
             decrease_variable=self.size_decrease,
-            increase_binary=self.year_of_investment,
-            decrease_binary=self.year_of_decommissioning,
+            increase_binary=self.investment_occurs,
+            decrease_binary=self.decommissioning_occurs,
             name=f'{self.label_of_element}|size|changes',
             max_change=size_max,
             initial_level=0,
@@ -271,7 +242,7 @@ class InvestmentTimingModel(Submodel):
 
         if self.parameters.fix_effects:
             # Effects depending on when the investment is made
-            remapped_variable = self.year_of_investment.rename({'year': 'year_of_investment'})
+            remapped_variable = self.investment_occurs.rename({'year': 'year_of_investment'})
 
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
@@ -295,17 +266,29 @@ class InvestmentTimingModel(Submodel):
                 target='invest',
             )
 
-    def _fixed_start_constraint(self):
-        self.add_constraints(
-            self.year_of_investment.sel(year=self.parameters.year_of_investment) == self.investment_used,
-            short_name='size|changes|fixed_start',
-        )
+    def _constraint_investment(self):
+        if self.parameters.force_investment.sum() > 0:
+            self.add_constraints(
+                self.investment_occurs == self.parameters.force_investment,
+                short_name='size|changes|fixed_start',
+            )
+        else:
+            self.add_constraints(
+                self.investment_occurs <= self.parameters.allow_investment,
+                short_name='size|changes|restricted_start',
+            )
 
-    def _fixed_end_constraint(self):
-        self.add_constraints(
-            self.year_of_decommissioning.sel(year=self.parameters.year_of_decommissioning) == self.divestment_used,
-            short_name='size|changes|fixed_end',
-        )
+    def _constraint_decommissioning(self):
+        if self.parameters.force_decommissioning.sum() > 0:
+            self.add_constraints(
+                self.decommissioning_occurs == self.parameters.force_decommissioning,
+                short_name='size|changes|fixed_end',
+            )
+        else:
+            self.add_constraints(
+                self.decommissioning_occurs <= self.parameters.allow_decommissioning,
+                short_name='size|changes|restricted_end',
+            )
 
     def _fixed_duration_constraint(self):
         years = self._model.flow_system.years
@@ -368,14 +351,14 @@ class InvestmentTimingModel(Submodel):
         return self._variables['is_invested']
 
     @property
-    def year_of_investment(self) -> linopy.Variable:
+    def investment_occurs(self) -> linopy.Variable:
         """Binary increase decision variable"""
-        return self._variables['size|year_of_investment']
+        return self._variables['size|investment_occurs']
 
     @property
-    def year_of_decommissioning(self) -> linopy.Variable:
+    def decommissioning_occurs(self) -> linopy.Variable:
         """Binary decrease decision variable"""
-        return self._variables['size|year_of_decommissioning']
+        return self._variables['size|decommissioning_occurs']
 
     @property
     def size_decrease(self) -> linopy.Variable:
@@ -388,14 +371,14 @@ class InvestmentTimingModel(Submodel):
         return self._variables['size|increase']
 
     @property
-    def investment_used(self) -> linopy.Variable:
+    def investment_used(self) -> linopy.LinearExpression:
         """Binary investment decision variable"""
-        return self._variables['size|investment_used']
+        return self.investment_occurs.sum('year')
 
     @property
-    def divestment_used(self) -> linopy.Variable:
+    def divestment_used(self) -> linopy.LinearExpression:
         """Binary investment decision variable"""
-        return self._variables['size|divestment_used']
+        return self.decommissioning_occurs.sum('year')
 
     @property
     def duration(self) -> linopy.Variable:

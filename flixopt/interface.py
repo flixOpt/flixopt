@@ -6,6 +6,8 @@ These are tightly connected to features.py
 import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
+import xarray as xr
+
 from .config import CONFIG
 from .core import NonTemporalData, NonTemporalDataUser, Scalar, TemporalDataUser
 from .structure import Interface, register_class_for_io
@@ -335,6 +337,10 @@ class _BaseYearAwareInvestParameters(Interface):
         return self.fixed_size is not None
 
 
+YearOfInvestmentData = Union[int, float, xr.DataArray]
+YearOfInvestmentDataBool = Union[bool, xr.DataArray]
+
+
 @register_class_for_io
 class InvestTimingParameters(Interface):
     """
@@ -346,20 +352,24 @@ class InvestTimingParameters(Interface):
 
     def __init__(
         self,
-        year_of_investment: Optional[int] = None,
-        year_of_decommissioning: Optional[int] = None,
-        duration_in_years: Optional[int] = None,
-        minimum_size: Optional[Scalar] = None,
-        maximum_size: Optional[Scalar] = None,
-        fixed_size: Optional[Scalar] = None,
-        optional_investment: bool = True,
-        optional_divestment: bool = True,
+        allow_investment: YearOfInvestmentDataBool = True,
+        allow_decommissioning: YearOfInvestmentDataBool = True,
+        force_investment: YearOfInvestmentDataBool = False,
+        force_decommissioning: YearOfInvestmentDataBool = False,
+        duration_in_years: Optional[YearOfInvestmentData] = None,
+        minimum_size: Optional[YearOfInvestmentData] = None,
+        maximum_size: Optional[YearOfInvestmentData] = None,
+        fixed_size: Optional[YearOfInvestmentData] = None,
         fix_effects: Optional['NonTemporalEffectsUser'] = None,
         specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
     ):
         """
         These parameters are used to include the timing of investments in the model.
         Two out of three parameters (year_of_investment, year_of_decommissioning, duration_in_years) can be fixed.
+        This has a 'year_of_investment' dimension in some parameters:
+            allow_investment: Whether investment is allowed in a certain year
+            allow_decommissioning: Whether divestment is allowed in a certain year
+            duration_between_investment_and_decommissioning: Duration between investment and decommissioning
 
         Args:
             year_of_investment: Year in which the investment occurs (inclusive). Present from this year onwards.
@@ -385,11 +395,11 @@ class InvestTimingParameters(Interface):
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG
         self.fixed_size = fixed_size
-        self.optional_investment = optional_investment
-        self.optional_divestment = optional_divestment
 
-        self.year_of_investment = year_of_investment
-        self.year_of_decommissioning = year_of_decommissioning
+        self.allow_investment = allow_investment
+        self.allow_decommissioning = allow_decommissioning
+        self.force_investment = force_investment
+        self.force_decommissioning = force_decommissioning
         self.duration_in_years = duration_in_years
 
         self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
@@ -400,56 +410,48 @@ class InvestTimingParameters(Interface):
         if flow_system.years is None:
             raise ValueError("YearAwareInvestParameters requires the flow_system to have a 'years' dimension.")
 
-        if all(
-            [param is None for param in (self.year_of_investment, self.year_of_decommissioning, self.duration_in_years)]
-        ):
+        if (self.force_investment.sum('year') > 1).any():
+            raise ValueError('force_investment can only be True for a single year.')
+        if (self.force_decommissioning.sum('year') > 1).any():
+            raise ValueError('force_decommissioning can only be True for a single year.')
+
+        specify_timing = (
+            (self.duration_in_years is None)
+            + bool((self.force_investment.sum('year') > 1).any())
+            + bool((self.force_decommissioning.sum('year') > 1).any())
+        )
+
+        if specify_timing == 0:
             # TODO: Should this be an exception or rather a warning? Is there a valid use case for this?
             # And a mathematically valid formulation (regarding the effects especially)?
             raise ValueError(
-                'Either year_of_investment, year_of_decommissioning or duration_in_years must be specified.'
+                'Either the the duration of an investment needs to be set, or the investment or decommissioning '
+                'needs to be forced in one year.'
             )
 
-        if (
-            sum(
-                [
-                    param is not None
-                    for param in (self.year_of_investment, self.year_of_decommissioning, self.duration_in_years)
-                ]
-            )
-            > 2
-        ):
-            # TODO: Should this be an exception or rather a warning?
+        if specify_timing == 3:
+            # TODO: Should this be an exception or rather a warning? Is there a valid use case for this?
+            # And a mathematically valid formulation (regarding the effects especially)?
             raise ValueError(
-                f'InvestmentParameters is overdefined. Not all of {self.year_of_investment=}, '
-                f'{self.year_of_decommissioning=} and {self.duration_in_years=} can be specified.'
+                'Either the the duration of an investment needs to be set, or the investment or decommissioning '
+                'needs to be forced in one year.'
             )
 
-        if self.year_of_investment is not None:
-            if not (flow_system.years[0] <= self.year_of_investment <= flow_system.years[-1]):
+        if (self.force_investment.sum('year') >= 1).any() and (self.force_decommissioning.sum('year') >= 1).any():
+            year_of_forced_investment = (
+                self.force_investment.where(self.force_investment) * self.force_investment.year
+            ).sum('year')
+            year_of_forced_decommissioning = (
+                self.force_decommissioning.where(self.force_decommissioning) * self.force_decommissioning.year
+            ).sum('year')
+            if not (year_of_forced_investment < year_of_forced_decommissioning).all():
                 raise ValueError(
-                    f'year_of_investment ({self.year_of_investment}) must be between '
-                    f'{flow_system.years[0]} and {flow_system.years[-1]}'
+                    f'force_investment needs to be before force_decommissioning. Got:\n'
+                    f'{self.force_investment}\nand\n{self.force_decommissioning}'
                 )
-
-        if self.year_of_decommissioning is not None:
-            if not (flow_system.years[0] <= self.year_of_decommissioning <= flow_system.years[-1]):
-                raise ValueError(
-                    f'year_of_decommissioning ({self.year_of_decommissioning}) must be between {flow_system.years[0]} and {flow_system.years[-1]}'
-                )
-
-        if (
-            self.year_of_decommissioning is not None
-            and self.year_of_investment is not None
-            and not self.year_of_investment < self.year_of_decommissioning
-        ):
-            raise ValueError(
-                f'year_of_investment ({self.year_of_investment}) must be before year_of_decommissioning ({self.year_of_decommissioning})'
-            )
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         """Transform all parameter data to match the flow system's coordinate structure."""
-        self._plausibility_checks(flow_system)
-
         self.fix_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.fix_effects,
@@ -465,6 +467,13 @@ class InvestTimingParameters(Interface):
             with_year_of_investment=True,
         )
 
+        self.force_investment = flow_system.fit_to_model_coords(
+            f'{name_prefix}|force_investment', self.force_investment, dims=['year', 'scenario']
+        )
+        self.force_decommissioning = flow_system.fit_to_model_coords(
+            f'{name_prefix}|force_decommissioning', self.force_decommissioning, dims=['year', 'scenario']
+        )
+
         self.minimum_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|minimum_size', self.minimum_size, dims=['year', 'scenario']
         )
@@ -477,6 +486,8 @@ class InvestTimingParameters(Interface):
             )
 
         # TODO: self.previous_size to only scenarios
+
+        self._plausibility_checks(flow_system)
 
     @property
     def minimum_or_fixed_size(self) -> NonTemporalData:
