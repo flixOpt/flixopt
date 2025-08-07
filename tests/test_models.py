@@ -1,7 +1,10 @@
+from typing import Union
+
 import linopy
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 
 import flixopt as fx
 
@@ -16,6 +19,75 @@ from .conftest import (
     assert_var_equal,
     create_linopy_model,
 )
+
+
+def calculate_annual_payment(total_cost: float, remaining_years: int, discount_rate: float) -> float:
+    """Calculate annualized payment for given remaining years.
+
+    Args:
+        total_cost: Total cost to be annualized.
+        remaining_years: Number of remaining years.
+        discount_rate: Discount rate for annualization.
+
+    Returns:
+        Annual payment amount.
+    """
+    if remaining_years == 1:
+        return total_cost
+
+    return (
+        total_cost
+        * (discount_rate * (1 + discount_rate) ** remaining_years)
+        / ((1 + discount_rate) ** remaining_years - 1)
+    )
+
+
+def create_annualized_effects(
+    year_of_investments: Union[range, list, pd.Index],
+    all_years: Union[range, list, pd.Index],
+    total_cost: float,
+    discount_rate: float,
+    horizon_end: int,
+    extra_dim: str = 'year_of_investment',
+) -> xr.DataArray:
+    """Create a 2D effects array for annualized costs.
+
+    Creates an array where investing in year Y results in annualized costs
+    applied to years Y through horizon_end.
+
+    Args:
+        year_of_investments: Years when investment decisions can be made.
+        all_years: All years in the model (for the 'year' dimension).
+        total_cost: Total upfront cost to be annualized.
+        discount_rate: Discount rate for annualization calculation.
+        horizon_end: Last year when effects apply.
+        extra_dim: Name for the investment year dimension.
+
+    Returns:
+        xr.DataArray with dimensions [extra_dim, 'year'] containing annualized costs.
+    """
+
+    # Convert to lists for easier iteration
+    year_of_investments_list = list(year_of_investments)
+    all_years_list = list(all_years)
+
+    # Initialize cost matrix
+    cost_matrix = np.zeros((len(year_of_investments_list), len(all_years_list)))
+
+    # Fill matrix with annualized costs
+    for i, year_of_investment in enumerate(year_of_investments_list):
+        remaining_years = horizon_end - year_of_investment + 1
+        if remaining_years > 0:
+            annual_cost = calculate_annual_payment(total_cost, remaining_years, discount_rate)
+
+            # Apply cost to years from year_of_investment through horizon_end
+            for j, cost_year in enumerate(all_years_list):
+                if year_of_investment <= cost_year <= horizon_end:
+                    cost_matrix[i, j] = annual_cost
+
+    return xr.DataArray(
+        cost_matrix, coords={extra_dim: year_of_investments_list, 'year': all_years_list}, dims=[extra_dim, 'year']
+    )
 
 
 @pytest.fixture
@@ -114,17 +186,30 @@ class TestYearAwareInvestmentModelDirect:
     """Test the YearAwareInvestmentModel class directly with linopy."""
 
     def test_flow_invest_new(self, flow_system):
+        da = xr.DataArray(
+            [25, 30, 35, 40, 45, 50],
+            coords=(flow_system.years_of_investment,),
+        ).expand_dims(year=flow_system.years)
+        da = da.where(da.year >= da.year_of_investment).fillna(0)
+
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
             size=fx.InvestTimingParameters(
-                year_of_investment=2020,
-                year_of_decommissioning=2030,
-                # duration_in_years=3,
+                force_investment=xr.DataArray(
+                    [False if year != 2021 else True for year in flow_system.years], coords=(flow_system.years,)
+                ),
+                # year_of_decommissioning=2030,
+                duration_in_years=2,
                 minimum_size=900,
                 maximum_size=1000,
-                effects_of_investment_per_size=200 * 1e5,
-                previous_size=900,
+                specific_effects=xr.DataArray(
+                    [25, 30, 35, 40, 45, 50],
+                    coords=(flow_system.years,),
+                )
+                * 0,
+                # fix_effects=-2e3,
+                specific_effects_by_investment_year=da,
             ),
             relative_maximum=np.linspace(0.5, 1, flow_system.timesteps.size),
         )
@@ -135,11 +220,18 @@ class TestYearAwareInvestmentModelDirect:
         # calculation.model.add_constraints(calculation.model['Source(Wärme)|decrease'].isel(year=2) == 1)
         calculation.solve(fx.solvers.GurobiSolver(0, 60))
 
+        calculation = fx.FullCalculation('GenericName', flow_system.sel(year=[2022, 2030]))
+        calculation.do_modeling()
+        # calculation.model.add_constraints(calculation.model['Source(Wärme)|decrease'].isel(year=2) == 1)
+        calculation.solve(fx.solvers.GurobiSolver(0, 60))
+
         ds = calculation.results['Source'].solution
         filtered_ds_year = ds[[v for v in ds.data_vars if ds[v].dims == ('year',)]]
         print(filtered_ds_year.round(0).to_pandas().T)
 
         filtered_ds_scalar = ds[[v for v in ds.data_vars if ds[v].dims == tuple()]]
         print(filtered_ds_scalar.round(0).to_pandas().T)
+
+        print(calculation.results.solution['costs(invest)|total'].to_pandas())
 
         print('##')
