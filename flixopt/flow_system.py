@@ -79,15 +79,17 @@ class FlowSystem(Interface):
             weights: The weights of each year and scenario. If None, all have the same weight (normalized to 1). Its recommended to scale the weights to sum up to 1.
         """
         self.timesteps = self._validate_timesteps(timesteps)
-
         self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
         )
 
-        self.years = None if years is None else self._validate_years(years)
-
-        self.years_per_year = None if years is None else self.calculate_years_per_year(years, years_of_last_year)
+        if years is None:
+            self.years, self.years_per_year, self.years_of_investment = None, None, None
+        else:
+            self.years = self._validate_years(years)
+            self.years_per_year = self.calculate_years_per_year(self.years, years_of_last_year)
+            self.years_of_investment = self.years.rename('year_of_investment')
 
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
@@ -362,8 +364,8 @@ class FlowSystem(Interface):
         self,
         name: str,
         data: Optional[Union[TemporalDataUser, NonTemporalDataUser]],
-        has_time_dim: bool = True,
         dims: Optional[Collection[FlowSystemDimensions]] = None,
+        with_year_of_investment: bool = False,
     ) -> Optional[Union[TemporalData, NonTemporalData]]:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -371,8 +373,8 @@ class FlowSystem(Interface):
         Args:
             name: Name of the data
             data: Data to fit to model coordinates
-            has_time_dim: Wether to use the time dimension or not
             dims: Collection of dimension names to use for fitting. If None, all dimensions are used.
+            with_year_of_investment: Wether to use the year_of_investment dimension or not. Only if "year" is in dims.
 
         Returns:
             xr.DataArray aligned to model coordinate system. If data is None, returns None.
@@ -380,19 +382,13 @@ class FlowSystem(Interface):
         if data is None:
             return None
 
-        if dims is None:
-            coords = self.coords
+        coords = self.coords
 
-            if not has_time_dim:
-                warnings.warn(
-                    'has_time_dim is deprecated. Please pass dims to fit_to_model_coords instead.',
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                coords.pop('time')
-        else:
-            coords = self.coords
+        if dims is not None:
             coords = {k: coords[k] for k in dims if k in coords}
+
+        if with_year_of_investment and 'year' in coords:
+            coords['year_of_investment'] = coords['year'].rename('year_of_investment')
 
         # Rest of your method stays the same, just pass coords
         if isinstance(data, TimeSeriesData):
@@ -414,8 +410,8 @@ class FlowSystem(Interface):
         label_prefix: Optional[str],
         effect_values: Optional[Union[TemporalEffectsUser, NonTemporalEffectsUser]],
         label_suffix: Optional[str] = None,
-        has_time_dim: bool = True,
         dims: Optional[Collection[FlowSystemDimensions]] = None,
+        with_year_of_investment: bool = False,
     ) -> Optional[Union[TemporalEffects, NonTemporalEffects]]:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
@@ -429,8 +425,8 @@ class FlowSystem(Interface):
             effect: self.fit_to_model_coords(
                 '|'.join(filter(None, [label_prefix, effect, label_suffix])),
                 value,
-                has_time_dim=has_time_dim,
                 dims=dims,
+                with_year_of_investment=with_year_of_investment,
             )
             for effect, value in effect_values_dict.items()
         }
