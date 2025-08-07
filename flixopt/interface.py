@@ -356,7 +356,6 @@ class InvestTimingParameters(Interface):
         optional_divestment: bool = True,
         fix_effects: Optional['NonTemporalEffectsUser'] = None,
         specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
-        previous_size: Scalar = 0,
     ):
         """
         These parameters are used to include the timing of investments in the model.
@@ -395,8 +394,6 @@ class InvestTimingParameters(Interface):
 
         self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
         self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
-
-        self.previous_size = previous_size
 
     def _plausibility_checks(self, flow_system):
         """Validate parameter consistency."""
@@ -449,28 +446,23 @@ class InvestTimingParameters(Interface):
                 f'year_of_investment ({self.year_of_investment}) must be before year_of_decommissioning ({self.year_of_decommissioning})'
             )
 
-        if self.previous_size != 0:
-            if not self.minimum_size <= self.previous_size <= self.maximum_size:
-                raise ValueError(
-                    f'previous_size ({self.previous_size}) must be zero orbetween minimum_size ({self.minimum_size}) '
-                    f'and maximum_size ({self.maximum_size})'
-                )
-
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         """Transform all parameter data to match the flow system's coordinate structure."""
         self._plausibility_checks(flow_system)
 
-        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
+        self.fix_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
-            effect_values=self.effects_of_investment_per_size,
-            label_suffix='effects_of_investment_per_size',
+            effect_values=self.fix_effects,
+            label_suffix='fix_effects',
             dims=['year', 'scenario'],
+            with_year_of_investment=True,
         )
-        self.effects_of_investment = flow_system.fit_effects_to_model_coords(
+        self.specific_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
-            effect_values=self.effects_of_investment,
-            label_suffix='effects_of_investment',
+            effect_values=self.specific_effects,
+            label_suffix='specific_effects',
             dims=['year', 'scenario'],
+            with_year_of_investment=True,
         )
 
         self.minimum_size = flow_system.fit_to_model_coords(

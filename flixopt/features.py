@@ -262,32 +262,35 @@ class InvestmentTimingModel(Submodel):
             decrease_binary=self.year_of_decommissioning,
             name=f'{self.label_of_element}|size|changes',
             max_change=size_max,
-            initial_level=self.parameters.previous_size if self.parameters.previous_size is not None else 0,
+            initial_level=0,
             coord='year',
         )
 
     def _add_effects(self):
         """Add investment effects to the model."""
 
-        if self.parameters.effects_of_investment:
-            # One-time effects when investment is made
-            increase = self._variables.get('increase')
-            if increase is not None:
-                self._model.effects.add_share_to_effects(
-                    name=self.label_of_element,
-                    expressions={
-                        effect: increase * factor for effect, factor in self.parameters.effects_of_investment.items()
-                    },
-                    target='invest',
-                )
+        if self.parameters.fix_effects:
+            # Effects depending on when the investment is made
+            remapped_variable = self.year_of_investment.rename({'year': 'year_of_investment'})
 
-        if self.parameters.effects_of_investment_per_size:
-            # Annual effects proportional to investment size
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.size * factor
-                    for effect, factor in self.parameters.effects_of_investment_per_size.items()
+                    effect: (remapped_variable * factor).sum('year_of_investment')
+                    for effect, factor in self.parameters.fix_effects.items()
+                },
+                target='invest',
+            )
+
+        if self.parameters.specific_effects:
+            # Annual effects proportional to investment size
+            remapped_variable = self.size_increase.rename({'year': 'year_of_investment'})
+
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: (remapped_variable * factor).sum('year_of_investment')
+                    for effect, factor in self.parameters.specific_effects.items()
                 },
                 target='invest',
             )
