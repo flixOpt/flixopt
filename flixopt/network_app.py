@@ -4,10 +4,11 @@ import socket
 import threading
 
 try:
-    import networkx
-    from werkzeug.serving import make_server
-    from dash import Dash, Input, Output, State, callback_context, dcc, html
     import dash_cytoscape as cyto
+    import networkx
+    from dash import Dash, Input, Output, State, callback_context, dcc, html
+    from werkzeug.serving import make_server
+
     DASH_CYTOSCAPE_AVAILABLE = True
     VISUALIZATION_ERROR = None
 except ImportError as e:
@@ -36,21 +37,21 @@ default_cytoscape_stylesheet = [
             'shape': 'data(shape)',
             'text-outline-color': 'black',
             'text-outline-width': 0.5,
-        }
+        },
     },
     {
         'selector': '[shape = "custom-source"]',
         'style': {
             'shape': 'polygon',
             'shape-polygon-points': '-0.5 0.5, 0.5 0.5, 1 -0.5, -1 -0.5',
-        }
+        },
     },
     {
         'selector': '[shape = "custom-sink"]',
         'style': {
             'shape': 'polygon',
             'shape-polygon-points': '-0.5 -0.5, 0.5 -0.5, 1 0.5, -1 0.5',
-        }
+        },
     },
     {
         'selector': 'edge',
@@ -61,20 +62,44 @@ default_cytoscape_stylesheet = [
             'target-arrow-color': 'gray',
             'target-arrow-shape': 'triangle',
             'arrow-scale': 2,
-        }
-    }
+        },
+    },
 ]
 
 # Color presets for different node types
 color_presets = {
-    'Default': {'Bus': '#7F8C8D', 'Source': '#F1C40F', 'Sink': '#F1C40F', 'Storage': '#2980B9', 'Converter': '#D35400',
-                'Other': '#27AE60'},
-    'Vibrant': {'Bus': '#FF6B6B', 'Source': '#4ECDC4', 'Sink': '#45B7D1', 'Storage': '#96CEB4', 'Converter': '#FFEAA7',
-                'Other': '#DDA0DD'},
-    'Dark': {'Bus': '#2C3E50', 'Source': '#34495E', 'Sink': '#7F8C8D', 'Storage': '#95A5A6', 'Converter': '#BDC3C7',
-             'Other': '#ECF0F1'},
-    'Pastel': {'Bus': '#FFB3BA', 'Source': '#BAFFC9', 'Sink': '#BAE1FF', 'Storage': '#FFFFBA', 'Converter': '#FFDFBA',
-               'Other': '#E0BBE4'}
+    'Default': {
+        'Bus': '#7F8C8D',
+        'Source': '#F1C40F',
+        'Sink': '#F1C40F',
+        'Storage': '#2980B9',
+        'Converter': '#D35400',
+        'Other': '#27AE60',
+    },
+    'Vibrant': {
+        'Bus': '#FF6B6B',
+        'Source': '#4ECDC4',
+        'Sink': '#45B7D1',
+        'Storage': '#96CEB4',
+        'Converter': '#FFEAA7',
+        'Other': '#DDA0DD',
+    },
+    'Dark': {
+        'Bus': '#2C3E50',
+        'Source': '#34495E',
+        'Sink': '#7F8C8D',
+        'Storage': '#95A5A6',
+        'Converter': '#BDC3C7',
+        'Other': '#ECF0F1',
+    },
+    'Pastel': {
+        'Bus': '#FFB3BA',
+        'Source': '#BAFFC9',
+        'Sink': '#BAE1FF',
+        'Storage': '#FFFFBA',
+        'Converter': '#FFDFBA',
+        'Other': '#E0BBE4',
+    },
 }
 
 
@@ -127,257 +152,410 @@ def flow_graph(flow_system: FlowSystem) -> 'networkx.DiGraph':
 
 
 def make_cytoscape_elements(graph: 'networkx.DiGraph'):
-    nodes = [{'data': {'id': node,
-                       'label': node,
-                       'color': graph.nodes[node]['color'],
-                       'shape': graph.nodes[node]['shape'],
-                       'parameters': graph.nodes[node].get('parameters', {})}}
-             for node in graph.nodes()]
+    nodes = [
+        {
+            'data': {
+                'id': node,
+                'label': node,
+                'color': graph.nodes[node]['color'],
+                'shape': graph.nodes[node]['shape'],
+                'parameters': graph.nodes[node].get('parameters', {}),
+            }
+        }
+        for node in graph.nodes()
+    ]
 
     # Enhanced edges with parameters and labels
-    edges = [{'data': {'source': u,
-                       'target': v,
-                       'id': f"{u}-{v}",  # Add unique edge ID
-                       'label': graph.edges[u, v].get('label', ''),
-                       'parameters': graph.edges[u, v].get('parameters', '')}}
-             for u, v in graph.edges()]
+    edges = [
+        {
+            'data': {
+                'source': u,
+                'target': v,
+                'id': f'{u}-{v}',  # Add unique edge ID
+                'label': graph.edges[u, v].get('label', ''),
+                'parameters': graph.edges[u, v].get('parameters', ''),
+            }
+        }
+        for u, v in graph.edges()
+    ]
 
     return nodes + edges
 
 
 def create_style_section(title, children):
     """Create a collapsible section for organizing controls"""
-    return html.Div([
-        html.H4(title, style={
-            'color': 'white',
-            'margin-bottom': '10px',
-            'border-bottom': '2px solid #3498DB',
-            'padding-bottom': '5px'
-        }),
-        html.Div(children, style={'margin-bottom': '20px'})
-    ])
+    return html.Div(
+        [
+            html.H4(
+                title,
+                style={
+                    'color': 'white',
+                    'margin-bottom': '10px',
+                    'border-bottom': '2px solid #3498DB',
+                    'padding-bottom': '5px',
+                },
+            ),
+            html.Div(children, style={'margin-bottom': '20px'}),
+        ]
+    )
 
 
 def create_collapsible_sidebar():
     """Create a collapsible sidebar with toggle functionality"""
-    return html.Div([
-        # Sidebar content
-        html.Div([
-            html.H3("Style Controls", style={
-                'color': 'white',
-                'margin-bottom': '20px',
-                'text-align': 'center',
-                'border-bottom': '3px solid #9B59B6',
-                'padding-bottom': '10px'
-            }),
-
-            # Layout Controls
-            create_style_section("Layout", [
-                dcc.Dropdown(
-                    id='layout-dropdown',
-                    options=[
-                        {'label': 'Klay (horizontal)', 'value': 'klay'},
-                        {'label': 'Dagre (vertical)', 'value': 'dagre'},
-                        {'label': 'Breadthfirst', 'value': 'breadthfirst'},
-                        {'label': 'Cose (force-directed)', 'value': 'cose'},
-                        {'label': 'Grid', 'value': 'grid'},
-                        {'label': 'Circle', 'value': 'circle'},
-                    ],
-                    value='klay',
-                    clearable=False,
-                    style={'width': '100%'}
-                )
-            ]),
-
-            # Color Scheme Section
-            create_style_section("Color Scheme", [
-                dcc.Dropdown(
-                    id='color-scheme-dropdown',
-                    options=[{'label': k, 'value': k} for k in color_presets.keys()],
-                    value='Default',
-                    style={'width': '100%', 'margin-bottom': '10px'}
-                )
-            ]),
-
-            # Custom Colors Section
-            create_style_section("Custom Colors", [
-                html.Div([
-                    html.Label("Bus", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Input(id='bus-color-input', type='text', value='#7F8C8D',
-                              style={'width': '100%', 'margin-bottom': '8px'})
-                ]),
-                html.Div([
-                    html.Label("Source", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Input(id='source-color-input', type='text', value='#F1C40F',
-                              style={'width': '100%', 'margin-bottom': '8px'})
-                ]),
-                html.Div([
-                    html.Label("Sink", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Input(id='sink-color-input', type='text', value='#F1C40F',
-                              style={'width': '100%', 'margin-bottom': '8px'})
-                ]),
-                html.Div([
-                    html.Label("Storage", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Input(id='storage-color-input', type='text', value='#2980B9',
-                              style={'width': '100%', 'margin-bottom': '8px'})
-                ]),
-                html.Div([
-                    html.Label("Converter", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Input(id='converter-color-input', type='text', value='#D35400',
-                              style={'width': '100%', 'margin-bottom': '8px'})
-                ]),
-                html.Div([
-                    html.Label("Edge", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Input(id='edge-color-input', type='text', value='gray',
-                              style={'width': '100%', 'margin-bottom': '8px'})
-                ])
-            ]),
-
-            # Node Styling Section
-            create_style_section("Node Styling", [
-                html.Div([
-                    html.Label("Node Size", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Slider(
-                        id='node-size-slider',
-                        min=50, max=150, step=10, value=90,
-                        marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
-                               for i in range(50, 151, 25)},
-                        tooltip={"placement": "bottom", "always_visible": True}
-                    )
-                ], style={'margin-bottom': '15px'}),
-                html.Div([
-                    html.Label("Font Size", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Slider(
-                        id='font-size-slider',
-                        min=8, max=20, step=1, value=10,
-                        marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
-                               for i in range(8, 21, 2)},
-                        tooltip={"placement": "bottom", "always_visible": True}
-                    )
-                ], style={'margin-bottom': '15px'})
-            ]),
-
-            # Text Styling Section
-            create_style_section("Text Styling", [
-                html.Div([
-                    html.Label("Text Color", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Input(id='text-color-input', type='text', value='white',
-                              style={'width': '100%', 'margin-bottom': '8px'})
-                ]),
-                html.Div([
-                    html.Label("Text Outline", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Input(id='text-outline-input', type='text', value='black',
-                              style={'width': '100%', 'margin-bottom': '8px'})
-                ]),
-                html.Div([
-                    html.Label("Text Position", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Dropdown(
-                        id='text-valign-dropdown',
-                        options=[
-                            {'label': 'Top', 'value': 'top'},
-                            {'label': 'Center', 'value': 'center'},
-                            {'label': 'Bottom', 'value': 'bottom'}
+    return html.Div(
+        [
+            # Sidebar content
+            html.Div(
+                [
+                    html.H3(
+                        'Style Controls',
+                        style={
+                            'color': 'white',
+                            'margin-bottom': '20px',
+                            'text-align': 'center',
+                            'border-bottom': '3px solid #9B59B6',
+                            'padding-bottom': '10px',
+                        },
+                    ),
+                    # Layout Controls
+                    create_style_section(
+                        'Layout',
+                        [
+                            dcc.Dropdown(
+                                id='layout-dropdown',
+                                options=[
+                                    {'label': 'Klay (horizontal)', 'value': 'klay'},
+                                    {'label': 'Dagre (vertical)', 'value': 'dagre'},
+                                    {'label': 'Breadthfirst', 'value': 'breadthfirst'},
+                                    {'label': 'Cose (force-directed)', 'value': 'cose'},
+                                    {'label': 'Grid', 'value': 'grid'},
+                                    {'label': 'Circle', 'value': 'circle'},
+                                ],
+                                value='klay',
+                                clearable=False,
+                                style={'width': '100%'},
+                            )
                         ],
-                        value='center',
-                        style={'width': '100%', 'margin-bottom': '8px'}
-                    )
-                ]),
-                html.Div([
-                    html.Label("Text Alignment", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Dropdown(
-                        id='text-halign-dropdown',
-                        options=[
-                            {'label': 'Left', 'value': 'left'},
-                            {'label': 'Center', 'value': 'center'},
-                            {'label': 'Right', 'value': 'right'}
+                    ),
+                    # Color Scheme Section
+                    create_style_section(
+                        'Color Scheme',
+                        [
+                            dcc.Dropdown(
+                                id='color-scheme-dropdown',
+                                options=[{'label': k, 'value': k} for k in color_presets.keys()],
+                                value='Default',
+                                style={'width': '100%', 'margin-bottom': '10px'},
+                            )
                         ],
-                        value='center',
-                        style={'width': '100%', 'margin-bottom': '8px'}
-                    )
-                ])
-            ]),
-
-            # Edge Styling Section
-            create_style_section("Edge Styling", [
-                html.Div([
-                    html.Label("Edge Width", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Slider(
-                        id='edge-width-slider',
-                        min=1, max=10, step=1, value=2,
-                        marks={i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
-                               for i in range(1, 11)},
-                        tooltip={"placement": "bottom", "always_visible": True}
-                    )
-                ], style={'margin-bottom': '15px'}),
-                html.Div([
-                    html.Label("Edge Curve", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Dropdown(
-                        id='edge-curve-dropdown',
-                        options=[
-                            {'label': 'Straight', 'value': 'straight'},
-                            {'label': 'Bezier', 'value': 'bezier'},
-                            {'label': 'Unbundled Bezier', 'value': 'unbundled-bezier'},
-                            {'label': 'Segments', 'value': 'segments'}
+                    ),
+                    # Custom Colors Section
+                    create_style_section(
+                        'Custom Colors',
+                        [
+                            html.Div(
+                                [
+                                    html.Label('Bus', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Input(
+                                        id='bus-color-input',
+                                        type='text',
+                                        value='#7F8C8D',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Source', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Input(
+                                        id='source-color-input',
+                                        type='text',
+                                        value='#F1C40F',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Sink', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Input(
+                                        id='sink-color-input',
+                                        type='text',
+                                        value='#F1C40F',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Storage', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Input(
+                                        id='storage-color-input',
+                                        type='text',
+                                        value='#2980B9',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Converter', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Input(
+                                        id='converter-color-input',
+                                        type='text',
+                                        value='#D35400',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Edge', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Input(
+                                        id='edge-color-input',
+                                        type='text',
+                                        value='gray',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
                         ],
-                        value='straight',
-                        style={'width': '100%', 'margin-bottom': '8px'}
-                    )
-                ]),
-                html.Div([
-                    html.Label("Arrow Style", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Dropdown(
-                        id='arrow-style-dropdown',
-                        options=[
-                            {'label': 'Triangle', 'value': 'triangle'},
-                            {'label': 'Triangle (Tee)', 'value': 'triangle-tee'},
-                            {'label': 'Circle', 'value': 'circle'},
-                            {'label': 'Square', 'value': 'square'},
-                            {'label': 'Diamond', 'value': 'diamond'},
-                            {'label': 'None', 'value': 'none'}
+                    ),
+                    # Node Styling Section
+                    create_style_section(
+                        'Node Styling',
+                        [
+                            html.Div(
+                                [
+                                    html.Label('Node Size', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Slider(
+                                        id='node-size-slider',
+                                        min=50,
+                                        max=150,
+                                        step=10,
+                                        value=90,
+                                        marks={
+                                            i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                                            for i in range(50, 151, 25)
+                                        },
+                                        tooltip={'placement': 'bottom', 'always_visible': True},
+                                    ),
+                                ],
+                                style={'margin-bottom': '15px'},
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Font Size', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Slider(
+                                        id='font-size-slider',
+                                        min=8,
+                                        max=20,
+                                        step=1,
+                                        value=10,
+                                        marks={
+                                            i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                                            for i in range(8, 21, 2)
+                                        },
+                                        tooltip={'placement': 'bottom', 'always_visible': True},
+                                    ),
+                                ],
+                                style={'margin-bottom': '15px'},
+                            ),
                         ],
-                        value='triangle',
-                        style={'width': '100%', 'margin-bottom': '8px'}
-                    )
-                ])
-            ]),
-
-            # Advanced Section
-            create_style_section("Advanced", [
-                html.Div([
-                    html.Label("Custom Stylesheet (JSON)", style={'color': 'white', 'font-size': '12px'}),
-                    dcc.Textarea(
-                        id='custom-stylesheet-textarea',
-                        placeholder='Enter custom Cytoscape stylesheet as JSON...',
-                        style={'width': '100%', 'height': '120px', 'background-color': '#34495E',
-                               'color': 'white', 'font-size': '11px', 'margin-bottom': '10px'},
-                        value=json.dumps(default_cytoscape_stylesheet, indent=2)
-                    )
-                ]),
-                html.Div([
-                    html.Button("Apply Custom", id="apply-custom-btn", n_clicks=0,
-                                style={'width': '48%', 'margin-right': '4%', 'background-color': '#3498DB',
-                                       'color': 'white', 'border': 'none', 'padding': '8px', 'border-radius': '3px'}),
-                    html.Button("Reset Default", id="reset-style-btn", n_clicks=0,
-                                style={'width': '48%', 'background-color': '#E74C3C',
-                                       'color': 'white', 'border': 'none', 'padding': '8px', 'border-radius': '3px'})
-                ])
-            ])
-        ], id='sidebar-content', style={
-            'width': '280px',
-            'height': '100vh',
-            'background-color': '#2C3E50',
-            'padding': '20px',
-            'position': 'fixed',
-            'left': '0',
-            'top': '0',
-            'overflow-y': 'auto',
-            'border-right': '3px solid #34495E',
-            'box-shadow': '2px 0 5px rgba(0,0,0,0.1)',
-            'transform': 'translateX(-100%)',  # Initially hidden
-            'transition': 'transform 0.3s ease',
-            'z-index': '999'
-        })
-    ])
+                    ),
+                    # Text Styling Section
+                    create_style_section(
+                        'Text Styling',
+                        [
+                            html.Div(
+                                [
+                                    html.Label('Text Color', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Input(
+                                        id='text-color-input',
+                                        type='text',
+                                        value='white',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Text Outline', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Input(
+                                        id='text-outline-input',
+                                        type='text',
+                                        value='black',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Text Position', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Dropdown(
+                                        id='text-valign-dropdown',
+                                        options=[
+                                            {'label': 'Top', 'value': 'top'},
+                                            {'label': 'Center', 'value': 'center'},
+                                            {'label': 'Bottom', 'value': 'bottom'},
+                                        ],
+                                        value='center',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Text Alignment', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Dropdown(
+                                        id='text-halign-dropdown',
+                                        options=[
+                                            {'label': 'Left', 'value': 'left'},
+                                            {'label': 'Center', 'value': 'center'},
+                                            {'label': 'Right', 'value': 'right'},
+                                        ],
+                                        value='center',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                        ],
+                    ),
+                    # Edge Styling Section
+                    create_style_section(
+                        'Edge Styling',
+                        [
+                            html.Div(
+                                [
+                                    html.Label('Edge Width', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Slider(
+                                        id='edge-width-slider',
+                                        min=1,
+                                        max=10,
+                                        step=1,
+                                        value=2,
+                                        marks={
+                                            i: {'label': str(i), 'style': {'color': 'white', 'font-size': '10px'}}
+                                            for i in range(1, 11)
+                                        },
+                                        tooltip={'placement': 'bottom', 'always_visible': True},
+                                    ),
+                                ],
+                                style={'margin-bottom': '15px'},
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Edge Curve', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Dropdown(
+                                        id='edge-curve-dropdown',
+                                        options=[
+                                            {'label': 'Straight', 'value': 'straight'},
+                                            {'label': 'Bezier', 'value': 'bezier'},
+                                            {'label': 'Unbundled Bezier', 'value': 'unbundled-bezier'},
+                                            {'label': 'Segments', 'value': 'segments'},
+                                        ],
+                                        value='straight',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Label('Arrow Style', style={'color': 'white', 'font-size': '12px'}),
+                                    dcc.Dropdown(
+                                        id='arrow-style-dropdown',
+                                        options=[
+                                            {'label': 'Triangle', 'value': 'triangle'},
+                                            {'label': 'Triangle (Tee)', 'value': 'triangle-tee'},
+                                            {'label': 'Circle', 'value': 'circle'},
+                                            {'label': 'Square', 'value': 'square'},
+                                            {'label': 'Diamond', 'value': 'diamond'},
+                                            {'label': 'None', 'value': 'none'},
+                                        ],
+                                        value='triangle',
+                                        style={'width': '100%', 'margin-bottom': '8px'},
+                                    ),
+                                ]
+                            ),
+                        ],
+                    ),
+                    # Advanced Section
+                    create_style_section(
+                        'Advanced',
+                        [
+                            html.Div(
+                                [
+                                    html.Label(
+                                        'Custom Stylesheet (JSON)', style={'color': 'white', 'font-size': '12px'}
+                                    ),
+                                    dcc.Textarea(
+                                        id='custom-stylesheet-textarea',
+                                        placeholder='Enter custom Cytoscape stylesheet as JSON...',
+                                        style={
+                                            'width': '100%',
+                                            'height': '120px',
+                                            'background-color': '#34495E',
+                                            'color': 'white',
+                                            'font-size': '11px',
+                                            'margin-bottom': '10px',
+                                        },
+                                        value=json.dumps(default_cytoscape_stylesheet, indent=2),
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Button(
+                                        'Apply Custom',
+                                        id='apply-custom-btn',
+                                        n_clicks=0,
+                                        style={
+                                            'width': '48%',
+                                            'margin-right': '4%',
+                                            'background-color': '#3498DB',
+                                            'color': 'white',
+                                            'border': 'none',
+                                            'padding': '8px',
+                                            'border-radius': '3px',
+                                        },
+                                    ),
+                                    html.Button(
+                                        'Reset Default',
+                                        id='reset-style-btn',
+                                        n_clicks=0,
+                                        style={
+                                            'width': '48%',
+                                            'background-color': '#E74C3C',
+                                            'color': 'white',
+                                            'border': 'none',
+                                            'padding': '8px',
+                                            'border-radius': '3px',
+                                        },
+                                    ),
+                                ]
+                            ),
+                        ],
+                    ),
+                ],
+                id='sidebar-content',
+                style={
+                    'width': '280px',
+                    'height': '100vh',
+                    'background-color': '#2C3E50',
+                    'padding': '20px',
+                    'position': 'fixed',
+                    'left': '0',
+                    'top': '0',
+                    'overflow-y': 'auto',
+                    'border-right': '3px solid #34495E',
+                    'box-shadow': '2px 0 5px rgba(0,0,0,0.1)',
+                    'transform': 'translateX(-100%)',  # Initially hidden
+                    'transition': 'transform 0.3s ease',
+                    'z-index': '999',
+                },
+            )
+        ]
+    )
 
 
 def shownetwork(graph: 'networkx.DiGraph'):
@@ -498,9 +676,7 @@ def shownetwork(graph: 'networkx.DiGraph'):
 
     # Toggle sidebar visibility
     @app.callback(
-        [Output('sidebar-content', 'style'),
-         Output('main-content', 'style')],
-        [Input('toggle-sidebar', 'n_clicks')]
+        [Output('sidebar-content', 'style'), Output('main-content', 'style')], [Input('toggle-sidebar', 'n_clicks')]
     )
     def toggle_sidebar(n_clicks):
         if n_clicks % 2 == 1:  # Sidebar is open
@@ -517,13 +693,13 @@ def shownetwork(graph: 'networkx.DiGraph'):
                 'box-shadow': '2px 0 5px rgba(0,0,0,0.1)',
                 'transform': 'translateX(0)',
                 'transition': 'transform 0.3s ease',
-                'z-index': '999'
+                'z-index': '999',
             }
             main_style = {
                 'margin-left': '280px',
                 'background-color': '#1A252F',
                 'min-height': '100vh',
-                'transition': 'margin-left 0.3s ease'
+                'transition': 'margin-left 0.3s ease',
             }
         else:  # Sidebar is closed
             sidebar_style = {
@@ -539,38 +715,40 @@ def shownetwork(graph: 'networkx.DiGraph'):
                 'box-shadow': '2px 0 5px rgba(0,0,0,0.1)',
                 'transform': 'translateX(-100%)',
                 'transition': 'transform 0.3s ease',
-                'z-index': '999'
+                'z-index': '999',
             }
             main_style = {
                 'margin-left': '0',
                 'background-color': '#1A252F',
                 'min-height': '100vh',
-                'transition': 'margin-left 0.3s ease'
+                'transition': 'margin-left 0.3s ease',
             }
 
         return sidebar_style, main_style
 
     # Reset all controls to defaults
     @app.callback(
-        [Output('color-scheme-dropdown', 'value'),
-         Output('bus-color-input', 'value'),
-         Output('source-color-input', 'value'),
-         Output('sink-color-input', 'value'),
-         Output('storage-color-input', 'value'),
-         Output('converter-color-input', 'value'),
-         Output('edge-color-input', 'value'),
-         Output('text-color-input', 'value'),
-         Output('text-outline-input', 'value'),
-         Output('text-valign-dropdown', 'value'),
-         Output('text-halign-dropdown', 'value'),
-         Output('node-size-slider', 'value'),
-         Output('font-size-slider', 'value'),
-         Output('edge-width-slider', 'value'),
-         Output('edge-curve-dropdown', 'value'),
-         Output('arrow-style-dropdown', 'value'),
-         Output('layout-dropdown', 'value'),
-         Output('custom-stylesheet-textarea', 'value')],
-        [Input('reset-style-btn', 'n_clicks')]
+        [
+            Output('color-scheme-dropdown', 'value'),
+            Output('bus-color-input', 'value'),
+            Output('source-color-input', 'value'),
+            Output('sink-color-input', 'value'),
+            Output('storage-color-input', 'value'),
+            Output('converter-color-input', 'value'),
+            Output('edge-color-input', 'value'),
+            Output('text-color-input', 'value'),
+            Output('text-outline-input', 'value'),
+            Output('text-valign-dropdown', 'value'),
+            Output('text-halign-dropdown', 'value'),
+            Output('node-size-slider', 'value'),
+            Output('font-size-slider', 'value'),
+            Output('edge-width-slider', 'value'),
+            Output('edge-curve-dropdown', 'value'),
+            Output('arrow-style-dropdown', 'value'),
+            Output('layout-dropdown', 'value'),
+            Output('custom-stylesheet-textarea', 'value'),
+        ],
+        [Input('reset-style-btn', 'n_clicks')],
     )
     def reset_all_controls(reset_clicks):
         if reset_clicks and reset_clicks > 0:
@@ -592,42 +770,74 @@ def shownetwork(graph: 'networkx.DiGraph'):
                 'straight',  # edge-curve-dropdown
                 'triangle',  # arrow-style-dropdown
                 'klay',  # layout-dropdown
-                json.dumps(default_cytoscape_stylesheet, indent=2)  # custom-stylesheet-textarea
+                json.dumps(default_cytoscape_stylesheet, indent=2),  # custom-stylesheet-textarea
             )
         # Return current values if no reset
         return (
-            'Default', '#7F8C8D', '#F1C40F', '#F1C40F', '#2980B9', '#D35400', 'gray',
-            'white', 'black', 'center', 'center', 90, 10, 2, 'straight', 'triangle', 'klay',
-            json.dumps(default_cytoscape_stylesheet, indent=2)
+            'Default',
+            '#7F8C8D',
+            '#F1C40F',
+            '#F1C40F',
+            '#2980B9',
+            '#D35400',
+            'gray',
+            'white',
+            'black',
+            'center',
+            'center',
+            90,
+            10,
+            2,
+            'straight',
+            'triangle',
+            'klay',
+            json.dumps(default_cytoscape_stylesheet, indent=2),
         )
 
     # Update elements and stylesheet based on controls
     @app.callback(
-        [Output('cytoscape', 'elements'),
-         Output('cytoscape', 'stylesheet')],
-        [Input('color-scheme-dropdown', 'value'),
-         Input('bus-color-input', 'value'),
-         Input('source-color-input', 'value'),
-         Input('sink-color-input', 'value'),
-         Input('storage-color-input', 'value'),
-         Input('converter-color-input', 'value'),
-         Input('edge-color-input', 'value'),
-         Input('text-color-input', 'value'),
-         Input('text-outline-input', 'value'),
-         Input('text-valign-dropdown', 'value'),
-         Input('text-halign-dropdown', 'value'),
-         Input('node-size-slider', 'value'),
-         Input('font-size-slider', 'value'),
-         Input('edge-width-slider', 'value'),
-         Input('edge-curve-dropdown', 'value'),
-         Input('arrow-style-dropdown', 'value'),
-         Input('apply-custom-btn', 'n_clicks')],
-        [State('custom-stylesheet-textarea', 'value')]
+        [Output('cytoscape', 'elements'), Output('cytoscape', 'stylesheet')],
+        [
+            Input('color-scheme-dropdown', 'value'),
+            Input('bus-color-input', 'value'),
+            Input('source-color-input', 'value'),
+            Input('sink-color-input', 'value'),
+            Input('storage-color-input', 'value'),
+            Input('converter-color-input', 'value'),
+            Input('edge-color-input', 'value'),
+            Input('text-color-input', 'value'),
+            Input('text-outline-input', 'value'),
+            Input('text-valign-dropdown', 'value'),
+            Input('text-halign-dropdown', 'value'),
+            Input('node-size-slider', 'value'),
+            Input('font-size-slider', 'value'),
+            Input('edge-width-slider', 'value'),
+            Input('edge-curve-dropdown', 'value'),
+            Input('arrow-style-dropdown', 'value'),
+            Input('apply-custom-btn', 'n_clicks'),
+        ],
+        [State('custom-stylesheet-textarea', 'value')],
     )
-    def update_elements_and_stylesheet(color_scheme, bus_color, source_color, sink_color, storage_color,
-                                       converter_color, edge_color, text_color, text_outline,
-                                       text_valign, text_halign, node_size, font_size, edge_width,
-                                       edge_curve, arrow_style, apply_clicks, custom_style):
+    def update_elements_and_stylesheet(
+        color_scheme,
+        bus_color,
+        source_color,
+        sink_color,
+        storage_color,
+        converter_color,
+        edge_color,
+        text_color,
+        text_outline,
+        text_valign,
+        text_halign,
+        node_size,
+        font_size,
+        edge_width,
+        edge_curve,
+        arrow_style,
+        apply_clicks,
+        custom_style,
+    ):
         ctx = callback_context
 
         if ctx.triggered:
@@ -641,14 +851,16 @@ def shownetwork(graph: 'networkx.DiGraph'):
                     return elements, default_cytoscape_stylesheet
 
         # Determine which colors to use
-        use_custom_colors = any([
-            bus_color and bus_color != '#7F8C8D',
-            source_color and source_color != '#F1C40F',
-            sink_color and sink_color != '#F1C40F',
-            storage_color and storage_color != '#2980B9',
-            converter_color and converter_color != '#D35400',
-            edge_color and edge_color != 'gray'
-        ])
+        use_custom_colors = any(
+            [
+                bus_color and bus_color != '#7F8C8D',
+                source_color and source_color != '#F1C40F',
+                sink_color and sink_color != '#F1C40F',
+                storage_color and storage_color != '#2980B9',
+                converter_color and converter_color != '#D35400',
+                edge_color and edge_color != 'gray',
+            ]
+        )
 
         if use_custom_colors:
             colors = {
@@ -657,7 +869,7 @@ def shownetwork(graph: 'networkx.DiGraph'):
                 'Sink': sink_color or '#F1C40F',
                 'Storage': storage_color or '#2980B9',
                 'Converter': converter_color or '#D35400',
-                'Other': converter_color or '#27AE60'
+                'Other': converter_color or '#27AE60',
             }
         else:
             colors = color_presets.get(color_scheme, color_presets['Default'])
@@ -710,21 +922,21 @@ def shownetwork(graph: 'networkx.DiGraph'):
                     'shape': 'data(shape)',
                     'text-outline-color': text_outline or 'black',
                     'text-outline-width': 0.5,
-                }
+                },
             },
             {
                 'selector': '[shape = "custom-source"]',
                 'style': {
                     'shape': 'polygon',
                     'shape-polygon-points': '-0.5 0.5, 0.5 0.5, 1 -0.5, -1 -0.5',
-                }
+                },
             },
             {
                 'selector': '[shape = "custom-sink"]',
                 'style': {
                     'shape': 'polygon',
                     'shape-polygon-points': '-0.5 -0.5, 0.5 -0.5, 1 0.5, -1 0.5',
-                }
+                },
             },
             {
                 'selector': 'edge',
@@ -735,8 +947,8 @@ def shownetwork(graph: 'networkx.DiGraph'):
                     'target-arrow-color': edge_color or 'gray',
                     'target-arrow-shape': arrow_style or 'triangle',
                     'arrow-scale': 2,
-                }
-            }
+                },
+            },
         ]
 
         return updated_elements, stylesheet
@@ -941,10 +1153,7 @@ def shownetwork(graph: 'networkx.DiGraph'):
         ]
 
     # Update layout when dropdown changes
-    @app.callback(
-        Output('cytoscape', 'layout'),
-        Input('layout-dropdown', 'value')
-    )
+    @app.callback(Output('cytoscape', 'layout'), Input('layout-dropdown', 'value'))
     def update_layout(selected_layout):
         return {'name': selected_layout}
 
@@ -966,7 +1175,7 @@ def shownetwork(graph: 'networkx.DiGraph'):
         }
         """,
         Output('btn-image', 'children'),
-        Input('btn-image', 'n_clicks')
+        Input('btn-image', 'n_clicks'),
     )
 
     # Find a free port

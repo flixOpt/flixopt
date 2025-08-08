@@ -247,7 +247,7 @@ class FlowSystem:
         """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
         Requires optional dependencies: dash, dash-cytoscape, networkx, werkzeug.
         """
-        from .network_app import flow_graph, shownetwork, DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
+        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR, flow_graph, shownetwork
 
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
