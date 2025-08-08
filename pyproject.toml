@@ -62,23 +62,23 @@ dev = [
     "tsam >= 2.3.1, < 3.0.0",   # Time series aggregation
     "scipy >= 1.15.1, < 2.0.0", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
     "gurobipy >= 10.0.0",
-    "dash >= 2.0.0",
-    "dash-cytoscape >= 2.0.0",
-    "networkx >= 2.8.0",
-    "werkzeug >= 2.2.3",
+    "dash >= 3",
+    "dash-cytoscape >= 1",
+    "networkx >= 3",
+    "werkzeug >= 3",
 ]
 
-viz = ["dash >= 2.0.0", "dash-cytoscape >= 2.0.0", "networkx >= 2.8.0", "werkzeug >= 2.2.3"]
+viz = ["dash >= 3", "dash-cytoscape >= 1", "networkx >= 3", "werkzeug >= 3"]
 
 full = [
     "pyvis == 0.3.1",  # Visualizing FlowSystem Network
     "tsam >= 2.3.1, < 3.0.0",   # Time series aggregation
     "scipy >= 1.15.1, < 2.0.0", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
     "gurobipy >= 10.0.0",
-    "dash >= 3.0.0",  # Visualizing FlowSystem Network as app
-    "dash-cytoscape >= 1.0.0",  # Visualizing FlowSystem Network as app
-    "networkx >= 3.0.0",  # Visualizing FlowSystem Network as app
-    "werkzeug >= 3.0.0",  # Visualizing FlowSystem Network as app
+    "dash >= 3",  # Visualizing FlowSystem Network as app
+    "dash-cytoscape >= 1",  # Visualizing FlowSystem Network as app
+    "networkx >= 3",  # Visualizing FlowSystem Network as app
+    "werkzeug >= 3",  # Visualizing FlowSystem Network as app
 ]
 
 docs = [
