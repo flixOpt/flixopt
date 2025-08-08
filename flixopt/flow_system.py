@@ -247,7 +247,7 @@ class FlowSystem:
         """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
         Requires optional dependencies: dash, dash-cytoscape, networkx, werkzeug.
         """
-        from .network import flow_graph, shownetwork, DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
+        from .network_app import flow_graph, shownetwork, DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
 
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
@@ -267,7 +267,7 @@ class FlowSystem:
 
     def stop_network_app(self):
         """Stop the network visualization server."""
-        from .network import flow_graph, shownetwork, DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
+        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
