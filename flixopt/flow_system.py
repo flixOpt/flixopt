@@ -245,6 +245,10 @@ class FlowSystem:
 
     def start_network_app(self):
         from .network import shownetwork, flow_graph
+
+        if not self._connected:
+            self._connect_network()
+
         self._network_app = shownetwork(flow_graph(self))
 
     def stop_network_app(self):

@@ -1,15 +1,16 @@
-from dash import Dash, html, dcc, Input, Output, State, callback_context
+import json
+import logging
+import socket
+import threading
+
 import dash_cytoscape as cyto
 import networkx
-import socket
-import logging
-import json
-import threading
+from dash import Dash, Input, Output, State, callback_context, dcc, html
 from werkzeug.serving import make_server
 
+from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
+from .elements import Bus, Component, Flow
 from .flow_system import FlowSystem
-from .elements import Bus, Flow, Component
-from .components import Sink, Source, SourceAndSink, Storage, LinearConverter
 
 logger = logging.getLogger('flixopt')
 
@@ -126,7 +127,15 @@ def make_cytoscape_elements(graph: networkx.DiGraph):
                        'shape': graph.nodes[node]['shape'],
                        'parameters': graph.nodes[node].get('parameters', {})}}
              for node in graph.nodes()]
-    edges = [{'data': {'source': u, 'target': v}} for u, v in graph.edges()]
+
+    # Enhanced edges with parameters and labels
+    edges = [{'data': {'source': u,
+                       'target': v,
+                       'id': f"{u}-{v}",  # Add unique edge ID
+                       'label': graph.edges[u, v].get('label', ''),
+                       'parameters': graph.edges[u, v].get('parameters', '')}}
+             for u, v in graph.edges()]
+
     return nodes + edges
 
 
@@ -371,87 +380,115 @@ def shownetwork(graph: networkx.DiGraph):
     elements = make_cytoscape_elements(graph)
     cyto.load_extra_layouts()
 
-    textcolor = 'white'
-
-    app.layout = html.Div([
-        # Toggle button
-        html.Button("☰", id="toggle-sidebar", n_clicks=0,
-                    style={
-                        'position': 'fixed',
-                        'top': '20px',
-                        'left': '20px',
-                        'z-index': '1000',
-                        'background-color': '#3498DB',
-                        'color': 'white',
-                        'border': 'none',
-                        'padding': '10px 15px',
-                        'border-radius': '5px',
-                        'cursor': 'pointer',
-                        'font-size': '18px',
-                        'box-shadow': '0 2px 5px rgba(0,0,0,0.3)'
-                    }),
-
-        # Hidden div to store elements data
-        html.Div(id='elements-store', style={'display': 'none'}),
-
-        # Sidebar
-        create_collapsible_sidebar(),
-
-        # Main content area
-        html.Div([
-            # Top toolbar
-            html.Div([
-                html.H2("Network Visualization", style={
+    app.layout = html.Div(
+        [
+            # Toggle button
+            html.Button(
+                '☰',
+                id='toggle-sidebar',
+                n_clicks=0,
+                style={
+                    'position': 'fixed',
+                    'top': '20px',
+                    'left': '20px',
+                    'z-index': '1000',
+                    'background-color': '#3498DB',
                     'color': 'white',
-                    'margin': '0',
-                    'text-align': 'center'
-                }),
-                html.Button("Export as Image", id="btn-image", n_clicks=0,
-                            style={'position': 'absolute', 'right': '20px', 'top': '15px',
-                                   'background-color': '#27AE60', 'color': 'white', 'border': 'none',
-                                   'padding': '10px 20px', 'border-radius': '5px', 'cursor': 'pointer'})
-            ], style={
-                'background-color': '#34495E',
-                'padding': '15px 20px',
-                'margin-bottom': '0',
-                'position': 'relative',
-                'border-bottom': '2px solid #3498DB'
-            }),
-
-            # Main cytoscape component
-            cyto.Cytoscape(
-                id='cytoscape',
-                layout={'name': 'klay'},
-                style={'width': '100%', 'height': '70vh'},
-                elements=elements,
-                stylesheet=default_cytoscape_stylesheet,
+                    'border': 'none',
+                    'padding': '10px 15px',
+                    'border-radius': '5px',
+                    'cursor': 'pointer',
+                    'font-size': '18px',
+                    'box-shadow': '0 2px 5px rgba(0,0,0,0.3)',
+                },
             ),
-
-            # Bottom panel for node information
-            html.Div([
-                html.H4("Node Information", style={
-                    'color': 'white',
-                    'margin': '0 0 10px 0',
-                    'border-bottom': '2px solid #3498DB',
-                    'padding-bottom': '5px'
-                }),
-                html.Div(id='node-data', children=[
-                    html.P("Click on a node to see its parameters.", style={'color': 'white', 'margin': '0'})
-                ])
-            ], style={
-                'background-color': '#2C3E50',
-                'padding': '15px',
-                'height': '25vh',
-                'overflow-y': 'auto',
-                'border-top': '2px solid #34495E'
-            })
-        ], id='main-content', style={
-            'margin-left': '0',  # Initially no margin
-            'background-color': '#1A252F',
-            'min-height': '100vh',
-            'transition': 'margin-left 0.3s ease'
-        })
-    ])
+            # Hidden div to store elements data
+            html.Div(id='elements-store', style={'display': 'none'}),
+            # Sidebar
+            create_collapsible_sidebar(),
+            # Main content area
+            html.Div(
+                [
+                    # Top toolbar
+                    html.Div(
+                        [
+                            html.H2(
+                                'Network Visualization', style={'color': 'white', 'margin': '0', 'text-align': 'center'}
+                            ),
+                            html.Button(
+                                'Export as Image',
+                                id='btn-image',
+                                n_clicks=0,
+                                style={
+                                    'position': 'absolute',
+                                    'right': '20px',
+                                    'top': '15px',
+                                    'background-color': '#27AE60',
+                                    'color': 'white',
+                                    'border': 'none',
+                                    'padding': '10px 20px',
+                                    'border-radius': '5px',
+                                    'cursor': 'pointer',
+                                },
+                            ),
+                        ],
+                        style={
+                            'background-color': '#34495E',
+                            'padding': '15px 20px',
+                            'margin-bottom': '0',
+                            'position': 'relative',
+                            'border-bottom': '2px solid #3498DB',
+                        },
+                    ),
+                    # Main cytoscape component
+                    cyto.Cytoscape(
+                        id='cytoscape',
+                        layout={'name': 'klay'},
+                        style={'width': '100%', 'height': '70vh'},
+                        elements=elements,
+                        stylesheet=default_cytoscape_stylesheet,
+                    ),
+                    # Bottom panel for node information
+                    html.Div(
+                        [
+                            html.H4(
+                                'Element Information',
+                                style={
+                                    'color': 'white',
+                                    'margin': '0 0 10px 0',
+                                    'border-bottom': '2px solid #3498DB',
+                                    'padding-bottom': '5px',
+                                },
+                            ),
+                            html.Div(
+                                id='node-data',
+                                children=[
+                                    html.P(
+                                        'Click on a node or edge to see its parameters.',
+                                        style={'color': 'white', 'margin': '0'},
+                                    )
+                                ],
+                            ),
+                        ],
+                        style={
+                            'background-color': '#2C3E50',
+                            'padding': '15px',
+                            'height': '25vh',
+                            'overflow-y': 'auto',
+                            'border-top': '2px solid #34495E',
+                        },
+                    ),
+                ],
+                id='main-content',
+                style={
+                    'margin-left': '0',  # Initially no margin
+                    'background-color': '#1A252F',
+                    'min-height': '100vh',
+                    'transition': 'margin-left 0.3s ease',
+                },
+            ),
+        ]
+    )
 
     # Toggle sidebar visibility
     @app.callback(
@@ -699,22 +736,203 @@ def shownetwork(graph: networkx.DiGraph):
         return updated_elements, stylesheet
 
     # Show node data on click
+    # Replace your display callback with this consistently formatted version:
+
     @app.callback(
-        Output('node-data', 'children'),
-        Input('cytoscape', 'tapNodeData')
+        Output('node-data', 'children'), [Input('cytoscape', 'tapNodeData'), Input('cytoscape', 'tapEdgeData')]
     )
-    def display_node_data(data):
-        if data:
-            parameters = data.get('parameters', {})
-            if isinstance(parameters, dict) and parameters:
-                components = [html.H5(f"Node: {data['id']}", style={'color': 'white', 'margin-bottom': '10px'})]
-                for k, v in parameters.items():
-                    components.append(html.P(f"{k}: {v}", style={'color': '#BDC3C7', 'margin': '5px 0'}))
-                return components
-            else:
-                return [html.P(f"Node: {data['id']}", style={'color': 'white'}),
-                        html.P(str(parameters), style={'color': '#BDC3C7'})]
-        return [html.P("Click on a node to see its parameters.", style={'color': '#95A5A6'})]
+    def display_element_data(node_data, edge_data):
+        ctx = callback_context
+
+        def display_node_info(data):
+            """Display node information"""
+            node_id = data['id']
+            label = data.get('label', node_id)  # Use label if available
+            parameters = data.get('parameters', '')
+
+            components = [
+                html.H5(
+                    f'Node: {label}',
+                    style={
+                        'color': 'white',
+                        'margin-bottom': '15px',
+                        'border-bottom': '1px solid #3498DB',
+                        'padding-bottom': '5px',
+                    },
+                )
+            ]
+
+            # Add parameters section
+            if parameters:
+                components.append(
+                    html.Div(
+                        [
+                            html.Strong(
+                                'Parameters:', style={'color': '#3498DB', 'display': 'block', 'margin-bottom': '5px'}
+                            )
+                        ]
+                    )
+                )
+
+                if isinstance(parameters, str):
+                    lines = parameters.split('\n')
+                    for line in lines:
+                        if line.strip():
+                            components.append(
+                                html.Div(
+                                    line,
+                                    style={
+                                        'color': '#BDC3C7',
+                                        'margin': '3px 0',
+                                        'font-family': 'monospace',
+                                        'font-size': '12px',
+                                        'line-height': '1.3',
+                                        'white-space': 'pre-wrap',
+                                        'padding-left': '10px',
+                                    },
+                                )
+                            )
+                        else:
+                            components.append(html.Div(style={'height': '8px'}))
+                elif isinstance(parameters, dict):
+                    for k, v in parameters.items():
+                        components.append(
+                            html.Div(
+                                f'{k}: {v}',
+                                style={
+                                    'color': '#BDC3C7',
+                                    'margin': '3px 0',
+                                    'font-family': 'monospace',
+                                    'font-size': '12px',
+                                    'line-height': '1.3',
+                                    'padding-left': '10px',
+                                },
+                            )
+                        )
+                else:
+                    components.append(
+                        html.Div(
+                            str(parameters),
+                            style={
+                                'color': '#BDC3C7',
+                                'font-family': 'monospace',
+                                'font-size': '12px',
+                                'white-space': 'pre-wrap',
+                                'padding-left': '10px',
+                            },
+                        )
+                    )
+
+            return components
+
+        def display_edge_info(data):
+            """Display edge information"""
+            source = data.get('source', '')
+            target = data.get('target', '')
+            label = data.get('label', '')
+            parameters = data.get('parameters', '')
+
+            components = [
+                html.H5(
+                    f'Edge: {label}   ({source} → {target})  ',
+                    style={
+                        'color': 'white',
+                        'margin-bottom': '15px',
+                        'border-bottom': '1px solid #E67E22',
+                        'padding-bottom': '5px',
+                    },
+                )
+            ]
+
+            # Add parameters section (same formatting as nodes)
+            if parameters:
+                components.append(
+                    html.Div(
+                        [
+                            html.Strong(
+                                'Parameters:', style={'color': '#E67E22', 'display': 'block', 'margin-bottom': '5px'}
+                            )
+                        ]
+                    )
+                )
+
+                if isinstance(parameters, str):
+                    lines = parameters.split('\n')
+                    for line in lines:
+                        if line.strip():
+                            components.append(
+                                html.Div(
+                                    line,
+                                    style={
+                                        'color': '#BDC3C7',
+                                        'margin': '3px 0',
+                                        'font-family': 'monospace',
+                                        'font-size': '12px',
+                                        'line-height': '1.3',
+                                        'white-space': 'pre-wrap',
+                                        'padding-left': '10px',
+                                    },
+                                )
+                            )
+                        else:
+                            components.append(html.Div(style={'height': '8px'}))
+                elif isinstance(parameters, dict):
+                    for k, v in parameters.items():
+                        components.append(
+                            html.Div(
+                                f'{k}: {v}',
+                                style={
+                                    'color': '#BDC3C7',
+                                    'margin': '3px 0',
+                                    'font-family': 'monospace',
+                                    'font-size': '12px',
+                                    'line-height': '1.3',
+                                    'padding-left': '10px',
+                                },
+                            )
+                        )
+                else:
+                    components.append(
+                        html.Div(
+                            str(parameters),
+                            style={
+                                'color': '#BDC3C7',
+                                'font-family': 'monospace',
+                                'font-size': '12px',
+                                'white-space': 'pre-wrap',
+                                'padding-left': '10px',
+                            },
+                        )
+                    )
+
+            return components
+
+        # Check which input triggered the callback
+        if not ctx.triggered:
+            return [
+                html.P(
+                    'Click on a node or edge to see its parameters.',
+                    style={'color': '#95A5A6', 'font-style': 'italic', 'text-align': 'center', 'margin-top': '20px'},
+                )
+            ]
+
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+        # Handle the appropriate trigger
+        if trigger_id == 'cytoscape' and ctx.triggered[0]['prop_id'] == 'cytoscape.tapEdgeData':
+            if edge_data:
+                return display_edge_info(edge_data)
+        elif trigger_id == 'cytoscape' and ctx.triggered[0]['prop_id'] == 'cytoscape.tapNodeData':
+            if node_data:
+                return display_node_info(node_data)
+
+        # Fallback
+        return [
+            html.P(
+                'Click on a node or edge to see its parameters.',
+                style={'color': '#95A5A6', 'font-style': 'italic', 'text-align': 'center', 'margin-top': '20px'},
+            )
+        ]
 
     # Update layout when dropdown changes
     @app.callback(
