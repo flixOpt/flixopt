@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added `FlowSystem.start_netowk_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive web app. This is still experimental and might change in the future.
+
 ## [2.1.5] - 2025-07-08
 
 ### Fixed

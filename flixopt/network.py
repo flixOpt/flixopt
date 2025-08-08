@@ -3,10 +3,16 @@ import logging
 import socket
 import threading
 
-import dash_cytoscape as cyto
-import networkx
-from dash import Dash, Input, Output, State, callback_context, dcc, html
-from werkzeug.serving import make_server
+try:
+    import networkx
+    from werkzeug.serving import make_server
+    from dash import Dash, Input, Output, State, callback_context, dcc, html
+    import dash_cytoscape as cyto
+    DASH_CYTOSCAPE_AVAILABLE = True
+    VISUALIZATION_ERROR = None
+except ImportError as e:
+    DASH_CYTOSCAPE_AVAILABLE = False
+    VISUALIZATION_ERROR = str(e)
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
 from .elements import Bus, Component, Flow
@@ -72,7 +78,7 @@ color_presets = {
 }
 
 
-def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
+def flow_graph(flow_system: FlowSystem) -> 'networkx.DiGraph':
     nodes = list(flow_system.components.values()) + list(flow_system.buses.values())
     edges = list(flow_system.flows.values())
 
@@ -120,7 +126,7 @@ def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
     return graph
 
 
-def make_cytoscape_elements(graph: networkx.DiGraph):
+def make_cytoscape_elements(graph: 'networkx.DiGraph'):
     nodes = [{'data': {'id': node,
                        'label': node,
                        'color': graph.nodes[node]['color'],
@@ -374,7 +380,7 @@ def create_collapsible_sidebar():
     ])
 
 
-def shownetwork(graph: networkx.DiGraph):
+def shownetwork(graph: 'networkx.DiGraph'):
     app = Dash(__name__, suppress_callback_exceptions=True)
 
     elements = make_cytoscape_elements(graph)
