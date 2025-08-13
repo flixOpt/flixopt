@@ -229,6 +229,8 @@ class ModelingPrimitives:
         short_name: str = None,
         minimum_duration: Optional[TemporalData] = None,
         maximum_duration: Optional[TemporalData] = None,
+        duration_dim: str = 'time',
+        duration_per_step: Union[Scalar, xr.DataArray] = None,
         previous_duration: TemporalData = 0,
     ) -> Tuple[linopy.Variable, Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]]:
         """
@@ -236,9 +238,9 @@ class ModelingPrimitives:
 
         Mathematical formulation:
             duration[t] ≤ state[t] * M  ∀t
-            duration[t+1] ≤ duration[t] + hours_per_step[t]  ∀t
-            duration[t+1] ≥ duration[t] + hours_per_step[t] + (state[t+1] - 1) * M  ∀t
-            duration[0] = (hours_per_step[0] + previous_duration) * state[0]
+            duration[t+1] ≤ duration[t] + duration_per_step[t]  ∀t
+            duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) * M  ∀t
+            duration[0] = (duration_per_step[0] + previous_duration) * state[0]
 
             If minimum_duration provided:
                 duration[t] ≥ (state[t-1] - state[t]) * minimum_duration[t-1]  ∀t > 0
@@ -257,14 +259,13 @@ class ModelingPrimitives:
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
 
-        hours_per_step = model.hours_per_step
-        mega = hours_per_step.sum('time') + previous_duration  # Big-M value
+        mega = duration_per_step.sum(duration_dim) + previous_duration  # Big-M value
 
         # Duration variable
         duration = model.add_variables(
             lower=0,
             upper=maximum_duration if maximum_duration is not None else mega,
-            coords=model.get_coords(),
+            coords=state_variable.coords,
             name=name,
             short_name=short_name,
         )
@@ -274,25 +275,25 @@ class ModelingPrimitives:
         # Upper bound: duration[t] ≤ state[t] * M
         constraints['ub'] = model.add_constraints(duration <= state_variable * mega, name=f'{duration.name}|ub')
 
-        # Forward constraint: duration[t+1] ≤ duration[t] + hours_per_step[t]
+        # Forward constraint: duration[t+1] ≤ duration[t] + duration_per_step[t]
         constraints['forward'] = model.add_constraints(
-            duration.isel(time=slice(1, None))
-            <= duration.isel(time=slice(None, -1)) + hours_per_step.isel(time=slice(None, -1)),
+            duration.isel({duration_dim: slice(1, None)})
+            <= duration.isel({duration_dim: slice(None, -1)}) + duration_per_step.isel({duration_dim: slice(None, -1)}),
             name=f'{duration.name}|forward',
         )
 
-        # Backward constraint: duration[t+1] ≥ duration[t] + hours_per_step[t] + (state[t+1] - 1) * M
+        # Backward constraint: duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) * M
         constraints['backward'] = model.add_constraints(
-            duration.isel(time=slice(1, None))
-            >= duration.isel(time=slice(None, -1))
-            + hours_per_step.isel(time=slice(None, -1))
-            + (state_variable.isel(time=slice(1, None)) - 1) * mega,
+            duration.isel({duration_dim: slice(1, None)})
+            >= duration.isel({duration_dim: slice(None, -1)})
+            + duration_per_step.isel({duration_dim: slice(None, -1)})
+            + (state_variable.isel({duration_dim: slice(1, None)}) - 1) * mega,
             name=f'{duration.name}|backward',
         )
 
-        # Initial condition: duration[0] = (hours_per_step[0] + previous_duration) * state[0]
+        # Initial condition: duration[0] = (duration_per_step[0] + previous_duration) * state[0]
         constraints['initial'] = model.add_constraints(
-            duration.isel(time=0) == (hours_per_step.isel(time=0) + previous_duration) * state_variable.isel(time=0),
+            duration.isel({duration_dim: 0}) == (duration_per_step.isel({duration_dim: 0}) + previous_duration) * state_variable.isel({duration_dim: 0}),
             name=f'{duration.name}|initial',
         )
 
@@ -300,15 +301,15 @@ class ModelingPrimitives:
         if minimum_duration is not None:
             constraints['lb'] = model.add_constraints(
                 duration
-                >= (state_variable.isel(time=slice(None, -1)) - state_variable.isel(time=slice(1, None)))
-                * minimum_duration.isel(time=slice(None, -1)),
+                >= (state_variable.isel({duration_dim: slice(None, -1)}) - state_variable.isel({duration_dim: slice(1, None)}))
+                * minimum_duration.isel({duration_dim: slice(None, -1)}),
                 name=f'{duration.name}|lb',
             )
 
             # Handle initial condition for minimum duration
-            if previous_duration > 0 and previous_duration < minimum_duration.isel(time=0).max():
+            if previous_duration > 0 and previous_duration < minimum_duration.isel({duration_dim: 0}).max():
                 constraints['initial_lb'] = model.add_constraints(
-                    state_variable.isel(time=0) == 1, name=f'{duration.name}|initial_lb'
+                    state_variable.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
                 )
 
         variables = {'duration': duration}

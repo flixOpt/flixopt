@@ -479,6 +479,8 @@ class OnOffModel(Submodel):
                 short_name='consecutive_on_hours',
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
+                duration_per_step=self.hours_per_step,
+                duration_dim='time',
                 previous_duration=self._get_previous_on_duration(),
             )
 
@@ -490,6 +492,8 @@ class OnOffModel(Submodel):
                 short_name='consecutive_off_hours',
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
+                duration_per_step=self.hours_per_step,
+                duration_dim='time',
                 previous_duration=self._get_previous_off_duration(),
             )
             # TODO:
