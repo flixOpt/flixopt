@@ -356,8 +356,8 @@ class InvestTimingParameters(Interface):
         self,
         allow_investment: YearOfInvestmentDataBool = True,
         allow_decommissioning: YearOfInvestmentDataBool = True,
-        force_investment: YearOfInvestmentDataBool = False,
-        force_decommissioning: YearOfInvestmentDataBool = False,
+        force_investment: YearOfInvestmentDataBool = False,  # TODO: Allow to simply pass the year
+        force_decommissioning: YearOfInvestmentDataBool = False,  # TODO: Allow to simply pass the year
         fixed_lifetime: Optional[Scalar] = None,
         minimum_lifetime: Optional[Scalar] = None,
         maximum_lifetime: Optional[Scalar] = None,
@@ -492,18 +492,11 @@ class InvestTimingParameters(Interface):
             + bool((self.force_decommissioning.sum('year') > 1).any())
         )
 
-        if specify_timing == 0:
+        if specify_timing in (0, 3):
             # TODO: Is there a valid use case for this? Should this be checked at all?
             logger.warning(
-                'Either the the duration of an investment needs to be set, or the investment or decommissioning '
-                'needs to be forced in one year.'
-            )
-
-        if specify_timing == 3:
-            # TODO: Is there a valid use case for this? Should this be checked at all?
-            logger.warning(
-                'Either the the duration of an investment needs to be set, or the investment or decommissioning '
-                'needs to be forced in one year.'
+                'Either the the lifetime of an investment should be fixed, or the investment or decommissioning '
+                'needs to be forced in a certain year.'
             )
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
