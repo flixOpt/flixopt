@@ -30,7 +30,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
-    "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
     # Core scientific computing
@@ -42,15 +41,16 @@ dependencies = [
     # Utilities
     "PyYAML >= 6.0.0, < 7",
     "rich >= 13.0.0",
-    "tomli >= 2.0.1; python_version < '3.11'", #Only needed with python 3.10 or earlier
+    "tomli >= 2.0.1; python_version < '3.11'", # Only needed with python 3.10 or earlier
     # Default solver
     "highspy >= 1.5.3",
-    # Visualization
+    # Default visualization
     "matplotlib >= 3.5.2, < 4.0.0",
     "plotly >= 5.15.0, < 6.0.0",
 ]
 
 [project.optional-dependencies]
+# Development tools and testing
 dev = [
     "pytest >= 7.0.0",
     "ruff >= 0.9.0",
@@ -58,27 +58,36 @@ dev = [
     "tsam >= 2.3.1, < 3.0.0",   # Time series aggregation
     "scipy >= 1.15.1, < 2.0.0", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
     "gurobipy >= 10.0.0",
-    "dash >= 3",
-    "dash-cytoscape >= 1",
+    "dash >= 3.0.0",
+    "dash-cytoscape >= 1.0.0",
     "dash-daq >= 0.6.0",
-    "networkx >= 3",
-    "werkzeug >= 3",
+    "networkx >= 3.0.0",
+    "werkzeug >= 3.0.0",
 ]
 
-network-viz = ["dash >= 3", "dash-cytoscape >= 1", "networkx >= 3", "werkzeug >= 3", "dash-daq>=0.6.0"]
+# Interactive network visualization with enhanced color picker
+network-viz = [
+    "dash >= 3.0.0",
+    "dash-cytoscape >= 1.0.0",
+    "dash-daq >= 0.6.0",
+    "networkx >= 3.0.0",
+    "werkzeug >= 3.0.0",
+]
 
+# Full feature set (everything except dev tools)
 full = [
     "pyvis == 0.3.1",  # Visualizing FlowSystem Network
     "tsam >= 2.3.1, < 3.0.0",   # Time series aggregation
     "scipy >= 1.15.1, < 2.0.0", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
     "gurobipy >= 10.0.0",
-    "dash >= 3",  # Visualizing FlowSystem Network as app
-    "dash-cytoscape >= 1",  # Visualizing FlowSystem Network as app
-    "networkx >= 3",  # Visualizing FlowSystem Network as app
-    "werkzeug >= 3",  # Visualizing FlowSystem Network as app
+    "dash >= 3.0.0",  # Visualizing FlowSystem Network as app
+    "dash-cytoscape >= 1.0.0",  # Visualizing FlowSystem Network as app
     "dash-daq >= 0.6.0",  # Visualizing FlowSystem Network as app
+    "networkx >= 3.0.0",  # Visualizing FlowSystem Network as app
+    "werkzeug >= 3.0.0",  # Visualizing FlowSystem Network as app
 ]
 
+# Documentation building
 docs = [
     "mkdocs-material >= 9.0.0, < 10",
     "mkdocstrings-python >= 1.0.0",
