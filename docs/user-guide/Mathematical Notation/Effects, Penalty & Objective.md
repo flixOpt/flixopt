@@ -8,17 +8,17 @@ These arise from so called **Shares**, which originate from **Elements** like [F
 Assiziated effects could be:
 - costs - given in [€/kWh]...
 - ...or emissions - given in [kg/kWh].
-- 
+-
 Effects are allocated seperatly for investments and operation.
 
 ### Shares to Effects
 
 $$ \label{eq:Share_invest}
-s_{l \rightarrow e, \text{inv}} = \sum_{v \in \mathcal{V}_{l, \text{inv}}} v \cdot \text a_{v \rightarrow e} 
+s_{l \rightarrow e, \text{inv}} = \sum_{v \in \mathcal{V}_{l, \text{inv}}} v \cdot \text a_{v \rightarrow e}
 $$
 
 $$ \label{eq:Share_operation}
-s_{l \rightarrow e, \text{op}}(\text{t}_i) = \sum_{v \in \mathcal{V}_{l,\text{op}}} v(\text{t}_i) \cdot \text a_{v \rightarrow e}(\text{t}_i)           
+s_{l \rightarrow e, \text{op}}(\text{t}_i) = \sum_{v \in \mathcal{V}_{l,\text{op}}} v(\text{t}_i) \cdot \text a_{v \rightarrow e}(\text{t}_i)
 $$
 
 With:
@@ -36,26 +36,26 @@ With:
 
 ### Shares between different Effects
 
-Furthermore, the Effect $x$ can contribute a share to another Effect ${e} \in \mathcal{E}\backslash x$. 
-This share is defined by the factor $\text r_{x \rightarrow e}$. 
+Furthermore, the Effect $x$ can contribute a share to another Effect ${e} \in \mathcal{E}\backslash x$.
+This share is defined by the factor $\text r_{x \rightarrow e}$.
 
-For example, the Effect "CO$_2$ emissions" (unit: kg) 
-can cause an additional share to Effect "monetary costs" (unit: €). 
+For example, the Effect "CO$_2$ emissions" (unit: kg)
+can cause an additional share to Effect "monetary costs" (unit: €).
 In this case, the factor $\text a_{x \rightarrow e}$ is the specific CO$_2$ price in €/kg. However, circular references have to be avoided.
 
 The overall sum of investment shares of an Effect $e$ is given by $\eqref{Effect_invest}$
 
 $$ \label{eq:Effect_invest}
-E_{e, \text{inv}} = 
-\sum_{l \in \mathcal{L}} s_{l \rightarrow e,\text{inv}} + 
+E_{e, \text{inv}} =
+\sum_{l \in \mathcal{L}} s_{l \rightarrow e,\text{inv}} +
 \sum_{x \in \mathcal{E}\backslash e} E_{x, \text{inv}}  \cdot \text{r}_{x \rightarrow  e,\text{inv}}
 $$
 
 The overall sum of operation shares is given by $\eqref{eq:Effect_Operation}$
 
 $$ \label{eq:Effect_Operation}
-E_{e, \text{op}}(\text{t}_{i}) = 
-\sum_{l \in \mathcal{L}} s_{l \rightarrow e, \text{op}}(\text{t}_i) + 
+E_{e, \text{op}}(\text{t}_{i}) =
+\sum_{l \in \mathcal{L}} s_{l \rightarrow e, \text{op}}(\text{t}_i) +
 \sum_{x \in \mathcal{E}\backslash e} E_{x, \text{op}}(\text{t}_i) \cdot \text{r}_{x \rightarrow {e},\text{op}}(\text{t}_i)
 $$
 
@@ -100,7 +100,7 @@ $$
 
 Additionally to the user defined [Effects](#effects), a Penalty $\Phi$ is part of every FlixOpt Model.
 Its used to prevent unsolvable problems and simplify troubleshooting.
-Shares to the penalty can originate from every Element and are constructed similarly to 
+Shares to the penalty can originate from every Element and are constructed similarly to
 $\eqref{Share_invest}$ and  $\eqref{Share_operation}$.
 
 $$ \label{eq:Penalty}

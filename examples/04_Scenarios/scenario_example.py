@@ -9,14 +9,20 @@ from rich.pretty import pprint  # Used for pretty printing
 import flixopt as fx
 
 if __name__ == '__main__':
+    # Create datetime array starting from '2020-01-01' for the given time period
+    timesteps = pd.date_range('2020-01-01', periods=9, freq='h')
+    scenarios = pd.Index(['Base Case', 'High Demand'])
+    years = pd.Index([2020, 2021, 2022])
+
     # --- Create Time Series Data ---
     # Heat demand profile (e.g., kW) over time and corresponding power prices
-    heat_demand_per_h = np.array([30, 0, 90, 110, 110, 20, 20, 20, 20])
-    power_prices = 1 / 1000 * np.array([80, 80, 80, 80, 80, 80, 80, 80, 80])
+    heat_demand_per_h = pd.DataFrame(
+        {'Base Case': [30, 0, 90, 110, 110, 20, 20, 20, 20], 'High Demand': [30, 0, 100, 118, 125, 20, 20, 20, 20]},
+        index=timesteps,
+    )
+    power_prices = np.array([0.08, 0.09, 0.10])
 
-    # Create datetime array starting from '2020-01-01' for the given time period
-    timesteps = pd.date_range('2020-01-01', periods=len(heat_demand_per_h), freq='h')
-    flow_system = fx.FlowSystem(timesteps=timesteps)
+    flow_system = fx.FlowSystem(timesteps=timesteps, years=years, scenarios=scenarios, weights=np.array([0.5, 0.6]))
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)
@@ -46,7 +52,14 @@ if __name__ == '__main__':
     boiler = fx.linear_converters.Boiler(
         label='Boiler',
         eta=0.5,
-        Q_th=fx.Flow(label='Q_th', bus='Fernwärme', size=50, relative_minimum=0.1, relative_maximum=1),
+        Q_th=fx.Flow(
+            label='Q_th',
+            bus='Fernwärme',
+            size=50,
+            relative_minimum=0.1,
+            relative_maximum=1,
+            on_off_parameters=fx.OnOffParameters(),
+        ),
         Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
     )
 
@@ -55,7 +68,7 @@ if __name__ == '__main__':
         label='CHP',
         eta_th=0.5,
         eta_el=0.4,
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
+        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()),
         Q_th=fx.Flow('Q_th', bus='Fernwärme'),
         Q_fu=fx.Flow('Q_fu', bus='Gas'),
     )
@@ -67,7 +80,7 @@ if __name__ == '__main__':
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1000),
         capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
         initial_charge_state=0,  # Initial storage state: empty
-        relative_maximum_charge_state=1 / 100 * np.array([80, 70, 80, 80, 80, 80, 80, 80, 80]),
+        relative_maximum_charge_state=np.array([80, 70, 80, 80, 80, 80, 80, 80, 80]) * 0.01,
         relative_maximum_final_charge_state=0.8,
         eta_charge=0.9,
         eta_discharge=1,  # Efficiency factors for charging/discharging
@@ -107,15 +120,19 @@ if __name__ == '__main__':
     # --- Solve the Calculation and Save Results ---
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
+    calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
+
     # --- Analyze Results ---
     calculation.results['Fernwärme'].plot_node_balance_pie()
-    calculation.results['Fernwärme'].plot_node_balance()
+    calculation.results['Fernwärme'].plot_node_balance(style='stacked_bar')
     calculation.results['Storage'].plot_node_balance()
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # Convert the results for the storage component to a dataframe and display
     df = calculation.results['Storage'].node_balance_with_charge_state()
     print(df)
+    calculation.results['Storage'].plot_charge_state(engine='matplotlib')
 
     # Save results to file for later usage
     calculation.results.to_file()
+    fig, ax = calculation.results['Storage'].plot_charge_state(engine='matplotlib')

@@ -6,7 +6,7 @@ FlixOpt is built around a set of core concepts that work together to represent a
 
 ### FlowSystem
 
-The [`FlowSystem`][flixopt.flow_system.FlowSystem] is the central organizing unit in FlixOpt. 
+The [`FlowSystem`][flixopt.flow_system.FlowSystem] is the central organizing unit in FlixOpt.
 Every FlixOpt model starts with creating a FlowSystem. It:
 
 - Defines the timesteps for the optimization
@@ -40,7 +40,7 @@ Examples:
 [`Bus`][flixopt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
 
 - Balance incoming and outgoing flows
-- Can represent physical networks like heat, electricity, or gas 
+- Can represent physical networks like heat, electricity, or gas
 - Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional)
 
 ### Components

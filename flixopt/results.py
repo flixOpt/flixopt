@@ -2,7 +2,8 @@ import datetime
 import json
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+import warnings
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import linopy
 import matplotlib.pyplot as plt
@@ -14,15 +15,22 @@ import yaml
 
 from . import io as fx_io
 from . import plotting
-from .core import TimeSeriesCollection
+from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
     import pyvis
 
     from .calculation import Calculation, SegmentedCalculation
+    from .core import FlowSystemDimensions
 
 
 logger = logging.getLogger('flixopt')
+
+
+class _FlowSystemRestorationError(Exception):
+    """Exception raised when a FlowSystem cannot be restored from dataset."""
+
+    pass
 
 
 class CalculationResults:
@@ -37,7 +45,7 @@ class CalculationResults:
 
     Attributes:
         solution (xr.Dataset): Dataset containing optimization results.
-        flow_system (xr.Dataset): Dataset containing the flow system.
+        flow_system_data (xr.Dataset): Dataset containing the flow system.
         summary (Dict): Information about the calculation.
         name (str): Name identifier for the calculation.
         model (linopy.Model): The optimization model (if available).
@@ -92,7 +100,7 @@ class CalculationResults:
 
         return cls(
             solution=fx_io.load_dataset_from_netcdf(paths.solution),
-            flow_system=fx_io.load_dataset_from_netcdf(paths.flow_system),
+            flow_system_data=fx_io.load_dataset_from_netcdf(paths.flow_system),
             name=name,
             folder=folder,
             model=model,
@@ -118,7 +126,7 @@ class CalculationResults:
         """
         return cls(
             solution=calculation.model.solution,
-            flow_system=calculation.flow_system.as_dataset(constants_in_dataset=True),
+            flow_system_data=calculation.flow_system.to_dataset(),
             summary=calculation.summary,
             model=calculation.model,
             name=calculation.name,
@@ -128,47 +136,81 @@ class CalculationResults:
     def __init__(
         self,
         solution: xr.Dataset,
-        flow_system: xr.Dataset,
+        flow_system_data: xr.Dataset,
         name: str,
         summary: Dict,
         folder: Optional[pathlib.Path] = None,
         model: Optional[linopy.Model] = None,
+        **kwargs,  # To accept old "flow_system" parameter
     ):
         """
         Args:
             solution: The solution of the optimization.
-            flow_system: The flow_system that was used to create the calculation as a datatset.
+            flow_system_data: The flow_system that was used to create the calculation as a datatset.
             name: The name of the calculation.
             summary: Information about the calculation,
             folder: The folder where the results are saved.
             model: The linopy model that was used to solve the calculation.
+        Deprecated:
+            flow_system: Use flow_system_data instead.
         """
+        # Handle potential old "flow_system" parameter for backward compatibility
+        if 'flow_system' in kwargs and flow_system_data is None:
+            flow_system_data = kwargs.pop('flow_system')
+            warnings.warn(
+                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead."
+                "Acess is now by '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.solution = solution
-        self.flow_system = flow_system
+        self.flow_system_data = flow_system_data
         self.summary = summary
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {
-            label: ComponentResults.from_json(self, infos) for label, infos in self.solution.attrs['Components'].items()
+            label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
 
-        self.buses = {label: BusResults.from_json(self, infos) for label, infos in self.solution.attrs['Buses'].items()}
+        self.buses = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
 
-        self.effects = {
-            label: EffectResults.from_json(self, infos) for label, infos in self.solution.attrs['Effects'].items()
-        }
+        self.effects = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+
+        if 'Flows' not in self.solution.attrs:
+            warnings.warn(
+                'No Data about flows found in the results. This data is only included since v2.2.0. Some functionality '
+                'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
+                stacklevel=2,
+            )
+            self.flows = {}
+        else:
+            self.flows = {
+                label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
+            }
 
         self.timesteps_extra = self.solution.indexes['time']
-        self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
+        self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
+        self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
 
-    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
+        self._effect_share_factors = None
+        self._flow_system = None
+
+        self._flow_rates = None
+        self._flow_hours = None
+        self._sizes = None
+        self._effects_per_component = None
+
+    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults', 'FlowResults']:
         if key in self.components:
             return self.components[key]
         if key in self.buses:
             return self.buses[key]
         if key in self.effects:
             return self.effects[key]
+        if key in self.flows:
+            return self.flows[key]
         raise KeyError(f'No element with label {key} found.')
 
     @property
@@ -179,7 +221,12 @@ class CalculationResults:
     @property
     def objective(self) -> float:
         """The objective result of the optimization."""
-        return self.summary['Main Results']['Objective']
+        # Deprecated. Fallback
+        if 'objective' not in self.solution:
+            logger.warning('Objective not found in solution. Fallback to summary (rounded value). This is deprecated')
+            return self.summary['Main Results']['Objective']
+
+        return self.solution['objective'].item()
 
     @property
     def variables(self) -> linopy.Variables:
@@ -195,20 +242,413 @@ class CalculationResults:
             raise ValueError('The linopy model is not available.')
         return self.model.constraints
 
+    @property
+    def effect_share_factors(self):
+        if self._effect_share_factors is None:
+            effect_share_factors = self.flow_system.effects.calculate_effect_share_factors()
+            self._effect_share_factors = {'operation': effect_share_factors[0], 'invest': effect_share_factors[1]}
+        return self._effect_share_factors
+
+    @property
+    def flow_system(self) -> 'FlowSystem':
+        """The restored flow_system that was used to create the calculation.
+        Contains all input parameters."""
+        if self._flow_system is None:
+            try:
+                from . import FlowSystem
+
+                current_logger_level = logger.getEffectiveLevel()
+                logger.setLevel(logging.CRITICAL)
+                self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
+                self._flow_system._connect_network()
+                logger.setLevel(current_logger_level)
+            except Exception as e:
+                logger.critical(
+                    f'Not able to restore FlowSystem from dataset. Some functionality is not availlable. {e}'
+                )
+                raise _FlowSystemRestorationError(f'Not able to restore FlowSystem from dataset. {e}') from e
+        return self._flow_system
+
     def filter_solution(
-        self, variable_dims: Optional[Literal['scalar', 'time']] = None, element: Optional[str] = None
+        self,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
+        element: Optional[str] = None,
+        timesteps: Optional[pd.DatetimeIndex] = None,
+        scenarios: Optional[pd.Index] = None,
+        contains: Optional[Union[str, List[str]]] = None,
+        startswith: Optional[Union[str, List[str]]] = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
         If no element is specified, all elements are included.
 
         Args:
-            variable_dims: The dimension of the variables to filter for.
+            variable_dims: The dimension of which to get variables from.
+                - 'scalar': Get scalar variables (without dimensions)
+                - 'time': Get time-dependent variables (with a time dimension)
+                - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+                - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+                - 'scenarioonly': Get scenario-dependent variables (with ONLY a scenario dimension)
             element: The element to filter for.
+            timesteps: Optional time indexes to select. Can be:
+                - pd.DatetimeIndex: Multiple timesteps
+                - str/pd.Timestamp: Single timestep
+                Defaults to all available timesteps.
+            scenarios: Optional scenario indexes to select. Can be:
+                - pd.Index: Multiple scenarios
+                - str/int: Single scenario (int is treated as a label, not an index position)
+                Defaults to all available scenarios.
+            contains: Filter variables that contain this string or strings.
+                If a list is provided, variables must contain ALL strings in the list.
+            startswith: Filter variables that start with this string or strings.
+                If a list is provided, variables must start with ANY of the strings in the list.
         """
-        if element is not None:
-            return filter_dataset(self[element].solution, variable_dims)
-        return filter_dataset(self.solution, variable_dims)
+        return filter_dataset(
+            self.solution if element is None else self[element].solution,
+            variable_dims=variable_dims,
+            timesteps=timesteps,
+            scenarios=scenarios,
+            contains=contains,
+            startswith=startswith,
+        )
+
+    @property
+    def effects_per_component(self) -> xr.Dataset:
+        """Returns a dataset containing effect results for each mode, aggregated by Component
+
+        Returns:
+            An xarray Dataset with an additional component dimension and effects as variables.
+        """
+        if self._effects_per_component is None:
+            self._effects_per_component = xr.Dataset(
+                {
+                    mode: self._create_effects_dataset(mode).to_dataarray('effect', name=mode)
+                    for mode in ['operation', 'invest', 'total']
+                }
+            )
+            dim_order = ['time', 'year', 'scenario', 'component', 'effect']
+            self._effects_per_component = self._effects_per_component.transpose(*dim_order, missing_dims='ignore')
+
+        return self._effects_per_component
+
+    def flow_rates(
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None,
+    ) -> xr.DataArray:
+        """Returns a DataArray containing the flow rates of each Flow.
+
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.flow_rates().to_pandas()
+            Get the max or min over time:
+            >>>results.flow_rates().max('time')
+            Sum up the flow rates of flows with the same start and end:
+            >>>results.flow_rates(end='Fernwärme').groupby('start').sum(dim='flow')
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
+        """
+        if self._flow_rates is None:
+            self._flow_rates = self._assign_flow_coords(
+                xr.concat(
+                    [flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
+                    dim=pd.Index(self.flows.keys(), name='flow'),
+                )
+            ).rename('flow_rates')
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._flow_rates, **filters)
+
+    def flow_hours(
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None,
+    ) -> xr.DataArray:
+        """Returns a DataArray containing the flow hours of each Flow.
+
+        Flow hours represent the total energy/material transferred over time,
+        calculated by multiplying flow rates by the duration of each timestep.
+
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.flow_hours().to_pandas()
+            Sum up the flow hours over time:
+            >>>results.flow_hours().sum('time')
+            Sum up the flow hours of flows with the same start and end:
+            >>>results.flow_hours(end='Fernwärme').groupby('start').sum(dim='flow')
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.flow_hours(start='Fernwärme'), results.flow_hours(end='Fernwärme')], dim='flow')
+
+        """
+        if self._flow_hours is None:
+            self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._flow_hours, **filters)
+
+    def sizes(
+        self,
+        start: Optional[Union[str, List[str]]] = None,
+        end: Optional[Union[str, List[str]]] = None,
+        component: Optional[Union[str, List[str]]] = None,
+    ) -> xr.DataArray:
+        """Returns a dataset with the sizes of the Flows.
+        Args:
+            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
+            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
+            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+
+        Further usage:
+            Convert the dataarray to a dataframe:
+            >>>results.sizes().to_pandas()
+            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
+            >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
+
+        """
+        if self._sizes is None:
+            self._sizes = self._assign_flow_coords(
+                xr.concat(
+                    [flow.size.rename(flow.label) for flow in self.flows.values()],
+                    dim=pd.Index(self.flows.keys(), name='flow'),
+                )
+            ).rename('flow_sizes')
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        return filter_dataarray_by_coord(self._sizes, **filters)
+
+    def _assign_flow_coords(self, da: xr.DataArray):
+        # Add start and end coordinates
+        da = da.assign_coords(
+            {
+                'start': ('flow', [flow.start for flow in self.flows.values()]),
+                'end': ('flow', [flow.end for flow in self.flows.values()]),
+                'component': ('flow', [flow.component for flow in self.flows.values()]),
+            }
+        )
+
+        # Ensure flow is the last dimension if needed
+        existing_dims = [d for d in da.dims if d != 'flow']
+        da = da.transpose(*(existing_dims + ['flow']))
+        return da
+
+    def get_effect_shares(
+        self,
+        element: str,
+        effect: str,
+        mode: Optional[Literal['operation', 'invest']] = None,
+        include_flows: bool = False,
+    ) -> xr.Dataset:
+        """Retrieves individual effect shares for a specific element and effect.
+        Either for operation, investment, or both modes combined.
+        Only includes the direct shares.
+
+        Args:
+            element: The element identifier for which to retrieve effect shares.
+            effect: The effect identifier for which to retrieve shares.
+            mode: Optional. The mode to retrieve shares for. Can be 'operation', 'invest',
+                or None to retrieve both. Defaults to None.
+
+        Returns:
+            An xarray Dataset containing the requested effect shares. If mode is None,
+            returns a merged Dataset containing both operation and investment shares.
+
+        Raises:
+            ValueError: If the specified effect is not available or if mode is invalid.
+        """
+        if effect not in self.effects:
+            raise ValueError(f'Effect {effect} is not available.')
+
+        if mode is None:
+            return xr.merge(
+                [
+                    self.get_effect_shares(
+                        element=element, effect=effect, mode='operation', include_flows=include_flows
+                    ),
+                    self.get_effect_shares(element=element, effect=effect, mode='invest', include_flows=include_flows),
+                ]
+            )
+
+        if mode not in ['operation', 'invest']:
+            raise ValueError(f'Mode {mode} is not available. Choose between "operation" and "invest".')
+
+        ds = xr.Dataset()
+
+        label = f'{element}->{effect}({mode})'
+        if label in self.solution:
+            ds = xr.Dataset({label: self.solution[label]})
+
+        if include_flows:
+            if element not in self.components:
+                raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
+            flows = [
+                label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs
+            ]
+            return xr.merge(
+                [ds]
+                + [
+                    self.get_effect_shares(element=flow, effect=effect, mode=mode, include_flows=False)
+                    for flow in flows
+                ]
+            )
+
+        return ds
+
+    def _compute_effect_total(
+        self,
+        element: str,
+        effect: str,
+        mode: Literal['operation', 'invest', 'total'] = 'total',
+        include_flows: bool = False,
+    ) -> xr.DataArray:
+        """Calculates the total effect for a specific element and effect.
+
+        This method computes the total direct and indirect effects for a given element
+        and effect, considering the conversion factors between different effects.
+
+        Args:
+            element: The element identifier for which to calculate total effects.
+            effect: The effect identifier to calculate.
+            mode: The calculation mode. Options are:
+                'operation': Returns operation-specific effects.
+                'invest': Returns investment-specific effects.
+                'total': Returns the sum of operation effects (across all timesteps)
+                    and investment effects. Defaults to 'total'.
+            include_flows: Whether to include effects from flows connected to this element.
+
+        Returns:
+            An xarray DataArray containing the total effects, named with pattern
+            '{element}->{effect}' for mode='total' or '{element}->{effect}({mode})'
+            for other modes.
+
+        Raises:
+            ValueError: If the specified effect is not available.
+        """
+        if effect not in self.effects:
+            raise ValueError(f'Effect {effect} is not available.')
+
+        if mode == 'total':
+            operation = self._compute_effect_total(
+                element=element, effect=effect, mode='operation', include_flows=include_flows
+            )
+            invest = self._compute_effect_total(
+                element=element, effect=effect, mode='invest', include_flows=include_flows
+            )
+            if invest.isnull().all() and operation.isnull().all():
+                return xr.DataArray(np.nan)
+            if operation.isnull().all():
+                return invest.rename(f'{element}->{effect}')
+            operation = operation.sum('time')
+            if invest.isnull().all():
+                return operation.rename(f'{element}->{effect}')
+            if 'time' in operation.indexes:
+                operation = operation.sum('time')
+            return invest + operation
+
+        total = xr.DataArray(0)
+        share_exists = False
+
+        relevant_conversion_factors = {
+            key[0]: value for key, value in self.effect_share_factors[mode].items() if key[1] == effect
+        }
+        relevant_conversion_factors[effect] = 1  # Share to itself is 1
+
+        for target_effect, conversion_factor in relevant_conversion_factors.items():
+            label = f'{element}->{target_effect}({mode})'
+            if label in self.solution:
+                share_exists = True
+                da = self.solution[label]
+                total = da * conversion_factor + total
+
+            if include_flows:
+                if element not in self.components:
+                    raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
+                flows = [
+                    label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs
+                ]
+                for flow in flows:
+                    label = f'{flow}->{target_effect}({mode})'
+                    if label in self.solution:
+                        share_exists = True
+                        da = self.solution[label]
+                        total = da * conversion_factor + total
+        if not share_exists:
+            total = xr.DataArray(np.nan)
+        return total.rename(f'{element}->{effect}({mode})')
+
+    def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total']) -> xr.Dataset:
+        """Creates a dataset containing effect totals for all components (including their flows).
+        The dataset does contain the direct as well as the indirect effects of each component.
+
+        Args:
+            mode: The calculation mode ('operation', 'invest', or 'total').
+
+        Returns:
+            An xarray Dataset with components as dimension and effects as variables.
+        """
+        ds = xr.Dataset()
+        all_arrays = {}
+        template = None  # Template is needed to determine the dimensions of the arrays. This handles the case of no shares for an effect
+
+        components_list = list(self.components)
+
+        # First pass: collect arrays and find template
+        for effect in self.effects:
+            effect_arrays = []
+            for component in components_list:
+                da = self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
+                effect_arrays.append(da)
+
+                if template is None and (da.dims or not da.isnull().all()):
+                    template = da
+
+            all_arrays[effect] = effect_arrays
+
+        # Ensure we have a template
+        if template is None:
+            raise ValueError(
+                f"No template with proper dimensions found for mode '{mode}'. "
+                f'All computed arrays are scalars, which indicates a data issue.'
+            )
+
+        # Second pass: process all effects (guaranteed to include all)
+        for effect in self.effects:
+            dataarrays = all_arrays[effect]
+            component_arrays = []
+
+            for component, arr in zip(components_list, dataarrays, strict=False):
+                # Expand scalar NaN arrays to match template dimensions
+                if not arr.dims and np.isnan(arr.item()):
+                    arr = xr.full_like(template, np.nan, dtype=float).rename(arr.name)
+
+                component_arrays.append(arr.expand_dims(component=[component]))
+
+            ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal')
+
+        # For now include a test to ensure correctness
+        suffix = {
+            'operation': '(operation)|total_per_timestep',
+            'invest': '(invest)|total',
+            'total': '|total',
+        }
+        for effect in self.effects:
+            label = f'{effect}{suffix[mode]}'
+            computed = ds[effect].sum('component')
+            found = self.solution[label]
+            if not np.allclose(computed.values, found.fillna(0).values):
+                logger.critical(
+                    f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
+                )
+
+        return ds
 
     def plot_heatmap(
         self,
@@ -219,9 +659,52 @@ class CalculationResults:
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+        """
+        Plots a heatmap of the solution of a variable.
+
+        Args:
+            variable_name: The name of the variable to plot.
+            heatmap_timeframes: The timeframes to use for the heatmap.
+            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
+            color_map: The color map to use for the heatmap.
+            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+            show: Whether to show the plot or not.
+            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                 If None, uses first value for each dimension.
+                 If empty dict {}, uses all values.
+
+        Examples:
+            Basic usage (uses first scenario, first year, all time):
+
+            >>> results.plot_heatmap('Battery|charge_state')
+
+            Select specific scenario and year:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={'scenario': 'base', 'year': 2024})
+
+            Time filtering (summer months only):
+
+            >>> results.plot_heatmap(
+            ...     'Boiler(Qth)|flow_rate',
+            ...     indexer={
+            ...         'scenario': 'base',
+            ...         'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])],
+            ...     },
+            ... )
+
+            Save to specific location:
+
+            >>> results.plot_heatmap(
+            ...     'Boiler(Qth)|flow_rate', indexer={'scenario': 'base'}, save='path/to/my_heatmap.html'
+            ... )
+        """
+        dataarray = self.solution[variable_name]
+
         return plot_heatmap(
-            dataarray=self.solution[variable_name],
+            dataarray=dataarray,
             name=variable_name,
             folder=self.folder,
             heatmap_timeframes=heatmap_timeframes,
@@ -230,6 +713,7 @@ class CalculationResults:
             save=save,
             show=show,
             engine=engine,
+            indexer=indexer,
         )
 
     def plot_network(
@@ -244,16 +728,9 @@ class CalculationResults:
         show: bool = False,
     ) -> 'pyvis.network.Network':
         """See flixopt.flow_system.FlowSystem.plot_network"""
-        try:
-            from .flow_system import FlowSystem
-
-            flow_system = FlowSystem.from_dataset(self.flow_system)
-        except Exception as e:
-            logger.critical(f'Could not reconstruct the flow_system from dataset: {e}')
-            return None
         if path is None:
             path = self.folder / f'{self.name}--network.html'
-        return flow_system.plot_network(controls=controls, path=path, show=show)
+        return self.flow_system.plot_network(controls=controls, path=path, show=show)
 
     def to_file(
         self,
@@ -286,7 +763,7 @@ class CalculationResults:
         paths = fx_io.CalculationResultsPaths(folder, name)
 
         fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
-        fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.flow_system_data, paths.flow_system, compression=compression)
 
         with open(paths.summary, 'w', encoding='utf-8') as f:
             yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
@@ -307,10 +784,6 @@ class CalculationResults:
 
 
 class _ElementResults:
-    @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_ElementResults':
-        return cls(calculation_results, json_data['label'], json_data['variables'], json_data['constraints'])
-
     def __init__(
         self, calculation_results: CalculationResults, label: str, variables: List[str], constraints: List[str]
     ):
@@ -345,28 +818,49 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
 
-    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'time']] = None) -> xr.Dataset:
+    def filter_solution(
+        self,
+        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
+        timesteps: Optional[pd.DatetimeIndex] = None,
+        scenarios: Optional[pd.Index] = None,
+        contains: Optional[Union[str, List[str]]] = None,
+        startswith: Optional[Union[str, List[str]]] = None,
+    ) -> xr.Dataset:
         """
-        Filter the solution of the element by dimension.
+        Filter the solution to a specific variable dimension and element.
+        If no element is specified, all elements are included.
 
         Args:
-            variable_dims: The dimension of the variables to filter for.
+            variable_dims: The dimension of which to get variables from.
+                - 'scalar': Get scalar variables (without dimensions)
+                - 'time': Get time-dependent variables (with a time dimension)
+                - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+                - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+                - 'scenarioonly': Get scenario-dependent variables (with ONLY a scenario dimension)
+            timesteps: Optional time indexes to select. Can be:
+                - pd.DatetimeIndex: Multiple timesteps
+                - str/pd.Timestamp: Single timestep
+                Defaults to all available timesteps.
+            scenarios: Optional scenario indexes to select. Can be:
+                - pd.Index: Multiple scenarios
+                - str/int: Single scenario (int is treated as a label, not an index position)
+                Defaults to all available scenarios.
+            contains: Filter variables that contain this string or strings.
+                If a list is provided, variables must contain ALL strings in the list.
+            startswith: Filter variables that start with this string or strings.
+                If a list is provided, variables must start with ANY of the strings in the list.
         """
-        return filter_dataset(self.solution, variable_dims)
+        return filter_dataset(
+            self.solution,
+            variable_dims=variable_dims,
+            timesteps=timesteps,
+            scenarios=scenarios,
+            contains=contains,
+            startswith=startswith,
+        )
 
 
 class _NodeResults(_ElementResults):
-    @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_NodeResults':
-        return cls(
-            calculation_results,
-            json_data['label'],
-            json_data['variables'],
-            json_data['constraints'],
-            json_data['inputs'],
-            json_data['outputs'],
-        )
-
     def __init__(
         self,
         calculation_results: CalculationResults,
@@ -375,10 +869,12 @@ class _NodeResults(_ElementResults):
         constraints: List[str],
         inputs: List[str],
         outputs: List[str],
+        flows: List[str],
     ):
         super().__init__(calculation_results, label, variables, constraints)
         self.inputs = inputs
         self.outputs = outputs
+        self.flows = flows
 
     def plot_node_balance(
         self,
@@ -386,28 +882,47 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
+        mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
+        drop_suffix: bool = True,
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
         """
         Plots the node balance of the Component or Bus.
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
+            colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                 If None, uses first value for each dimension (except time).
+                 If empty dict {}, uses all values.
+            mode: The mode to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
+                - 'flow_rate': Returns the flow_rates of the Node.
+                - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
+            drop_suffix: Whether to drop the suffix from the variable names.
         """
+        ds = self.node_balance(with_last_timestep=True, mode=mode, drop_suffix=drop_suffix, indexer=indexer)
+
+        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+
+        title = f'{self.label} (flow rates){suffix}' if mode == 'flow_rate' else f'{self.label} (flow hours){suffix}'
+
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
-                self.node_balance(with_last_timestep=True).to_dataframe(),
+                ds.to_dataframe(),
                 colors=colors,
-                mode='area',
-                title=f'Flow rates of {self.label}',
+                style=style,
+                title=title,
             )
             default_filetype = '.html'
         elif engine == 'matplotlib':
             figure_like = plotting.with_matplotlib(
-                self.node_balance(with_last_timestep=True).to_dataframe(),
+                ds.to_dataframe(),
                 colors=colors,
-                mode='bar',
-                title=f'Flow rates of {self.label}',
+                style=style,
+                title=title,
             )
             default_filetype = '.png'
         else:
@@ -415,7 +930,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / f'{self.label} (flow rates)',
+            default_path=self._calculation_results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -430,6 +945,7 @@ class _NodeResults(_ElementResults):
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -441,32 +957,40 @@ class _NodeResults(_ElementResults):
             save: Whether to save the figure.
             show: Whether to show the figure.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                 If None, uses first value for each dimension.
+                 If empty dict {}, uses all values.
         """
-        inputs = (
-            sanitize_dataset(
-                ds=self.solution[self.inputs],
-                threshold=1e-5,
-                drop_small_vars=True,
-                zero_small_values=True,
-            )
-            * self._calculation_results.hours_per_timestep
+        inputs = sanitize_dataset(
+            ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
+            threshold=1e-5,
+            drop_small_vars=True,
+            zero_small_values=True,
+            drop_suffix='|',
         )
-        outputs = (
-            sanitize_dataset(
-                ds=self.solution[self.outputs],
-                threshold=1e-5,
-                drop_small_vars=True,
-                zero_small_values=True,
-            )
-            * self._calculation_results.hours_per_timestep
+        outputs = sanitize_dataset(
+            ds=self.solution[self.outputs] * self._calculation_results.hours_per_timestep,
+            threshold=1e-5,
+            drop_small_vars=True,
+            zero_small_values=True,
+            drop_suffix='|',
         )
+
+        inputs, suffix_parts = _apply_indexer_to_data(inputs, indexer, drop=True)
+        outputs, suffix_parts = _apply_indexer_to_data(outputs, indexer, drop=True)
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+
+        title = f'{self.label} (total flow hours){suffix}'
+
+        inputs = inputs.sum('time')
+        outputs = outputs.sum('time')
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
-                inputs.to_dataframe().sum(),
-                outputs.to_dataframe().sum(),
+                data_left=inputs.to_pandas(),
+                data_right=outputs.to_pandas(),
                 colors=colors,
-                title=f'Flow hours of {self.label}',
+                title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -476,10 +1000,10 @@ class _NodeResults(_ElementResults):
         elif engine == 'matplotlib':
             logger.debug('Parameter text_info is not supported for matplotlib')
             figure_like = plotting.dual_pie_with_matplotlib(
-                inputs.to_dataframe().sum(),
-                outputs.to_dataframe().sum(),
+                data_left=inputs.to_pandas(),
+                data_right=outputs.to_pandas(),
                 colors=colors,
-                title=f'Total flow hours of {self.label}',
+                title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
                 lower_percentage_group=lower_percentage_group,
@@ -490,7 +1014,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / f'{self.label} (total flow hours)',
+            default_path=self._calculation_results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -503,9 +1027,29 @@ class _NodeResults(_ElementResults):
         negate_outputs: bool = False,
         threshold: Optional[float] = 1e-5,
         with_last_timestep: bool = False,
+        mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        drop_suffix: bool = False,
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
     ) -> xr.Dataset:
-        return sanitize_dataset(
-            ds=self.solution[self.inputs + self.outputs],
+        """
+        Returns a dataset with the node balance of the Component or Bus.
+        Args:
+            negate_inputs: Whether to negate the input flow_rates of the Node.
+            negate_outputs: Whether to negate the output flow_rates of the Node.
+            threshold: The threshold for small values. Variables with all values below the threshold are dropped.
+            with_last_timestep: Whether to include the last timestep in the dataset.
+            mode: The mode to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
+                - 'flow_rate': Returns the flow_rates of the Node.
+                - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
+            drop_suffix: Whether to drop the suffix from the variable names.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                 If None, uses first value for each dimension.
+                 If empty dict {}, uses all values.
+        """
+        ds = self.solution[self.inputs + self.outputs]
+
+        ds = sanitize_dataset(
+            ds=ds,
             threshold=threshold,
             timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
             negate=(
@@ -517,7 +1061,16 @@ class _NodeResults(_ElementResults):
                 if negate_inputs
                 else None
             ),
+            drop_suffix='|' if drop_suffix else None,
         )
+
+        ds, _ = _apply_indexer_to_data(ds, indexer, drop=True)
+
+        if mode == 'flow_hours':
+            ds = ds * self._calculation_results.hours_per_timestep
+            ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
+
+        return ds
 
 
 class BusResults(_NodeResults):
@@ -548,6 +1101,8 @@ class ComponentResults(_NodeResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
+        style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
+        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
     ) -> plotly.graph_objs.Figure:
         """
         Plots the charge state of a Storage.
@@ -556,37 +1111,58 @@ class ComponentResults(_NodeResults):
             show: Whether to show the plot or not.
             colors: The c
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
+            style: The plotting mode for the flow_rate
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+                 If None, uses first value for each dimension.
+                 If empty dict {}, uses all values.
 
         Raises:
             ValueError: If the Component is not a Storage.
         """
-        if engine != 'plotly':
-            raise NotImplementedError(
-                f'Plotting engine "{engine}" not implemented for ComponentResults.plot_charge_state.'
-            )
-
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
-        fig = plotting.with_plotly(
-            self.node_balance(with_last_timestep=True).to_dataframe(),
-            colors=colors,
-            mode='area',
-            title=f'Operation Balance of {self.label}',
-        )
+        ds = self.node_balance(with_last_timestep=True, indexer=indexer)
+        charge_state = self.charge_state
 
-        # TODO: Use colors for charge state?
+        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
+        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, indexer, drop=True)
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        charge_state = self.charge_state.to_dataframe()
-        fig.add_trace(
-            plotly.graph_objs.Scatter(
-                x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
+        title = f'Operation Balance of {self.label}{suffix}'
+
+        if engine == 'plotly':
+            fig = plotting.with_plotly(
+                ds.to_dataframe(),
+                colors=colors,
+                style=style,
+                title=title,
             )
-        )
+
+            # TODO: Use colors for charge state?
+
+            charge_state = charge_state.to_dataframe()
+            fig.add_trace(
+                plotly.graph_objs.Scatter(
+                    x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
+                )
+            )
+        elif engine == 'matplotlib':
+            fig, ax = plotting.with_matplotlib(
+                ds.to_dataframe(),
+                colors=colors,
+                style=style,
+                title=title,
+            )
+
+            charge_state = charge_state.to_dataframe()
+            ax.plot(charge_state.index, charge_state.values.flatten(), label=self._charge_state)
+            fig.tight_layout()
+            fig = fig, ax
 
         return plotting.export_figure(
             fig,
-            default_path=self._calculation_results.folder / f'{self.label} (charge state)',
+            default_path=self._calculation_results.folder / title,
             default_filetype='.html',
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -633,6 +1209,42 @@ class EffectResults(_ElementResults):
         return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
 
 
+class FlowResults(_ElementResults):
+    def __init__(
+        self,
+        calculation_results: CalculationResults,
+        label: str,
+        variables: List[str],
+        constraints: List[str],
+        start: str,
+        end: str,
+        component: str,
+    ):
+        super().__init__(calculation_results, label, variables, constraints)
+        self.start = start
+        self.end = end
+        self.component = component
+
+    @property
+    def flow_rate(self) -> xr.DataArray:
+        return self.solution[f'{self.label}|flow_rate']
+
+    @property
+    def flow_hours(self) -> xr.DataArray:
+        return (self.flow_rate * self._calculation_results.hours_per_timestep).rename(f'{self.label}|flow_hours')
+
+    @property
+    def size(self) -> xr.DataArray:
+        name = f'{self.label}|size'
+        if name in self.solution:
+            return self.solution[name]
+        try:
+            return self._calculation_results.flow_system.flows[self.label].size.rename(name)
+        except _FlowSystemRestorationError:
+            logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
+            return xr.DataArray(np.nan).rename(name)
+
+
 class SegmentedCalculationResults:
     """
     Class to store the results of a SegmentedCalculation.
@@ -659,7 +1271,7 @@ class SegmentedCalculationResults:
         with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
-            [CalculationResults.from_file(folder, name) for name in meta_data['sub_calculations']],
+            [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
             all_timesteps=pd.DatetimeIndex(
                 [datetime.datetime.fromisoformat(date) for date in meta_data['all_timesteps']], name='time'
             ),
@@ -684,7 +1296,7 @@ class SegmentedCalculationResults:
         self.overlap_timesteps = overlap_timesteps
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
+        self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
 
     @property
     def meta_data(self) -> Dict[str, Union[int, List[str]]]:
@@ -756,7 +1368,7 @@ class SegmentedCalculationResults:
                     f'Folder {folder} and its parent do not exist. Please create them first.'
                 ) from e
         for segment in self.segment_results:
-            segment.to_file(folder=folder, name=f'{name}-{segment.name}', compression=compression)
+            segment.to_file(folder=folder, name=segment.name, compression=compression)
 
         with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(self.meta_data, f, indent=4, ensure_ascii=False)
@@ -773,6 +1385,7 @@ def plot_heatmap(
     save: Union[bool, pathlib.Path] = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
+    indexer: Optional[Dict[str, Any]] = None,
 ):
     """
     Plots a heatmap of the solution of a variable.
@@ -787,7 +1400,14 @@ def plot_heatmap(
         save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
         show: Whether to show the plot or not.
         engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+        indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+             If None, uses first value for each dimension.
+             If empty dict {}, uses all values.
     """
+    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer, drop=True)
+    suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+    name = name if not suffix_parts else name + suffix
+
     heatmap_data = plotting.heat_map_data_from_df(
         dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
     )
@@ -824,6 +1444,7 @@ def sanitize_dataset(
     negate: Optional[List[str]] = None,
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
+    drop_suffix: Optional[str] = None,
 ) -> xr.Dataset:
     """
     Sanitizes a dataset by handling small values (dropping or zeroing) and optionally reindexing the time axis.
@@ -835,6 +1456,7 @@ def sanitize_dataset(
         negate: The variables to negate. If None, no variables are negated.
         drop_small_vars: If True, drops variables where all values are below threshold.
         zero_small_values: If True, sets values below threshold to zero.
+        drop_suffix: Drop suffix of data var names. Split by the provided str.
 
     Returns:
         xr.Dataset: The sanitized dataset.
@@ -873,26 +1495,210 @@ def sanitize_dataset(
     if timesteps is not None and not ds.indexes['time'].equals(timesteps):
         ds = ds.reindex({'time': timesteps}, fill_value=np.nan)
 
+    if drop_suffix is not None:
+        if not isinstance(drop_suffix, str):
+            raise ValueError(f'Only pass str values to drop suffixes. Got {drop_suffix}')
+        unique_dict = {}
+        for var in ds.data_vars:
+            new_name = var.split(drop_suffix)[0]
+
+            # If name already exists, keep original name
+            if new_name in unique_dict.values():
+                unique_dict[var] = var
+            else:
+                unique_dict[var] = new_name
+        ds = ds.rename(unique_dict)
+
     return ds
 
 
 def filter_dataset(
     ds: xr.Dataset,
-    variable_dims: Optional[Literal['scalar', 'time']] = None,
+    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
+    timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
+    scenarios: Optional[Union[pd.Index, str, int]] = None,
+    contains: Optional[Union[str, List[str]]] = None,
+    startswith: Optional[Union[str, List[str]]] = None,
 ) -> xr.Dataset:
     """
-    Filters a dataset by its dimensions.
+    Filters a dataset by its dimensions, indexes, and with string filters for variable names.
 
     Args:
         ds: The dataset to filter.
-        variable_dims: The dimension of the variables to filter for.
-    """
-    if variable_dims is None:
-        return ds
+        variable_dims: The dimension of which to get variables from.
+            - 'scalar': Get scalar variables (without dimensions)
+            - 'time': Get time-dependent variables (with a time dimension)
+            - 'scenario': Get scenario-dependent variables (with ONLY a scenario dimension)
+            - 'timeonly': Get time-dependent variables (with ONLY a time dimension)
+            - 'scenarioonly': Get scenario-dependent variables (with ONLY a scenario dimension)
+        timesteps: Optional time indexes to select. Can be:
+            - pd.DatetimeIndex: Multiple timesteps
+            - str/pd.Timestamp: Single timestep
+            Defaults to all available timesteps.
+        scenarios: Optional scenario indexes to select. Can be:
+            - pd.Index: Multiple scenarios
+            - str/int: Single scenario (int is treated as a label, not an index position)
+            Defaults to all available scenarios.
+        contains: Filter variables that contain this string or strings.
+            If a list is provided, variables must contain ALL strings in the list.
+        startswith: Filter variables that start with this string or strings.
+            If a list is provided, variables must start with ANY of the strings in the list.
 
-    if variable_dims == 'scalar':
-        return ds[[name for name, da in ds.data_vars.items() if len(da.dims) == 0]]
-    elif variable_dims == 'time':
-        return ds[[name for name, da in ds.data_vars.items() if 'time' in da.dims]]
+    Returns:
+        Filtered dataset with specified variables and indexes.
+    """
+    # First filter by dimensions
+    filtered_ds = ds.copy()
+    if variable_dims is not None:
+        if variable_dims == 'scalar':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if not filtered_ds[v].dims]]
+        elif variable_dims == 'time':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if 'time' in filtered_ds[v].dims]]
+        elif variable_dims == 'scenario':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if 'scenario' in filtered_ds[v].dims]]
+        elif variable_dims == 'timeonly':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if filtered_ds[v].dims == ('time',)]]
+        elif variable_dims == 'scenarioonly':
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if filtered_ds[v].dims == ('scenario',)]]
+        else:
+            raise ValueError(f'Unknown variable_dims "{variable_dims}" for filter_dataset')
+
+    # Filter by 'contains' parameter
+    if contains is not None:
+        if isinstance(contains, str):
+            # Single string - keep variables that contain this string
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if contains in v]]
+        elif isinstance(contains, list) and all(isinstance(s, str) for s in contains):
+            # List of strings - keep variables that contain ALL strings in the list
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if all(s in v for s in contains)]]
+        else:
+            raise TypeError(f"'contains' must be a string or list of strings, got {type(contains)}")
+
+    # Filter by 'startswith' parameter
+    if startswith is not None:
+        if isinstance(startswith, str):
+            # Single string - keep variables that start with this string
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if v.startswith(startswith)]]
+        elif isinstance(startswith, list) and all(isinstance(s, str) for s in startswith):
+            # List of strings - keep variables that start with ANY of the strings in the list
+            filtered_ds = filtered_ds[[v for v in filtered_ds.data_vars if any(v.startswith(s) for s in startswith)]]
+        else:
+            raise TypeError(f"'startswith' must be a string or list of strings, got {type(startswith)}")
+
+    # Handle time selection if needed
+    if timesteps is not None and 'time' in filtered_ds.dims:
+        try:
+            filtered_ds = filtered_ds.sel(time=timesteps)
+        except KeyError as e:
+            available_times = set(filtered_ds.indexes['time'])
+            requested_times = set([timesteps]) if not isinstance(timesteps, pd.Index) else set(timesteps)
+            missing_times = requested_times - available_times
+            raise ValueError(
+                f'Timesteps not found in dataset: {missing_times}. Available times: {available_times}'
+            ) from e
+
+    # Handle scenario selection if needed
+    if scenarios is not None and 'scenario' in filtered_ds.dims:
+        try:
+            filtered_ds = filtered_ds.sel(scenario=scenarios)
+        except KeyError as e:
+            available_scenarios = set(filtered_ds.indexes['scenario'])
+            requested_scenarios = set([scenarios]) if not isinstance(scenarios, pd.Index) else set(scenarios)
+            missing_scenarios = requested_scenarios - available_scenarios
+            raise ValueError(
+                f'Scenarios not found in dataset: {missing_scenarios}. Available scenarios: {available_scenarios}'
+            ) from e
+
+    return filtered_ds
+
+
+def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: Optional[Union[str, List[str]]]) -> xr.DataArray:
+    """Filter flows by node and component attributes.
+
+    Filters are applied in the order they are specified. All filters must match for an edge to be included.
+
+    To recombine filtered dataarrays, use `xr.concat`.
+
+    xr.concat([res.sizes(start='Fernwärme'), res.sizes(end='Fernwärme')], dim='flow')
+
+    Args:
+        da: Flow DataArray with network metadata coordinates.
+        **kwargs: Coord filters as name=value pairs.
+
+    Returns:
+        Filtered DataArray with matching edges.
+
+    Raises:
+        AttributeError: If required coordinates are missing.
+        ValueError: If specified nodes don't exist or no matches found.
+    """
+
+    # Helper function to process filters
+    def apply_filter(array, coord_name: str, coord_values: Union[Any, List[Any]]):
+        # Verify coord exists
+        if coord_name not in array.coords:
+            raise AttributeError(f"Missing required coordinate '{coord_name}'")
+
+        # Convert single value to list
+        val_list = [coord_values] if isinstance(coord_values, str) else coord_values
+
+        # Verify coord_values exist
+        available = set(array[coord_name].values)
+        missing = [v for v in val_list if v not in available]
+        if missing:
+            raise ValueError(f'{coord_name.title()} value(s) not found: {missing}')
+
+        # Apply filter
+        return array.where(
+            array[coord_name].isin(val_list) if isinstance(coord_values, list) else array[coord_name] == coord_values,
+            drop=True,
+        )
+
+    # Apply filters from kwargs
+    filters = {k: v for k, v in kwargs.items() if v is not None}
+    try:
+        for coord, values in filters.items():
+            da = apply_filter(da, coord, values)
+    except ValueError as e:
+        raise ValueError(f'No edges match criteria: {filters}') from e
+
+    # Verify results exist
+    if da.size == 0:
+        raise ValueError(f'No edges match criteria: {filters}')
+
+    return da
+
+
+def _apply_indexer_to_data(
+    data: Union[xr.DataArray, xr.Dataset], indexer: Optional[Dict[str, Any]] = None, drop=False
+) -> Tuple[Union[xr.DataArray, xr.Dataset], List[str]]:
+    """
+    Apply indexer selection or auto-select first values for non-time dimensions.
+
+    Args:
+        data: xarray Dataset or DataArray
+        indexer: Optional selection dict
+            If None, uses first value for each dimension (except time).
+            If empty dict {}, uses all values.
+
+    Returns:
+        Tuple of (selected_data, selection_string)
+    """
+    selection_string = []
+
+    if indexer is not None:
+        # User provided indexer
+        data = data.sel(indexer, drop=drop)
+        selection_string.extend(f'{v}[{k}]' for k, v in indexer.items())
     else:
-        raise ValueError(f'Not allowed value for "filter_dataset()": {variable_dims=}')
+        # Auto-select first value for each dimension except 'time'
+        selection = {}
+        for dim in data.dims:
+            if dim != 'time' and dim in data.coords:
+                first_value = data.coords[dim].values[0]
+                selection[dim] = first_value
+                selection_string.append(f'{first_value}[{dim}]')
+        if selection:
+            data = data.sel(selection, drop=drop)
+
+    return data, selection_string

@@ -58,7 +58,7 @@ def create_storage(
 ) -> Storage:
     """
     Create a battery storage component.
-    
+
     Args:
         label: Unique identifier
         capacity_kwh: Storage capacity [kWh]

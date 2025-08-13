@@ -1,5 +1,5 @@
 # testing of
    # abschnittsweise linear testen
-   # Komponenten mit offenen Flows 
+   # Komponenten mit offenen Flows
    # Binärvariablen ohne max-Wert-Vorgabe des Flows (Binärungenauigkeitsproblem)
-   # Medien-zulässigkeit 
+   # Medien-zulässigkeit

@@ -10,7 +10,7 @@ With:
 - $p_{f_\text{in}}(\text{t}_i)$ and $p_{f_\text{out}}(\text{t}_i)$ being the flow-rate at time $\text{t}_i$ for flow $f_\text{in}$ and $f_\text{out}$, respectively
 - $\text a_{f_\text{in}}(\text{t}_i)$ and $\text b_{f_\text{out}}(\text{t}_i)$ being the ratio of the flow-rate at time $\text{t}_i$ for flow $f_\text{in}$ and $f_\text{out}$, respectively
 
-With one incoming **Flow** and one outgoing **Flow**, this can be simplified to: 
+With one incoming **Flow** and one outgoing **Flow**, this can be simplified to:
 
 $$ \label{eq:Linear-Transformer-Ratio-simple}
     \text a(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = p_{f_\text{out}}(\text{t}_i)
