@@ -245,98 +245,6 @@ class InvestParameters(Interface):
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
 
-# Base interface for common parameters
-@register_class_for_io
-class _BaseYearAwareInvestParameters(Interface):
-    """
-    Base parameters for year-aware investment modeling.
-    Contains common sizing and effects parameters used by all variants.
-    """
-
-    def __init__(
-        self,
-        # Basic sizing parameters
-        minimum_size: Optional[Scalar] = None,
-        maximum_size: Optional[Scalar] = None,
-        fixed_size: Optional[Scalar] = None,
-        optional: bool = False,
-        # Direct effects
-        effects_of_investment_per_size: Optional['NonTemporalEffectsUser'] = None,
-        effects_of_investment: Optional['NonTemporalEffectsUser'] = None,
-    ):
-        """
-        Initialize base year-aware investment parameters.
-
-        Args:
-            minimum_size: Minimum investment size when invested. Defaults to CONFIG.modeling.EPSILON.
-            maximum_size: Maximum possible investment size. Defaults to CONFIG.modeling.BIG.
-            fixed_size: If specified, investment size is fixed to this value.
-            effects_of_investment_per_size: Effects applied per unit of investment size for each year invested.
-                Example: {'costs': 100} applies 100 * size * years_invested to total costs.
-            effects_of_investment: One-time effects applied when investment decision is made.
-                Example: {'costs': 1000} applies 1000 to costs in the investment year.
-        """
-        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
-        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG
-        self.fixed_size = fixed_size
-        self.optional = optional
-
-        self.effects_of_investment_per_size: 'NonTemporalEffectsUser' = (
-            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
-        )
-        self.effects_of_investment: 'NonTemporalEffectsUser' = (
-            effects_of_investment if effects_of_investment is not None else {}
-        )
-
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
-        """Transform all parameter data to match the flow system's coordinate structure."""
-        self._plausibility_checks(flow_system)
-
-        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_of_investment_per_size,
-            label_suffix='effects_of_investment_per_size',
-            dims=['year', 'scenario'],
-        )
-        self.effects_of_investment = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_of_investment,
-            label_suffix='effects_of_investment',
-            dims=['year', 'scenario'],
-        )
-
-        self.minimum_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|minimum_size', self.minimum_size, dims=['year', 'scenario']
-        )
-        self.maximum_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|maximum_size', self.maximum_size, dims=['year', 'scenario']
-        )
-        if self.fixed_size is not None:
-            self.fixed_size = flow_system.fit_to_model_coords(
-                f'{name_prefix}|fixed_size', self.fixed_size, dims=['year', 'scenario']
-            )
-
-    def _plausibility_checks(self, flow_system):
-        """Validate parameter consistency and compatibility with the flow system."""
-        if flow_system.years is None:
-            raise ValueError("YearAwareInvestParameters requires the flow_system to have a 'years' dimension.")
-
-    @property
-    def minimum_or_fixed_size(self) -> NonTemporalData:
-        """Get the effective minimum size (fixed size takes precedence)."""
-        return self.fixed_size if self.fixed_size is not None else self.minimum_size
-
-    @property
-    def maximum_or_fixed_size(self) -> NonTemporalData:
-        """Get the effective maximum size (fixed size takes precedence)."""
-        return self.fixed_size if self.fixed_size is not None else self.maximum_size
-
-    @property
-    def is_fixed_size(self) -> bool:
-        """Check if investment size is fixed."""
-        return self.fixed_size is not None
-
-
 YearOfInvestmentData = NonTemporalDataUser
 """This datatype is used to define things related to the year of investment."""
 YearOfInvestmentDataBool = Union[bool, YearOfInvestmentData]
@@ -430,7 +338,7 @@ class InvestTimingParameters(Interface):
     def _plausibility_checks(self, flow_system):
         """Validate parameter consistency."""
         if flow_system.years is None:
-            raise ValueError("YearAwareInvestParameters requires the flow_system to have a 'years' dimension.")
+            raise ValueError("InvestTimingParameters requires the flow_system to have a 'years' dimension.")
 
         if (self.force_investment.sum('year') > 1).any():
             raise ValueError('force_investment can only be True for a single year.')
