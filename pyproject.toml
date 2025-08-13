@@ -50,21 +50,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Development tools and testing
-dev = [
-    "pytest >= 7.0.0",
-    "ruff >= 0.9.0",
-    "pyvis == 0.3.1",  # Visualizing FlowSystem
-    "tsam >= 2.3.1, < 3.0.0",   # Time series aggregation
-    "scipy >= 1.15.1, < 2.0.0", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
-    "gurobipy >= 10.0.0",
-    "dash >= 3.0.0",
-    "dash-cytoscape >= 1.0.0",
-    "dash-daq >= 0.6.0",
-    "networkx >= 3.0.0",
-    "werkzeug >= 3.0.0",
-]
-
 # Interactive network visualization with enhanced color picker
 network-viz = [
     "dash >= 3.0.0",
@@ -85,6 +70,21 @@ full = [
     "dash-daq >= 0.6.0",  # Visualizing FlowSystem Network as app
     "networkx >= 3.0.0",  # Visualizing FlowSystem Network as app
     "werkzeug >= 3.0.0",  # Visualizing FlowSystem Network as app
+]
+
+# Development tools and testing
+dev = [
+    "pytest >= 7.0.0",
+    "ruff >= 0.9.0",
+    "pyvis == 0.3.1",  # Visualizing FlowSystem
+    "tsam >= 2.3.1, < 3.0.0",   # Time series aggregation
+    "scipy >= 1.15.1, < 2.0.0", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
+    "gurobipy >= 10.0.0",
+    "dash >= 3.0.0",
+    "dash-cytoscape >= 1.0.0",
+    "dash-daq >= 0.6.0",
+    "networkx >= 3.0.0",
+    "werkzeug >= 3.0.0",
 ]
 
 # Documentation building
