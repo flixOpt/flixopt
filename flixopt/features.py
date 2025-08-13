@@ -157,8 +157,6 @@ class InvestmentTimingModel(Submodel):
 
         self._constraint_investment()
         self._constraint_decommissioning()
-        if self.parameters.duration_in_years is not None:
-            self._constraint_duration_between_investment_and_decommissioning()
 
     def _basic_modeling(self):
         size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
@@ -210,6 +208,27 @@ class InvestmentTimingModel(Submodel):
             self.decommissioning_occurs.sum('year') <= 1,
             short_name='decommissioning_occurs|once',
         )
+
+        ########################################################################
+        previous_lifetime = self.parameters.previous_lifetime if self.parameters.previous_lifetime is not None else 0
+        self.add_variables(
+            lower=0,
+            upper=self.parameters.maximum_or_fixed_lifetime if self.parameters.maximum_or_fixed_lifetime is not None else self._model.flow_system.years_per_year.sum('year') + previous_lifetime,
+            coords=self._model.get_coords(['scenario']),
+            short_name='size|lifetime',
+        )
+        self.add_constraints(
+            self.lifetime == (self.is_invested * self._model.flow_system.years_per_year).sum('year')
+            + self.is_invested.isel(year=0) * previous_lifetime,
+            short_name='size|lifetime',
+        )
+        if self.parameters.minimum_or_fixed_lifetime is not None:
+            self.add_constraints(
+                self.lifetime + self.is_invested.isel(year=-1) * self.parameters.minimum_or_fixed_lifetime
+                >=
+                self.investment_occurs * self.parameters.minimum_or_fixed_lifetime,
+                short_name='size|lifetime|lb',
+            )
 
         ########################################################################
         self.add_variables(
@@ -307,50 +326,6 @@ class InvestmentTimingModel(Submodel):
                 short_name='size|changes|restricted_end',
             )
 
-    def _constraint_duration_between_investment_and_decommissioning(self):
-        years = self._model.flow_system.years
-        years_of_decommissioning = years + self.parameters.duration_in_years
-
-        # Filter and get actual selected years in one step
-        valid_mask = years_of_decommissioning <= years[-1]
-        if valid_mask.any():
-            valid_years_of_investment = years[valid_mask]
-            valid_years_of_decommissioning = years_of_decommissioning[valid_mask]
-            actual_years_of_decommissioning = (
-                self.investment_occurs.sel(year=valid_years_of_decommissioning, method='bfill').coords['year'].values
-            )
-
-            # Warning for mismatched years
-            mismatched = valid_years_of_decommissioning != actual_years_of_decommissioning
-            for inv_year, target_year, actual_year in zip(
-                valid_years_of_investment[mismatched],
-                valid_years_of_decommissioning[mismatched],
-                actual_years_of_decommissioning[mismatched],
-                strict=False,
-            ):
-                logger.warning(
-                    f'year_of_decommissioning {target_year} for {self.size.name} not in flow_system years. For an investment in year {inv_year}, the year_of_decommissioning is set to {actual_year}'
-                )
-
-            group = xr.DataArray(
-                actual_years_of_decommissioning,  # values: the actual decommissioning years
-                coords={'year': valid_years_of_investment},  # coordinates: investment years
-                dims=['year'],
-                name='year_of_decommissioning',
-            )
-
-            # Now you can use proper xarray groupby
-            grouped_increases = (
-                self.investment_occurs.sel(year=valid_years_of_investment).groupby(group).sum('year_of_decommissioning')
-            )
-
-            # Create constraints
-            self.add_constraints(
-                self.decommissioning_occurs.sel(year=grouped_increases.coords['year_of_decommissioning'])
-                == grouped_increases,
-                short_name='size|changes|fixed_duration',
-            )
-
     @property
     def size(self) -> linopy.Variable:
         """Investment size variable"""
@@ -392,6 +367,11 @@ class InvestmentTimingModel(Submodel):
     def divestment_used(self) -> linopy.LinearExpression:
         """Binary investment decision variable"""
         return self.decommissioning_occurs.sum('year')
+
+    @property
+    def lifetime(self) -> linopy.Variable:
+        """Lifetime variable"""
+        return self._variables['size|lifetime']
 
     @property
     def duration(self) -> linopy.Variable:

@@ -358,7 +358,9 @@ class InvestTimingParameters(Interface):
         allow_decommissioning: YearOfInvestmentDataBool = True,
         force_investment: YearOfInvestmentDataBool = False,
         force_decommissioning: YearOfInvestmentDataBool = False,
-        duration_in_years: Optional[Scalar] = None,
+        fixed_lifetime: Optional[Scalar] = None,
+        minimum_lifetime: Optional[Scalar] = None,
+        maximum_lifetime: Optional[Scalar] = None,
         minimum_size: Optional[YearOfInvestmentData] = None,
         maximum_size: Optional[YearOfInvestmentData] = None,
         fixed_size: Optional[YearOfInvestmentData] = None,
@@ -366,6 +368,7 @@ class InvestTimingParameters(Interface):
         specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
         fixed_effects_by_investment_year: Optional[xr.DataArray] = None,
         specific_effects_by_investment_year: Optional[xr.DataArray] = None,
+        previous_lifetime: Optional[Scalar] = None,
     ):
         """
         These parameters are used to include the timing of investments in the model.
@@ -380,7 +383,7 @@ class InvestTimingParameters(Interface):
             allow_decommissioning: Allow decommissioning in a certain year. By default, allow it in all years.
             force_investment: Force the investment to occur in a certain year.
             force_decommissioning: Force the decommissioning to occur in a certain year.
-            duration_in_years: Fix the duration between the year of investment and the year ofdecommissioning.
+            fixed_lifetime: Fix the lifetime of an investment (duration between investment and decommissioning).
             minimum_size: Minimum possible size of the investment. Can depend on the year of investment.
             maximum_size: Maximum possible size of the investment. Can depend on the year of investment.
             fixed_size: Fix the size of the investment. Can depend on the year of investment. Can still be 0 if not forced.
@@ -409,7 +412,11 @@ class InvestTimingParameters(Interface):
         self.allow_decommissioning = allow_decommissioning
         self.force_investment = force_investment
         self.force_decommissioning = force_decommissioning
-        self.duration_in_years = duration_in_years
+
+        self.maximum_lifetime = maximum_lifetime
+        self.minimum_lifetime = minimum_lifetime
+        self.fixed_lifetime = fixed_lifetime
+        self.previous_lifetime = previous_lifetime
 
         self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
         self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
@@ -430,29 +437,7 @@ class InvestTimingParameters(Interface):
         if (self.force_decommissioning.sum('year') > 1).any():
             raise ValueError('force_decommissioning can only be True for a single year.')
 
-        specify_timing = (
-            (self.duration_in_years is not None)
-            + bool((self.force_investment.sum('year') > 1).any())
-            + bool((self.force_decommissioning.sum('year') > 1).any())
-        )
-
-        if specify_timing == 0:
-            # TODO: Should this be an exception or rather a warning? Is there a valid use case for this?
-            # And a mathematically valid formulation (regarding the effects especially)?
-            raise ValueError(
-                'Either the the duration of an investment needs to be set, or the investment or decommissioning '
-                'needs to be forced in one year.'
-            )
-
-        if specify_timing == 3:
-            # TODO: Should this be an exception or rather a warning? Is there a valid use case for this?
-            # And a mathematically valid formulation (regarding the effects especially)?
-            raise ValueError(
-                'Either the the duration of an investment needs to be set, or the investment or decommissioning '
-                'needs to be forced in one year.'
-            )
-
-        if (self.force_investment.sum('year') >= 1).any() and (self.force_decommissioning.sum('year') >= 1).any():
+        if (self.force_investment.sum('year') == 1).any() and (self.force_decommissioning.sum('year') == 1).any():
             year_of_forced_investment = (
                 self.force_investment.where(self.force_investment) * self.force_investment.year
             ).sum('year')
@@ -464,6 +449,47 @@ class InvestTimingParameters(Interface):
                     f'force_investment needs to be before force_decommissioning. Got:\n'
                     f'{self.force_investment}\nand\n{self.force_decommissioning}'
                 )
+
+        if self.previous_lifetime is not None:
+            if self.fixed_size is None:
+                #TODO: Might be only a warning
+                raise ValueError('previous_lifetime can only be used if fixed_size is defined.')
+            if self.force_investment is False:
+                #TODO: Might be only a warning
+                raise ValueError('previous_lifetime can only be used if force_investment is True.')
+
+        if self.minimum_or_fixed_lifetime is not None and self.maximum_or_fixed_lifetime is not None:
+            lifetime_range = self.maximum_or_fixed_lifetime - self.minimum_or_fixed_lifetime
+            safe_lifetime_range = flow_system.years_per_year.max().item()
+            if (safe_lifetime_range > lifetime_range).any():
+                logger.warning(
+                    f'Plausibility Check in {self.__class__.__name__}:\n'
+                    f'  The lifetime of the investment is tightly constrainted.'
+                    f'  The yearly resolution of the FlowSystem is up to {safe_lifetime_range} years.\n'
+                    f'  This can prevent certain years of investment or lead to infeasibilities.\n'
+                    f'  Consider using more years in your model (currently: {flow_system.years=})\n'
+                    f'  or relax the lifetime limits to span {safe_lifetime_range} years to resolve this issue.'
+                )
+
+        specify_timing = (
+            (self.fixed_lifetime is not None)
+            + bool((self.force_investment.sum('year') > 1).any())
+            + bool((self.force_decommissioning.sum('year') > 1).any())
+        )
+
+        if specify_timing == 0:
+            # TODO: Is there a valid use case for this? Should this be checked at all?
+            logger.warning(
+                'Either the the duration of an investment needs to be set, or the investment or decommissioning '
+                'needs to be forced in one year.'
+            )
+
+        if specify_timing == 3:
+            # TODO: Is there a valid use case for this? Should this be checked at all?
+            logger.warning(
+                'Either the the duration of an investment needs to be set, or the investment or decommissioning '
+                'needs to be forced in one year.'
+            )
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         """Transform all parameter data to match the flow system's coordinate structure."""
@@ -478,6 +504,15 @@ class InvestTimingParameters(Interface):
             effect_values=self.specific_effects,
             label_suffix='specific_effects',
             dims=['year', 'scenario'],
+        )
+        self.maximum_lifetime = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_lifetime', self.maximum_lifetime, dims=['scenario']
+        )
+        self.minimum_lifetime = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_lifetime', self.minimum_lifetime, dims=['scenario']
+        )
+        self.fixed_lifetime = flow_system.fit_to_model_coords(
+            f'{name_prefix}|fixed_lifetime', self.fixed_lifetime, dims=['scenario']
         )
 
         self.force_investment = flow_system.fit_to_model_coords(
@@ -552,6 +587,16 @@ class InvestTimingParameters(Interface):
     def is_fixed_size(self) -> bool:
         """Check if investment size is fixed."""
         return self.fixed_size is not None
+
+    @property
+    def minimum_or_fixed_lifetime(self) -> NonTemporalData:
+        """Get the effective minimum lifetime (fixed lifetime takes precedence)."""
+        return self.fixed_lifetime if self.fixed_lifetime is not None else self.minimum_lifetime
+
+    @property
+    def maximum_or_fixed_lifetime(self) -> NonTemporalData:
+        """Get the effective maximum lifetime (fixed lifetime takes precedence)."""
+        return self.fixed_lifetime if self.fixed_lifetime is not None else self.maximum_lifetime
 
 
 @register_class_for_io
