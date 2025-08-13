@@ -60,11 +60,12 @@ dev = [
     "gurobipy >= 10.0.0",
     "dash >= 3",
     "dash-cytoscape >= 1",
+    "dash-daq >= 0.6.0",
     "networkx >= 3",
     "werkzeug >= 3",
 ]
 
-viz = ["dash >= 3", "dash-cytoscape >= 1", "networkx >= 3", "werkzeug >= 3", "dash-daq>=0.6.0"]
+network-viz = ["dash >= 3", "dash-cytoscape >= 1", "networkx >= 3", "werkzeug >= 3", "dash-daq>=0.6.0"]
 
 full = [
     "pyvis == 0.3.1",  # Visualizing FlowSystem Network
@@ -75,7 +76,7 @@ full = [
     "dash-cytoscape >= 1",  # Visualizing FlowSystem Network as app
     "networkx >= 3",  # Visualizing FlowSystem Network as app
     "werkzeug >= 3",  # Visualizing FlowSystem Network as app
-    "dash-daq>=0.6.0",  # Visualizing FlowSystem Network as app
+    "dash-daq >= 0.6.0",  # Visualizing FlowSystem Network as app
 ]
 
 docs = [
