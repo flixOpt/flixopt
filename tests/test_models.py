@@ -93,7 +93,7 @@ def create_annualized_effects(
 @pytest.fixture
 def flow_system() -> fx.FlowSystem:
     """Create basic elements for component testing with coordinate parametrization."""
-    years = pd.Index([2020, 2021, 2022, 2023, 2024, 2030], name='year')
+    years = pd.Index([2020, 2021, 2022, 2023, 2024, 2026, 2028, 2030], name='year')
     timesteps = pd.date_range('2020-01-01', periods=24, freq='h', name='time')
     flow_system = fx.FlowSystem(timesteps=timesteps, years=years)
 
@@ -106,6 +106,7 @@ def flow_system() -> fx.FlowSystem:
     electricity_sink = Sinks.electricity_feed_in(p_el)
 
     flow_system.add_elements(*Buses.defaults())
+    flow_system.buses['Fernwärme'].excess_penalty_per_flow_hour = 0
     flow_system.add_elements(costs, heat_load, gas_source, electricity_sink)
 
     return flow_system
@@ -187,29 +188,27 @@ class TestYearAwareInvestmentModelDirect:
 
     def test_flow_invest_new(self, flow_system):
         da = xr.DataArray(
-            [25, 30, 35, 40, 45, 50],
+            [10] * 8,
             coords=(flow_system.years_of_investment,),
         ).expand_dims(year=flow_system.years)
-        da = da.where(da.year >= da.year_of_investment).fillna(0)
+        da = da.where(da.year == da.year_of_investment).fillna(0)
 
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
             size=fx.InvestTimingParameters(
-                force_investment=xr.DataArray(
-                    [False if year != 2021 else True for year in flow_system.years], coords=(flow_system.years,)
-                ),
                 # year_of_decommissioning=2030,
-                duration_in_years=2,
-                minimum_size=900,
-                maximum_size=1000,
+                minimum_lifetime=2,
+                maximum_lifetime=3,
+                minimum_size=9,
+                maximum_size=10,
                 specific_effects=xr.DataArray(
-                    [25, 30, 35, 40, 45, 50],
+                    [25, 30, 35, 40, 45, 50, 55, 60],
                     coords=(flow_system.years,),
                 )
-                * 0,
+                * -0,
                 # fix_effects=-2e3,
-                specific_effects_by_investment_year=da,
+                specific_effects_by_investment_year=-1 * da,
             ),
             relative_maximum=np.linspace(0.5, 1, flow_system.timesteps.size),
         )
@@ -217,12 +216,7 @@ class TestYearAwareInvestmentModelDirect:
         flow_system.add_elements(fx.Source('Source', source=flow))
         calculation = fx.FullCalculation('GenericName', flow_system)
         calculation.do_modeling()
-        # calculation.model.add_constraints(calculation.model['Source(Wärme)|decrease'].isel(year=2) == 1)
-        calculation.solve(fx.solvers.GurobiSolver(0, 60))
-
-        calculation = fx.FullCalculation('GenericName', flow_system.sel(year=[2022, 2030]))
-        calculation.do_modeling()
-        # calculation.model.add_constraints(calculation.model['Source(Wärme)|decrease'].isel(year=2) == 1)
+        # calculation.model.add_constraints(calculation.model['Source(Wärme)|is_invested'].sel(year=2022) == 1)
         calculation.solve(fx.solvers.GurobiSolver(0, 60))
 
         ds = calculation.results['Source'].solution
