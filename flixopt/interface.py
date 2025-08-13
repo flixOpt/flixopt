@@ -452,23 +452,38 @@ class InvestTimingParameters(Interface):
 
         if self.previous_lifetime is not None:
             if self.fixed_size is None:
-                #TODO: Might be only a warning
+                # TODO: Might be only a warning
                 raise ValueError('previous_lifetime can only be used if fixed_size is defined.')
             if self.force_investment is False:
-                #TODO: Might be only a warning
+                # TODO: Might be only a warning
                 raise ValueError('previous_lifetime can only be used if force_investment is True.')
 
         if self.minimum_or_fixed_lifetime is not None and self.maximum_or_fixed_lifetime is not None:
-            lifetime_range = self.maximum_or_fixed_lifetime - self.minimum_or_fixed_lifetime
-            safe_lifetime_range = flow_system.years_per_year.max().item()
-            if (safe_lifetime_range > lifetime_range).any():
+            years = flow_system.years.values
+
+            infeasible_years = []
+            for i, inv_year in enumerate(years[:-1]):  # Exclude last year
+                future_years = years[i + 1 :]  # All years after investment
+                min_decomm = self.minimum_or_fixed_lifetime + inv_year
+                max_decomm = self.maximum_or_fixed_lifetime + inv_year
+                if max_decomm >= years[-1]:
+                    continue
+
+                # Check if any future year falls in decommissioning window
+                future_years_da = xr.DataArray(future_years, dims=['year'])
+                valid_decomm = ((min_decomm <= future_years_da) & (future_years_da <= max_decomm)).any('year')
+                if not valid_decomm.all():
+                    infeasible_years.append(inv_year)
+
+            if infeasible_years:
                 logger.warning(
                     f'Plausibility Check in {self.__class__.__name__}:\n'
-                    f'  The lifetime of the investment is tightly constrainted.'
-                    f'  The yearly resolution of the FlowSystem is up to {safe_lifetime_range} years.\n'
-                    f'  This can prevent certain years of investment or lead to infeasibilities.\n'
-                    f'  Consider using more years in your model (currently: {flow_system.years=})\n'
-                    f'  or relax the lifetime limits to span {safe_lifetime_range} years to resolve this issue.'
+                    f'  Investment years with no feasible decommissioning: {[int(year) for year in infeasible_years]}\n'
+                    f'  Consider relaxing the lifetime constraints or including more years into your model.\n'
+                    f'  Lifetime:\n'
+                    f'      min={self.minimum_or_fixed_lifetime}\n'
+                    f'      max={self.maximum_or_fixed_lifetime}\n'
+                    f'  Model years: {list(flow_system.years)}\n'
                 )
 
         specify_timing = (
