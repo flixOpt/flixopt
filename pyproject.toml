@@ -36,19 +36,15 @@ dependencies = [
     # Core scientific computing
     "numpy >= 1.21.5, < 3",
     "pandas >= 2.0.0, < 3",
-
     # Optimization and data handling
     "linopy >= 0.5.1, < 0.6.0",
     "netcdf4 >= 1.6.1, < 2",
-
     # Utilities
     "PyYAML >= 6.0.0, < 7",
     "rich >= 13.0.0",
-    "tomli >= 2.0.1; python_version < '3.11'",  #Only needed with python 3.10 or earlier
-
+    "tomli >= 2.0.1; python_version < '3.11'", #Only needed with python 3.10 or earlier
     # Default solver
     "highspy >= 1.5.3",
-
     # Visualization
     "matplotlib >= 3.5.2, < 4.0.0",
     "plotly >= 5.15.0, < 6.0.0",
@@ -68,7 +64,7 @@ dev = [
     "werkzeug >= 3",
 ]
 
-viz = ["dash >= 3", "dash-cytoscape >= 1", "networkx >= 3", "werkzeug >= 3"]
+viz = ["dash >= 3", "dash-cytoscape >= 1", "networkx >= 3", "werkzeug >= 3", "dash-daq>=0.6.0"]
 
 full = [
     "pyvis == 0.3.1",  # Visualizing FlowSystem Network
@@ -79,6 +75,7 @@ full = [
     "dash-cytoscape >= 1",  # Visualizing FlowSystem Network as app
     "networkx >= 3",  # Visualizing FlowSystem Network as app
     "werkzeug >= 3",  # Visualizing FlowSystem Network as app
+    "dash-daq>=0.6.0",  # Visualizing FlowSystem Network as app
 ]
 
 docs = [
