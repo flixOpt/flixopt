@@ -13,6 +13,7 @@ from .conftest import (
     simple_flow_system,
 )
 
+
 @pytest.fixture(params=[simple_flow_system, flow_system_segments_of_flows_2, flow_system_long])
 def flow_system(request):
     fs = request.getfixturevalue(request.param.__name__)
