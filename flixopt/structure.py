@@ -179,7 +179,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """Returns the scenario weights of the FlowSystem. If None, return weights that are normalized to 1 (one)"""
         if self.flow_system.weights is None:
             weights = self.flow_system.fit_to_model_coords(
-                'weights', self.flow_system.years_per_year, dims=['year', 'scenario']
+                'weights',
+                1 if self.flow_system.years is None else self.flow_system.years_per_year,
+                dims=['year', 'scenario']
             )
 
             return weights / weights.sum()
