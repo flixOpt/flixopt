@@ -252,16 +252,16 @@ class Flow(Element):
             self.label_full, self.effects_per_flow_hour, 'per_flow_hour'
         )
         self.flow_hours_total_max = flow_system.fit_to_model_coords(
-            f'{self.label_full}|flow_hours_total_max', self.flow_hours_total_max, has_time_dim=False
+            f'{self.label_full}|flow_hours_total_max', self.flow_hours_total_max, dims=['year', 'scenario']
         )
         self.flow_hours_total_min = flow_system.fit_to_model_coords(
-            f'{self.label_full}|flow_hours_total_min', self.flow_hours_total_min, has_time_dim=False
+            f'{self.label_full}|flow_hours_total_min', self.flow_hours_total_min, dims=['year', 'scenario']
         )
         self.load_factor_max = flow_system.fit_to_model_coords(
-            f'{self.label_full}|load_factor_max', self.load_factor_max, has_time_dim=False
+            f'{self.label_full}|load_factor_max', self.load_factor_max, dims=['year', 'scenario']
         )
         self.load_factor_min = flow_system.fit_to_model_coords(
-            f'{self.label_full}|load_factor_min', self.load_factor_min, has_time_dim=False
+            f'{self.label_full}|load_factor_min', self.load_factor_min, dims=['year', 'scenario']
         )
 
         if self.on_off_parameters is not None:
@@ -269,7 +269,7 @@ class Flow(Element):
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system, self.label_full)
         else:
-            self.size = flow_system.fit_to_model_coords(f'{self.label_full}|size', self.size, has_time_dim=False)
+            self.size = flow_system.fit_to_model_coords(f'{self.label_full}|size', self.size, dims=['year', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound

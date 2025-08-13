@@ -223,29 +223,29 @@ class Storage(Component):
         )
         if not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = flow_system.fit_to_model_coords(
-                f'{self.label_full}|initial_charge_state', self.initial_charge_state, has_time_dim=False
+                f'{self.label_full}|initial_charge_state', self.initial_charge_state, dims=['year', 'scenario']
             )
         self.minimal_final_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimal_final_charge_state', self.minimal_final_charge_state, has_time_dim=False
+            f'{self.label_full}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['year', 'scenario']
         )
         self.maximal_final_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximal_final_charge_state', self.maximal_final_charge_state, has_time_dim=False
+            f'{self.label_full}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['year', 'scenario']
         )
         self.relative_minimum_final_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum_final_charge_state',
             self.relative_minimum_final_charge_state,
-            has_time_dim=False,
+            dims=['year', 'scenario'],
         )
         self.relative_maximum_final_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_maximum_final_charge_state',
             self.relative_maximum_final_charge_state,
-            has_time_dim=False,
+            dims=['year', 'scenario'],
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
             self.capacity_in_flow_hours.transform_data(flow_system, f'{self.label_full}|InvestParameters')
         else:
             self.capacity_in_flow_hours = flow_system.fit_to_model_coords(
-                f'{self.label_full}|capacity_in_flow_hours', self.capacity_in_flow_hours, has_time_dim=False
+                f'{self.label_full}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['year', 'scenario']
             )
 
     def _plausibility_checks(self) -> None:
