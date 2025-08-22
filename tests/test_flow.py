@@ -237,7 +237,7 @@ class TestFlowInvestModel:
             flow.model.variables['Sink(Wärme)|size'] >= flow.model.variables['Sink(Wärme)|is_invested'] * 20,
         )
 
-    def test_flow_invest_optional_wo_min_size(self, basic_flow_system_linopy):
+    def test_flow_invest_wo_min_size_optional(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
         timesteps = flow_system.time_series_collection.timesteps
 
@@ -327,13 +327,13 @@ class TestFlowInvestModel:
             ]
         )
 
-        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=1e-5, upper=100))
+        assert_var_equal(model['Sink(Wärme)|size'], model.add_variables(lower=0, upper=100))
 
         # flow_rate
         assert_var_equal(
             flow.model.flow_rate,
             model.add_variables(
-                lower=np.linspace(0.1, 0.5, timesteps.size) * 1e-5,
+                lower=0,
                 upper=np.linspace(0.5, 1, timesteps.size) * 100,
                 coords=(timesteps,),
             ),
