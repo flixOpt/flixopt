@@ -12,6 +12,7 @@ from .commons import (
     FlowSystem,
     FullCalculation,
     InvestParameters,
+    InvestTimingParameters,
     LinearConverter,
     OnOffParameters,
     Piece,

@@ -6,6 +6,8 @@ These are tightly connected to features.py
 import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
 
+import xarray as xr
+
 from .config import CONFIG
 from .core import NonTemporalData, NonTemporalDataUser, Scalar, TemporalDataUser
 from .structure import Interface, register_class_for_io
@@ -32,7 +34,7 @@ class Piece(Interface):
         self.end = end
         self.has_time_dim = False
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         dims = None if self.has_time_dim else ['year', 'scenario']
         self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, dims=dims)
         self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, dims=dims)
@@ -69,7 +71,7 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         for i, piece in enumerate(self.pieces):
             piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
 
@@ -102,7 +104,7 @@ class PiecewiseConversion(Interface):
     def items(self):
         return self.piecewises.items()
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         for name, piecewise in self.piecewises.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
@@ -133,7 +135,7 @@ class PiecewiseEffects(Interface):
         for piecewise in self.piecewise_shares.values():
             piecewise.has_time_dim = value
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
         for effect, piecewise in self.piecewise_shares.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
@@ -184,7 +186,7 @@ class InvestParameters(Interface):
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
         self.investment_scenarios = investment_scenarios
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         self._plausibility_checks(flow_system)
         self.fix_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
@@ -243,6 +245,276 @@ class InvestParameters(Interface):
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
 
+YearOfInvestmentData = NonTemporalDataUser
+"""This datatype is used to define things related to the year of investment."""
+YearOfInvestmentDataBool = Union[bool, YearOfInvestmentData]
+"""This datatype is used to define things with boolean data related to the year of investment."""
+
+
+@register_class_for_io
+class InvestTimingParameters(Interface):
+    """
+    Investment with fixed start and end years.
+
+    This is the simplest variant - investment is completely scheduled.
+    No optimization variables needed for timing, just size optimization.
+    """
+
+    def __init__(
+        self,
+        allow_investment: YearOfInvestmentDataBool = True,
+        allow_decommissioning: YearOfInvestmentDataBool = True,
+        force_investment: YearOfInvestmentDataBool = False,  # TODO: Allow to simply pass the year
+        force_decommissioning: YearOfInvestmentDataBool = False,  # TODO: Allow to simply pass the year
+        fixed_lifetime: Optional[Scalar] = None,
+        minimum_lifetime: Optional[Scalar] = None,
+        maximum_lifetime: Optional[Scalar] = None,
+        minimum_size: Optional[YearOfInvestmentData] = None,
+        maximum_size: Optional[YearOfInvestmentData] = None,
+        fixed_size: Optional[YearOfInvestmentData] = None,
+        fix_effects: Optional['NonTemporalEffectsUser'] = None,
+        specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
+        fixed_effects_by_investment_year: Optional[xr.DataArray] = None,
+        specific_effects_by_investment_year: Optional[xr.DataArray] = None,
+        previous_lifetime: Optional[Scalar] = None,
+    ):
+        """
+        These parameters are used to include the timing of investments in the model.
+        Two out of three parameters (year_of_investment, year_of_decommissioning, duration_in_years) can be fixed.
+        This has a 'year_of_investment' dimension in some parameters:
+            allow_investment: Whether investment is allowed in a certain year
+            allow_decommissioning: Whether divestment is allowed in a certain year
+            duration_between_investment_and_decommissioning: Duration between investment and decommissioning
+
+        Args:
+            allow_investment: Allow investment in a certain year. By default, allow it in all years.
+            allow_decommissioning: Allow decommissioning in a certain year. By default, allow it in all years.
+            force_investment: Force the investment to occur in a certain year.
+            force_decommissioning: Force the decommissioning to occur in a certain year.
+            fixed_lifetime: Fix the lifetime of an investment (duration between investment and decommissioning).
+            minimum_size: Minimum possible size of the investment. Can depend on the year of investment.
+            maximum_size: Maximum possible size of the investment. Can depend on the year of investment.
+            fixed_size: Fix the size of the investment. Can depend on the year of investment. Can still be 0 if not forced.
+            specific_effects: Effects dependent on the size.
+                These will occur in each year, depending on the size in that year.
+            fix_effects: Effects of the Investment, independent of the size.
+                These will occur in each year, depending on wether the size is greater zero in that year.
+
+            fixed_effects_by_investment_year: Effects dependent on the year of investment.
+                These effects will depend on the year of the investment. The actual effects can occur in other years,
+                letting you model things like annuities, which depend on when an investment was taken.
+                The passed xr.DataArray needs to match the FlowSystem dimensions (except time, but including "year_of_investment"). No internal Broadcasting!
+                "year_of_investment" has the same values as the year dimension. Access it through `flow_system.year_of_investment`.
+            specific_effects_by_investment_year: Effects dependent on the year of investment and the chosen size.
+                These effects will depend on the year of the investment. The actual effects can occur in other years,
+                letting you model things like annuities, which depend on when an investment was taken.
+                The passed xr.DataArray needs to match the FlowSystem dimensions (except time, but including "year_of_investment"). No internal Broadcasting!
+                "year_of_investment" has the same values as the year dimension. Access it through `flow_system.year_of_investment`.
+
+        """
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG
+        self.fixed_size = fixed_size
+
+        self.allow_investment = allow_investment
+        self.allow_decommissioning = allow_decommissioning
+        self.force_investment = force_investment
+        self.force_decommissioning = force_decommissioning
+
+        self.maximum_lifetime = maximum_lifetime
+        self.minimum_lifetime = minimum_lifetime
+        self.fixed_lifetime = fixed_lifetime
+        self.previous_lifetime = previous_lifetime
+
+        self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
+        self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
+        self.fixed_effects_by_investment_year = (
+            fixed_effects_by_investment_year if fixed_effects_by_investment_year is not None else {}
+        )
+        self.specific_effects_by_investment_year = (
+            specific_effects_by_investment_year if specific_effects_by_investment_year is not None else {}
+        )
+
+    def _plausibility_checks(self, flow_system):
+        """Validate parameter consistency."""
+        if flow_system.years is None:
+            raise ValueError("InvestTimingParameters requires the flow_system to have a 'years' dimension.")
+
+        if (self.force_investment.sum('year') > 1).any():
+            raise ValueError('force_investment can only be True for a single year.')
+        if (self.force_decommissioning.sum('year') > 1).any():
+            raise ValueError('force_decommissioning can only be True for a single year.')
+
+        if (self.force_investment.sum('year') == 1).any() and (self.force_decommissioning.sum('year') == 1).any():
+            year_of_forced_investment = (
+                self.force_investment.where(self.force_investment) * self.force_investment.year
+            ).sum('year')
+            year_of_forced_decommissioning = (
+                self.force_decommissioning.where(self.force_decommissioning) * self.force_decommissioning.year
+            ).sum('year')
+            if not (year_of_forced_investment < year_of_forced_decommissioning).all():
+                raise ValueError(
+                    f'force_investment needs to be before force_decommissioning. Got:\n'
+                    f'{self.force_investment}\nand\n{self.force_decommissioning}'
+                )
+
+        if self.previous_lifetime is not None:
+            if self.fixed_size is None:
+                # TODO: Might be only a warning
+                raise ValueError('previous_lifetime can only be used if fixed_size is defined.')
+            if self.force_investment is False:
+                # TODO: Might be only a warning
+                raise ValueError('previous_lifetime can only be used if force_investment is True.')
+
+        if self.minimum_or_fixed_lifetime is not None and self.maximum_or_fixed_lifetime is not None:
+            years = flow_system.years.values
+
+            infeasible_years = []
+            for i, inv_year in enumerate(years[:-1]):  # Exclude last year
+                future_years = years[i + 1 :]  # All years after investment
+                min_decomm = self.minimum_or_fixed_lifetime + inv_year
+                max_decomm = self.maximum_or_fixed_lifetime + inv_year
+                if max_decomm >= years[-1]:
+                    continue
+
+                # Check if any future year falls in decommissioning window
+                future_years_da = xr.DataArray(future_years, dims=['year'])
+                valid_decomm = ((min_decomm <= future_years_da) & (future_years_da <= max_decomm)).any('year')
+                if not valid_decomm.all():
+                    infeasible_years.append(inv_year)
+
+            if infeasible_years:
+                logger.warning(
+                    f'Plausibility Check in {self.__class__.__name__}:\n'
+                    f'  Investment years with no feasible decommissioning: {[int(year) for year in infeasible_years]}\n'
+                    f'  Consider relaxing the lifetime constraints or including more years into your model.\n'
+                    f'  Lifetime:\n'
+                    f'      min={self.minimum_or_fixed_lifetime}\n'
+                    f'      max={self.maximum_or_fixed_lifetime}\n'
+                    f'  Model years: {list(flow_system.years)}\n'
+                )
+
+        specify_timing = (
+            (self.fixed_lifetime is not None)
+            + bool((self.force_investment.sum('year') > 1).any())
+            + bool((self.force_decommissioning.sum('year') > 1).any())
+        )
+
+        if specify_timing in (0, 3):
+            # TODO: Is there a valid use case for this? Should this be checked at all?
+            logger.warning(
+                'Either the the lifetime of an investment should be fixed, or the investment or decommissioning '
+                'needs to be forced in a certain year.'
+            )
+
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
+        """Transform all parameter data to match the flow system's coordinate structure."""
+        self.fix_effects = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.fix_effects,
+            label_suffix='fix_effects',
+            dims=['year', 'scenario'],
+        )
+        self.specific_effects = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.specific_effects,
+            label_suffix='specific_effects',
+            dims=['year', 'scenario'],
+        )
+        self.maximum_lifetime = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_lifetime', self.maximum_lifetime, dims=['scenario']
+        )
+        self.minimum_lifetime = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_lifetime', self.minimum_lifetime, dims=['scenario']
+        )
+        self.fixed_lifetime = flow_system.fit_to_model_coords(
+            f'{name_prefix}|fixed_lifetime', self.fixed_lifetime, dims=['scenario']
+        )
+
+        self.force_investment = flow_system.fit_to_model_coords(
+            f'{name_prefix}|force_investment', self.force_investment, dims=['year', 'scenario']
+        )
+        self.force_decommissioning = flow_system.fit_to_model_coords(
+            f'{name_prefix}|force_decommissioning', self.force_decommissioning, dims=['year', 'scenario']
+        )
+
+        self.minimum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_size', self.minimum_size, dims=['year', 'scenario']
+        )
+        self.maximum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_size', self.maximum_size, dims=['year', 'scenario']
+        )
+        if self.fixed_size is not None:
+            self.fixed_size = flow_system.fit_to_model_coords(
+                f'{name_prefix}|fixed_size', self.fixed_size, dims=['year', 'scenario']
+            )
+
+        # TODO: self.previous_size to only scenarios
+
+        # No Broadcasting! Until a safe way is established, we need to do check for this!
+        self.fixed_effects_by_investment_year = flow_system.effects.create_effect_values_dict(
+            self.fixed_effects_by_investment_year
+        )
+        for effect, da in self.fixed_effects_by_investment_year.items():
+            dims = set(da.coords)
+            if not {'year_of_investment', 'year'}.issubset(dims):
+                raise ValueError(
+                    f'fixed_effects_by_investment_year need to have a "year_of_investment" dimension and a '
+                    f'"year" dimension. Got {dims} for effect {effect}'
+                )
+        self.specific_effects_by_investment_year = flow_system.effects.create_effect_values_dict(
+            self.specific_effects_by_investment_year
+        )
+        for effect, da in self.specific_effects_by_investment_year.items():
+            dims = set(da.coords)
+            if not {'year_of_investment', 'year'}.issubset(dims):
+                raise ValueError(
+                    f'specific_effects_by_investment_year need to have a "year_of_investment" dimension and a '
+                    f'"year" dimension. Got {dims} for effect {effect}'
+                )
+        self.fixed_effects_by_investment_year = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.fixed_effects_by_investment_year,
+            label_suffix='fixed_effects_by_investment_year',
+            dims=['year', 'scenario'],
+            with_year_of_investment=True,
+        )
+        self.specific_effects_by_investment_year = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.specific_effects_by_investment_year,
+            label_suffix='specific_effects_by_investment_year',
+            dims=['year', 'scenario'],
+            with_year_of_investment=True,
+        )
+
+        self._plausibility_checks(flow_system)
+
+    @property
+    def minimum_or_fixed_size(self) -> NonTemporalData:
+        """Get the effective minimum size (fixed size takes precedence)."""
+        return self.fixed_size if self.fixed_size is not None else self.minimum_size
+
+    @property
+    def maximum_or_fixed_size(self) -> NonTemporalData:
+        """Get the effective maximum size (fixed size takes precedence)."""
+        return self.fixed_size if self.fixed_size is not None else self.maximum_size
+
+    @property
+    def is_fixed_size(self) -> bool:
+        """Check if investment size is fixed."""
+        return self.fixed_size is not None
+
+    @property
+    def minimum_or_fixed_lifetime(self) -> NonTemporalData:
+        """Get the effective minimum lifetime (fixed lifetime takes precedence)."""
+        return self.fixed_lifetime if self.fixed_lifetime is not None else self.minimum_lifetime
+
+    @property
+    def maximum_or_fixed_lifetime(self) -> NonTemporalData:
+        """Get the effective maximum lifetime (fixed lifetime takes precedence)."""
+        return self.fixed_lifetime if self.fixed_lifetime is not None else self.maximum_lifetime
+
+
 @register_class_for_io
 class OnOffParameters(Interface):
     def __init__(
@@ -293,7 +565,7 @@ class OnOffParameters(Interface):
         self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         self.effects_per_switch_on = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_switch_on, 'per_switch_on'
         )

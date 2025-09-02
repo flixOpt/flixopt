@@ -93,7 +93,7 @@ class LinearConverter(Component):
                         f'(in {self.label_full}) and variable size is uncommon. Please check if this is intended!'
                     )
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         super().transform_data(flow_system)
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
@@ -206,7 +206,7 @@ class Storage(Component):
         self.submodel = StorageModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         super().transform_data(flow_system)
         self.relative_minimum_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum_charge_state',
@@ -392,7 +392,7 @@ class Transmission(Component):
         self.submodel = TransmissionModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str = '') -> None:
         super().transform_data(flow_system)
         self.relative_losses = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_losses', self.relative_losses
