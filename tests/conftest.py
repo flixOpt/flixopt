@@ -450,28 +450,21 @@ def basic_flow_system_linopy(timesteps_linopy) -> fx.FlowSystem:
 
 def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):
     """Assert that two constraints are equal with detailed error messages."""
-    name = actual.name
 
     try:
         linopy.testing.assert_linequal(actual.lhs, desired.lhs)
     except AssertionError as e:
-        raise AssertionError(f"{name} left-hand sides don't match:\n{e}") from e
-
-    if isinstance(actual.rhs, linopy.Constraint):
-        try:
-            linopy.testing.assert_linequal(actual.rhs, desired.rhs)
-        except AssertionError as e:
-            raise AssertionError(f"{name} right-hand sides don't match:\n{e}") from e
-    else:
-        try:
-            xr.testing.assert_equal(actual.rhs, desired.rhs)
-        except AssertionError as e:
-            raise AssertionError(f"{name} right-hand sides don't match:\n{e}") from e
+        raise AssertionError(f"{actual.name} left-hand sides don't match:\n{e}") from e
 
     try:
         xr.testing.assert_equal(actual.sign, desired.sign)
     except AssertionError as e:
-        raise AssertionError(f"{name} signs don't match:\nActual: {actual.sign}\nExpected: {desired.sign}") from e
+        raise AssertionError(f"{actual.name} signs don't match:\n{e}") from e
+
+    try:
+        xr.testing.assert_equal(actual.rhs, desired.rhs)
+    except AssertionError as e:
+        raise AssertionError(f"{actual.name} right-hand sides don't match:\n{e}") from e
 
 
 def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
