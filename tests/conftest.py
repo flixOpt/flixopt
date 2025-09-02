@@ -457,10 +457,16 @@ def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):
     except AssertionError as e:
         raise AssertionError(f"{name} left-hand sides don't match:\n{e}") from e
 
-    try:
-        linopy.testing.assert_linequal(actual.rhs, desired.rhs)
-    except AssertionError as e:
-        raise AssertionError(f"{name} right-hand sides don't match:\n{e}") from e
+    if isinstance(actual.rhs, xr.DataArray):
+        try:
+            xr.testing.assert_equal(actual.rhs, desired.rhs)
+        except AssertionError as e:
+            raise AssertionError(f"{name} right-hand sides don't match:\n{e}") from e
+    else:
+        try:
+            linopy.testing.assert_linequal(actual.rhs, desired.rhs)
+        except AssertionError as e:
+            raise AssertionError(f"{name} right-hand sides don't match:\n{e}") from e
 
     try:
         xr.testing.assert_equal(actual.sign, desired.sign)
