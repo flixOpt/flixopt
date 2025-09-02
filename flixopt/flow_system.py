@@ -250,7 +250,7 @@ class FlowSystem:
         from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR, flow_graph, shownetwork
 
         warnings.warn(
-            f"The network visualization is still experimental and might change in the future.",
+            'The network visualization is still experimental and might change in the future.',
             stacklevel=2,
             category=UserWarning,
         )
