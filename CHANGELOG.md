@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [2.1.6] - 2025-09-02
+
 ### Changed
 - `Sink`, `Source` and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables to model more use cases using these classes. [[#291](https://github.com/flixOpt/flixopt/pull/291) by [@FBumann](https://github.com/FBumann)]
 - Further, both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their Flows. [[#291](https://github.com/flixOpt/flixopt/pull/291) by [@FBumann](https://github.com/FBumann)]
