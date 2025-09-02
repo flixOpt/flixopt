@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+### Changed
+- `Sink`, `Source` and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables to model more use cases using these classes.
+- Further, both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their Flows.
+
 ### Added
 - Added `FlowSystem.start_netowk_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive web app. This is still experimental and might change in the future.
+
+### Deprecated
+- For the classes `Sink`, `Source` and `SourceAndSink`: `.sink`, `.source` and `.prevent_simultaneous_sink_and_source` are deprecated in favor of the new arguments `inputs`, `outputs` and `prevent_simultaneous_flow_rates`.
 
 ## [2.1.5] - 2025-07-08
 
