@@ -36,7 +36,7 @@ dependencies = [
     "numpy >= 1.21.5, < 3",
     "pandas >= 2.0.0, < 3",
     # Optimization and data handling
-    "linopy >= 0.5.1, < 0.6.0",
+    "linopy >= 0.5.1, < 0.5.6",  # Update and test regularly
     "netcdf4 >= 1.6.1, < 2",
     # Utilities
     "PyYAML >= 6.0.0, < 7",
