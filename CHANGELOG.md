@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - For the classes `Sink`, `Source` and `SourceAndSink`: `.sink`, `.source` and `.prevent_simultaneous_sink_and_source` are deprecated in favor of the new arguments `inputs`, `outputs` and `prevent_simultaneous_flow_rates`.
 
 ### Fixed
-- Fixed testing issue with new `linopy` version 0.5.6
+- Fixed testing issue with new `linopy` version 0.5.6 [[#296](https://github.com/PyPSA/linopy/pull/296) by [@FBumann](https://github.com/FBumann)]
 
 ## [2.1.5] - 2025-07-08
 
