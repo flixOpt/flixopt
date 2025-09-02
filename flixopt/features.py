@@ -213,20 +213,22 @@ class InvestmentTimingModel(Submodel):
         previous_lifetime = self.parameters.previous_lifetime if self.parameters.previous_lifetime is not None else 0
         self.add_variables(
             lower=0,
-            upper=self.parameters.maximum_or_fixed_lifetime if self.parameters.maximum_or_fixed_lifetime is not None else self._model.flow_system.years_per_year.sum('year') + previous_lifetime,
+            upper=self.parameters.maximum_or_fixed_lifetime
+            if self.parameters.maximum_or_fixed_lifetime is not None
+            else self._model.flow_system.years_per_year.sum('year') + previous_lifetime,
             coords=self._model.get_coords(['scenario']),
             short_name='size|lifetime',
         )
         self.add_constraints(
-            self.lifetime == (self.is_invested * self._model.flow_system.years_per_year).sum('year')
+            self.lifetime
+            == (self.is_invested * self._model.flow_system.years_per_year).sum('year')
             + self.is_invested.isel(year=0) * previous_lifetime,
             short_name='size|lifetime',
         )
         if self.parameters.minimum_or_fixed_lifetime is not None:
             self.add_constraints(
                 self.lifetime + self.is_invested.isel(year=-1) * self.parameters.minimum_or_fixed_lifetime
-                >=
-                self.investment_occurs * self.parameters.minimum_or_fixed_lifetime,
+                >= self.investment_occurs * self.parameters.minimum_or_fixed_lifetime,
                 short_name='size|lifetime|lb',
             )
 

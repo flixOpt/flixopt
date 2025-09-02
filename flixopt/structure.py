@@ -181,7 +181,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             weights = self.flow_system.fit_to_model_coords(
                 'weights',
                 1 if self.flow_system.years is None else self.flow_system.years_per_year,
-                dims=['year', 'scenario']
+                dims=['year', 'scenario'],
             )
 
             return weights / weights.sum()

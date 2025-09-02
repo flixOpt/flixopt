@@ -293,7 +293,8 @@ class ModelingPrimitives:
 
         # Initial condition: duration[0] = (duration_per_step[0] + previous_duration) * state[0]
         constraints['initial'] = model.add_constraints(
-            duration.isel({duration_dim: 0}) == (duration_per_step.isel({duration_dim: 0}) + previous_duration) * state_variable.isel({duration_dim: 0}),
+            duration.isel({duration_dim: 0})
+            == (duration_per_step.isel({duration_dim: 0}) + previous_duration) * state_variable.isel({duration_dim: 0}),
             name=f'{duration.name}|initial',
         )
 
@@ -301,7 +302,10 @@ class ModelingPrimitives:
         if minimum_duration is not None:
             constraints['lb'] = model.add_constraints(
                 duration
-                >= (state_variable.isel({duration_dim: slice(None, -1)}) - state_variable.isel({duration_dim: slice(1, None)}))
+                >= (
+                    state_variable.isel({duration_dim: slice(None, -1)})
+                    - state_variable.isel({duration_dim: slice(1, None)})
+                )
                 * minimum_duration.isel({duration_dim: slice(None, -1)}),
                 name=f'{duration.name}|lb',
             )
