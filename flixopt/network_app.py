@@ -353,10 +353,6 @@ def shownetwork(graph: networkx.DiGraph):
 
             # Info panel
             html.Div([
-                html.H4('Element Information', style={
-                    'color': 'white', 'margin': '0 0 10px 0',
-                    'border-bottom': '2px solid #3498DB', 'padding-bottom': '5px',
-                }),
                 html.Div(id='info-panel', children=[
                     html.P('Click on a node or edge to see details.',
                            style={'color': '#95A5A6', 'font-style': 'italic'})
@@ -500,36 +496,224 @@ def shownetwork(graph: networkx.DiGraph):
         Output('info-panel', 'children'),
         [Input('cytoscape', 'tapNodeData'), Input('cytoscape', 'tapEdgeData')]
     )
-    def display_element_info(node_data, edge_data):
+    def display_element_data(node_data, edge_data):
         ctx = callback_context
+
+        def display_node_info(data):
+            """Display node information"""
+            node_id = data['id']
+            label = data.get('label', node_id)  # Use label if available
+            parameters = data.get('parameters', '')
+
+            components = [
+                html.H4(
+                    f'Node: {node_id}',
+                    style={
+                        'color': 'white',
+                        'margin-bottom': '10px',
+                        'margin-top': '5px',
+                        'border-bottom': '1px solid #3498DB',
+                        'padding-bottom': '5px',
+                    },
+                )
+            ]
+
+            # Add label if it's different from the ID
+            if label and label != node_id:
+                components.append(
+                    html.Div(
+                        [
+                            html.Strong('Label: ', style={'color': '#3498DB'}),
+                            html.Span(label, style={'color': '#BDC3C7'}),
+                        ],
+                        style={'margin': '8px 0', 'line-height': '1.4'},
+                    )
+                )
+
+            # Add parameters section
+            if parameters:
+                components.append(
+                    html.Div(
+                        [
+                            html.Strong(
+                                'Parameters:', style={'color': '#3498DB', 'display': 'block', 'margin-bottom': '5px'}
+                            )
+                        ]
+                    )
+                )
+
+                if isinstance(parameters, str):
+                    lines = parameters.split('\n')
+                    for line in lines:
+                        if line.strip():
+                            components.append(
+                                html.Div(
+                                    line,
+                                    style={
+                                        'color': '#BDC3C7',
+                                        'margin': '3px 0',
+                                        'font-family': 'monospace',
+                                        'font-size': '12px',
+                                        'line-height': '1.3',
+                                        'white-space': 'pre-wrap',
+                                        'padding-left': '10px',
+                                    },
+                                )
+                            )
+                        else:
+                            components.append(html.Div(style={'height': '8px'}))
+                elif isinstance(parameters, dict):
+                    for k, v in parameters.items():
+                        components.append(
+                            html.Div(
+                                f'{k}: {v}',
+                                style={
+                                    'color': '#BDC3C7',
+                                    'margin': '3px 0',
+                                    'font-family': 'monospace',
+                                    'font-size': '12px',
+                                    'line-height': '1.3',
+                                    'padding-left': '10px',
+                                },
+                            )
+                        )
+                else:
+                    components.append(
+                        html.Div(
+                            str(parameters),
+                            style={
+                                'color': '#BDC3C7',
+                                'font-family': 'monospace',
+                                'font-size': '12px',
+                                'white-space': 'pre-wrap',
+                                'padding-left': '10px',
+                            },
+                        )
+                    )
+
+            return components
+
+        def display_edge_info(data):
+            """Display edge information"""
+            source = data.get('source', '')
+            target = data.get('target', '')
+            label = data.get('label', '')
+            parameters = data.get('parameters', '')
+
+            components = [
+                html.H4(
+                    f'Edge: {source} → {target}',
+                    style={
+                        'color': 'white',
+                        'margin-bottom': '10px',
+                        'margin-top': '5px',
+                        'border-bottom': '1px solid #E67E22',
+                        'padding-bottom': '5px',
+                    },
+                )
+            ]
+
+            # Add label section (same formatting as nodes)
+            if label:
+                components.append(
+                    html.Div(
+                        [
+                            html.Strong('Label: ', style={'color': '#E67E22'}),
+                            html.Span(label, style={'color': '#BDC3C7'}),
+                        ],
+                        style={'margin': '8px 0', 'line-height': '1.4'},
+                    )
+                )
+
+            # Add parameters section (same formatting as nodes)
+            if parameters:
+                components.append(
+                    html.Div(
+                        [
+                            html.Strong(
+                                'Parameters:', style={'color': '#E67E22', 'display': 'block', 'margin-bottom': '5px'}
+                            )
+                        ]
+                    )
+                )
+
+                if isinstance(parameters, str):
+                    lines = parameters.split('\n')
+                    for line in lines:
+                        if line.strip():
+                            components.append(
+                                html.Div(
+                                    line,
+                                    style={
+                                        'color': '#BDC3C7',
+                                        'margin': '3px 0',
+                                        'font-family': 'monospace',
+                                        'font-size': '12px',
+                                        'line-height': '1.3',
+                                        'white-space': 'pre-wrap',
+                                        'padding-left': '10px',
+                                    },
+                                )
+                            )
+                        else:
+                            components.append(html.Div(style={'height': '8px'}))
+                elif isinstance(parameters, dict):
+                    for k, v in parameters.items():
+                        components.append(
+                            html.Div(
+                                f'{k}: {v}',
+                                style={
+                                    'color': '#BDC3C7',
+                                    'margin': '3px 0',
+                                    'font-family': 'monospace',
+                                    'font-size': '12px',
+                                    'line-height': '1.3',
+                                    'padding-left': '10px',
+                                },
+                            )
+                        )
+                else:
+                    components.append(
+                        html.Div(
+                            str(parameters),
+                            style={
+                                'color': '#BDC3C7',
+                                'font-family': 'monospace',
+                                'font-size': '12px',
+                                'white-space': 'pre-wrap',
+                                'padding-left': '10px',
+                            },
+                        )
+                    )
+
+            return components
+
+        # Check which input triggered the callback
         if not ctx.triggered:
-            return [html.P('Click on a node or edge to see details.',
-                           style={'color': '#95A5A6', 'font-style': 'italic'})]
-
-        # Determine what was clicked
-        if ctx.triggered[0]['prop_id'] == 'cytoscape.tapNodeData' and node_data:
             return [
-                html.H5(f"Node: {node_data.get('label', 'Unknown')}",
-                        style={'color': 'white', 'margin-bottom': '10px'}),
-                html.P(f"Type: {node_data.get('element_type', 'Unknown')}",
-                       style={'color': '#BDC3C7'}),
-                html.Pre(node_data.get('parameters', 'No parameters'),
-                         style={'color': '#BDC3C7', 'font-size': '11px',
-                                'white-space': 'pre-wrap'})
-            ]
-        elif ctx.triggered[0]['prop_id'] == 'cytoscape.tapEdgeData' and edge_data:
-            return [
-                html.H5(f"Edge: {edge_data.get('label', 'Unknown')}",
-                        style={'color': 'white', 'margin-bottom': '10px'}),
-                html.P(f"{edge_data.get('source', '')} → {edge_data.get('target', '')}",
-                       style={'color': '#E67E22'}),
-                html.Pre(edge_data.get('parameters', 'No parameters'),
-                         style={'color': '#BDC3C7', 'font-size': '11px',
-                                'white-space': 'pre-wrap'})
+                html.P(
+                    'Click on a node or edge to see its parameters.',
+                    style={'color': '#95A5A6', 'font-style': 'italic', 'text-align': 'center', 'margin-top': '20px'},
+                )
             ]
 
-        return [html.P('Click on a node or edge to see details.',
-                       style={'color': '#95A5A6', 'font-style': 'italic'})]
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+        # Handle the appropriate trigger
+        if trigger_id == 'cytoscape' and ctx.triggered[0]['prop_id'] == 'cytoscape.tapEdgeData':
+            if edge_data:
+                return display_edge_info(edge_data)
+        elif trigger_id == 'cytoscape' and ctx.triggered[0]['prop_id'] == 'cytoscape.tapNodeData':
+            if node_data:
+                return display_node_info(node_data)
+
+        # Fallback
+        return [
+            html.P(
+                'Click on a node or edge to see its parameters.',
+                style={'color': '#95A5A6', 'font-style': 'italic', 'text-align': 'center', 'margin-top': '20px'},
+            )
+        ]
 
     @app.callback(
         Output('cytoscape', 'layout'),
