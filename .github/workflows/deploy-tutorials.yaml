@@ -21,7 +21,6 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        lfs: true
     - name: Verify tutorial directory exists
       run: |
         if [ ! -d "${{ matrix.tutorial.path }}" ]; then
