@@ -1,0 +1,61 @@
+name: Deploy FlixOpt Tutorials
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'tutorials/**' ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tutorial: [
+          {name: "flixopt-tutorial-01-basics", path: "tutorials/tutorial-01-basics"},
+          {name: "flixopt-tutorial-02-advanced", path: "tutorials/tutorial-02-advanced"},
+          {name: "flixopt-tutorial-03-examples", path: "tutorials/tutorial-03-examples"}
+        ]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        lfs: true
+    - name: Verify tutorial directory exists
+      run: |
+        if [ ! -d "${{ matrix.tutorial.path }}" ]; then
+          echo "Tutorial directory ${{ matrix.tutorial.path }} does not exist"
+          exit 1
+        fi
+
+    - name: Check if tutorial changed
+      id: changes
+      run: |
+        if git diff --name-only ${{ github.event.before }}..${{ github.sha }} | grep -q "^${{ matrix.tutorial.path }}/"; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Deploy ${{ matrix.tutorial.name }}
+      if: steps.changes.outputs.changed == 'true'
+      env:
+        HF_USERNAME: ${{ secrets.HF_USERNAME }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        TUTORIAL_NAME: ${{ matrix.tutorial.name }}
+        TUTORIAL_PATH: ${{ matrix.tutorial.path }}
+      run: |
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action"
+        
+        # Clone the HF Space repository
+        git clone https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/$TUTORIAL_NAME hf-space
+        
+        # Copy tutorial files
+        cp -r $TUTORIAL_PATH/* hf-space/
+        
+        cd hf-space
+        git add .
+        git commit -m "Update tutorial from GitHub Actions" || exit 0
+        git push
