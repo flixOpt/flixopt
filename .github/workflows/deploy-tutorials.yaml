@@ -10,6 +10,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     strategy:
+      max-parallel: 1  # Run jobs sequentially instead of parallel, until we have all tutorials in place
       matrix:
         tutorial: [
           {name: "tutorial-01-basics", path: "tutorials/tutorial-01-basics"},
