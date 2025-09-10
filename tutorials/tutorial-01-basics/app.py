@@ -12,6 +12,7 @@ def _(mo):
 
     This notebook demonstrates how to use the flixopt framework to model a minimalistic energy system
     with a boiler, heat demand, and natural gas supply.
+    THis has been updated
     """
     )
     return
