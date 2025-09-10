@@ -10,6 +10,22 @@ We warmly welcome contributions from the community! This guide will help you get
 ## Documentation
 FlixOpt uses [mkdocs](https://www.mkdocs.org/) to generate documentation. To preview the documentation locally, run `mkdocs serve` in the root directory.
 
+## Tutorials & Examples
+We greatly appreciate any contributions regarding examples and tutorials.
+We consider examples as python scripts, and tutorials as interactive marimo notebooks.
+Regarding marimo Notebooks, they are deployed on HuggingFace, and need to follow a certain structure:
+```
+tutorials/
+├── tutorial-"nr"-"name"/
+│   ├── app.py              # Marimo notebook
+│   ├── requirements.txt    # From template (usually)
+│   ├── README.md           # Change according to content
+│   ├── Dockerfile          # From template
+│   └── .gitattributes      # From template
+```
+Further, the tutorial should be linked in our docs and added to the tutorial deployment workflow.
+
+
 ## Helpful Commands
 - `mkdocs serve` to preview the documentation locally. Navigate to `http://127.0.0.1:8000/` to view the documentation.
 - `pytest` to run the test suite (You can also run the provided python script `run_all_test.py`)
@@ -25,21 +41,7 @@ FlixOpt uses [mkdocs](https://www.mkdocs.org/) to generate documentation. To pre
 - Write clear, commented code
 - Include type hints
 - Create or update tests for new functionality
-- Ensure 100% test coverage for new code
-
-## Branches
-As we start to think FlixOpt in **Releases**, we decided to introduce multiple **dev**-branches instead of only one:
-Following the **Semantic Versioning** guidelines, we introduced:
-- `next/patch`: This is where all pull requests for the next patch release (1.0.x) go.  
-- `next/minor`: This is where all pull requests for the next minor release (1.x.0) go.  
-- `next/major`: This is where all pull requests for the next major release (x.0.0) go.
-
-Everything else remains in `feature/...`-branches.
-
-## Pull requests
-Every feature or bugfix should be merged into one of the 3 [release branches](#branches), using **Squash and merge** or a regular **single commit**.
-At some point, `next/minor` or `next/major` will get merged into `main` using a regular **Merge**  (not squash).
-*This ensures that Features are kept separate, and the `next/...`branches stay in synch with ``main`.*
+- Ensure test coverage for new code
 
 ## Releases
 As stated, we follow **Semantic Versioning**.
