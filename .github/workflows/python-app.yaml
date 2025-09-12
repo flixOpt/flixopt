@@ -128,7 +128,7 @@ jobs:
 
       - name: Run Bandit security scan
         run: |
-          # Gate on HIGH severity & HIGH confidence; produce JSON artifact
+          # Gate on HIGH severity & MEDIUM confidence; produce JSON artifact
           bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json -q -lll -ii
           # Human-readable output without affecting job status
           bandit -r flixopt/ -c pyproject.toml -q --exit-zero
