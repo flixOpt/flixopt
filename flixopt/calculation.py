@@ -47,11 +47,20 @@ class Calculation:
         folder: Optional[pathlib.Path] = None,
     ):
         """
-        Args:
-            name: name of calculation
-            flow_system: flow_system which should be calculated
-            active_timesteps: list with indices, which should be used for calculation. If None, then all timesteps are used.
-            folder: folder where results should be saved. If None, then the current working directory is used.
+        Initialize a Calculation.
+        
+        Creates a calculation scaffold for a FlowSystem: stores name, target flow_system, optional active timesteps, and prepares places to hold the SystemModel and CalculationResults. Initializes timing counters and ensures an output folder exists.
+        
+        Parameters:
+            name: Human-readable name for the calculation.
+            flow_system: Target FlowSystem to be modeled and solved.
+            active_timesteps: Optional subset of timesteps to activate for modeling; when None all timesteps are used.
+            folder: Optional output folder for results; when None a `./results` directory under the current working directory is used.
+        
+        Notes:
+            - The output folder is created if it does not exist. If a path exists but is not a directory a NotADirectoryError is raised.
+            - If the specified folder's parent does not exist, directory creation will raise FileNotFoundError.
+            - The instance initializes `model` and `results` to None and `durations` tracking for modeling, solving, and saving to 0.0.
         """
         self.name = name
         self.flow_system = flow_system
@@ -68,6 +77,23 @@ class Calculation:
 
     @property
     def main_results(self) -> Dict[str, Union[Scalar, Dict]]:
+        """
+        Return a structured summary of core results extracted from the solved model.
+        
+        The returned dictionary contains:
+        - "Objective": scalar objective value from the solved model.
+        - "Penalty": total penalty value from model effects.
+        - "Effects": a mapping per effect labeled as "Label [unit]" to a dict with
+          numeric "operation", "invest", and "total" values taken from the effect submodel solutions.
+        - "Invest-Decisions": two groups ("Invested" and "Not invested") mapping element labels to
+          the numeric invested sizes; classification uses CONFIG.modeling.EPSILON as the threshold
+          (values >= EPSILON are considered invested).
+        - "Buses with excess": a list of single-key dicts (bus full label -> { "input", "output" })
+          for buses marked with excess where either total excess input or output exceeds 1e-3.
+        
+        All numeric values are returned as native Python floats. The function inspects submodels
+        to identify InvestmentModel instances to build the investment partitions.
+        """
         from flixopt.features import InvestmentModel
 
         return {
