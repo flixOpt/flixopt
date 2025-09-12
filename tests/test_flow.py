@@ -126,10 +126,10 @@ class TestFlowModel:
             bus='Fernwärme',
             size=100,
             piecewise_effects_per_flow_hour=fx.PiecewiseEffectsPerFlowHour(
-                piecewise_flow_rate=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
+                piecewise_flow_rate=fx.Piecewise([fx.Piece(0, 25), fx.Piece(25, 100)]),
                 piecewise_shares={
-                    'Costs': fx.Piecewise([fx.Piece(3*5, 2*25), fx.Piece(2*25, 1*100)]),
-                    'CO2': fx.Piecewise([fx.Piece(10*5, 30*25), fx.Piece(30*25, 50*100)]),
+                    'Costs': fx.Piecewise([fx.Piece(0, 2*25), fx.Piece(2*25, 1*100)]),
+                    'CO2': fx.Piecewise([fx.Piece(0, 30*25), fx.Piece(30*25, 50*100)]),
                 },
             ),
         )
@@ -183,16 +183,21 @@ class TestFlowModel:
 
         model.solve()
 
-        xr.testing.assert_allclose(
-            model.variables['Sink(Wärme)|PiecewiseEffectsPerFlowHour|Costs'].solution,
-            model.hours_per_step * np.interp(
-                np.linspace(0, 100, 10),
-                [5, 5, 25, 25, 100],
-                [0, 3*5, 2*25, 2*25, 1*100],
-            ),
+        desired_solution = model.hours_per_step * np.interp(
+            np.linspace(0, 100, 10),
+            [0, 25, 25, 100],
+            [0, 2*25, 2*25, 1*100],
         )
 
-        #TODO: CHeck outside piece
+        xr.testing.assert_allclose(
+            model.variables['Sink(Wärme)|PiecewiseEffectsPerFlowHour|Costs'].solution,
+            desired_solution / model.hours_per_step,
+        )
+
+        xr.testing.assert_allclose(
+            model.variables['Sink(Wärme)->Costs(operation)'].solution,
+            desired_solution,
+        )
 
 
 class TestFlowInvestModel:
