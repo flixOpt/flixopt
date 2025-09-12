@@ -1027,6 +1027,7 @@ class PiecewiseEffectsModel(Model):
         piecewise_origin: Tuple[str, Piecewise],
         piecewise_shares: Dict[str, Piecewise],
         zero_point: Optional[Union[bool, linopy.Variable]],
+        as_time_series: bool = False,
         label: str = 'PiecewiseEffects',
     ):
         super().__init__(model, label_of_element, label)
@@ -1036,13 +1037,19 @@ class PiecewiseEffectsModel(Model):
         self._zero_point = zero_point
         self._piecewise_origin = piecewise_origin
         self._piecewise_shares = piecewise_shares
+        self._as_time_series = as_time_series
         self.shares: Dict[str, linopy.Variable] = {}
 
         self.piecewise_model: Optional[PiecewiseModel] = None
 
     def do_modeling(self):
         self.shares = {
-            effect: self.add(self._model.add_variables(coords=None, name=f'{self.label_full}|{effect}'), f'{effect}')
+            effect: self.add(
+                self._model.add_variables(
+                    coords=self._model.coords if self._as_time_series else None,
+                    name=f'{self.label_full}|{effect}'),
+                    f'{effect}'
+            )
             for effect in self._piecewise_shares
         }
 
@@ -1060,18 +1067,20 @@ class PiecewiseEffectsModel(Model):
                 label_of_element=self.label_of_element,
                 piecewise_variables=piecewise_variables,
                 zero_point=self._zero_point,
-                as_time_series=False,
+                as_time_series=self._as_time_series,
                 label='PiecewiseEffects',
             )
         )
 
         self.piecewise_model.do_modeling()
 
+        factor, target = (self._model.hours_per_step, 'operation') if self._as_time_series else (1, 'invest')
+
         # Shares
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
-            expressions={effect: variable * 1 for effect, variable in self.shares.items()},
-            target='invest',
+            expressions={effect: variable * factor for effect, variable in self.shares.items()},
+            target=target,
         )
 
 

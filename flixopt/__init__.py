@@ -30,6 +30,7 @@ from .commons import (
     plotting,
     results,
     solvers,
+    PiecewiseEffectsPerFlowHour,
 )
 
 CONFIG.load_config()
