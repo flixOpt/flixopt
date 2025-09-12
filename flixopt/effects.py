@@ -94,7 +94,8 @@ class Effect(Element):
             f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
         )
         self.maximum_operation_per_hour = flow_system.create_time_series(
-            f'{self.label_full}|maximum_operation_per_hour', self.maximum_operation_per_hour,
+            f'{self.label_full}|maximum_operation_per_hour',
+            self.maximum_operation_per_hour,
         )
 
         self.specific_share_to_other_effects_operation = flow_system.create_effect_time_series(

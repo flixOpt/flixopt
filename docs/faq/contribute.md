@@ -42,8 +42,8 @@ Then navigate to http://127.0.0.1:8000/
 ## Branches
 As we start to think FlixOpt in **Releases**, we decided to introduce multiple **dev**-branches instead of only one:
 Following the **Semantic Versioning** guidelines, we introduced:
-- `next/patch`: This is where all pull requests for the next patch release (1.0.x) go.  
-- `next/minor`: This is where all pull requests for the next minor release (1.x.0) go.  
+- `next/patch`: This is where all pull requests for the next patch release (1.0.x) go.
+- `next/minor`: This is where all pull requests for the next minor release (1.x.0) go.
 - `next/major`: This is where all pull requests for the next major release (x.0.0) go.
 
 Everything else remains in `feature/...`-branches.
@@ -56,6 +56,6 @@ At some point, `next/minor` or `next/major` will get merged into `main` using a 
 ## Releases
 As stated, we follow **Semantic Versioning**.
 Right after one of the 3 [release branches](#branches) is merged into main, a **Tag** should be added to the merge commit and pushed to the main branch. The tag has the form `v1.2.3`.
-With this tag,  a release with **Release Notes** must be created. 
+With this tag,  a release with **Release Notes** must be created.
 
 *This is our current best practice*

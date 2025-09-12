@@ -354,6 +354,7 @@ class TestComplex:
             'Speicher investCosts_segmented_costs doesnt match expected value',
         )
 
+
 @pytest.mark.slow
 class TestModelingTypes:
     @pytest.fixture(params=['full', 'segmented', 'aggregated'])

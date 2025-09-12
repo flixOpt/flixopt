@@ -6,7 +6,7 @@ contact_links:
   - name: ⚡ Performance & Optimization
     url: https://github.com/flixOpt/flixopt/discussions/categories/performance
     about: "Solver performance, memory usage, and optimization speed issues"
-  - name: 💡 Ideas & Suggestions  
+  - name: 💡 Ideas & Suggestions
     url: https://github.com/flixOpt/flixopt/discussions/categories/ideas
     about: "Share ideas and discuss potential improvements with the community"
   - name: 📖 Documentation
