@@ -5,10 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] - ????-??-??
 
 ### Fixed
-- LinearConverter with `PiecewiseConversion` lead to flows reaching 0 values, even though they didnt have `OnOffParameters` nor did the `PiecewiseConversion` contain 0 in its a `Piece`s. This was fixed to only allow for zeros if the `PiecewiseConversion` contains corresponding `Piece`s with 0 or if the `LinearConverter` has `OnOffParameters`. [[#310](https://github.com/flixOpt/flixopt/pull/310) by [@FBumann](https://github.com/FBumann)]
+- LinearConverter with `PiecewiseConversion` lead to flows reaching 0 values, even though they didnt have `OnOffParameters` nor `PiecewiseConversion` containing 0 in its a `Piece`s. This was fixed by [[#310](https://github.com/flixOpt/flixopt/pull/310) by [@FBumann](https://github.com/FBumann)]
 
 ### Added
 - Added new Interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects. [[#310](https://github.com/flixOpt/flixopt/pull/310) by [@FBumann](https://github.com/FBumann)]
