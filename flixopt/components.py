@@ -24,32 +24,119 @@ logger = logging.getLogger('flixopt')
 
 @register_class_for_io
 class LinearConverter(Component):
-    """
-    Converts input-Flows into output-Flows via linear conversion factors
+    """Convert input flows into output flows using linear or piecewise linear conversion factors.
+
+    This component models conversion equipment where input flows are transformed
+    into output flows with fixed or variable conversion ratios, such as:
+
+    - Heat pumps and chillers with variable efficiency
+    - Power plants with fuel-to-electricity conversion
+    - Chemical processes with multiple inputs/outputs
+    - Pumps and compressors
+    - Combined heat and power (CHP) plants
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem
-        inputs: The input Flows
-        outputs: The output Flows
-        on_off_parameters: Information about on and off state of LinearConverter.
-            Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
-            If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
-            See class OnOffParameters.
-        conversion_factors: linear relation between flows.
-            Either 'conversion_factors' or 'piecewise_conversion' can be used!
-        piecewise_conversion: Define a piecewise linear relation between flow rates of different flows.
-            Either 'conversion_factors' or 'piecewise_conversion' can be used!
-        meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        label: Unique identifier for the component in the FlowSystem.
+        inputs: List of input Flow objects that feed into the converter.
+        outputs: List of output Flow objects produced by the converter.
+        on_off_parameters: Controls binary on/off behavior of the converter.
+            When specified, the component can be completely turned on or off, affecting
+            all connected flows. This creates binary variables in the optimization.
+            For better performance, consider using OnOffParameters on individual flows instead.
+        conversion_factors: Linear conversion ratios between flows as time series data.
+            List of dictionaries mapping flow labels to their conversion factors.
+            Mutually exclusive with piecewise_conversion.
+        piecewise_conversion: Piecewise linear conversion relationships between flows.
+            Enables modeling of variable efficiency or discrete operating modes.
+            Mutually exclusive with conversion_factors.
+        meta_data: Additional information stored with the component.
+            Saved in results but not used internally. Use only Python native types.
 
     Warning:
-        When using `PiecewiseConversion` without `OnOffParameters`, flow_rates cannot reach zero
-        unless explicitly defined with zero-valued Pieces (e.g., `fx.Piece(0, 0)`).
-        This behavior prevents unintended zero flows and is the intended design, which got a bugfix in v2.1.7.
+        When using `piecewise_conversion` without `on_off_parameters`, flow rates cannot
+        reach zero unless explicitly defined with zero-valued pieces (e.g., `fx.Piece(0, 0)`).
+        This prevents unintended zero flows and maintains mathematical consistency.
 
-        To allow zero flow rates, either:
+        To allow zero flow rates:
 
-        - Add OnOffParameters to the `LinearConverter`, or
-        - Define explicit zero Pieces in your `PiecewiseConversion`.
+        - Add `on_off_parameters` to enable complete shutdown, or
+        - Include explicit zero pieces in your `piecewise_conversion` definition
+
+        This behavior was clarified in v2.1.7 to prevent optimization edge cases.
+
+    Examples:
+        Simple heat pump with fixed COP:
+
+        ```python
+        heat_pump = fx.LinearConverter(
+            label='heat_pump',
+            inputs=[electricity_flow],
+            outputs=[heat_flow],
+            conversion_factors=[
+                {
+                    'electricity_flow': 1.0,  # 1 kW electricity input
+                    'heat_flow': 3.5,  # 3.5 kW heat output (COP=3.5)
+                }
+            ],
+        )
+        ```
+
+        Variable efficiency heat pump:
+
+        ```python
+        heat_pump = fx.LinearConverter(
+            label='variable_heat_pump',
+            inputs=[electricity_flow],
+            outputs=[heat_flow],
+            piecewise_conversion=fx.PiecewiseConversion(
+                {
+                    'electricity_flow': fx.Piecewise(
+                        [
+                            fx.Piece(0, 10),  # Allow zero to 10 kW input
+                            fx.Piece(10, 25),  # Higher load operation
+                        ]
+                    ),
+                    'heat_flow': fx.Piecewise(
+                        [
+                            fx.Piece(0, 35),  # COP=3.5 at low loads
+                            fx.Piece(35, 75),  # COP=3.0 at high loads
+                        ]
+                    ),
+                }
+            ),
+        )
+        ```
+
+        Combined heat and power plant:
+
+        ```python
+        chp_plant = fx.LinearConverter(
+            label='chp_plant',
+            inputs=[natural_gas_flow],
+            outputs=[electricity_flow, heat_flow],
+            conversion_factors=[
+                {
+                    'natural_gas_flow': 1.0,  # 1 MW fuel input
+                    'electricity_flow': 0.4,  # 40% electrical efficiency
+                    'heat_flow': 0.45,  # 45% thermal efficiency
+                }
+            ],
+            on_off_parameters=fx.OnOffParameters(
+                min_on_hours=4,  # Minimum 4-hour operation
+                min_off_hours=2,  # Minimum 2-hour downtime
+            ),
+        )
+        ```
+
+    Note:
+        Either `conversion_factors` or `piecewise_conversion` must be specified, but not both.
+        The component automatically handles the mathematical relationships between all
+        connected flows according to the specified conversion ratios.
+
+    See Also:
+        PiecewiseConversion: For variable efficiency modeling
+        OnOffParameters: For binary on/off control
+        Flow: Input and output flow definitions
     """
 
     def __init__(
