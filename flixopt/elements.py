@@ -357,8 +357,10 @@ class FlowModel(ElementModel):
                     label_of_element=self.label_of_element,
                     parameters=self.element.size,
                     defining_variable=self.flow_rate,
-                    relative_bounds_of_defining_variable=(self.flow_rate_lower_bound_relative,
-                                                          self.flow_rate_upper_bound_relative),
+                    relative_bounds_of_defining_variable=(
+                        self.flow_rate_lower_bound_relative,
+                        self.flow_rate_upper_bound_relative,
+                    ),
                     on_variable=self.on_off.on if self.on_off is not None else None,
                 ),
                 'investment',
@@ -465,7 +467,7 @@ class FlowModel(ElementModel):
 
     @property
     def flow_rate_upper_bound_relative(self) -> NumericData:
-        """ Returns the upper bound of the flow_rate relative to its size"""
+        """Returns the upper bound of the flow_rate relative to its size"""
         fixed_profile = self.element.fixed_relative_profile
         if fixed_profile is None:
             return self.element.relative_maximum.active_data

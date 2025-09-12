@@ -769,7 +769,7 @@ class Source(Component):
         outputs: List[Flow] = None,
         meta_data: Optional[Dict] = None,
         prevent_simultaneous_flow_rates: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         Args:
@@ -789,7 +789,12 @@ class Source(Component):
             outputs = [source]
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
-        super().__init__(label, outputs=outputs, meta_data=meta_data, prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None)
+        super().__init__(
+            label,
+            outputs=outputs,
+            meta_data=meta_data,
+            prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None,
+        )
 
     @property
     def source(self) -> Flow:
@@ -809,7 +814,7 @@ class Sink(Component):
         inputs: List[Flow] = None,
         meta_data: Optional[Dict] = None,
         prevent_simultaneous_flow_rates: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         Args:
@@ -829,7 +834,12 @@ class Sink(Component):
             inputs = [sink]
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
-        super().__init__(label, inputs=inputs, meta_data=meta_data, prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None)
+        super().__init__(
+            label,
+            inputs=inputs,
+            meta_data=meta_data,
+            prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None,
+        )
 
     @property
     def sink(self) -> Flow:

@@ -40,7 +40,7 @@ Which can also be described as $v \in \{0\} \cup [\text{v}_{\text{start_k}}, \te
 
 ## Combining multiple Piecewises
 
-Piecewise allows representing non-linear relationships. 
+Piecewise allows representing non-linear relationships.
 This is a powerful technique in linear optimization to model non-linear behaviors while maintaining the problem's linearity.
 
 Therefore, each Piecewise must have the same number of Pieces $k$.

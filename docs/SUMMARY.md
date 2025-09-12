@@ -2,6 +2,6 @@
 - [Getting Started](getting-started.md)
 - [User Guide](user-guide/)
 - [Examples](examples/)
-- [FAQ](faq/)
+- [Contribute](contribute.md)
 - [API-Reference](api-reference/)
 - [Release Notes](changelog.md)

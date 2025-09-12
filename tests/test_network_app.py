@@ -22,8 +22,8 @@ def flow_system(request):
     else:
         return fs[0]
 
+
 def test_network_app(flow_system):
     """Test that flow model constraints are correctly generated."""
     flow_system.start_network_app()
     flow_system.stop_network_app()
-
