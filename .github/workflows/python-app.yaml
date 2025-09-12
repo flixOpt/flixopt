@@ -207,12 +207,18 @@ jobs:
           print(data["project"]["name"])
           PY
           )
-          # Install from TestPyPI with retry (TestPyPI can be slow to index)
-          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME || \
-          (sleep 30 && pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME) || \
-          (sleep 60 && pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME)
-          # Basic import test
-          python -c "import flixopt; print('Installation successful!')"
+          # Extract version from git tag
+          VERSION=${GITHUB_REF#refs/tags/v}
+          # Wait and retry while TestPyPI indexes the package
+          for d in 15 30 60 120 180 360 720 1080; do
+            sleep "$d"
+            # Install specific version and verify it matches
+            pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
+            python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed" && \
+            break || true
+          done
+          # Final success confirmation
+          python -c "import flixopt; print('TestPyPI installation successful!')"
 
   publish-pypi:
     name: Publish to PyPI
