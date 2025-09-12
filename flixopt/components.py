@@ -53,6 +53,16 @@ class LinearConverter(Component):
             piecewise_conversion: Define a piecewise linear relation between flow rates of different flows.
                 Either 'conversion_factors' or 'piecewise_conversion' can be used!
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+
+        Warning:
+            When using `PiecewiseConversion` without `OnOffParameters`, flow_rates cannot reach zero
+            unless explicitly defined with zero-valued Pieces (e.g., `fx.Piece(0, 0)`).
+            This behavior prevents unintended zero flows and is the intended design, which got a bugfix in v2.1.7.
+
+            To allow zero flow rates, either:
+
+            - Add OnOffParameters to the `LinearConverter`, or
+            - Define explicit zero Pieces in your `PiecewiseConversion`.
         """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
