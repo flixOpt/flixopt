@@ -92,20 +92,21 @@ class Component(Element):
 @register_class_for_io
 class Bus(Element):
     """
-    A Bus represents a nodal balance between the flow rates of its incoming and outgoing Flows.
+    Buses represents nodal balances between the flow rates.
+    A Bus has incoming and outgoing Flows, and is the connection point of
+    energy carriers (electricity, heat, gas, etc.) or materials flows in between different Components.
+    
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem
+        excess_penalty_per_flow_hour: excess costs / penalty costs (bus balance compensation)
+            (none/ 0 -> no penalty). The default is 1e5.
+            (Take care: if you use a timeseries (no scalar), timeseries is aggregated if calculation_type = aggregated!)
+        meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
     """
 
     def __init__(
         self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataTS] = 1e5, meta_data: Optional[Dict] = None
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            excess_penalty_per_flow_hour: excess costs / penalty costs (bus balance compensation)
-                (none/ 0 -> no penalty). The default is 1e5.
-                (Take care: if you use a timeseries (no scalar), timeseries is aggregated if calculation_type = aggregated!)
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, meta_data=meta_data)
         self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
         self.inputs: List[Flow] = []
