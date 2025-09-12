@@ -136,9 +136,8 @@ jobs:
         if: always()
         with:
           name: security-report
-          path: |
-            bandit-report.json
-            retention-days: 30
+          path: bandit-report.json
+          retention-days: 30
 
   create-release:
     name: Create GitHub Release
