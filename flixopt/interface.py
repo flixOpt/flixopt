@@ -63,167 +63,168 @@ class Piecewise(Interface):
 
 @register_class_for_io
 class PiecewiseConversion(Interface):
+    """Define piecewise linear conversion relationships between multiple flows.
+
+    This class models complex conversion processes where the relationship between
+    input and output flows changes at different operating points, such as:
+
+    - Variable efficiency equipment (heat pumps, engines, turbines)
+    - Multi-stage chemical processes with different conversion rates
+    - Equipment with discrete operating modes
+    - Systems with capacity constraints and thresholds
+
+    Args:
+        piecewises: Dictionary mapping flow labels to their Piecewise conversion functions.
+            Keys are flow names (e.g., 'electricity_in', 'heat_out', 'fuel_consumed').
+            Values are Piecewise objects defining conversion factors at different operating points.
+            All Piecewise objects must have the same number of pieces and compatible domains
+            to ensure consistent conversion relationships across operating ranges.
+
+    Note:
+        Special modeling features:
+
+        - **Gaps**: Express forbidden operating ranges by creating non-contiguous pieces.
+          Example: `[(0,50), (100,200)]` - cannot operate between 50-100 units
+        - **Points**: Express discrete operating points using pieces with identical start/end.
+          Example: `[(50,50), (100,100)]` - can only operate at exactly 50 or 100 units
+
+    Examples:
+        Heat pump with variable COP (Coefficient of Performance):
+
+        ```python
+        PiecewiseConversion(
+            {
+                'electricity_in': Piecewise(
+                    [
+                        Piece(0, 10),  # Low load: 0-10 kW electricity
+                        Piece(10, 25),  # High load: 10-25 kW electricity
+                    ]
+                ),
+                'heat_out': Piecewise(
+                    [
+                        Piece(0, 35),  # Low load COP=3.5: 0-35 kW heat output
+                        Piece(35, 75),  # High load COP=3.0: 35-75 kW heat output
+                    ]
+                ),
+            }
+        )
+        # At 15 kW electricity input → 52.5 kW heat output (interpolated)
+        ```
+
+        Engine with fuel consumption and emissions:
+
+        ```python
+        PiecewiseConversion(
+            {
+                'fuel_input': Piecewise(
+                    [
+                        Piece(5, 15),  # Part load: 5-15 L/h fuel
+                        Piece(15, 30),  # Full load: 15-30 L/h fuel
+                    ]
+                ),
+                'power_output': Piecewise(
+                    [
+                        Piece(10, 25),  # Part load: 10-25 kW output
+                        Piece(25, 45),  # Full load: 25-45 kW output
+                    ]
+                ),
+                'co2_emissions': Piecewise(
+                    [
+                        Piece(12, 35),  # Part load: 12-35 kg/h CO2
+                        Piece(35, 78),  # Full load: 35-78 kg/h CO2
+                    ]
+                ),
+            }
+        )
+        ```
+
+        Discrete operating modes (on/off equipment):
+
+        ```python
+        PiecewiseConversion(
+            {
+                'electricity_in': Piecewise(
+                    [
+                        Piece(0, 0),  # Off mode: no consumption
+                        Piece(20, 20),  # On mode: fixed 20 kW consumption
+                    ]
+                ),
+                'cooling_out': Piecewise(
+                    [
+                        Piece(0, 0),  # Off mode: no cooling
+                        Piece(60, 60),  # On mode: fixed 60 kW cooling
+                    ]
+                ),
+            }
+        )
+        ```
+
+        Equipment with forbidden operating range:
+
+        ```python
+        PiecewiseConversion(
+            {
+                'steam_input': Piecewise(
+                    [
+                        Piece(0, 100),  # Low pressure operation
+                        Piece(200, 500),  # High pressure (gap: 100-200)
+                    ]
+                ),
+                'power_output': Piecewise(
+                    [
+                        Piece(0, 80),  # Low efficiency at low pressure
+                        Piece(180, 400),  # High efficiency at high pressure
+                    ]
+                ),
+            }
+        )
+        ```
+
+        Multi-product chemical reactor:
+
+        ```python
+        fx.PiecewiseConversion(
+            {
+                'feedstock': fx.Piecewise(
+                    [
+                        fx.Piece(10, 50),  # Small batch: 10-50 kg/h
+                        fx.Piece(50, 200),  # Large batch: 50-200 kg/h
+                    ]
+                ),
+                'product_A': fx.Piecewise(
+                    [
+                        fx.Piece(7, 32),  # Small batch yield: 70%
+                        fx.Piece(32, 140),  # Large batch yield: 70%
+                    ]
+                ),
+                'product_B': fx.Piecewise(
+                    [
+                        fx.Piece(2, 12),  # Small batch: 20% to product B
+                        fx.Piece(12, 45),  # Large batch: better selectivity
+                    ]
+                ),
+                'waste': fx.Piecewise(
+                    [
+                        fx.Piece(1, 6),  # Small batch waste: 10%
+                        fx.Piece(6, 15),  # Large batch waste: 7.5%
+                    ]
+                ),
+            }
+        )
+        ```
+
+    Common Use Cases:
+        - Heat pumps/chillers: COP varies with load and ambient conditions
+        - Power plants: Heat rate curves showing fuel efficiency vs output
+        - Chemical reactors: Conversion rates and selectivity vs throughput
+        - Compressors/pumps: Power consumption vs flow rate
+        - Multi-stage processes: Different conversion rates per stage
+        - Equipment with minimum loads: Cannot operate below threshold
+        - Batch processes: Discrete production campaigns
+
+    """
+
     def __init__(self, piecewises: Dict[str, Piecewise]):
-        """Define piecewise linear conversion relationships between multiple flows.
-
-        This class models complex conversion processes where the relationship between
-        input and output flows changes at different operating points, such as:
-
-        - Variable efficiency equipment (heat pumps, engines, turbines)
-        - Multi-stage chemical processes with different conversion rates
-        - Equipment with discrete operating modes
-        - Systems with capacity constraints and thresholds
-
-        Args:
-            piecewises: Dictionary mapping flow labels to their Piecewise conversion functions.
-                Keys are flow names (e.g., 'electricity_in', 'heat_out', 'fuel_consumed').
-                Values are Piecewise objects defining conversion factors at different operating points.
-                All Piecewise objects must have the same number of pieces and compatible domains
-                to ensure consistent conversion relationships across operating ranges.
-
-        Note:
-            Special modeling features:
-
-            - **Gaps**: Express forbidden operating ranges by creating non-contiguous pieces.
-              Example: `[(0,50), (100,200)]` - cannot operate between 50-100 units
-            - **Points**: Express discrete operating points using pieces with identical start/end.
-              Example: `[(50,50), (100,100)]` - can only operate at exactly 50 or 100 units
-
-        Examples:
-            Heat pump with variable COP (Coefficient of Performance):
-
-            ```python
-            PiecewiseConversion(
-                {
-                    'electricity_in': Piecewise(
-                        [
-                            Piece(0, 10),  # Low load: 0-10 kW electricity
-                            Piece(10, 25),  # High load: 10-25 kW electricity
-                        ]
-                    ),
-                    'heat_out': Piecewise(
-                        [
-                            Piece(0, 35),  # Low load COP=3.5: 0-35 kW heat output
-                            Piece(35, 75),  # High load COP=3.0: 35-75 kW heat output
-                        ]
-                    ),
-                }
-            )
-            # At 15 kW electricity input → 52.5 kW heat output (interpolated)
-            ```
-
-            Engine with fuel consumption and emissions:
-
-            ```python
-            PiecewiseConversion(
-                {
-                    'fuel_input': Piecewise(
-                        [
-                            Piece(5, 15),  # Part load: 5-15 L/h fuel
-                            Piece(15, 30),  # Full load: 15-30 L/h fuel
-                        ]
-                    ),
-                    'power_output': Piecewise(
-                        [
-                            Piece(10, 25),  # Part load: 10-25 kW output
-                            Piece(25, 45),  # Full load: 25-45 kW output
-                        ]
-                    ),
-                    'co2_emissions': Piecewise(
-                        [
-                            Piece(12, 35),  # Part load: 12-35 kg/h CO2
-                            Piece(35, 78),  # Full load: 35-78 kg/h CO2
-                        ]
-                    ),
-                }
-            )
-            ```
-
-            Discrete operating modes (on/off equipment):
-
-            ```python
-            PiecewiseConversion(
-                {
-                    'electricity_in': Piecewise(
-                        [
-                            Piece(0, 0),  # Off mode: no consumption
-                            Piece(20, 20),  # On mode: fixed 20 kW consumption
-                        ]
-                    ),
-                    'cooling_out': Piecewise(
-                        [
-                            Piece(0, 0),  # Off mode: no cooling
-                            Piece(60, 60),  # On mode: fixed 60 kW cooling
-                        ]
-                    ),
-                }
-            )
-            ```
-
-            Equipment with forbidden operating range:
-
-            ```python
-            PiecewiseConversion(
-                {
-                    'steam_input': Piecewise(
-                        [
-                            Piece(0, 100),  # Low pressure operation
-                            Piece(200, 500),  # High pressure (gap: 100-200)
-                        ]
-                    ),
-                    'power_output': Piecewise(
-                        [
-                            Piece(0, 80),  # Low efficiency at low pressure
-                            Piece(180, 400),  # High efficiency at high pressure
-                        ]
-                    ),
-                }
-            )
-            ```
-
-            Multi-product chemical reactor:
-
-            ```python
-            fx.PiecewiseConversion(
-                {
-                    'feedstock': fx.Piecewise(
-                        [
-                            fx.Piece(10, 50),  # Small batch: 10-50 kg/h
-                            fx.Piece(50, 200),  # Large batch: 50-200 kg/h
-                        ]
-                    ),
-                    'product_A': fx.Piecewise(
-                        [
-                            fx.Piece(7, 32),  # Small batch yield: 70%
-                            fx.Piece(32, 140),  # Large batch yield: 70%
-                        ]
-                    ),
-                    'product_B': fx.Piecewise(
-                        [
-                            fx.Piece(2, 12),  # Small batch: 20% to product B
-                            fx.Piece(12, 45),  # Large batch: better selectivity
-                        ]
-                    ),
-                    'waste': fx.Piecewise(
-                        [
-                            fx.Piece(1, 6),  # Small batch waste: 10%
-                            fx.Piece(6, 15),  # Large batch waste: 7.5%
-                        ]
-                    ),
-                }
-            )
-            ```
-
-        Common Use Cases:
-            - Heat pumps/chillers: COP varies with load and ambient conditions
-            - Power plants: Heat rate curves showing fuel efficiency vs output
-            - Chemical reactors: Conversion rates and selectivity vs throughput
-            - Compressors/pumps: Power consumption vs flow rate
-            - Multi-stage processes: Different conversion rates per stage
-            - Equipment with minimum loads: Cannot operate below threshold
-            - Batch processes: Discrete production campaigns
-
-        """
         self.piecewises = piecewises
 
     def items(self):
@@ -255,100 +256,101 @@ class PiecewiseEffects(Interface):
 
 @register_class_for_io
 class PiecewiseEffectsPerFlowHour(Interface):
+    """
+    Define piecewise linear relationships between flow rate and various effects (costs, emissions, etc.).
+
+    This class models situations where the relationship between flow rate and effects changes at
+    different flow rate levels, such as:
+    - Pump efficiency curves across operating ranges
+    - Emission factors that vary with operating levels
+    - Capacity-dependent transportation costs
+    - Decision between different operating modes or suppliers
+    - Optional equipment activation with minimum flow requirements
+
+    Args:
+        piecewise_flow_rate: `Piecewise` defining the valid flow rate segments.
+            Each Piece represents a linear segment with (min_flow, max_flow) bounds.
+
+        piecewise_shares: Dictionary mapping effect names to their `Piecewise`.
+            Keys are effect names (e.g., 'Costs', 'CO2', 'Maintenance').
+            Values are `Piecewise` objects defining the absolute effect values (not rates/prices).
+
+            ⚠️  IMPORTANT: Values represent total effect amounts, not unit rates.
+            For a flow rate of X, the effect value is interpolated from the `Piecewise`.
+            This is NOT flow_rate × unit_price (which would be non-linear).
+
+    Behavior:
+        - If the first piece doesn't start at zero, flow rate is automatically bounded
+          by piecewise_flow_rate (when OnOffParameters are not used)
+        - Each segment represents a linear relationship within that flow rate range
+        - Effects are interpolated linearly within each piece
+        - All `Piece`s of the different `Piecewise`s at index i are active at the same time
+        - A decision whether to utilize the effect can be modeled by defining multiple Pieces for the same flow rate range
+
+    Examples:
+        # Tiered cost structure with increasing rates
+        PiecewiseEffectsPerFlowHour(
+            piecewise_flow_rate=Piecewise([
+                Piece(0, 50),    # Low flow segment: 0-50 units
+                Piece(50, 200)   # High flow segment: 50-200 units
+            ]),
+            piecewise_shares={
+                'Costs': Piecewise([
+                    Piece(0, 500),     # At flow=0: cost=0, at flow=50: cost=500
+                    Piece(500, 2000)   # At flow=50: cost=500, at flow=200: cost=2000
+                ]),
+                'CO2': Piecewise([
+                    Piece(0, 100),     # At flow=0: CO2=0, at flow=50: CO2=100
+                    Piece(100, 800)    # At flow=50: CO2=100, at flow=200: CO2=800
+                ])
+            }
+        )
+
+        # Decision between two suppliers with overlapping flow ranges
+        PiecewiseEffectsPerFlowHour(
+            piecewise_flow_rate=Piecewise([
+                Piece(0, 100),     # Supplier A: 0-100 units
+                Piece(50, 150)     # Supplier B: 50-150 units (overlaps with A)
+            ]),
+            piecewise_shares={
+                'Costs': Piecewise([
+                    Piece(0, 800),     # Supplier A: cheaper for low volumes
+                    Piece(400, 1200)   # Supplier B: better rates for high volumes
+                ])
+            }
+        )
+        # Flow range 50-100: Optimizer chooses between suppliers based on cost
+
+        # Optional equipment with minimum activation threshold
+        PiecewiseEffectsPerFlowHour(
+            piecewise_flow_rate=Piecewise([
+                Piece(0, 0),       # Equipment off: no flow
+                Piece(20, 100)     # Equipment on: minimum 20 units required
+            ]),
+            piecewise_shares={
+                'Costs': Piecewise([
+                    Piece(0, 0),       # No cost when off
+                    Piece(200, 800)    # Fixed startup cost + variable cost
+                ]),
+                'CO2': Piecewise([
+                    Piece(0, 0),       # No CO2 when off
+                    Piece(50, 300)     # Decreasing CO2 per fuel burn with higher power
+                ])
+            }
+        )
+        # Decision: Either flow=0 (off) or flow≥20 (on with minimum threshold)
+
+        # Equipment efficiency curve (although this might be better modeled as a Flow rather than an effect)
+        PiecewiseEffectsPerFlowHour(
+            piecewise_flow_rate=Piecewise([Piece(10, 100)]),  # Min 10, max 100 units
+            piecewise_shares={
+                'PowerConsumption': Piecewise([Piece(50, 800)])  # Non-linear efficiency
+            }
+        )
+
+    """
+
     def __init__(self, piecewise_flow_rate: Piecewise, piecewise_shares: Dict[str, Piecewise]):
-        """
-        Define piecewise linear relationships between flow rate and various effects (costs, emissions, etc.).
-
-        This class models situations where the relationship between flow rate and effects changes at
-        different flow rate levels, such as:
-        - Pump efficiency curves across operating ranges
-        - Emission factors that vary with operating levels
-        - Capacity-dependent transportation costs
-        - Decision between different operating modes or suppliers
-        - Optional equipment activation with minimum flow requirements
-
-        Args:
-            piecewise_flow_rate: `Piecewise` defining the valid flow rate segments.
-                Each Piece represents a linear segment with (min_flow, max_flow) bounds.
-
-            piecewise_shares: Dictionary mapping effect names to their `Piecewise`.
-                Keys are effect names (e.g., 'Costs', 'CO2', 'Maintenance').
-                Values are `Piecewise` objects defining the absolute effect values (not rates/prices).
-
-                ⚠️  IMPORTANT: Values represent total effect amounts, not unit rates.
-                For a flow rate of X, the effect value is interpolated from the `Piecewise`.
-                This is NOT flow_rate × unit_price (which would be non-linear).
-
-        Behavior:
-            - If the first piece doesn't start at zero, flow rate is automatically bounded
-              by piecewise_flow_rate (when OnOffParameters are not used)
-            - Each segment represents a linear relationship within that flow rate range
-            - Effects are interpolated linearly within each piece
-            - All `Piece`s of the different `Piecewise`s at index i are active at the same time
-            - A decision whether to utilize the effect can be modeled by defining multiple Pieces for the same flow rate range
-
-        Examples:
-            # Tiered cost structure with increasing rates
-            PiecewiseEffectsPerFlowHour(
-                piecewise_flow_rate=Piecewise([
-                    Piece(0, 50),    # Low flow segment: 0-50 units
-                    Piece(50, 200)   # High flow segment: 50-200 units
-                ]),
-                piecewise_shares={
-                    'Costs': Piecewise([
-                        Piece(0, 500),     # At flow=0: cost=0, at flow=50: cost=500
-                        Piece(500, 2000)   # At flow=50: cost=500, at flow=200: cost=2000
-                    ]),
-                    'CO2': Piecewise([
-                        Piece(0, 100),     # At flow=0: CO2=0, at flow=50: CO2=100
-                        Piece(100, 800)    # At flow=50: CO2=100, at flow=200: CO2=800
-                    ])
-                }
-            )
-
-            # Decision between two suppliers with overlapping flow ranges
-            PiecewiseEffectsPerFlowHour(
-                piecewise_flow_rate=Piecewise([
-                    Piece(0, 100),     # Supplier A: 0-100 units
-                    Piece(50, 150)     # Supplier B: 50-150 units (overlaps with A)
-                ]),
-                piecewise_shares={
-                    'Costs': Piecewise([
-                        Piece(0, 800),     # Supplier A: cheaper for low volumes
-                        Piece(400, 1200)   # Supplier B: better rates for high volumes
-                    ])
-                }
-            )
-            # Flow range 50-100: Optimizer chooses between suppliers based on cost
-
-            # Optional equipment with minimum activation threshold
-            PiecewiseEffectsPerFlowHour(
-                piecewise_flow_rate=Piecewise([
-                    Piece(0, 0),       # Equipment off: no flow
-                    Piece(20, 100)     # Equipment on: minimum 20 units required
-                ]),
-                piecewise_shares={
-                    'Costs': Piecewise([
-                        Piece(0, 0),       # No cost when off
-                        Piece(200, 800)    # Fixed startup cost + variable cost
-                    ]),
-                    'CO2': Piecewise([
-                        Piece(0, 0),       # No CO2 when off
-                        Piece(50, 300)     # Decreasing CO2 per fuel burn with higher power
-                    ])
-                }
-            )
-            # Decision: Either flow=0 (off) or flow≥20 (on with minimum threshold)
-
-            # Equipment efficiency curve (although this might be better modeled as a Flow rather than an effect)
-            PiecewiseEffectsPerFlowHour(
-                piecewise_flow_rate=Piecewise([Piece(10, 100)]),  # Min 10, max 100 units
-                piecewise_shares={
-                    'PowerConsumption': Piecewise([Piece(50, 800)])  # Non-linear efficiency
-                }
-            )
-
-        """
         self.piecewise_flow_rate = piecewise_flow_rate
         self.piecewise_shares = piecewise_shares
 
