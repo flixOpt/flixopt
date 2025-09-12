@@ -150,3 +150,7 @@ extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any ru
 quote-style = "single"
 indent-style = "space"
 docstring-code-format = true
+
+[tool.bandit]
+skips = ["B101", "B506"]  # assert_used and yaml_load
+exclude_dirs = ["tests/"]
