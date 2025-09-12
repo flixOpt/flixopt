@@ -111,7 +111,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest -v --cov=src --cov-report=xml --cov-report=term-missing
+          pytest -v --cov=flixopt --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == env.PYTHON_VERSION && matrix.os == 'ubuntu-latest'
@@ -119,6 +119,45 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+
+  test-release:
+    name: Release Test (${{ matrix.os }} Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    needs: code-quality
+    if: startsWith(github.ref, 'refs/tags/v')  # Only run on version tags
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        python-version: ['3.11']
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            .pytest_cache
+          key: ${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-python-${{ matrix.python-version }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Run tests with coverage
+        run: |
+          pytest -v --cov=flixopt --cov-report=xml --cov-report=term-missing
 
   security:
     name: Security Scan
@@ -136,12 +175,12 @@ jobs:
       - name: Install security tools
         run: |
           python -m pip install --upgrade pip
-          pip install bandit[toml] safety
+          pip install bandit[toml]
 
       - name: Run Bandit security scan
         run: |
-          bandit -r src/ -f json -o bandit-report.json || true
-          bandit -r src/
+          bandit -r flixopt/ -f json -o bandit-report.json || true
+          bandit -r flixopt/
 
       - name: Upload security reports
         uses: actions/upload-artifact@v4
@@ -154,7 +193,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [test, security]
+    needs: [test, test-release, security]
     if: startsWith(github.ref, 'refs/tags/v')
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
