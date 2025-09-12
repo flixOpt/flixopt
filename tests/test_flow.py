@@ -128,7 +128,8 @@ class TestPiecewiseEffectsPerFlowHour:
             piecewise_effects_per_flow_hour=fx.PiecewiseEffectsPerFlowHour(
                 piecewise_flow_rate=fx.Piecewise([fx.Piece(0, 25), fx.Piece(25, 100)]),
                 piecewise_shares={
-                    'Costs': fx.Piecewise([fx.Piece(0, 2*25), fx.Piece(2*25, 1*100)]),
+                    'Costs': fx.Piecewise([fx.Piece(0, 2 * 25), fx.Piece(2 * 25, 1 * 100)]),
+                    'CO2': fx.Piecewise([fx.Piece(0, 30 * 25), fx.Piece(30 * 25, 50 * 100)]),
                 },
             ),
         )
@@ -187,10 +188,16 @@ class TestPiecewiseEffectsPerFlowHour:
         flow_system.add_elements(fx.Sink('Sink', sink=flow), fx.Effect('CO2', 't', ''))
         model = create_linopy_model(flow_system)
 
+        flow_rate = np.linspace(0, 100, 10)
+
+        model.add_constraints(
+            model.variables['Sink(Wärme)|flow_rate'] == np.linspace(0, 100, 10),
+        )
+
         model.solve()
 
         desired_solution = model.hours_per_step * np.interp(
-            np.linspace(0, 100, 10),
+            flow_rate,
             [0, 25, 25, 100],
             [0, 2*25, 2*25, 1*100],
         )
