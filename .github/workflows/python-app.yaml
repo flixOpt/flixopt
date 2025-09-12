@@ -263,12 +263,17 @@ jobs:
           print(data["project"]["name"])
           PY
           )
+          # Extract version from git tag
+          VERSION=${GITHUB_REF#refs/tags/v}
           # Wait and retry while PyPI indexes the package
-          for d in 30 60 120 180 360 720 1080; do
+          for d in 15 30 60 120 180 360 720 1080; do
             sleep "$d"
-            pip install "$PACKAGE_NAME" && break || true
+            # Install specific version and verify it matches
+            pip install "$PACKAGE_NAME==$VERSION" && \
+            python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed" && \
+            break || true
           done
-          # Basic import test
+          # Final success confirmation
           python -c "import flixopt; print('PyPI installation successful!')"
 
   deploy-docs:
