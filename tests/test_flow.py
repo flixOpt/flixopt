@@ -114,7 +114,11 @@ class TestFlowModel:
             model.constraints['Sink(Wärme)->CO2(operation)'],
             model.variables['Sink(Wärme)->CO2(operation)'] == flow.model.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step * co2_per_flow_hour)
 
-    def test_piecewise_effects_per_flow_hour(self, basic_flow_system_linopy):
+
+class TestPiecewiseEffectsPerFlowHour:
+    """Test the PiecewiseEffectsPerFlowHour class."""
+
+    def test_model_build(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
 
         flow = fx.Flow(
@@ -125,7 +129,6 @@ class TestFlowModel:
                 piecewise_flow_rate=fx.Piecewise([fx.Piece(0, 25), fx.Piece(25, 100)]),
                 piecewise_shares={
                     'Costs': fx.Piecewise([fx.Piece(0, 2*25), fx.Piece(2*25, 1*100)]),
-                    'CO2': fx.Piecewise([fx.Piece(0, 30*25), fx.Piece(30*25, 50*100)]),
                 },
             ),
         )
@@ -167,15 +170,22 @@ class TestFlowModel:
             == model.variables['Sink(Wärme)|PiecewiseEffectsPerFlowHour|Costs'] * model.hours_per_step,
         )
 
-        assert_conequal(
-            model.constraints['Sink(Wärme)->CO2(operation)'],
-            model.variables['Sink(Wärme)->CO2(operation)']
-            == model.variables['Sink(Wärme)|PiecewiseEffectsPerFlowHour|CO2'] * model.hours_per_step,
-        )
+    def test_solution(self, basic_flow_system_linopy):
+        flow_system = basic_flow_system_linopy
 
-        model.add_constraints(
-            model.variables['Sink(Wärme)|flow_rate'] == np.linspace(0, 100, 10),
+        flow = fx.Flow(
+            'Wärme',
+            bus='Fernwärme',
+            size=100,
+            piecewise_effects_per_flow_hour=fx.PiecewiseEffectsPerFlowHour(
+                piecewise_flow_rate=fx.Piecewise([fx.Piece(0, 25), fx.Piece(25, 100)]),
+                piecewise_shares={
+                    'Costs': fx.Piecewise([fx.Piece(0, 2*25), fx.Piece(2*25, 1*100)]),
+                },
+            ),
         )
+        flow_system.add_elements(fx.Sink('Sink', sink=flow), fx.Effect('CO2', 't', ''))
+        model = create_linopy_model(flow_system)
 
         model.solve()
 
@@ -188,6 +198,65 @@ class TestFlowModel:
         xr.testing.assert_allclose(
             model.variables['Sink(Wärme)|PiecewiseEffectsPerFlowHour|Costs'].solution,
             desired_solution / model.hours_per_step,
+        )
+
+        xr.testing.assert_allclose(
+            model.variables['Sink(Wärme)->Costs(operation)'].solution,
+            desired_solution,
+        )
+
+    def test_optional_shares(self, basic_flow_system_linopy):
+        flow_system = basic_flow_system_linopy
+
+        flow = fx.Flow(
+            'Wärme',
+            bus='Fernwärme',
+            size=100,
+            piecewise_effects_per_flow_hour=fx.PiecewiseEffectsPerFlowHour(
+                piecewise_flow_rate=fx.Piecewise([fx.Piece(0, 1000), fx.Piece(0, 25), fx.Piece(25, 100)]),
+                piecewise_shares={
+                    'Costs': fx.Piecewise([fx.Piece(0, 0), fx.Piece(0, 2*25), fx.Piece(2*25, 1*100)]),
+                    'CO2': fx.Piecewise([fx.Piece(0, 0), fx.Piece(0, 30*25), fx.Piece(30*25, 50*100)]),
+                },
+            ),
+        )
+        flow_system.add_elements(fx.Sink('Sink', sink=flow), fx.Effect('CO2', 't', ''))
+        model = create_linopy_model(flow_system)
+
+        model.add_constraints(
+            model.variables['Sink(Wärme)|flow_rate'] == np.linspace(0, 100, 10),
+        )
+
+        model.add_constraints(
+            model.variables['Sink(Wärme)|Piece_0|inside_piece'].isel(time=slice(5, None)) == 0,
+        )
+
+        model.solve()
+
+        desired_solution = model.hours_per_step * np.interp(
+            np.linspace(0, 100, 10),
+            [0, 25, 25, 100],
+            [0, 2*25, 2*25, 1*100],
+        ) * np.array([0] * 5 + [1] * 5)
+
+        desired_solution_co2 = (
+            model.hours_per_step
+            * np.interp(
+                np.linspace(0, 100, 10),
+                [0, 25, 25, 100],
+                [0, 30 * 25, 30 * 25, 50 * 100],
+            )
+            * np.array([0] * 5 + [1] * 5)
+        )
+
+        xr.testing.assert_allclose(
+            model.variables['Sink(Wärme)|PiecewiseEffectsPerFlowHour|Costs'].solution,
+            desired_solution / model.hours_per_step,
+        )
+
+        xr.testing.assert_allclose(
+            model.variables['Sink(Wärme)|PiecewiseEffectsPerFlowHour|CO2'].solution,
+            desired_solution_co2 / model.hours_per_step,
         )
 
         xr.testing.assert_allclose(
