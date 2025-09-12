@@ -879,17 +879,84 @@ class StorageModel(ComponentModel):
 @register_class_for_io
 class SourceAndSink(Component):
     """
-    class for source (output-flow) and sink (input-flow) in one commponent
-    A SourceAndSink consumes AND provides energy or material flows from and to the system.
+    A SourceAndSink combines both supply and demand capabilities in a single component.
 
-    Sources can represent markets where energy or material can be bought or sold.
+    SourceAndSink components can both consume AND provide energy or material flows
+    from and to the system, making them ideal for modeling markets, (simple) storage facilities,
+    or bidirectional grid connections where buying and selling occur at the same location.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem
-        inputs: Input-flows into the SourceAndSink
-        outputs: Output-flows from the SourceAndSink
-        prevent_simultaneous_flow_rates: If True, only one output flow can be active at a time
-                meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        inputs: Input-flows into the SourceAndSink representing consumption/demand side.
+        outputs: Output-flows from the SourceAndSink representing supply/generation side.
+        prevent_simultaneous_flow_rates: If True, prevents simultaneous input and output
+            flows. This enforces that the component operates either as a source OR sink
+            at any given time, but not both simultaneously. Default is True.
+        meta_data: Used to store additional information about the Element. Not used
+            internally but saved in results. Only use Python native types.
+
+    Examples:
+        Electricity market connection (buy/sell to grid):
+
+        ```python
+        electricity_market = SourceAndSink(
+            label='grid_connection',
+            inputs=[electricity_purchase],  # Buy from grid
+            outputs=[electricity_sale],  # Sell to grid
+            prevent_simultaneous_flow_rates=True,  # Can't buy and sell simultaneously
+        )
+        ```
+
+        Natural gas storage facility:
+
+        ```python
+        gas_storage_facility = SourceAndSink(
+            label='underground_gas_storage',
+            inputs=[gas_injection_flow],  # Inject gas into storage
+            outputs=[gas_withdrawal_flow],  # Withdraw gas from storage
+            prevent_simultaneous_flow_rates=True,  # Injection or withdrawal, not both
+        )
+        ```
+
+        District heating network connection:
+
+        ```python
+        dh_connection = SourceAndSink(
+            label='district_heating_tie',
+            inputs=[heat_purchase_flow],  # Purchase heat from network
+            outputs=[heat_sale_flow],  # Sell excess heat to network
+            prevent_simultaneous_flow_rates=False,  # May allow simultaneous flows
+        )
+        ```
+
+        Industrial waste heat exchange:
+
+        ```python
+        waste_heat_exchange = SourceAndSink(
+            label='industrial_heat_hub',
+            inputs=[
+                waste_heat_input_a,  # Receive waste heat from process A
+                waste_heat_input_b,  # Receive waste heat from process B
+            ],
+            outputs=[
+                useful_heat_supply_c,  # Supply heat to process C
+                useful_heat_supply_d,  # Supply heat to process D
+            ],
+            prevent_simultaneous_flow_rates=False,  # Multiple simultaneous flows allowed
+        )
+        ```
+
+    Note:
+        When prevent_simultaneous_flow_rates is True, binary variables are created to
+        ensure mutually exclusive operation between input and output flows, which
+        increases computational complexity but reflects realistic market or storage
+        operation constraints.
+
+        SourceAndSink is particularly useful for modeling:
+        - Energy markets with bidirectional trading
+        - Storage facilities with injection/withdrawal operations
+        - Grid tie points with import/export capabilities
+        - Waste exchange networks with multiple participants
 
     Deprecated:
         The deprecated `sink` and `source` kwargs are accepted for compatibility but will be removed in future releases.
@@ -904,14 +971,6 @@ class SourceAndSink(Component):
         meta_data: Optional[Dict] = None,
         **kwargs,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            outputs: output-flows of this component
-            inputs: input-flows of this component
-            prevent_simultaneous_flow_rates: If True, inflow and outflow can not be active simultaniously.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         source = kwargs.pop('source', None)
         sink = kwargs.pop('sink', None)
         prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
