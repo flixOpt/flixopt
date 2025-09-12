@@ -112,6 +112,8 @@ class PiecewiseEffectsPerFlowHour(Interface):
         - Pump efficiency curves across operating ranges
         - Emission factors that vary with operating levels
         - Capacity-dependent transportation costs
+        - Decision between different operating modes or suppliers
+        - Optional equipment activation with minimum flow requirements
 
         Args:
             piecewise_flow_rate: `Piecewise` defining the valid flow rate segments.
@@ -131,7 +133,7 @@ class PiecewiseEffectsPerFlowHour(Interface):
             - Each segment represents a linear relationship within that flow rate range
             - Effects are interpolated linearly within each piece
             - All `Piece`s of the different `Piecewise`s at index i are active at the same time
-            - A decision wether to utilize the effect can be modeled by defining multiple Pieces for the same flow rate range
+            - A decision whether to utilize the effect can be modeled by defining multiple Pieces for the same flow rate range
 
         Examples:
             # Tiered cost structure with increasing rates
@@ -152,11 +154,41 @@ class PiecewiseEffectsPerFlowHour(Interface):
                 }
             )
 
-            # In this example:
-            # - Flow rate 25 → Cost = 250, CO2 = 50 (linear interpolation)
-            # - Flow rate 100 → Cost = 1000, CO2 = 300 (linear interpolation)
+            # Decision between two suppliers with overlapping flow ranges
+            PiecewiseEffectsPerFlowHour(
+                piecewise_flow_rate=Piecewise([
+                    Piece(0, 100),     # Supplier A: 0-100 units
+                    Piece(50, 150)     # Supplier B: 50-150 units (overlaps with A)
+                ]),
+                piecewise_shares={
+                    'Costs': Piecewise([
+                        Piece(0, 800),     # Supplier A: cheaper for low volumes
+                        Piece(400, 1200)   # Supplier B: better rates for high volumes
+                    ])
+                }
+            )
+            # Flow range 50-100: Optimizer chooses between suppliers based on cost
 
-            # Equipment efficiency curve (althought this might be better modeled as a Flow rather than an effect)
+            # Optional equipment with minimum activation threshold
+            PiecewiseEffectsPerFlowHour(
+                piecewise_flow_rate=Piecewise([
+                    Piece(0, 0),       # Equipment off: no flow
+                    Piece(20, 100)     # Equipment on: minimum 20 units required
+                ]),
+                piecewise_shares={
+                    'Costs': Piecewise([
+                        Piece(0, 0),       # No cost when off
+                        Piece(200, 800)    # Fixed startup cost + variable cost
+                    ]),
+                    'CO2': Piecewise([
+                        Piece(0, 0),       # No CO2 when off
+                        Piece(50, 300)     # Decreasing CO2 per fuel burn with higher power
+                    ])
+                }
+            )
+            # Decision: Either flow=0 (off) or flow≥20 (on with minimum threshold)
+
+            # Equipment efficiency curve (although this might be better modeled as a Flow rather than an effect)
             PiecewiseEffectsPerFlowHour(
                 piecewise_flow_rate=Piecewise([Piece(10, 100)]),  # Min 10, max 100 units
                 piecewise_shares={
