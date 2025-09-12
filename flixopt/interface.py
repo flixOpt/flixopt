@@ -106,6 +106,8 @@ class PiecewiseEffectsPerFlowHour(Interface):
     def __init__(self, piecewise_flow_rate: Piecewise, piecewise_shares: Dict[str, Piecewise]):
         """
         Define piecewise effects related to a variable.
+        Usually the first Piece contains the zero point. If not, the flow_rate gets bounded by the piecewise_flow_rate,
+        If no OnOffParameters are used.
 
         Args:
             piecewise_flow_rate: Piecewise of the flow_rate
