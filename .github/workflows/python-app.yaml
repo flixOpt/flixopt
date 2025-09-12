@@ -296,10 +296,10 @@ jobs:
           print(data["project"]["name"])
           PY
           )
-          # Wait for PyPI to index the package
-          sleep 60
-          # Install from PyPI
-          pip install $PACKAGE_NAME
+          # Wait and retry while PyPI indexes the package
+          for d in 30 60 120 180 360 720 1080; do
+            sleep "$d"
+            pip install "$PACKAGE_NAME" && break || true
           # Basic import test
           python -c "import flixopt; print('PyPI installation successful!')"
 
