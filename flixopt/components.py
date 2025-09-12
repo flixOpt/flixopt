@@ -982,13 +982,72 @@ class Source(Component):
     """
     A Source generates or provides energy or material flows into the system.
 
-    Sources represent supply points like power plants, fuel suppliers, or renewable energy sources.
+    Sources represent supply points like power plants, fuel suppliers, renewable
+    energy sources, or any system boundary where flows originate. They provide
+    unlimited supply capability subject to flow constraints, demand patterns and effects.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem
-        outputs: Output-flows from the source
-        meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        prevent_simultaneous_flow_rates: If True, only one output flow can be active at a time
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        outputs: Output-flows from the source. Can be single flow or list of flows
+            for sources providing multiple commodities or services.
+        meta_data: Used to store additional information about the Element. Not used
+            internally but saved in results. Only use Python native types.
+        prevent_simultaneous_flow_rates: If True, only one output flow can be active
+            at a time. Useful for modeling mutually exclusive supply options. Default is False.
+
+    Examples:
+        Simple electricity grid connection:
+
+        ```python
+        grid_source = Source(label='electrical_grid', outputs=[grid_electricity_flow])
+        ```
+
+        Natural gas supply with cost and capacity constraints:
+
+        ```python
+        gas_supply = Source(
+            label='gas_network',
+            outputs=[
+                Flow(
+                    label='natural_gas_flow',
+                    bus=gas_bus,
+                    size=1000,  # Maximum 1000 kW supply capacity
+                    costs={'cost': 0.04},  # €0.04/kWh gas cost
+                )
+            ],
+        )
+        ```
+
+        Multi-fuel power plant with switching constraints:
+
+        ```python
+        multi_fuel_plant = Source(
+            label='flexible_generator',
+            outputs=[coal_electricity, gas_electricity, biomass_electricity],
+            prevent_simultaneous_flow_rates=True,  # Can only use one fuel at a time
+        )
+        ```
+
+        Renewable energy source with investment optimization:
+
+        ```python
+        solar_farm = Source(
+            label='solar_pv',
+            outputs=[
+                Flow(
+                    label='solar_power',
+                    bus=electricity_bus,
+                    size=InvestParameters(
+                        minimum_size=0,
+                        maximum_size=50000,  # Up to 50 MW
+                        specific_effects={'cost': 800},  # €800/kW installed
+                        fix_effects={'cost': 100000},  # €100k development costs
+                    ),
+                    fixed_relative_profile=solar_profile,  # Hourly generation profile
+                )
+            ],
+        )
+        ```
 
     Deprecated:
         The deprecated `source` kwarg is accepted for compatibility but will be removed in future releases.
@@ -1036,13 +1095,73 @@ class Sink(Component):
     """
     A Sink consumes energy or material flows from the system.
 
-    Sinks represent demand points like electrical loads, heat demands, or material consumption.
+    Sinks represent demand points like electrical loads, heat demands, material
+    consumption, or any system boundary where flows terminate. They provide
+    unlimited consumption capability subject to flow constraints, demand patterns and effects.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem
-        inputs: Input-flows into the sink
-        meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        prevent_simultaneous_flow_rates: If True, only one input flow can be active at a time
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        inputs: Input-flows into the sink. Can be single flow or list of flows
+            for sinks consuming multiple commodities or services.
+        meta_data: Used to store additional information about the Element. Not used
+            internally but saved in results. Only use Python native types.
+        prevent_simultaneous_flow_rates: If True, only one input flow can be active
+            at a time. Useful for modeling mutually exclusive consumption options. Default is False.
+
+    Examples:
+        Simple electrical demand:
+
+        ```python
+        electrical_load = Sink(label='building_load', inputs=[electricity_demand_flow])
+        ```
+
+        Heat demand with time-varying profile:
+
+        ```python
+        heat_demand = Sink(
+            label='district_heating_load',
+            inputs=[
+                Flow(
+                    label='heat_consumption',
+                    bus=heat_bus,
+                    fixed_relative_profile=hourly_heat_profile,  # Demand profile
+                    size=2000,  # Peak demand of 2000 kW
+                )
+            ],
+        )
+        ```
+
+        Multi-energy building with switching capabilities:
+
+        ```python
+        flexible_building = Sink(
+            label='smart_building',
+            inputs=[electricity_heating, gas_heating, heat_pump_heating],
+            prevent_simultaneous_flow_rates=True,  # Can only use one heating mode
+        )
+        ```
+
+        Industrial process with variable demand:
+
+        ```python
+        factory_load = Sink(
+            label='manufacturing_plant',
+            inputs=[
+                Flow(
+                    label='electricity_process',
+                    bus=electricity_bus,
+                    size=5000,  # Base electrical load
+                    costs={'cost': -0.1},  # Value of service (negative cost)
+                ),
+                Flow(
+                    label='steam_process',
+                    bus=steam_bus,
+                    size=3000,  # Process steam demand
+                    fixed_relative_profile=production_schedule,
+                ),
+            ],
+        )
+        ```
 
     Deprecated:
         The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
