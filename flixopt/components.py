@@ -465,11 +465,113 @@ class Storage(Component):
 
 @register_class_for_io
 class Transmission(Component):
-    # TODO: automatic on-Value in Flows if loss_abs
-    # TODO: loss_abs must be: investment_size * loss_abs_rel!!!
-    # TODO: investmentsize only on 1 flow
-    # TODO: automatic investArgs for both in-flows (or alternatively both out-flows!)
-    # TODO: optional: capacities should be recognised for losses
+    """
+    Models transmission infrastructure that transports flows between two locations with losses.
+
+    Transmission components represent physical infrastructure like pipes, cables,
+    transmission lines, or conveyor systems that transport energy or materials between
+    two points. They can model both unidirectional and bidirectional flow with
+    configurable loss mechanisms and operational constraints.
+
+    The component supports complex transmission scenarios including relative losses
+    (proportional to flow), absolute losses (fixed when active), and bidirectional
+    operation with flow direction constraints.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        in1: The primary inflow (side A). Pass InvestParameters here for capacity optimization.
+        out1: The primary outflow (side B).
+        in2: Optional secondary inflow (side B) for bidirectional operation.
+            If in1 has InvestParameters, in2 will automatically have matching capacity.
+        out2: Optional secondary outflow (side A) for bidirectional operation.
+        relative_losses: Proportional losses as fraction of throughput (e.g., 0.02 for 2% loss).
+            Applied as: output = input × (1 - relative_losses)
+        absolute_losses: Fixed losses that occur when transmission is active.
+            Automatically creates binary variables for on/off states.
+        on_off_parameters: Parameters defining binary operation constraints and costs.
+        prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
+            flow in both directions. Increases binary variables but reflects physical
+            reality for most transmission systems. Default is True.
+        meta_data: Used to store additional information. Not used internally but saved
+            in results. Only use Python native types.
+
+    Examples:
+        Simple electrical transmission line:
+
+        ```python
+        power_line = Transmission(
+            label='110kv_line',
+            in1=substation_a_out,
+            out1=substation_b_in,
+            relative_losses=0.03,  # 3% line losses
+        )
+        ```
+
+        Bidirectional natural gas pipeline:
+
+        ```python
+        gas_pipeline = Transmission(
+            label='interstate_pipeline',
+            in1=compressor_station_a,
+            out1=distribution_hub_b,
+            in2=compressor_station_b,
+            out2=distribution_hub_a,
+            relative_losses=0.005,  # 0.5% friction losses
+            absolute_losses=50,  # 50 kW compressor power when active
+            prevent_simultaneous_flows_in_both_directions=True,
+        )
+        ```
+
+        District heating network with investment optimization:
+
+        ```python
+        heating_network = Transmission(
+            label='dh_main_line',
+            in1=Flow(
+                label='heat_supply',
+                bus=central_plant_bus,
+                size=InvestParameters(
+                    minimum_size=1000,  # Minimum 1 MW capacity
+                    maximum_size=10000,  # Maximum 10 MW capacity
+                    specific_effects={'cost': 200},  # €200/kW capacity
+                    fix_effects={'cost': 500000},  # €500k fixed installation
+                ),
+            ),
+            out1=district_heat_demand,
+            relative_losses=0.15,  # 15% thermal losses in distribution
+        )
+        ```
+
+        Material conveyor with on/off operation:
+
+        ```python
+        conveyor_belt = Transmission(
+            label='material_transport',
+            in1=loading_station,
+            out1=unloading_station,
+            absolute_losses=25,  # 25 kW motor power when running
+            on_off_parameters=OnOffParameters(
+                effects_per_switch_on={'maintenance': 0.1},
+                consecutive_on_hours_min=2,  # Minimum 2-hour operation
+                switch_on_total_max=10,  # Maximum 10 starts per day
+            ),
+        )
+        ```
+
+    Note:
+        The transmission equation balances flows with losses:
+        output_flow = input_flow × (1 - relative_losses) - absolute_losses
+
+        For bidirectional transmission, each direction has independent loss calculations.
+
+        When using InvestParameters on in1, the capacity automatically applies to in2
+        to maintain consistent bidirectional capacity without additional investment variables.
+
+        Absolute losses force the creation of binary on/off variables, which increases
+        computational complexity but enables realistic modeling of equipment with
+        standby power consumption.
+
+    """
 
     def __init__(
         self,
@@ -484,23 +586,6 @@ class Transmission(Component):
         prevent_simultaneous_flows_in_both_directions: bool = True,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Initializes a Transmission component (Pipe, cable, ...) that models the flows between two sides
-        with potential losses.
-
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            in1: The inflow at side A. Pass InvestmentParameters here.
-            out1: The outflow at side B.
-            in2: The optional inflow at side B.
-                If in1 got InvestParameters, the size of this Flow will be equal to in1 (with no extra effects!)
-            out2: The optional outflow at side A.
-            relative_losses: The relative loss between inflow and outflow, e.g., 0.02 for 2% loss.
-            absolute_losses: The absolute loss, occur only when the Flow is on. Induces the creation of the ON-Variable
-            on_off_parameters: Parameters defining the on/off behavior of the component.
-            prevent_simultaneous_flows_in_both_directions: If True, inflow and outflow are not allowed to be both non-zero at same timestep.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(
             label,
             inputs=[flow for flow in (in1, in2) if flow is not None],
