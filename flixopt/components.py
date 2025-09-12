@@ -25,7 +25,130 @@ logger = logging.getLogger('flixopt')
 @register_class_for_io
 class LinearConverter(Component):
     """
-    Converts input-Flows into output-Flows via linear conversion factors
+    Converts input-Flows into output-Flows via linear conversion factors.
+
+    LinearConverter models equipment that transforms one or more input flows into one or
+    more output flows through linear relationships. This includes heat exchangers,
+    electrical converters, chemical reactors, and other equipment where the
+    relationship between inputs and outputs can be expressed as linear equations.
+
+    The component supports two modeling approaches: simple conversion factors for
+    straightforward linear relationships, or piecewise conversion for complex non-linear
+    behavior approximated through piecewise linear segments.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        inputs: List of input Flows that feed into the converter.
+        outputs: List of output Flows that are produced by the converter.
+        on_off_parameters: Information about on and off state of LinearConverter.
+            Component is On/Off if all connected Flows are On/Off. This induces an
+            On-Variable (binary) in all Flows! If possible, use OnOffParameters in a
+            single Flow instead to keep the number of binary variables low.
+        conversion_factors: Linear relationships between flows expressed as a list of
+            dictionaries. Each dictionary maps flow labels to their coefficients in one
+            linear equation. The number of conversion factors must be less than the total
+            number of flows to ensure degrees of freedom > 0. Either 'conversion_factors'
+            OR 'piecewise_conversion' can be used, but not both.
+            For examples also look into the linear_converters.py file.
+        piecewise_conversion: Define piecewise linear relationships between flow rates
+            of different flows. Enables modeling of non-linear conversion behavior through
+            linear approximation. Either 'conversion_factors' or 'piecewise_conversion'
+            can be used, but not both.
+        meta_data: Used to store additional information about the Element. Not used
+            internally, but saved in results. Only use Python native types.
+
+    Examples:
+        Simple 1:1 heat exchanger with 95% efficiency:
+
+        ```python
+        heat_exchanger = LinearConverter(
+            label='primary_hx',
+            inputs=[hot_water_in],
+            outputs=[hot_water_out],
+            conversion_factors=[{'hot_water_in': 0.95, 'hot_water_out': 1}],
+        )
+        ```
+
+        Multi-input heat pump with COP=3:
+
+        ```python
+        heat_pump = LinearConverter(
+            label='air_source_hp',
+            inputs=[electricity_in],
+            outputs=[heat_output],
+            conversion_factors=[{'electricity_in': 3, 'heat_output': 1}],
+        )
+        ```
+
+        Combined heat and power (CHP) unit with multiple outputs:
+
+        ```python
+        chp_unit = LinearConverter(
+            label='gas_chp',
+            inputs=[natural_gas],
+            outputs=[electricity_out, heat_out],
+            conversion_factors=[
+                {'natural_gas': 0.35, 'electricity_out': 1},
+                {'natural_gas': 0.45, 'heat_out': 1},
+            ],
+        )
+        ```
+
+        Electrolyzer with multiple conversion relationships:
+
+        ```python
+        electrolyzer = LinearConverter(
+            label='pem_electrolyzer',
+            inputs=[electricity_in, water_in],
+            outputs=[hydrogen_out, oxygen_out],
+            conversion_factors=[
+                {'electricity_in': 1, 'hydrogen_out': 50},  # 50 kWh/kg H2
+                {'water_in': 1, 'hydrogen_out': 9},  # 9 kg H2O/kg H2
+                {'hydrogen_out': 8, 'oxygen_out': 1},  # Mass balance
+            ],
+        )
+        ```
+
+        Complex converter with piecewise efficiency:
+
+        ```python
+        variable_efficiency_converter = LinearConverter(
+            label='variable_converter',
+            inputs=[fuel_in],
+            outputs=[power_out],
+            piecewise_conversion=PiecewiseConversion(
+                {
+                    'fuel_in': Piecewise(
+                        [
+                            Piece(0, 10),  # Low load operation
+                            Piece(10, 25),  # High load operation
+                        ]
+                    ),
+                    'power_out': Piecewise(
+                        [
+                            Piece(0, 3.5),  # Lower efficiency at part load
+                            Piece(3.5, 10),  # Higher efficiency at full load
+                        ]
+                    ),
+                }
+            ),
+        )
+        ```
+
+    Note:
+        Conversion factors define linear relationships where the sum of (coefficient × flow_rate)
+        equals zero for each equation: factor1×flow1 + factor2×flow2 + ... = 0
+        Conversion factors define linear relationships.
+        `{flow1: a1, flow2: a2, ...}` leads to `a1×flow_rate1 + a2×flow_rate2 + ... = 0`
+        Unfortunately the current input format doest read intuitively:
+        {"electricity": 1, "H2": 50} means that the electricity_in flow rate is multiplied by 1
+        and the hydrogen_out flow rate is multiplied by 50. THis leads to 50 electricity --> 1 H2.
+
+        The system must have fewer conversion factors than total flows (degrees of freedom > 0)
+        to avoid over-constraining the problem. For n total flows, use at most n-1 conversion factors.
+
+        When using piecewise_conversion, the converter operates on one piece at a time,
+        with binary variables determining which piece is active.
 
     """
 
@@ -39,21 +162,6 @@ class LinearConverter(Component):
         piecewise_conversion: Optional[PiecewiseConversion] = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            inputs: The input Flows
-            outputs: The output Flows
-            on_off_parameters: Information about on and off state of LinearConverter.
-                Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
-                If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
-                See class OnOffParameters.
-            conversion_factors: linear relation between flows.
-                Either 'conversion_factors' or 'piecewise_conversion' can be used!
-            piecewise_conversion: Define a piecewise linear relation between flow rates of different flows.
-                Either 'conversion_factors' or 'piecewise_conversion' can be used!
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
