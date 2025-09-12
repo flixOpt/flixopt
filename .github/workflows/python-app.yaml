@@ -139,11 +139,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Sync changelog to docs
-        run: |
-          cp CHANGELOG.md docs/changelog.md
-          echo "✅ Synced changelog to docs"
-
       - name: Extract release notes
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
