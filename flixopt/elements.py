@@ -149,6 +149,35 @@ class Flow(Element):
     r"""
     A **Flow** moves energy (or material) between a [Bus][flixopt.elements.Bus] and a [Component][flixopt.elements.Component] in a predefined direction.
     The flow-rate is the main optimization variable of the **Flow**.
+    
+    Args:
+        label: The label of the Flow. Used to identify it in the FlowSystem. Its `full_label` consists of the label of the Component and the label of the Flow.
+        bus: Label of the bus the flow is connected to.
+        size: Size of the flow. If InvestmentParameters is used, size is optimized.
+            If size is None, a default value is used.
+        relative_minimum: Min value is relative_minimum multiplied by size
+        relative_maximum: Max value is relative_maximum multiplied by size. If size = max then relative_maximum=1
+        load_factor_min: Minimal load factor  general: avg Flow per nominalVal/investSize
+            (e.g. boiler, kW/kWh=h; solarthermal: kW/m²;
+             def: :math:`load\_factor:= sumFlowHours/ (nominal\_val \cdot \Delta t_{tot})`
+        load_factor_max: Maximal load factor (see minimal load factor)
+        effects_per_flow_hour: Operational costs, costs per flow-"work"
+        on_off_parameters: If present, flow can be "off", i.e. be zero (only relevant if relative_minimum > 0)
+            Therefore a binary var "on" is used. Further, several other restrictions and effects can be modeled
+            through this On/Off State (See OnOffParameters)
+        flow_hours_total_max: Maximum flow-hours ("flow-work")
+            (if size is not const, maybe load_factor_max is the better choice!)
+        flow_hours_total_min: Minimum flow-hours ("flow-work")
+            (if size is not predefined, maybe load_factor_min is the better choice!)
+        fixed_relative_profile: Fixed relative values for flow (if given).
+            flow_rate(t) := fixed_relative_profile(t) * size(t)
+            With this value, the flow_rate is no optimization-variable anymore.
+            (relative_minimum and relative_maximum are ignored)
+            used for fixed load or supply profiles, i.g. heat demand, wind-power, solarthermal
+            If the load-profile is just an upper limit, use relative_maximum instead.
+        previous_flow_rate: Previous flow rate of the flow. Used to determine if and how long the
+            flow is already on / off. If None, the flow is considered to be off for one timestep.
+        meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
     """
 
     def __init__(
@@ -168,36 +197,6 @@ class Flow(Element):
         previous_flow_rate: Optional[NumericData] = None,
         meta_data: Optional[Dict] = None,
     ):
-        r"""
-        Args:
-            label: The label of the FLow. Used to identify it in the FlowSystem. Its `full_label` consists of the label of the Component and the label of the Flow.
-            bus: blabel of the bus the flow is connected to.
-            size: size of the flow. If InvestmentParameters is used, size is optimized.
-                If size is None, a default value is used.
-            relative_minimum: min value is relative_minimum multiplied by size
-            relative_maximum: max value is relative_maximum multiplied by size. If size = max then relative_maximum=1
-            load_factor_min: minimal load factor  general: avg Flow per nominalVal/investSize
-                (e.g. boiler, kW/kWh=h; solarthermal: kW/m²;
-                 def: :math:`load\_factor:= sumFlowHours/ (nominal\_val \cdot \Delta t_{tot})`
-            load_factor_max: maximal load factor (see minimal load factor)
-            effects_per_flow_hour: operational costs, costs per flow-"work"
-            on_off_parameters: If present, flow can be "off", i.e. be zero (only relevant if relative_minimum > 0)
-                Therefore a binary var "on" is used. Further, several other restrictions and effects can be modeled
-                through this On/Off State (See OnOffParameters)
-            flow_hours_total_max: maximum flow-hours ("flow-work")
-                (if size is not const, maybe load_factor_max is the better choice!)
-            flow_hours_total_min: minimum flow-hours ("flow-work")
-                (if size is not predefined, maybe load_factor_min is the better choice!)
-            fixed_relative_profile: fixed relative values for flow (if given).
-                flow_rate(t) := fixed_relative_profile(t) * size(t)
-                With this value, the flow_rate is no optimization-variable anymore.
-                (relative_minimum and relative_maximum are ignored)
-                used for fixed load or supply profiles, i.g. heat demand, wind-power, solarthermal
-                If the load-profile is just an upper limit, use relative_maximum instead.
-            previous_flow_rate: previous flow rate of the flow. Used to determine if and how long the
-                flow is already on / off. If None, the flow is considered to be off for one timestep.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, meta_data=meta_data)
         self.size = size or CONFIG.modeling.BIG  # Default size
         self.relative_minimum = relative_minimum
