@@ -125,13 +125,13 @@ class Storage(Component):
     Storages have one incoming and one outgoing Flow each with an efficiency factor.
     They maintain a charge state that represents the stored amount, bounded by capacity limits.
     The charge state evolves based on charging, discharging, and losses over time.
-    
+
     For mathematical details see class StorageModel
-    
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem
         charging: Ingoing flow for loading the storage
-        discharging: Outgoing flow for unloading the storage  
+        discharging: Outgoing flow for unloading the storage
         capacity_in_flow_hours: Nominal capacity/size of the storage
         relative_minimum_charge_state: Minimum relative charge state. The default is 0
         relative_maximum_charge_state: Maximum relative charge state. The default is 1
@@ -668,16 +668,16 @@ class SourceAndSink(Component):
 class Source(Component):
     """
     A Source generates or provides energy or material flows into the system.
-    
+
     Sources represent supply points like power plants, fuel suppliers, or renewable energy sources.
-    
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem
         outputs: Output-flows from the source
         meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         prevent_simultaneous_flow_rates: If True, only one output flow can be active at a time
     """
-    
+
     def __init__(
         self,
         label: str,
@@ -719,16 +719,16 @@ class Source(Component):
 class Sink(Component):
     """
     A Sink consumes energy or material flows from the system.
-    
+
     Sinks represent demand points like electrical loads, heat demands, or material consumption.
-    
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem
         inputs: Input-flows into the sink
         meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         prevent_simultaneous_flow_rates: If True, only one input flow can be active at a time
     """
-    
+
     def __init__(
         self,
         label: str,

@@ -128,7 +128,7 @@ class Calculation:
 class FullCalculation(Calculation):
     """
     FullCalculation solves the complete optimization problem using all time steps.
-    
+
     This is the most comprehensive calculation type that considers every time step
     in the optimization, providing the most accurate but computationally intensive solution.
     """
@@ -190,7 +190,7 @@ class FullCalculation(Calculation):
 class AggregatedCalculation(FullCalculation):
     """
     AggregatedCalculation reduces computational complexity by clustering time series into typical periods.
-    
+
     This calculation approach aggregates time series data using clustering techniques (tsam) to identify
     representative time periods, significantly reducing computation time while maintaining solution accuracy.
 

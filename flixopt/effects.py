@@ -28,7 +28,7 @@ class Effect(Element):
     """
     Effect represents impacts like costs, CO2 emissions, area usage, etc.
     Components, Flows, and other system elements can contribute to an Effect. One Effect is chosen as the Objective of the Optimization.
-    
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem
         unit: The unit of effect, e.g. €, kg_CO2, kWh_primaryEnergy

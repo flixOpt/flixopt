@@ -103,10 +103,10 @@ class DataConverter:
 class TimeSeriesData:
     """
     TimeSeriesData wraps time series data with aggregation metadata for optimization.
-    
+
     This class combines time series data with special characteristics needed for aggregated calculations.
     It allows grouping related time series to prevent overweighting in optimization models.
-    
+
     Example:
         When you have multiple solar time series, they should share aggregation weight:
         ```python
@@ -115,7 +115,7 @@ class TimeSeriesData:
         solar3 = TimeSeriesData(sol_array_3, agg_group='solar')
         # These 3 series share one weight (each gets weight = 1/3 instead of 1)
         ```
-    
+
     Args:
         data: The timeseries data, which can be a scalar, array, or numpy array.
         agg_group: The group this TimeSeriesData belongs to. agg_weight is split between group members. Default is None.
@@ -124,6 +124,7 @@ class TimeSeriesData:
     Raises:
         ValueError: If both agg_group and agg_weight are set.
     """
+
     # TODO: Move to Interface.py
     def __init__(self, data: NumericData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
         self.data = data

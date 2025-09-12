@@ -95,7 +95,7 @@ class Bus(Element):
     Buses represents nodal balances between the flow rates.
     A Bus has incoming and outgoing Flows, and is the connection point of
     energy carriers (electricity, heat, gas, etc.) or materials flows in between different Components.
-    
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem
         excess_penalty_per_flow_hour: excess costs / penalty costs (bus balance compensation)
@@ -149,7 +149,7 @@ class Flow(Element):
     r"""
     A **Flow** moves energy (or material) between a [Bus][flixopt.elements.Bus] and a [Component][flixopt.elements.Component] in a predefined direction.
     The flow-rate is the main optimization variable of the **Flow**.
-    
+
     Args:
         label: The label of the Flow. Used to identify it in the FlowSystem. Its `full_label` consists of the label of the Component and the label of the Flow.
         bus: Label of the bus the flow is connected to.

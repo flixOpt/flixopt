@@ -46,8 +46,8 @@ class Piece(Interface):
         ```python
         # Low efficiency at part load (0-50% load)
         low_load_piece = Piece(start=0, end=50)
-        
-        # High efficiency at full load (50-100% load)  
+
+        # High efficiency at full load (50-100% load)
         full_load_piece = Piece(start=50, end=100)
         ```
 
@@ -57,7 +57,7 @@ class Piece(Interface):
         # Operating range that changes with time)
         time_dependent_piece = Piece(
             start=np.array([10, 20, 30, 25]),  # Minimum capacity by timestep
-            end=np.array([80, 100, 90, 70])    # Maximum capacity by timestep
+            end=np.array([80, 100, 90, 70]),  # Maximum capacity by timestep
         )
         ```
 
@@ -68,7 +68,7 @@ class Piece(Interface):
         Overlapping Pieces effectively leave the decision on which piece is active open.
 
     """
-    
+
     def __init__(self, start: NumericData, end: NumericData):
         self.start = start
         self.end = end
@@ -98,57 +98,65 @@ class Piecewise(Interface):
         Heat pump COP (Coefficient of Performance) curve:
 
         ```python
-        cop_curve = Piecewise([
-            Piece(start=0, end=25),    # Low ambient temp: poor COP
-            Piece(start=25, end=50),   # Moderate temp: better COP  
-            Piece(start=50, end=75),   # High temp: best COP
-        ])
+        cop_curve = Piecewise(
+            [
+                Piece(start=0, end=25),  # Low ambient temp: poor COP
+                Piece(start=25, end=50),  # Moderate temp: better COP
+                Piece(start=50, end=75),  # High temp: best COP
+            ]
+        )
         ```
 
         Tiered electricity pricing:
 
         ```python
-        electricity_cost = Piecewise([
-            Piece(start=0, end=100),     # First 100 kWh: low rate
-            Piece(start=100, end=500),   # Next 400 kWh: medium rate
-            Piece(start=500, end=1000),  # Above 500 kWh: high rate
-        ])
+        electricity_cost = Piecewise(
+            [
+                Piece(start=0, end=100),  # First 100 kWh: low rate
+                Piece(start=100, end=500),  # Next 400 kWh: medium rate
+                Piece(start=500, end=1000),  # Above 500 kWh: high rate
+            ]
+        )
         ```
 
         Equipment with minimum load and forbidden range:
 
         ```python
-        turbine_operation = Piecewise([
-            Piece(start=0, end=0),       # Off state (point)
-            Piece(start=40, end=100),    # Operating range (gap 0-40)
-        ])
+        turbine_operation = Piecewise(
+            [
+                Piece(start=0, end=0),  # Off state (point)
+                Piece(start=40, end=100),  # Operating range (gap 0-40)
+            ]
+        )
         ```
 
         Seasonal capacity variation:
 
         ```python
-        seasonal_capacity = Piecewise([
-            Piece(start=[10, 15, 20, 12], end=[80, 90, 85, 75]),  # By season
-        ])
+        seasonal_capacity = Piecewise(
+            [
+                Piece(start=[10, 15, 20, 12], end=[80, 90, 85, 75]),  # By season
+            ]
+        )
         ```
 
     Note:
         The Piecewise class supports standard Python container operations:
-        
+
         - Length: `len(piecewise)` returns number of pieces
         - Indexing: `piecewise[i]` accesses the i-th piece
         - Iteration: `for piece in piecewise:` loops over all pieces
 
     Common Use Cases:
         - Power plant heat rate curves: fuel consumption vs electrical output
-        - HVAC equipment: capacity and efficiency vs outdoor temperature  
+        - HVAC equipment: capacity and efficiency vs outdoor temperature
         - Industrial processes: conversion efficiency vs throughput
         - Financial modeling: progressive tax rates, bulk pricing discounts
         - Transportation: fuel consumption vs speed, load capacity vs distance
         - Storage systems: charge/discharge efficiency vs state of charge
 
     """
-    
+
     def __init__(self, pieces: List[Piece]):
         self.pieces = pieces
 
@@ -328,7 +336,7 @@ class PiecewiseConversion(Interface):
         - Batch processes: Discrete production campaigns
 
     """
-    
+
     def __init__(self, piecewises: Dict[str, Piecewise]):
         self.piecewises = piecewises
 
@@ -366,7 +374,7 @@ class PiecewiseEffects(Interface):
             per unit of the origin variable at different operating levels.
 
     Note:
-        **Implementation Status**: This functionality is not yet fully implemented 
+        **Implementation Status**: This functionality is not yet fully implemented
         for non-scalar shares. Currently limited to scalar effect relationships.
 
     Examples:
@@ -375,23 +383,29 @@ class PiecewiseEffects(Interface):
         ```python
         # Production volume affects unit costs and emissions
         manufacturing_effects = PiecewiseEffects(
-            piecewise_origin=Piecewise([
-                Piece(0, 1000),    # Small scale production
-                Piece(1000, 5000), # Medium scale production  
-                Piece(5000, 10000) # Large scale production
-            ]),
+            piecewise_origin=Piecewise(
+                [
+                    Piece(0, 1000),  # Small scale production
+                    Piece(1000, 5000),  # Medium scale production
+                    Piece(5000, 10000),  # Large scale production
+                ]
+            ),
             piecewise_shares={
-                'unit_cost': Piecewise([
-                    Piece(50, 45),   # High unit cost at low volume
-                    Piece(45, 35),   # Decreasing cost with scale
-                    Piece(35, 30)    # Lowest cost at high volume
-                ]),
-                'CO2_intensity': Piecewise([
-                    Piece(2.5, 2.0), # Higher emissions per unit at low efficiency
-                    Piece(2.0, 1.5), # Better efficiency at medium scale
-                    Piece(1.5, 1.2)  # Best efficiency at large scale
-                ])
-            }
+                'unit_cost': Piecewise(
+                    [
+                        Piece(50, 45),  # High unit cost at low volume
+                        Piece(45, 35),  # Decreasing cost with scale
+                        Piece(35, 30),  # Lowest cost at high volume
+                    ]
+                ),
+                'CO2_intensity': Piecewise(
+                    [
+                        Piece(2.5, 2.0),  # Higher emissions per unit at low efficiency
+                        Piece(2.0, 1.5),  # Better efficiency at medium scale
+                        Piece(1.5, 1.2),  # Best efficiency at large scale
+                    ]
+                ),
+            },
         )
         ```
 
@@ -399,20 +413,26 @@ class PiecewiseEffects(Interface):
 
         ```python
         power_plant_effects = PiecewiseEffects(
-            piecewise_origin=Piecewise([
-                Piece(100, 300),   # Minimum load to rated capacity (MW)
-                Piece(300, 500)    # Overload operation
-            ]),
+            piecewise_origin=Piecewise(
+                [
+                    Piece(100, 300),  # Minimum load to rated capacity (MW)
+                    Piece(300, 500),  # Overload operation
+                ]
+            ),
             piecewise_shares={
-                'fuel_rate': Piecewise([
-                    Piece(11.5, 10.2), # Heat rate: BTU/kWh (less efficient at part load)
-                    Piece(10.2, 10.8)  # Heat rate increases at overload
-                ]),
-                'NOx_rate': Piecewise([
-                    Piece(0.15, 0.12), # NOx emissions: lb/MWh
-                    Piece(0.12, 0.18)  # Higher emissions at overload
-                ])
-            }
+                'fuel_rate': Piecewise(
+                    [
+                        Piece(11.5, 10.2),  # Heat rate: BTU/kWh (less efficient at part load)
+                        Piece(10.2, 10.8),  # Heat rate increases at overload
+                    ]
+                ),
+                'NOx_rate': Piecewise(
+                    [
+                        Piece(0.15, 0.12),  # NOx emissions: lb/MWh
+                        Piece(0.12, 0.18),  # Higher emissions at overload
+                    ]
+                ),
+            },
         )
         ```
 
@@ -420,23 +440,29 @@ class PiecewiseEffects(Interface):
 
         ```python
         water_pricing = PiecewiseEffects(
-            piecewise_origin=Piecewise([
-                Piece(0, 10),      # Basic tier: 0-10 m³/month
-                Piece(10, 50),     # Standard tier: 10-50 m³/month
-                Piece(50, 200)     # High consumption: >50 m³/month
-            ]),
+            piecewise_origin=Piecewise(
+                [
+                    Piece(0, 10),  # Basic tier: 0-10 m³/month
+                    Piece(10, 50),  # Standard tier: 10-50 m³/month
+                    Piece(50, 200),  # High consumption: >50 m³/month
+                ]
+            ),
             piecewise_shares={
-                'cost_per_m3': Piecewise([
-                    Piece(1.20, 1.20), # Flat rate for basic consumption
-                    Piece(2.50, 2.50), # Higher rate for standard tier
-                    Piece(4.00, 4.00)  # Premium rate for high consumption
-                ]),
-                'infrastructure_fee': Piecewise([
-                    Piece(0.10, 0.10), # Low infrastructure impact
-                    Piece(0.25, 0.25), # Medium infrastructure impact
-                    Piece(0.50, 0.50)  # High infrastructure impact
-                ])
-            }
+                'cost_per_m3': Piecewise(
+                    [
+                        Piece(1.20, 1.20),  # Flat rate for basic consumption
+                        Piece(2.50, 2.50),  # Higher rate for standard tier
+                        Piece(4.00, 4.00),  # Premium rate for high consumption
+                    ]
+                ),
+                'infrastructure_fee': Piecewise(
+                    [
+                        Piece(0.10, 0.10),  # Low infrastructure impact
+                        Piece(0.25, 0.25),  # Medium infrastructure impact
+                        Piece(0.50, 0.50),  # High infrastructure impact
+                    ]
+                ),
+            },
         )
         ```
 
@@ -449,7 +475,7 @@ class PiecewiseEffects(Interface):
         - Financial instruments: Progressive rates, risk premiums
 
     """
-    
+
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
@@ -474,7 +500,7 @@ class InvestParameters(Interface):
     Investment modeling capabilities include:
     - Fixed vs. continuous sizing decisions
     - Multiple cost components (fixed, variable, piecewise)
-    - Optional investments with divestment penalties  
+    - Optional investments with divestment penalties
     - Technology learning curves and economies of scale
     - Multi-period investment planning with proper annualization
 
@@ -522,13 +548,13 @@ class InvestParameters(Interface):
             fixed_size=100,  # 100 kW system (binary decision)
             optional=True,
             fix_effects={
-                'cost': 25000,      # Installation and permitting costs
-                'CO2': -50000       # Avoided emissions over lifetime
+                'cost': 25000,  # Installation and permitting costs
+                'CO2': -50000,  # Avoided emissions over lifetime
             },
             specific_effects={
-                'cost': 1200,       # €1200/kW for panels (annualized)
-                'CO2': -800         # kg CO2 avoided per kW annually
-            }
+                'cost': 1200,  # €1200/kW for panels (annualized)
+                'CO2': -800,  # kg CO2 avoided per kW annually
+            },
         )
         ```
 
@@ -536,27 +562,31 @@ class InvestParameters(Interface):
 
         ```python
         battery_investment = InvestParameters(
-            minimum_size=10,     # Minimum viable system size (kWh)
-            maximum_size=1000,   # Maximum installable capacity
+            minimum_size=10,  # Minimum viable system size (kWh)
+            maximum_size=1000,  # Maximum installable capacity
             optional=True,
             fix_effects={
-                'cost': 5000,       # Grid connection and control system
-                'installation_time': 2  # Days for fixed components
+                'cost': 5000,  # Grid connection and control system
+                'installation_time': 2,  # Days for fixed components
             },
             piecewise_effects=PiecewiseEffects(
-                piecewise_origin=Piecewise([
-                    Piece(0, 100),    # Small systems
-                    Piece(100, 500),  # Medium systems  
-                    Piece(500, 1000)  # Large systems
-                ]),
+                piecewise_origin=Piecewise(
+                    [
+                        Piece(0, 100),  # Small systems
+                        Piece(100, 500),  # Medium systems
+                        Piece(500, 1000),  # Large systems
+                    ]
+                ),
                 piecewise_shares={
-                    'cost': Piecewise([
-                        Piece(800, 750),  # High cost/kWh for small systems
-                        Piece(750, 600),  # Medium cost/kWh
-                        Piece(600, 500)   # Bulk discount for large systems
-                    ])
-                }
-            )
+                    'cost': Piecewise(
+                        [
+                            Piece(800, 750),  # High cost/kWh for small systems
+                            Piece(750, 600),  # Medium cost/kWh
+                            Piece(600, 500),  # Bulk discount for large systems
+                        ]
+                    )
+                },
+            ),
         )
         ```
 
@@ -568,17 +598,17 @@ class InvestParameters(Interface):
             maximum_size=200,
             optional=True,  # Can choose not to replace
             fix_effects={
-                'cost': 15000,      # Installation costs
-                'disruption': 3     # Days of downtime
+                'cost': 15000,  # Installation costs
+                'disruption': 3,  # Days of downtime
             },
             specific_effects={
-                'cost': 400,        # €400/kW capacity
-                'maintenance': 25   # Annual maintenance per kW
+                'cost': 400,  # €400/kW capacity
+                'maintenance': 25,  # Annual maintenance per kW
             },
             divest_effects={
-                'cost': 8000,       # Demolition if not replaced
-                'environmental': 100 # Disposal fees
-            }
+                'cost': 8000,  # Demolition if not replaced
+                'environmental': 100,  # Disposal fees
+            },
         )
         ```
 
@@ -589,15 +619,15 @@ class InvestParameters(Interface):
         gas_turbine = InvestParameters(
             fixed_size=50,  # MW
             fix_effects={'cost': 2500000, 'CO2': 1250000},
-            specific_effects={'fuel_cost': 45, 'maintenance': 12}
+            specific_effects={'fuel_cost': 45, 'maintenance': 12},
         )
-        
-        # Wind farm option  
+
+        # Wind farm option
         wind_farm = InvestParameters(
             minimum_size=20,
             maximum_size=100,
             fix_effects={'cost': 1000000, 'CO2': -5000000},
-            specific_effects={'cost': 1800000, 'land_use': 0.5}
+            specific_effects={'cost': 1800000, 'land_use': 0.5},
         )
         ```
 
@@ -608,30 +638,36 @@ class InvestParameters(Interface):
             minimum_size=1,
             maximum_size=50,  # MW
             piecewise_effects=PiecewiseEffects(
-                piecewise_origin=Piecewise([
-                    Piece(0, 5),      # Small scale: early adoption
-                    Piece(5, 20),     # Medium scale: cost reduction  
-                    Piece(20, 50)     # Large scale: mature technology
-                ]),
+                piecewise_origin=Piecewise(
+                    [
+                        Piece(0, 5),  # Small scale: early adoption
+                        Piece(5, 20),  # Medium scale: cost reduction
+                        Piece(20, 50),  # Large scale: mature technology
+                    ]
+                ),
                 piecewise_shares={
-                    'capex': Piecewise([
-                        Piece(2000, 1800),  # Learning reduces costs
-                        Piece(1800, 1400),  # Continued cost reduction
-                        Piece(1400, 1200)   # Technology maturity
-                    ]),
-                    'efficiency': Piecewise([
-                        Piece(65, 68),      # Improving efficiency
-                        Piece(68, 72),      # with scale and experience
-                        Piece(72, 75)       # Best efficiency at scale
-                    ])
-                }
-            )
+                    'capex': Piecewise(
+                        [
+                            Piece(2000, 1800),  # Learning reduces costs
+                            Piece(1800, 1400),  # Continued cost reduction
+                            Piece(1400, 1200),  # Technology maturity
+                        ]
+                    ),
+                    'efficiency': Piecewise(
+                        [
+                            Piece(65, 68),  # Improving efficiency
+                            Piece(68, 72),  # with scale and experience
+                            Piece(72, 75),  # Best efficiency at scale
+                        ]
+                    ),
+                },
+            ),
         )
         ```
 
     Common Use Cases:
         - Power generation: Plant sizing, technology selection, retrofit decisions
-        - Industrial equipment: Capacity expansion, efficiency upgrades, replacements  
+        - Industrial equipment: Capacity expansion, efficiency upgrades, replacements
         - Infrastructure: Network expansion, facility construction, system upgrades
         - Energy storage: Battery sizing, pumped hydro, compressed air systems
         - Transportation: Fleet expansion, charging infrastructure, modal shifts
@@ -684,7 +720,7 @@ class OnOffParameters(Interface):
 
     Common applications include:
     - Power plants with minimum load requirements and startup costs
-    - Industrial equipment with batch processes or discrete operating modes  
+    - Industrial equipment with batch processes or discrete operating modes
     - HVAC systems with thermostat control and equipment cycling
     - Process equipment with startup/shutdown sequences
     - Backup generators and emergency systems
@@ -736,18 +772,18 @@ class OnOffParameters(Interface):
         ```python
         power_plant_operation = OnOffParameters(
             effects_per_switch_on={
-                'startup_cost': 25000,    # €25,000 per startup
-                'startup_fuel': 150,      # GJ natural gas for startup
-                'startup_time': 4,        # Hours to reach full output
-                'maintenance_impact': 0.1 # Fractional life consumption
+                'startup_cost': 25000,  # €25,000 per startup
+                'startup_fuel': 150,  # GJ natural gas for startup
+                'startup_time': 4,  # Hours to reach full output
+                'maintenance_impact': 0.1,  # Fractional life consumption
             },
             effects_per_running_hour={
-                'fixed_om': 125,          # Fixed O&M costs while running
-                'auxiliary_power': 2.5    # MW parasitic loads
+                'fixed_om': 125,  # Fixed O&M costs while running
+                'auxiliary_power': 2.5,  # MW parasitic loads
             },
-            consecutive_on_hours_min=8,   # Minimum 8-hour run once started
+            consecutive_on_hours_min=8,  # Minimum 8-hour run once started
             consecutive_off_hours_min=4,  # Minimum 4-hour cooling period
-            on_hours_total_max=6000      # Annual operating limit
+            on_hours_total_max=6000,  # Annual operating limit
         )
         ```
 
@@ -756,20 +792,20 @@ class OnOffParameters(Interface):
         ```python
         batch_reactor = OnOffParameters(
             effects_per_switch_on={
-                'setup_cost': 1500,       # Labor and materials for startup
-                'catalyst_consumption': 5, # kg catalyst per batch
-                'cleaning_chemicals': 200  # L cleaning solution
+                'setup_cost': 1500,  # Labor and materials for startup
+                'catalyst_consumption': 5,  # kg catalyst per batch
+                'cleaning_chemicals': 200,  # L cleaning solution
             },
             effects_per_running_hour={
-                'steam': 2.5,             # t/h process steam
-                'electricity': 150,       # kWh electrical load
-                'cooling_water': 50       # m³/h cooling water
+                'steam': 2.5,  # t/h process steam
+                'electricity': 150,  # kWh electrical load
+                'cooling_water': 50,  # m³/h cooling water
             },
             consecutive_on_hours_min=12,  # Minimum batch size (12 hours)
-            consecutive_on_hours_max=24,  # Maximum batch size (24 hours)  
+            consecutive_on_hours_max=24,  # Maximum batch size (24 hours)
             consecutive_off_hours_min=6,  # Cleaning and setup time
-            switch_on_total_max=200,      # Maximum 200 batches per year
-            on_hours_total_max=4000       # Maximum production time
+            switch_on_total_max=200,  # Maximum 200 batches per year
+            on_hours_total_max=4000,  # Maximum production time
         )
         ```
 
@@ -778,18 +814,18 @@ class OnOffParameters(Interface):
         ```python
         hvac_operation = OnOffParameters(
             effects_per_switch_on={
-                'compressor_wear': 0.5,   # Hours of compressor life per start
-                'inrush_current': 15      # kW peak demand on startup
+                'compressor_wear': 0.5,  # Hours of compressor life per start
+                'inrush_current': 15,  # kW peak demand on startup
             },
             effects_per_running_hour={
-                'electricity': 25,        # kW electrical consumption
-                'maintenance': 0.12       # €/hour maintenance reserve
+                'electricity': 25,  # kW electrical consumption
+                'maintenance': 0.12,  # €/hour maintenance reserve
             },
-            consecutive_on_hours_min=1,   # Minimum 1-hour run to avoid cycling
-            consecutive_off_hours_min=0.5, # 30-minute minimum off time
-            switch_on_total_max=2000,     # Limit cycling for compressor life
-            on_hours_total_min=2000,      # Minimum operation for humidity control
-            on_hours_total_max=5000       # Maximum operation for energy budget
+            consecutive_on_hours_min=1,  # Minimum 1-hour run to avoid cycling
+            consecutive_off_hours_min=0.5,  # 30-minute minimum off time
+            switch_on_total_max=2000,  # Limit cycling for compressor life
+            on_hours_total_min=2000,  # Minimum operation for humidity control
+            on_hours_total_max=5000,  # Maximum operation for energy budget
         )
         ```
 
@@ -798,20 +834,20 @@ class OnOffParameters(Interface):
         ```python
         backup_generator = OnOffParameters(
             effects_per_switch_on={
-                'fuel_priming': 50,       # L diesel for system priming
-                'wear_factor': 1.0,       # Start cycles impact on maintenance
-                'testing_labor': 2        # Hours technician time per test
+                'fuel_priming': 50,  # L diesel for system priming
+                'wear_factor': 1.0,  # Start cycles impact on maintenance
+                'testing_labor': 2,  # Hours technician time per test
             },
             effects_per_running_hour={
                 'fuel_consumption': 180,  # L/h diesel consumption
-                'emissions_permit': 15,   # € emissions allowance cost
-                'noise_penalty': 25       # € noise compliance cost
+                'emissions_permit': 15,  # € emissions allowance cost
+                'noise_penalty': 25,  # € noise compliance cost
             },
             consecutive_on_hours_min=0.5,  # Minimum test duration (30 min)
-            consecutive_off_hours_max=720, # Maximum 30 days between tests
-            switch_on_total_max=52,        # Weekly testing limit
-            on_hours_total_min=26,         # Minimum annual testing (0.5h × 52)
-            on_hours_total_max=200         # Maximum runtime (emergencies + tests)
+            consecutive_off_hours_max=720,  # Maximum 30 days between tests
+            switch_on_total_max=52,  # Weekly testing limit
+            on_hours_total_min=26,  # Minimum annual testing (0.5h × 52)
+            on_hours_total_max=200,  # Maximum runtime (emergencies + tests)
         )
         ```
 
@@ -820,19 +856,19 @@ class OnOffParameters(Interface):
         ```python
         battery_cycling = OnOffParameters(
             effects_per_switch_on={
-                'cycle_degradation': 0.01, # % capacity loss per cycle
-                'inverter_startup': 0.5    # kWh losses during startup
+                'cycle_degradation': 0.01,  # % capacity loss per cycle
+                'inverter_startup': 0.5,  # kWh losses during startup
             },
             effects_per_running_hour={
-                'standby_losses': 2,       # kW standby consumption
-                'cooling': 5,              # kW thermal management
-                'inverter_losses': 8       # kW conversion losses
+                'standby_losses': 2,  # kW standby consumption
+                'cooling': 5,  # kW thermal management
+                'inverter_losses': 8,  # kW conversion losses
             },
-            consecutive_on_hours_min=1,    # Minimum discharge duration
-            consecutive_on_hours_max=4,    # Maximum continuous discharge
-            consecutive_off_hours_min=1,   # Minimum rest between cycles
-            switch_on_total_max=365,       # Daily cycling limit
-            force_switch_on=True           # Track all cycling events
+            consecutive_on_hours_min=1,  # Minimum discharge duration
+            consecutive_on_hours_max=4,  # Maximum continuous discharge
+            consecutive_off_hours_min=1,  # Minimum rest between cycles
+            switch_on_total_max=365,  # Daily cycling limit
+            force_switch_on=True,  # Track all cycling events
         )
         ```
 
@@ -840,12 +876,12 @@ class OnOffParameters(Interface):
         - Power generation: Thermal plant cycling, renewable curtailment, grid services
         - Industrial processes: Batch production, maintenance scheduling, equipment rotation
         - Buildings: HVAC control, lighting systems, elevator operations
-        - Transportation: Fleet management, charging infrastructure, maintenance windows  
+        - Transportation: Fleet management, charging infrastructure, maintenance windows
         - Storage systems: Battery cycling, pumped hydro, compressed air systems
         - Emergency equipment: Backup generators, safety systems, emergency lighting
 
     """
-    
+
     def __init__(
         self,
         effects_per_switch_on: Optional['EffectValuesUser'] = None,

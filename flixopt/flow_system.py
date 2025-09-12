@@ -30,7 +30,7 @@ logger = logging.getLogger('flixopt')
 class FlowSystem:
     """
     A FlowSystem organizes the high level Elements (Components, Buses & Effects).
-    
+
     This is the main container class that users work with to build and manage their System.
 
     Args:
