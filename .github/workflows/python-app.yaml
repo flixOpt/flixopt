@@ -57,6 +57,7 @@ jobs:
 
   test:
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     needs: lint  # Run tests only after linting passes
     strategy:
       fail-fast: false  # Continue testing other Python versions if one fails
