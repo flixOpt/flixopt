@@ -65,7 +65,7 @@ The documentation is available at [https://flixopt.github.io/flixopt/latest/](ht
 
 ---
 
-## 🛠️ Solver Integration
+## 🎯️ Solver Integration
 
 By default, FlixOpt uses the open-source solver [HiGHS](https://highs.dev/) which is installed by default. However, it is compatible with additional solvers such as:  
 
@@ -75,6 +75,11 @@ By default, FlixOpt uses the open-source solver [HiGHS](https://highs.dev/) whic
 - [CPLEX](https://www.ibm.com/analytics/cplex-optimizer)
 
 For detailed licensing and installation instructions, refer to the respective solver documentation.  
+
+---
+
+## 🛠 Development Setup
+Look into our docs for [development setup](https://flixopt.github.io/flixopt/latest/contribute/)
 
 ---
 
