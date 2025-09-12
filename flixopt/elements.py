@@ -12,7 +12,7 @@ import numpy as np
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
 from .effects import EffectValuesUser
-from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel, PiecewiseEffectsPerFlowHourModel
+from .features import InvestmentModel, OnOffModel, PiecewiseEffectsPerFlowHourModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseEffectsPerFlowHour
 from .structure import Element, ElementModel, SystemModel, register_class_for_io
 

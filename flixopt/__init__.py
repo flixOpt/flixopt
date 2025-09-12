@@ -18,6 +18,7 @@ from .commons import (
     Piecewise,
     PiecewiseConversion,
     PiecewiseEffects,
+    PiecewiseEffectsPerFlowHour,
     SegmentedCalculation,
     Sink,
     Source,
@@ -30,7 +31,6 @@ from .commons import (
     plotting,
     results,
     solvers,
-    PiecewiseEffectsPerFlowHour,
 )
 
 CONFIG.load_config()

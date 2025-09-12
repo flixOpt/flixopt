@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise, Piece
+from .interface import InvestParameters, OnOffParameters, Piece, Piecewise
 from .structure import Model, SystemModel
 
 logger = logging.getLogger('flixopt')

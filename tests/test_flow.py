@@ -116,10 +116,6 @@ class TestFlowModel:
 
     def test_piecewise_effects_per_flow_hour(self, basic_flow_system_linopy):
         flow_system = basic_flow_system_linopy
-        timesteps = flow_system.time_series_collection.timesteps
-
-        costs_per_flow_hour = xr.DataArray(np.linspace(1, 2, timesteps.size), coords=(timesteps,))
-        co2_per_flow_hour = xr.DataArray(np.linspace(4, 5, timesteps.size), coords=(timesteps,))
 
         flow = fx.Flow(
             'Wärme',
