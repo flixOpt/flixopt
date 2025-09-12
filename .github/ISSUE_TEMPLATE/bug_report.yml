@@ -7,7 +7,7 @@ body:
   attributes:
     value: |
       Thanks for taking the time to fill out this bug report!
-      
+
       **Before submitting**: Please search [existing issues](https://github.com/flixOpt/flixopt/issues) to avoid duplicates.
 
 - type: checkboxes
@@ -26,7 +26,7 @@ body:
     description: Clearly describe what went wrong
     placeholder: |
       What happened? What did you expect to happen instead?
-      
+
       Include any error messages or unexpected outputs.
   validations:
     required: true
@@ -41,13 +41,13 @@ body:
     placeholder: |
       import flixopt as fx
       import pandas as pd
-      
+
       # Minimal example that reproduces the bug
       timesteps = pd.date_range('2024-01-01', periods=24, freq='h')
       flow_system = fx.FlowSystem(timesteps)
-      
+
       # Add components that trigger the bug...
-      
+
       # Show the problematic operation
       result = flow_system.solve()  # This should fail/behave unexpectedly
     render: python

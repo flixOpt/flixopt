@@ -257,9 +257,9 @@ class FlowSystem:
 
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
-                f"Network visualization requires optional dependencies. "
-                f"Install with: pip install flixopt[viz], flixopt[full] or pip install dash dash_cytoscape networkx werkzeug. "
-                f"Original error: {VISUALIZATION_ERROR}"
+                f'Network visualization requires optional dependencies. '
+                f'Install with: pip install flixopt[viz], flixopt[full] or pip install dash dash_cytoscape networkx werkzeug. '
+                f'Original error: {VISUALIZATION_ERROR}'
             )
 
         if not self._connected:
@@ -274,6 +274,7 @@ class FlowSystem:
     def stop_network_app(self):
         """Stop the network visualization server."""
         from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
+
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
