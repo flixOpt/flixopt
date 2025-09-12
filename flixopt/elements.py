@@ -92,20 +92,59 @@ class Component(Element):
 @register_class_for_io
 class Bus(Element):
     """
-    Buses represents nodal balances between the flow rates.
-    A Bus has incoming and outgoing Flows, and is the connection point of
-    energy carriers (electricity, heat, gas, etc.) or materials flows in between different Components.
+    Buses represent nodal balances between flow rates, serving as connection points.
+
+    A Bus enforces energy or material balance constraints where the sum of all incoming
+    flows must equal the sum of all outgoing flows at each time step. Buses represent
+    physical or logical connection points for energy carriers (electricity, heat, gas)
+    or material flows between different Components.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem
-        excess_penalty_per_flow_hour: excess costs / penalty costs (bus balance compensation)
-            (none/ 0 -> no penalty). The default is 1e5.
-            (Take care: if you use a timeseries (no scalar), timeseries is aggregated if calculation_type = aggregated!)
-        meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        excess_penalty_per_flow_hour: Penalty costs for bus balance violations.
+            When None, no excess/deficit is allowed (hard constraint). When set to a
+            value > 0, allows bus imbalances at penalty cost. Default is 1e5 (high penalty).
+        meta_data: Used to store additional information. Not used internally but saved
+            in results. Only use Python native types.
 
-    Notes:
-        The constructor also initializes empty `inputs` and `outputs` lists for connected Flow objects.
-        The registration of connections is handled automatically by the FlowSystem.
+    Examples:
+        Electrical bus with strict balance:
+
+        ```python
+        electricity_bus = Bus(
+            label='main_electrical_bus',
+            excess_penalty_per_flow_hour=None,  # No imbalance allowed
+        )
+        ```
+
+        Heat network with penalty for imbalances:
+
+        ```python
+        heat_network = Bus(
+            label='district_heating_network',
+            excess_penalty_per_flow_hour=1000,  # €1000/MWh penalty for imbalance
+        )
+        ```
+
+        Material flow with time-varying penalties:
+
+        ```python
+        material_hub = Bus(
+            label='material_processing_hub',
+            excess_penalty_per_flow_hour=waste_disposal_costs,  # Time series
+        )
+        ```
+
+    Note:
+        The bus balance equation enforced is: Σ(inflows) = Σ(outflows) + excess - deficit
+
+        When excess_penalty_per_flow_hour is None, excess and deficit are forced to zero.
+        When a penalty cost is specified, the optimization can choose to violate the
+        balance if economically beneficial, paying the penalty.
+        The penalty is added to the objective directly.
+
+        Empty `inputs` and `outputs` lists are initialized and populated automatically
+        by the FlowSystem during system setup.
     """
 
     def __init__(
