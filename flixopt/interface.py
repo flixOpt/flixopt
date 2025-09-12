@@ -27,16 +27,10 @@ class Piece(Interface):
     (start and end points) for one segment of the function, enabling the
     modeling of complex non-linear relationships through linear approximations.
 
-    Pieces are the fundamental building blocks for:
-    - Equipment efficiency curves that change with operating conditions
-    - Cost functions with different rates at different scales
-    - Conversion processes with variable rates across operating ranges
-    - Constraint relationships that vary by operating region
-
     Args:
-        start: The x-coordinate values marking the beginning of this linear segment.
+        start: Values marking the beginning of this linear segment.
             These define the lower bound of the domain where this piece is active.
-        end: The x-coordinate values marking the end of this linear segment.
+        end: Values marking the end of this linear segment.
             These define the upper bound of the domain where this piece is active.
 
     Examples:
@@ -60,17 +54,18 @@ class Piece(Interface):
         Time-varying piece boundaries:
 
         ```python
-        # Operating range that changes with time (e.g., seasonal equipment limits)
-        seasonal_piece = Piece(
-            start=[10, 20, 30, 25],  # Minimum capacity by season
-            end=[80, 100, 90, 70]    # Maximum capacity by season
+        # Operating range that changes with time)
+        time_dependent_piece = Piece(
+            start=np.array([10, 20, 30, 25]),  # Minimum capacity by timestep
+            end=np.array([80, 100, 90, 70])    # Maximum capacity by timestep
         )
         ```
 
     Note:
-        Pieces typically overlap at their boundaries (end of one piece = start of next)
+        Pieces typically "touch" at their boundaries (end of one piece = start of next)
         to ensure continuity in the piecewise function. Gaps between pieces can be
         used to model forbidden operating regions.
+        Overlapping Pieces effectively leave the decision on which piece is active open.
 
     """
     
@@ -85,24 +80,13 @@ class Piece(Interface):
 
 @register_class_for_io
 class Piecewise(Interface):
-    """Define a piecewise linear function composed of multiple linear segments.
+    """Define a piecewise linear function composed of `Pieces`.
 
     This class creates complex non-linear relationships by combining multiple
     Piece objects into a single piecewise linear function. Each piece represents
     a different linear segment that applies over a specific domain range,
     allowing accurate approximation of curved relationships through linear
     interpolation between breakpoints.
-
-    Piecewise functions are essential for modeling:
-    - Equipment performance curves (efficiency vs load, capacity vs temperature)
-    - Economic relationships (marginal costs, economies of scale) 
-    - Physical processes (heat transfer, pressure drop, reaction kinetics)
-    - Regulatory constraints (tiered pricing, emissions limits)
-    - Multi-modal behavior (different operating regimes)
-
-    The class provides convenient iteration and indexing to access individual
-    pieces and integrates seamlessly with optimization solvers through data
-    transformation capabilities.
 
     Args:
         pieces: List of Piece objects defining the linear segments of the function.
