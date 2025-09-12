@@ -29,7 +29,17 @@ logger = logging.getLogger('flixopt')
 
 class FlowSystem:
     """
-    A FlowSystem organizes the high level Elements (Components & Effects).
+    A FlowSystem organizes the high level Elements (Components, Buses & Effects).
+    
+    This is the main container class that users work with to build and manage their System.
+
+    Args:
+        timesteps: The timesteps of the model.
+        hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
+        hours_of_previous_timesteps: The duration of previous timesteps.
+            If None, the first time increment of time_series is used.
+            This is needed to calculate previous durations (for example consecutive_on_hours).
+            If you use an array, take care that its long enough to cover all previous values!
     """
 
     def __init__(
@@ -38,15 +48,6 @@ class FlowSystem:
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
     ):
-        """
-        Args:
-            timesteps: The timesteps of the model.
-            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
-            hours_of_previous_timesteps: The duration of previous timesteps.
-                If None, the first time increment of time_series is used.
-                This is needed to calculate previous durations (for example consecutive_on_hours).
-                If you use an array, take care that its long enough to cover all previous values!
-        """
         self.time_series_collection = TimeSeriesCollection(
             timesteps=timesteps,
             hours_of_last_timestep=hours_of_last_timestep,
