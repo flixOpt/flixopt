@@ -386,8 +386,10 @@ class PiecewiseEffects(Interface):
             per unit of the origin variable at different operating levels.
 
     Note:
-        **Implementation Status**: This functionality is not yet fully implemented
-        for non-scalar shares. Currently limited to scalar effect relationships.
+        **Difference from PiecewiseConversion**: While PiecewiseConversion models
+        relationships between flow variables, PiecewiseEffects models how a single
+        decision variable contributes to multiple system effects (costs, emissions, etc.)
+        based on its operating level.
 
     Examples:
         Manufacturing process with scale-dependent costs and emissions:
