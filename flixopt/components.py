@@ -120,7 +120,30 @@ class LinearConverter(Component):
 @register_class_for_io
 class Storage(Component):
     """
-    Used to model the storage of energy or material.
+    A Storage models the temporary storage and release of energy or material.
+
+    Storages have one incoming and one outgoing Flow each with an efficiency factor.
+    They maintain a charge state that represents the stored amount, bounded by capacity limits.
+    The charge state evolves based on charging, discharging, and losses over time.
+    
+    For mathematical details see class StorageModel
+    
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem
+        charging: Ingoing flow for loading the storage
+        discharging: Outgoing flow for unloading the storage  
+        capacity_in_flow_hours: Nominal capacity/size of the storage
+        relative_minimum_charge_state: Minimum relative charge state. The default is 0
+        relative_maximum_charge_state: Maximum relative charge state. The default is 1
+        initial_charge_state: Storage charge_state at the beginning. The default is 0
+        minimal_final_charge_state: Minimal value of chargeState at the end of timeseries
+        maximal_final_charge_state: Maximal value of chargeState at the end of timeseries
+        eta_charge: Efficiency factor of charging/loading. The default is 1
+        eta_discharge: Efficiency factor of uncharging/unloading. The default is 1
+        relative_loss_per_hour: Loss per chargeState-Unit per hour. The default is 0
+        prevent_simultaneous_charge_and_discharge: If True, loading and unloading at the same time is not possible.
+            Increases the number of binary variables, but is recommended for easier evaluation. The default is True
+        meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
     """
 
     def __init__(
@@ -140,31 +163,6 @@ class Storage(Component):
         prevent_simultaneous_charge_and_discharge: bool = True,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Storages have one incoming and one outgoing Flow each with an efficiency.
-        Further, storages have a `size` and a `charge_state`.
-        Similarly to the flow-rate of a Flow, the `size` combined with a relative upper and lower bound
-        limits the `charge_state` of the storage.
-
-        For mathematical details take a look at our online documentation
-
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            charging: ingoing flow.
-            discharging: outgoing flow.
-            capacity_in_flow_hours: nominal capacity/size of the storage
-            relative_minimum_charge_state: minimum relative charge state. The default is 0.
-            relative_maximum_charge_state: maximum relative charge state. The default is 1.
-            initial_charge_state: storage charge_state at the beginning. The default is 0.
-            minimal_final_charge_state: minimal value of chargeState at the end of timeseries.
-            maximal_final_charge_state: maximal value of chargeState at the end of timeseries.
-            eta_charge: efficiency factor of charging/loading. The default is 1.
-            eta_discharge: efficiency factor of uncharging/unloading. The default is 1.
-            relative_loss_per_hour: loss per chargeState-Unit per hour. The default is 0.
-            prevent_simultaneous_charge_and_discharge: If True, loading and unloading at the same time is not possible.
-                Increases the number of binary variables, but is recommended for easier evaluation. The default is True.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         # TODO: fixed_relative_chargeState implementieren
         super().__init__(
             label,
