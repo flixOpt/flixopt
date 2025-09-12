@@ -227,8 +227,13 @@ jobs:
           # Create a temporary environment to test installation
           python -m venv test_env
           source test_env/bin/activate
-          # Get the package name from the built distribution
-          PACKAGE_NAME=$(ls dist/*.tar.gz | head -n 1 | sed 's/dist\///' | sed 's/-[0-9].*$//')
+          # Get project name from pyproject.toml (PEP 621)
+          PACKAGE_NAME=$(python - <<'PY'
+          import sys, tomllib, pathlib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          print(data["project"]["name"])
+          PY
+          )
           # Install from TestPyPI with retry (TestPyPI can be slow to index)
           pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME || \
           (sleep 30 && pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME) || \
@@ -284,8 +289,13 @@ jobs:
           # Create a temporary environment to test installation
           python -m venv prod_test_env
           source prod_test_env/bin/activate
-          # Get the package name from the built distribution
-          PACKAGE_NAME=$(ls dist/*.tar.gz | head -n 1 | sed 's/dist\///' | sed 's/-[0-9].*$//')
+          # Get project name from pyproject.toml (PEP 621)
+          PACKAGE_NAME=$(python - <<'PY'
+          import sys, tomllib, pathlib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          print(data["project"]["name"])
+          PY
+          )
           # Wait for PyPI to index the package
           sleep 60
           # Install from PyPI
