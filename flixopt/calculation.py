@@ -63,7 +63,7 @@ class Calculation:
         self.results: Optional[CalculationResults] = None
 
         if self.folder.exists() and not self.folder.is_dir():
-            raise NotADirectoryError(f'Path {self.folder} exists and is not a directory.') from e
+            raise NotADirectoryError(f'Path {self.folder} exists and is not a directory.')
         self.folder.mkdir(parents=False, exist_ok=True)
 
     @property
