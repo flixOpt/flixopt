@@ -67,6 +67,33 @@ class Effect(Element):
         minimum_total: Optional[Scalar] = None,
         maximum_total: Optional[Scalar] = None,
     ):
+        """
+        Initialize an Effect representing a measurable impact (e.g., cost, emission, area).
+        
+        Args:
+            label: Unique identifier for the effect.
+            unit: Unit string for the effect values (e.g., "kg", "EUR").
+            description: Human-readable description of the effect.
+            meta_data: Optional arbitrary metadata stored with the effect.
+            is_standard: If True this effect is treated as the collection's default (used when a scalar/default is supplied).
+            is_objective: If True this effect is marked as the optimization objective.
+            specific_share_to_other_effects_operation: Per-effect operation shares (user form). If omitted, defaults to an empty mapping.
+            specific_share_to_other_effects_invest: Per-effect investment shares (user form). If omitted, defaults to an empty mapping.
+            minimum_operation: Optional lower bound scalar for the aggregated operation contribution.
+            maximum_operation: Optional upper bound scalar for the aggregated operation contribution.
+            minimum_invest: Optional lower bound scalar for the aggregated investment contribution.
+            maximum_invest: Optional upper bound scalar for the aggregated investment contribution.
+            minimum_operation_per_hour: Optional time series providing per-timestep lower bounds for operation.
+            maximum_operation_per_hour: Optional time series providing per-timestep upper bounds for operation.
+            minimum_total: Optional lower bound scalar for the total (operation + invest).
+            maximum_total: Optional upper bound scalar for the total (operation + invest).
+        
+        Notes:
+            - Shares provided via `specific_share_to_other_effects_operation` and
+              `specific_share_to_other_effects_invest` are kept in user form and later
+              converted to internal time-series representations during model transformation.
+            - Bounds may be None to indicate unbounded in that direction.
+        """
         super().__init__(label, meta_data=meta_data)
         self.label = label
         self.unit = unit

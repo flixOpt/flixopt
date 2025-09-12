@@ -48,6 +48,18 @@ class FlowSystem:
         hours_of_last_timestep: Optional[float] = None,
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
     ):
+        """
+        Initialize a FlowSystem that manages components, buses, effects, and their time-series.
+        
+        Parameters:
+            timesteps: DatetimeIndex defining the primary timesteps for the system's TimeSeriesCollection.
+            hours_of_last_timestep: Duration (in hours) of the final timestep; if None, inferred from timesteps or defaults in TimeSeriesCollection.
+            hours_of_previous_timesteps: Scalar or array-like durations (in hours) for the preceding timesteps; used to configure non-uniform timestep lengths.
+        
+        Notes:
+            Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
+            The instance starts disconnected (self._connected == False) and with no active network visualization app.
+        """
         self.time_series_collection = TimeSeriesCollection(
             timesteps=timesteps,
             hours_of_last_timestep=hours_of_last_timestep,

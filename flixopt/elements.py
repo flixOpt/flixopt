@@ -107,6 +107,17 @@ class Bus(Element):
     def __init__(
         self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataTS] = 1e5, meta_data: Optional[Dict] = None
     ):
+        """
+        Initialize a Bus element representing a nodal balance with optional excess-penalty.
+        
+        Parameters:
+            label: Unique identifier for the bus.
+            excess_penalty_per_flow_hour: Scalar or time series giving the monetary penalty applied per unit of excess flow-hour (inputs or outputs). If None, no excess variables/penalty are created. Defaults to 1e5.
+            meta_data: Optional mapping of user-provided metadata.
+        
+        Notes:
+            The constructor also initializes empty `inputs` and `outputs` lists for connected Flow objects.
+        """
         super().__init__(label, meta_data=meta_data)
         self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
         self.inputs: List[Flow] = []
@@ -197,6 +208,30 @@ class Flow(Element):
         previous_flow_rate: Optional[NumericData] = None,
         meta_data: Optional[Dict] = None,
     ):
+        """
+        Initialize a Flow element representing material/energy transfer between a Bus and a Component.
+        
+        Creates and stores sizing, bounds, profiles, operational constraints, effects and bookkeeping fields used later by the modeling layer. Important behaviors:
+        - If `size` is None, a large default (CONFIG.modeling.BIG) is used.
+        - Passing a Bus object to `bus` is deprecated: the Bus's full label is recorded and a UserWarning is emitted; prefer passing the bus label string.
+        - If `previous_flow_rate` is provided as a list, it is converted to a NumPy array.
+        
+        Parameters:
+            label: Unique flow identifier.
+            bus: Bus label string (preferred). If a Bus instance is passed, its label_full is used and a deprecation warning is emitted.
+            size: Fixed numeric size or InvestParameters to enable investment modeling. If omitted, a large default is used.
+            fixed_relative_profile: Optional time series that fixes the flow profile relative to `size`.
+            relative_minimum: Relative lower bound (fraction of size or profile); defaults to 0.
+            relative_maximum: Relative upper bound (fraction of size or profile); defaults to 1.
+            effects_per_flow_hour: Optional mapping of effect identifiers to per-hour effect factors applied to operation.
+            on_off_parameters: Optional OnOffParameters controlling on/off behavior for this flow.
+            flow_hours_total_max: Optional scalar upper bound for total flow-hours over the planning horizon.
+            flow_hours_total_min: Optional scalar lower bound for total flow-hours.
+            load_factor_min: Optional minimum capacity-factor (total flow-hours / (size * total_hours)).
+            load_factor_max: Optional maximum capacity-factor.
+            previous_flow_rate: Optional numeric time series (or list) with previous flow values; lists are converted to NumPy arrays.
+            meta_data: Optional dictionary of user metadata.
+        """
         super().__init__(label, meta_data=meta_data)
         self.size = size or CONFIG.modeling.BIG  # Default size
         self.relative_minimum = relative_minimum
