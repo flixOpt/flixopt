@@ -83,10 +83,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install .[dev]
+          pip install .[dev] pytest-xdist
 
       - name: Run tests
-        run: pytest -v -p no:warnings
+        run: pytest -v -p no:warnings --numprocesses=auto
 
   security:
     name: Security Scan
