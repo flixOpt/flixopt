@@ -108,8 +108,8 @@ jobs:
 
       - name: Run Bandit security scan
         run: |
-          bandit -r flixopt/ -f json -o bandit-report.json || true
-          bandit -r flixopt/
+          bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json || true
+          bandit -r flixopt/ -c pyproject.toml
 
       - name: Upload security reports
         uses: actions/upload-artifact@v4
