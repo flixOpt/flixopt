@@ -105,21 +105,65 @@ class PiecewiseEffects(Interface):
 class PiecewiseEffectsPerFlowHour(Interface):
     def __init__(self, piecewise_flow_rate: Piecewise, piecewise_shares: Dict[str, Piecewise]):
         """
-        Define piecewise effects related to a variable.
-        Usually the first Piece contains the zero point. If not, the flow_rate gets bounded by the piecewise_flow_rate,
-        If no OnOffParameters are used.
+        Define piecewise linear relationships between flow rate and various effects (costs, emissions, etc.).
+
+        This class models situations where the relationship between flow rate and effects changes at
+        different flow rate levels, such as:
+        - Pump efficiency curves across operating ranges
+        - Emission factors that vary with operating levels
+        - Capacity-dependent transportation costs
 
         Args:
-            piecewise_flow_rate: Piecewise of the flow_rate
-            piecewise_shares: Piecewise defining the shares to different Effects.
-                TAKE CARE: The values represent the actual shares to the effects.
-                Example:
-                    piecewise_flow_rate = Piecewise([Piece(5, 25), Piece(25, 200)])
-                    piecewise_shares = {'Costs': Piecewise([Piece(5, 25), Piece(25, 100)])}
-                        This means that the share of the Costs effect is 5 if the flow rate is 5,
-                        and 100 if the flow rate is 200.
-                        ITS NOT: flow_rate=5 --> Share=5*5=25
-                        (Prices unfortunately cannot be represented as a Piecewise. This would be non linear.)
+            piecewise_flow_rate: `Piecewise` defining the valid flow rate segments.
+                Each Piece represents a linear segment with (min_flow, max_flow) bounds.
+
+            piecewise_shares: Dictionary mapping effect names to their `Piecewise`.
+                Keys are effect names (e.g., 'Costs', 'CO2', 'Maintenance').
+                Values are `Piecewise` objects defining the absolute effect values (not rates/prices).
+
+                ⚠️  IMPORTANT: Values represent total effect amounts, not unit rates.
+                For a flow rate of X, the effect value is interpolated from the `Piecewise`.
+                This is NOT flow_rate × unit_price (which would be non-linear).
+
+        Behavior:
+            - If the first piece doesn't start at zero, flow rate is automatically bounded
+              by piecewise_flow_rate (when OnOffParameters are not used)
+            - Each segment represents a linear relationship within that flow rate range
+            - Effects are interpolated linearly within each piece
+            - All `Piece`s of the different `Piecewise`s at index i are active at the same time
+            - A decision wether to utilize the effect can be modeled by defining multiple Pieces for the same flow rate range
+
+        Examples:
+            # Tiered cost structure with increasing rates
+            PiecewiseEffectsPerFlowHour(
+                piecewise_flow_rate=Piecewise([
+                    Piece(0, 50),    # Low flow segment: 0-50 units
+                    Piece(50, 200)   # High flow segment: 50-200 units
+                ]),
+                piecewise_shares={
+                    'Costs': Piecewise([
+                        Piece(0, 500),     # At flow=0: cost=0, at flow=50: cost=500
+                        Piece(500, 2000)   # At flow=50: cost=500, at flow=200: cost=2000
+                    ]),
+                    'CO2': Piecewise([
+                        Piece(0, 100),     # At flow=0: CO2=0, at flow=50: CO2=100
+                        Piece(100, 800)    # At flow=50: CO2=100, at flow=200: CO2=800
+                    ])
+                }
+            )
+
+            # In this example:
+            # - Flow rate 25 → Cost = 250, CO2 = 50 (linear interpolation)
+            # - Flow rate 100 → Cost = 1000, CO2 = 300 (linear interpolation)
+
+            # Equipment efficiency curve (althought this might be better modeled as a Flow rather than an effect)
+            PiecewiseEffectsPerFlowHour(
+                piecewise_flow_rate=Piecewise([Piece(10, 100)]),  # Min 10, max 100 units
+                piecewise_shares={
+                    'PowerConsumption': Piecewise([Piece(50, 800)])  # Non-linear efficiency
+                }
+            )
+
         """
         self.piecewise_flow_rate = piecewise_flow_rate
         self.piecewise_shares = piecewise_shares
