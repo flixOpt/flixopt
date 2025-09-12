@@ -158,12 +158,6 @@ class Piecewise(Interface):
     """
 
     def __init__(self, pieces: List[Piece]):
-        """
-        Initialize a piecewise linear function from an ordered list of Piece segments.
-
-        Parameters:
-            pieces (List[Piece]): Ordered sequence of Piece objects representing consecutive segments of the piecewise linear function. The order of items defines the sequence of segments; no validation is performed.
-        """
         self.pieces = pieces
 
     def __len__(self):
