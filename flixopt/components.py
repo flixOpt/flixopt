@@ -666,6 +666,18 @@ class SourceAndSink(Component):
 
 @register_class_for_io
 class Source(Component):
+    """
+    A Source generates or provides energy or material flows into the system.
+    
+    Sources represent supply points like power plants, fuel suppliers, or renewable energy sources.
+    
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem
+        outputs: Output-flows from the source
+        meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        prevent_simultaneous_flow_rates: If True, only one output flow can be active at a time
+    """
+    
     def __init__(
         self,
         label: str,
@@ -674,12 +686,6 @@ class Source(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            outputs: output-flows of source
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         source = kwargs.pop('source', None)
         if source is not None:
             warnings.warn(
