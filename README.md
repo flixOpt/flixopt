@@ -79,7 +79,7 @@ For detailed licensing and installation instructions, refer to the respective so
 ---
 
 ## 🛠 Development Setup
-Look into our docs for [development setup](https://flixopt.github.io/flixopt/latest/faq/contribute/)
+Look into our docs for [development setup](https://flixopt.github.io/flixopt/latest/contribute/)
 
 ---
 

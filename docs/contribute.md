@@ -13,7 +13,8 @@ We use [Ruff](https://github.com/astral-sh/ruff) for linting and formatting. Aft
 
 To run manually:
 - `ruff check --fix .` to check and fix linting issues
-- `ruff format .` to format code
+- `ruff format .` to format code or
+- `pre-commit run` or `pre-commit run --all-files` to trigger all checks
 
 ## Documentation (Optional)
 FlixOpt uses [mkdocs](https://www.mkdocs.org/) to generate documentation.
@@ -39,23 +40,6 @@ Then navigate to http://127.0.0.1:8000/
 - Create or update tests for new functionality
 - Ensure 100% test coverage for new code
 
-## Branches
-As we start to think FlixOpt in **Releases**, we decided to introduce multiple **dev**-branches instead of only one:
-Following the **Semantic Versioning** guidelines, we introduced:
-- `next/patch`: This is where all pull requests for the next patch release (1.0.x) go.
-- `next/minor`: This is where all pull requests for the next minor release (1.x.0) go.
-- `next/major`: This is where all pull requests for the next major release (x.0.0) go.
-
-Everything else remains in `feature/...`-branches.
-
-## Pull requests
-Every feature or bugfix should be merged into one of the 3 [release branches](#branches), using **Squash and merge** or a regular **single commit**.
-At some point, `next/minor` or `next/major` will get merged into `main` using a regular **Merge**  (not squash).
-*This ensures that Features are kept separate, and the `next/...`branches stay in synch with ``main`.*
-
-## Releases
-As stated, we follow **Semantic Versioning**.
-Right after one of the 3 [release branches](#branches) is merged into main, a **Tag** should be added to the merge commit and pushed to the main branch. The tag has the form `v1.2.3`.
-With this tag,  a release with **Release Notes** must be created.
-
-*This is our current best practice*
+## Branches & Releases
+New features should be branched from `main` into `feature/*`
+As stated, we follow **Semantic Versioning**. Releases are created manually from the `main` branch.

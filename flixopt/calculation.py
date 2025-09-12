@@ -87,13 +87,9 @@ class Calculation:
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
         self.results: Optional[CalculationResults] = None
 
-        if not self.folder.exists():
-            try:
-                self.folder.mkdir(parents=False)
-            except FileNotFoundError as e:
-                raise FileNotFoundError(
-                    f'Folder {self.folder} and its parent do not exist. Please create them first.'
-                ) from e
+        if self.folder.exists() and not self.folder.is_dir():
+            raise NotADirectoryError(f'Path {self.folder} exists and is not a directory.')
+        self.folder.mkdir(parents=False, exist_ok=True)
 
         self._modeled = False
 

@@ -105,6 +105,8 @@ class FlowSystem(Interface):
         self._connected_and_transformed = False
         self._used_in_calculation = False
 
+        self._network_app = None
+
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
         """Validate timesteps format and rename if needed."""
@@ -491,6 +493,58 @@ class FlowSystem(Interface):
 
         node_infos, edge_infos = self.network_infos()
         return plotting.plot_network(node_infos, edge_infos, path, controls, show)
+
+    def start_network_app(self):
+        """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
+        Requires optional dependencies: dash, dash-cytoscape, networkx, werkzeug.
+        """
+        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR, flow_graph, shownetwork
+
+        warnings.warn(
+            'The network visualization is still experimental and might change in the future.',
+            stacklevel=2,
+            category=UserWarning,
+        )
+
+        if not DASH_CYTOSCAPE_AVAILABLE:
+            raise ImportError(
+                f'Network visualization requires optional dependencies. '
+                f'Install with: pip install flixopt[viz], flixopt[full] or pip install dash dash_cytoscape networkx werkzeug. '
+                f'Original error: {VISUALIZATION_ERROR}'
+            )
+
+        if not self._connected_and_transformed:
+            self._connect_network()
+
+        if self._network_app is not None:
+            logger.warning('The network app is already running. Restarting it.')
+            self.stop_network_app()
+
+        self._network_app = shownetwork(flow_graph(self))
+
+    def stop_network_app(self):
+        """Stop the network visualization server."""
+        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
+
+        if not DASH_CYTOSCAPE_AVAILABLE:
+            raise ImportError(
+                f'Network visualization requires optional dependencies. '
+                f'Install with: pip install flixopt[viz]. '
+                f'Original error: {VISUALIZATION_ERROR}'
+            )
+
+        if self._network_app is None:
+            logger.warning('No network app is currently running. Cant stop it')
+            return
+
+        try:
+            logger.info('Stopping network visualization server...')
+            self._network_app.server_instance.shutdown()
+            logger.info('Network visualization stopped.')
+        except Exception as e:
+            logger.error(f'Failed to stop the network visualization app: {e}')
+        finally:
+            self._network_app = None
 
     def network_infos(self) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
         if not self.connected_and_transformed:

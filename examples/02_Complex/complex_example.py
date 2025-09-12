@@ -182,6 +182,7 @@ if __name__ == '__main__':
     flow_system.add_elements(bhkw_2) if use_chp_with_piecewise_conversion else flow_system.add_elements(bhkw)
 
     pprint(flow_system)  # Get a string representation of the FlowSystem
+    flow_system.start_network_app()  # Start the network app. DOes only work with extra dependencies installed
 
     # --- Solve FlowSystem ---
     calculation = fx.FullCalculation('complex example', flow_system, time_indices)

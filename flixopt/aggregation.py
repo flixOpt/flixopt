@@ -34,7 +34,6 @@ from .structure import (
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
-warnings.filterwarnings('ignore', category=DeprecationWarning)
 logger = logging.getLogger('flixopt')
 
 

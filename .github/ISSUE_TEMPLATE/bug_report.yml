@@ -7,70 +7,100 @@ body:
   attributes:
     value: |
       Thanks for taking the time to fill out this bug report!
+
+      **Before submitting**: Please search [existing issues](https://github.com/flixOpt/flixopt/issues) to avoid duplicates.
+
 - type: checkboxes
   id: checks
   attributes:
-    label: Version Checks (indicate both or one)
+    label: Version Confirmation
+    description: Please confirm you can reproduce this on a supported version
     options:
-    - label: >
-        I have confirmed this bug exists on the latest
-        [release](https://github.com/flixOpt/flixopt/releases) of FlixOpt.
-    - label: >
-        I have confirmed this bug exists on the current
-        [`main`](https://github.com/flixOpt/flixopt/tree/main) branch of FlixOpt.
+    - label: I have confirmed this bug exists on the latest [release](https://github.com/flixOpt/flixopt/releases) of FlixOpt
+      required: true
+
 - type: textarea
   id: problem
   attributes:
-    label: Issue Description
-    description: >
-      Please provide a description of the issue.
+    label: Bug Description
+    description: Clearly describe what went wrong
+    placeholder: |
+      What happened? What did you expect to happen instead?
+
+      Include any error messages or unexpected outputs.
   validations:
     required: true
+
 - type: textarea
   id: example
-  validations:
-    required: true
   attributes:
-    label: Reproducible Example
-    description: >
-      Please provide a minimal reproducible example. See how to [craft minimal bug reports](https://matthewrocklin.com/minimal-bug-reports).
-    placeholder: >
+    label: Minimal Reproducible Example
+    description: |
+      Provide the smallest possible code example that reproduces the bug.
+      See [how to create minimal bug reports](https://matthewrocklin.com/minimal-bug-reports).
+    placeholder: |
       import flixopt as fx
+      import pandas as pd
 
-      # Create simple energy system that reproduces the bug
+      # Minimal example that reproduces the bug
       timesteps = pd.date_range('2024-01-01', periods=24, freq='h')
       flow_system = fx.FlowSystem(timesteps)
 
-      # Add your components here...
+      # Add components that trigger the bug...
+
+      # Show the problematic operation
+      result = flow_system.solve()  # This should fail/behave unexpectedly
     render: python
-- type: textarea
-  id: expected-behavior
   validations:
     required: true
+
+- type: textarea
+  id: error-output
   attributes:
-    label: Expected Behavior
-    description: >
-      Please describe or show a code example of the expected behavior.
+    label: Error Output
+    description: If there's an error message, paste the full traceback here
+    render: shell
+
 - type: dropdown
   id: solver
   attributes:
     label: Solver Used
-    description: Which solver were you using when the bug occurred?
+    description: Which solver were you using?
     options:
       - HiGHS (default)
       - Gurobi
       - CPLEX
       - GLPK
-      - Other (please specify in description)
+      - CBC
+      - Other (specify below)
   validations:
     required: true
-- type: textarea
-  id: version
+
+- type: input
+  id: os
   attributes:
-    label: Installed Versions
-    description: >
-      Please share information on your environment. Paste the output below.
-      For conda: `conda env export` and for pip: `pip freeze`.
+    label: Operating System
+    placeholder: "e.g., Windows 11, macOS 14.2, Ubuntu 22.04"
+  validations:
+    required: true
+
+- type: input
+  id: python-version
+  attributes:
+    label: Python Version
+    placeholder: "e.g., 3.11.5"
+  validations:
+    required: true
+
+- type: textarea
+  id: environment
+  attributes:
+    label: Environment Info
+    description: |
+      Run one of these commands and paste the output:
+      - `pip freeze`
+      - `conda env export`
+    render: shell
     value: >
       <details>
 
