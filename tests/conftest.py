@@ -406,7 +406,9 @@ def flow_system_long():
     }
 
 
-def create_calculation_and_solve(flow_system: fx.FlowSystem, solver, name: str, allow_infeasible: bool=False) -> fx.FullCalculation:
+def create_calculation_and_solve(
+    flow_system: fx.FlowSystem, solver, name: str, allow_infeasible: bool = False
+) -> fx.FullCalculation:
     calculation = fx.FullCalculation(name, flow_system)
     calculation.do_modeling()
     try:
@@ -423,6 +425,7 @@ def create_linopy_model(flow_system: fx.FlowSystem) -> SystemModel:
     calculation = fx.FullCalculation('GenericName', flow_system)
     calculation.do_modeling()
     return calculation.model
+
 
 @pytest.fixture(params=['h', '3h'])
 def timesteps_linopy(request):
@@ -447,6 +450,7 @@ def basic_flow_system_linopy(timesteps_linopy) -> fx.FlowSystem:
     )
 
     return flow_system
+
 
 def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):
     """Assert that two constraints are equal with detailed error messages."""
@@ -473,12 +477,16 @@ def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
     try:
         xr.testing.assert_equal(actual.lower, desired.lower)
     except AssertionError as e:
-        raise AssertionError(f"{name} lower bounds don't match:\nActual: {actual.lower}\nExpected: {desired.lower}") from e
+        raise AssertionError(
+            f"{name} lower bounds don't match:\nActual: {actual.lower}\nExpected: {desired.lower}"
+        ) from e
 
     try:
         xr.testing.assert_equal(actual.upper, desired.upper)
     except AssertionError as e:
-        raise AssertionError(f"{name} upper bounds don't match:\nActual: {actual.upper}\nExpected: {desired.upper}") from e
+        raise AssertionError(
+            f"{name} upper bounds don't match:\nActual: {actual.upper}\nExpected: {desired.upper}"
+        ) from e
 
     if actual.type != desired.type:
         raise AssertionError(f"{name} types don't match: {actual.type} != {desired.type}")
@@ -492,7 +500,9 @@ def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
     try:
         xr.testing.assert_equal(actual.coords, desired.coords)
     except AssertionError as e:
-        raise AssertionError(f"{name} coordinates don't match:\nActual: {actual.coords}\nExpected: {desired.coords}") from e
+        raise AssertionError(
+            f"{name} coordinates don't match:\nActual: {actual.coords}\nExpected: {desired.coords}"
+        ) from e
 
     if actual.coord_dims != desired.coord_dims:
         raise AssertionError(f"{name} coordinate dimensions don't match: {actual.coord_dims} != {desired.coord_dims}")

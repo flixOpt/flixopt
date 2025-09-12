@@ -303,9 +303,7 @@ class Element(Interface):
 class Model:
     """Stores Variables and Constraints."""
 
-    def __init__(
-        self, model: SystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None
-    ):
+    def __init__(self, model: SystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None):
         """
         Args:
             model: The SystemModel that is used to create the model.

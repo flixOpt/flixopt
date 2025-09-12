@@ -8,7 +8,7 @@ body:
         **For specific issue types, please use the dedicated templates:**
         - 🐛 **Bug Report** - Something is broken or not working as expected
         - ✨ **Feature Request** - Suggest new functionality
-        
+
         **For other topics, consider using Discussions instead:**
         - 🤔 [Modeling Questions](https://github.com/flixOpt/flixopt/discussions/categories/q-a) - How to model specific energy systems
         - ⚡ [Performance Help](https://github.com/flixOpt/flixopt/discussions/categories/performance) - Optimization speed and memory issues

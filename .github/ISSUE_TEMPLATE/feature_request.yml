@@ -7,7 +7,7 @@ body:
   attributes:
     value: |
       Thanks for suggesting a new feature!
-      
+
       **Before submitting**: Please search [existing issues](https://github.com/flixOpt/flixopt/issues) and check our [roadmap](https://github.com/flixOpt/flixopt/discussions) to avoid duplicates.
 
 - type: checkboxes
@@ -45,7 +45,7 @@ body:
     description: What problem would this feature solve?
     placeholder: |
       Current limitation: "FlixOpt doesn't support [specific energy system component/feature]..."
-      
+
       Impact: "This prevents users from modeling [specific scenarios]..."
 
 - type: textarea
@@ -55,7 +55,7 @@ body:
     description: Describe your proposed solution in detail
     placeholder: |
       I propose adding a new component/feature that would...
-      
+
       Key capabilities:
       - Feature 1
       - Feature 2
@@ -70,7 +70,7 @@ body:
     description: Provide concrete examples of how this would be used
     placeholder: |
       Real-world scenario: "I'm modeling a microgrid with battery storage and need to..."
-      
+
       Specific requirements:
       - Must handle [specific constraint]
       - Should support [specific behavior]
@@ -90,7 +90,7 @@ body:
           parameter1=value1,
           parameter2=value2
       )
-      
+
       flow_system.add_component(component)
     render: python
 
@@ -101,7 +101,7 @@ body:
     description: What workarounds or alternatives have you tried?
     placeholder: |
       Current workaround: "I'm currently using [existing component] but it doesn't support..."
-      
+
       Other approaches considered: "I looked into [alternative] but..."
 
 - type: dropdown

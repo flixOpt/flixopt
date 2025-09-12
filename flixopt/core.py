@@ -62,17 +62,21 @@ class DataConverter:
                 return xr.DataArray(data, coords=coords, dims=dims)
             elif isinstance(data, pd.DataFrame):
                 if not data.index.equals(timesteps):
-                    raise ConversionError(f"DataFrame index doesn't match timesteps index. "
-                                          f"Its missing the following time steps: {timesteps.difference(data.index)}. "
-                                          f"Some parameters might need an extra timestep at the end.")
+                    raise ConversionError(
+                        f"DataFrame index doesn't match timesteps index. "
+                        f'Its missing the following time steps: {timesteps.difference(data.index)}. '
+                        f'Some parameters might need an extra timestep at the end.'
+                    )
                 if not len(data.columns) == 1:
                     raise ConversionError('DataFrame must have exactly one column')
                 return xr.DataArray(data.values.flatten(), coords=coords, dims=dims)
             elif isinstance(data, pd.Series):
                 if not data.index.equals(timesteps):
-                    raise ConversionError(f"Series index doesn't match timesteps index. "
-                                          f"Its missing the following time steps: {timesteps.difference(data.index)}. "
-                                          f"Some parameters might need an extra timestep at the end.")
+                    raise ConversionError(
+                        f"Series index doesn't match timesteps index. "
+                        f'Its missing the following time steps: {timesteps.difference(data.index)}. '
+                        f'Some parameters might need an extra timestep at the end.'
+                    )
                 return xr.DataArray(data.values, coords=coords, dims=dims)
             elif isinstance(data, np.ndarray):
                 if data.ndim != 1:
