@@ -1,88 +1,127 @@
-name: Feature Request
-description: Suggest a new feature or enhancement for FlixOpt.
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement
 title: "[FEATURE] "
 labels: ["type: feature"]
 body:
 - type: markdown
   attributes:
     value: |
-      Thanks for suggesting a new feature! Please provide as much detail as possible.
+      Thanks for suggesting a new feature!
+      
+      **Before submitting**: Please search [existing issues](https://github.com/flixOpt/flixopt/issues) and check our [roadmap](https://github.com/flixOpt/flixopt/discussions) to avoid duplicates.
+
 - type: checkboxes
   id: checks
   attributes:
-    label: Prerequisite Checks
+    label: Prerequisites
     options:
-    - label: >
-        I have searched the [existing issues](https://github.com/flixOpt/flixopt/issues)
-        and confirmed this feature doesn't already exist.
-    - label: >
-        I have checked the [documentation](https://flixopt.github.io/flixopt/latest/)
-        to ensure this feature isn't already available.
+    - label: I have searched existing issues and discussions
+      required: true
+    - label: I have checked the [documentation](https://flixopt.github.io/flixopt/latest/)
+      required: true
+
+- type: dropdown
+  id: feature-type
+  attributes:
+    label: Feature Category
+    description: What type of feature is this?
+    options:
+      - New Component (storage, generation, conversion, etc.)
+      - Enhancement to Existing Component
+      - New Optimization Feature
+      - Data Input/Output Improvement
+      - Results/Visualization Enhancement
+      - Performance/Solver Improvement
+      - API/Usability Improvement
+      - Documentation/Examples
+      - Other
+  validations:
+    required: true
+
 - type: textarea
   id: problem
   attributes:
-    label: Is your feature request related to a problem?
-    description: >
-      A clear and concise description of what the problem is.
-    placeholder: >
-      I'm always frustrated when modeling [specific energy system scenario]...
+    label: Problem Statement
+    description: What problem would this feature solve?
+    placeholder: |
+      Current limitation: "FlixOpt doesn't support [specific energy system component/feature]..."
+      
+      Impact: "This prevents users from modeling [specific scenarios]..."
+
 - type: textarea
   id: solution
+  attributes:
+    label: Proposed Solution
+    description: Describe your proposed solution in detail
+    placeholder: |
+      I propose adding a new component/feature that would...
+      
+      Key capabilities:
+      - Feature 1
+      - Feature 2
+      - Feature 3
   validations:
     required: true
-  attributes:
-    label: Describe the solution you'd like
-    description: >
-      A clear and concise description of what you want to happen.
-    placeholder: >
-      I would like to be able to model [specific component/feature]...
+
 - type: textarea
   id: use-case
+  attributes:
+    label: Use Case & Examples
+    description: Provide concrete examples of how this would be used
+    placeholder: |
+      Real-world scenario: "I'm modeling a microgrid with battery storage and need to..."
+      
+      Specific requirements:
+      - Must handle [specific constraint]
+      - Should support [specific behavior]
+      - Would benefit [specific user group]
   validations:
     required: true
-  attributes:
-    label: Energy System Use Case
-    description: >
-      Describe your specific energy system modeling scenario and how this feature would help.
-    placeholder: >
-      I'm modeling a district heating system with seasonal thermal storage and need to...
+
 - type: textarea
-  id: example
+  id: code-example
   attributes:
-    label: Desired Code Example (optional)
-    description: >
-      If possible, show how you would like to use this feature in code.
-    placeholder: >
-      # Example of how the new feature might work
-      thermal_storage = fx.SeasonalStorage(
-          label='seasonal_storage',
-          capacity_mwh=1000,
-          efficiency=0.95
+    label: Desired API (Optional)
+    description: Show how you'd like to use this feature
+    placeholder: |
+      # Example of proposed API
+      component = fx.NewComponent(
+          label='example',
+          parameter1=value1,
+          parameter2=value2
       )
+      
+      flow_system.add_component(component)
     render: python
-- type: dropdown
-  id: component-type
-  attributes:
-    label: Component Category (if applicable)
-    description: What type of energy system component does this relate to?
-    options:
-      - Storage (batteries, thermal storage, etc.)
-      - Generation (PV, wind, CHP, etc.)
-      - Conversion (heat pumps, boilers, etc.)
-      - Network/Grid (transmission, distribution)
-      - Optimization/Calculation (algorithms, solvers)
-      - Data/Input handling
-      - Results/Output
-      - Other
+
 - type: textarea
   id: alternatives
   attributes:
-    label: Alternatives considered
-    description: >
-      Describe any alternative solutions or workarounds you've considered.
+    label: Alternatives Considered
+    description: What workarounds or alternatives have you tried?
+    placeholder: |
+      Current workaround: "I'm currently using [existing component] but it doesn't support..."
+      
+      Other approaches considered: "I looked into [alternative] but..."
+
+- type: dropdown
+  id: priority
+  attributes:
+    label: Priority/Impact
+    description: How important is this feature for your work?
+    options:
+      - Critical - Blocking important work
+      - High - Would significantly improve workflow
+      - Medium - Nice to have enhancement
+      - Low - Minor improvement
+
 - type: textarea
   id: additional-context
   attributes:
-    label: Additional context
-    description: >
-      Add any other context, research papers, or examples about the feature request here.
+    label: Additional Context
+    description: References, papers, examples from other tools, etc.
+    placeholder: |
+      References:
+      - Research paper: [Title and link]
+      - Similar feature in [other tool]: [description]
+      - Industry standard: [description]
