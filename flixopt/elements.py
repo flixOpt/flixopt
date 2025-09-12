@@ -25,11 +25,48 @@ logger = logging.getLogger('flixopt')
 @register_class_for_io
 class Component(Element):
     """
-    A Component contains incoming and outgoing [`Flows`][flixopt.elements.Flow]. It defines how these Flows interact with each other.
-    The On or Off state of the Component is defined by all its Flows. Its on, if any of its FLows is On.
-    It's mathematically advisable to define the On/Off state in a FLow rather than a Component if possible,
-    as this introduces less binary variables to the Model
-    Constraints to the On/Off state are defined by the [`on_off_parameters`][flixopt.interface.OnOffParameters].
+    Base class for all system components that transform, convert, or process flows.
+
+    Components are the active elements in energy systems that define how input and output
+    Flows interact with each other. They represent equipment, processes, or logical
+    operations that transform energy or materials between different states, carriers,
+    or locations.
+
+    Components serve as connection points between Buses through their associated Flows,
+    enabling the modeling of complex energy system topologies and operational constraints.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        inputs: List of input Flows feeding into the component. These represent
+            energy/material consumption by the component.
+        outputs: List of output Flows leaving the component. These represent
+            energy/material production by the component.
+        on_off_parameters: Defines binary operation constraints and costs when the
+            component has discrete on/off states. Creates binary variables for all
+            connected Flows. For better performance, prefer defining OnOffParameters
+            on individual Flows when possible.
+        prevent_simultaneous_flows: List of Flows that cannot be active simultaneously.
+            Creates binary variables to enforce mutual exclusivity. Use sparingly as
+            it increases computational complexity.
+        meta_data: Used to store additional information. Not used internally but saved
+            in results. Only use Python native types.
+
+    Note:
+        Component operational state is determined by its connected Flows:
+        - Component is "on" if ANY of its Flows is active (flow_rate > 0)
+        - Component is "off" only when ALL Flows are inactive (flow_rate = 0)
+
+        Binary variables and constraints:
+        - on_off_parameters creates binary variables for ALL connected Flows
+        - prevent_simultaneous_flows creates binary variables for specified Flows
+        - For better computational performance, prefer Flow-level OnOffParameters
+
+        Component is an abstract base class. In practice, use specialized subclasses:
+        - LinearConverter: Linear input/output relationships
+        - Storage: Temporal energy/material storage
+        - Transmission: Transport between locations
+        - Source/Sink: System boundaries
+
     """
 
     def __init__(
@@ -41,19 +78,6 @@ class Component(Element):
         prevent_simultaneous_flows: Optional[List['Flow']] = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            inputs: input flows.
-            outputs: output flows.
-            on_off_parameters: Information about on and off state of Component.
-                Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
-                If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
-                See class OnOffParameters.
-            prevent_simultaneous_flows: Define a Group of Flows. Only one them can be on at a time.
-                Induces On-Variable in all Flows! If possible, use OnOffParameters in a single Flow instead.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, meta_data=meta_data)
         self.inputs: List['Flow'] = inputs or []
         self.outputs: List['Flow'] = outputs or []
