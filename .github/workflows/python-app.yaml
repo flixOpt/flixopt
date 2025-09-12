@@ -36,6 +36,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # Cache pip dependencies for linting tools
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-lint-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-lint-pip-
+
       - name: Install Ruff
         run: |
           python -m pip install --upgrade pip
@@ -70,15 +79,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # Cache pip and pytest for each Python version
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pip
             .pytest_cache
-          key: ${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          key: ${{ runner.os }}-test-py${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-python-${{ matrix.python-version }}-
+            ${{ runner.os }}-test-py${{ matrix.python-version }}-
+            ${{ runner.os }}-test-
 
       - name: Install dependencies
         run: |
@@ -100,6 +111,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      # Cache security tools
+      - name: Cache security tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-security-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-security-pip-
 
       - name: Install security tools
         run: |
@@ -177,6 +197,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # Cache build tools
+      - name: Cache build tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-build-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-build-pip-
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -225,6 +254,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # Cache build tools (can reuse from TestPyPI job if same runner)
+      - name: Cache build tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-build-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-build-pip-
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -271,6 +309,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      # Cache documentation dependencies
+      - name: Cache documentation dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-docs-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-docs-pip-
 
       - name: Sync changelog to docs
         run: |
