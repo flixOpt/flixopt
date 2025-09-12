@@ -164,27 +164,6 @@ class Storage(Component):
         meta_data: Optional[Dict] = None,
     ):
         # TODO: fixed_relative_chargeState implementieren
-        """
-        Create a storage element representing an energy/material buffer with charging and discharging flows.
-
-        The storage has a capacity expressed in flow-hours (either a numeric scalar or InvestParameters), a bounded charge state (given as relative min/max fractions of capacity), optional initial and final charge-state constraints, separate charge/discharge efficiencies, and proportional hourly self-losses. Optionally prevents simultaneous charging and discharging by marking those flows as mutually exclusive.
-
-        Parameters:
-            label: Human-readable identifier for the storage element.
-            charging: Flow used to charge the storage (input).
-            discharging: Flow used to discharge the storage (output).
-            capacity_in_flow_hours: Storage capacity expressed as flow × hours. Can be a numeric scalar for fixed capacity or an InvestParameters instance to enable investment sizing.
-            relative_minimum_charge_state: Minimum allowed state-of-charge expressed as a fraction of capacity (default 0).
-            relative_maximum_charge_state: Maximum allowed state-of-charge expressed as a fraction of capacity (default 1).
-            initial_charge_state: Initial state-of-charge at the first time step; a numeric value (absolute in flow-hours) or the special string 'lastValueOfSim' to reuse the last simulated value (default 0).
-            minimal_final_charge_state: Optional lower bound for the state-of-charge at the final time step (absolute in flow-hours).
-            maximal_final_charge_state: Optional upper bound for the state-of-charge at the final time step (absolute in flow-hours).
-            eta_charge: Charging efficiency factor (multiplicative, default 1).
-            eta_discharge: Discharging efficiency factor (multiplicative, default 1).
-            relative_loss_per_hour: Fractional relative loss per hour applied to the stored energy (default 0).
-            prevent_simultaneous_charge_and_discharge: If True, charging and discharging flows are forbidden to be active at the same time (default True).
-            meta_data: Optional dictionary with user-defined metadata.
-        """
         super().__init__(
             label,
             inputs=[charging],
@@ -601,6 +580,19 @@ class StorageModel(ComponentModel):
 class SourceAndSink(Component):
     """
     class for source (output-flow) and sink (input-flow) in one commponent
+    A SourceAndSink consumes AND provides energy or material flows from and to the system.
+
+    Sources can represent markets where energy or material can be bought or sold.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem
+        inputs: Input-flows into the SourceAndSink
+        outputs: Output-flows from the SourceAndSink
+        prevent_simultaneous_flow_rates: If True, only one output flow can be active at a time
+                meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+
+    Deprecated:
+        The deprecated `sink` and `source` kwargs are accepted for compatibility but will be removed in future releases.
     """
 
     def __init__(
@@ -697,6 +689,9 @@ class Source(Component):
         outputs: Output-flows from the source
         meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         prevent_simultaneous_flow_rates: If True, only one output flow can be active at a time
+
+    Deprecated:
+        The deprecated `source` kwarg is accepted for compatibility but will be removed in future releases.
     """
 
     def __init__(
@@ -707,28 +702,6 @@ class Source(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
-        """
-        Initialize a Source element that produces one or more output flows.
-
-        If the deprecated `source` keyword argument is provided it is accepted for
-        backwards compatibility (emits a DeprecationWarning) and must not be used
-        together with `outputs`.
-
-        Parameters:
-            label: Human-readable identifier for the element.
-            outputs: List of output Flow objects produced by this Source. If
-                `prevent_simultaneous_flow_rates` is True, these outputs are used to
-                determine which flows cannot operate simultaneously.
-            meta_data: Optional mapping of additional metadata stored with the element.
-            prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero
-                rates across the specified outputs by wiring them into the base
-                `prevent_simultaneous_flows` mechanism.
-
-        Notes:
-            - Using the legacy `source` kwarg will convert it to a single-item
-              `outputs` list and raise a DeprecationWarning. Supplying both `source`
-              and `outputs` raises ValueError.
-        """
         source = kwargs.pop('source', None)
         if source is not None:
             warnings.warn(
@@ -770,6 +743,9 @@ class Sink(Component):
         inputs: Input-flows into the sink
         meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         prevent_simultaneous_flow_rates: If True, only one input flow can be active at a time
+
+    Deprecated:
+        The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
     """
 
     def __init__(

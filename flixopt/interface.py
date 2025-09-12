@@ -70,13 +70,6 @@ class Piece(Interface):
     """
 
     def __init__(self, start: NumericData, end: NumericData):
-        """
-        Create a linear segment defined by its start and end numeric values.
-
-        Parameters:
-            start (NumericData): Value at the segment's start boundary.
-            end (NumericData): Value at the segment's end boundary.
-        """
         self.start = start
         self.end = end
 
@@ -357,12 +350,6 @@ class PiecewiseConversion(Interface):
     """
 
     def __init__(self, piecewises: Dict[str, Piecewise]):
-        """
-        Initialize a PiecewiseConversion mapping flow labels to their Piecewise conversions.
-
-        Parameters:
-            piecewises (Dict[str, Piecewise]): Mapping from flow identifier (label) to its Piecewise object; used by transform_data to convert each flow's piecewise definition into time-series data.
-        """
         self.piecewises = piecewises
 
     def items(self):
@@ -508,13 +495,6 @@ class PiecewiseEffects(Interface):
     """
 
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
-        """
-        Initialize a PiecewiseEffects container linking a primary piecewise function to per-effect piecewise shares.
-
-        Parameters:
-            piecewise_origin (Piecewise): The primary piecewise function that defines the base relationship.
-            piecewise_shares (Dict[str, Piecewise]): Mapping from effect name to a Piecewise that defines that effect's share of the origin (per-effect piecewise share).
-        """
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
 
@@ -724,19 +704,6 @@ class InvestParameters(Interface):
         piecewise_effects: Optional[PiecewiseEffects] = None,
         divest_effects: Optional['EffectValuesUserScalar'] = None,
     ):
-        """
-        Initialize investment parameter container.
-
-        Parameters:
-            fixed_size: If set, investment is treated as a fixed (non-continuous) size and both minimum and maximum sizing will effectively be this value.
-            minimum_size: Lower bound for continuous sizing; if omitted defaults to CONFIG.modeling.EPSILON. Ignored when `fixed_size` is provided.
-            maximum_size: Upper bound for continuous sizing; if omitted defaults to CONFIG.modeling.BIG. Ignored when `fixed_size` is provided.
-            optional: If True, investment may be omitted (binary invest/not-invest behavior allowed).
-            fix_effects: Fixed effects (one-time or capacity-independent) incurred when the investment is made.
-            specific_effects: Effects that scale with installed size (per-unit investment effects).
-            piecewise_effects: Piecewise (nonlinear) effects mapping size to effect values.
-            divest_effects: Effects incurred if the investment is not made (opposite of `fix_effects`).
-        """
         self.fix_effects: EffectValuesUser = fix_effects or {}
         self.divest_effects: EffectValuesUser = divest_effects or {}
         self.fixed_size = fixed_size
@@ -946,21 +913,6 @@ class OnOffParameters(Interface):
         switch_on_total_max: Optional[int] = None,
         force_switch_on: bool = False,
     ):
-        """
-        Initialize OnOffParameters controlling binary on/off behavior and associated costs.
-
-        Parameters:
-            effects_per_switch_on: Mapping of effect identifiers to values applied each time the unit switches from off to on (startup costs/effects). Can be empty.
-            effects_per_running_hour: Mapping of effect identifiers to values applied per running hour while on (operating costs/impacts). Can be empty.
-            on_hours_total_min: Minimum total on-hours across the horizon (integer hours).
-            on_hours_total_max: Maximum total on-hours across the horizon (integer hours).
-            consecutive_on_hours_min: Minimum continuous on-hours after a start; may be a scalar or time-series (NumericData).
-            consecutive_on_hours_max: Maximum continuous on-hours after a start; may be a scalar or time-series (NumericData).
-            consecutive_off_hours_min: Minimum continuous off-hours between runs; may be a scalar or time-series (NumericData).
-            consecutive_off_hours_max: Maximum continuous off-hours between runs; may be a scalar or time-series (NumericData).
-            switch_on_total_max: Maximum number of switch-on (startup) events allowed across the horizon.
-            force_switch_on: If True, force creation of a switch-on variable even if no other switch-on constraints or effects are provided.
-        """
         self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}
         self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}
         self.on_hours_total_min: Scalar = on_hours_total_min

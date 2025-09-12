@@ -134,16 +134,6 @@ class FullCalculation(Calculation):
     """
 
     def do_modeling(self) -> SystemModel:
-        """
-        Builds and runs the SystemModel for this calculation using the Calculation's FlowSystem.
-
-        Activates the configured time series, creates the SystemModel from the associated FlowSystem,
-        runs the model's modeling step, records the modeling duration in self.durations['modeling'],
-        and stores the created model on self.model.
-
-        Returns:
-            SystemModel: The built and modeled system model.
-        """
         t_start = timeit.default_timer()
         self._activate_time_series()
 
@@ -217,6 +207,7 @@ class AggregatedCalculation(FullCalculation):
             This equalizes variables in the components according to the typical periods computed in the aggregation
         active_timesteps: DatetimeIndex of timesteps to use for calculation. If None, all timesteps are used
         folder: Folder where results should be saved. If None, current working directory is used
+        aggregation: contains the aggregation model
     """
 
     def __init__(
@@ -228,27 +219,6 @@ class AggregatedCalculation(FullCalculation):
         active_timesteps: Optional[pd.DatetimeIndex] = None,
         folder: Optional[pathlib.Path] = None,
     ):
-        """
-        Initialize an AggregatedCalculation.
-
-        Creates an AggregatedCalculation that extends FullCalculation with aggregation configuration.
-        Stores the provided aggregation parameters and optional component selection and initializes
-        the aggregation result placeholder.
-
-        Parameters:
-            name: Human-readable name for the calculation.
-            flow_system: The FlowSystem to build the SystemModel from.
-            aggregation_parameters: AggregationParameters controlling clustering (e.g., hours_per_period,
-                nr_of_periods, weighting and peak-labeling options).
-            components_to_clusterize: Optional list of components to include in the clustering step;
-                if None, the default component selection (all eligible components) is used.
-            active_timesteps: Optional subset of timesteps to activate for modeling (delegated to base class).
-            folder: Optional results folder path (delegated to base class).
-
-        Side effects:
-            Sets self.aggregation to None; this will be replaced by the produced Aggregation after
-            _perform_aggregation runs.
-        """
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize

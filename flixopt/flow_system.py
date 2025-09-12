@@ -40,6 +40,10 @@ class FlowSystem:
             If None, the first time increment of time_series is used.
             This is needed to calculate previous durations (for example consecutive_on_hours).
             If you use an array, take care that its long enough to cover all previous values!
+
+    Notes:
+        - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
+        - The instance starts disconnected (self._connected == False) and will be connected automatically when trying to solve a calculation.
     """
 
     def __init__(
@@ -59,6 +63,7 @@ class FlowSystem:
         Notes:
             Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
             The instance starts disconnected (self._connected == False) and with no active network visualization app.
+            This can also be triggered manually with `_connect_network()`.
         """
         self.time_series_collection = TimeSeriesCollection(
             timesteps=timesteps,
