@@ -90,7 +90,10 @@ class InvestmentModel(Model):
             # share: divest_effects - isInvested * divest_effects
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={effect: -self.is_invested * factor + factor for effect, factor in self.parameters.divest_effects.items()},
+                expressions={
+                    effect: -self.is_invested * factor + factor
+                    for effect, factor in self.parameters.divest_effects.items()
+                },
                 target='invest',
             )
 
@@ -304,13 +307,11 @@ class StateModel(Model):
             )
 
             # Constraint: on * upper_bound >= def_var
-            self.add(
-                self._model.add_constraints(self.on * ub >= def_var, name=f'{self.label_full}|on_con2'), 'on_con2'
-            )
+            self.add(self._model.add_constraints(self.on * ub >= def_var, name=f'{self.label_full}|on_con2'), 'on_con2')
         else:
             # Case for multiple defining variables
             ub = sum(bound[1] for bound in self._defining_bounds) / nr_of_def_vars
-            lb = CONFIG.modeling.EPSILON  #TODO: Can this be a bigger value? (maybe the smallest bound?)
+            lb = CONFIG.modeling.EPSILON  # TODO: Can this be a bigger value? (maybe the smallest bound?)
 
             # Constraint: on * epsilon <= sum(all_defining_variables)
             self.add(
@@ -426,7 +427,9 @@ class SwitchStateModel(Model):
 
         # Mutual exclusivity constraint
         self.add(
-            self._model.add_constraints(self.switch_on + self.switch_off <= 1.1, name=f'{self.label_full}|switch_on_or_off'),
+            self._model.add_constraints(
+                self.switch_on + self.switch_off <= 1.1, name=f'{self.label_full}|switch_on_or_off'
+            ),
             'switch_on_or_off',
         )
 
@@ -502,9 +505,7 @@ class ConsecutiveStateModel(Model):
 
         # Upper bound constraint
         self.add(
-            self._model.add_constraints(
-                self.duration <= self._state_variable * mega, name=f'{self.label_full}|con1'
-            ),
+            self._model.add_constraints(self.duration <= self._state_variable * mega, name=f'{self.label_full}|con1'),
             'con1',
         )
 
@@ -556,8 +557,8 @@ class ConsecutiveStateModel(Model):
         # Set initial value
         self.add(
             self._model.add_constraints(
-                self.duration.isel(time=0) ==
-                (hours_per_step.isel(time=0) + self.previous_duration) * self._state_variable.isel(time=0),
+                self.duration.isel(time=0)
+                == (hours_per_step.isel(time=0) + self.previous_duration) * self._state_variable.isel(time=0),
                 name=f'{self.label_full}|initial',
             ),
             'initial',
@@ -568,7 +569,7 @@ class ConsecutiveStateModel(Model):
     @property
     def previous_duration(self) -> Scalar:
         """Computes the previous duration of the state variable"""
-        #TODO: Allow for other/dynamic timestep resolutions
+        # TODO: Allow for other/dynamic timestep resolutions
         return ConsecutiveStateModel.compute_consecutive_hours_in_state(
             self._previous_states, self._model.hours_per_step.isel(time=0).item()
         )
@@ -619,7 +620,10 @@ class ConsecutiveStateModel(Model):
                 f'as {binary_values=}'
             )
 
-        return np.sum(binary_values[-nr_of_indexes_with_consecutive_ones:] * hours_per_timestep[-nr_of_indexes_with_consecutive_ones:])
+        return np.sum(
+            binary_values[-nr_of_indexes_with_consecutive_ones:]
+            * hours_per_timestep[-nr_of_indexes_with_consecutive_ones:]
+        )
 
 
 class OnOffModel(Model):

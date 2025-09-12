@@ -22,6 +22,7 @@ def flow_system(request):
     else:
         return fs[0]
 
+
 @pytest.mark.slow
 def test_flow_system_file_io(flow_system, highs_solver):
     calculation_0 = fx.FullCalculation('IO', flow_system=flow_system)
