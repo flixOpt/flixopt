@@ -580,6 +580,19 @@ class StorageModel(ComponentModel):
 class SourceAndSink(Component):
     """
     class for source (output-flow) and sink (input-flow) in one commponent
+    A SourceAndSink consumes AND provides energy or material flows from and to the system.
+
+    Sources can represent markets where energy or material can be bought or sold.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem
+        inputs: Input-flows into the SourceAndSink
+        outputs: Output-flows from the SourceAndSink
+        prevent_simultaneous_flow_rates: If True, only one output flow can be active at a time
+                meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+
+    Deprecated:
+        The deprecated `sink` and `source` kwargs are accepted for compatibility but will be removed in future releases.
     """
 
     def __init__(
@@ -676,6 +689,9 @@ class Source(Component):
         outputs: Output-flows from the source
         meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         prevent_simultaneous_flow_rates: If True, only one output flow can be active at a time
+
+    Deprecated:
+        The deprecated `source` kwarg is accepted for compatibility but will be removed in future releases.
     """
 
     def __init__(
@@ -727,6 +743,9 @@ class Sink(Component):
         inputs: Input-flows into the sink
         meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         prevent_simultaneous_flow_rates: If True, only one input flow can be active at a time
+
+    Deprecated:
+        The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
     """
 
     def __init__(
@@ -737,6 +756,20 @@ class Sink(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
+        """
+        Initialize a Sink (consumes flow from the system).
+
+        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided it is used as the single input flow and a DeprecationWarning is issued; specifying both `inputs` and `sink` raises ValueError.
+
+        Parameters:
+            label (str): Unique element label.
+            inputs (List[Flow], optional): Input flows for the sink.
+            meta_data (dict, optional): Arbitrary metadata attached to the element.
+            prevent_simultaneous_flow_rates (bool, optional): If True, prevents simultaneous nonzero flow rates across the element's inputs by wiring that restriction into the base Component setup.
+
+        Note:
+            The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
+        """
         sink = kwargs.pop('sink', None)
         if sink is not None:
             warnings.warn(

@@ -46,6 +46,10 @@ class Effect(Element):
         minimum_total: Min sum of effect (invest+operation)
         maximum_total: Max sum of effect (invest+operation)
         meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+
+    Notes:
+        - Bounds may be None to indicate unbounded in that direction.
+        - The unit of the effect is only informative and does not affect the optimization.
     """
 
     def __init__(

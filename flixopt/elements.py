@@ -102,6 +102,10 @@ class Bus(Element):
             (none/ 0 -> no penalty). The default is 1e5.
             (Take care: if you use a timeseries (no scalar), timeseries is aggregated if calculation_type = aggregated!)
         meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+
+    Notes:
+        The constructor also initializes empty `inputs` and `outputs` lists for connected Flow objects.
+        The registration of connections is handled automatically by the FlowSystem.
     """
 
     def __init__(
@@ -149,6 +153,13 @@ class Flow(Element):
     r"""
     A **Flow** moves energy (or material) between a [Bus][flixopt.elements.Bus] and a [Component][flixopt.elements.Component] in a predefined direction.
     The flow-rate is the main optimization variable of the **Flow**.
+
+    Notes:
+       - If `size` is None, a large default (CONFIG.modeling.BIG) is used.
+       - If `previous_flow_rate` is provided as a list, it is converted to a NumPy array.
+
+    Deprecated:
+        - Passing a Bus object to `bus` is deprecated. Pass the bus label string instead.
 
     Args:
         label: The label of the Flow. Used to identify it in the FlowSystem. Its `full_label` consists of the label of the Component and the label of the Flow.

@@ -161,6 +161,12 @@ class Piecewise(Interface):
         self.pieces = pieces
 
     def __len__(self):
+        """
+        Return the number of Piece segments in this Piecewise container.
+
+        Returns:
+            int: Count of contained Piece objects.
+        """
         return len(self.pieces)
 
     def __getitem__(self, index) -> Piece:
@@ -341,6 +347,12 @@ class PiecewiseConversion(Interface):
         self.piecewises = piecewises
 
     def items(self):
+        """
+        Return an iterator over (flow_label, Piecewise) pairs stored in this PiecewiseConversion.
+
+        This is a thin convenience wrapper around the internal mapping and yields the same view
+        as dict.items(), where each key is a flow label (str) and each value is a Piecewise.
+        """
         return self.piecewises.items()
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
