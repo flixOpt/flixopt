@@ -1,7 +1,6 @@
 name: 📝 General Issue
 description: For issues that don't fit the specific templates below
 title: ""
-labels: ["needs-triage"]
 body:
   - type: markdown
     attributes:
