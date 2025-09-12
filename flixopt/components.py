@@ -712,6 +712,18 @@ class Source(Component):
 
 @register_class_for_io
 class Sink(Component):
+    """
+    A Sink consumes energy or material flows from the system.
+    
+    Sinks represent demand points like electrical loads, heat demands, or material consumption.
+    
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem
+        inputs: Input-flows into the sink
+        meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        prevent_simultaneous_flow_rates: If True, only one input flow can be active at a time
+    """
+    
     def __init__(
         self,
         label: str,
@@ -720,12 +732,6 @@ class Sink(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            inputs: output-flows of source
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         sink = kwargs.pop('sink', None)
         if sink is not None:
             warnings.warn(
