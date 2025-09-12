@@ -300,6 +300,7 @@ jobs:
           for d in 30 60 120 180 360 720 1080; do
             sleep "$d"
             pip install "$PACKAGE_NAME" && break || true
+          done
           # Basic import test
           python -c "import flixopt; print('PyPI installation successful!')"
 
