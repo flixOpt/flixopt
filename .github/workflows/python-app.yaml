@@ -210,13 +210,28 @@ jobs:
           # Extract version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
           # Wait and retry while TestPyPI indexes the package
+          INSTALL_SUCCESS=false
           for d in 15 30 60 120 180 360 720 1080; do
             sleep "$d"
+            echo "Attempting to install $PACKAGE_NAME==$VERSION from TestPyPI (retry after ${d}s)..."
             # Install specific version and verify it matches
-            pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
-            python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed" && \
-            break || true
+            if pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
+               python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
+              INSTALL_SUCCESS=true
+              break
+            fi
           done
+
+          # Check if installation succeeded
+          if [ "$INSTALL_SUCCESS" = "false" ]; then
+            echo "ERROR: Failed to install $PACKAGE_NAME==$VERSION from TestPyPI after all retries"
+            echo "This could indicate:"
+            echo "  - TestPyPI indexing issues"
+            echo "  - Package upload problems"
+            echo "  - Version mismatch between tag and package"
+            exit 1
+          fi
+
           # Final success confirmation
           python -c "import flixopt; print('TestPyPI installation successful!')"
 
@@ -272,13 +287,28 @@ jobs:
           # Extract version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
           # Wait and retry while PyPI indexes the package
-          for d in 15 30 60 120 180 360 720 1080; do
+          INSTALL_SUCCESS=false
+          for d in 5 10 15 30 60 120 180 360 720 1080; do
             sleep "$d"
+            echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
             # Install specific version and verify it matches
-            pip install "$PACKAGE_NAME==$VERSION" && \
-            python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed" && \
-            break || true
+            if pip install "$PACKAGE_NAME==$VERSION" && \
+               python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
+              INSTALL_SUCCESS=true
+              break
+            fi
           done
+
+          # Check if installation succeeded
+          if [ "$INSTALL_SUCCESS" = "false" ]; then
+            echo "ERROR: Failed to install $PACKAGE_NAME==$VERSION from PyPI after all retries"
+            echo "This could indicate:"
+            echo "  - PyPI indexing issues"
+            echo "  - Package upload problems"
+            echo "  - Version mismatch between tag and package"
+            exit 1
+          fi
+
           # Final success confirmation
           python -c "import flixopt; print('PyPI installation successful!')"
 
