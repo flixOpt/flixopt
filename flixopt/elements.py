@@ -12,7 +12,7 @@ import numpy as np
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
 from .effects import EffectValuesUser
-from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel, PiecewiseEffectsModel
+from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel, PiecewiseEffectsPerFlowHourModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseEffectsPerFlowHour
 from .structure import Element, ElementModel, SystemModel, register_class_for_io
 
@@ -403,13 +403,12 @@ class FlowModel(ElementModel):
 
         if self.element.piecewise_effects_per_flow_hour is not None:
             self.piecewise_effects = self.add(
-                PiecewiseEffectsModel(
+                PiecewiseEffectsPerFlowHourModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     piecewise_origin=(self.flow_rate.name, self.element.piecewise_effects_per_flow_hour.piecewise_origin),
-                    piecewise_shares=self.element.piecewise_effects_per_flow_hour.piecewise_shares,
+                    piecewise_shares_per_flow_hour=self.element.piecewise_effects_per_flow_hour.piecewise_shares,
                     zero_point=self.on_off.on if self.on_off is not None else False,
-                    as_time_series=True,
                 ),
             )
             self.piecewise_effects.do_modeling()
