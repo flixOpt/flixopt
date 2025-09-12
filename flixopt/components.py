@@ -27,6 +27,29 @@ class LinearConverter(Component):
     """
     Converts input-Flows into output-Flows via linear conversion factors
 
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem
+        inputs: The input Flows
+        outputs: The output Flows
+        on_off_parameters: Information about on and off state of LinearConverter.
+            Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
+            If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
+            See class OnOffParameters.
+        conversion_factors: linear relation between flows.
+            Either 'conversion_factors' or 'piecewise_conversion' can be used!
+        piecewise_conversion: Define a piecewise linear relation between flow rates of different flows.
+            Either 'conversion_factors' or 'piecewise_conversion' can be used!
+        meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+
+    Warning:
+        When using `PiecewiseConversion` without `OnOffParameters`, flow_rates cannot reach zero
+        unless explicitly defined with zero-valued Pieces (e.g., `fx.Piece(0, 0)`).
+        This behavior prevents unintended zero flows and is the intended design, which got a bugfix in v2.1.7.
+
+        To allow zero flow rates, either:
+
+        - Add OnOffParameters to the `LinearConverter`, or
+        - Define explicit zero Pieces in your `PiecewiseConversion`.
     """
 
     def __init__(
@@ -39,31 +62,6 @@ class LinearConverter(Component):
         piecewise_conversion: Optional[PiecewiseConversion] = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            inputs: The input Flows
-            outputs: The output Flows
-            on_off_parameters: Information about on and off state of LinearConverter.
-                Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
-                If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
-                See class OnOffParameters.
-            conversion_factors: linear relation between flows.
-                Either 'conversion_factors' or 'piecewise_conversion' can be used!
-            piecewise_conversion: Define a piecewise linear relation between flow rates of different flows.
-                Either 'conversion_factors' or 'piecewise_conversion' can be used!
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-
-        Warning:
-            When using `PiecewiseConversion` without `OnOffParameters`, flow_rates cannot reach zero
-            unless explicitly defined with zero-valued Pieces (e.g., `fx.Piece(0, 0)`).
-            This behavior prevents unintended zero flows and is the intended design, which got a bugfix in v2.1.7.
-
-            To allow zero flow rates, either:
-
-            - Add OnOffParameters to the `LinearConverter`, or
-            - Define explicit zero Pieces in your `PiecewiseConversion`.
-        """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
