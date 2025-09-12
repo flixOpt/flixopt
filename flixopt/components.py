@@ -230,28 +230,135 @@ class Storage(Component):
     """
     A Storage models the temporary storage and release of energy or material.
 
-    Storages have one incoming and one outgoing Flow each with an efficiency factor.
-    They maintain a charge state that represents the stored amount, bounded by capacity limits.
-    The charge state evolves based on charging, discharging, and losses over time.
+    Storages have one incoming and one outgoing Flow, each with configurable efficiency
+    factors. They maintain a charge state variable that represents the stored amount,
+    bounded by capacity limits and evolving over time based on charging, discharging,
+    and self-discharge losses.
 
-    For mathematical details see class StorageModel
+    The storage model handles complex temporal dynamics including initial conditions,
+    final state constraints, and time-varying parameters. It supports both fixed-size
+    and investment-optimized storage systems with comprehensive techno-economic modeling.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem
-        charging: Ingoing flow for loading the storage
-        discharging: Outgoing flow for unloading the storage
-        capacity_in_flow_hours: Nominal capacity/size of the storage
-        relative_minimum_charge_state: Minimum relative charge state. The default is 0
-        relative_maximum_charge_state: Maximum relative charge state. The default is 1
-        initial_charge_state: Storage charge_state at the beginning. The default is 0
-        minimal_final_charge_state: Minimal value of chargeState at the end of timeseries
-        maximal_final_charge_state: Maximal value of chargeState at the end of timeseries
-        eta_charge: Efficiency factor of charging/loading. The default is 1
-        eta_discharge: Efficiency factor of uncharging/unloading. The default is 1
-        relative_loss_per_hour: Loss per chargeState-Unit per hour. The default is 0
-        prevent_simultaneous_charge_and_discharge: If True, loading and unloading at the same time is not possible.
-            Increases the number of binary variables, but is recommended for easier evaluation. The default is True
-        meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        charging: Incoming flow for loading the storage. Represents energy or material
+            flowing into the storage system.
+        discharging: Outgoing flow for unloading the storage. Represents energy or
+            material flowing out of the storage system.
+        capacity_in_flow_hours: Nominal capacity/size of the storage in flow-hours
+            (e.g., kWh for electrical storage, m³ or kg for material storage). Can be a scalar
+            for fixed capacity or InvestParameters for optimization.
+        relative_minimum_charge_state: Minimum relative charge state (0-1 range).
+            Prevents deep discharge that could damage equipment. Default is 0.
+        relative_maximum_charge_state: Maximum relative charge state (0-1 range).
+            Accounts for practical capacity limits, safety margins or temperature impacts. Default is 1.
+        initial_charge_state: Storage charge state at the beginning of the time horizon.
+            Can be numeric value or 'lastValueOfSim', which is recommended for if the initial start state is not known.
+            Default is 0.
+        minimal_final_charge_state: Minimum absolute charge state required at the end
+            of the time horizon. Useful for ensuring energy security or meeting contracts.
+        maximal_final_charge_state: Maximum absolute charge state allowed at the end
+            of the time horizon. Useful for preventing overcharge or managing inventory.
+        eta_charge: Charging efficiency factor (0-1 range). Accounts for conversion
+            losses during charging. Default is 1 (perfect efficiency).
+        eta_discharge: Discharging efficiency factor (0-1 range). Accounts for
+            conversion losses during discharging. Default is 1 (perfect efficiency).
+        relative_loss_per_hour: Self-discharge rate per hour (typically 0-0.1 range).
+            Represents standby losses, leakage, or degradation. Default is 0.
+        prevent_simultaneous_charge_and_discharge: If True, prevents charging and
+            discharging simultaneously. Increases binary variables but improves model
+            realism and solution interpretation. Default is True.
+        meta_data: Used to store additional information about the Element. Not used
+            internally, but saved in results. Only use Python native types.
+
+    Examples:
+        Battery energy storage system:
+
+        ```python
+        battery = Storage(
+            label='lithium_battery',
+            charging=battery_charge_flow,
+            discharging=battery_discharge_flow,
+            capacity_in_flow_hours=100,  # 100 kWh capacity
+            eta_charge=0.95,  # 95% charging efficiency
+            eta_discharge=0.95,  # 95% discharging efficiency
+            relative_loss_per_hour=0.001,  # 0.1% loss per hour
+            relative_minimum_charge_state=0.1,  # Never below 10% SOC
+            relative_maximum_charge_state=0.9,  # Never above 90% SOC
+        )
+        ```
+
+        Thermal storage with cycling constraints:
+
+        ```python
+        thermal_storage = Storage(
+            label='hot_water_tank',
+            charging=heat_input,
+            discharging=heat_output,
+            capacity_in_flow_hours=500,  # 500 kWh thermal capacity
+            initial_charge_state=250,  # Start half full
+            # Impact of temperature on energy capacity
+            relative_maximum_charge_state=water_temperature_spread / rated_temeprature_spread,
+            eta_charge=0.90,  # Heat exchanger losses
+            eta_discharge=0.85,  # Distribution losses
+            relative_loss_per_hour=0.02,  # 2% thermal loss per hour
+            prevent_simultaneous_charge_and_discharge=True,
+        )
+        ```
+
+        Pumped hydro storage with investment optimization:
+
+        ```python
+        pumped_hydro = Storage(
+            label='pumped_hydro',
+            charging=pump_flow,
+            discharging=turbine_flow,
+            capacity_in_flow_hours=InvestParameters(
+                minimum_size=1000,  # Minimum economic scale
+                maximum_size=10000,  # Site constraints
+                specific_effects={'cost': 150},  # €150/MWh capacity
+                fix_effects={'cost': 50_000_000},  # €50M fixed costs
+            ),
+            eta_charge=0.85,  # Pumping efficiency
+            eta_discharge=0.90,  # Turbine efficiency
+            initial_charge_state='lastValueOfSim',  # Ensuring no deficit compared to start
+            relative_loss_per_hour=0.0001,  # Minimal evaporation
+        )
+        ```
+
+        Material storage with inventory management:
+
+        ```python
+        fuel_storage = Storage(
+            label='natural_gas_storage',
+            charging=gas_injection,
+            discharging=gas_withdrawal,
+            capacity_in_flow_hours=10000,  # 10,000 m³ storage volume
+            initial_charge_state=3000,  # Start with 3,000 m³
+            minimal_final_charge_state=1000,  # Strategic reserve
+            maximal_final_charge_state=9000,  # Prevent overflow
+            eta_charge=0.98,  # Compression losses
+            eta_discharge=0.95,  # Pressure reduction losses
+            relative_loss_per_hour=0.0005,  # 0.05% leakage per hour
+            prevent_simultaneous_charge_and_discharge=False,  # Allow flow-through
+        )
+        ```
+
+    Note:
+        Charge state evolution follows the equation:
+        charge[t+1] = charge[t] × (1-loss_rate)^hours_per_step +
+                      charge_flow[t] × eta_charge × hours_per_step -
+                      discharge_flow[t] × hours_per_step / eta_discharge
+
+        All efficiency parameters (eta_charge, eta_discharge) are dimensionless (0-1 range).
+        The relative_loss_per_hour parameter represents exponential decay per hour.
+
+        When prevent_simultaneous_charge_and_discharge is True, binary variables are
+        created to enforce mutual exclusivity, which increases solution time but
+        prevents unrealistic simultaneous charging and discharging.
+
+        Initial and final charge state constraints use absolute values (not relative),
+        matching the capacity_in_flow_hours units.
     """
 
     def __init__(
