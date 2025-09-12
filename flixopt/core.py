@@ -129,16 +129,16 @@ class TimeSeriesData:
     def __init__(self, data: NumericData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
         """
         Initialize a TimeSeriesData wrapper that holds time series input data and optional aggregation metadata.
-        
+
         Parameters:
             data: The time-series data in any supported NumericData form (scalar, ndarray, pandas/xarray, etc.).
             agg_group: Optional name of an aggregation group; when set, this series' aggregation weight is derived from the group's weight.
             agg_weight: Optional explicit aggregation weight for this series. Must not be provided together with `agg_group`.
-        
+
         Notes:
             - Exactly one of `agg_group` or `agg_weight` may be specified; providing both raises ValueError.
             - A `label` attribute is initialized to None and may be set later (e.g., when the series is added to a collection).
-        
+
         Raises:
             ValueError: If both `agg_group` and `agg_weight` are provided.
         """

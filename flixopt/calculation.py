@@ -136,11 +136,11 @@ class FullCalculation(Calculation):
     def do_modeling(self) -> SystemModel:
         """
         Builds and runs the SystemModel for this calculation using the Calculation's FlowSystem.
-        
+
         Activates the configured time series, creates the SystemModel from the associated FlowSystem,
         runs the model's modeling step, records the modeling duration in self.durations['modeling'],
         and stores the created model on self.model.
-        
+
         Returns:
             SystemModel: The built and modeled system model.
         """
@@ -230,11 +230,11 @@ class AggregatedCalculation(FullCalculation):
     ):
         """
         Initialize an AggregatedCalculation.
-        
+
         Creates an AggregatedCalculation that extends FullCalculation with aggregation configuration.
         Stores the provided aggregation parameters and optional component selection and initializes
         the aggregation result placeholder.
-        
+
         Parameters:
             name: Human-readable name for the calculation.
             flow_system: The FlowSystem to build the SystemModel from.
@@ -244,7 +244,7 @@ class AggregatedCalculation(FullCalculation):
                 if None, the default component selection (all eligible components) is used.
             active_timesteps: Optional subset of timesteps to activate for modeling (delegated to base class).
             folder: Optional results folder path (delegated to base class).
-        
+
         Side effects:
             Sets self.aggregation to None; this will be replaced by the produced Aggregation after
             _perform_aggregation runs.

@@ -69,7 +69,7 @@ class Effect(Element):
     ):
         """
         Initialize an Effect representing a measurable impact (e.g., cost, emission, area).
-        
+
         Args:
             label: Unique identifier for the effect.
             unit: Unit string for the effect values (e.g., "kg", "EUR").
@@ -87,7 +87,7 @@ class Effect(Element):
             maximum_operation_per_hour: Optional time series providing per-timestep upper bounds for operation.
             minimum_total: Optional lower bound scalar for the total (operation + invest).
             maximum_total: Optional upper bound scalar for the total (operation + invest).
-        
+
         Notes:
             - Shares provided via `specific_share_to_other_effects_operation` and
               `specific_share_to_other_effects_invest` are kept in user form and later

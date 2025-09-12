@@ -166,9 +166,9 @@ class Storage(Component):
         # TODO: fixed_relative_chargeState implementieren
         """
         Create a storage element representing an energy/material buffer with charging and discharging flows.
-        
+
         The storage has a capacity expressed in flow-hours (either a numeric scalar or InvestParameters), a bounded charge state (given as relative min/max fractions of capacity), optional initial and final charge-state constraints, separate charge/discharge efficiencies, and proportional hourly self-losses. Optionally prevents simultaneous charging and discharging by marking those flows as mutually exclusive.
-        
+
         Parameters:
             label: Human-readable identifier for the storage element.
             charging: Flow used to charge the storage (input).
@@ -709,11 +709,11 @@ class Source(Component):
     ):
         """
         Initialize a Source element that produces one or more output flows.
-        
+
         If the deprecated `source` keyword argument is provided it is accepted for
         backwards compatibility (emits a DeprecationWarning) and must not be used
         together with `outputs`.
-        
+
         Parameters:
             label: Human-readable identifier for the element.
             outputs: List of output Flow objects produced by this Source. If
@@ -723,7 +723,7 @@ class Source(Component):
             prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero
                 rates across the specified outputs by wiring them into the base
                 `prevent_simultaneous_flows` mechanism.
-        
+
         Notes:
             - Using the legacy `source` kwarg will convert it to a single-item
               `outputs` list and raise a DeprecationWarning. Supplying both `source`
@@ -782,15 +782,15 @@ class Sink(Component):
     ):
         """
         Initialize a Sink (consumes flow from the system).
-        
+
         Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided it is used as the single input flow and a DeprecationWarning is issued; specifying both `inputs` and `sink` raises ValueError.
-        
+
         Parameters:
             label (str): Unique element label.
             inputs (List[Flow], optional): Input flows for the sink.
             meta_data (dict, optional): Arbitrary metadata attached to the element.
             prevent_simultaneous_flow_rates (bool, optional): If True, prevents simultaneous nonzero flow rates across the element's inputs by wiring that restriction into the base Component setup.
-        
+
         Note:
             The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
         """

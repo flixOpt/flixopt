@@ -109,12 +109,12 @@ class Bus(Element):
     ):
         """
         Initialize a Bus element representing a nodal balance with optional excess-penalty.
-        
+
         Parameters:
             label: Unique identifier for the bus.
             excess_penalty_per_flow_hour: Scalar or time series giving the monetary penalty applied per unit of excess flow-hour (inputs or outputs). If None, no excess variables/penalty are created. Defaults to 1e5.
             meta_data: Optional mapping of user-provided metadata.
-        
+
         Notes:
             The constructor also initializes empty `inputs` and `outputs` lists for connected Flow objects.
         """
@@ -210,12 +210,12 @@ class Flow(Element):
     ):
         """
         Initialize a Flow element representing material/energy transfer between a Bus and a Component.
-        
+
         Creates and stores sizing, bounds, profiles, operational constraints, effects and bookkeeping fields used later by the modeling layer. Important behaviors:
         - If `size` is None, a large default (CONFIG.modeling.BIG) is used.
         - Passing a Bus object to `bus` is deprecated: the Bus's full label is recorded and a UserWarning is emitted; prefer passing the bus label string.
         - If `previous_flow_rate` is provided as a list, it is converted to a NumPy array.
-        
+
         Parameters:
             label: Unique flow identifier.
             bus: Bus label string (preferred). If a Bus instance is passed, its label_full is used and a deprecation warning is emitted.

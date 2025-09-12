@@ -72,7 +72,7 @@ class Piece(Interface):
     def __init__(self, start: NumericData, end: NumericData):
         """
         Create a linear segment defined by its start and end numeric values.
-        
+
         Parameters:
             start (NumericData): Value at the segment's start boundary.
             end (NumericData): Value at the segment's end boundary.
@@ -167,7 +167,7 @@ class Piecewise(Interface):
     def __init__(self, pieces: List[Piece]):
         """
         Initialize a piecewise linear function from an ordered list of Piece segments.
-        
+
         Parameters:
             pieces (List[Piece]): Ordered sequence of Piece objects representing consecutive segments of the piecewise linear function. The order of items defines the sequence of segments; no validation is performed.
         """
@@ -176,7 +176,7 @@ class Piecewise(Interface):
     def __len__(self):
         """
         Return the number of Piece segments in this Piecewise container.
-        
+
         Returns:
             int: Count of contained Piece objects.
         """
@@ -359,7 +359,7 @@ class PiecewiseConversion(Interface):
     def __init__(self, piecewises: Dict[str, Piecewise]):
         """
         Initialize a PiecewiseConversion mapping flow labels to their Piecewise conversions.
-        
+
         Parameters:
             piecewises (Dict[str, Piecewise]): Mapping from flow identifier (label) to its Piecewise object; used by transform_data to convert each flow's piecewise definition into time-series data.
         """
@@ -368,7 +368,7 @@ class PiecewiseConversion(Interface):
     def items(self):
         """
         Return an iterator over (flow_label, Piecewise) pairs stored in this PiecewiseConversion.
-        
+
         This is a thin convenience wrapper around the internal mapping and yields the same view
         as dict.items(), where each key is a flow label (str) and each value is a Piecewise.
         """
@@ -510,7 +510,7 @@ class PiecewiseEffects(Interface):
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
         """
         Initialize a PiecewiseEffects container linking a primary piecewise function to per-effect piecewise shares.
-        
+
         Parameters:
             piecewise_origin (Piecewise): The primary piecewise function that defines the base relationship.
             piecewise_shares (Dict[str, Piecewise]): Mapping from effect name to a Piecewise that defines that effect's share of the origin (per-effect piecewise share).
@@ -726,7 +726,7 @@ class InvestParameters(Interface):
     ):
         """
         Initialize investment parameter container.
-        
+
         Parameters:
             fixed_size: If set, investment is treated as a fixed (non-continuous) size and both minimum and maximum sizing will effectively be this value.
             minimum_size: Lower bound for continuous sizing; if omitted defaults to CONFIG.modeling.EPSILON. Ignored when `fixed_size` is provided.
@@ -948,7 +948,7 @@ class OnOffParameters(Interface):
     ):
         """
         Initialize OnOffParameters controlling binary on/off behavior and associated costs.
-        
+
         Parameters:
             effects_per_switch_on: Mapping of effect identifiers to values applied each time the unit switches from off to on (startup costs/effects). Can be empty.
             effects_per_running_hour: Mapping of effect identifiers to values applied per running hour while on (operating costs/impacts). Can be empty.
