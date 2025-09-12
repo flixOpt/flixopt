@@ -103,19 +103,27 @@ class PiecewiseEffects(Interface):
 
 @register_class_for_io
 class PiecewiseEffectsPerFlowHour(Interface):
-    def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
+    def __init__(self, piecewise_flow_rate: Piecewise, piecewise_shares: Dict[str, Piecewise]):
         """
         Define piecewise effects related to a variable.
 
         Args:
-            piecewise_origin: Piecewise of the related variable
-            piecewise_shares: Piecewise defining the shares to different Effects
+            piecewise_flow_rate: Piecewise of the flow_rate
+            piecewise_shares: Piecewise defining the shares to different Effects.
+                TAKE CARE: The values represent the actual shares to the effects.
+                Example:
+                    piecewise_flow_rate = Piecewise([Piece(5, 25), Piece(25, 200)])
+                    piecewise_shares = {'Costs': Piecewise([Piece(5, 25), Piece(25, 100)])}
+                        This means that the share of the Costs effect is 5 if the flow rate is 5,
+                        and 100 if the flow rate is 200.
+                        ITS NOT: flow_rate=5 --> Share=5*5=25
+                        (Prices unfortunately cannot be represented as a Piecewise. This would be non linear.)
         """
-        self.piecewise_origin = piecewise_origin
+        self.piecewise_flow_rate = piecewise_flow_rate
         self.piecewise_shares = piecewise_shares
 
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
-        self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffectsPerFlowHour|origin')
+        self.piecewise_flow_rate.transform_data(flow_system, f'{name_prefix}|PiecewiseEffectsPerFlowHour|origin')
         for name, piecewise in self.piecewise_shares.items():
            piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffectsPerFlowHour|{name}')
 

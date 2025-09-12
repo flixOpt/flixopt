@@ -406,8 +406,8 @@ class FlowModel(ElementModel):
                 PiecewiseEffectsPerFlowHourModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    piecewise_origin=(self.flow_rate.name, self.element.piecewise_effects_per_flow_hour.piecewise_origin),
-                    piecewise_shares_per_flow_hour=self.element.piecewise_effects_per_flow_hour.piecewise_shares,
+                    piecewise_origin=(self.flow_rate.name, self.element.piecewise_effects_per_flow_hour.piecewise_flow_rate),
+                    piecewise_shares=self.element.piecewise_effects_per_flow_hour.piecewise_shares,
                     zero_point=self.on_off.on if self.on_off is not None else False,
                 ),
             )
