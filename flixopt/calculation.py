@@ -196,7 +196,7 @@ class AggregatedCalculation(FullCalculation):
 
     Note:
         The quality of the solution depends on the choice of aggregation parameters.
-        The optimal parameters depend on the specific problemand the characteristics of the time series data.
+        The optimal parameters depend on the specific problem and the characteristics of the time series data.
         For more information, refer to the [tsam documentation](https://tsam.readthedocs.io/en/latest/).
 
     Args:

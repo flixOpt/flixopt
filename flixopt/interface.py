@@ -942,22 +942,22 @@ class OnOffParameters(Interface):
 
     @property
     def use_off(self) -> bool:
-        """Determines wether the OFF Variable is needed or not"""
+        """Determines whether the OFF Variable is needed or not"""
         return self.use_consecutive_off_hours
 
     @property
     def use_consecutive_on_hours(self) -> bool:
-        """Determines wether a Variable for consecutive off hours is needed or not"""
+        """Determines whether a Variable for consecutive off hours is needed or not"""
         return any(param is not None for param in [self.consecutive_on_hours_min, self.consecutive_on_hours_max])
 
     @property
     def use_consecutive_off_hours(self) -> bool:
-        """Determines wether a Variable for consecutive off hours is needed or not"""
+        """Determines whether a Variable for consecutive off hours is needed or not"""
         return any(param is not None for param in [self.consecutive_off_hours_min, self.consecutive_off_hours_max])
 
     @property
     def use_switch_on(self) -> bool:
-        """Determines wether a Variable for SWITCH-ON is needed or not"""
+        """Determines whether a Variable for SWITCH-ON is needed or not"""
         return (
             any(
                 param not in (None, {})
