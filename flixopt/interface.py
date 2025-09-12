@@ -254,6 +254,7 @@ class PiecewiseEffects(Interface):
         # for name, piecewise in self.piecewise_shares.items():
         #    piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{name}')
 
+
 @register_class_for_io
 class PiecewiseEffectsPerFlowHour(Interface):
     """
@@ -357,7 +358,7 @@ class PiecewiseEffectsPerFlowHour(Interface):
     def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
         self.piecewise_flow_rate.transform_data(flow_system, f'{name_prefix}|PiecewiseEffectsPerFlowHour|origin')
         for name, piecewise in self.piecewise_shares.items():
-           piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffectsPerFlowHour|{name}')
+            piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffectsPerFlowHour|{name}')
 
 
 @register_class_for_io

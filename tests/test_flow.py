@@ -182,7 +182,7 @@ class TestPiecewiseEffectsPerFlowHour:
             piecewise_effects_per_flow_hour=fx.PiecewiseEffectsPerFlowHour(
                 piecewise_flow_rate=fx.Piecewise([fx.Piece(0, 25), fx.Piece(25, 100)]),
                 piecewise_shares={
-                    'Costs': fx.Piecewise([fx.Piece(0, 2*25), fx.Piece(2*25, 1*100)]),
+                    'Costs': fx.Piecewise([fx.Piece(0, 2 * 25), fx.Piece(2 * 25, 1 * 100)]),
                 },
             ),
         )
@@ -200,7 +200,7 @@ class TestPiecewiseEffectsPerFlowHour:
         desired_solution = model.hours_per_step * np.interp(
             flow_rate,
             [0, 25, 25, 100],
-            [0, 2*25, 2*25, 1*100],
+            [0, 2 * 25, 2 * 25, 1 * 100],
         )
 
         xr.testing.assert_allclose(
@@ -223,8 +223,8 @@ class TestPiecewiseEffectsPerFlowHour:
             piecewise_effects_per_flow_hour=fx.PiecewiseEffectsPerFlowHour(
                 piecewise_flow_rate=fx.Piecewise([fx.Piece(0, 1000), fx.Piece(0, 25), fx.Piece(25, 100)]),
                 piecewise_shares={
-                    'Costs': fx.Piecewise([fx.Piece(0, 0), fx.Piece(0, 2*25), fx.Piece(2*25, 1*100)]),
-                    'CO2': fx.Piecewise([fx.Piece(0, 0), fx.Piece(0, 30*25), fx.Piece(30*25, 50*100)]),
+                    'Costs': fx.Piecewise([fx.Piece(0, 0), fx.Piece(0, 2 * 25), fx.Piece(2 * 25, 1 * 100)]),
+                    'CO2': fx.Piecewise([fx.Piece(0, 0), fx.Piece(0, 30 * 25), fx.Piece(30 * 25, 50 * 100)]),
                 },
             ),
         )
@@ -241,11 +241,15 @@ class TestPiecewiseEffectsPerFlowHour:
 
         model.solve()
 
-        desired_solution = model.hours_per_step * np.interp(
-            np.linspace(0, 100, 10),
-            [0, 25, 25, 100],
-            [0, 2*25, 2*25, 1*100],
-        ) * np.array([0] * 5 + [1] * 5)
+        desired_solution = (
+            model.hours_per_step
+            * np.interp(
+                np.linspace(0, 100, 10),
+                [0, 25, 25, 100],
+                [0, 2 * 25, 2 * 25, 1 * 100],
+            )
+            * np.array([0] * 5 + [1] * 5)
+        )
 
         desired_solution_co2 = (
             model.hours_per_step

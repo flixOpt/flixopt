@@ -1050,12 +1050,7 @@ class PiecewiseEffectsModel(Model):
 
     def do_modeling(self):
         self.shares = {
-            effect: self.add(
-                self._model.add_variables(
-                    coords=None,
-                    name=f'{self.label_full}|{effect}'),
-                    f'{effect}'
-            )
+            effect: self.add(self._model.add_variables(coords=None, name=f'{self.label_full}|{effect}'), f'{effect}')
             for effect in self._piecewise_shares
         }
 
@@ -1113,10 +1108,7 @@ class PiecewiseEffectsPerFlowHourModel(Model):
     def do_modeling(self):
         self.shares = {
             effect: self.add(
-                self._model.add_variables(
-                    coords=self._model.coords,
-                    name=f'{self.label_full}|{effect}'),
-                    f'{effect}'
+                self._model.add_variables(coords=self._model.coords, name=f'{self.label_full}|{effect}'), f'{effect}'
             )
             for effect in self._piecewise_shares
         }
