@@ -27,7 +27,7 @@ env:
 
 jobs:
   lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -60,7 +60,7 @@ jobs:
           echo "::endgroup::"
 
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: lint  # Run tests only after linting passes
     strategy:
@@ -92,7 +92,7 @@ jobs:
 
   security:
     name: Security Scan
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: lint
     steps:
       - name: Check out code
@@ -126,7 +126,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     needs: [lint, test, security]
@@ -167,7 +167,7 @@ jobs:
 
   publish-testpypi:
     name: Publish to TestPyPI
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: [test, create-release]  # Run after tests and release creation
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
     environment:
@@ -255,7 +255,7 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: [publish-testpypi]  # Only run after TestPyPI publish succeeds
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
     environment:
@@ -340,7 +340,7 @@ jobs:
 
   deploy-docs:
     name: Deploy Documentation
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     needs: [publish-pypi]  # Deploy docs after successful PyPI publishing
