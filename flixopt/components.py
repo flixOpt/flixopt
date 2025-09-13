@@ -1210,7 +1210,7 @@ class Sink(Component):
                     label='electricity_process',
                     bus=electricity_bus,
                     size=5000,  # Base electrical load
-                    costs={'cost': -0.1},  # Value of service (negative cost)
+                    effects_per_flow_hour={'cost': -0.1},  # Value of service (negative cost)
                 ),
                 Flow(
                     label='steam_process',
