@@ -92,7 +92,7 @@ jobs:
 
   security:
     name: Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: lint
     steps:
       - name: Check out code
@@ -112,7 +112,7 @@ jobs:
       - name: Run Bandit security scan
         run: |
           # Gate on HIGH severity & MEDIUM confidence; produce JSON artifact
-          uvx bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json -q -lll -ii
+          uvx bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json -q --severity-level HIGH --confidence-level MEDIUM
           # Human-readable output without affecting job status
           uvx bandit -r flixopt/ -c pyproject.toml -q --exit-zero
 
