@@ -5,7 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+<!-- This text won't be rendered
+Take Care: The CI will automatically append a "Whats CHanged" section to the changelog.
+This contains all COmmits, PR's and Contributers.
+Therefore, the Changelog should focus on the user-facing changes.
+
+## [Unreleased] - ????-??-??
+
+### Changed
+
+### Added
+
+### Deprecated
+
+### Fixed
+
+### Known issues
+
+### Development
+
+Until here -->
+
+## [2.1.7] - 2025-09-13
+
+This update is a maintenance release to improve Code Quality, CI and update the dependencies.
+There are no changes or new features.
+
+### Added
+- Added __version__ to flixopt
+
+### Development
+- ruff format the whole Codebase
+- Added renovate config
+- Added pre-commit
+- lint and format in CI
+- improved CI
+- Updated Dependencies
+- Updated Issue Templates
 
 
 ## [2.1.6] - 2025-09-02
