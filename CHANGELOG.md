@@ -29,15 +29,18 @@ Template:
 ----
 Upcoming Release:
 
-## [2.2.0] - ????-??-??
+Until here -->
+
+## [2.2.0] - 2025-09-13
+THis release introduces a new interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects.
+This greatly enhances Model flexibility.
 
 ### Fixed
-- LinearConverter with `PiecewiseConversion` lead to flows reaching 0 values, even though they didnt have `OnOffParameters` nor `PiecewiseConversion` containing 0 in its a `Piece`s. This was fixed by [[#310](https://github.com/flixOpt/flixopt/pull/310) by [@FBumann](https://github.com/FBumann)]
+- LinearConverter with `PiecewiseConversion` allowed flows to reach 0 values, even though they didnt have `OnOffParameters` nor `PiecewiseConversion` actually containing 0 in its `Piece`s.
 
 ### Added
-- Added new Interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects. [[#310](https://github.com/flixOpt/flixopt/pull/310) by [@FBumann](https://github.com/FBumann)]
+- Added new Interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects.
 
-Until here -->
 
 ## [2.1.7] - 2025-09-13
 
