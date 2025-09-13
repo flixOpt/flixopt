@@ -417,14 +417,14 @@ class FlowSystem:
 
                 # Add Bus if not already added (deprecated)
                 if flow._bus_object is not None and flow._bus_object not in self.buses.values():
-                    self._add_buses(flow._bus_object)
                     warnings.warn(
                         f'The Bus {flow._bus_object.label} was added to the FlowSystem from {flow.label_full}.'
                         f'This is deprecated and will be removed in the future. '
                         f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead.',
-                        UserWarning,
+                        DeprecationWarning,
                         stacklevel=1,
                     )
+                    self._add_buses(flow._bus_object)
 
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
