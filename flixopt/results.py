@@ -278,7 +278,7 @@ class CalculationResults:
         ] = True,
         path: Optional[pathlib.Path] = None,
         show: bool = False,
-    ) -> 'pyvis.network.Network':
+    ) -> Optional['pyvis.network.Network']:
         """Plot interactive network visualization of the system.
 
         Args:
@@ -478,7 +478,7 @@ class _NodeResults(_ElementResults):
         save: Union[bool, pathlib.Path] = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> plotly.graph_objects.Figure:
+    ) -> Union[plotly.graph_objects.Figure, Tuple[plt.Figure, List[plt.Axes]]]:
         """Plot pie chart of flow hours distribution.
 
         Args:
@@ -487,7 +487,7 @@ class _NodeResults(_ElementResults):
             text_info: Information to display on pie slices.
             save: Whether to save plot.
             show: Whether to display plot.
-            engine: Plotting engine (only 'plotly' supported).
+            engine: Plotting engine ('plotly' or 'matplotlib').
 
         Returns:
             plotly.graph_objects.Figure: Pie chart figure.

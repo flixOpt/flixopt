@@ -52,8 +52,13 @@ _portland_colors = [
 ]
 
 # Check if the colormap already exists before registering it
-if 'portland' not in plt.colormaps:
-    plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
+try:
+    registry = plt.colormaps  # Matplotlib >=3.7
+    if 'portland' not in registry:
+        registry.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
+except AttributeError:  # Matplotlib <3.7
+    if 'portland' not in [c for c in plt.colormaps()]:
+        plt.register_cmap(name='portland', cmap=mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
 ColorType = Union[str, List[str], Dict[str, str]]
@@ -630,9 +635,6 @@ def heat_map_plotly(
         color_map: The color scale to use for the heatmap. Default is 'viridis'. Plotly supports various color scales like 'Cividis', 'Inferno', etc.
         categorical_labels: If True, the x and y axes are treated as categorical data (i.e., the index and columns will not be interpreted as continuous data).
             Default is True. If False, the axes are treated as continuous, which may be useful for time series or numeric data.
-        show: Whether to show the figure after creation. (This includes saving the figure)
-        save: Whether to save the figure after creation (without showing)
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the heatmap. This can be further customized and saved
