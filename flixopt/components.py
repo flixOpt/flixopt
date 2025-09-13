@@ -37,13 +37,12 @@ class LinearConverter(Component):
     behavior approximated through piecewise linear segments.
 
     Args:
+        **Basic Configuration:**
         label: The label of the Element. Used to identify it in the FlowSystem.
         inputs: List of input Flows that feed into the converter.
         outputs: List of output Flows that are produced by the converter.
-        on_off_parameters: Information about on and off state of LinearConverter.
-            Component is On/Off if all connected Flows are On/Off. This induces an
-            On-Variable (binary) in all Flows! If possible, use OnOffParameters in a
-            single Flow instead to keep the number of binary variables low.
+
+        **Conversion Definition:**
         conversion_factors: Linear relationships between flows expressed as a list of
             dictionaries. Each dictionary maps flow labels to their coefficients in one
             linear equation. The number of conversion factors must be less than the total
@@ -54,6 +53,14 @@ class LinearConverter(Component):
             of different flows. Enables modeling of non-linear conversion behavior through
             linear approximation. Either 'conversion_factors' or 'piecewise_conversion'
             can be used, but not both.
+
+        **Operational Features:**
+        on_off_parameters: Information about on and off state of LinearConverter.
+            Component is On/Off if all connected Flows are On/Off. This induces an
+            On-Variable (binary) in all Flows! If possible, use OnOffParameters in a
+            single Flow instead to keep the number of binary variables low.
+
+        **Metadata:**
         meta_data: Used to store additional information about the Element. Not used
             internally, but saved in results. Only use Python native types.
 
@@ -240,6 +247,7 @@ class Storage(Component):
     and investment-optimized storage systems with comprehensive techno-economic modeling.
 
     Args:
+        **Core Configuration:**
         label: The label of the Element. Used to identify it in the FlowSystem.
         charging: Incoming flow for loading the storage. Represents energy or material
             flowing into the storage system.
@@ -248,10 +256,22 @@ class Storage(Component):
         capacity_in_flow_hours: Nominal capacity/size of the storage in flow-hours
             (e.g., kWh for electrical storage, m³ or kg for material storage). Can be a scalar
             for fixed capacity or InvestParameters for optimization.
+
+        **Charge State Bounds:**
         relative_minimum_charge_state: Minimum relative charge state (0-1 range).
             Prevents deep discharge that could damage equipment. Default is 0.
         relative_maximum_charge_state: Maximum relative charge state (0-1 range).
             Accounts for practical capacity limits, safety margins or temperature impacts. Default is 1.
+
+        **Efficiency Parameters:**
+        eta_charge: Charging efficiency factor (0-1 range). Accounts for conversion
+            losses during charging. Default is 1 (perfect efficiency).
+        eta_discharge: Discharging efficiency factor (0-1 range). Accounts for
+            conversion losses during discharging. Default is 1 (perfect efficiency).
+        relative_loss_per_hour: Self-discharge rate per hour (typically 0-0.1 range).
+            Represents standby losses, leakage, or degradation. Default is 0.
+
+        **Initial/Final Conditions:**
         initial_charge_state: Storage charge state at the beginning of the time horizon.
             Can be numeric value or 'lastValueOfSim', which is recommended for if the initial start state is not known.
             Default is 0.
@@ -259,15 +279,13 @@ class Storage(Component):
             of the time horizon. Useful for ensuring energy security or meeting contracts.
         maximal_final_charge_state: Maximum absolute charge state allowed at the end
             of the time horizon. Useful for preventing overcharge or managing inventory.
-        eta_charge: Charging efficiency factor (0-1 range). Accounts for conversion
-            losses during charging. Default is 1 (perfect efficiency).
-        eta_discharge: Discharging efficiency factor (0-1 range). Accounts for
-            conversion losses during discharging. Default is 1 (perfect efficiency).
-        relative_loss_per_hour: Self-discharge rate per hour (typically 0-0.1 range).
-            Represents standby losses, leakage, or degradation. Default is 0.
+
+        **Operational Constraints:**
         prevent_simultaneous_charge_and_discharge: If True, prevents charging and
             discharging simultaneously. Increases binary variables but improves model
             realism and solution interpretation. Default is True.
+
+        **Metadata:**
         meta_data: Used to store additional information about the Element. Not used
             internally, but saved in results. Only use Python native types.
 
