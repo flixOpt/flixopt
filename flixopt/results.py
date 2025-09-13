@@ -26,36 +26,83 @@ logger = logging.getLogger('flixopt')
 
 
 class CalculationResults:
-    """Results container for Calculation results.
+    """Comprehensive container for optimization calculation results and analysis tools.
 
-    This class is used to collect the results of a Calculation.
-    It provides access to component, bus, and effect
-    results, and includes methods for filtering, plotting, and saving results.
+    This class provides unified access to all optimization results including flow rates,
+    component states, bus balances, and system effects. It offers powerful analysis
+    capabilities through filtering, plotting, and export functionality, making it
+    the primary interface for post-processing optimization results.
 
-    The recommended way to create instances is through the class methods
-    `from_file()` or `from_calculation()`, rather than direct initialization.
+    Key Features:
+        **Unified Access**: Single interface to all solution variables and constraints
+        **Element Results**: Direct access to component, bus, and effect-specific results
+        **Visualization**: Built-in plotting methods for heatmaps, time series, and networks
+        **Persistence**: Save/load functionality with compression for large datasets
+        **Analysis Tools**: Filtering, aggregation, and statistical analysis methods
+
+    Result Organization:
+        - **Components**: Equipment-specific results (flows, states, constraints)
+        - **Buses**: Network node balances and energy flows
+        - **Effects**: System-wide impacts (costs, emissions, resource consumption)
+        - **Solution**: Raw optimization variables and their values
+        - **Metadata**: Calculation parameters, timing, and system configuration
 
     Attributes:
-        solution (xr.Dataset): Dataset containing optimization results.
-        flow_system (xr.Dataset): Dataset containing the flow system.
-        summary (Dict): Information about the calculation.
-        name (str): Name identifier for the calculation.
-        model (linopy.Model): The optimization model (if available).
-        folder (pathlib.Path): Path to the results directory.
-        components (Dict[str, ComponentResults]): Results for each component.
-        buses (Dict[str, BusResults]): Results for each bus.
-        effects (Dict[str, EffectResults]): Results for each effect.
-        timesteps_extra (pd.DatetimeIndex): The extended timesteps.
-        hours_per_timestep (xr.DataArray): Duration of each timestep in hours.
+        solution: Dataset containing all optimization variable solutions
+        flow_system: Dataset with complete system configuration and parameters. Restore the used FlowSystem for further analysis.
+        summary: Calculation metadata including solver status, timing, and statistics
+        name: Unique identifier for this calculation
+        model: Original linopy optimization model (if available)
+        folder: Directory path for result storage and loading
+        components: Dictionary mapping component labels to ComponentResults objects
+        buses: Dictionary mapping bus labels to BusResults objects
+        effects: Dictionary mapping effect names to EffectResults objects
+        timesteps_extra: Extended time index including boundary conditions
+        hours_per_timestep: Duration of each timestep for proper energy calculations
 
-    Example:
-        Load results from saved files:
+    Examples:
+        Load and analyze saved results:
 
-        >>> results = CalculationResults.from_file('results_dir', 'optimization_run_1')
-        >>> element_result = results['Boiler']
-        >>> results.plot_heatmap('Boiler(Q_th)|flow_rate')
-        >>> results.to_file(compression=5)
-        >>> results.to_file(folder='new_results_dir', compression=5)  # Save the results to a new folder
+        ```python
+        # Load results from file
+        results = CalculationResults.from_file('results', 'annual_optimization')
+
+        # Access specific component results
+        boiler_results = results['Boiler_01']
+        heat_pump_results = results['HeatPump_02']
+
+        # Plot component flow rates
+        results.plot_heatmap('Boiler_01(Natural_Gas)|flow_rate')
+        results['Boiler_01'].plot_node_balance()
+
+        # Access raw solution dataarrays
+        electricity_flows = results.solution[['Generator_01(Grid)|flow_rate', 'HeatPump_02(Grid)|flow_rate']]
+
+        # Filter and analyze results
+        peak_demand_hours = results.filter_solution(variable_dims='time')
+        costs_solution = results.effects['cost'].solution
+        ```
+
+        Advanced filtering and aggregation:
+
+        ```python
+        # Filter by variable type
+        scalar_results = results.filter_solution(variable_dims='scalar')
+        time_series = results.filter_solution(variable_dims='time')
+
+        # Custom data analysis leveraging xarray
+        peak_power = results.solution['Generator_01(Grid)|flow_rate'].max()
+        avg_efficiency = (
+            results.solution['HeatPump(Heat)|flow_rate'] / results.solution['HeatPump(Electricity)|flow_rate']
+        ).mean()
+        ```
+
+    Design Patterns:
+        **Factory Methods**: Use `from_file()` and `from_calculation()` for creation or access directly from `Calculation.results`
+        **Dictionary Access**: Use `results[element_label]` for element-specific results
+        **Lazy Loading**: Results objects created on-demand for memory efficiency
+        **Unified Interface**: Consistent API across different result types
+
     """
 
     @classmethod
@@ -521,11 +568,11 @@ class _NodeResults(_ElementResults):
 
 
 class BusResults(_NodeResults):
-    """Results for a Bus"""
+    """Results container for energy/material balance nodes in the system."""
 
 
 class ComponentResults(_NodeResults):
-    """Results for a Component"""
+    """Results container for individual system components with specialized analysis tools."""
 
     @property
     def is_storage(self) -> bool:
@@ -634,8 +681,99 @@ class EffectResults(_ElementResults):
 
 
 class SegmentedCalculationResults:
-    """
-    Class to store the results of a SegmentedCalculation.
+    """Results container for segmented optimization calculations with temporal decomposition.
+
+    This class manages results from SegmentedCalculation runs where large optimization
+    problems are solved by dividing the time horizon into smaller, overlapping segments.
+    It provides unified access to results across all segments while maintaining the
+    ability to analyze individual segment behavior.
+
+    Key Features:
+        **Unified Time Series**: Automatically assembles results from all segments into
+        continuous time series, removing overlaps and boundary effects
+        **Segment Analysis**: Access individual segment results for debugging and validation
+        **Consistency Checks**: Verify solution continuity at segment boundaries
+        **Memory Efficiency**: Handles large datasets that exceed single-segment memory limits
+
+    Temporal Handling:
+        The class manages the complex task of combining overlapping segment solutions
+        into coherent time series, ensuring proper treatment of:
+        - Storage state continuity between segments
+        - Flow rate transitions at segment boundaries
+        - Aggregated results over the full time horizon
+
+    Examples:
+        Load and analyze segmented results:
+
+        ```python
+        # Load segmented calculation results
+        results = SegmentedCalculationResults.from_file('results', 'annual_segmented')
+
+        # Access unified results across all segments
+        full_timeline = results.all_timesteps
+        total_segments = len(results.segment_results)
+
+        # Analyze individual segments
+        for i, segment in enumerate(results.segment_results):
+            print(f'Segment {i + 1}: {len(segment.solution.time)} timesteps')
+            segment_costs = segment.effects['cost'].total_value
+
+        # Check solution continuity at boundaries
+        segment_boundaries = results.get_boundary_analysis()
+        max_discontinuity = segment_boundaries['max_storage_jump']
+        ```
+
+        Create from segmented calculation:
+
+        ```python
+        # After running segmented calculation
+        segmented_calc = SegmentedCalculation(
+            name='annual_system',
+            flow_system=system,
+            timesteps_per_segment=730,  # Monthly segments
+            overlap_timesteps=48,  # 2-day overlap
+        )
+        segmented_calc.do_modeling_and_solve(solver='gurobi')
+
+        # Extract unified results
+        results = SegmentedCalculationResults.from_calculation(segmented_calc)
+
+        # Save combined results
+        results.to_file(compression=5)
+        ```
+
+        Performance analysis across segments:
+
+        ```python
+        # Compare segment solve times
+        solve_times = [seg.summary['durations']['solving'] for seg in results.segment_results]
+        avg_solve_time = sum(solve_times) / len(solve_times)
+
+        # Verify solution quality consistency
+        segment_objectives = [seg.summary['objective_value'] for seg in results.segment_results]
+
+        # Storage continuity analysis
+        if 'Battery' in results.segment_results[0].components:
+            storage_continuity = results.check_storage_continuity('Battery')
+        ```
+
+    Design Considerations:
+        **Boundary Effects**: Monitor solution quality at segment interfaces where
+        foresight is limited compared to full-horizon optimization.
+
+        **Memory Management**: Individual segment results are maintained for detailed
+        analysis while providing unified access for system-wide metrics.
+
+        **Validation Tools**: Built-in methods to verify temporal consistency and
+        identify potential issues from segmentation approach.
+
+    Common Use Cases:
+        - **Large-Scale Analysis**: Annual or multi-year optimization results
+        - **Memory-Constrained Systems**: Results from systems exceeding hardware limits
+        - **Segment Validation**: Verifying segmentation approach effectiveness
+        - **Performance Monitoring**: Comparing segmented vs. full-horizon solutions
+        - **Debugging**: Identifying issues specific to temporal decomposition
+
     """
 
     @classmethod

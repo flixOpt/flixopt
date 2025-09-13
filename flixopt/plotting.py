@@ -1,7 +1,26 @@
-"""
-This module contains the plotting functionality of the flixopt framework.
-It provides high level functions to plot data with plotly and matplotlib.
-It's meant to be used in results.py, but is designed to be used by the end user as well.
+"""Comprehensive visualization toolkit for flixopt optimization results and data analysis.
+
+This module provides a unified plotting interface supporting both Plotly (interactive)
+and Matplotlib (static) backends for visualizing energy system optimization results.
+It offers specialized plotting functions for time series, heatmaps, network diagrams,
+and statistical analyses commonly needed in energy system modeling.
+
+Key Features:
+    **Dual Backend Support**: Seamless switching between Plotly and Matplotlib
+    **Energy System Focus**: Specialized plots for power flows, storage states, emissions
+    **Color Management**: Intelligent color processing and palette management
+    **Export Capabilities**: High-quality export for reports and publications
+    **Integration Ready**: Designed for use with CalculationResults and standalone analysis
+
+Main Plot Types:
+    - **Time Series**: Flow rates, power profiles, storage states over time
+    - **Heatmaps**: High-resolution temporal data visualization with customizable aggregation
+    - **Network Diagrams**: System topology with flow visualization
+    - **Statistical Plots**: Distribution analysis, correlation studies, performance metrics
+    - **Comparative Analysis**: Multi-scenario and sensitivity study visualizations
+
+The module integrates seamlessly with flixopt's result classes while remaining
+accessible for standalone data visualization tasks.
 """
 
 import itertools
@@ -38,13 +57,53 @@ if 'portland' not in plt.colormaps:
 
 
 ColorType = Union[str, List[str], Dict[str, str]]
-"""Identifier for the colors to use.
-Use the name of a colorscale, a list of colors or a dictionary of labels to colors.
-The colors must be valid color strings (HEX or names). Depending on the Engine used, other formats are possible.
-See also:
-- https://htmlcolorcodes.com/color-names/
-- https://matplotlib.org/stable/tutorials/colors/colormaps.html
-- https://plotly.com/python/builtin-colorscales/
+"""Flexible color specification type supporting multiple input formats for visualization.
+
+Color specifications can take several forms to accommodate different use cases:
+
+**Named Colormaps** (str):
+    - Standard colormaps: 'viridis', 'plasma', 'cividis', 'tab10', 'Set1'
+    - Energy-focused: 'portland' (custom flixopt colormap for energy systems)
+    - Backend-specific maps available in Plotly and Matplotlib
+
+**Color Lists** (List[str]):
+    - Explicit color sequences: ['red', 'blue', 'green', 'orange']
+    - HEX codes: ['#FF0000', '#0000FF', '#00FF00', '#FFA500']
+    - Mixed formats: ['red', '#0000FF', 'green', 'orange']
+
+**Label-to-Color Mapping** (Dict[str, str]):
+    - Explicit associations: {'Wind': 'skyblue', 'Solar': 'gold', 'Gas': 'brown'}
+    - Ensures consistent colors across different plots and datasets
+    - Ideal for energy system components with semantic meaning
+
+Examples:
+    ```python
+    # Named colormap
+    colors = 'viridis'  # Automatic color generation
+
+    # Explicit color list
+    colors = ['red', 'blue', 'green', '#FFD700']
+
+    # Component-specific mapping
+    colors = {
+        'Wind_Turbine': 'skyblue',
+        'Solar_Panel': 'gold',
+        'Natural_Gas': 'brown',
+        'Battery': 'green',
+        'Electric_Load': 'darkred'
+    }
+    ```
+
+Color Format Support:
+    - **Named Colors**: 'red', 'blue', 'forestgreen', 'darkorange'
+    - **HEX Codes**: '#FF0000', '#0000FF', '#228B22', '#FF8C00'
+    - **RGB Tuples**: (255, 0, 0), (0, 0, 255) [Matplotlib only]
+    - **RGBA**: 'rgba(255,0,0,0.8)' [Plotly only]
+
+References:
+    - HTML Color Names: https://htmlcolorcodes.com/color-names/
+    - Matplotlib Colormaps: https://matplotlib.org/stable/tutorials/colors/colormaps.html
+    - Plotly Built-in Colorscales: https://plotly.com/python/builtin-colorscales/
 """
 
 PlottingEngine = Literal['plotly', 'matplotlib']
@@ -52,16 +111,68 @@ PlottingEngine = Literal['plotly', 'matplotlib']
 
 
 class ColorProcessor:
-    """Class to handle color processing for different visualization engines."""
+    """Intelligent color management system for consistent multi-backend visualization.
+
+    This class provides unified color processing across Plotly and Matplotlib backends,
+    ensuring consistent visual appearance regardless of the plotting engine used.
+    It handles color palette generation, named colormap translation, and intelligent
+    color cycling for complex datasets with many categories.
+
+    Key Features:
+        **Backend Agnostic**: Automatic color format conversion between engines
+        **Palette Management**: Support for named colormaps, custom palettes, and color lists
+        **Intelligent Cycling**: Smart color assignment for datasets with many categories
+        **Fallback Handling**: Graceful degradation when requested colormaps are unavailable
+        **Energy System Colors**: Built-in palettes optimized for energy system visualization
+
+    Color Input Types:
+        - **Named Colormaps**: 'viridis', 'plasma', 'portland', 'tab10', etc.
+        - **Color Lists**: ['red', 'blue', 'green'] or ['#FF0000', '#0000FF', '#00FF00']
+        - **Label Dictionaries**: {'Generator': 'red', 'Storage': 'blue', 'Load': 'green'}
+
+    Examples:
+        Basic color processing:
+
+        ```python
+        # Initialize for Plotly backend
+        processor = ColorProcessor(engine='plotly', default_colormap='viridis')
+
+        # Process different color specifications
+        colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
+        colors = processor.process_colors(['red', 'blue', 'green'], ['A', 'B', 'C'])
+        colors = processor.process_colors({'Wind': 'skyblue', 'Solar': 'gold'}, ['Wind', 'Solar', 'Gas'])
+
+        # Switch to Matplotlib
+        processor = ColorProcessor(engine='matplotlib')
+        mpl_colors = processor.process_colors('tab10', component_labels)
+        ```
+
+        Energy system visualization:
+
+        ```python
+        # Specialized energy system palette
+        energy_colors = {
+            'Natural_Gas': '#8B4513',  # Brown
+            'Electricity': '#FFD700',  # Gold
+            'Heat': '#FF4500',  # Red-orange
+            'Cooling': '#87CEEB',  # Sky blue
+            'Hydrogen': '#E6E6FA',  # Lavender
+            'Battery': '#32CD32',  # Lime green
+        }
+
+        processor = ColorProcessor('plotly')
+        flow_colors = processor.process_colors(energy_colors, flow_labels)
+        ```
+
+    Args:
+        engine: Plotting backend ('plotly' or 'matplotlib'). Determines output color format.
+        default_colormap: Fallback colormap when requested palettes are unavailable.
+            Common options: 'viridis', 'plasma', 'tab10', 'portland'.
+
+    """
 
     def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str = 'viridis'):
-        """
-        Initialize the color processor.
-
-        Args:
-            engine: The plotting engine to use ('plotly' or 'matplotlib')
-            default_colormap: Default colormap to use if none is specified
-        """
+        """Initialize the color processor with specified backend and defaults."""
         if engine not in ['plotly', 'matplotlib']:
             raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
         self.engine = engine
