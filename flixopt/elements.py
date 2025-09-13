@@ -213,45 +213,146 @@ class Connection:
 
 @register_class_for_io
 class Flow(Element):
-    r"""
-    A **Flow** moves energy (or material) between a [Bus][flixopt.elements.Bus] and a [Component][flixopt.elements.Component] in a predefined direction.
-    The flow-rate is the main optimization variable of the **Flow**.
+    """Define a directed flow of energy or material between bus and component.
 
-    Notes:
-       - If `size` is None, a large default (CONFIG.modeling.BIG) is used.
-       - If `previous_flow_rate` is provided as a list, it is converted to a NumPy array.
+    A Flow represents the transfer of energy (electricity, heat, fuel) or material
+    between a Bus and a Component in a specific direction. The flow rate is the
+    primary optimization variable, with constraints and costs defined through
+    various parameters. Flows can have fixed or variable sizes, operational
+    constraints, and complex on/off behavior.
 
-    Deprecated:
-        - Passing a Bus object to `bus` is deprecated. Pass the bus label string instead.
+    Key Concepts:
+        **Flow Rate**: The instantaneous rate of energy/material transfer (optimization variable) [kW, m³/h, kg/h]
+        **Flow Hours**: Amount of energy/material transferred per timestep. [kWh, m³, kg]
+        **Flow Size**: The maximum capacity or nominal rating of the flow [kW, m³/h, kg/h]
+        **Relative Bounds**: Flow rate limits expressed as fractions of flow size
+
+    Integration with Parameter Classes:
+        - **InvestParameters**: Used for `size` when flow Size is an investment decision
+        - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
 
     Args:
-        label: The label of the Flow. Used to identify it in the FlowSystem. Its `full_label` consists of the label of the Component and the label of the Flow.
-        bus: Label of the bus the flow is connected to.
-        size: Size of the flow. If InvestmentParameters is used, size is optimized.
-            If size is None, a default value is used.
-        relative_minimum: Min value is relative_minimum multiplied by size
-        relative_maximum: Max value is relative_maximum multiplied by size. If size = max then relative_maximum=1
-        load_factor_min: Minimal load factor  general: avg Flow per nominalVal/investSize
-            (e.g. boiler, kW/kWh=h; solarthermal: kW/m²;
-             def: :math:`load\_factor:= sumFlowHours/ (nominal\_val \cdot \Delta t_{tot})`
-        load_factor_max: Maximal load factor (see minimal load factor)
-        effects_per_flow_hour: Operational costs, costs per flow-"work"
-        on_off_parameters: If present, flow can be "off", i.e. be zero (only relevant if relative_minimum > 0)
-            Therefore a binary var "on" is used. Further, several other restrictions and effects can be modeled
-            through this On/Off State (See OnOffParameters)
-        flow_hours_total_max: Maximum flow-hours ("flow-work")
-            (if size is not const, maybe load_factor_max is the better choice!)
-        flow_hours_total_min: Minimum flow-hours ("flow-work")
-            (if size is not predefined, maybe load_factor_min is the better choice!)
-        fixed_relative_profile: Fixed relative values for flow (if given).
-            flow_rate(t) := fixed_relative_profile(t) * size(t)
-            With this value, the flow_rate is no optimization-variable anymore.
-            (relative_minimum and relative_maximum are ignored)
-            used for fixed load or supply profiles, i.g. heat demand, wind-power, solarthermal
-            If the load-profile is just an upper limit, use relative_maximum instead.
-        previous_flow_rate: Previous flow rate of the flow. Used to determine if and how long the
-            flow is already on / off. If None, the flow is considered to be off for one timestep.
-        meta_data: Used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        label: Unique identifier for the flow within its component.
+            The full label combines component and flow labels.
+        bus: Label of the bus this flow connects to. Must match a bus in the FlowSystem.
+        size: Flow capacity or nominal rating. Can be:
+            - Scalar value for fixed capacity
+            - InvestParameters for investment-based sizing decisions
+            - None to use large default value (CONFIG.modeling.BIG)
+        relative_minimum: Minimum flow rate as fraction of size.
+            Example: 0.2 means flow cannot go below 20% of rated capacity.
+        relative_maximum: Maximum flow rate as fraction of size (typically 1.0).
+            Values >1.0 allow temporary overload operation.
+        load_factor_min: Minimum average utilization over the time horizon (0-1).
+            Calculated as total flow hours divided by (size × total time).
+        load_factor_max: Maximum average utilization over the time horizon (0-1).
+            Useful for equipment duty cycle limits or maintenance scheduling.
+        effects_per_flow_hour: Operational costs and impacts per unit of flow-time.
+            Dictionary mapping effect names to unit costs (e.g., fuel costs, emissions).
+        on_off_parameters: Binary operation constraints using OnOffParameters.
+            Enables modeling of startup costs, minimum run times, cycling limits.
+            Only relevant when relative_minimum > 0 or discrete operation is required.
+        flow_hours_total_max: Maximum cumulative flow-hours over time horizon.
+            Alternative to load_factor_max for absolute energy/material limits.
+        flow_hours_total_min: Minimum cumulative flow-hours over time horizon.
+            Alternative to load_factor_min for contractual or operational requirements.
+        fixed_relative_profile: Predetermined flow pattern as fraction of size.
+            When specified, flow rate becomes: size × fixed_relative_profile(t).
+            Used for: demand profiles, renewable generation, fixed schedules.
+        previous_flow_rate: Initial flow state for startup/shutdown dynamics.
+            Used with on_off_parameters to determine initial on/off status.
+            If None, assumes flow was off in previous time period.
+        meta_data: Additional information stored with results but not used in optimization.
+            Must contain only Python native types (dict, list, str, int, float, bool).
+
+    Examples:
+        Basic power flow with fixed capacity:
+
+        ```python
+        generator_output = Flow(
+            label='electricity_out',
+            bus='electricity_grid',
+            size=100,  # 100 MW capacity
+            relative_minimum=0.4,  # Cannot operate below 40 MW
+            effects_per_flow_hour={'fuel_cost': 45, 'co2_emissions': 0.8},
+        )
+        ```
+
+        Investment decision for battery capacity:
+
+        ```python
+        battery_flow = Flow(
+            label='electricity_storage',
+            bus='electricity_grid',
+            size=InvestParameters(
+                minimum_size=10,  # Minimum 10 MWh
+                maximum_size=100,  # Maximum 100 MWh
+                specific_effects={'cost': 150_000},  # €150k/MWh annualized
+            ),
+        )
+        ```
+
+        Heat pump with startup costs and minimum run times:
+
+        ```python
+        heat_pump = Flow(
+            label='heat_output',
+            bus='heating_network',
+            size=50,  # 50 kW thermal
+            relative_minimum=0.3,  # Minimum 15 kW output when on
+            effects_per_flow_hour={'electricity_cost': 25, 'maintenance': 2},
+            on_off_parameters=OnOffParameters(
+                effects_per_switch_on={'startup_cost': 100, 'wear': 0.1},
+                consecutive_on_hours_min=2,  # Must run at least 2 hours
+                consecutive_off_hours_min=1,  # Must stay off at least 1 hour
+                switch_on_total_max=200,  # Maximum 200 starts per year
+            ),
+        )
+        ```
+
+        Fixed renewable generation profile:
+
+        ```python
+        solar_generation = Flow(
+            label='solar_power',
+            bus='electricity_grid',
+            size=25,  # 25 MW installed capacity
+            fixed_relative_profile=np.array([0, 0.1, 0.4, 0.8, 0.9, 0.7, 0.3, 0.1, 0]),
+            effects_per_flow_hour={'maintenance_costs': 5},  # €5/MWh maintenance
+        )
+        ```
+
+        Industrial process with annual utilization limits:
+
+        ```python
+        production_line = Flow(
+            label='product_output',
+            bus='product_market',
+            size=1000,  # 1000 units/hour capacity
+            load_factor_min=0.6,  # Must achieve 60% annual utilization
+            load_factor_max=0.85,  # Cannot exceed 85% for maintenance
+            effects_per_flow_hour={'variable_cost': 12, 'quality_control': 0.5},
+        )
+        ```
+
+    Design Considerations:
+        **Size vs Load Factors**: Use `flow_hours_total_min/max` for absolute limits,
+        `load_factor_min/max` for utilization-based constraints.
+
+        **Relative Bounds**: Set `relative_minimum > 0` only when equipment cannot
+        operate below that level. Use `on_off_parameters` for discrete on/off behavior.
+
+        **Fixed Profiles**: Use `fixed_relative_profile` for known exact patterns,
+        `relative_maximum` for upper bounds on optimization variables.
+
+    Notes:
+        - Default size (CONFIG.modeling.BIG) is used when size=None
+        - List inputs for previous_flow_rate are converted to NumPy arrays
+        - Flow direction is determined by component input/output designation
+
+    Deprecated:
+        Passing Bus objects to `bus` parameter. Use bus label strings instead.
+
     """
 
     def __init__(
