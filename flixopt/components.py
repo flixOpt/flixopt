@@ -1071,7 +1071,7 @@ class Source(Component):
                     label='natural_gas_flow',
                     bus=gas_bus,
                     size=1000,  # Maximum 1000 kW supply capacity
-                    costs={'cost': 0.04},  # €0.04/kWh gas cost
+                    effects_per_flow_hour={'cost': 0.04},  # €0.04/kWh gas cost
                 )
             ],
         )
