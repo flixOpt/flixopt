@@ -2,6 +2,10 @@
 This module bundles all common functionality of flixopt and sets up the logging
 """
 
+from importlib.metadata import version
+
+__version__ = version('flixopt')
+
 from .commons import (
     CONFIG,
     AggregatedCalculation,

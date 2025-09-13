@@ -5,13 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<!-- This text won't be rendered
+Take Care: The CI will automatically append a "Whats CHanged" section to the changelog.
+This contains all COmmits, PR's and Contributers.
+Therefore, the Changelog should focus on the user-facing changes.
+
+Template:
+----
 ## [Unreleased] - ????-??-??
+
+### Changed
+
+### Added
+
+### Deprecated
+
+### Fixed
+
+### Known issues
+
+### Development
+
+----
+Upcoming Release:
+
+## [2.2.0] - ????-??-??
 
 ### Fixed
 - LinearConverter with `PiecewiseConversion` lead to flows reaching 0 values, even though they didnt have `OnOffParameters` nor `PiecewiseConversion` containing 0 in its a `Piece`s. This was fixed by [[#310](https://github.com/flixOpt/flixopt/pull/310) by [@FBumann](https://github.com/FBumann)]
 
 ### Added
 - Added new Interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects. [[#310](https://github.com/flixOpt/flixopt/pull/310) by [@FBumann](https://github.com/FBumann)]
+
+Until here -->
+
+## [2.1.7] - 2025-09-13
+
+This update is a maintenance release to improve Code Quality, CI and update the dependencies.
+There are no changes or new features.
+
+### Added
+- Added __version__ to flixopt
+
+### Development
+- ruff format the whole Codebase
+- Added renovate config
+- Added pre-commit
+- lint and format in CI
+- improved CI
+- Updated Dependencies
+- Updated Issue Templates
 
 
 ## [2.1.6] - 2025-09-02
