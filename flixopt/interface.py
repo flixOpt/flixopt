@@ -848,20 +848,25 @@ class InvestParameters(Interface):
 
 @register_class_for_io
 class OnOffParameters(Interface):
-    """Define binary operation constraints and costs for equipment with discrete states.
+    """Define operational constraints and effects for binary on/off equipment behavior.
 
-    This class models equipment that operates in discrete on/off states rather than
-    continuous operation, capturing the operational constraints and economic impacts
-    of binary decisions. It addresses real-world equipment behavior including
-    minimum run times, startup costs, cycling limitations, and maintenance schedules.
+    This class models equipment that operates in discrete states (on/off) rather than
+    continuous operation, capturing realistic operational constraints and associated
+    costs. It handles complex equipment behavior including startup costs, minimum
+    run times, cycling limitations, and maintenance scheduling requirements.
 
-    Common applications include:
-    - Power plants with minimum load requirements and startup costs
-    - Industrial equipment with batch processes or discrete operating modes
-    - HVAC systems with thermostat control and equipment cycling
-    - Process equipment with startup/shutdown sequences
-    - Backup generators and emergency systems
-    - Maintenance scheduling and equipment availability
+    Key Modeling Capabilities:
+        **Switching Costs**: One-time costs for starting equipment (fuel, wear, labor)
+        **Runtime Constraints**: Minimum and maximum continuous operation periods
+        **Cycling Limits**: Maximum number of starts to prevent excessive wear
+        **Operating Hours**: Total runtime limits and requirements over time horizon
+
+    Typical Equipment Applications:
+        - **Power Plants**: Combined cycle units, steam turbines with startup costs
+        - **Industrial Processes**: Batch reactors, furnaces with thermal cycling
+        - **HVAC Systems**: Chillers, boilers with minimum run times
+        - **Backup Equipment**: Emergency generators, standby systems
+        - **Process Equipment**: Compressors, pumps with operational constraints
 
     Args:
         effects_per_switch_on: Costs or impacts incurred for each transition from
