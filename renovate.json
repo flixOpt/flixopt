@@ -13,7 +13,7 @@
   ],
   "automerge": false,
   "labels": ["dependencies"],
-  "rangeStrategy": "replace",
+  "rangeStrategy": "widen",
   "packageRules": [
     {
       "matchDepTypes": ["dev-dependencies", "devDependencies"],
