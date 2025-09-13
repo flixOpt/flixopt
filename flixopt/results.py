@@ -107,21 +107,14 @@ class CalculationResults:
 
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
-        """Create CalculationResults instance by loading from saved files.
-
-        This method loads the calculation results from previously saved files,
-        including the solution, flow system, model (if available), and metadata.
+        """Load CalculationResults from saved files.
 
         Args:
-            folder: Path to the directory containing the saved files.
-            name: Base name of the saved files (without file extensions).
+            folder: Directory containing saved files.
+            name: Base name of saved files (without extensions).
 
         Returns:
-            CalculationResults: A new instance containing the loaded data.
-
-        Raises:
-            FileNotFoundError: If required files cannot be found.
-            ValueError: If files exist but cannot be properly loaded.
+            CalculationResults: Loaded instance.
         """
         folder = pathlib.Path(folder)
         paths = fx_io.CalculationResultsPaths(folder, name)
@@ -148,20 +141,13 @@ class CalculationResults:
 
     @classmethod
     def from_calculation(cls, calculation: 'Calculation'):
-        """Create CalculationResults directly from a Calculation object.
-
-        This method extracts the solution, flow system, and other relevant
-        information directly from an existing Calculation object.
+        """Create CalculationResults from a Calculation object.
 
         Args:
-            calculation: A Calculation object containing a solved model.
+            calculation: Calculation object with solved model.
 
         Returns:
-            CalculationResults: A new instance containing the results from
-                the provided calculation.
-
-        Raises:
-            AttributeError: If the calculation doesn't have required attributes.
+            CalculationResults: New instance with extracted results.
         """
         return cls(
             solution=calculation.model.solution,
@@ -181,14 +167,16 @@ class CalculationResults:
         folder: Optional[pathlib.Path] = None,
         model: Optional[linopy.Model] = None,
     ):
-        """
+        """Initialize CalculationResults with optimization data.
+        Usually, this class is instantiated by the Calculation class, or by loading from file.
+
         Args:
-            solution: The solution of the optimization.
-            flow_system: The flow_system that was used to create the calculation as a datatset.
-            name: The name of the calculation.
-            summary: Information about the calculation,
-            folder: The folder where the results are saved.
-            model: The linopy model that was used to solve the calculation.
+            solution: Optimization solution dataset.
+            flow_system: Flow system configuration dataset.
+            name: Calculation name.
+            summary: Calculation metadata.
+            folder: Results storage folder.
+            model: Linopy optimization model.
         """
         self.solution = solution
         self.flow_system = flow_system
@@ -220,24 +208,24 @@ class CalculationResults:
 
     @property
     def storages(self) -> List['ComponentResults']:
-        """All storages in the results."""
+        """Get all storage components in the results."""
         return [comp for comp in self.components.values() if comp.is_storage]
 
     @property
     def objective(self) -> float:
-        """The objective result of the optimization."""
+        """Get optimization objective value."""
         return self.summary['Main Results']['Objective']
 
     @property
     def variables(self) -> linopy.Variables:
-        """The variables of the optimization. Only available if the linopy.Model is available."""
+        """Get optimization variables (requires linopy model)."""
         if self.model is None:
             raise ValueError('The linopy model is not available.')
         return self.model.variables
 
     @property
     def constraints(self) -> linopy.Constraints:
-        """The constraints of the optimization. Only available if the linopy.Model is available."""
+        """Get optimization constraints (requires linopy model)."""
         if self.model is None:
             raise ValueError('The linopy model is not available.')
         return self.model.constraints
@@ -245,13 +233,14 @@ class CalculationResults:
     def filter_solution(
         self, variable_dims: Optional[Literal['scalar', 'time']] = None, element: Optional[str] = None
     ) -> xr.Dataset:
-        """
-        Filter the solution to a specific variable dimension and element.
-        If no element is specified, all elements are included.
+        """Filter solution by variable dimension and/or element.
 
         Args:
-            variable_dims: The dimension of the variables to filter for.
-            element: The element to filter for.
+            variable_dims: Variable dimension to filter ('scalar' or 'time').
+            element: Element label to filter.
+
+        Returns:
+            xr.Dataset: Filtered solution dataset.
         """
         if element is not None:
             return filter_dataset(self[element].solution, variable_dims)
@@ -290,7 +279,16 @@ class CalculationResults:
         path: Optional[pathlib.Path] = None,
         show: bool = False,
     ) -> 'pyvis.network.Network':
-        """See flixopt.flow_system.FlowSystem.plot_network"""
+        """Plot interactive network visualization of the system.
+
+        Args:
+            controls: Enable/disable interactive controls.
+            path: Save path for network HTML.
+            show: Whether to display the plot.
+
+        Returns:
+            pyvis.network.Network: Interactive network object.
+        """
         try:
             from .flow_system import FlowSystem
 
@@ -310,15 +308,14 @@ class CalculationResults:
         document_model: bool = True,
         save_linopy_model: bool = False,
     ):
-        """
-        Save the results to a file
+        """Save results to files.
+
         Args:
-            folder: The folder where the results should be saved. Defaults to the folder of the calculation.
-            name: The name of the results file. If not provided, Defaults to the name of the calculation.
-            compression: The compression level to use when saving the solution file (0-9). 0 means no compression.
-            document_model: Whether to document the mathematical formulations in the model.
-            save_linopy_model: Whether to save the model to file. If True, the (linopy) model is saved as a .nc4 file.
-                The model file size is rougly 100 times larger than the solution file.
+            folder: Save folder (defaults to calculation folder).
+            name: File name (defaults to calculation name).
+            compression: Compression level 0-9.
+            document_model: Whether to document model formulations as yaml.
+            save_linopy_model: Whether to save linopy model file.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -370,11 +367,10 @@ class _ElementResults:
 
     @property
     def variables(self) -> linopy.Variables:
-        """
-        Returns the variables of the element.
+        """Get element variables (requires linopy model).
 
         Raises:
-            ValueError: If the linopy model is not availlable.
+            ValueError: If linopy model is unavailable.
         """
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
@@ -382,22 +378,23 @@ class _ElementResults:
 
     @property
     def constraints(self) -> linopy.Constraints:
-        """
-        Returns the variables of the element.
+        """Get element constraints (requires linopy model).
 
         Raises:
-            ValueError: If the linopy model is not availlable.
+            ValueError: If linopy model is unavailable.
         """
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
 
     def filter_solution(self, variable_dims: Optional[Literal['scalar', 'time']] = None) -> xr.Dataset:
-        """
-        Filter the solution of the element by dimension.
+        """Filter element solution by dimension.
 
         Args:
-            variable_dims: The dimension of the variables to filter for.
+            variable_dims: Variable dimension to filter.
+
+        Returns:
+            xr.Dataset: Filtered solution dataset.
         """
         return filter_dataset(self.solution, variable_dims)
 
@@ -434,12 +431,16 @@ class _NodeResults(_ElementResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
-        """
-        Plots the node balance of the Component or Bus.
+        """Plot node balance flows.
+
         Args:
-            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
-            show: Whether to show the plot or not.
-            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+            save: Whether to save plot (path or boolean).
+            show: Whether to display plot.
+            colors: Color scheme. Also see plotly.
+            engine: Plotting engine ('plotly' or 'matplotlib').
+
+        Returns:
+            Figure object.
         """
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
@@ -478,16 +479,18 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
     ) -> plotly.graph_objects.Figure:
-        """
-        Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
+        """Plot pie chart of flow hours distribution.
 
         Args:
-            colors: a colorscale or a list of colors to use for the plot
-            lower_percentage_group: The percentage of flow_hours that is grouped in "Others" (0...100)
-            text_info: What information to display on the pie plot
-            save: Whether to save the figure.
-            show: Whether to show the figure.
-            engine: Plotting engine to use. Only 'plotly' is implemented atm.
+            lower_percentage_group: Percentage threshold for "Others" grouping.
+            colors: Color scheme. Also see plotly.
+            text_info: Information to display on pie slices.
+            save: Whether to save plot.
+            show: Whether to display plot.
+            engine: Plotting engine (only 'plotly' supported).
+
+        Returns:
+            plotly.graph_objects.Figure: Pie chart figure.
         """
         inputs = (
             sanitize_dataset(
@@ -584,7 +587,7 @@ class ComponentResults(_NodeResults):
 
     @property
     def charge_state(self) -> xr.DataArray:
-        """Get the solution of the charge state of the Storage."""
+        """Get storage charge state solution."""
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
         return self.solution[self._charge_state]
@@ -596,16 +599,19 @@ class ComponentResults(_NodeResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
     ) -> plotly.graph_objs.Figure:
-        """
-        Plots the charge state of a Storage.
+        """Plot storage charge state over time, combined with the node balance.
+
         Args:
-            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
-            show: Whether to show the plot or not.
-            colors: The c
-            engine: Plotting engine to use. Only 'plotly' is implemented atm.
+            save: Whether to save plot.
+            show: Whether to display plot.
+            colors: Color scheme. Also see plotly.
+            engine: Plotting engine (only 'plotly' supported).
+
+        Returns:
+            plotly.graph_objs.Figure: Charge state plot.
 
         Raises:
-            ValueError: If the Component is not a Storage.
+            ValueError: If component is not a storage.
         """
         if engine != 'plotly':
             raise NotImplementedError(
@@ -643,15 +649,18 @@ class ComponentResults(_NodeResults):
     def node_balance_with_charge_state(
         self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: Optional[float] = 1e-5
     ) -> xr.Dataset:
-        """
-        Returns a dataset with the node balance of the Storage including its charge state.
+        """Get storage node balance including charge state.
+
         Args:
-            negate_inputs: Whether to negate the inputs of the Storage.
-            negate_outputs: Whether to negate the outputs of the Storage.
-            threshold: The threshold for small values.
+            negate_inputs: Whether to negate input flows.
+            negate_outputs: Whether to negate output flows.
+            threshold: Threshold for small values.
+
+        Returns:
+            xr.Dataset: Node balance with charge state.
 
         Raises:
-            ValueError: If the Component is not a Storage.
+            ValueError: If component is not a storage.
         """
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
@@ -676,7 +685,14 @@ class EffectResults(_ElementResults):
     """Results for an Effect"""
 
     def get_shares_from(self, element: str):
-        """Get the shares from an Element (without subelements) to the Effect"""
+        """Get effect shares from specific element.
+
+        Args:
+            element: Element label to get shares from.
+
+        Returns:
+            xr.Dataset: Element shares to this effect.
+        """
         return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
 
 
@@ -789,7 +805,15 @@ class SegmentedCalculationResults:
 
     @classmethod
     def from_file(cls, folder: Union[str, pathlib.Path], name: str):
-        """Create SegmentedCalculationResults directly from file"""
+        """Load SegmentedCalculationResults from saved files.
+
+        Args:
+            folder: Directory containing saved files.
+            name: Base name of saved files.
+
+        Returns:
+            SegmentedCalculationResults: Loaded instance.
+        """
         folder = pathlib.Path(folder)
         path = folder / name
         nc_file = path.with_suffix('.nc4')
@@ -838,7 +862,14 @@ class SegmentedCalculationResults:
         return [segment.name for segment in self.segment_results]
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
-        """Returns the solution of a variable without overlapping timesteps"""
+        """Get variable solution removing segment overlaps.
+
+        Args:
+            variable_name: Name of variable to extract.
+
+        Returns:
+            xr.DataArray: Continuous solution without overlaps.
+        """
         dataarrays = [
             result.solution[variable_name].isel(time=slice(None, self.timesteps_per_segment))
             for result in self.segment_results[:-1]
@@ -855,17 +886,19 @@ class SegmentedCalculationResults:
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
     ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
-        """
-        Plots a heatmap of the solution of a variable.
+        """Plot heatmap of variable solution across segments.
 
         Args:
-            variable_name: The name of the variable to plot.
-            heatmap_timeframes: The timeframes to use for the heatmap.
-            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
-            color_map: The color map to use for the heatmap.
-            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
-            show: Whether to show the plot or not.
-            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+            variable_name: Variable to plot.
+            heatmap_timeframes: Time aggregation level.
+            heatmap_timesteps_per_frame: Timesteps per frame.
+            color_map: Color scheme. Also see plotly.
+            save: Whether to save plot.
+            show: Whether to display plot.
+            engine: Plotting engine.
+
+        Returns:
+            Figure object.
         """
         return plot_heatmap(
             dataarray=self.solution_without_overlap(variable_name),
@@ -882,7 +915,13 @@ class SegmentedCalculationResults:
     def to_file(
         self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, compression: int = 5
     ):
-        """Save the results to a file"""
+        """Save segmented results to files.
+
+        Args:
+            folder: Save folder (defaults to instance folder).
+            name: File name (defaults to instance name).
+            compression: Compression level 0-9.
+        """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
         path = folder / name
@@ -912,19 +951,21 @@ def plot_heatmap(
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
 ):
-    """
-    Plots a heatmap of the solution of a variable.
+    """Plot heatmap of time series data.
 
     Args:
-        dataarray: The dataarray to plot.
-        name: The name of the variable to plot.
-        folder: The folder to save the plot to.
-        heatmap_timeframes: The timeframes to use for the heatmap.
-        heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
-        color_map: The color map to use for the heatmap.
-        save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
-        show: Whether to show the plot or not.
-        engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+        dataarray: Data to plot.
+        name: Variable name for title.
+        folder: Save folder.
+        heatmap_timeframes: Time aggregation level.
+        heatmap_timesteps_per_frame: Timesteps per frame.
+        color_map: Color scheme. Also see plotly.
+        save: Whether to save plot.
+        show: Whether to display plot.
+        engine: Plotting engine.
+
+    Returns:
+        Figure object.
     """
     heatmap_data = plotting.heat_map_data_from_df(
         dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
@@ -963,19 +1004,18 @@ def sanitize_dataset(
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
 ) -> xr.Dataset:
-    """
-    Sanitizes a dataset by handling small values (dropping or zeroing) and optionally reindexing the time axis.
+    """Clean dataset by handling small values and reindexing time.
 
     Args:
-        ds: The dataset to sanitize.
-        timesteps: The timesteps to reindex the dataset to. If None, the original timesteps are kept.
-        threshold: The threshold for small values processing. If None, no processing is done.
-        negate: The variables to negate. If None, no variables are negated.
-        drop_small_vars: If True, drops variables where all values are below threshold.
-        zero_small_values: If True, sets values below threshold to zero.
+        ds: Dataset to sanitize.
+        timesteps: Time index for reindexing (optional).
+        threshold: Threshold for small values processing.
+        negate: Variables to negate.
+        drop_small_vars: Whether to drop variables below threshold.
+        zero_small_values: Whether to zero values below threshold.
 
     Returns:
-        xr.Dataset: The sanitized dataset.
+        xr.Dataset: Sanitized dataset.
     """
     # Create a copy to avoid modifying the original
     ds = ds.copy()
@@ -1018,12 +1058,14 @@ def filter_dataset(
     ds: xr.Dataset,
     variable_dims: Optional[Literal['scalar', 'time']] = None,
 ) -> xr.Dataset:
-    """
-    Filters a dataset by its dimensions.
+    """Filter dataset by variable dimensions.
 
     Args:
-        ds: The dataset to filter.
-        variable_dims: The dimension of the variables to filter for.
+        ds: Dataset to filter.
+        variable_dims: Variable dimension to filter ('scalar' or 'time').
+
+    Returns:
+        xr.Dataset: Filtered dataset.
     """
     if variable_dims is None:
         return ds
