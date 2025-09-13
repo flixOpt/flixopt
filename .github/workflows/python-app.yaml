@@ -173,6 +173,8 @@ jobs:
     environment:
       name: testpypi
       url: https://test.pypi.org/p/flixopt
+    env:
+      SKIP_TESTPYPI_UPLOAD: "false"
 
     steps:
       - name: Checkout repository
@@ -191,11 +193,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system build setuptools wheel twine
+          uv pip install --system twine
 
       - name: Build the distribution
         run: |
-          python -m build
+          uv build
 
       - name: Upload to TestPyPI
         run: |
@@ -224,12 +226,9 @@ jobs:
           # Extract version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
 
-          # Install packaging for version comparison
-          uv pip install "packaging==24.*"
-
           # Wait and retry while TestPyPI indexes the package
           INSTALL_SUCCESS=false
-          for d in 15 30 60 120 240 360; do
+          for d in 10 20 40 80 120; do
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from TestPyPI (retry after ${d}s)..."
 
@@ -280,11 +279,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system build twine
+          uv pip install --system twine
 
       - name: Build the distribution
         run: |
-          python -m build
+          uv build
 
       - name: Upload to PyPI
         run: |
@@ -312,12 +311,9 @@ jobs:
           # Extract version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
 
-          # Install packaging for version comparison
-          uv pip install "packaging==24.*"
-
           # Wait and retry while PyPI indexes the package
           INSTALL_SUCCESS=false
-          for d in 5 10 15 30 60 120 240 360; do
+          for d in 10 20 40 80 120; do
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
 
