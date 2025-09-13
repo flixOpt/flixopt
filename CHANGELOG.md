@@ -29,8 +29,6 @@ Template:
 ----
 Upcoming Release:
 
-Until here -->
-
 ## [2.2.0] - 2025-09-13
 THis release introduces a new interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects.
 This greatly enhances Model flexibility.
@@ -40,6 +38,8 @@ This greatly enhances Model flexibility.
 
 ### Added
 - Added new Interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects.
+
+Until here -->
 
 
 ## [2.1.7] - 2025-09-13
