@@ -6,8 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- This text won't be rendered
+Take Care: The CI will automatically append a "Whats CHanged" section to the changelog.
+This contains all COmmits, PR's and Contributers.
+Therefore, the Changelog should focus on the user-facing changes.
 
-## [Unreleased]
+## [Unreleased] - ????-??-??
 
 ### Changed
 
