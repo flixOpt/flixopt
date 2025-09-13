@@ -269,8 +269,8 @@ class CalculationResults:
             folder: The folder where the results should be saved. Defaults to the folder of the calculation.
             name: The name of the results file. If not provided, Defaults to the name of the calculation.
             compression: The compression level to use when saving the solution file (0-9). 0 means no compression.
-            document_model: Wether to document the mathematical formulations in the model.
-            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc4 file.
+            document_model: Whether to document the mathematical formulations in the model.
+            save_linopy_model: Whether to save the model to file. If True, the (linopy) model is saved as a .nc4 file.
                 The model file size is rougly 100 times larger than the solution file.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
