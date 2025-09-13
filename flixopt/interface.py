@@ -20,52 +20,47 @@ logger = logging.getLogger('flixopt')
 
 @register_class_for_io
 class Piece(Interface):
-    """Define a linear segment within a piecewise linear function.
+    """Define a single linear segment with specified domain boundaries.
 
-    This class represents a single linear segment that forms part of a larger
-    piecewise linear relationship. Each Piece defines the domain boundaries
-    (start and end points) for one segment of the function, enabling the
-    modeling of complex non-linear relationships through linear approximations.
+    This class represents one linear segment that will be combined with other
+    pieces to form complete piecewise linear functions. Each piece defines
+    a domain interval [start, end] where a linear relationship applies.
 
     Args:
-        start: Values marking the beginning of this linear segment.
-            These define the lower bound of the domain where this piece is active.
-        end: Values marking the end of this linear segment.
-            These define the upper bound of the domain where this piece is active.
+        start: Lower bound of the domain interval for this linear segment.
+            Can be scalar values or time series arrays for time-varying boundaries.
+        end: Upper bound of the domain interval for this linear segment.
+            Can be scalar values or time series arrays for time-varying boundaries.
 
     Examples:
-        Creating a piece for an efficiency curve segment:
+        Basic piece for equipment efficiency curve:
 
         ```python
-        # Represents efficiency from 40% to 80% load
-        efficiency_piece = Piece(start=40, end=80)
+        # Single segment from 40% to 80% load
+        efficiency_segment = Piece(start=40, end=80)
         ```
 
-        Multiple pieces forming a complete piecewise function:
+        Piece with time-varying boundaries:
 
         ```python
-        # Low efficiency at part load (0-50% load)
-        low_load_piece = Piece(start=0, end=50)
-
-        # High efficiency at full load (50-100% load)
-        full_load_piece = Piece(start=50, end=100)
-        ```
-
-        Time-varying piece boundaries:
-
-        ```python
-        # Operating range that changes with time)
-        time_dependent_piece = Piece(
-            start=np.array([10, 20, 30, 25]),  # Minimum capacity by timestep
-            end=np.array([80, 100, 90, 70]),  # Maximum capacity by timestep
+        # Capacity limits that change seasonally
+        seasonal_piece = Piece(
+            start=np.array([10, 20, 30, 25]),  # Minimum capacity by season
+            end=np.array([80, 100, 90, 70]),  # Maximum capacity by season
         )
         ```
 
+        Fixed operating point (start equals end):
+
+        ```python
+        # Equipment that operates at exactly 50 MW
+        fixed_output = Piece(start=50, end=50)
+        ```
+
     Note:
-        Pieces typically "touch" at their boundaries (end of one piece = start of next)
-        to ensure continuity in the piecewise function. Gaps between pieces can be
-        used to model forbidden operating regions.
-        Overlapping Pieces effectively leave the decision on which piece is active open.
+        Individual pieces are building blocks that gain meaning when combined
+        into Piecewise functions. See the Piecewise class for information about
+        how pieces interact and relate to each other.
 
     """
 
