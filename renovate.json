@@ -12,5 +12,12 @@
     "schedule:earlyMondays"
   ],
   "automerge": false,
-  "labels": ["dependencies"]
+  "labels": ["dependencies"],
+  "rangeStrategy": "replace",
+  "packageRules": [
+    {
+      "matchDepTypes": ["dev-dependencies", "devDependencies"],
+      "rangeStrategy": "pin"
+    }
+  ]
 }
