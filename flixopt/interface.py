@@ -211,36 +211,37 @@ class Piecewise(Interface):
 
 @register_class_for_io
 class PiecewiseConversion(Interface):
-    """Define piecewise linear conversion relationships between multiple flows.
+    """Define coordinated piecewise linear relationships between multiple flows.
 
-    This class models complex conversion processes where the relationship between
-    input and output flows changes at different operating points, such as:
+    This class models conversion processes where multiple flows (inputs, outputs,
+    auxiliaries) have synchronized piecewise relationships. All flows change
+    together based on the same operating point, enabling accurate modeling of
+    complex equipment with variable performance characteristics.
 
-    - Variable efficiency equipment (heat pumps, engines, turbines)
-    - Multi-stage chemical processes with different conversion rates
-    - Equipment with discrete operating modes
-    - Systems with capacity constraints and thresholds
+    Multi-Flow Coordination:
+        All piecewise functions must have matching piece structures (same number
+        of pieces with compatible domains) to ensure synchronized operation.
+        When the equipment operates at a given point, ALL flows scale proportionally
+        within their respective pieces.
 
     Args:
-        piecewises: Dictionary mapping flow labels to their Piecewise conversion functions.
-            Keys are flow names (e.g., 'electricity_in', 'heat_out', 'fuel_consumed').
-            Values are Piecewise objects defining conversion factors at different operating points.
-            All Piecewise objects must have the same number of pieces and compatible domains
-            to ensure consistent conversion relationships across operating ranges.
+        piecewises: Dictionary mapping flow labels to their Piecewise functions.
+            Keys are flow identifiers (e.g., 'electricity_in', 'heat_out', 'fuel_consumed').
+            Values are Piecewise objects that define each flow's behavior.
+            **Critical Requirement**: All Piecewise objects must have the same
+            number of pieces with compatible domains to ensure consistent operation.
 
-    Note:
-        Special modeling features:
-
-        - **Gaps**: Express forbidden operating ranges by creating non-contiguous pieces.
-          Example: `[(0,50), (100,200)]` - cannot operate between 50-100 units
-        - **Points**: Express discrete operating points using pieces with identical start/end.
-          Example: `[(50,50), (100,100)]` - can only operate at exactly 50 or 100 units
+    Operating Point Coordination:
+        When equipment operates at any point within a piece, all flows scale
+        proportionally within their corresponding pieces. This ensures realistic
+        equipment behavior where efficiency, consumption, and production rates
+        all change together.
 
     Examples:
-        Heat pump with variable COP (Coefficient of Performance):
+        Heat pump with coordinated efficiency changes:
 
         ```python
-        PiecewiseConversion(
+        heat_pump_pc = PiecewiseConversion(
             {
                 'electricity_in': Piecewise(
                     [
@@ -250,57 +251,104 @@ class PiecewiseConversion(Interface):
                 ),
                 'heat_out': Piecewise(
                     [
-                        Piece(0, 35),  # Low load COP=3.5: 0-35 kW heat output
-                        Piece(35, 75),  # High load COP=3.0: 35-75 kW heat output
+                        Piece(0, 35),  # Low load COP=3.5: 0-35 kW heat
+                        Piece(35, 75),  # High load COP=3.0: 35-75 kW heat
+                    ]
+                ),
+                'cooling_water': Piecewise(
+                    [
+                        Piece(0, 2.5),  # Low load: 0-2.5 m³/h cooling
+                        Piece(2.5, 6),  # High load: 2.5-6 m³/h cooling
                     ]
                 ),
             }
         )
-        # At 15 kW electricity input → 52.5 kW heat output (interpolated)
+        # At 15 kW electricity → 52.5 kW heat + 3.75 m³/h cooling water
         ```
 
-        Engine with fuel consumption and emissions:
+        Combined cycle power plant with synchronized flows:
 
         ```python
-        PiecewiseConversion(
+        power_plant_pc = PiecewiseConversion(
             {
-                'fuel_input': Piecewise(
+                'natural_gas': Piecewise(
                     [
-                        Piece(5, 15),  # Part load: 5-15 L/h fuel
-                        Piece(15, 30),  # Full load: 15-30 L/h fuel
+                        Piece(150, 300),  # Part load: 150-300 MW_th fuel
+                        Piece(300, 500),  # Full load: 300-500 MW_th fuel
                     ]
                 ),
-                'power_output': Piecewise(
+                'electricity': Piecewise(
                     [
-                        Piece(10, 25),  # Part load: 10-25 kW output
-                        Piece(25, 45),  # Full load: 25-45 kW output
+                        Piece(60, 135),  # Part load: 60-135 MW_e (45% efficiency)
+                        Piece(135, 250),  # Full load: 135-250 MW_e (50% efficiency)
+                    ]
+                ),
+                'steam_export': Piecewise(
+                    [
+                        Piece(20, 35),  # Part load: 20-35 MW_th steam
+                        Piece(35, 50),  # Full load: 35-50 MW_th steam
                     ]
                 ),
                 'co2_emissions': Piecewise(
                     [
-                        Piece(12, 35),  # Part load: 12-35 kg/h CO2
-                        Piece(35, 78),  # Full load: 35-78 kg/h CO2
+                        Piece(30, 60),  # Part load: 30-60 t/h CO2
+                        Piece(60, 100),  # Full load: 60-100 t/h CO2
                     ]
                 ),
             }
         )
         ```
 
-        Discrete operating modes (on/off equipment):
+        Chemical reactor with multiple products and waste:
 
         ```python
-        PiecewiseConversion(
+        reactor_pc = PiecewiseConversion(
             {
-                'electricity_in': Piecewise(
+                'feedstock': Piecewise(
                     [
-                        Piece(0, 0),  # Off mode: no consumption
-                        Piece(20, 20),  # On mode: fixed 20 kW consumption
+                        Piece(10, 50),  # Small batch: 10-50 kg/h
+                        Piece(50, 200),  # Large batch: 50-200 kg/h
                     ]
                 ),
-                'cooling_out': Piecewise(
+                'product_A': Piecewise(
                     [
-                        Piece(0, 0),  # Off mode: no cooling
-                        Piece(60, 60),  # On mode: fixed 60 kW cooling
+                        Piece(7, 35),  # Small batch: 70% yield
+                        Piece(35, 140),  # Large batch: 70% yield
+                    ]
+                ),
+                'product_B': Piecewise(
+                    [
+                        Piece(2, 10),  # Small batch: 20% yield
+                        Piece(10, 45),  # Large batch: 22.5% yield (improved)
+                    ]
+                ),
+                'waste_stream': Piecewise(
+                    [
+                        Piece(1, 5),  # Small batch: 10% waste
+                        Piece(5, 15),  # Large batch: 7.5% waste (efficiency)
+                    ]
+                ),
+            }
+        )
+        ```
+
+        Equipment with discrete operating modes:
+
+        ```python
+        compressor_pc = PiecewiseConversion(
+            {
+                'electricity': Piecewise(
+                    [
+                        Piece(0, 0),  # Off mode: no consumption
+                        Piece(45, 45),  # Low mode: fixed 45 kW
+                        Piece(85, 85),  # High mode: fixed 85 kW
+                    ]
+                ),
+                'compressed_air': Piecewise(
+                    [
+                        Piece(0, 0),  # Off mode: no production
+                        Piece(250, 250),  # Low mode: 250 Nm³/h
+                        Piece(500, 500),  # High mode: 500 Nm³/h
                     ]
                 ),
             }
@@ -310,65 +358,47 @@ class PiecewiseConversion(Interface):
         Equipment with forbidden operating range:
 
         ```python
-        PiecewiseConversion(
+        steam_turbine_pc = PiecewiseConversion(
             {
-                'steam_input': Piecewise(
+                'steam_in': Piecewise(
                     [
                         Piece(0, 100),  # Low pressure operation
-                        Piece(200, 500),  # High pressure (gap: 100-200)
+                        Piece(200, 500),  # High pressure (gap: 100-200 forbidden)
                     ]
                 ),
-                'power_output': Piecewise(
+                'electricity_out': Piecewise(
                     [
-                        Piece(0, 80),  # Low efficiency at low pressure
-                        Piece(180, 400),  # High efficiency at high pressure
+                        Piece(0, 30),  # Low pressure: poor efficiency
+                        Piece(80, 220),  # High pressure: good efficiency
+                    ]
+                ),
+                'condensate_out': Piecewise(
+                    [
+                        Piece(0, 100),  # Low pressure condensate
+                        Piece(200, 500),  # High pressure condensate
                     ]
                 ),
             }
         )
         ```
 
-        Multi-product chemical reactor:
+    Design Patterns:
+        **Forbidden Ranges**: Use gaps between pieces to model equipment that cannot
+        operate in certain ranges (e.g., minimum loads, unstable regions).
 
-        ```python
-        fx.PiecewiseConversion(
-            {
-                'feedstock': fx.Piecewise(
-                    [
-                        fx.Piece(10, 50),  # Small batch: 10-50 kg/h
-                        fx.Piece(50, 200),  # Large batch: 50-200 kg/h
-                    ]
-                ),
-                'product_A': fx.Piecewise(
-                    [
-                        fx.Piece(7, 32),  # Small batch yield: 70%
-                        fx.Piece(32, 140),  # Large batch yield: 70%
-                    ]
-                ),
-                'product_B': fx.Piecewise(
-                    [
-                        fx.Piece(2, 12),  # Small batch: 20% to product B
-                        fx.Piece(12, 45),  # Large batch: better selectivity
-                    ]
-                ),
-                'waste': fx.Piecewise(
-                    [
-                        fx.Piece(1, 6),  # Small batch waste: 10%
-                        fx.Piece(6, 15),  # Large batch waste: 7.5%
-                    ]
-                ),
-            }
-        )
-        ```
+        **Discrete Modes**: Use pieces with identical start/end values to model
+        equipment with fixed operating points (e.g., on/off, discrete speeds).
+
+        **Efficiency Changes**: Coordinate input and output pieces to reflect
+        changing conversion efficiency across operating ranges.
 
     Common Use Cases:
-        - Heat pumps/chillers: COP varies with load and ambient conditions
-        - Power plants: Heat rate curves showing fuel efficiency vs output
-        - Chemical reactors: Conversion rates and selectivity vs throughput
-        - Compressors/pumps: Power consumption vs flow rate
-        - Multi-stage processes: Different conversion rates per stage
-        - Equipment with minimum loads: Cannot operate below threshold
-        - Batch processes: Discrete production campaigns
+        - Power generation: Multi-fuel plants, cogeneration systems, renewable hybrids
+        - HVAC systems: Heat pumps, chillers with variable COP and auxiliary loads
+        - Industrial processes: Multi-product reactors, separation units, heat exchangers
+        - Transportation: Multi-modal systems, hybrid vehicles, charging infrastructure
+        - Water treatment: Multi-stage processes with varying energy and chemical needs
+        - Energy storage: Systems with efficiency changes and auxiliary power requirements
 
     """
 
