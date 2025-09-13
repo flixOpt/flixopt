@@ -32,18 +32,19 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v5
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install Ruff
         run: |
-          python -m pip install --upgrade pip
-          pip install "ruff==0.9.*"
+          uv pip install --system "ruff==0.9.*"
           ruff --version
 
       - name: Run Ruff Linting
@@ -71,18 +72,19 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v5
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install .[dev] pytest-xdist
+          uv pip install --system .[dev] pytest-xdist
 
       - name: Run tests
         run: pytest -v -p no:warnings --numprocesses=auto
@@ -95,18 +97,20 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v5
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
+          enable-cache: true
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install security tools
         run: |
-          python -m pip install --upgrade pip
-          pip install bandit[toml]
+          uv pip install --system bandit[toml]
 
       - name: Run Bandit security scan
         run: |
@@ -136,6 +140,11 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -171,18 +180,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install build setuptools wheel twine
+          uv pip install --system build setuptools wheel twine
 
       - name: Build the distribution
         run: |
@@ -196,10 +206,12 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
 
       - name: Test install from TestPyPI
+        if: env.SKIP_TESTPYPI_UPLOAD != 'true'
         run: |
           # Create a temporary environment to test installation
-          python -m venv test_env
+          uv venv test_env
           source test_env/bin/activate
+
           # Get project name from pyproject.toml (PEP 621)
           PACKAGE_NAME=$(python - <<'PY'
           import sys, tomllib, pathlib
@@ -207,15 +219,21 @@ jobs:
           print(data["project"]["name"])
           PY
           )
+
           # Extract version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
+
+          # Install packaging for version comparison
+          uv pip install packaging
+
           # Wait and retry while TestPyPI indexes the package
           INSTALL_SUCCESS=false
           for d in 15 30 60 120 180 360 720 1080; do
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from TestPyPI (retry after ${d}s)..."
+
             # Install specific version and verify it matches
-            if pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
+            if uv pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
                python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
               INSTALL_SUCCESS=true
               break
@@ -248,18 +266,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install build setuptools wheel twine
+          uv pip install --system build twine
 
       - name: Build the distribution
         run: |
@@ -275,8 +294,9 @@ jobs:
       - name: Verify PyPI installation
         run: |
           # Create a temporary environment to test installation
-          python -m venv prod_test_env
+          uv venv prod_test_env
           source prod_test_env/bin/activate
+
           # Get project name from pyproject.toml (PEP 621)
           PACKAGE_NAME=$(python - <<'PY'
           import sys, tomllib, pathlib
@@ -284,15 +304,21 @@ jobs:
           print(data["project"]["name"])
           PY
           )
+
           # Extract version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
+
+          # Install packaging for version comparison
+          uv pip install packaging
+
           # Wait and retry while PyPI indexes the package
           INSTALL_SUCCESS=false
           for d in 5 10 15 30 60 120 180 360 720 1080; do
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
+
             # Install specific version and verify it matches
-            if pip install "$PACKAGE_NAME==$VERSION" && \
+            if uv pip install "$PACKAGE_NAME==$VERSION" && \
                python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
               INSTALL_SUCCESS=true
               break
@@ -326,13 +352,15 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for proper versioning
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Sync changelog to docs
         run: |
@@ -341,8 +369,7 @@ jobs:
 
       - name: Install documentation dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[docs]"
+          uv pip install --system -e ".[docs]"
 
       - name: Configure Git Credentials
         run: |
