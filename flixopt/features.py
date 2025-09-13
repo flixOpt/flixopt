@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise
+from .interface import InvestParameters, OnOffParameters, Piece, Piecewise
 from .structure import Model, SystemModel
 
 logger = logging.getLogger('flixopt')
@@ -841,7 +841,7 @@ class PiecewiseModel(Model):
         label: str = '',
     ):
         """
-        Modeling a Piecewise relation between miultiple variables.
+        Modeling a Piecewise relation between multiple variables.
         The relation is defined by a list of Pieces, which are assigned to the variables.
         Each Piece is a tuple of (start, end).
 
@@ -850,7 +850,9 @@ class PiecewiseModel(Model):
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             label: The label of the model. Used to construct the full label of the model.
             piecewise_variables: The variables to which the Pieces are assigned.
-            zero_point: A variable that can be used to define a zero point for the Piecewise relation. If None or False, no zero point is defined.
+            zero_point: A variable that can be used to define a zero point for the Piecewise relation.
+                If None or False, no zero point is defined. THis leads to 0 not being possible,
+                unless its its contained in a Piece.
             as_time_series: Whether the Piecewise relation is defined for a TimeSeries or a single variable.
         """
         super().__init__(model, label_of_element, label)
@@ -896,7 +898,7 @@ class PiecewiseModel(Model):
             # b) eq: -On(t) + Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 0       zusätzlich kann alles auch Null sein
             if isinstance(self._zero_point, linopy.Variable):
                 self.zero_point = self._zero_point
-                rhs = self.zero_point
+                sign, rhs = '<=', self.zero_point
             elif self._zero_point is True:
                 self.zero_point = self.add(
                     self._model.add_variables(
@@ -904,13 +906,15 @@ class PiecewiseModel(Model):
                     ),
                     'zero_point',
                 )
-                rhs = self.zero_point
+                sign, rhs = '<=', self.zero_point
             else:
-                rhs = 1
+                sign, rhs = '=', 1
 
             self.add(
                 self._model.add_constraints(
-                    sum([piece.inside_piece for piece in self.pieces]) <= rhs,
+                    sum([piece.inside_piece for piece in self.pieces]),
+                    sign,
+                    rhs,
                     name=f'{self.label_full}|{variable.name}|single_segment',
                 ),
                 f'{var_name}|single_segment',
@@ -1076,6 +1080,65 @@ class PiecewiseEffectsModel(Model):
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
             target='invest',
+        )
+
+
+class PiecewiseEffectsPerFlowHourModel(Model):
+    def __init__(
+        self,
+        model: SystemModel,
+        label_of_element: str,
+        piecewise_origin: Tuple[str, Piecewise],
+        piecewise_shares: Dict[str, Piecewise],
+        zero_point: Optional[Union[bool, linopy.Variable]],
+        label: str = 'PiecewiseEffectsPerFlowHour',
+    ):
+        super().__init__(model, label_of_element, label)
+        assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
+            'Piece length of variable_segments and share_segments must be equal'
+        )
+        self._zero_point = zero_point
+        self._piecewise_origin = piecewise_origin
+        self._piecewise_shares = piecewise_shares
+
+        self.shares: Dict[str, linopy.Variable] = {}
+
+        self.piecewise_model: Optional[PiecewiseModel] = None
+
+    def do_modeling(self):
+        self.shares = {
+            effect: self.add(
+                self._model.add_variables(coords=self._model.coords, name=f'{self.label_full}|{effect}'), f'{effect}'
+            )
+            for effect in self._piecewise_shares
+        }
+
+        piecewise_variables = {
+            self._piecewise_origin[0]: self._piecewise_origin[1],
+            **{
+                self.shares[effect_label].name: self._piecewise_shares[effect_label]
+                for effect_label in self._piecewise_shares
+            },
+        }
+
+        self.piecewise_model = self.add(
+            PiecewiseModel(
+                model=self._model,
+                label_of_element=self.label_of_element,
+                piecewise_variables=piecewise_variables,
+                zero_point=self._zero_point,
+                as_time_series=True,
+                label='PiecewiseEffectsPerFlowHour',
+            )
+        )
+
+        self.piecewise_model.do_modeling()
+
+        # Shares
+        self._model.effects.add_share_to_effects(
+            name=self.label_of_element,
+            expressions={effect: variable * self._model.hours_per_step for effect, variable in self.shares.items()},
+            target='operation',
         )
 
 

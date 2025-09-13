@@ -12,8 +12,8 @@ import numpy as np
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
 from .effects import EffectValuesUser
-from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
-from .interface import InvestParameters, OnOffParameters
+from .features import InvestmentModel, OnOffModel, PiecewiseEffectsPerFlowHourModel, PreventSimultaneousUsageModel
+from .interface import InvestParameters, OnOffParameters, PiecewiseEffectsPerFlowHour
 from .structure import Element, ElementModel, SystemModel, register_class_for_io
 
 if TYPE_CHECKING:
@@ -159,6 +159,7 @@ class Flow(Element):
         relative_minimum: NumericDataTS = 0,
         relative_maximum: NumericDataTS = 1,
         effects_per_flow_hour: Optional[EffectValuesUser] = None,
+        piecewise_effects_per_flow_hour: Optional[PiecewiseEffectsPerFlowHour] = None,
         on_off_parameters: Optional[OnOffParameters] = None,
         flow_hours_total_max: Optional[Scalar] = None,
         flow_hours_total_min: Optional[Scalar] = None,
@@ -180,6 +181,7 @@ class Flow(Element):
                  def: :math:`load\_factor:= sumFlowHours/ (nominal\_val \cdot \Delta t_{tot})`
             load_factor_max: maximal load factor (see minimal load factor)
             effects_per_flow_hour: operational costs, costs per flow-"work"
+            piecewise_effects_per_flow_hour: piecewise relation between flow hours and effects
             on_off_parameters: If present, flow can be "off", i.e. be zero (only relevant if relative_minimum > 0)
                 Therefore a binary var "on" is used. Further, several other restrictions and effects can be modeled
                 through this On/Off State (See OnOffParameters)
@@ -207,6 +209,7 @@ class Flow(Element):
         self.load_factor_max = load_factor_max
         # self.positive_gradient = TimeSeries('positive_gradient', positive_gradient, self)
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
+        self.piecewise_effects_per_flow_hour = piecewise_effects_per_flow_hour
         self.flow_hours_total_max = flow_hours_total_max
         self.flow_hours_total_min = flow_hours_total_min
         self.on_off_parameters = on_off_parameters
@@ -248,6 +251,8 @@ class Flow(Element):
         self.effects_per_flow_hour = flow_system.create_effect_time_series(
             self.label_full, self.effects_per_flow_hour, 'per_flow_hour'
         )
+        if self.piecewise_effects_per_flow_hour is not None:
+            self.piecewise_effects_per_flow_hour.transform_data(flow_system, self.label_full)
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
         if isinstance(self.size, InvestParameters):
@@ -397,6 +402,21 @@ class FlowModel(ElementModel):
                 },
                 target='operation',
             )
+
+        if self.element.piecewise_effects_per_flow_hour is not None:
+            self.piecewise_effects = self.add(
+                PiecewiseEffectsPerFlowHourModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    piecewise_origin=(
+                        self.flow_rate.name,
+                        self.element.piecewise_effects_per_flow_hour.piecewise_flow_rate,
+                    ),
+                    piecewise_shares=self.element.piecewise_effects_per_flow_hour.piecewise_shares,
+                    zero_point=self.on_off.on if self.on_off is not None else False,
+                ),
+            )
+            self.piecewise_effects.do_modeling()
 
     def _create_bounds_for_load_factor(self):
         # TODO: Add Variable load_factor for better evaluation?

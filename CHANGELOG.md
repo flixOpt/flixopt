@@ -10,6 +10,8 @@ Take Care: The CI will automatically append a "Whats CHanged" section to the cha
 This contains all COmmits, PR's and Contributers.
 Therefore, the Changelog should focus on the user-facing changes.
 
+Template:
+----
 ## [Unreleased] - ????-??-??
 
 ### Changed
@@ -24,7 +26,21 @@ Therefore, the Changelog should focus on the user-facing changes.
 
 ### Development
 
+----
+Upcoming Release:
+
+## [2.2.0] - 2025-09-13
+THis release introduces a new interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects.
+This greatly enhances Model flexibility.
+
+### Fixed
+- LinearConverter with `PiecewiseConversion` allowed flows to reach 0 values, even though they didnt have `OnOffParameters` nor `PiecewiseConversion` actually containing 0 in its `Piece`s.
+
+### Added
+- Added new Interface `PiecewiseEffectsPerFlowHour` to model non-linear relations between flow rates and effects.
+
 Until here -->
+
 
 ## [2.1.7] - 2025-09-13
 

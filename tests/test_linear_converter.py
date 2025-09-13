@@ -374,7 +374,7 @@ class TestLinearConverterModel:
         assert_conequal(
             model.constraints['Converter|Converter(input)|flow_rate|single_segment'],
             sum([model.variables[f'Converter|Piece_{i}|inside_piece'] for i in range(len(piecewise_model.pieces))])
-            <= 1,
+            == 1,
         )
 
     def test_piecewise_conversion_with_onoff(self, basic_flow_system_linopy):

@@ -284,7 +284,19 @@ def flow_system_segments_of_flows_2(flow_system_complex) -> fx.FlowSystem:
     flow_system.add_elements(
         fx.LinearConverter(
             'KWK',
-            inputs=[fx.Flow('Q_fu', bus='Gas')],
+            inputs=[
+                fx.Flow(
+                    'Q_fu',
+                    bus='Gas',
+                    piecewise_effects_per_flow_hour=fx.PiecewiseEffectsPerFlowHour(
+                        piecewise_flow_rate=fx.Piecewise([fx.Piece(0, 25), fx.Piece(25, 200)]),
+                        piecewise_shares={
+                            'costs': fx.Piecewise([fx.Piece(0, 2 * 25), fx.Piece(2 * 25, 1 * 200)]),
+                            'CO2': fx.Piecewise([fx.Piece(0, 30 * 25), fx.Piece(30 * 25, 50 * 200)]),
+                        },
+                    ),
+                )
+            ],
             outputs=[
                 fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
                 fx.Flow('Q_th', bus='Fernwärme'),
