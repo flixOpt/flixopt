@@ -112,7 +112,7 @@ jobs:
       - name: Run Bandit security scan
         run: |
           # Gate on HIGH severity & MEDIUM confidence; produce JSON artifact
-          uvx bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json -q --severity-level HIGH --confidence-level MEDIUM
+          uvx bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json -q --severity-level high --confidence-level medium
           # Human-readable output without affecting job status
           uvx bandit -r flixopt/ -c pyproject.toml -q --exit-zero
 
