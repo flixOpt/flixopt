@@ -229,6 +229,8 @@ class ModelingPrimitives:
         short_name: str = None,
         minimum_duration: Optional[TemporalData] = None,
         maximum_duration: Optional[TemporalData] = None,
+        duration_dim: str = 'time',
+        duration_per_step: Union[Scalar, xr.DataArray] = None,
         previous_duration: TemporalData = 0,
     ) -> Tuple[linopy.Variable, Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]]:
         """
@@ -236,9 +238,9 @@ class ModelingPrimitives:
 
         Mathematical formulation:
             duration[t] ≤ state[t] * M  ∀t
-            duration[t+1] ≤ duration[t] + hours_per_step[t]  ∀t
-            duration[t+1] ≥ duration[t] + hours_per_step[t] + (state[t+1] - 1) * M  ∀t
-            duration[0] = (hours_per_step[0] + previous_duration) * state[0]
+            duration[t+1] ≤ duration[t] + duration_per_step[t]  ∀t
+            duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) * M  ∀t
+            duration[0] = (duration_per_step[0] + previous_duration) * state[0]
 
             If minimum_duration provided:
                 duration[t] ≥ (state[t-1] - state[t]) * minimum_duration[t-1]  ∀t > 0
@@ -257,14 +259,13 @@ class ModelingPrimitives:
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
 
-        hours_per_step = model.hours_per_step
-        mega = hours_per_step.sum('time') + previous_duration  # Big-M value
+        mega = duration_per_step.sum(duration_dim) + previous_duration  # Big-M value
 
         # Duration variable
         duration = model.add_variables(
             lower=0,
             upper=maximum_duration if maximum_duration is not None else mega,
-            coords=model.get_coords(),
+            coords=state_variable.coords,
             name=name,
             short_name=short_name,
         )
@@ -274,25 +275,26 @@ class ModelingPrimitives:
         # Upper bound: duration[t] ≤ state[t] * M
         constraints['ub'] = model.add_constraints(duration <= state_variable * mega, name=f'{duration.name}|ub')
 
-        # Forward constraint: duration[t+1] ≤ duration[t] + hours_per_step[t]
+        # Forward constraint: duration[t+1] ≤ duration[t] + duration_per_step[t]
         constraints['forward'] = model.add_constraints(
-            duration.isel(time=slice(1, None))
-            <= duration.isel(time=slice(None, -1)) + hours_per_step.isel(time=slice(None, -1)),
+            duration.isel({duration_dim: slice(1, None)})
+            <= duration.isel({duration_dim: slice(None, -1)}) + duration_per_step.isel({duration_dim: slice(None, -1)}),
             name=f'{duration.name}|forward',
         )
 
-        # Backward constraint: duration[t+1] ≥ duration[t] + hours_per_step[t] + (state[t+1] - 1) * M
+        # Backward constraint: duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) * M
         constraints['backward'] = model.add_constraints(
-            duration.isel(time=slice(1, None))
-            >= duration.isel(time=slice(None, -1))
-            + hours_per_step.isel(time=slice(None, -1))
-            + (state_variable.isel(time=slice(1, None)) - 1) * mega,
+            duration.isel({duration_dim: slice(1, None)})
+            >= duration.isel({duration_dim: slice(None, -1)})
+            + duration_per_step.isel({duration_dim: slice(None, -1)})
+            + (state_variable.isel({duration_dim: slice(1, None)}) - 1) * mega,
             name=f'{duration.name}|backward',
         )
 
-        # Initial condition: duration[0] = (hours_per_step[0] + previous_duration) * state[0]
+        # Initial condition: duration[0] = (duration_per_step[0] + previous_duration) * state[0]
         constraints['initial'] = model.add_constraints(
-            duration.isel(time=0) == (hours_per_step.isel(time=0) + previous_duration) * state_variable.isel(time=0),
+            duration.isel({duration_dim: 0})
+            == (duration_per_step.isel({duration_dim: 0}) + previous_duration) * state_variable.isel({duration_dim: 0}),
             name=f'{duration.name}|initial',
         )
 
@@ -300,15 +302,18 @@ class ModelingPrimitives:
         if minimum_duration is not None:
             constraints['lb'] = model.add_constraints(
                 duration
-                >= (state_variable.isel(time=slice(None, -1)) - state_variable.isel(time=slice(1, None)))
-                * minimum_duration.isel(time=slice(None, -1)),
+                >= (
+                    state_variable.isel({duration_dim: slice(None, -1)})
+                    - state_variable.isel({duration_dim: slice(1, None)})
+                )
+                * minimum_duration.isel({duration_dim: slice(None, -1)}),
                 name=f'{duration.name}|lb',
             )
 
             # Handle initial condition for minimum duration
-            if previous_duration > 0 and previous_duration < minimum_duration.isel(time=0).max():
+            if previous_duration > 0 and previous_duration < minimum_duration.isel({duration_dim: 0}).max():
                 constraints['initial_lb'] = model.add_constraints(
-                    state_variable.isel(time=0) == 1, name=f'{duration.name}|initial_lb'
+                    state_variable.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
                 )
 
         variables = {'duration': duration}
@@ -588,3 +593,146 @@ class BoundingPatterns:
         mutex = model.add_constraints(switch_on + switch_off <= 1, name=f'{name}|mutex')
 
         return transition, initial, mutex
+
+    @staticmethod
+    def continuous_transition_bounds(
+        model: Submodel,
+        continuous_variable: linopy.Variable,
+        switch_on: linopy.Variable,
+        switch_off: linopy.Variable,
+        name: str,
+        max_change: Union[float, xr.DataArray],
+        previous_value: Union[float, xr.DataArray] = 0,
+        coord: str = 'time',
+    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+        """
+        Constrains a continuous variable to only change when switch variables are active.
+
+        Mathematical formulation:
+            -max_change * (switch_on[t] + switch_off[t]) <= continuous[t] - continuous[t-1] <= max_change * (switch_on[t] + switch_off[t])  ∀t > 0
+            -max_change * (switch_on[0] + switch_off[0]) <= continuous[0] - previous_value <= max_change * (switch_on[0] + switch_off[0])
+            switch_on[t], switch_off[t] ∈ {0, 1}
+
+        This ensures the continuous variable can only change when switch_on or switch_off is 1.
+        When both switches are 0, the variable must stay exactly constant.
+
+        Args:
+            model: The submodel to add constraints to
+            continuous_variable: The continuous variable to constrain
+            switch_on: Binary variable indicating when changes are allowed (typically transitions to active state)
+            switch_off: Binary variable indicating when changes are allowed (typically transitions to inactive state)
+            name: Base name for the constraints
+            max_change: Maximum possible change in the continuous variable (Big-M value)
+            previous_value: Initial value of the continuous variable before first period
+            coord: Coordinate name for time dimension
+
+        Returns:
+            Tuple of constraints: (transition_upper, transition_lower, initial_upper, initial_lower)
+        """
+        if not isinstance(model, Submodel):
+            raise ValueError('BoundingPatterns.continuous_transition_bounds() can only be used with a Submodel')
+
+        # Transition constraints for t > 0: continuous variable can only change when switches are active
+        transition_upper = model.add_constraints(
+            continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)})
+            <= max_change * (switch_on.isel({coord: slice(1, None)}) + switch_off.isel({coord: slice(1, None)})),
+            name=f'{name}|transition_ub',
+        )
+
+        transition_lower = model.add_constraints(
+            continuous_variable.isel({coord: slice(None, -1)}) - continuous_variable.isel({coord: slice(1, None)})
+            <= max_change * (switch_on.isel({coord: slice(1, None)}) + switch_off.isel({coord: slice(1, None)})),
+            name=f'{name}|transition_lb',
+        )
+
+        # Initial constraints for t = 0
+        initial_upper = model.add_constraints(
+            continuous_variable.isel({coord: 0}) - previous_value
+            <= max_change * (switch_on.isel({coord: 0}) + switch_off.isel({coord: 0})),
+            name=f'{name}|initial_ub',
+        )
+
+        initial_lower = model.add_constraints(
+            -continuous_variable.isel({coord: 0}) + previous_value
+            <= max_change * (switch_on.isel({coord: 0}) + switch_off.isel({coord: 0})),
+            name=f'{name}|initial_lb',
+        )
+
+        return transition_upper, transition_lower, initial_upper, initial_lower
+
+    @staticmethod
+    def link_changes_to_level_with_binaries(
+        model: Submodel,
+        level_variable: linopy.Variable,
+        increase_variable: linopy.Variable,
+        decrease_variable: linopy.Variable,
+        increase_binary: linopy.Variable,
+        decrease_binary: linopy.Variable,
+        name: str,
+        max_change: Union[float, xr.DataArray],
+        initial_level: Union[float, xr.DataArray] = 0,
+        coord: str = 'year',
+    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+        """
+        Link changes to level evolution with binary control and mutual exclusivity.
+
+        Creates the complete constraint system for ALL time periods:
+        1. level[0] = initial_level + increase[0] - decrease[0]
+        2. level[t] = level[t-1] + increase[t] - decrease[t]  ∀t > 0
+        3. increase[t] <= max_change * increase_binary[t]  ∀t
+        4. decrease[t] <= max_change * decrease_binary[t]  ∀t
+        5. increase_binary[t] + decrease_binary[t] <= 1  ∀t
+
+        Args:
+            model: The submodel to add constraints to
+            increase_variable: Incremental additions for ALL periods (>= 0)
+            decrease_variable: Incremental reductions for ALL periods (>= 0)
+            increase_binary: Binary indicators for increases for ALL periods
+            decrease_binary: Binary indicators for decreases for ALL periods
+            level_variable: Level variable for ALL periods
+            name: Base name for constraints
+            max_change: Maximum change per period
+            initial_level: Starting level before first period
+            coord: Time coordinate name
+
+        Returns:
+            Tuple of (initial_constraint, transition_constraints, increase_bounds, decrease_bounds, mutual_exclusion)
+        """
+        if not isinstance(model, Submodel):
+            raise ValueError('BoundingPatterns.link_changes_to_level_with_binaries() can only be used with a Submodel')
+
+        # 1. Initial period: level[0] - initial_level =  increase[0] - decrease[0]
+        initial_constraint = model.add_constraints(
+            level_variable.isel({coord: 0}) - initial_level
+            == increase_variable.isel({coord: 0}) - decrease_variable.isel({coord: 0}),
+            name=f'{name}|initial_level',
+        )
+
+        # 2. Transition periods: level[t] = level[t-1] + increase[t] - decrease[t] for t > 0
+        transition_constraints = model.add_constraints(
+            level_variable.isel({coord: slice(1, None)})
+            == level_variable.isel({coord: slice(None, -1)})
+            + increase_variable.isel({coord: slice(1, None)})
+            - decrease_variable.isel({coord: slice(1, None)}),
+            name=f'{name}|transitions',
+        )
+
+        # 3. Increase bounds: increase[t] <= max_change * increase_binary[t] for all t
+        increase_bounds = model.add_constraints(
+            increase_variable <= increase_binary * max_change,
+            name=f'{name}|increase_bounds',
+        )
+
+        # 4. Decrease bounds: decrease[t] <= max_change * decrease_binary[t] for all t
+        decrease_bounds = model.add_constraints(
+            decrease_variable <= decrease_binary * max_change,
+            name=f'{name}|decrease_bounds',
+        )
+
+        # 5. Mutual exclusivity: increase_binary[t] + decrease_binary[t] <= 1 for all t
+        mutual_exclusion = model.add_constraints(
+            increase_binary + decrease_binary <= 1,
+            name=f'{name}|mutual_exclusion',
+        )
+
+        return initial_constraint, transition_constraints, increase_bounds, decrease_bounds, mutual_exclusion

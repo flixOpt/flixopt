@@ -9,9 +9,13 @@ from typing import Dict, List, Optional, Tuple, Union
 import linopy
 import numpy as np
 
-from .config import CONFIG
 from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
-from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects
+from .interface import (
+    InvestParameters,
+    InvestTimingParameters,
+    OnOffParameters,
+    Piecewise,
+)
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
@@ -71,19 +75,6 @@ class InvestmentModel(Submodel):
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
-        if self.parameters.piecewise_effects:
-            self.piecewise_effects = self.add_submodels(
-                PiecewiseEffectsModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
-                    zero_point=self.is_invested,
-                ),
-                short_name='segments',
-            )
-
     def _add_effects(self):
         """Add investment effects"""
         if self.parameters.fix_effects:
@@ -113,6 +104,19 @@ class InvestmentModel(Submodel):
                 target='invest',
             )
 
+        if self.parameters.piecewise_effects:
+            self.piecewise_effects = self.add_submodels(
+                PiecewiseEffectsModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
+                    zero_point=self.is_invested,
+                ),
+                short_name='segments',
+            )
+
     @property
     def size(self) -> linopy.Variable:
         """Investment size variable"""
@@ -124,6 +128,257 @@ class InvestmentModel(Submodel):
         if 'is_invested' not in self._variables:
             return None
         return self._variables['is_invested']
+
+
+class InvestmentTimingModel(Submodel):
+    """
+    This feature model is used to model the timing of investments.
+
+    Such an Investment is defined by a size, a year_of_investment, and a year_of_decommissioning.
+    In between these years, the size of the investment cannot vary. Outside, its 0.
+    """
+
+    parameters: InvestTimingParameters
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        label_of_element: str,
+        parameters: InvestTimingParameters,
+        label_of_model: Optional[str] = None,
+    ):
+        self.parameters = parameters
+        super().__init__(model, label_of_element, label_of_model)
+
+    def _do_modeling(self):
+        super()._do_modeling()
+        self._basic_modeling()
+        self._add_effects()
+
+        self._constraint_investment()
+        self._constraint_decommissioning()
+
+    def _basic_modeling(self):
+        size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
+
+        ########################################################################
+        self.add_variables(
+            short_name='size',
+            lower=0,
+            upper=size_max,
+            coords=self._model.get_coords(['year', 'scenario']),
+        )
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='is_invested',
+        )
+        BoundingPatterns.bounds_with_state(
+            self,
+            variable=self.size,
+            variable_state=self.is_invested,
+            bounds=(size_min, size_max),
+        )
+
+        ########################################################################
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|investment_occurs',
+        )
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|decommissioning_occurs',
+        )
+        BoundingPatterns.state_transition_bounds(
+            self,
+            state_variable=self.is_invested,
+            switch_on=self.investment_occurs,
+            switch_off=self.decommissioning_occurs,
+            name=self.is_invested.name,
+            previous_state=0,
+            coord='year',
+        )
+        self.add_constraints(
+            self.investment_occurs.sum('year') <= 1,
+            short_name='investment_occurs|once',
+        )
+        self.add_constraints(
+            self.decommissioning_occurs.sum('year') <= 1,
+            short_name='decommissioning_occurs|once',
+        )
+
+        ########################################################################
+        previous_lifetime = self.parameters.previous_lifetime if self.parameters.previous_lifetime is not None else 0
+        self.add_variables(
+            lower=0,
+            upper=self.parameters.maximum_or_fixed_lifetime
+            if self.parameters.maximum_or_fixed_lifetime is not None
+            else self._model.flow_system.years_per_year.sum('year') + previous_lifetime,
+            coords=self._model.get_coords(['scenario']),
+            short_name='size|lifetime',
+        )
+        self.add_constraints(
+            self.lifetime
+            == (self.is_invested * self._model.flow_system.years_per_year).sum('year')
+            + self.is_invested.isel(year=0) * previous_lifetime,
+            short_name='size|lifetime',
+        )
+        if self.parameters.minimum_or_fixed_lifetime is not None:
+            self.add_constraints(
+                self.lifetime + self.is_invested.isel(year=-1) * self.parameters.minimum_or_fixed_lifetime
+                >= self.investment_occurs * self.parameters.minimum_or_fixed_lifetime,
+                short_name='size|lifetime|lb',
+            )
+
+        ########################################################################
+        self.add_variables(
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|increase',
+            lower=0,
+            upper=size_max,
+        )
+        self.add_variables(
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|decrease',
+            lower=0,
+            upper=size_max,
+        )
+        BoundingPatterns.link_changes_to_level_with_binaries(
+            self,
+            level_variable=self.size,
+            increase_variable=self.size_increase,
+            decrease_variable=self.size_decrease,
+            increase_binary=self.investment_occurs,
+            decrease_binary=self.decommissioning_occurs,
+            name=f'{self.label_of_element}|size|changes',
+            max_change=size_max,
+            initial_level=0,
+            coord='year',
+        )
+
+    def _add_effects(self):
+        """Add investment effects to the model."""
+
+        if self.parameters.fix_effects:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.is_invested * factor if self.is_invested is not None else factor
+                    for effect, factor in self.parameters.fix_effects.items()
+                },
+                target='invest',
+            )
+
+        if self.parameters.specific_effects:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
+                target='invest',
+            )
+
+        if self.parameters.fixed_effects_by_investment_year:
+            # Effects depending on when the investment is made
+            remapped_variable = self.investment_occurs.rename({'year': 'year_of_investment'})
+
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: (remapped_variable * factor).sum('year_of_investment')
+                    for effect, factor in self.parameters.fixed_effects_by_investment_year.items()
+                },
+                target='invest',
+            )
+
+        if self.parameters.specific_effects_by_investment_year:
+            # Annual effects proportional to investment size
+            remapped_variable = self.size_increase.rename({'year': 'year_of_investment'})
+
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: (remapped_variable * factor).sum('year_of_investment')
+                    for effect, factor in self.parameters.specific_effects_by_investment_year.items()
+                },
+                target='invest',
+            )
+
+    def _constraint_investment(self):
+        if self.parameters.force_investment.sum() > 0:
+            self.add_constraints(
+                self.investment_occurs == self.parameters.force_investment,
+                short_name='size|changes|fixed_start',
+            )
+        else:
+            self.add_constraints(
+                self.investment_occurs <= self.parameters.allow_investment,
+                short_name='size|changes|restricted_start',
+            )
+
+    def _constraint_decommissioning(self):
+        if self.parameters.force_decommissioning.sum() > 0:
+            self.add_constraints(
+                self.decommissioning_occurs == self.parameters.force_decommissioning,
+                short_name='size|changes|fixed_end',
+            )
+        else:
+            self.add_constraints(
+                self.decommissioning_occurs <= self.parameters.allow_decommissioning,
+                short_name='size|changes|restricted_end',
+            )
+
+    @property
+    def size(self) -> linopy.Variable:
+        """Investment size variable"""
+        return self._variables['size']
+
+    @property
+    def is_invested(self) -> Optional[linopy.Variable]:
+        """Binary investment decision variable"""
+        if 'is_invested' not in self._variables:
+            return None
+        return self._variables['is_invested']
+
+    @property
+    def investment_occurs(self) -> linopy.Variable:
+        """Binary increase decision variable"""
+        return self._variables['size|investment_occurs']
+
+    @property
+    def decommissioning_occurs(self) -> linopy.Variable:
+        """Binary decrease decision variable"""
+        return self._variables['size|decommissioning_occurs']
+
+    @property
+    def size_decrease(self) -> linopy.Variable:
+        """Binary decrease decision variable"""
+        return self._variables['size|decrease']
+
+    @property
+    def size_increase(self) -> linopy.Variable:
+        """Binary increase decision variable"""
+        return self._variables['size|increase']
+
+    @property
+    def investment_used(self) -> linopy.LinearExpression:
+        """Binary investment decision variable"""
+        return self.investment_occurs.sum('year')
+
+    @property
+    def divestment_used(self) -> linopy.LinearExpression:
+        """Binary investment decision variable"""
+        return self.decommissioning_occurs.sum('year')
+
+    @property
+    def lifetime(self) -> linopy.Variable:
+        """Lifetime variable"""
+        return self._variables['size|lifetime']
+
+    @property
+    def duration(self) -> linopy.Variable:
+        """Investment duration variable"""
+        return self._variables['duration']
 
 
 class OnOffModel(Submodel):
@@ -206,6 +461,8 @@ class OnOffModel(Submodel):
                 short_name='consecutive_on_hours',
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
+                duration_per_step=self.hours_per_step,
+                duration_dim='time',
                 previous_duration=self._get_previous_on_duration(),
             )
 
@@ -217,6 +474,8 @@ class OnOffModel(Submodel):
                 short_name='consecutive_off_hours',
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
+                duration_per_step=self.hours_per_step,
+                duration_dim='time',
                 previous_duration=self._get_previous_off_duration(),
             )
             # TODO:
