@@ -53,15 +53,15 @@ class TestPlots(unittest.TestCase):
 
     def test_bar_plots(self):
         data = self.get_sample_data(nr_of_columns=10, nr_of_periods=1, time_steps_per_period=24)
-        plotly.offline.plot(plotting.with_plotly(data, 'bar'))
-        plotting.with_matplotlib(data, 'bar')
+        plotly.offline.plot(plotting.with_plotly(data, 'stacked_bar'))
+        plotting.with_matplotlib(data, 'stacked_bar')
         plt.show()
 
         data = self.get_sample_data(
             nr_of_columns=10, nr_of_periods=5, time_steps_per_period=24, drop_fraction_of_indices=0.3
         )
-        plotly.offline.plot(plotting.with_plotly(data, 'bar'))
-        plotting.with_matplotlib(data, 'bar')
+        plotly.offline.plot(plotting.with_plotly(data, 'stacked_bar'))
+        plotting.with_matplotlib(data, 'stacked_bar')
         plt.show()
 
     def test_line_plots(self):

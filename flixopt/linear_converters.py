@@ -8,7 +8,7 @@ from typing import Dict, Optional
 import numpy as np
 
 from .components import LinearConverter
-from .core import NumericDataTS, TimeSeriesData
+from .core import TemporalDataUser, TimeSeriesData
 from .elements import Flow
 from .interface import OnOffParameters
 from .structure import register_class_for_io
@@ -21,7 +21,7 @@ class Boiler(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: NumericDataTS,
+        eta: TemporalDataUser,
         Q_fu: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
@@ -62,7 +62,7 @@ class Power2Heat(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: NumericDataTS,
+        eta: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
@@ -104,7 +104,7 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: NumericDataTS,
+        COP: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
@@ -146,7 +146,7 @@ class CoolingTower(LinearConverter):
     def __init__(
         self,
         label: str,
-        specific_electricity_demand: NumericDataTS,
+        specific_electricity_demand: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
@@ -165,7 +165,7 @@ class CoolingTower(LinearConverter):
             label,
             inputs=[P_el, Q_th],
             outputs=[],
-            conversion_factors=[{P_el.label: 1, Q_th.label: -specific_electricity_demand}],
+            conversion_factors=[{P_el.label: -1, Q_th.label: specific_electricity_demand}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
@@ -177,12 +177,12 @@ class CoolingTower(LinearConverter):
 
     @property
     def specific_electricity_demand(self):
-        return -self.conversion_factors[0][self.Q_th.label]
+        return self.conversion_factors[0][self.Q_th.label]
 
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
-        self.conversion_factors[0][self.Q_th.label] = -value
+        self.conversion_factors[0][self.Q_th.label] = value
 
 
 @register_class_for_io
@@ -190,8 +190,8 @@ class CHP(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta_th: NumericDataTS,
-        eta_el: NumericDataTS,
+        eta_th: TemporalDataUser,
+        eta_el: TemporalDataUser,
         Q_fu: Flow,
         P_el: Flow,
         Q_th: Flow,
@@ -251,7 +251,7 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: NumericDataTS,
+        COP: TemporalDataUser,
         P_el: Flow,
         Q_ab: Flow,
         Q_th: Flow,
@@ -297,11 +297,11 @@ class HeatPumpWithSource(LinearConverter):
 
 
 def check_bounds(
-    value: NumericDataTS,
+    value: TemporalDataUser,
     parameter_label: str,
     element_label: str,
-    lower_bound: NumericDataTS,
-    upper_bound: NumericDataTS,
+    lower_bound: TemporalDataUser,
+    upper_bound: TemporalDataUser,
 ) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.
