@@ -622,56 +622,60 @@ class PiecewiseEffects(Interface):
 
 @register_class_for_io
 class InvestParameters(Interface):
-    """Define comprehensive investment decision parameters for optimization models.
+    """Define investment decision parameters with flexible sizing and effect modeling.
 
-    This class encapsulates all parameters needed to model investment decisions
-    in optimization problems, including sizing constraints, cost structures,
-    and operational flexibility. It supports multiple cost modeling approaches
-    from simple linear relationships to complex piecewise functions, enabling
-    accurate representation of real-world investment economics.
+    This class models investment decisions in optimization problems, supporting
+    both binary (invest/don't invest) and continuous sizing choices with
+    comprehensive cost structures. It enables realistic representation of
+    investment economics including fixed costs, scale effects, and divestment penalties.
 
-    Investment modeling capabilities include:
-    - Fixed vs. continuous sizing decisions
-    - Multiple cost components (fixed, variable, piecewise)
-    - Optional investments with divestment penalties
-    - Technology learning curves and economies of scale
-    - Multi-period investment planning with proper annualization
+    Investment Decision Types:
+        **Binary Investments**: Fixed size investments creating yes/no decisions
+        (e.g., install a specific generator, build a particular facility)
+
+        **Continuous Sizing**: Variable size investments with minimum/maximum bounds
+        (e.g., battery capacity from 10-1000 kWh, pipeline diameter optimization)
+
+    Cost Modeling Approaches:
+        - **Fixed Effects**: One-time costs independent of size (permits, connections)
+        - **Specific Effects**: Linear costs proportional to size (€/kW, €/m²)
+        - **Piecewise Effects**: Non-linear relationships (bulk discounts, learning curves)
+        - **Divestment Effects**: Penalties for not investing (demolition, opportunity costs)
 
     Args:
-        fixed_size: When specified, constrains the investment to exactly this size,
-            creating a binary invest/don't-invest decision. When None, allows
-            continuous sizing between minimum_size and maximum_size bounds.
-        minimum_size: Minimum investment size for continuous sizing decisions.
-            Defaults to CONFIG.modeling.EPSILON to avoid numerical issues.
+        fixed_size: When specified, creates a binary investment decision at exactly
+            this size. When None, allows continuous sizing between minimum and maximum bounds.
+        minimum_size: Lower bound for continuous sizing decisions. Defaults to a small
+            positive value (CONFIG.modeling.EPSILON) to avoid numerical issues.
             Ignored when fixed_size is specified.
-        maximum_size: Maximum investment size for continuous sizing decisions.
-            Defaults to CONFIG.modeling.BIG to represent unlimited capacity.
+        maximum_size: Upper bound for continuous sizing decisions. Defaults to a large
+            value (CONFIG.modeling.BIG) representing unlimited capacity.
             Ignored when fixed_size is specified.
-        optional: Controls investment optionality. When True (default), the
+        optional: Controls whether investment is required. When True (default),
             optimization can choose not to invest. When False, forces investment
-            to occur, useful for mandatory infrastructure or replacement decisions.
-        fix_effects: Fixed costs incurred once if the investment is made, regardless
-            of the investment size. Typical examples include permitting costs,
-            connection fees, or base equipment costs. Dictionary mapping effect
-            names to scalar values (e.g., {'cost': 10000, 'CO2': 500}).
-            **Important**: Costs must be annualized to the optimization time period.
+            to occur (useful for mandatory upgrades or replacement decisions).
+        fix_effects: Fixed costs incurred once if investment is made, regardless
+            of size. Dictionary mapping effect names to values
+            (e.g., {'cost': 10000, 'CO2_construction': 500}).
         specific_effects: Variable costs proportional to investment size, representing
-            per-unit costs like €/kW_nominal or €/m²_nominal. Dictionary mapping
-            effect names to unit cost values (e.g., {'cost': 1200, 'CO2': 0.5}).
-            **Important**: Costs must be annualized to the optimization time period.
-        piecewise_effects: Complex non-linear cost relationships using PiecewiseEffects,
-            enabling modeling of bulk discounts, technology learning curves, or
-            economies of scale. Can be combined with fix_effects and specific_effects.
-            **Important**: Costs must be annualized to the optimization time period.
+            per-unit costs (€/kW, €/m²). Dictionary mapping effect names to unit values
+            (e.g., {'cost': 1200, 'steel_required': 0.5}).
+        piecewise_effects: Non-linear cost relationships using PiecewiseEffects for
+            economies of scale, learning curves, or threshold effects. Can be combined
+            with fix_effects and specific_effects.
         divest_effects: Costs incurred if the investment is NOT made, such as
-            demolition costs for existing equipment, contractual penalties, or
-            opportunity costs. Dictionary mapping effect names to scalar values.
+            demolition of existing equipment, contractual penalties, or lost opportunities.
+            Dictionary mapping effect names to values.
 
-    Note:
-        **Cost Annualization**: All cost values must be properly annualized to match
-        the optimization model's time period. For example, if modeling annual decisions
-        but equipment has a 20-year lifetime, divide capital costs by 20 or use
-        appropriate discount rates to convert to equivalent annual costs.
+    Cost Annualization Requirements:
+        All cost values must be properly weighted to match the optimization model's time horizon.
+        For long-term investments, the cost values should be annualized to the corresponding operation time (annuity).
+
+        - Use equivalent annual cost (capital cost / equipment lifetime)
+        - Apply appropriate discount rates for present value calculations
+        - Account for inflation, escalation, and financing costs
+
+        Example: €1M equipment with 20-year life → €50k/year fixed cost
 
     Examples:
         Simple binary investment (solar panels):
