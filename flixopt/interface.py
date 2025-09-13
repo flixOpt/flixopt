@@ -421,131 +421,191 @@ class PiecewiseConversion(Interface):
 
 @register_class_for_io
 class PiecewiseEffects(Interface):
-    """Define variable-dependent effects using piecewise linear functions.
+    """Define how a single decision variable contributes to system effects with piecewise rates.
 
-    This class models complex relationships where the effects (costs, emissions,
-    resources) associated with a decision variable change non-linearly based on
-    the variable's value. The origin piecewise function defines the primary
-    variable's behavior, while the shares define how this variable contributes
-    to different system effects at different operating levels.
+    This class models situations where a decision variable (the origin) generates
+    different types of system effects (costs, emissions, resource consumption) at
+    rates that change non-linearly with the variable's operating level. Unlike
+    PiecewiseConversion which coordinates multiple flows, PiecewiseEffects focuses
+    on how one variable impacts multiple system-wide effects.
 
-    This is particularly useful for modeling:
-    - Scale-dependent costs (bulk discounts, economies of scale)
-    - Load-dependent emissions (efficiency changes with throughput)
-    - Capacity-dependent resource consumption
-    - Multi-tier pricing structures
-    - Performance-dependent environmental impacts
+    Key Concept - Origin vs. Effects:
+        - **Origin**: The primary decision variable (e.g., production level, capacity, size)
+        - **Shares**: The amounts which this variable contributes to different system effects
+
+    Relationship to PiecewiseConversion:
+        **PiecewiseConversion**: Models synchronized relationships between multiple
+        flow variables (e.g., fuel_in, electricity_out, emissions_out all coordinated).
+
+        **PiecewiseEffects**: Models how one variable contributes to system-wide
+        effects at variable rates (e.g., production_level → costs, emissions, resources).
 
     Args:
-        piecewise_origin: Piecewise function defining the behavior of the primary variable
-            that drives the effects. This establishes the domain and operating ranges.
-        piecewise_shares: Dictionary mapping effect names to their corresponding
-            Piecewise functions. Keys are effect identifiers (e.g., 'cost', 'CO2', 'water').
-            Values are Piecewise objects defining how much of each effect is generated
-            per unit of the origin variable at different operating levels.
+        piecewise_origin: Piecewise function defining the behavior of the primary
+            decision variable. This establishes the operating domain and ranges.
+        piecewise_shares: Dictionary mapping effect names to their rate functions.
+            Keys are effect identifiers (e.g., 'cost_per_unit', 'CO2_intensity').
+            Values are Piecewise objects defining the contribution rate per unit
+            of the origin variable at different operating levels.
 
-    Note:
-        **Difference from PiecewiseConversion**: While PiecewiseConversion models
-        relationships between flow variables, PiecewiseEffects models how a single
-        decision variable contributes to multiple system effects (costs, emissions, etc.)
-        based on its operating level.
+    Mathematical Relationship:
+        For each effect: Total_Effect = Origin_Variable × Share_Rate(Origin_Level)
+
+        This enables modeling of:
+        - Economies of scale (decreasing unit costs with volume)
+        - Learning curves (improving efficiency with experience)
+        - Threshold effects (changing rates at different scales)
+        - Progressive pricing (increasing rates with consumption)
 
     Examples:
-        Manufacturing process with scale-dependent costs and emissions:
+        Manufacturing with economies of scale:
 
         ```python
-        # Production volume affects unit costs and emissions
-        manufacturing_effects = PiecewiseEffects(
+        production_effects = PiecewiseEffects(
             piecewise_origin=Piecewise(
                 [
-                    Piece(0, 1000),  # Small scale production
-                    Piece(1000, 5000),  # Medium scale production
-                    Piece(5000, 10000),  # Large scale production
+                    Piece(0, 1000),  # Small scale: 0-1000 units/month
+                    Piece(1000, 5000),  # Medium scale: 1000-5000 units/month
+                    Piece(5000, 10000),  # Large scale: 5000-10000 units/month
                 ]
             ),
             piecewise_shares={
                 'unit_cost': Piecewise(
                     [
-                        Piece(50, 45),  # High unit cost at low volume
-                        Piece(45, 35),  # Decreasing cost with scale
-                        Piece(35, 30),  # Lowest cost at high volume
+                        Piece(50, 45),  # €50-45/unit (scale benefits)
+                        Piece(45, 35),  # €45-35/unit (bulk materials)
+                        Piece(35, 30),  # €35-30/unit (automation benefits)
+                    ]
+                ),
+                'labor_hours': Piecewise(
+                    [
+                        Piece(2.5, 2.0),  # 2.5-2.0 hours/unit (learning curve)
+                        Piece(2.0, 1.5),  # 2.0-1.5 hours/unit (efficiency gains)
+                        Piece(1.5, 1.2),  # 1.5-1.2 hours/unit (specialization)
                     ]
                 ),
                 'CO2_intensity': Piecewise(
                     [
-                        Piece(2.5, 2.0),  # Higher emissions per unit at low efficiency
-                        Piece(2.0, 1.5),  # Better efficiency at medium scale
-                        Piece(1.5, 1.2),  # Best efficiency at large scale
+                        Piece(15, 12),  # 15-12 kg CO2/unit (process optimization)
+                        Piece(12, 9),  # 12-9 kg CO2/unit (equipment efficiency)
+                        Piece(9, 7),  # 9-7 kg CO2/unit (renewable energy)
                     ]
                 ),
             },
         )
         ```
 
-        Power plant with load-dependent heat rate and emissions:
+        Power generation with load-dependent characteristics:
 
         ```python
-        power_plant_effects = PiecewiseEffects(
+        generator_effects = PiecewiseEffects(
             piecewise_origin=Piecewise(
                 [
-                    Piece(100, 300),  # Minimum load to rated capacity (MW)
-                    Piece(300, 500),  # Overload operation
+                    Piece(50, 200),  # Part load operation: 50-200 MW
+                    Piece(200, 350),  # Rated operation: 200-350 MW
+                    Piece(350, 400),  # Overload operation: 350-400 MW
                 ]
             ),
             piecewise_shares={
                 'fuel_rate': Piecewise(
                     [
-                        Piece(11.5, 10.2),  # Heat rate: BTU/kWh (less efficient at part load)
-                        Piece(10.2, 10.8),  # Heat rate increases at overload
+                        Piece(12.0, 10.5),  # Heat rate: 12.0-10.5 GJ/MWh (part load penalty)
+                        Piece(10.5, 9.8),  # Heat rate: 10.5-9.8 GJ/MWh (optimal efficiency)
+                        Piece(9.8, 11.2),  # Heat rate: 9.8-11.2 GJ/MWh (overload penalty)
+                    ]
+                ),
+                'maintenance_factor': Piecewise(
+                    [
+                        Piece(0.8, 1.0),  # Low stress operation
+                        Piece(1.0, 1.0),  # Design operation
+                        Piece(1.0, 1.5),  # High stress operation
                     ]
                 ),
                 'NOx_rate': Piecewise(
                     [
-                        Piece(0.15, 0.12),  # NOx emissions: lb/MWh
-                        Piece(0.12, 0.18),  # Higher emissions at overload
+                        Piece(0.20, 0.15),  # NOx: 0.20-0.15 kg/MWh
+                        Piece(0.15, 0.12),  # NOx: 0.15-0.12 kg/MWh (optimal combustion)
+                        Piece(0.12, 0.25),  # NOx: 0.12-0.25 kg/MWh (overload penalties)
                     ]
                 ),
             },
         )
         ```
 
-        Tiered water pricing with consumption-dependent rates:
+        Progressive utility pricing structure:
 
         ```python
-        water_pricing = PiecewiseEffects(
+        electricity_billing = PiecewiseEffects(
             piecewise_origin=Piecewise(
                 [
-                    Piece(0, 10),  # Basic tier: 0-10 m³/month
-                    Piece(10, 50),  # Standard tier: 10-50 m³/month
-                    Piece(50, 200),  # High consumption: >50 m³/month
+                    Piece(0, 200),  # Basic usage: 0-200 kWh/month
+                    Piece(200, 800),  # Standard usage: 200-800 kWh/month
+                    Piece(800, 2000),  # High usage: 800-2000 kWh/month
                 ]
             ),
             piecewise_shares={
-                'cost_per_m3': Piecewise(
+                'energy_rate': Piecewise(
                     [
-                        Piece(1.20, 1.20),  # Flat rate for basic consumption
-                        Piece(2.50, 2.50),  # Higher rate for standard tier
-                        Piece(4.00, 4.00),  # Premium rate for high consumption
+                        Piece(0.12, 0.12),  # Basic rate: €0.12/kWh
+                        Piece(0.18, 0.18),  # Standard rate: €0.18/kWh
+                        Piece(0.28, 0.28),  # Premium rate: €0.28/kWh
                     ]
                 ),
-                'infrastructure_fee': Piecewise(
+                'carbon_tax': Piecewise(
                     [
-                        Piece(0.10, 0.10),  # Low infrastructure impact
-                        Piece(0.25, 0.25),  # Medium infrastructure impact
-                        Piece(0.50, 0.50),  # High infrastructure impact
+                        Piece(0.02, 0.02),  # Low carbon tax: €0.02/kWh
+                        Piece(0.03, 0.03),  # Medium carbon tax: €0.03/kWh
+                        Piece(0.05, 0.05),  # High carbon tax: €0.05/kWh
                     ]
                 ),
             },
         )
         ```
 
+        Data center with capacity-dependent efficiency:
+
+        ```python
+        datacenter_effects = PiecewiseEffects(
+            piecewise_origin=Piecewise(
+                [
+                    Piece(100, 500),  # Low utilization: 100-500 servers
+                    Piece(500, 2000),  # Medium utilization: 500-2000 servers
+                    Piece(2000, 5000),  # High utilization: 2000-5000 servers
+                ]
+            ),
+            piecewise_shares={
+                'power_per_server': Piecewise(
+                    [
+                        Piece(0.8, 0.6),  # 0.8-0.6 kW/server (inefficient cooling)
+                        Piece(0.6, 0.4),  # 0.6-0.4 kW/server (optimal efficiency)
+                        Piece(0.4, 0.5),  # 0.4-0.5 kW/server (thermal limits)
+                    ]
+                ),
+                'cooling_overhead': Piecewise(
+                    [
+                        Piece(0.4, 0.3),  # 40%-30% cooling overhead
+                        Piece(0.3, 0.2),  # 30%-20% cooling overhead
+                        Piece(0.2, 0.25),  # 20%-25% cooling overhead
+                    ]
+                ),
+            },
+        )
+        ```
+
+    Design Patterns:
+        **Economies of Scale**: Decreasing unit costs/impacts with increased scale
+        **Learning Curves**: Improving efficiency rates with experience/volume
+        **Threshold Effects**: Step changes in rates at specific operating levels
+        **Progressive Pricing**: Increasing rates for higher consumption levels
+        **Capacity Utilization**: Optimal efficiency at design points, penalties at extremes
+
     Common Use Cases:
-        - Manufacturing: Scale economies, learning curves, capacity utilization effects
-        - Energy systems: Load-dependent efficiency, emissions, and maintenance costs
-        - Transportation: Distance-dependent rates, fuel efficiency curves
-        - Utilities: Tiered pricing, demand charges, infrastructure costs
-        - Environmental modeling: Threshold effects, cumulative impacts
-        - Financial instruments: Progressive rates, risk premiums
+        - Manufacturing: Production scaling, learning effects, quality improvements
+        - Energy systems: Generator efficiency curves, renewable capacity factors
+        - Logistics: Transportation rates, warehouse utilization, delivery optimization
+        - Utilities: Progressive pricing, infrastructure cost allocation
+        - Financial services: Risk premiums, transaction fees, volume discounts
+        - Environmental modeling: Pollution intensity, resource consumption rates
 
     """
 
