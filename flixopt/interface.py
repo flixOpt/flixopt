@@ -75,52 +75,74 @@ class Piece(Interface):
 
 @register_class_for_io
 class Piecewise(Interface):
-    """Define a piecewise linear function composed of `Pieces`.
+    """Define a piecewise linear function by combining multiple `Piece`s together.
 
     This class creates complex non-linear relationships by combining multiple
-    Piece objects into a single piecewise linear function. Each piece represents
-    a different linear segment that applies over a specific domain range,
-    allowing accurate approximation of curved relationships through linear
-    interpolation between breakpoints.
+    Piece objects into a single piecewise linear function.
 
     Args:
-        pieces: List of Piece objects defining the linear segments of the function.
-            Pieces should typically be ordered by their domain (start values) and
-            may overlap at boundaries to ensure continuity. Gaps between pieces
-            can represent forbidden operating regions.
+        pieces: List of Piece objects defining the linear segments. The arrangement
+            and relationships between pieces determine the function behavior:
+            - Touching pieces (end of one = start of next) ensure continuity
+            - Gaps between pieces create forbidden regions
+            - Overlapping pieces provide an extra choice for the optimizer
+
+    Piece Relationship Patterns:
+        **Touching Pieces (Continuous Function)**:
+        Pieces that share boundary points create smooth, continuous functions
+        without gaps or overlaps.
+
+        **Gaps Between Pieces (Forbidden Regions)**:
+        Non-contiguous pieces with gaps represent forbidden regions.
+        For example minimum load requirements or safety zones.
+
+        **Overlapping Pieces (Flexible Operation)**:
+        Pieces with overlapping domains provide optimization flexibility,
+        allowing the solver to choose which segment to operate in.
 
     Examples:
-        Heat pump COP (Coefficient of Performance) curve:
+        Continuous efficiency curve (touching pieces):
 
         ```python
-        cop_curve = Piecewise(
+        efficiency_curve = Piecewise(
             [
-                Piece(start=0, end=25),  # Low ambient temp: poor COP
-                Piece(start=25, end=50),  # Moderate temp: better COP
-                Piece(start=50, end=75),  # High temp: best COP
+                Piece(start=0, end=25),  # Low load: 0-25 MW
+                Piece(start=25, end=75),  # Medium load: 25-75 MW (touches at 25)
+                Piece(start=75, end=100),  # High load: 75-100 MW (touches at 75)
             ]
         )
         ```
 
-        Tiered electricity pricing:
-
-        ```python
-        electricity_cost = Piecewise(
-            [
-                Piece(start=0, end=100),  # First 100 kWh: low rate
-                Piece(start=100, end=500),  # Next 400 kWh: medium rate
-                Piece(start=500, end=1000),  # Above 500 kWh: high rate
-            ]
-        )
-        ```
-
-        Equipment with minimum load and forbidden range:
+        Equipment with forbidden operating range (gap):
 
         ```python
         turbine_operation = Piecewise(
             [
-                Piece(start=0, end=0),  # Off state (point)
-                Piece(start=40, end=100),  # Operating range (gap 0-40)
+                Piece(start=0, end=0),  # Off state (point operation)
+                Piece(start=40, end=100),  # Operating range (gap: 0-40 forbidden)
+            ]
+        )
+        ```
+
+        Flexible operation with overlapping options:
+
+        ```python
+        flexible_operation = Piecewise(
+            [
+                Piece(start=20, end=60),  # Standard efficiency mode
+                Piece(start=50, end=90),  # High efficiency mode (overlap: 50-60)
+            ]
+        )
+        ```
+
+        Tiered pricing structure:
+
+        ```python
+        electricity_pricing = Piecewise(
+            [
+                Piece(start=0, end=100),  # Tier 1: 0-100 kWh
+                Piece(start=100, end=500),  # Tier 2: 100-500 kWh
+                Piece(start=500, end=1000),  # Tier 3: 500-1000 kWh
             ]
         )
         ```
@@ -130,25 +152,37 @@ class Piecewise(Interface):
         ```python
         seasonal_capacity = Piecewise(
             [
-                Piece(start=[10, 15, 20, 12], end=[80, 90, 85, 75]),  # By season
+                Piece(start=[10, 15, 20, 12], end=[80, 90, 85, 75]),  # Varies by time
             ]
         )
         ```
 
-    Note:
+    Container Operations:
         The Piecewise class supports standard Python container operations:
 
-        - Length: `len(piecewise)` returns number of pieces
-        - Indexing: `piecewise[i]` accesses the i-th piece
-        - Iteration: `for piece in piecewise:` loops over all pieces
+        ```python
+        piecewise = Piecewise([piece1, piece2, piece3])
+
+        len(piecewise)  # Returns number of pieces (3)
+        piecewise[0]  # Access first piece
+        for piece in piecewise:  # Iterate over all pieces
+            print(piece.start, piece.end)
+        ```
+
+    Validation Considerations:
+        - Pieces are typically ordered by their start values
+        - Check for unintended gaps that might create infeasible regions
+        - Consider whether overlaps provide desired flexibility or create ambiguity
+        - Ensure time-varying pieces have consistent dimensions
 
     Common Use Cases:
-        - Power plant heat rate curves: fuel consumption vs electrical output
-        - HVAC equipment: capacity and efficiency vs outdoor temperature
-        - Industrial processes: conversion efficiency vs throughput
-        - Financial modeling: progressive tax rates, bulk pricing discounts
-        - Transportation: fuel consumption vs speed, load capacity vs distance
-        - Storage systems: charge/discharge efficiency vs state of charge
+        - Power plants: Heat rate curves, efficiency vs load, emissions profiles
+        - HVAC systems: COP vs temperature, capacity vs conditions
+        - Industrial processes: Conversion rates vs throughput, quality vs speed
+        - Financial modeling: Tiered rates, progressive taxes, bulk discounts
+        - Transportation: Fuel efficiency curves, capacity vs speed
+        - Storage systems: Efficiency vs state of charge, power vs energy
+        - Renewable energy: Output vs weather conditions, curtailment strategies
 
     """
 
