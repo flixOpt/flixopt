@@ -232,7 +232,6 @@ class Flow(Element):
         - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
 
     Args:
-        **Core Configuration:**
         label: Unique identifier for the flow within its component.
             The full label combines component and flow labels.
         bus: Label of the bus this flow connects to. Must match a bus in the FlowSystem.
@@ -240,39 +239,29 @@ class Flow(Element):
             - Scalar value for fixed capacity
             - InvestParameters for investment-based sizing decisions
             - None to use large default value (CONFIG.modeling.BIG)
-
-        **Operational Constraints:**
         relative_minimum: Minimum flow rate as fraction of size.
             Example: 0.2 means flow cannot go below 20% of rated capacity.
         relative_maximum: Maximum flow rate as fraction of size (typically 1.0).
             Values >1.0 allow temporary overload operation.
-        fixed_relative_profile: Predetermined flow pattern as fraction of size.
-            When specified, flow rate becomes: size × fixed_relative_profile(t).
-            Used for: demand profiles, renewable generation, fixed schedules.
-
-        **Effects:**
-        effects_per_flow_hour: Operational costs and impacts per unit of flow-time.
-            Dictionary mapping effect names to unit costs (e.g., fuel costs, emissions).
-
-        **Utilization Limits:**
         load_factor_min: Minimum average utilization over the time horizon (0-1).
             Calculated as total flow hours divided by (size × total time).
         load_factor_max: Maximum average utilization over the time horizon (0-1).
             Useful for equipment duty cycle limits or maintenance scheduling.
-        flow_hours_total_min: Minimum cumulative flow-hours over time horizon.
-            Alternative to load_factor_min for contractual or operational requirements.
-        flow_hours_total_max: Maximum cumulative flow-hours over time horizon.
-            Alternative to load_factor_max for absolute energy/material limits.
-
-        **Advanced Features:**
+        effects_per_flow_hour: Operational costs and impacts per unit of flow-time.
+            Dictionary mapping effect names to unit costs (e.g., fuel costs, emissions).
         on_off_parameters: Binary operation constraints using OnOffParameters.
             Enables modeling of startup costs, minimum run times, cycling limits.
             Only relevant when relative_minimum > 0 or discrete operation is required.
+        flow_hours_total_max: Maximum cumulative flow-hours over time horizon.
+            Alternative to load_factor_max for absolute energy/material limits.
+        flow_hours_total_min: Minimum cumulative flow-hours over time horizon.
+            Alternative to load_factor_min for contractual or operational requirements.
+        fixed_relative_profile: Predetermined flow pattern as fraction of size.
+            When specified, flow rate becomes: size × fixed_relative_profile(t).
+            Used for: demand profiles, renewable generation, fixed schedules.
         previous_flow_rate: Initial flow state for startup/shutdown dynamics.
             Used with on_off_parameters to determine initial on/off status.
             If None, assumes flow was off in previous time period.
-
-        **Metadata:**
         meta_data: Additional information stored with results but not used in optimization.
             Must contain only Python native types (dict, list, str, int, float, bool).
 

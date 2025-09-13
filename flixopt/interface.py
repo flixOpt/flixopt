@@ -643,7 +643,6 @@ class InvestParameters(Interface):
         - **Divestment Effects**: Penalties for not investing (demolition, opportunity costs)
 
     Args:
-        **Investment Sizing:**
         fixed_size: When specified, creates a binary investment decision at exactly
             this size. When None, allows continuous sizing between minimum and maximum bounds.
         minimum_size: Lower bound for continuous sizing decisions. Defaults to a small
@@ -655,8 +654,6 @@ class InvestParameters(Interface):
         optional: Controls whether investment is required. When True (default),
             optimization can choose not to invest. When False, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
-
-        **Effects:**
         fix_effects: Fixed costs incurred once if investment is made, regardless
             of size. Dictionary mapping effect names to values
             (e.g., {'cost': 10000, 'CO2_construction': 500}).
@@ -872,7 +869,6 @@ class OnOffParameters(Interface):
         - **Process Equipment**: Compressors, pumps with operational constraints
 
     Args:
-        **Effects:**
         effects_per_switch_on: Costs or impacts incurred for each transition from
             off state (var_on=0) to on state (var_on=1). Represents startup costs,
             wear and tear, or other switching impacts. Dictionary mapping effect
@@ -880,16 +876,12 @@ class OnOffParameters(Interface):
         effects_per_running_hour: Ongoing costs or impacts while equipment operates
             in the on state. Includes fuel costs, labor, consumables, or emissions.
             Dictionary mapping effect names to hourly values (e.g., {'fuel_cost': 45}).
-
-        **Total Hour Constraints:**
         on_hours_total_min: Minimum total operating hours across the entire time horizon.
             Ensures equipment meets minimum utilization requirements or contractual
             obligations (e.g., power purchase agreements, maintenance schedules).
         on_hours_total_max: Maximum total operating hours across the entire time horizon.
             Limits equipment usage due to maintenance schedules, fuel availability,
             environmental permits, or equipment lifetime constraints.
-
-        **Consecutive Operation and shutdown:**
         consecutive_on_hours_min: Minimum continuous operating duration once started.
             Models minimum run times due to thermal constraints, process stability,
             or efficiency considerations. Can be time-varying to reflect different
@@ -903,8 +895,6 @@ class OnOffParameters(Interface):
         consecutive_off_hours_max: Maximum continuous shutdown duration before mandatory
             restart. Models equipment preservation, process stability, or contractual
             requirements for minimum activity levels.
-
-        **Cycling Limits:**
         switch_on_total_max: Maximum number of startup operations across the time horizon.
             Limits equipment cycling to reduce wear, maintenance costs, or comply
             with operational constraints (e.g., grid stability requirements).

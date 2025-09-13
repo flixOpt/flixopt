@@ -320,12 +320,8 @@ class SegmentedCalculation(Calculation):
         compared to full-horizon solutions due to limited foresight in each segment.
 
     Args:
-        **Basic Configuration:**
         name: Unique identifier for the calculation, used in result files and logging.
         flow_system: The FlowSystem to optimize, containing all components, flows, and buses.
-        folder: Directory for saving results. Defaults to current working directory + 'results'.
-
-        **Segmentation Parameters:**
         timesteps_per_segment: Number of timesteps in each segment (excluding overlap).
             Must be > 2 to avoid internal side effects. Larger values provide better
             optimization at the cost of memory and computation time.
@@ -334,6 +330,7 @@ class SegmentedCalculation(Calculation):
             improve solution quality but increase computational cost.
         nr_of_previous_values: Number of previous timestep values to transfer between
             segments for initialization. Typically 1 is sufficient.
+        folder: Directory for saving results. Defaults to current working directory + 'results'.
 
     Examples:
         Annual optimization with monthly segments:

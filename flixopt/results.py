@@ -171,12 +171,12 @@ class CalculationResults:
         Usually, this class is instantiated by the Calculation class, or by loading from file.
 
         Args:
-            solution: Optimization solution dataset containing all variable values and results.
-            flow_system: Flow system configuration dataset with complete system parameters.
-            name: Unique identifier for this calculation, used in file names and display.
-            summary: Calculation metadata including solver status, timing, and optimization statistics.
-            folder: Directory path for result storage and loading. Defaults to current working directory + 'results'.
-            model: Original linopy optimization model for advanced analysis. May be None for loaded results.
+            solution: Optimization solution dataset.
+            flow_system: Flow system configuration dataset.
+            name: Calculation name.
+            summary: Calculation metadata.
+            folder: Results storage folder.
+            model: Linopy optimization model.
         """
         self.solution = solution
         self.flow_system = flow_system
