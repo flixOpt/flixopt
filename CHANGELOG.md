@@ -7,16 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased - New Model dimensions]
 
-
 ### Changed
 * **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
 * **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
 * **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
 * **BREAKING**: Renamed class `Model` to `Submodel`
+* **BREAKING**: Renamed `mode` parameter in plotting methods to `style`
 * FlowSystems can not be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
 * Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
 * Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
 * Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
+* Improved Model Structure - Views and organisation is now divided into:
+  * Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
+  * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler acess and clearer code.
+*
 
 #### Internal:
 * **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
@@ -28,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Added
+* FlowSystem Restoring: The used FlowSystem will now get restired from the results (lazily). ALll Parameters can be safely acessed anytime after the solve.
+* FLowResults added as a new class to store the results of Flows. They can now be accessed directly.
+* Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
+* Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
+* Improved filter methods for Results
 
 #### Scenarios
 Scenarios are a new feature of flixopt. They can be used to model uncertainties in the flow system, such as:
@@ -99,7 +108,6 @@ This enables to model transformation pathways over multiple years.
 * The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
-
 
 
 ## [2.1.6] - 2025-09-02
