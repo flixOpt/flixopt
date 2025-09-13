@@ -6,8 +6,12 @@ on:
     tags:
       - 'v*.*.*'  # Trigger on semantic version tags
   pull_request:
-    branches: [main, dev, 'feature/*', 'hotfix/*', 'fix/*']
+    branches: [main, dev]
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'README*'
   workflow_dispatch:  # Allow manual triggering
 
 # Set permissions for security
