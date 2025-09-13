@@ -2,9 +2,8 @@ name: Python Package CI/CD
 
 on:
   push:
-    branches: [main, dev]  # Added develop branch
-    tags:
-      - 'v*.*.*'  # Trigger on semantic version tags
+    branches: [main]        # Only main branch
+    tags: ['v*.*.*']
   pull_request:
     branches: [main, dev]
     types: [opened, synchronize, reopened]
