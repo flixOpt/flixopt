@@ -49,6 +49,7 @@ dependencies = [
     # Visualization
     "matplotlib >= 3.5.2, < 4.0.0",
     "plotly >=6.3.0, <6.4.0",
+    "nbformat>=4.2.0",  # For compatibility with plotly
 ]
 
 [project.optional-dependencies]
