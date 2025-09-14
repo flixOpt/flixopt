@@ -36,6 +36,7 @@ dependencies = [
     # Core scientific computing
     "numpy >= 1.21.5, < 3",
     "pandas >= 2.0.0, < 3",
+    "xarray >= 2024.2.0, < 2025.9.0",
     # Optimization and data handling
     "linopy >=0.5.7, <0.5.8",
     "netcdf4 >= 1.6.1, < 2",
