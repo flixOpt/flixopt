@@ -37,28 +37,28 @@ dependencies = [
     "numpy >= 1.21.5, < 3",
     "pandas >= 2.0.0, < 3",
     # Optimization and data handling
-    "linopy >=0.5.7, <0.5.8",  # Update and test regularly
+    "linopy >=0.5.7, <0.5.8",
     "netcdf4 >= 1.6.1, < 2",
     # Utilities
     "PyYAML >= 6.0.0, < 7",
-    "rich >= 13.0.0",
-    "tomli >= 2.0.1; python_version < '3.11'", # Only needed with python 3.10 or earlier
+    "rich >= 13.0.0, < 15",
+    "tomli >= 2.0.1, < 3; python_version < '3.11'", # Only needed with python 3.10 or earlier
     # Default solver
-    "highspy >= 1.5.3",
+    "highspy >= 1.5.3, < 2",
 
     # Visualization
-    "matplotlib >= 3.5.2, < 4.0.0",
+    "matplotlib >= 3.5.2, < 4",
     "plotly >=5.15.0, <6.4.0",
 ]
 
 [project.optional-dependencies]
 # Interactive network visualization with enhanced color picker
 network-viz = [
-    "dash >= 3.0.0",
-    "dash-cytoscape >= 1.0.0",
-    "dash-daq >= 0.6.0",
-    "networkx >= 3.0.0",
-    "werkzeug >= 3.0.0",
+    "dash >= 3.0.0, < 4",
+    "dash-cytoscape >= 1.0.0, < 2",
+    "dash-daq >= 0.6.0, < 1",
+    "networkx >= 3.0.0, < 4",
+    "werkzeug >= 3.0.0, < 4",
 ]
 
 # Full feature set (everything except dev tools)
@@ -66,43 +66,43 @@ full = [
     "pyvis ==0.3.2",  # Visualizing FlowSystem Network
     "tsam >= 2.3.1, < 3.0.0",   # Time series aggregation
     "scipy >= 1.15.1, < 2.0.0", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
-    "gurobipy >= 10.0.0",
-    "dash >= 3.0.0",  # Visualizing FlowSystem Network as app
-    "dash-cytoscape >= 1.0.0",  # Visualizing FlowSystem Network as app
-    "dash-daq >= 0.6.0",  # Visualizing FlowSystem Network as app
-    "networkx >= 3.0.0",  # Visualizing FlowSystem Network as app
-    "werkzeug >= 3.0.0",  # Visualizing FlowSystem Network as app
+    "gurobipy >= 10.0.0, < 13",
+    "dash >= 3.0.0, < 4.0.0",  # Visualizing FlowSystem Network as app
+    "dash-cytoscape >= 1.0.0, < 2.0.0",  # Visualizing FlowSystem Network as app
+    "dash-daq >= 0.6.0, < 1.0.0",  # Visualizing FlowSystem Network as app
+    "networkx >= 3.0.0, < 4.0.0",  # Visualizing FlowSystem Network as app
+    "werkzeug >= 3.0.0, < 4.0.0",  # Visualizing FlowSystem Network as app
 ]
 
 # Development tools and testing
 dev = [
-    "pytest >= 7.0.0",
-    "nbformat>=4.2.0",  # Related to failing CI with Plotly>6
-    "ruff >= 0.9.0",
-    "pre-commit >= 4.0.0",
+    "pytest >= 7.0.0, < 9",
+    "nbformat>=4.2.0, < 6",  # Related to failing CI with Plotly>6
+    "ruff >= 0.9.0, < 1",
+    "pre-commit >= 4.0.0, < 5",
     "pyvis ==0.3.2",  # Visualizing FlowSystem
     "tsam >= 2.3.1, < 3.0.0",   # Time series aggregation
     "scipy >= 1.15.1, < 2.0.0", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
-    "gurobipy >= 10.0.0",
-    "dash >= 3.0.0",
-    "dash-cytoscape >= 1.0.0",
-    "dash-daq >= 0.6.0",
-    "networkx >= 3.0.0",
-    "werkzeug >= 3.0.0",
+    "gurobipy >= 10.0.0, < 13",
+    "dash >= 3.0.0, < 4",
+    "dash-cytoscape >= 1.0.0, < 2",
+    "dash-daq >= 0.6.0, < 1",
+    "networkx >= 3.0.0, < 4",
+    "werkzeug >= 3.0.0, < 4",
 ]
 
 # Documentation building
 docs = [
     "mkdocs-material >= 9.0.0, < 10",
-    "mkdocstrings-python >= 1.0.0",
-    "mkdocs-table-reader-plugin >= 2.0.0",
-    "mkdocs-gen-files >= 0.4.0",
-    "mkdocs-include-markdown-plugin >= 6.0.0",
-    "mkdocs-literate-nav >= 0.6.0",
-    "markdown-include >= 0.8.0",
-    "pymdown-extensions >= 10.0.0",
-    "pygments >= 2.14.0",
-    "mike >= 2.0.0",
+    "mkdocstrings-python >= 1.0.0, < 2.0.0",
+    "mkdocs-table-reader-plugin >= 2.0.0, < 4.0.0",
+    "mkdocs-gen-files >= 0.4.0, < 1.0.0",
+    "mkdocs-include-markdown-plugin >= 6.0.0, < 8.0.0",
+    "mkdocs-literate-nav >= 0.6.0, < 1.0.0",
+    "markdown-include >= 0.8.0, < 1.0.0",
+    "pymdown-extensions >= 10.0.0, < 11.0.0",
+    "pygments >= 2.14.0, < 3.0.0",
+    "mike >= 2.0.0, < 3.0.0",
 ]
 
 [project.urls]
