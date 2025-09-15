@@ -36,9 +36,9 @@ dependencies = [
     # Core scientific computing
     "numpy >= 1.21.5, < 3",
     "pandas >= 2.0.0, < 3",
-    "xarray >= 2024.2.0, < 2025.9.0",
+    "xarray >= 2024.2.0, < 2026.0",  # CalVer: allow through next calendar year
     # Optimization and data handling
-    "linopy >=0.5.1, <0.5.8",
+    "linopy >= 0.5.1, < 0.6",  # Widened from patch pin to minor range
     "netcdf4 >= 1.6.1, < 2",
     # Utilities
     "PyYAML >= 6.0.0, < 7",
@@ -49,7 +49,7 @@ dependencies = [
 
     # Visualization
     "matplotlib >= 3.5.2, < 4",
-    "plotly >=5.15.0, <7",
+    "plotly >= 5.15.0, < 7",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +60,7 @@ network-viz = [
     "dash-daq >= 0.6.0, < 1",
     "networkx >= 3.0.0, < 4",
     "werkzeug >= 3.0.0, < 4",
+    "Flask >= 3.0.0, < 4",  # Explicit Flask cap to prevent transitive major bumps
 ]
 
 # Full feature set (everything except dev tools)
@@ -78,8 +79,8 @@ full = [
 # Development tools and testing
 dev = [
     "pytest >= 7.0.0, < 9",
-    "nbformat>=4.2.0, < 6",  # Related to failing CI with Plotly>6
-    "ruff >= 0.9.0, < 1",
+    "nbformat >= 4.2.0, < 6",  # Pinned due to CI compatibility issues; revisit quarterly
+    "ruff >= 0.9.0, < 2",  # Allow 1.x versions
     "pre-commit >= 4.0.0, < 5",
     "pyvis ==0.3.2",  # Visualizing FlowSystem
     "tsam >= 2.3.1, < 3",   # Time series aggregation
