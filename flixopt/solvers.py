@@ -59,7 +59,7 @@ class HighsSolver(_Solver):
     """
     HiGHS solver configuration.
 
-    Args:
+    Attributes:
         mip_gap (float): Solver's mip gap setting. The MIP gap describes the accepted (MILP) objective,
             and the lower bound, which is the theoretically optimal solution (LP)
         time_limit_seconds (int): Solver's time limit in seconds.
