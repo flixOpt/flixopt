@@ -52,11 +52,11 @@ _portland_colors = [
 ]
 
 # Check if the colormap already exists before registering it
-try:
-    registry = plt.colormaps  # Matplotlib >=3.7
+if hasattr(plt, 'colormaps'):  # Matplotlib >= 3.7
+    registry = plt.colormaps
     if 'portland' not in registry:
         registry.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
-except AttributeError:  # Matplotlib <3.7
+else:  # Matplotlib < 3.7
     if 'portland' not in [c for c in plt.colormaps()]:
         plt.register_cmap(name='portland', cmap=mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 

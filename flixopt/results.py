@@ -488,9 +488,6 @@ class _NodeResults(_ElementResults):
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine ('plotly' or 'matplotlib').
-
-        Returns:
-            plotly.graph_objects.Figure: Pie chart figure.
         """
         inputs = (
             sanitize_dataset(
