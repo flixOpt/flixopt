@@ -113,7 +113,7 @@ With:
 - $\mathcal{T}$ being the set of all timesteps
 - $s_{l \rightarrow \Phi}$ being the share of element $l$ to the penalty
 
-At the moment, penalties only occur in [Buses](#buses)
+At the moment, penalties only occur in [Buses](Bus.md)
 
 ## Objective
 

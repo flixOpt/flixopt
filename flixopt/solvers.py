@@ -57,12 +57,14 @@ class GurobiSolver(_Solver):
 
 class HighsSolver(_Solver):
     """
+    HiGHS solver configuration.
+
     Args:
         mip_gap (float): Solver's mip gap setting. The MIP gap describes the accepted (MILP) objective,
             and the lower bound, which is the theoretically optimal solution (LP)
         time_limit_seconds (int): Solver's time limit in seconds.
-        threads (int): Number of threads to use.
-        extra_options (str): Filename for saving the solver log.
+        extra_options (Dict[str, Any]): Additional solver options.
+        threads (Optional[int]): Number of threads to use. Defaults to None.
     """
 
     threads: Optional[int] = None

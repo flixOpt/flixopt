@@ -1,4 +1,4 @@
-[`LinearConverters`][flixopt.components.LinearConverter] define a ratio between incoming and outgoing [Flows](#flows).
+[`LinearConverters`][flixopt.components.LinearConverter] define a ratio between incoming and outgoing [Flows](Flow.md).
 
 $$ \label{eq:Linear-Transformer-Ratio}
     \sum_{f_{\text{in}} \in \mathcal F_{in}} \text a_{f_{\text{in}}}(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = \sum_{f_{\text{out}} \in \mathcal F_{out}}  \text b_{f_\text{out}}(\text{t}_i) \cdot p_{f_\text{out}}(\text{t}_i)
