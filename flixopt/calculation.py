@@ -127,7 +127,10 @@ class Calculation:
 
 class FullCalculation(Calculation):
     """
-    class for defined way of solving a flow_system optimization
+    FullCalculation solves the complete optimization problem using all time steps.
+
+    This is the most comprehensive calculation type that considers every time step
+    in the optimization, providing the most accurate but computationally intensive solution.
     """
 
     def do_modeling(self) -> SystemModel:
@@ -186,7 +189,25 @@ class FullCalculation(Calculation):
 
 class AggregatedCalculation(FullCalculation):
     """
-    class for defined way of solving a flow_system optimization
+    AggregatedCalculation reduces computational complexity by clustering time series into typical periods.
+
+    This calculation approach aggregates time series data using clustering techniques (tsam) to identify
+    representative time periods, significantly reducing computation time while maintaining solution accuracy.
+
+    Note:
+        The quality of the solution depends on the choice of aggregation parameters.
+        The optimal parameters depend on the specific problem and the characteristics of the time series data.
+        For more information, refer to the [tsam documentation](https://tsam.readthedocs.io/en/latest/).
+
+    Args:
+        name: Name of the calculation
+        flow_system: FlowSystem to be optimized
+        aggregation_parameters: Parameters for aggregation. See AggregationParameters class documentation
+        components_to_clusterize: List of Components to perform aggregation on. If None, all components are aggregated.
+            This equalizes variables in the components according to the typical periods computed in the aggregation
+        active_timesteps: DatetimeIndex of timesteps to use for calculation. If None, all timesteps are used
+        folder: Folder where results should be saved. If None, current working directory is used
+        aggregation: contains the aggregation model
     """
 
     def __init__(
@@ -198,21 +219,6 @@ class AggregatedCalculation(FullCalculation):
         active_timesteps: Optional[pd.DatetimeIndex] = None,
         folder: Optional[pathlib.Path] = None,
     ):
-        """
-        Class for Optimizing the `FlowSystem` including:
-            1. Aggregating TimeSeriesData via typical periods using tsam.
-            2. Equalizing variables of typical periods.
-        Args:
-            name: name of calculation
-            flow_system: flow_system which should be calculated
-            aggregation_parameters: Parameters for aggregation. See documentation of AggregationParameters class.
-            components_to_clusterize: List of Components to perform aggregation on. If None, then all components are aggregated.
-                This means, teh variables in the components are equalized to each other, according to the typical periods
-                computed in the DataAggregation
-            active_timesteps: pd.DatetimeIndex or None
-                list with indices, which should be used for calculation. If None, then all timesteps are used.
-            folder: folder where results should be saved. If None, then the current working directory is used.
-        """
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize
@@ -289,6 +295,114 @@ class AggregatedCalculation(FullCalculation):
 
 
 class SegmentedCalculation(Calculation):
+    """Solve large optimization problems by dividing time horizon into (overlapping) segments.
+
+    This class addresses memory and computational limitations of large-scale optimization
+    problems by decomposing the time horizon into smaller overlapping segments that are
+    solved sequentially. Each segment uses final values from the previous segment as
+    initial conditions, ensuring dynamic continuity across the solution.
+
+    Key Concepts:
+        **Temporal Decomposition**: Divides long time horizons into manageable segments
+        **Overlapping Windows**: Segments share timesteps to improve storage dynamics
+        **Value Transfer**: Final states of one segment become initial states of the next
+        **Sequential Solving**: Each segment solved independently but with coupling
+
+    Limitations and Constraints:
+        **Investment Parameters**: InvestParameters are not supported in segmented calculations
+        as investment decisions must be made for the entire time horizon, not per segment.
+
+        **Global Constraints**: Time-horizon-wide constraints (flow_hours_total_min/max,
+        load_factor_min/max) may produce suboptimal results as they cannot be enforced
+        globally across segments.
+
+        **Storage Dynamics**: While overlap helps, storage optimization may be suboptimal
+        compared to full-horizon solutions due to limited foresight in each segment.
+
+    Args:
+        name: Unique identifier for the calculation, used in result files and logging.
+        flow_system: The FlowSystem to optimize, containing all components, flows, and buses.
+        timesteps_per_segment: Number of timesteps in each segment (excluding overlap).
+            Must be > 2 to avoid internal side effects. Larger values provide better
+            optimization at the cost of memory and computation time.
+        overlap_timesteps: Number of additional timesteps added to each segment.
+            Improves storage optimization by providing lookahead. Higher values
+            improve solution quality but increase computational cost.
+        nr_of_previous_values: Number of previous timestep values to transfer between
+            segments for initialization. Typically 1 is sufficient.
+        folder: Directory for saving results. Defaults to current working directory + 'results'.
+
+    Examples:
+        Annual optimization with monthly segments:
+
+        ```python
+        # 8760 hours annual data with monthly segments (730 hours) and 48-hour overlap
+        segmented_calc = SegmentedCalculation(
+            name='annual_energy_system',
+            flow_system=energy_system,
+            timesteps_per_segment=730,  # ~1 month
+            overlap_timesteps=48,  # 2 days overlap
+            folder=Path('results/segmented'),
+        )
+        segmented_calc.do_modeling_and_solve(solver='gurobi')
+        ```
+
+        Weekly optimization with daily overlap:
+
+        ```python
+        # Weekly segments for detailed operational planning
+        weekly_calc = SegmentedCalculation(
+            name='weekly_operations',
+            flow_system=industrial_system,
+            timesteps_per_segment=168,  # 1 week (hourly data)
+            overlap_timesteps=24,  # 1 day overlap
+            nr_of_previous_values=1,
+        )
+        ```
+
+        Large-scale system with minimal overlap:
+
+        ```python
+        # Large system with minimal overlap for computational efficiency
+        large_calc = SegmentedCalculation(
+            name='large_scale_grid',
+            flow_system=grid_system,
+            timesteps_per_segment=100,  # Shorter segments
+            overlap_timesteps=5,  # Minimal overlap
+        )
+        ```
+
+    Design Considerations:
+        **Segment Size**: Balance between solution quality and computational efficiency.
+        Larger segments provide better optimization but require more memory and time.
+
+        **Overlap Duration**: More overlap improves storage dynamics and reduces
+        end-effects but increases computational cost. Typically 5-10% of segment length.
+
+        **Storage Systems**: Systems with large storage components benefit from longer
+        overlaps to capture charge/discharge cycles effectively.
+
+        **Investment Decisions**: Use FullCalculation for problems requiring investment
+        optimization, as SegmentedCalculation cannot handle investment parameters.
+
+    Common Use Cases:
+        - **Annual Planning**: Long-term planning with seasonal variations
+        - **Large Networks**: Spatially or temporally large energy systems
+        - **Memory-Limited Systems**: When full optimization exceeds available memory
+        - **Operational Planning**: Detailed short-term optimization with limited foresight
+        - **Sensitivity Analysis**: Quick approximate solutions for parameter studies
+
+    Performance Tips:
+        - Start with FullCalculation and use this class if memory issues occur
+        - Use longer overlaps for systems with significant storage
+        - Monitor solution quality at segment boundaries for discontinuities
+
+    Warning:
+        The evaluation of the solution is a bit more complex than FullCalculation or AggregatedCalculation
+        due to the overlapping individual solutions.
+
+    """
+
     def __init__(
         self,
         name: str,
@@ -298,25 +412,6 @@ class SegmentedCalculation(Calculation):
         nr_of_previous_values: int = 1,
         folder: Optional[pathlib.Path] = None,
     ):
-        """
-        Dividing and Modeling the problem in (overlapping) segments.
-        The final values of each Segment are recognized by the following segment, effectively coupling
-        charge_states and flow_rates between segments.
-        Because of this intersection, both modeling and solving is done in one step
-
-        Take care:
-        Parameters like InvestParameters, sum_of_flow_hours and other restrictions over the total time_series
-        don't really work in this Calculation. Lower bounds to such SUMS can lead to weird results.
-        This is NOT yet explicitly checked for...
-
-        Args:
-            name: name of calculation
-            flow_system: flow_system which should be calculated
-            timesteps_per_segment: The number of time_steps per individual segment (without the overlap)
-            overlap_timesteps: The number of time_steps that are added to each individual model. Used for better
-                results of storages)
-            folder: folder where results should be saved. If None, then the current working directory is used.
-        """
         super().__init__(name, flow_system, folder=folder)
         self.timesteps_per_segment = timesteps_per_segment
         self.overlap_timesteps = overlap_timesteps
