@@ -258,7 +258,7 @@ class FlowSystem:
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
-                f'Install with: pip install flixopt[viz], flixopt[full] or pip install dash dash_cytoscape networkx werkzeug. '
+                f'Install with: pip install flixopt[network_viz], flixopt[full] or pip install dash dash_cytoscape networkx werkzeug. '
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
@@ -278,7 +278,7 @@ class FlowSystem:
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
-                f'Install with: pip install flixopt[viz]. '
+                f'Install with: pip install flixopt[network_viz]. '
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
