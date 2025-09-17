@@ -535,10 +535,33 @@ def shownetwork(graph: networkx.DiGraph):
 
         return sidebar_style, main_style
 
+    # Add this new callback to sync color pickers with color scheme
+    @app.callback(
+        [
+            Output('bus-color-picker', 'value'),
+            Output('source-color-picker', 'value'),
+            Output('sink-color-picker', 'value'),
+            Output('storage-color-picker', 'value'),
+            Output('converter-color-picker', 'value'),
+        ],
+        [Input('color-scheme-dropdown', 'value')],
+    )
+    def update_color_pickers(color_scheme):
+        """Update color pickers when color scheme changes"""
+        colors = VisualizationConfig.COLOR_PRESETS.get(color_scheme, VisualizationConfig.DEFAULT_COLORS)
+
+        return (
+            {'hex': colors['Bus']},
+            {'hex': colors['Source']},
+            {'hex': colors['Sink']},
+            {'hex': colors['Storage']},
+            {'hex': colors['Converter']},
+        )
+
+    # Updated main visualization callback - simplified logic
     @app.callback(
         [Output('cytoscape', 'elements'), Output('cytoscape', 'stylesheet')],
         [
-            Input('color-scheme-dropdown', 'value'),
             Input('bus-color-picker', 'value'),
             Input('source-color-picker', 'value'),
             Input('sink-color-picker', 'value'),
@@ -547,12 +570,10 @@ def shownetwork(graph: networkx.DiGraph):
             Input('edge-color-picker', 'value'),
             Input('node-size-slider', 'value'),
             Input('font-size-slider', 'value'),
-            Input('reset-btn', 'n_clicks'),  # Add reset button as trigger
         ],
         [State('elements-store', 'data')],
     )
     def update_visualization(
-        color_scheme,
         bus_color,
         source_color,
         sink_color,
@@ -561,37 +582,22 @@ def shownetwork(graph: networkx.DiGraph):
         edge_color,
         node_size,
         font_size,
-        reset_clicks,
         stored_elements,
     ):
+        """Update visualization based on current color picker values"""
         if not stored_elements:
             return no_update, no_update
 
-        ctx = callback_context
-        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
-
-        # Check if color scheme dropdown was changed or reset was clicked
-        use_preset = (
-            triggered_id == 'color-scheme-dropdown' or triggered_id == 'reset-btn' or not any(ctx.triggered)
-        )  # Initial load
-
-        # Determine colors to use
-        if use_preset:
-            # Use preset scheme colors
-            colors = VisualizationConfig.COLOR_PRESETS.get(color_scheme, VisualizationConfig.DEFAULT_COLORS)
-            edge_color_hex = 'gray'  # Default edge color for presets
-        else:
-            # Use custom colors from pickers
-            default_colors = VisualizationConfig.DEFAULT_COLORS
-            colors = {
-                'Bus': bus_color.get('hex') if bus_color else default_colors['Bus'],
-                'Source': source_color.get('hex') if source_color else default_colors['Source'],
-                'Sink': sink_color.get('hex') if sink_color else default_colors['Sink'],
-                'Storage': storage_color.get('hex') if storage_color else default_colors['Storage'],
-                'Converter': converter_color.get('hex') if converter_color else default_colors['Converter'],
-                'Other': default_colors['Other'],
-            }
-            edge_color_hex = edge_color.get('hex') if edge_color else 'gray'
+        # Use colors from pickers (which are now synced with scheme selection)
+        default_colors = VisualizationConfig.DEFAULT_COLORS
+        colors = {
+            'Bus': bus_color.get('hex') if bus_color else default_colors['Bus'],
+            'Source': source_color.get('hex') if source_color else default_colors['Source'],
+            'Sink': sink_color.get('hex') if sink_color else default_colors['Sink'],
+            'Storage': storage_color.get('hex') if storage_color else default_colors['Storage'],
+            'Converter': converter_color.get('hex') if converter_color else default_colors['Converter'],
+            'Other': default_colors['Other'],
+        }
 
         # Update element colors
         updated_elements = []
@@ -607,6 +613,7 @@ def shownetwork(graph: networkx.DiGraph):
                 updated_elements.append(element)
 
         # Create stylesheet
+        edge_color_hex = edge_color.get('hex') if edge_color else 'gray'
         stylesheet = [
             {
                 'selector': 'node',
@@ -693,23 +700,26 @@ def shownetwork(graph: networkx.DiGraph):
     def update_layout(selected_layout):
         return {'name': selected_layout}
 
-    # Reset callback
+    # Updated reset callback to include color pickers
     @app.callback(
         [
             Output('color-scheme-dropdown', 'value'),
             Output('node-size-slider', 'value'),
             Output('font-size-slider', 'value'),
             Output('layout-dropdown', 'value'),
+            Output('edge-color-picker', 'value'),
         ],
         [Input('reset-btn', 'n_clicks')],
     )
     def reset_controls(n_clicks):
+        """Reset all controls to defaults"""
         if n_clicks and n_clicks > 0:
             return (
-                'Default',  # color scheme - this will trigger the main callback
+                'Default',  # color scheme (will trigger color picker updates)
                 90,  # node size
                 10,  # font size
                 'klay',  # layout
+                {'hex': '#808080'},  # edge color
             )
         return no_update
 
