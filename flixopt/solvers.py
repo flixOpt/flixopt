@@ -15,10 +15,9 @@ class _Solver:
     Abstract base class for solvers.
 
     Args:
-        mip_gap: Solver's mip gap setting. The MIP gap describes the accepted (MILP) objective,
-            and the lower bound, which is the theoretically optimal solution (LP)
-        time_limit_seconds: Solver's time limit in seconds.
-        extra_options: Additional solver options.
+        mip_gap: Acceptable relative optimality gap in [0.0, 1.0].
+        time_limit_seconds: Time limit in seconds.
+        extra_options: Additional solver options merged into `options`.
     """
 
     name: ClassVar[str]
@@ -39,11 +38,12 @@ class _Solver:
 
 class GurobiSolver(_Solver):
     """
+    Gurobi solver configuration.
+
     Args:
-        mip_gap: Solver's mip gap setting. The MIP gap describes the accepted (MILP) objective,
-            and the lower bound, which is the theoretically optimal solution (LP)
-        time_limit_seconds: Solver's time limit in seconds.
-        extra_options: Additional solver options.
+        mip_gap: Acceptable relative optimality gap in [0.0, 1.0]; mapped to Gurobi `MIPGap`.
+        time_limit_seconds: Time limit in seconds; mapped to Gurobi `TimeLimit`.
+        extra_options: Additional solver options merged into `options`.
     """
 
     name: ClassVar[str] = 'gurobi'
@@ -61,11 +61,10 @@ class HighsSolver(_Solver):
     HiGHS solver configuration.
 
     Attributes:
-        mip_gap: Solver's mip gap setting. The MIP gap describes the accepted (MILP) objective,
-            and the lower bound, which is the theoretically optimal solution (LP)
-        time_limit_seconds: Solver's time limit in seconds.
-        extra_options: Additional solver options.
-        threads (Optional[int]): Number of threads to use. Defaults to None.
+        mip_gap: Acceptable relative optimality gap in [0.0, 1.0]; mapped to HiGHS `mip_rel_gap`.
+        time_limit_seconds: Time limit in seconds; mapped to HiGHS `time_limit`.
+        extra_options: Additional solver options merged into `options`.
+        threads (Optional[int]): Number of threads to use. If None, HiGHS chooses.
     """
 
     threads: Optional[int] = None
