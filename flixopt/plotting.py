@@ -230,6 +230,7 @@ def with_plotly(
             - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         ylabel: The label for the y-axis.
+        xlabel: The label for the x-axis.
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
 
     Returns:
@@ -455,6 +456,9 @@ def heat_map_matplotlib(
         data: A DataFrame containing the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
             The values in the DataFrame will be represented as colors in the heatmap.
         color_map: The colormap to use for the heatmap. Default is 'viridis'. Matplotlib supports various colormaps like 'plasma', 'inferno', 'cividis', etc.
+        title: The title of the plot.
+        xlabel: The label for the x-axis.
+        ylabel: The label for the y-axis.
         figsize: The size of the figure to create. Default is (12, 6), which results in a width of 12 inches and a height of 6 inches.
 
     Returns:
@@ -617,7 +621,7 @@ def heat_map_data_from_df(
     """
     Reshapes a DataFrame with a DateTime index into a 2D array for heatmap plotting,
     based on a specified sample rate.
-    If a non-valid combination of periods and steps per period is used, falls back to numerical indices
+    Only specific combinations of `periods` and `steps_per_period` are supported; invalid combinations raise an assertion.
 
     Args:
         df: A DataFrame with a DateTime index containing the data to reshape.
@@ -632,7 +636,7 @@ def heat_map_data_from_df(
         and columns representing each period.
     """
     assert pd.api.types.is_datetime64_any_dtype(df.index), (
-        'The index of the Dataframe must be datetime to transfrom it properly for a heatmap plot'
+        'The index of the DataFrame must be datetime to transform it properly for a heatmap plot'
     )
 
     # Define formats for different combinations of `periods` and `steps_per_period`
@@ -645,15 +649,15 @@ def heat_map_data_from_df(
         ('W', 'D'): ('%Y-w%W', '%w_%A'),  # week and day of week (with prefix for proper sorting)
         ('W', 'h'): ('%Y-w%W', '%w_%A %H:00'),
         ('D', 'h'): ('%Y-%m-%d', '%H:00'),  # Day and hour
-        ('D', '15min'): ('%Y-%m-%d', '%H:%MM'),  # Day and hour
+        ('D', '15min'): ('%Y-%m-%d', '%H:%M'),  # Day and minute
         ('h', '15min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
         ('h', 'min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
     }
 
-    minimum_time_diff_in_min = df.index.to_series().diff().min().total_seconds() / 60  # Smallest time_diff in minutes
+    diffs = df.index.to_series().diff().dropna()
+    minimum_time_diff_in_min = diffs.min().total_seconds() / 60 if not diffs.empty else float('inf')
     time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
     if time_intervals[steps_per_period] > minimum_time_diff_in_min:
-        time_intervals[steps_per_period]
         logger.warning(
             f'To compute the heatmap, the data was aggregated from {minimum_time_diff_in_min:.2f} min to '
             f'{time_intervals[steps_per_period]:.2f} min. Mean values are displayed.'
@@ -675,7 +679,7 @@ def heat_map_data_from_df(
 
     resampled_data['period'] = resampled_data.index.strftime(period_format)
     resampled_data['step'] = resampled_data.index.strftime(step_format)
-    if '%w_%A' in step_format:  # SHift index of strings to ensure proper sorting
+    if '%w_%A' in step_format:  # Shift index of strings to ensure proper sorting
         resampled_data['step'] = resampled_data['step'].apply(
             lambda x: x.replace('0_Sunday', '7_Sunday') if '0_Sunday' in x else x
         )
@@ -1326,7 +1330,7 @@ def export_figure(
         elif save and show:
             plotly.offline.plot(fig, filename=str(filename))
         elif save and not show:
-            fig.write_html(filename)
+            fig.write_html(str(filename))
         return figure_like
 
     elif isinstance(figure_like, tuple):
