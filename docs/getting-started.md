@@ -19,7 +19,7 @@ This provides the core functionality with the HiGHS solver included.
 For all features including interactive network visualizations and time series aggregation:
 
 ```bash
-pip install "flixopt[full]""
+pip install "flixopt[full]"
 ```
 
 ## Basic Workflow

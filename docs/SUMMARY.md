@@ -3,5 +3,5 @@
 - [User Guide](user-guide/index.md)
 - [Examples](examples/index.md)
 - [Contribute](contribute.md)
-- [API-Reference](api-reference/)
+- [API Reference](api-reference/index.md)
 - [Release Notes](changelog.md)

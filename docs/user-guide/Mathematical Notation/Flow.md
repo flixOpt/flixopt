@@ -21,6 +21,6 @@ $$
 $$
 
 
-This mathematical Formulation can be extended or changed when using OnOffParameters
-to define the On/Off state of the Flow, or InvestParameters,
-which changes the size of the Flow from a constant to an optimization variable.
+This mathematical formulation can be extended by using [OnOffParameters](#onoffparameters)
+to define the on/off state of the Flow, or by using [InvestParameters](#investparameters)
+to change the size of the Flow from a constant to an optimization variable.

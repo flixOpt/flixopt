@@ -1,15 +1,15 @@
 ## Effects
-[`Effects`][flixopt.effects.Effect] are used to allocate things like costs, emissions, or other "effects" occuring in the system.
+[`Effects`][flixopt.effects.Effect] are used to allocate things like costs, emissions, or other "effects" occurring in the system.
 These arise from so called **Shares**, which originate from **Elements** like [Flows](Flow.md).
 
 **Example:**
 
 [`Flows`][flixopt.elements.Flow] have an attribute called `effects_per_flow_hour`, defining the effect amount of per flow hour.
-Assiziated effects could be:
+Associated effects could be:
 - costs - given in [€/kWh]...
 - ...or emissions - given in [kg/kWh].
 -
-Effects are allocated seperatly for investments and operation.
+Effects are allocated separately for investments and operation.
 
 ### Shares to Effects
 
@@ -43,7 +43,7 @@ For example, the Effect "CO$_2$ emissions" (unit: kg)
 can cause an additional share to Effect "monetary costs" (unit: €).
 In this case, the factor $\text a_{x \rightarrow e}$ is the specific CO$_2$ price in €/kg. However, circular references have to be avoided.
 
-The overall sum of investment shares of an Effect $e$ is given by $\eqref{Effect_invest}$
+The overall sum of investment shares of an Effect $e$ is given by $\eqref{eq:Effect_invest}$
 
 $$ \label{eq:Effect_invest}
 E_{e, \text{inv}} =
@@ -68,8 +68,8 @@ With:
 
 - $\mathcal{L}$ being the set of all elements in the FlowSystem
 - $\mathcal{E}$ being the set of all effects in the FlowSystem
-- $\text r_{x \rightarrow e, \text{inv}}$ being the factor between the operation part of Effect $x$ and Effect $e$
-- $\text r_{x \rightarrow e, \text{op}}(\text{t}_i)$ being the factor between the invest part of Effect $x$ and Effect $e$
+- $\text r_{x \rightarrow e, \text{inv}}$ being the factor between the invest part of Effect $x$ and Effect $e$
+- $\text r_{x \rightarrow e, \text{op}}(\text{t}_i)$ being the factor between the operation part of Effect $x$ and Effect $e$
 
 - $\text{t}_i$ being the time step
 - $s_{l \rightarrow e, \text{inv}}$ being the share of element $l$ to the investment part of effect $e$
@@ -128,5 +128,5 @@ With:
 - $\Phi$ being the [Penalty](#penalty)
 
 This approach allows for a multi-criteria optimization using both...
- - ... the **Weigted Sum**Method, as the chosen **Objective Effect** can incorporate other Effects.
+ - ... the **Weighted Sum** method, as the chosen **Objective Effect** can incorporate other Effects.
  - ... the ($\epsilon$-constraint method) by constraining effects.
