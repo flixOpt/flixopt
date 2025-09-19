@@ -1,6 +1,6 @@
 - [Home](index.md)
 - [Getting Started](getting-started.md)
-- [User Guide](user-guide/index.md)
+- [User Guide](user-guide/)
 - [Examples](examples/index.md)
 - [Contribute](contribute.md)
 - [API Reference](api-reference/index.md)
