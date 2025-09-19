@@ -535,7 +535,7 @@ def shownetwork(graph: networkx.DiGraph):
 
         return sidebar_style, main_style
 
-    # Add this new callback to sync color pickers with color scheme
+    # Combined callback to handle both color scheme changes and reset
     @app.callback(
         [
             Output('bus-color-picker', 'value'),
@@ -544,11 +544,24 @@ def shownetwork(graph: networkx.DiGraph):
             Output('storage-color-picker', 'value'),
             Output('converter-color-picker', 'value'),
         ],
-        [Input('color-scheme-dropdown', 'value')],
+        [Input('color-scheme-dropdown', 'value'), Input('reset-btn', 'n_clicks')],
     )
-    def update_color_pickers(color_scheme):
-        """Update color pickers when color scheme changes"""
-        colors = VisualizationConfig.COLOR_PRESETS.get(color_scheme, VisualizationConfig.DEFAULT_COLORS)
+    def update_color_pickers(color_scheme, reset_clicks):
+        """Update color pickers when color scheme changes or reset is clicked"""
+        ctx = callback_context
+
+        # Determine which input triggered the callback
+        if ctx.triggered:
+            trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            if trigger_id == 'reset-btn' and reset_clicks and reset_clicks > 0:
+                # Reset was clicked, use default colors
+                colors = VisualizationConfig.DEFAULT_COLORS
+            else:
+                # Color scheme changed
+                colors = VisualizationConfig.COLOR_PRESETS.get(color_scheme, VisualizationConfig.DEFAULT_COLORS)
+        else:
+            # Initial load
+            colors = VisualizationConfig.COLOR_PRESETS.get(color_scheme, VisualizationConfig.DEFAULT_COLORS)
 
         return (
             {'hex': colors['Bus']},
@@ -700,26 +713,26 @@ def shownetwork(graph: networkx.DiGraph):
     def update_layout(selected_layout):
         return {'name': selected_layout}
 
-    # Updated reset callback to include color pickers
+    # Reset callback for non-color-picker controls
     @app.callback(
         [
             Output('color-scheme-dropdown', 'value'),
+            Output('edge-color-picker', 'value'),
             Output('node-size-slider', 'value'),
             Output('font-size-slider', 'value'),
             Output('layout-dropdown', 'value'),
-            Output('edge-color-picker', 'value'),
         ],
         [Input('reset-btn', 'n_clicks')],
     )
     def reset_controls(n_clicks):
-        """Reset all controls to defaults"""
+        """Reset all controls to defaults (color pickers handled separately)"""
         if n_clicks and n_clicks > 0:
             return (
                 'Default',  # color scheme (will trigger color picker updates)
+                {'hex': '#808080'},  # edge color
                 90,  # node size
                 10,  # font size
                 'klay',  # layout
-                {'hex': '#808080'},  # edge color
             )
         return no_update
 
