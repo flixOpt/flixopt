@@ -245,7 +245,7 @@ class FlowSystem:
 
     def start_network_app(self):
         """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
-        Requires optional dependencies: dash, dash-cytoscape, networkx, werkzeug.
+        Requires optional dependencies: dash, dash-cytoscape, dash-daq, networkx, flask, werkzeug.
         """
         from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR, flow_graph, shownetwork
 
@@ -258,7 +258,8 @@ class FlowSystem:
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
-                f'Install with: pip install flixopt[network_viz], flixopt[full] or pip install dash dash_cytoscape networkx werkzeug. '
+                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
+                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
@@ -278,7 +279,8 @@ class FlowSystem:
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
-                f'Install with: pip install flixopt[network_viz]. '
+                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
+                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 

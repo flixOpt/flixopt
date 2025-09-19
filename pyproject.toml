@@ -74,6 +74,7 @@ full = [
     "dash-daq >= 0.6.0, < 1",  # Visualizing FlowSystem Network as app
     "networkx >= 3.0.0, < 4",  # Visualizing FlowSystem Network as app
     "werkzeug >= 3.0.0, < 4",  # Visualizing FlowSystem Network as app
+    "flask >= 3.0.0, < 4",  # Explicit Flask cap to prevent transitive major bumps
 ]
 
 # Development tools and testing
