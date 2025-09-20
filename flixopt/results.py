@@ -59,7 +59,7 @@ class CalculationResults:
     """
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str):
+    def from_file(cls, folder: Union[str, pathlib.Path], name: str) -> 'CalculationResults':
         """Create CalculationResults instance by loading from saved files.
 
         This method loads the calculation results from previously saved files,
@@ -100,7 +100,7 @@ class CalculationResults:
         )
 
     @classmethod
-    def from_calculation(cls, calculation: 'Calculation'):
+    def from_calculation(cls, calculation: 'Calculation') -> 'CalculationResults':
         """Create CalculationResults directly from a Calculation object.
 
         This method extracts the solution, flow system, and other relevant

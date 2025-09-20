@@ -19,7 +19,7 @@ This provides the core functionality with the HiGHS solver included.
 For all features including interactive network visualizations and time series aggregation:
 
 ```bash
-pip install "flixopt[full]""
+pip install "flixopt[full]"
 ```
 
 ## Basic Workflow
@@ -38,5 +38,5 @@ Working with FlixOpt follows a general pattern:
 Now that you've installed FlixOpt and understand the basic workflow, you can:
 
 - Learn about the [core concepts of FlixOpt](user-guide/index.md)
-- Explore some [examples](examples/)
+- Explore some [examples](examples/index.md)
 - Check the [API reference](api-reference/index.md) for detailed documentation

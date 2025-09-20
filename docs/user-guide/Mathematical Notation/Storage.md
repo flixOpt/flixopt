@@ -1,5 +1,5 @@
 # Storages
-**Storages** have one incoming and one outgoing **[Flow](#flows)** with a charging and discharging efficiency.
+**Storages** have one incoming and one outgoing **[Flow](Flow.md)** with a charging and discharging efficiency.
 A storage has a state of charge $c(\text{t}_i)$ which is limited by its `size` $\text C$ and relative bounds $\eqref{eq:Storage_Bounds}$.
 
 $$ \label{eq:Storage_Bounds}

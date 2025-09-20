@@ -1,4 +1,4 @@
-[`LinearConverters`][flixopt.components.LinearConverter] define a ratio between incoming and outgoing [Flows](#flows).
+[`LinearConverters`][flixopt.components.LinearConverter] define a ratio between incoming and outgoing [Flows](Flow.md).
 
 $$ \label{eq:Linear-Transformer-Ratio}
     \sum_{f_{\text{in}} \in \mathcal F_{in}} \text a_{f_{\text{in}}}(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = \sum_{f_{\text{out}} \in \mathcal F_{out}}  \text b_{f_\text{out}}(\text{t}_i) \cdot p_{f_\text{out}}(\text{t}_i)
@@ -16,6 +16,6 @@ $$ \label{eq:Linear-Transformer-Ratio-simple}
     \text a(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = p_{f_\text{out}}(\text{t}_i)
 $$
 
-where $\text a$ can be interpreted as the conversion efficiency of the **LinearTransformer**.
-#### Piecewise Concersion factors
+where $\text a$ can be interpreted as the conversion efficiency of the **LinearConverter**.
+#### Piecewise Conversion factors
 The conversion efficiency can be defined as a piecewise linear approximation. See [Piecewise](Piecewise.md) for more details.
