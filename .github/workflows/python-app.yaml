@@ -149,11 +149,58 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Extract release notes
+      - name: Check if pre-release
+        id: prerelease
+        run: |
+          if [[ "${{ github.ref }}" =~ (alpha|beta|rc) ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "✅ Detected pre-release"
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "✅ Detected stable release"
+          fi
+
+      - name: Create release notes
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          echo "Extracting release notes for version: $VERSION"
-          python scripts/extract_release_notes.py $VERSION > current_release_notes.md
+          echo "Creating release notes for version: $VERSION"
+
+          if [[ "${{ steps.prerelease.outputs.is_prerelease }}" == "true" ]]; then
+            echo "📝 Generating pre-release notes"
+            cat > current_release_notes.md << EOF
+          # Pre-release $VERSION
+
+          This is a pre-release version for testing and feedback.
+
+          ## Installation
+          \`\`\`bash
+          pip install flixopt==$VERSION --pre
+          \`\`\`
+
+          ## What's Changed
+          See the [unreleased section](https://github.com/flixOpt/flixopt/blob/main/CHANGELOG.md#unreleased) in the changelog for upcoming features and changes.
+
+          ## Feedback
+          Please report any issues or feedback on [GitHub Issues](https://github.com/flixOpt/flixopt/issues).
+          EOF
+          else
+            echo "📝 Extracting release notes from changelog"
+            if python scripts/extract_release_notes.py "$VERSION" > current_release_notes.md 2>/dev/null; then
+              echo "✅ Successfully extracted release notes"
+            else
+              echo "⚠️ No release notes found, using fallback"
+              cat > current_release_notes.md << EOF
+          # Release $VERSION
+
+          See the [full changelog](https://github.com/flixOpt/flixopt/blob/main/CHANGELOG.md) for details.
+          EOF
+            fi
+          fi
+
+          echo "Generated release notes:"
+          echo "========================"
+          cat current_release_notes.md
+          echo "========================"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

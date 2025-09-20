@@ -22,6 +22,7 @@ from .commons import (
     Piecewise,
     PiecewiseConversion,
     PiecewiseEffects,
+    PiecewiseEffectsPerFlowHour,
     SegmentedCalculation,
     Sink,
     Source,
