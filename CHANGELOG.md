@@ -6,9 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- This text won't be rendered
-Take Care: The CI will automatically append a "Whats CHanged" section to the changelog.
-This contains all COmmits, PR's and Contributers.
+Take Care: The CI will automatically append a "Whats Changed" section to the changelog.
+This contains all Commits, PR's and Contributers.
 Therefore, the Changelog should focus on the user-facing changes.
+Please remove all not relevant sections before releasing.
 
 ## [Unreleased] - ????-??-??
 
@@ -25,6 +26,21 @@ Therefore, the Changelog should focus on the user-facing changes.
 ### Development
 
 Until here -->
+
+## [Unreleased] - ????-??-??
+
+### Changed
+
+### Added
+
+### Deprecated
+
+### Fixed
+- Fixed bug in the network_app that caused the color schemes to not work. Further, color pickers are now updated when selecting a color scheme.
+
+### Known issues
+
+### Development
 
 ## [2.1.7] - 2025-09-13
 
