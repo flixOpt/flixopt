@@ -772,6 +772,8 @@ def heat_map_data_from_df(
         ('h', 'min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
     }
 
+    if df.empty:
+        raise ValueError('DataFrame is empty.')
     diffs = df.index.to_series().diff().dropna()
     minimum_time_diff_in_min = diffs.min().total_seconds() / 60
     time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
