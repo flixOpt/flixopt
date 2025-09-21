@@ -1458,7 +1458,7 @@ def export_figure(
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
         if show:
-            plt.show()
+            fig.show()
         if save:
             fig.savefig(str(filename), dpi=300)
         return fig, ax
