@@ -285,9 +285,6 @@ class CalculationResults:
             controls: Enable/disable interactive controls.
             path: Save path for network HTML.
             show: Whether to display the plot.
-
-        Returns:
-            pyvis.network.Network: Interactive network object.
         """
         try:
             from .flow_system import FlowSystem
