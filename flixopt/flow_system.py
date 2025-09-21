@@ -7,7 +7,7 @@ import logging
 import pathlib
 import warnings
 from io import StringIO
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
 
 import numpy as np
 import pandas as pd
@@ -49,8 +49,8 @@ class FlowSystem:
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
-        hours_of_last_timestep: Optional[float] = None,
-        hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
+        hours_of_last_timestep: float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
     ):
         """
         Initialize a FlowSystem that manages components, buses, effects, and their time-series.
@@ -75,7 +75,7 @@ class FlowSystem:
         self.components: Dict[str, Component] = {}
         self.buses: Dict[str, Bus] = {}
         self.effects: EffectCollection = EffectCollection()
-        self.model: Optional[SystemModel] = None
+        self.model: SystemModel | None = None
 
         self._connected = False
 
@@ -130,7 +130,7 @@ class FlowSystem:
         return flow_system
 
     @classmethod
-    def from_netcdf(cls, path: Union[str, pathlib.Path]):
+    def from_netcdf(cls, path: str | pathlib.Path):
         """
         Load a FlowSystem from a netcdf file
         """
@@ -162,7 +162,7 @@ class FlowSystem:
                     f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
                 )
 
-    def to_json(self, path: Union[str, pathlib.Path]):
+    def to_json(self, path: str | pathlib.Path):
         """
         Saves the flow system to a json file.
         This not meant to be reloaded and recreate the object,
@@ -208,7 +208,7 @@ class FlowSystem:
         ds.attrs = self.as_dict(data_mode='name')
         return ds
 
-    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0, constants_in_dataset: bool = True):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, constants_in_dataset: bool = True):
         """
         Saves the FlowSystem to a netCDF file.
         Args:
@@ -222,15 +222,13 @@ class FlowSystem:
 
     def plot_network(
         self,
-        path: Union[bool, str, pathlib.Path] = 'flow_system.html',
-        controls: Union[
-            bool,
-            List[
-                Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-            ],
+        path: bool | str | pathlib.Path = 'flow_system.html',
+        controls: bool
+        | List[
+            Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
         ] = True,
         show: bool = False,
-    ) -> Optional['pyvis.network.Network']:
+    ) -> 'pyvis.network.Network' | None:
         """
         Visualizes the network structure of a FlowSystem using PyVis, saving it as an interactive HTML file.
 
@@ -245,7 +243,7 @@ class FlowSystem:
             show: Whether to open the visualization in the web browser.
 
         Returns:
-        - Optional[pyvis.network.Network]: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
+        - 'pyvis.network.Network' | None: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
 
         Examples:
             >>> flow_system.plot_network()
@@ -348,9 +346,9 @@ class FlowSystem:
     def create_time_series(
         self,
         name: str,
-        data: Optional[Union[NumericData, TimeSeriesData, TimeSeries]],
+        data: NumericData | TimeSeriesData | TimeSeries | None,
         needs_extra_timestep: bool = False,
-    ) -> Optional[TimeSeries]:
+    ) -> TimeSeries | None:
         """
         Tries to create a TimeSeries from NumericData Data and adds it to the time_series_collection
         If the data already is a TimeSeries, nothing happens and the TimeSeries gets reset and returned
@@ -373,10 +371,10 @@ class FlowSystem:
 
     def create_effect_time_series(
         self,
-        label_prefix: Optional[str],
+        label_prefix: str | None,
         effect_values: EffectValuesUser,
-        label_suffix: Optional[str] = None,
-    ) -> Optional[EffectTimeSeries]:
+        label_suffix: str | None = None,
+    ) -> EffectTimeSeries | None:
         """
         Transform EffectValues to EffectTimeSeries.
         Creates a TimeSeries for each key in the nested_values dictionary, using the value as the data.
@@ -385,7 +383,7 @@ class FlowSystem:
         followed by the label of the Effect in the nested_values and the label_suffix.
         If the key in the EffectValues is None, the alias 'Standard_Effect' is used
         """
-        effect_values: Optional[EffectValuesDict] = self.effects.create_effect_values_dict(effect_values)
+        effect_values: EffectValuesDict | None = self.effects.create_effect_values_dict(effect_values)
         if effect_values is None:
             return None
 

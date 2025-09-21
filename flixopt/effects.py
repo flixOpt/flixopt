@@ -7,7 +7,7 @@ which are then transformed into the internal data structure.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Literal
 
 import linopy
 import numpy as np
@@ -134,19 +134,19 @@ class Effect(Element):
         label: str,
         unit: str,
         description: str,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        specific_share_to_other_effects_operation: Optional['EffectValuesUser'] = None,
-        specific_share_to_other_effects_invest: Optional['EffectValuesUser'] = None,
-        minimum_operation: Optional[Scalar] = None,
-        maximum_operation: Optional[Scalar] = None,
-        minimum_invest: Optional[Scalar] = None,
-        maximum_invest: Optional[Scalar] = None,
-        minimum_operation_per_hour: Optional[NumericDataTS] = None,
-        maximum_operation_per_hour: Optional[NumericDataTS] = None,
-        minimum_total: Optional[Scalar] = None,
-        maximum_total: Optional[Scalar] = None,
+        specific_share_to_other_effects_operation: 'EffectValuesUser' | None = None,
+        specific_share_to_other_effects_invest: 'EffectValuesUser' | None = None,
+        minimum_operation: Scalar | None = None,
+        maximum_operation: Scalar | None = None,
+        minimum_invest: Scalar | None = None,
+        maximum_invest: Scalar | None = None,
+        minimum_operation_per_hour: NumericDataTS | None = None,
+        maximum_operation_per_hour: NumericDataTS | None = None,
+        minimum_total: Scalar | None = None,
+        maximum_total: Scalar | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
         self.label = label
@@ -194,7 +194,7 @@ class EffectModel(ElementModel):
     def __init__(self, model: SystemModel, element: Effect):
         super().__init__(model, element)
         self.element: Effect = element
-        self.total: Optional[linopy.Variable] = None
+        self.total: linopy.Variable | None = None
         self.invest: ShareAllocationModel = self.add(
             ShareAllocationModel(
                 self._model,
@@ -250,10 +250,10 @@ class EffectModel(ElementModel):
 EffectValuesExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
 EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
 EffectValuesDict = Dict[str, NumericDataTS]  # How effect values are stored
-EffectValuesUser = Union[NumericDataTS, Dict[str, NumericDataTS]]  # User-specified Shares to Effects
+EffectValuesUser = NumericDataTS | Dict[str, NumericDataTS]  # User-specified Shares to Effects
 """ This datatype is used to define the share to an effect by a certain attribute. """
 
-EffectValuesUserScalar = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
+EffectValuesUserScalar = Scalar | Dict[str, Scalar]  # User-specified Shares to Effects
 """ This datatype is used to define the share to an effect by a certain attribute. Only scalars are allowed. """
 
 
@@ -264,10 +264,10 @@ class EffectCollection:
 
     def __init__(self, *effects: List[Effect]):
         self._effects = {}
-        self._standard_effect: Optional[Effect] = None
-        self._objective_effect: Optional[Effect] = None
+        self._standard_effect: Effect | None = None
+        self._objective_effect: Effect | None = None
 
-        self.model: Optional[EffectCollectionModel] = None
+        self.model: EffectCollectionModel | None = None
         self.add_effects(*effects)
 
     def create_model(self, model: SystemModel) -> 'EffectCollectionModel':
@@ -286,7 +286,7 @@ class EffectCollection:
             self._effects[effect.label] = effect
             logger.info(f'Registered new Effect: {effect.label}')
 
-    def create_effect_values_dict(self, effect_values_user: EffectValuesUser) -> Optional[EffectValuesDict]:
+    def create_effect_values_dict(self, effect_values_user: EffectValuesUser) -> EffectValuesDict | None:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
@@ -302,7 +302,7 @@ class EffectCollection:
             A dictionary with None or Effect as the key, or None if input is None.
         """
 
-        def get_effect_label(eff: Union[Effect, str]) -> str:
+        def get_effect_label(eff: Effect | str) -> str:
             """Temporary function to get the label of an effect and warn for deprecation"""
             if isinstance(eff, Effect):
                 warnings.warn(
@@ -344,7 +344,7 @@ class EffectCollection:
                     f'Error: circular invest-shares \n{error_str(target_effect.label, target_effect.label)}'
                 )
 
-    def __getitem__(self, effect: Union[str, Effect]) -> 'Effect':
+    def __getitem__(self, effect: str | Effect) -> 'Effect':
         """
         Get an effect by label, or return the standard effect if None is passed
 
@@ -370,7 +370,7 @@ class EffectCollection:
     def __len__(self) -> int:
         return len(self._effects)
 
-    def __contains__(self, item: Union[str, 'Effect']) -> bool:
+    def __contains__(self, item: str | 'Effect') -> bool:
         """Check if the effect exists. Checks for label or object"""
         if isinstance(item, str):
             return item in self.effects  # Check if the label exists
@@ -415,7 +415,7 @@ class EffectCollectionModel(Model):
     def __init__(self, model: SystemModel, effects: EffectCollection):
         super().__init__(model, label_of_element='Effects')
         self.effects = effects
-        self.penalty: Optional[ShareAllocationModel] = None
+        self.penalty: ShareAllocationModel | None = None
 
     def add_share_to_effects(
         self,

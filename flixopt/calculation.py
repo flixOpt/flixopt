@@ -12,7 +12,7 @@ import logging
 import math
 import pathlib
 import timeit
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -43,8 +43,8 @@ class Calculation:
         self,
         name: str,
         flow_system: FlowSystem,
-        active_timesteps: Optional[pd.DatetimeIndex] = None,
-        folder: Optional[pathlib.Path] = None,
+        active_timesteps: pd.DatetimeIndex | None = None,
+        folder: pathlib.Path | None = None,
     ):
         """
         Args:
@@ -55,19 +55,19 @@ class Calculation:
         """
         self.name = name
         self.flow_system = flow_system
-        self.model: Optional[SystemModel] = None
+        self.model: SystemModel | None = None
         self.active_timesteps = active_timesteps
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
-        self.results: Optional[CalculationResults] = None
+        self.results: CalculationResults | None = None
 
         if self.folder.exists() and not self.folder.is_dir():
             raise NotADirectoryError(f'Path {self.folder} exists and is not a directory.')
         self.folder.mkdir(parents=False, exist_ok=True)
 
     @property
-    def main_results(self) -> Dict[str, Union[Scalar, Dict]]:
+    def main_results(self) -> Dict[str, Scalar | Dict]:
         from flixopt.features import InvestmentModel
 
         return {
@@ -143,7 +143,7 @@ class FullCalculation(Calculation):
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self.model
 
-    def solve(self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = True):
+    def solve(self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = True):
         t_start = timeit.default_timer()
 
         self.model.solve(
@@ -215,9 +215,9 @@ class AggregatedCalculation(FullCalculation):
         name: str,
         flow_system: FlowSystem,
         aggregation_parameters: AggregationParameters,
-        components_to_clusterize: Optional[List[Component]] = None,
-        active_timesteps: Optional[pd.DatetimeIndex] = None,
-        folder: Optional[pathlib.Path] = None,
+        components_to_clusterize: List[Component] | None = None,
+        active_timesteps: pd.DatetimeIndex | None = None,
+        folder: pathlib.Path | None = None,
     ):
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
@@ -410,7 +410,7 @@ class SegmentedCalculation(Calculation):
         timesteps_per_segment: int,
         overlap_timesteps: int,
         nr_of_previous_values: int = 1,
-        folder: Optional[pathlib.Path] = None,
+        folder: pathlib.Path | None = None,
     ):
         super().__init__(name, flow_system, folder=folder)
         self.timesteps_per_segment = timesteps_per_segment
@@ -444,7 +444,7 @@ class SegmentedCalculation(Calculation):
         self._transfered_start_values: List[Dict[str, Any]] = []
 
     def do_modeling_and_solve(
-        self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = False
+        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = False
     ):
         logger.info(f'{"":#^80}')
         logger.info(f'{" Segmented Solving ":#^80}')

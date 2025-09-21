@@ -4,7 +4,7 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List
 
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, Scalar
@@ -814,14 +814,14 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: Optional[Union[int, float]] = None,
-        minimum_size: Optional[Union[int, float]] = None,
-        maximum_size: Optional[Union[int, float]] = None,
+        fixed_size: int | float | None = None,
+        minimum_size: int | float | None = None,
+        maximum_size: int | float | None = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: Optional['EffectValuesUserScalar'] = None,
-        specific_effects: Optional['EffectValuesUserScalar'] = None,  # costs per Flow-Unit/Storage-Size/...
-        piecewise_effects: Optional[PiecewiseEffects] = None,
-        divest_effects: Optional['EffectValuesUserScalar'] = None,
+        fix_effects: 'EffectValuesUserScalar' | None = None,
+        specific_effects: 'EffectValuesUserScalar' | None = None,  # costs per Flow-Unit/Storage-Size/...
+        piecewise_effects: PiecewiseEffects | None = None,
+        divest_effects: 'EffectValuesUserScalar' | None = None,
     ):
         self.fix_effects: EffectValuesUser = fix_effects or {}
         self.divest_effects: EffectValuesUser = divest_effects or {}
@@ -1026,15 +1026,15 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: Optional['EffectValuesUser'] = None,
-        effects_per_running_hour: Optional['EffectValuesUser'] = None,
-        on_hours_total_min: Optional[int] = None,
-        on_hours_total_max: Optional[int] = None,
-        consecutive_on_hours_min: Optional[NumericData] = None,
-        consecutive_on_hours_max: Optional[NumericData] = None,
-        consecutive_off_hours_min: Optional[NumericData] = None,
-        consecutive_off_hours_max: Optional[NumericData] = None,
-        switch_on_total_max: Optional[int] = None,
+        effects_per_switch_on: 'EffectValuesUser' | None = None,
+        effects_per_running_hour: 'EffectValuesUser' | None = None,
+        on_hours_total_min: int | None = None,
+        on_hours_total_max: int | None = None,
+        consecutive_on_hours_min: NumericData | None = None,
+        consecutive_on_hours_max: NumericData | None = None,
+        consecutive_off_hours_min: NumericData | None = None,
+        consecutive_off_hours_max: NumericData | None = None,
+        switch_on_total_max: int | None = None,
         force_switch_on: bool = False,
     ):
         self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}

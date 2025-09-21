@@ -4,7 +4,7 @@ Features extend the functionality of Elements.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple
 
 import linopy
 import numpy as np
@@ -27,15 +27,15 @@ class InvestmentModel(Model):
         label_of_element: str,
         parameters: InvestParameters,
         defining_variable: [linopy.Variable],
-        relative_bounds_of_defining_variable: Tuple[NumericData, NumericData],
-        label: Optional[str] = None,
-        on_variable: Optional[linopy.Variable] = None,
+        relative_bounds_of_defining_variable: tuple[NumericData, NumericData],
+        label: str | None = None,
+        on_variable: linopy.Variable | None = None,
     ):
         super().__init__(model, label_of_element, label)
-        self.size: Optional[Union[Scalar, linopy.Variable]] = None
-        self.is_invested: Optional[linopy.Variable] = None
+        self.size: Scalar | linopy.Variable | None = None
+        self.is_invested: linopy.Variable | None = None
 
-        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
+        self.piecewise_effects: PiecewiseEffectsModel | None = None
 
         self._on_variable = on_variable
         self._defining_variable = defining_variable
@@ -206,13 +206,13 @@ class StateModel(Model):
         model: SystemModel,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[NumericData, NumericData]],
-        previous_values: List[Optional[NumericData]] = None,
+        defining_bounds: List[tuple[NumericData, NumericData]],
+        previous_values: List[NumericData | None] | None = None,
         use_off: bool = True,
-        on_hours_total_min: Optional[NumericData] = 0,
-        on_hours_total_max: Optional[NumericData] = None,
-        effects_per_running_hour: Dict[str, NumericData] = None,
-        label: Optional[str] = None,
+        on_hours_total_min: NumericData | None = 0,
+        on_hours_total_max: NumericData | None = None,
+        effects_per_running_hour: Dict[str, NumericData] | None = None,
+        label: str | None = None,
     ):
         """
         Models binary state variables based on a continous variable.
@@ -240,7 +240,7 @@ class StateModel(Model):
         self._effects_per_running_hour = effects_per_running_hour or {}
 
         self.on = None
-        self.total_on_hours: Optional[linopy.Variable] = None
+        self.total_on_hours: linopy.Variable | None = None
         self.off = None
 
     def do_modeling(self):
@@ -369,8 +369,8 @@ class SwitchStateModel(Model):
         label_of_element: str,
         state_variable: linopy.Variable,
         previous_state=0,
-        switch_on_max: Optional[Scalar] = None,
-        label: Optional[str] = None,
+        switch_on_max: Scalar | None = None,
+        label: str | None = None,
     ):
         super().__init__(model, label_of_element, label)
         self._state_variable = state_variable
@@ -454,10 +454,10 @@ class ConsecutiveStateModel(Model):
         model: SystemModel,
         label_of_element: str,
         state_variable: linopy.Variable,
-        minimum_duration: Optional[NumericData] = None,
-        maximum_duration: Optional[NumericData] = None,
-        previous_states: Optional[NumericData] = None,
-        label: Optional[str] = None,
+        minimum_duration: NumericData | None = None,
+        maximum_duration: NumericData | None = None,
+        previous_states: NumericData | None = None,
+        label: str | None = None,
     ):
         """
         Model and constraint the consecutive duration of a state variable.
@@ -576,7 +576,7 @@ class ConsecutiveStateModel(Model):
 
     @staticmethod
     def compute_consecutive_hours_in_state(
-        binary_values: NumericData, hours_per_timestep: Union[int, float, np.ndarray]
+        binary_values: NumericData, hours_per_timestep: int | float | np.ndarray
     ) -> Scalar:
         """
         Computes the final consecutive duration in state 'on' (=1) in hours, from a binary array.
@@ -638,9 +638,9 @@ class OnOffModel(Model):
         on_off_parameters: OnOffParameters,
         label_of_element: str,
         defining_variables: List[linopy.Variable],
-        defining_bounds: List[Tuple[NumericData, NumericData]],
-        previous_values: List[Optional[NumericData]],
-        label: Optional[str] = None,
+        defining_bounds: List[tuple[NumericData, NumericData]],
+        previous_values: List[NumericData | None],
+        label: str | None = None,
     ):
         """
         Constructor for OnOffModel
@@ -786,9 +786,9 @@ class PieceModel(Model):
         as_time_series: bool = True,
     ):
         super().__init__(model, label_of_element, label)
-        self.inside_piece: Optional[linopy.Variable] = None
-        self.lambda0: Optional[linopy.Variable] = None
-        self.lambda1: Optional[linopy.Variable] = None
+        self.inside_piece: linopy.Variable | None = None
+        self.lambda0: linopy.Variable | None = None
+        self.lambda1: linopy.Variable | None = None
         self._as_time_series = as_time_series
 
     def do_modeling(self):
@@ -836,7 +836,7 @@ class PiecewiseModel(Model):
         model: SystemModel,
         label_of_element: str,
         piecewise_variables: Dict[str, Piecewise],
-        zero_point: Optional[Union[bool, linopy.Variable]],
+        zero_point: bool | linopy.Variable | None,
         as_time_series: bool,
         label: str = '',
     ):
@@ -859,7 +859,7 @@ class PiecewiseModel(Model):
         self._as_time_series = as_time_series
 
         self.pieces: List[PieceModel] = []
-        self.zero_point: Optional[linopy.Variable] = None
+        self.zero_point: linopy.Variable | None = None
 
     def do_modeling(self):
         for i in range(len(list(self._piecewise_variables.values())[0])):
@@ -922,26 +922,26 @@ class ShareAllocationModel(Model):
         self,
         model: SystemModel,
         shares_are_time_series: bool,
-        label_of_element: Optional[str] = None,
-        label: Optional[str] = None,
-        label_full: Optional[str] = None,
-        total_max: Optional[Scalar] = None,
-        total_min: Optional[Scalar] = None,
-        max_per_hour: Optional[NumericData] = None,
-        min_per_hour: Optional[NumericData] = None,
+        label_of_element: str | None = None,
+        label: str | None = None,
+        label_full: str | None = None,
+        total_max: Scalar | None = None,
+        total_min: Scalar | None = None,
+        max_per_hour: NumericData | None = None,
+        min_per_hour: NumericData | None = None,
     ):
         super().__init__(model, label_of_element=label_of_element, label=label, label_full=label_full)
         if not shares_are_time_series:  # If the condition is True
             assert max_per_hour is None and min_per_hour is None, (
                 'Both max_per_hour and min_per_hour cannot be used when shares_are_time_series is False'
             )
-        self.total_per_timestep: Optional[linopy.Variable] = None
-        self.total: Optional[linopy.Variable] = None
+        self.total_per_timestep: linopy.Variable | None = None
+        self.total: linopy.Variable | None = None
         self.shares: Dict[str, linopy.Variable] = {}
         self.share_constraints: Dict[str, linopy.Constraint] = {}
 
-        self._eq_total_per_timestep: Optional[linopy.Constraint] = None
-        self._eq_total: Optional[linopy.Constraint] = None
+        self._eq_total_per_timestep: linopy.Constraint | None = None
+        self._eq_total: linopy.Constraint | None = None
 
         # Parameters
         self._shares_are_time_series = shares_are_time_series
@@ -1028,9 +1028,9 @@ class PiecewiseEffectsModel(Model):
         self,
         model: SystemModel,
         label_of_element: str,
-        piecewise_origin: Tuple[str, Piecewise],
+        piecewise_origin: tuple[str, Piecewise],
         piecewise_shares: Dict[str, Piecewise],
-        zero_point: Optional[Union[bool, linopy.Variable]],
+        zero_point: bool | linopy.Variable | None,
         label: str = 'PiecewiseEffects',
     ):
         super().__init__(model, label_of_element, label)
@@ -1042,7 +1042,7 @@ class PiecewiseEffectsModel(Model):
         self._piecewise_shares = piecewise_shares
         self.shares: Dict[str, linopy.Variable] = {}
 
-        self.piecewise_model: Optional[PiecewiseModel] = None
+        self.piecewise_model: PiecewiseModel | None = None
 
     def do_modeling(self):
         self.shares = {

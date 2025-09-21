@@ -4,7 +4,7 @@ This module contains the basic components of the flixopt framework.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Set, Tuple
 
 import linopy
 import numpy as np
@@ -159,8 +159,8 @@ class LinearConverter(Component):
         outputs: List[Flow],
         on_off_parameters: OnOffParameters = None,
         conversion_factors: List[Dict[str, NumericDataTS]] = None,
-        piecewise_conversion: Optional[PiecewiseConversion] = None,
-        meta_data: Optional[Dict] = None,
+        piecewise_conversion: PiecewiseConversion | None = None,
+        meta_data: Dict | None = None,
     ):
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
@@ -366,17 +366,17 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: Union[Scalar, InvestParameters],
+        capacity_in_flow_hours: Scalar | InvestParameters,
         relative_minimum_charge_state: NumericData = 0,
         relative_maximum_charge_state: NumericData = 1,
-        initial_charge_state: Union[Scalar, Literal['lastValueOfSim']] = 0,
-        minimal_final_charge_state: Optional[Scalar] = None,
-        maximal_final_charge_state: Optional[Scalar] = None,
+        initial_charge_state: Scalar | Literal['lastValueOfSim'] = 0,
+        minimal_final_charge_state: Scalar | None = None,
+        maximal_final_charge_state: Scalar | None = None,
         eta_charge: NumericData = 1,
         eta_discharge: NumericData = 1,
         relative_loss_per_hour: NumericData = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
     ):
         # TODO: fixed_relative_chargeState implementieren
         super().__init__(
@@ -578,13 +578,13 @@ class Transmission(Component):
         label: str,
         in1: Flow,
         out1: Flow,
-        in2: Optional[Flow] = None,
-        out2: Optional[Flow] = None,
-        relative_losses: Optional[NumericDataTS] = None,
-        absolute_losses: Optional[NumericDataTS] = None,
+        in2: Flow | None = None,
+        out2: Flow | None = None,
+        relative_losses: NumericDataTS | None = None,
+        absolute_losses: NumericDataTS | None = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
     ):
         super().__init__(
             label,
@@ -642,7 +642,7 @@ class TransmissionModel(ComponentModel):
     def __init__(self, model: SystemModel, element: Transmission):
         super().__init__(model, element)
         self.element: Transmission = element
-        self.on_off: Optional[OnOffModel] = None
+        self.on_off: OnOffModel | None = None
 
     def do_modeling(self):
         """Initiates all FlowModels"""
@@ -700,8 +700,8 @@ class LinearConverterModel(ComponentModel):
     def __init__(self, model: SystemModel, element: LinearConverter):
         super().__init__(model, element)
         self.element: LinearConverter = element
-        self.on_off: Optional[OnOffModel] = None
-        self.piecewise_conversion: Optional[PiecewiseConversion] = None
+        self.on_off: OnOffModel | None = None
+        self.piecewise_conversion: PiecewiseConversion | None = None
 
     def do_modeling(self):
         super().do_modeling()
@@ -750,9 +750,9 @@ class StorageModel(ComponentModel):
     def __init__(self, model: SystemModel, element: Storage):
         super().__init__(model, element)
         self.element: Storage = element
-        self.charge_state: Optional[linopy.Variable] = None
-        self.netto_discharge: Optional[linopy.Variable] = None
-        self._investment: Optional[InvestmentModel] = None
+        self.charge_state: linopy.Variable | None = None
+        self.netto_discharge: linopy.Variable | None = None
+        self._investment: InvestmentModel | None = None
 
     def do_modeling(self):
         super().do_modeling()
@@ -855,7 +855,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def absolute_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+    def absolute_charge_state_bounds(self) -> tuple[NumericData, NumericData]:
         relative_lower_bound, relative_upper_bound = self.relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (
@@ -869,7 +869,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def relative_charge_state_bounds(self) -> Tuple[NumericData, NumericData]:
+    def relative_charge_state_bounds(self) -> tuple[NumericData, NumericData]:
         return (
             self.element.relative_minimum_charge_state.active_data,
             self.element.relative_maximum_charge_state.active_data,
@@ -968,7 +968,7 @@ class SourceAndSink(Component):
         inputs: List[Flow] = None,
         outputs: List[Flow] = None,
         prevent_simultaneous_flow_rates: bool = True,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
         **kwargs,
     ):
         source = kwargs.pop('source', None)
@@ -1116,7 +1116,7 @@ class Source(Component):
         self,
         label: str,
         outputs: List[Flow] = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
@@ -1230,7 +1230,7 @@ class Sink(Component):
         self,
         label: str,
         inputs: List[Flow] = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):

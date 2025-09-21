@@ -9,7 +9,7 @@ import logging
 import pathlib
 from datetime import datetime
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple
 
 import linopy
 import numpy as np
@@ -57,7 +57,7 @@ class SystemModel(linopy.Model):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
         self.time_series_collection = flow_system.time_series_collection
-        self.effects: Optional[EffectCollectionModel] = None
+        self.effects: EffectCollectionModel | None = None
 
     def do_modeling(self):
         self.effects = self.flow_system.effects.create_model(self)
@@ -150,7 +150,7 @@ class Interface:
             details[name] = copy_and_convert_datatypes(value, use_numpy, use_element_label)
         return details
 
-    def to_json(self, path: Union[str, pathlib.Path]):
+    def to_json(self, path: str | pathlib.Path):
         """
         Saves the element to a json file.
         This not meant to be reloaded and recreate the object, but rather used to document or compare the object.
@@ -200,7 +200,7 @@ class Interface:
         return {k: self._serialize_value(v) for k, v in d.items()}
 
     @classmethod
-    def _deserialize_dict(cls, data: Dict) -> Union[Dict, 'Interface']:
+    def _deserialize_dict(cls, data: Dict) -> Dict | 'Interface':
         if '__class__' in data:
             class_name = data.pop('__class__')
             try:
@@ -265,7 +265,7 @@ class Element(Interface):
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
-        self.model: Optional[ElementModel] = None
+        self.model: ElementModel | None = None
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization"""
@@ -303,7 +303,7 @@ class Element(Interface):
 class Model:
     """Stores Variables and Constraints."""
 
-    def __init__(self, model: SystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None):
+    def __init__(self, model: SystemModel, label_of_element: str, label: str = '', label_full: str | None = None):
         """
         Args:
             model: The SystemModel that is used to create the model.
@@ -329,8 +329,8 @@ class Model:
         raise NotImplementedError('Every Model needs a do_modeling() method')
 
     def add(
-        self, item: Union[linopy.Variable, linopy.Constraint, 'Model'], short_name: Optional[str] = None
-    ) -> Union[linopy.Variable, linopy.Constraint, 'Model']:
+        self, item: linopy.Variable | linopy.Constraint | 'Model', short_name: str | None = None
+    ) -> linopy.Variable | linopy.Constraint | 'Model':
         """
         Add a variable, constraint or sub-model to the model
 
@@ -356,7 +356,7 @@ class Model:
 
     def filter_variables(
         self,
-        filter_by: Optional[Literal['binary', 'continuous', 'integer']] = None,
+        filter_by: Literal['binary', 'continuous', 'integer'] | None = None,
         length: Literal['scalar', 'time'] = None,
     ):
         if filter_by is None:
@@ -577,7 +577,7 @@ def get_compact_representation(data: Any, array_threshold: int = 50, decimals: i
             )
             return value
 
-    def describe_numpy_arrays(arr: np.ndarray) -> Union[str, List]:
+    def describe_numpy_arrays(arr: np.ndarray) -> str | List:
         """Shortens NumPy arrays if they exceed the specified length."""
 
         def normalized_center_of_mass(array: Any) -> float:

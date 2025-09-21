@@ -3,7 +3,7 @@ This module contains several utility functions used throughout the flixopt frame
 """
 
 import logging
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 import xarray as xr
@@ -11,7 +11,7 @@ import xarray as xr
 logger = logging.getLogger('flixopt')
 
 
-def is_number(number_alias: Union[int, float, str]):
+def is_number(number_alias: int | float | str):
     """Returns True is string is a number."""
     try:
         float(number_alias)
@@ -32,7 +32,7 @@ def round_floats(obj, decimals=2):
 
 def convert_dataarray(
     data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray', 'structure']
-) -> Union[List, np.ndarray, xr.DataArray, str]:
+) -> List | np.ndarray | xr.DataArray | str:
     """
     Convert a DataArray to a different format.
 

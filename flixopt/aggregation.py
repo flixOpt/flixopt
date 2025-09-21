@@ -8,7 +8,7 @@ import logging
 import pathlib
 import timeit
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Set, Tuple
 
 import linopy
 import numpy as np
@@ -75,9 +75,9 @@ class Aggregation:
         self.time_series_for_high_peaks = time_series_for_high_peaks or []
         self.time_series_for_low_peaks = time_series_for_low_peaks or []
 
-        self.aggregated_data: Optional[pd.DataFrame] = None
+        self.aggregated_data: pd.DataFrame | None = None
         self.clustering_duration_seconds = None
-        self.tsam: Optional[tsam.TimeSeriesAggregation] = None
+        self.tsam: tsam.TimeSeriesAggregation | None = None
 
     def cluster(self) -> None:
         """
@@ -140,7 +140,7 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str = 'viridis', show: bool = True, save: Optional[pathlib.Path] = None) -> 'go.Figure':
+    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> 'go.Figure':
         from . import plotting
 
         df_org = self.original_data.copy().rename(
@@ -295,7 +295,7 @@ class AggregationModel(Model):
         aggregation_parameters: AggregationParameters,
         flow_system: FlowSystem,
         aggregation_data: Aggregation,
-        components_to_clusterize: Optional[List[Component]],
+        components_to_clusterize: List[Component] | None,
     ):
         """
         Modeling-Element for "index-equating"-equations

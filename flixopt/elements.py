@@ -4,7 +4,7 @@ This module contains the basic elements of the flixopt framework.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
 
 import linopy
 import numpy as np
@@ -72,11 +72,11 @@ class Component(Element):
     def __init__(
         self,
         label: str,
-        inputs: Optional[List['Flow']] = None,
-        outputs: Optional[List['Flow']] = None,
-        on_off_parameters: Optional[OnOffParameters] = None,
-        prevent_simultaneous_flows: Optional[List['Flow']] = None,
-        meta_data: Optional[Dict] = None,
+        inputs: List['Flow'] | None = None,
+        outputs: List['Flow'] | None = None,
+        on_off_parameters: OnOffParameters | None = None,
+        prevent_simultaneous_flows: List['Flow'] | None = None,
+        meta_data: Dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
         self.inputs: List['Flow'] = inputs or []
@@ -172,7 +172,7 @@ class Bus(Element):
     """
 
     def __init__(
-        self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataTS] = 1e5, meta_data: Optional[Dict] = None
+        self, label: str, excess_penalty_per_flow_hour: NumericDataTS | None = 1e5, meta_data: Dict | None = None
     ):
         super().__init__(label, meta_data=meta_data)
         self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
@@ -359,18 +359,18 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Union[Scalar, InvestParameters] = None,
-        fixed_relative_profile: Optional[NumericDataTS] = None,
+        size: Scalar | InvestParameters | None = None,
+        fixed_relative_profile: NumericDataTS | None = None,
         relative_minimum: NumericDataTS = 0,
         relative_maximum: NumericDataTS = 1,
-        effects_per_flow_hour: Optional[EffectValuesUser] = None,
-        on_off_parameters: Optional[OnOffParameters] = None,
-        flow_hours_total_max: Optional[Scalar] = None,
-        flow_hours_total_min: Optional[Scalar] = None,
-        load_factor_min: Optional[Scalar] = None,
-        load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[NumericData] = None,
-        meta_data: Optional[Dict] = None,
+        effects_per_flow_hour: EffectValuesUser | None = None,
+        on_off_parameters: OnOffParameters | None = None,
+        flow_hours_total_max: Scalar | None = None,
+        flow_hours_total_min: Scalar | None = None,
+        load_factor_min: Scalar | None = None,
+        load_factor_max: Scalar | None = None,
+        previous_flow_rate: NumericData | None = None,
+        meta_data: Dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
         self.size = size or CONFIG.modeling.BIG  # Default size
@@ -391,7 +391,7 @@ class Flow(Element):
         )
 
         self.component: str = 'UnknownComponent'
-        self.is_input_in_component: Optional[bool] = None
+        self.is_input_in_component: bool | None = None
         if isinstance(bus, Bus):
             self.bus = bus.label_full
             warnings.warn(
@@ -486,11 +486,11 @@ class FlowModel(ElementModel):
     def __init__(self, model: SystemModel, element: Flow):
         super().__init__(model, element)
         self.element: Flow = element
-        self.flow_rate: Optional[linopy.Variable] = None
-        self.total_flow_hours: Optional[linopy.Variable] = None
+        self.flow_rate: linopy.Variable | None = None
+        self.total_flow_hours: linopy.Variable | None = None
 
-        self.on_off: Optional[OnOffModel] = None
-        self._investment: Optional[InvestmentModel] = None
+        self.on_off: OnOffModel | None = None
+        self._investment: InvestmentModel | None = None
 
     def do_modeling(self):
         # eq relative_minimum(t) * size <= flow_rate(t) <= relative_maximum(t) * size
@@ -605,7 +605,7 @@ class FlowModel(ElementModel):
             )
 
     @property
-    def flow_rate_bounds_on(self) -> Tuple[NumericData, NumericData]:
+    def flow_rate_bounds_on(self) -> tuple[NumericData, NumericData]:
         """Returns absolute flow rate bounds. Important for OnOffModel"""
         relative_minimum, relative_maximum = self.flow_rate_lower_bound_relative, self.flow_rate_upper_bound_relative
         size = self.element.size
@@ -660,8 +660,8 @@ class BusModel(ElementModel):
     def __init__(self, model: SystemModel, element: Bus):
         super().__init__(model, element)
         self.element: Bus = element
-        self.excess_input: Optional[linopy.Variable] = None
-        self.excess_output: Optional[linopy.Variable] = None
+        self.excess_input: linopy.Variable | None = None
+        self.excess_output: linopy.Variable | None = None
 
     def do_modeling(self) -> None:
         # inputs == outputs
@@ -703,7 +703,7 @@ class ComponentModel(ElementModel):
     def __init__(self, model: SystemModel, element: Component):
         super().__init__(model, element)
         self.element: Component = element
-        self.on_off: Optional[OnOffModel] = None
+        self.on_off: OnOffModel | None = None
 
     def do_modeling(self):
         """Initiates all FlowModels"""

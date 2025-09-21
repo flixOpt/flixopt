@@ -4,7 +4,7 @@ import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Dict, Literal, Optional, Tuple, Union
+from typing import Dict, Literal, Tuple
 
 import linopy
 import xarray as xr
@@ -202,7 +202,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
 
 def save_dataset_to_netcdf(
     ds: xr.Dataset,
-    path: Union[str, pathlib.Path],
+    path: str | pathlib.Path,
     compression: int = 0,
 ) -> None:
     """
@@ -238,7 +238,7 @@ def save_dataset_to_netcdf(
     )
 
 
-def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
+def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     """
     Load a dataset from a netcdf file. Load the attrs from the 'attrs' attribute.
 
@@ -297,7 +297,7 @@ class CalculationResultsPaths:
                     f'Folder {self.folder} and its parent do not exist. Please create them first.'
                 ) from e
 
-    def update(self, new_name: Optional[str] = None, new_folder: Optional[pathlib.Path] = None) -> None:
+    def update(self, new_name: str | None = None, new_folder: pathlib.Path | None = None) -> None:
         """Update name and/or folder and refresh all paths."""
         if new_name is not None:
             self.name = new_name

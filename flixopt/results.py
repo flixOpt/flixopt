@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
 
 import linopy
 import matplotlib.pyplot as plt
@@ -106,7 +106,7 @@ class CalculationResults:
     """
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str) -> 'CalculationResults':
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> 'CalculationResults':
         """Load CalculationResults from saved files.
 
         Args:
@@ -164,8 +164,8 @@ class CalculationResults:
         flow_system: xr.Dataset,
         name: str,
         summary: Dict,
-        folder: Optional[pathlib.Path] = None,
-        model: Optional[linopy.Model] = None,
+        folder: pathlib.Path | None = None,
+        model: linopy.Model | None = None,
     ):
         """Initialize CalculationResults with optimization data.
         Usually, this class is instantiated by the Calculation class, or by loading from file.
@@ -197,7 +197,7 @@ class CalculationResults:
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
 
-    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
+    def __getitem__(self, key: str) -> 'ComponentResults' | 'BusResults' | 'EffectResults':
         if key in self.components:
             return self.components[key]
         if key in self.buses:
@@ -231,7 +231,7 @@ class CalculationResults:
         return self.model.constraints
 
     def filter_solution(
-        self, variable_dims: Optional[Literal['scalar', 'time']] = None, element: Optional[str] = None
+        self, variable_dims: Literal['scalar', 'time'] | None = None, element: str | None = None
     ) -> xr.Dataset:
         """Filter solution by variable dimension and/or element.
 
@@ -252,10 +252,10 @@ class CalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | Tuple[plt.Figure, plt.Axes]:
         return plot_heatmap(
             dataarray=self.solution[variable_name],
             name=variable_name,
@@ -270,15 +270,15 @@ class CalculationResults:
 
     def plot_network(
         self,
-        controls: Union[
-            bool,
-            List[
+        controls: (
+            bool
+            | List[
                 Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-            ],
-        ] = True,
-        path: Optional[pathlib.Path] = None,
+            ]
+        ) = True,
+        path: pathlib.Path | None = None,
         show: bool = False,
-    ) -> Optional['pyvis.network.Network']:
+    ) -> 'pyvis.network.Network' | None:
         """Plot interactive network visualization of the system.
 
         Args:
@@ -302,8 +302,8 @@ class CalculationResults:
 
     def to_file(
         self,
-        folder: Optional[Union[str, pathlib.Path]] = None,
-        name: Optional[str] = None,
+        folder: str | pathlib.Path | None = None,
+        name: str | None = None,
         compression: int = 5,
         document_model: bool = True,
         save_linopy_model: bool = False,
@@ -387,7 +387,7 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
 
-    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'time']] = None) -> xr.Dataset:
+    def filter_solution(self, variable_dims: Literal['scalar', 'time'] | None = None) -> xr.Dataset:
         """Filter element solution by dimension.
 
         Args:
@@ -426,11 +426,11 @@ class _NodeResults(_ElementResults):
 
     def plot_node_balance(
         self,
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | Tuple[plt.Figure, plt.Axes]:
         """Plot node balance flows.
 
         Args:
@@ -475,10 +475,10 @@ class _NodeResults(_ElementResults):
         lower_percentage_group: float = 5,
         colors: plotting.ColorType = 'viridis',
         text_info: str = 'percent+label+value',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objects.Figure, Tuple[plt.Figure, List[plt.Axes]]]:
+    ) -> plotly.graph_objects.Figure | Tuple[plt.Figure, List[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
 
         Args:
@@ -548,7 +548,7 @@ class _NodeResults(_ElementResults):
         self,
         negate_inputs: bool = True,
         negate_outputs: bool = False,
-        threshold: Optional[float] = 1e-5,
+        threshold: float | None = 1e-5,
         with_last_timestep: bool = False,
     ) -> xr.Dataset:
         return sanitize_dataset(
@@ -591,7 +591,7 @@ class ComponentResults(_NodeResults):
 
     def plot_charge_state(
         self,
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
@@ -644,7 +644,7 @@ class ComponentResults(_NodeResults):
         )
 
     def node_balance_with_charge_state(
-        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: Optional[float] = 1e-5
+        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: float | None = 1e-5
     ) -> xr.Dataset:
         """Get storage node balance including charge state.
 
@@ -801,7 +801,7 @@ class SegmentedCalculationResults:
         )
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str):
+    def from_file(cls, folder: str | pathlib.Path, name: str):
         """Load SegmentedCalculationResults from saved files.
 
         Args:
@@ -835,7 +835,7 @@ class SegmentedCalculationResults:
         timesteps_per_segment: int,
         overlap_timesteps: int,
         name: str,
-        folder: Optional[pathlib.Path] = None,
+        folder: pathlib.Path | None = None,
     ):
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
@@ -846,7 +846,7 @@ class SegmentedCalculationResults:
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
 
     @property
-    def meta_data(self) -> Dict[str, Union[int, List[str]]]:
+    def meta_data(self) -> Dict[str, int | List[str]]:
         return {
             'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
             'timesteps_per_segment': self.timesteps_per_segment,
@@ -879,10 +879,10 @@ class SegmentedCalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | Tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
         Args:
@@ -909,9 +909,7 @@ class SegmentedCalculationResults:
             engine=engine,
         )
 
-    def to_file(
-        self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, compression: int = 5
-    ):
+    def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
         """Save segmented results to files.
 
         Args:
@@ -944,7 +942,7 @@ def plot_heatmap(
     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
     color_map: str = 'portland',
-    save: Union[bool, pathlib.Path] = False,
+    save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
 ):
@@ -995,9 +993,9 @@ def plot_heatmap(
 
 def sanitize_dataset(
     ds: xr.Dataset,
-    timesteps: Optional[pd.DatetimeIndex] = None,
-    threshold: Optional[float] = 1e-5,
-    negate: Optional[List[str]] = None,
+    timesteps: pd.DatetimeIndex | None = None,
+    threshold: float | None = 1e-5,
+    negate: List[str] | None = None,
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
 ) -> xr.Dataset:
@@ -1053,7 +1051,7 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
-    variable_dims: Optional[Literal['scalar', 'time']] = None,
+    variable_dims: Literal['scalar', 'time'] | None = None,
 ) -> xr.Dataset:
     """Filter dataset by variable dimensions.
 
