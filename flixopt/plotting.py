@@ -655,7 +655,7 @@ def heat_map_data_from_df(
     }
 
     diffs = df.index.to_series().diff().dropna()
-    minimum_time_diff_in_min = diffs.min().total_seconds() / 60 if not diffs.empty else float('inf')
+    minimum_time_diff_in_min = diffs.min().total_seconds() / 60
     time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
     if time_intervals[steps_per_period] > minimum_time_diff_in_min:
         logger.warning(
