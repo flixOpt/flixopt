@@ -101,28 +101,32 @@ class DataConverter:
 
 
 class TimeSeriesData:
+    """
+    TimeSeriesData wraps time series data with aggregation metadata for optimization.
+
+    This class combines time series data with special characteristics needed for aggregated calculations.
+    It allows grouping related time series to prevent overweighting in optimization models.
+
+    Example:
+        When you have multiple solar time series, they should share aggregation weight:
+        ```python
+        solar1 = TimeSeriesData(sol_array_1, agg_group='solar')
+        solar2 = TimeSeriesData(sol_array_2, agg_group='solar')
+        solar3 = TimeSeriesData(sol_array_3, agg_group='solar')
+        # These 3 series share one weight (each gets weight = 1/3 instead of 1)
+        ```
+
+    Args:
+        data: The timeseries data, which can be a scalar, array, or numpy array.
+        agg_group: The group this TimeSeriesData belongs to. agg_weight is split between group members. Default is None.
+        agg_weight: The weight for calculation_type 'aggregated', should be between 0 and 1. Default is None.
+
+    Raises:
+        ValueError: If both agg_group and agg_weight are set.
+    """
+
     # TODO: Move to Interface.py
     def __init__(self, data: NumericData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
-        """
-        timeseries class for transmit timeseries AND special characteristics of timeseries,
-        i.g. to define weights needed in calculation_type 'aggregated'
-            EXAMPLE solar:
-            you have several solar timeseries. These should not be overweighted
-            compared to the remaining timeseries (i.g. heat load, price)!
-            fixed_relative_profile_solar1 = TimeSeriesData(sol_array_1, type = 'solar')
-            fixed_relative_profile_solar2 = TimeSeriesData(sol_array_2, type = 'solar')
-            fixed_relative_profile_solar3 = TimeSeriesData(sol_array_3, type = 'solar')
-            --> this 3 series of same type share one weight, i.e. internally assigned each weight = 1/3
-            (instead of standard weight = 1)
-
-        Args:
-            data: The timeseries data, which can be a scalar, array, or numpy array.
-            agg_group: The group this TimeSeriesData is a part of. agg_weight is split between members of a group. Default is None.
-            agg_weight: The weight for calculation_type 'aggregated', should be between 0 and 1. Default is None.
-
-        Raises:
-            Exception: If both agg_group and agg_weight are set, an exception is raised.
-        """
         self.data = data
         self.agg_group = agg_group
         self.agg_weight = agg_weight

@@ -18,6 +18,57 @@ logger = logging.getLogger('flixopt')
 
 @register_class_for_io
 class Boiler(LinearConverter):
+    """
+    A specialized LinearConverter representing a fuel-fired boiler for thermal energy generation.
+
+    Boilers convert fuel input into thermal energy with a specified efficiency factor.
+    This is a simplified wrapper around LinearConverter with predefined conversion
+    relationships for thermal generation applications.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        eta: Thermal efficiency factor (0-1 range). Defines the ratio of thermal
+            output to fuel input energy content.
+        Q_fu: Fuel input-flow representing fuel consumption.
+        Q_th: Thermal output-flow representing heat generation.
+        on_off_parameters: Parameters defining binary operation constraints and costs.
+        meta_data: Used to store additional information. Not used internally but
+            saved in results. Only use Python native types.
+
+    Examples:
+        Natural gas boiler:
+
+        ```python
+        gas_boiler = Boiler(
+            label='natural_gas_boiler',
+            eta=0.85,  # 85% thermal efficiency
+            Q_fu=natural_gas_flow,
+            Q_th=hot_water_flow,
+        )
+        ```
+
+        Biomass boiler with seasonal efficiency variation:
+
+        ```python
+        biomass_boiler = Boiler(
+            label='wood_chip_boiler',
+            eta=seasonal_efficiency_profile,  # Time-varying efficiency
+            Q_fu=biomass_flow,
+            Q_th=district_heat_flow,
+            on_off_parameters=OnOffParameters(
+                consecutive_on_hours_min=4,  # Minimum 4-hour operation
+                effects_per_switch_on={'startup_fuel': 50},  # Startup fuel penalty
+            ),
+        )
+        ```
+
+    Note:
+        The conversion relationship is: Q_th = Q_fu × eta
+
+        Efficiency should be between 0 and 1, where 1 represents perfect conversion
+        (100% of fuel energy converted to useful thermal output).
+    """
+
     def __init__(
         self,
         label: str,
@@ -27,15 +78,6 @@ class Boiler(LinearConverter):
         on_off_parameters: OnOffParameters = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            eta: thermal efficiency.
-            Q_fu: fuel input-flow
-            Q_th: thermal output-flow.
-            on_off_parameters: Parameters defining the on/off behavior of the component.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(
             label,
             inputs=[Q_fu],
@@ -59,6 +101,61 @@ class Boiler(LinearConverter):
 
 @register_class_for_io
 class Power2Heat(LinearConverter):
+    """
+    A specialized LinearConverter representing electric resistance heating or power-to-heat conversion.
+
+    Power2Heat components convert electrical energy directly into thermal energy through
+    resistance heating elements, electrode boilers, or other direct electric heating
+    technologies. This is a simplified wrapper around LinearConverter with predefined
+    conversion relationships for electric heating applications.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        eta: Thermal efficiency factor (0-1 range). For resistance heating this is
+            typically close to 1.0 (nearly 100% efficiency), but may be lower for
+            electrode boilers or systems with distribution losses.
+        P_el: Electrical input-flow representing electricity consumption.
+        Q_th: Thermal output-flow representing heat generation.
+        on_off_parameters: Parameters defining binary operation constraints and costs.
+        meta_data: Used to store additional information. Not used internally but
+            saved in results. Only use Python native types.
+
+    Examples:
+        Electric resistance heater:
+
+        ```python
+        electric_heater = Power2Heat(
+            label='resistance_heater',
+            eta=0.98,  # 98% efficiency (small losses)
+            P_el=electricity_flow,
+            Q_th=space_heating_flow,
+        )
+        ```
+
+        Electrode boiler for industrial steam:
+
+        ```python
+        electrode_boiler = Power2Heat(
+            label='electrode_steam_boiler',
+            eta=0.95,  # 95% efficiency including boiler losses
+            P_el=industrial_electricity,
+            Q_th=process_steam_flow,
+            on_off_parameters=OnOffParameters(
+                consecutive_on_hours_min=1,  # Minimum 1-hour operation
+                effects_per_switch_on={'startup_cost': 100},
+            ),
+        )
+        ```
+
+    Note:
+        The conversion relationship is: Q_th = P_el × eta
+
+        Unlike heat pumps, Power2Heat systems cannot exceed 100% efficiency (eta ≤ 1.0)
+        as they only convert electrical energy without extracting additional energy
+        from the environment. However, they provide fast response times and precise
+        temperature control.
+    """
+
     def __init__(
         self,
         label: str,
@@ -68,15 +165,6 @@ class Power2Heat(LinearConverter):
         on_off_parameters: OnOffParameters = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            eta: thermal efficiency.
-            P_el: electric input-flow
-            Q_th: thermal output-flow.
-            on_off_parameters: Parameters defining the on/off behavior of the component.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(
             label,
             inputs=[P_el],
@@ -101,6 +189,60 @@ class Power2Heat(LinearConverter):
 
 @register_class_for_io
 class HeatPump(LinearConverter):
+    """
+    A specialized LinearConverter representing an electric heat pump for thermal energy generation.
+
+    Heat pumps convert electrical energy into thermal energy with a Coefficient of
+    Performance (COP) greater than 1, making them more efficient than direct electric
+    heating. This is a simplified wrapper around LinearConverter with predefined
+    conversion relationships for heat pump applications.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        COP: Coefficient of Performance (typically 1-20 range). Defines the ratio of
+            thermal output to electrical input. COP > 1 indicates the heat pump extracts
+            additional energy from the environment.
+        P_el: Electrical input-flow representing electricity consumption.
+        Q_th: Thermal output-flow representing heat generation.
+        on_off_parameters: Parameters defining binary operation constraints and costs.
+        meta_data: Used to store additional information. Not used internally but
+            saved in results. Only use Python native types.
+
+    Examples:
+        Air-source heat pump with constant COP:
+
+        ```python
+        air_hp = HeatPump(
+            label='air_source_heat_pump',
+            COP=3.5,  # COP of 3.5 (350% efficiency)
+            P_el=electricity_flow,
+            Q_th=heating_flow,
+        )
+        ```
+
+        Ground-source heat pump with temperature-dependent COP:
+
+        ```python
+        ground_hp = HeatPump(
+            label='geothermal_heat_pump',
+            COP=temperature_dependent_cop,  # Time-varying COP based on ground temp
+            P_el=electricity_flow,
+            Q_th=radiant_heating_flow,
+            on_off_parameters=OnOffParameters(
+                consecutive_on_hours_min=2,  # Avoid frequent cycling
+                effects_per_running_hour={'maintenance': 0.5},
+            ),
+        )
+        ```
+
+    Note:
+        The conversion relationship is: Q_th = P_el × COP
+
+        COP should be greater than 1 for realistic heat pump operation, with typical
+        values ranging from 2-6 depending on technology and operating conditions.
+        Higher COP values indicate more efficient heat extraction from the environment.
+    """
+
     def __init__(
         self,
         label: str,
@@ -110,15 +252,6 @@ class HeatPump(LinearConverter):
         on_off_parameters: OnOffParameters = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            COP: Coefficient of performance.
-            P_el: electricity input-flow.
-            Q_th: thermal output-flow.
-            on_off_parameters: Parameters defining the on/off behavior of the component.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(
             label,
             inputs=[P_el],
@@ -143,6 +276,62 @@ class HeatPump(LinearConverter):
 
 @register_class_for_io
 class CoolingTower(LinearConverter):
+    """
+    A specialized LinearConverter representing a cooling tower for waste heat rejection.
+
+    Cooling towers consume electrical energy (for fans, pumps) to reject thermal energy
+    to the environment through evaporation and heat transfer. The electricity demand
+    is typically a small fraction of the thermal load being rejected. This component
+    has no thermal outputs as the heat is rejected to the environment.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        specific_electricity_demand: Auxiliary electricity demand per unit of cooling
+            power (dimensionless, typically 0.01-0.05 range). Represents the fraction
+            of thermal power that must be supplied as electricity for fans and pumps.
+        P_el: Electrical input-flow representing electricity consumption for fans/pumps.
+        Q_th: Thermal input-flow representing waste heat to be rejected to environment.
+        on_off_parameters: Parameters defining binary operation constraints and costs.
+        meta_data: Used to store additional information. Not used internally but
+            saved in results. Only use Python native types.
+
+    Examples:
+        Industrial cooling tower:
+
+        ```python
+        cooling_tower = CoolingTower(
+            label='process_cooling_tower',
+            specific_electricity_demand=0.025,  # 2.5% auxiliary power
+            P_el=cooling_electricity,
+            Q_th=waste_heat_flow,
+        )
+        ```
+
+        Power plant condenser cooling:
+
+        ```python
+        condenser_cooling = CoolingTower(
+            label='power_plant_cooling',
+            specific_electricity_demand=0.015,  # 1.5% auxiliary power
+            P_el=auxiliary_electricity,
+            Q_th=condenser_waste_heat,
+            on_off_parameters=OnOffParameters(
+                consecutive_on_hours_min=4,  # Minimum operation time
+                effects_per_running_hour={'water_consumption': 2.5},  # m³/h
+            ),
+        )
+        ```
+
+    Note:
+        The conversion relationship is: P_el = Q_th × specific_electricity_demand
+
+        The cooling tower consumes electrical power proportional to the thermal load.
+        No thermal energy is produced - all thermal input is rejected to the environment.
+
+        Typical specific electricity demands range from 1-5% of the thermal cooling load,
+        depending on tower design, climate conditions, and operational requirements.
+    """
+
     def __init__(
         self,
         label: str,
@@ -152,15 +341,6 @@ class CoolingTower(LinearConverter):
         on_off_parameters: OnOffParameters = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            specific_electricity_demand: auxiliary electricty demand per cooling power, i.g. 0.02 (2 %).
-            P_el: electricity input-flow.
-            Q_th: thermal input-flow.
-            on_off_parameters: Parameters defining the on/off behavior of the component.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(
             label,
             inputs=[P_el, Q_th],
@@ -187,6 +367,69 @@ class CoolingTower(LinearConverter):
 
 @register_class_for_io
 class CHP(LinearConverter):
+    """
+    A specialized LinearConverter representing a Combined Heat and Power (CHP) unit.
+
+    CHP units simultaneously generate both electrical and thermal energy from a single
+    fuel input, providing higher overall efficiency than separate generation. This is
+    a wrapper around LinearConverter with predefined conversion relationships for
+    cogeneration applications.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        eta_th: Thermal efficiency factor (0-1 range). Defines the fraction of fuel
+            energy converted to useful thermal output.
+        eta_el: Electrical efficiency factor (0-1 range). Defines the fraction of fuel
+            energy converted to electrical output.
+        Q_fu: Fuel input-flow representing fuel consumption.
+        P_el: Electrical output-flow representing electricity generation.
+        Q_th: Thermal output-flow representing heat generation.
+        on_off_parameters: Parameters defining binary operation constraints and costs.
+        meta_data: Used to store additional information. Not used internally but
+            saved in results. Only use Python native types.
+
+    Examples:
+        Natural gas CHP unit:
+
+        ```python
+        gas_chp = CHP(
+            label='natural_gas_chp',
+            eta_th=0.45,  # 45% thermal efficiency
+            eta_el=0.35,  # 35% electrical efficiency (80% total)
+            Q_fu=natural_gas_flow,
+            P_el=electricity_flow,
+            Q_th=district_heat_flow,
+        )
+        ```
+
+        Industrial CHP with operational constraints:
+
+        ```python
+        industrial_chp = CHP(
+            label='industrial_chp',
+            eta_th=0.40,
+            eta_el=0.38,
+            Q_fu=fuel_gas_flow,
+            P_el=plant_electricity,
+            Q_th=process_steam,
+            on_off_parameters=OnOffParameters(
+                consecutive_on_hours_min=8,  # Minimum 8-hour operation
+                effects_per_switch_on={'startup_cost': 5000},
+                on_hours_total_max=6000,  # Annual operating limit
+            ),
+        )
+        ```
+
+    Note:
+        The conversion relationships are:
+        - Q_th = Q_fu × eta_th (thermal output)
+        - P_el = Q_fu × eta_el (electrical output)
+
+        Total efficiency (eta_th + eta_el) should be ≤ 1.0, with typical combined
+        efficiencies of 80-90% for modern CHP units. This provides significant
+        efficiency gains compared to separate heat and power generation.
+    """
+
     def __init__(
         self,
         label: str,
@@ -198,17 +441,6 @@ class CHP(LinearConverter):
         on_off_parameters: OnOffParameters = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            eta_th: thermal efficiency.
-            eta_el: electrical efficiency.
-            Q_fu: fuel input-flow.
-            P_el: electricity output-flow.
-            Q_th: heat output-flow.
-            on_off_parameters: Parameters defining the on/off behavior of the component.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         heat = {Q_fu.label: eta_th, Q_th.label: 1}
         electricity = {Q_fu.label: eta_el, P_el.label: 1}
 
@@ -248,6 +480,70 @@ class CHP(LinearConverter):
 
 @register_class_for_io
 class HeatPumpWithSource(LinearConverter):
+    """
+    A specialized LinearConverter representing a heat pump with explicit heat source modeling.
+
+    This component models a heat pump that extracts thermal energy from a heat source
+    (ground, air, water) and upgrades it using electrical energy to provide higher-grade
+    thermal output. Unlike the simple HeatPump class, this explicitly models both the
+    heat source extraction and electrical consumption with their interdependent relationships.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        COP: Coefficient of Performance (typically 1-20 range). Defines the ratio of
+            thermal output to electrical input. The heat source extraction is automatically
+            calculated as Q_ab = Q_th × (COP-1)/COP.
+        P_el: Electrical input-flow representing electricity consumption for compressor.
+        Q_ab: Heat source input-flow representing thermal energy extracted from environment
+            (ground, air, water source).
+        Q_th: Thermal output-flow representing useful heat delivered to the application.
+        on_off_parameters: Parameters defining binary operation constraints and costs.
+        meta_data: Used to store additional information. Not used internally but
+            saved in results. Only use Python native types.
+
+    Examples:
+        Ground-source heat pump with explicit ground coupling:
+
+        ```python
+        ground_source_hp = HeatPumpWithSource(
+            label='geothermal_heat_pump',
+            COP=4.5,  # High COP due to stable ground temperature
+            P_el=electricity_flow,
+            Q_ab=ground_heat_extraction,  # Heat extracted from ground loop
+            Q_th=building_heating_flow,
+        )
+        ```
+
+        Air-source heat pump with temperature-dependent performance:
+
+        ```python
+        waste_heat_pump = HeatPumpWithSource(
+            label='waste_heat_pump',
+            COP=temperature_dependent_cop,  # Varies with temperature of heat source
+            P_el=electricity_consumption,
+            Q_ab=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
+            Q_th=heat_supply,
+            on_off_parameters=OnOffParameters(
+                consecutive_on_hours_min=0.5,  # 30-minute minimum runtime
+                effects_per_switch_on={'costs': 1000},
+            ),
+        )
+        ```
+
+    Note:
+        The conversion relationships are:
+        - Q_th = P_el × COP (thermal output from electrical input)
+        - Q_ab = Q_th × (COP-1)/COP (heat source extraction)
+        - Energy balance: Q_th = P_el + Q_ab
+
+        This formulation explicitly tracks the heat source, which is
+        important for systems where the source capacity or temperature is limited,
+        or where the impact of heat extraction must be considered.
+
+        COP should be > 1 for thermodynamically valid operation, with typical
+        values of 2-6 depending on source and sink temperatures.
+    """
+
     def __init__(
         self,
         label: str,
@@ -258,17 +554,6 @@ class HeatPumpWithSource(LinearConverter):
         on_off_parameters: OnOffParameters = None,
         meta_data: Optional[Dict] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            COP: Coefficient of performance.
-            Q_ab: Heatsource input-flow.
-            P_el: electricity input-flow.
-            Q_th: thermal output-flow.
-            on_off_parameters: Parameters defining the on/off behavior of the component.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
-
         # super:
         electricity = {P_el.label: COP, Q_th.label: 1}
         heat_source = {Q_ab.label: COP / (COP - 1), Q_th.label: 1}

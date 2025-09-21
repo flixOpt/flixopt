@@ -26,8 +26,107 @@ logger = logging.getLogger('flixopt')
 @register_class_for_io
 class Effect(Element):
     """
-    Effect, i.g. costs, CO2 emissions, area, ...
-    Components, FLows, and so on can contribute to an Effect. One Effect is chosen as the Objective of the Optimization
+    Represents system-wide impacts like costs, emissions, resource consumption, or other effects.
+
+    Effects capture the broader impacts of system operation and investment decisions beyond
+    the primary energy/material flows. Each Effect accumulates contributions from Components,
+    Flows, and other system elements. One Effect is typically chosen as the optimization
+    objective, while others can serve as constraints or tracking metrics.
+
+    Effects support comprehensive modeling including operational and investment contributions,
+    cross-effect relationships (e.g., carbon pricing), and flexible constraint formulation.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        unit: The unit of the effect (e.g., '€', 'kg_CO2', 'kWh_primary', 'm²').
+            This is informative only and does not affect optimization calculations.
+        description: Descriptive name explaining what this effect represents.
+        is_standard: If True, this is a standard effect allowing direct value input
+            without effect dictionaries. Used for simplified effect specification (and less boilerplate code).
+        is_objective: If True, this effect serves as the optimization objective function.
+            Only one effect can be marked as objective per optimization.
+        specific_share_to_other_effects_operation: Operational cross-effect contributions.
+            Maps this effect's operational values to contributions to other effects
+        specific_share_to_other_effects_invest: Investment cross-effect contributions.
+            Maps this effect's investment values to contributions to other effects.
+        minimum_operation: Minimum allowed total operational contribution across all timesteps.
+        maximum_operation: Maximum allowed total operational contribution across all timesteps.
+        minimum_operation_per_hour: Minimum allowed operational contribution per timestep.
+        maximum_operation_per_hour: Maximum allowed operational contribution per timestep.
+        minimum_invest: Minimum allowed total investment contribution.
+        maximum_invest: Maximum allowed total investment contribution.
+        minimum_total: Minimum allowed total effect (operation + investment combined).
+        maximum_total: Maximum allowed total effect (operation + investment combined).
+        meta_data: Used to store additional information. Not used internally but saved
+            in results. Only use Python native types.
+
+    Examples:
+        Basic cost objective:
+
+        ```python
+        cost_effect = Effect(label='system_costs', unit='€', description='Total system costs', is_objective=True)
+        ```
+
+        CO2 emissions with carbon pricing:
+
+        ```python
+        co2_effect = Effect(
+            label='co2_emissions',
+            unit='kg_CO2',
+            description='Carbon dioxide emissions',
+            specific_share_to_other_effects_operation={'costs': 50},  # €50/t_CO2
+            maximum_total=1_000_000,  # 1000 t CO2 annual limit
+        )
+        ```
+
+        Land use constraint:
+
+        ```python
+        land_use = Effect(
+            label='land_usage',
+            unit='m²',
+            description='Land area requirement',
+            maximum_total=50_000,  # Maximum 5 hectares available
+        )
+        ```
+
+        Primary energy tracking:
+
+        ```python
+        primary_energy = Effect(
+            label='primary_energy',
+            unit='kWh_primary',
+            description='Primary energy consumption',
+            specific_share_to_other_effects_operation={'costs': 0.08},  # €0.08/kWh
+        )
+        ```
+
+        Water consumption with tiered constraints:
+
+        ```python
+        water_usage = Effect(
+            label='water_consumption',
+            unit='m³',
+            description='Industrial water usage',
+            minimum_operation_per_hour=10,  # Minimum 10 m³/h for process stability
+            maximum_operation_per_hour=500,  # Maximum 500 m³/h capacity limit
+            maximum_total=100_000,  # Annual permit limit: 100,000 m³
+        )
+        ```
+
+    Note:
+        Effect bounds can be None to indicate no constraint in that direction.
+
+        Cross-effect relationships enable sophisticated modeling like carbon pricing,
+        resource valuation, or multi-criteria optimization with weighted objectives.
+
+        The unit field is purely informational - ensure dimensional consistency
+        across all contributions to each effect manually.
+
+        Effects are accumulated as:
+        - Total = Σ(operational contributions) + Σ(investment contributions)
+        - Cross-effects add to target effects based on specific_share ratios
+
     """
 
     def __init__(
@@ -49,27 +148,6 @@ class Effect(Element):
         minimum_total: Optional[Scalar] = None,
         maximum_total: Optional[Scalar] = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            unit: The unit of effect, i.g. €, kg_CO2, kWh_primaryEnergy
-            description: The long name
-            is_standard: true, if Standard-Effect (for direct input of value without effect (alternatively to dict)) , else false
-            is_objective: true, if optimization target
-            specific_share_to_other_effects_operation: {effectType: TS, ...}, i.g. 180 €/t_CO2, input as {costs: 180}, optional
-                share to other effects (only operation)
-            specific_share_to_other_effects_invest: {effectType: TS, ...}, i.g. 180 €/t_CO2, input as {costs: 180}, optional
-                share to other effects (only invest).
-            minimum_operation: minimal sum (only operation) of the effect.
-            maximum_operation: maximal sum (nur operation) of the effect.
-            minimum_operation_per_hour: max. value per hour (only operation) of effect (=sum of all effect-shares) for each timestep!
-            maximum_operation_per_hour:  min. value per hour (only operation) of effect (=sum of all effect-shares) for each timestep!
-            minimum_invest: minimal sum (only invest) of the effect
-            maximum_invest: maximal sum (only invest) of the effect
-            minimum_total: min sum of effect (invest+operation).
-            maximum_total: max sum of effect (invest+operation).
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, meta_data=meta_data)
         self.label = label
         self.unit = unit

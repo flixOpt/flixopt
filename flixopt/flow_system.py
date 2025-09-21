@@ -29,7 +29,21 @@ logger = logging.getLogger('flixopt')
 
 class FlowSystem:
     """
-    A FlowSystem organizes the high level Elements (Components & Effects).
+    A FlowSystem organizes the high level Elements (Components, Buses & Effects).
+
+    This is the main container class that users work with to build and manage their System.
+
+    Args:
+        timesteps: The timesteps of the model.
+        hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
+        hours_of_previous_timesteps: The duration of previous timesteps.
+            If None, the first time increment of time_series is used.
+            This is needed to calculate previous durations (for example consecutive_on_hours).
+            If you use an array, take care that its long enough to cover all previous values!
+
+    Notes:
+        - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
+        - The instance starts disconnected (self._connected == False) and will be connected automatically when trying to solve a calculation.
     """
 
     def __init__(
@@ -39,13 +53,17 @@ class FlowSystem:
         hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
     ):
         """
-        Args:
-            timesteps: The timesteps of the model.
-            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
-            hours_of_previous_timesteps: The duration of previous timesteps.
-                If None, the first time increment of time_series is used.
-                This is needed to calculate previous durations (for example consecutive_on_hours).
-                If you use an array, take care that its long enough to cover all previous values!
+        Initialize a FlowSystem that manages components, buses, effects, and their time-series.
+
+        Parameters:
+            timesteps: DatetimeIndex defining the primary timesteps for the system's TimeSeriesCollection.
+            hours_of_last_timestep: Duration (in hours) of the final timestep; if None, inferred from timesteps or defaults in TimeSeriesCollection.
+            hours_of_previous_timesteps: Scalar or array-like durations (in hours) for the preceding timesteps; used to configure non-uniform timestep lengths.
+
+        Notes:
+            Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
+            The instance starts disconnected (self._connected == False) and with no active network visualization app.
+            This can also be triggered manually with `_connect_network()`.
         """
         self.time_series_collection = TimeSeriesCollection(
             timesteps=timesteps,
