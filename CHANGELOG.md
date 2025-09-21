@@ -13,11 +13,13 @@ Please remove all irrelevant sections before releasing.
 
 ## [Unreleased] - ????-??-??
 
-### Changed
-
 ### Added
 
+### Changed
+
 ### Deprecated
+
+### Removed
 
 ### Fixed
 
@@ -35,10 +37,12 @@ Until here -->
 
 ### Deprecated
 
+### Removed
+
 ### Fixed
 - Fix color scheme selection in network_app; color pickers now update when a scheme is selected.
 
-### Known issues
+### Known Issues
 
 ### *Development*
 
@@ -50,7 +54,7 @@ There are no changes or new features.
 ### Added
 - Added __version__ to flixopt
 
-### Development
+### *Development*
 - ruff format the whole Codebase
 - Added renovate config
 - Added pre-commit
