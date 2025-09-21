@@ -4,7 +4,6 @@ Manual test script for plots
 """
 
 import unittest
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,7 +24,7 @@ class TestPlots(unittest.TestCase):
         nr_of_columns: int = 7,
         nr_of_periods: int = 10,
         time_steps_per_period: int = 24,
-        drop_fraction_of_indices: Optional[float] = None,
+        drop_fraction_of_indices: float | None = None,
         only_pos_or_neg: bool = True,
         column_prefix: str = '',
     ):
