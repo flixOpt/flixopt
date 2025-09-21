@@ -6,25 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- This text won't be rendered
-Take Care: The CI will automatically append a "Whats CHanged" section to the changelog.
-This contains all COmmits, PR's and Contributers.
+Note: The CI will automatically append a "What's Changed" section to the changelog.
+This contains all commits, PRs, and contributors.
 Therefore, the Changelog should focus on the user-facing changes.
+Please remove all irrelevant sections before releasing.
 
 ## [Unreleased] - ????-??-??
 
-### Changed
-
 ### Added
 
+### Changed
+
 ### Deprecated
+
+### Removed
 
 ### Fixed
 
 ### Known issues
 
-### Development
+### *Development*
 
 Until here -->
+
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+- Fix color scheme selection in network_app; color pickers now update when a scheme is selected.
+- Fix error handling in network visualization if networkx is not installed.
+
+### Known Issues
+
+### *Development*
 
 ## [2.1.7] - 2025-09-13
 
@@ -34,7 +55,7 @@ There are no changes or new features.
 ### Added
 - Added __version__ to flixopt
 
-### Development
+### *Development*
 - ruff format the whole Codebase
 - Added renovate config
 - Added pre-commit
