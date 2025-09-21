@@ -953,7 +953,7 @@ def pie_with_plotly(
     values = data_sum.values.tolist()
 
     # Apply color mapping using the unified color processor
-    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, list(data.columns))
+    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, labels)
 
     # Create figure if not provided
     fig = fig if fig is not None else go.Figure()
