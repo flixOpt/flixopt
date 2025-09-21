@@ -106,7 +106,7 @@ class CalculationResults:
     """
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str):
+    def from_file(cls, folder: Union[str, pathlib.Path], name: str) -> 'CalculationResults':
         """Load CalculationResults from saved files.
 
         Args:
@@ -140,7 +140,7 @@ class CalculationResults:
         )
 
     @classmethod
-    def from_calculation(cls, calculation: 'Calculation'):
+    def from_calculation(cls, calculation: 'Calculation') -> 'CalculationResults':
         """Create CalculationResults from a Calculation object.
 
         Args:

@@ -3,5 +3,5 @@
 - [User Guide](user-guide/)
 - [Examples](examples/)
 - [Contribute](contribute.md)
-- [API-Reference](api-reference/)
+- [API Reference](api-reference/)
 - [Release Notes](changelog.md)

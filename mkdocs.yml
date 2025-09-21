@@ -85,7 +85,6 @@ plugins:
   - include-markdown
   - mike:
       version_selector: true
-      default_version: latest
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py

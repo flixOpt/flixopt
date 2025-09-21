@@ -263,7 +263,7 @@ class FlowSystem:
 
     def start_network_app(self):
         """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
-        Requires optional dependencies: dash, dash-cytoscape, networkx, werkzeug.
+        Requires optional dependencies: dash, dash-cytoscape, dash-daq, networkx, flask, werkzeug.
         """
         from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR, flow_graph, shownetwork
 
@@ -276,7 +276,8 @@ class FlowSystem:
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
-                f'Install with: pip install flixopt[viz], flixopt[full] or pip install dash dash_cytoscape networkx werkzeug. '
+                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
+                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
@@ -296,7 +297,8 @@ class FlowSystem:
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
-                f'Install with: pip install flixopt[viz]. '
+                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
+                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
@@ -435,14 +437,14 @@ class FlowSystem:
 
                 # Add Bus if not already added (deprecated)
                 if flow._bus_object is not None and flow._bus_object not in self.buses.values():
-                    self._add_buses(flow._bus_object)
                     warnings.warn(
                         f'The Bus {flow._bus_object.label} was added to the FlowSystem from {flow.label_full}.'
                         f'This is deprecated and will be removed in the future. '
                         f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead.',
-                        UserWarning,
+                        DeprecationWarning,
                         stacklevel=1,
                     )
+                    self._add_buses(flow._bus_object)
 
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
