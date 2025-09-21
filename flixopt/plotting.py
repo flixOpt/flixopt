@@ -595,7 +595,7 @@ def heat_map_matplotlib(
 
     # Create the heatmap plot
     fig, ax = plt.subplots(figsize=figsize)
-    ax.pcolormesh(data.values, cmap=color_map)
+    ax.pcolormesh(data.values, cmap=color_map, shading='auto')
     ax.invert_yaxis()  # Flip the y-axis to start at the top
 
     # Adjust ticks and labels for x and y axes
@@ -615,7 +615,7 @@ def heat_map_matplotlib(
 
     # Add the colorbar
     sm1 = plt.cm.ScalarMappable(cmap=color_map, norm=plt.Normalize(vmin=color_bar_min, vmax=color_bar_max))
-    sm1._A = []
+    sm1.set_array([])
     fig.colorbar(sm1, ax=ax, pad=0.12, aspect=15, fraction=0.2, orientation='horizontal')
 
     fig.tight_layout()
@@ -1455,7 +1455,7 @@ def export_figure(
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
         if show:
-            fig.show()
+            plt.show()
         if save:
             fig.savefig(str(filename), dpi=300)
         return fig, ax
