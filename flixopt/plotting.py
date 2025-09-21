@@ -352,7 +352,8 @@ def with_plotly(
     Returns:
         A Plotly figure object containing the generated plot.
     """
-    assert mode in ['bar', 'line', 'area'], f"'mode' must be one of {['bar', 'line', 'area']}"
+    if mode not in ('bar', 'line', 'area'):
+        raise ValueError(f"'mode' must be one of {{'bar','line','area'}}, got {mode!r}")
     if data.empty:
         return go.Figure()
 
@@ -498,7 +499,8 @@ def with_matplotlib(
         - If `mode` is 'line', stepped lines are drawn for each data series.
         - The legend is placed below the plot to accommodate multiple data series.
     """
-    assert mode in ['bar', 'line'], f"'mode' must be one of {['bar', 'line']} for matplotlib"
+    if mode not in ('bar', 'line'):
+        raise ValueError(f"'mode' must be one of {{'bar','line'}} for matplotlib, got {mode!r}")
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -781,7 +783,8 @@ def heat_map_data_from_df(
 
     # Select the format based on the `periods` and `steps_per_period` combination
     format_pair = (periods, steps_per_period)
-    assert format_pair in formats, f'{format_pair} is not a valid format. Choose from {list(formats.keys())}'
+    if format_pair not in formats:
+        raise ValueError(f'{format_pair} is not a valid format. Choose from {list(formats.keys())}')
     period_format, step_format = formats[format_pair]
 
     df = df.sort_index()  # Ensure DataFrame is sorted by time index
