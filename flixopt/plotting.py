@@ -1442,8 +1442,9 @@ def export_figure(
 
     if isinstance(figure_like, plotly.graph_objs.Figure):
         fig = figure_like
-        if not filename.suffix == '.html':
-            logger.debug(f'To save a plotly figure, the filename should end with ".html". Got {filename}')
+        if filename.suffix != '.html':
+            logger.warning(f'To save a Plotly figure, using .html. Adjusting suffix for {filename}')
+            filename = filename.with_suffix('.html')
         if show and not save:
             fig.show()
         elif save and show:
