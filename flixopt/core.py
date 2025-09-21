@@ -595,7 +595,6 @@ class TimeSeriesCollection:
             data: The data to create the TimeSeries from.
             name: The name of the TimeSeries.
             needs_extra_timestep: Whether to create an additional timestep at the end of the timesteps.
-            The data to create the TimeSeries from.
 
         Returns:
             The created TimeSeries.
