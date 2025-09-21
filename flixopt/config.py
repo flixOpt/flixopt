@@ -4,7 +4,7 @@ import logging
 import os
 import types
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_type_hints
 
 import yaml
 from rich.console import Console
@@ -39,11 +39,15 @@ def dataclass_from_dict_with_validation(cls, data: dict):
     if not is_dataclass(cls):
         raise TypeError(f'{cls} must be a dataclass')
 
+    # Get resolved type hints to handle postponed evaluation
+    type_hints = get_type_hints(cls)
+
     # Build kwargs for the dataclass constructor
     kwargs = {}
     for field in fields(cls):
         field_name = field.name
-        field_type = field.type
+        # Use resolved type from get_type_hints instead of field.type
+        field_type = type_hints.get(field_name, field.type)
         field_value = data.get(field_name)
 
         # If the field type is a dataclass and the value is a dict, recursively initialize
@@ -59,7 +63,10 @@ def dataclass_from_dict_with_validation(cls, data: dict):
 class ValidatedConfig:
     def __setattr__(self, name, value):
         if field := self.__dataclass_fields__.get(name):
-            if metadata := getattr(field.type, '__metadata__', None):
+            # Get resolved type hints to handle postponed evaluation
+            type_hints = get_type_hints(self.__class__)
+            field_type = type_hints.get(name, field.type)
+            if metadata := getattr(field_type, '__metadata__', None):
                 assert metadata[0](value), f'Invalid value passed to {name!r}: {value=}'
         super().__setattr__(name, value)
 
