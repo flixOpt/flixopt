@@ -1120,8 +1120,8 @@ def dual_pie_with_plotly(
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
-        hole: Size of the hole in the center for creating donut charts (0.0 to 100).
-        lower_percentage_group: Whether to group small segments (below percentage (0...1)) into an "Other" category.
+        hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
+        lower_percentage_group: Group segments whose cumulative share is below this percentage (0–100) into "Other".
         hover_template: Template for hover text. Use %{label}, %{value}, %{percent}.
         text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
                   'label+value', 'percent+value', 'label+percent+value', or 'none'.
