@@ -42,6 +42,8 @@ Until here -->
 ### Fixed
 - Fix color scheme selection in network_app; color pickers now update when a scheme is selected.
 - Fix error handling in network visualization if networkx is not installed.
+- Fix broken links in docs.
+- Fix missing args in docstrings in `plotting.py`, `solvers.py`, and `core.py`.
 
 ### Known Issues
 
