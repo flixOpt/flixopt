@@ -3,6 +3,8 @@ This module contains classes to collect Parameters for the Investment and OnOff 
 These are tightly connected to features.py
 """
 
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING, Dict, Iterator, List
 
@@ -68,7 +70,7 @@ class Piece(Interface):
         self.start = start
         self.end = end
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
         self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
         self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
 
@@ -204,7 +206,7 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
         for i, piece in enumerate(self.pieces):
             piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
 
@@ -414,7 +416,7 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
         for name, piecewise in self.piecewises.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
@@ -613,7 +615,7 @@ class PiecewiseEffects(Interface):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
         raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
         # self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
         # for name, piecewise in self.piecewise_shares.items():
@@ -818,10 +820,10 @@ class InvestParameters(Interface):
         minimum_size: int | float | None = None,
         maximum_size: int | float | None = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: 'EffectValuesUserScalar' | None = None,
-        specific_effects: 'EffectValuesUserScalar' | None = None,  # costs per Flow-Unit/Storage-Size/...
+        fix_effects: EffectValuesUserScalar | None = None,
+        specific_effects: EffectValuesUserScalar | None = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: PiecewiseEffects | None = None,
-        divest_effects: 'EffectValuesUserScalar' | None = None,
+        divest_effects: EffectValuesUserScalar | None = None,
     ):
         self.fix_effects: EffectValuesUser = fix_effects or {}
         self.divest_effects: EffectValuesUser = divest_effects or {}
@@ -832,7 +834,7 @@ class InvestParameters(Interface):
         self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)
         self.divest_effects = flow_system.effects.create_effect_values_dict(self.divest_effects)
         self.specific_effects = flow_system.effects.create_effect_values_dict(self.specific_effects)
@@ -1026,8 +1028,8 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: 'EffectValuesUser' | None = None,
-        effects_per_running_hour: 'EffectValuesUser' | None = None,
+        effects_per_switch_on: EffectValuesUser | None = None,
+        effects_per_running_hour: EffectValuesUser | None = None,
         on_hours_total_min: int | None = None,
         on_hours_total_max: int | None = None,
         consecutive_on_hours_min: NumericData | None = None,
@@ -1048,7 +1050,7 @@ class OnOffParameters(Interface):
         self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
-    def transform_data(self, flow_system: 'FlowSystem', name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
         self.effects_per_switch_on = flow_system.create_effect_time_series(
             name_prefix, self.effects_per_switch_on, 'per_switch_on'
         )

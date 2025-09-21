@@ -2,6 +2,8 @@
 This module contains the basic elements of the flixopt framework.
 """
 
+from __future__ import annotations
+
 import logging
 import warnings
 from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
@@ -72,27 +74,27 @@ class Component(Element):
     def __init__(
         self,
         label: str,
-        inputs: List['Flow'] | None = None,
-        outputs: List['Flow'] | None = None,
+        inputs: List[Flow] | None = None,
+        outputs: List[Flow] | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        prevent_simultaneous_flows: List['Flow'] | None = None,
+        prevent_simultaneous_flows: List[Flow] | None = None,
         meta_data: Dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.inputs: List['Flow'] = inputs or []
-        self.outputs: List['Flow'] = outputs or []
+        self.inputs: List[Flow] = inputs or []
+        self.outputs: List[Flow] = outputs or []
         self._check_unique_flow_labels()
         self.on_off_parameters = on_off_parameters
-        self.prevent_simultaneous_flows: List['Flow'] = prevent_simultaneous_flows or []
+        self.prevent_simultaneous_flows: List[Flow] = prevent_simultaneous_flows or []
 
         self.flows: Dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
-    def create_model(self, model: SystemModel) -> 'ComponentModel':
+    def create_model(self, model: SystemModel) -> ComponentModel:
         self._plausibility_checks()
         self.model = ComponentModel(model, self)
         return self.model
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: FlowSystem) -> None:
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
 
@@ -179,12 +181,12 @@ class Bus(Element):
         self.inputs: List[Flow] = []
         self.outputs: List[Flow] = []
 
-    def create_model(self, model: SystemModel) -> 'BusModel':
+    def create_model(self, model: SystemModel) -> BusModel:
         self._plausibility_checks()
         self.model = BusModel(model, self)
         return self.model
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         self.excess_penalty_per_flow_hour = flow_system.create_time_series(
             f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
@@ -405,12 +407,12 @@ class Flow(Element):
             self.bus = bus
             self._bus_object = None
 
-    def create_model(self, model: SystemModel) -> 'FlowModel':
+    def create_model(self, model: SystemModel) -> FlowModel:
         self._plausibility_checks()
         self.model = FlowModel(model, self)
         return self.model
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         self.relative_minimum = flow_system.create_time_series(
             f'{self.label_full}|relative_minimum', self.relative_minimum
         )

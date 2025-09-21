@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import json
 import logging
@@ -106,7 +108,7 @@ class CalculationResults:
     """
 
     @classmethod
-    def from_file(cls, folder: str | pathlib.Path, name: str) -> 'CalculationResults':
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> CalculationResults:
         """Load CalculationResults from saved files.
 
         Args:
@@ -140,7 +142,7 @@ class CalculationResults:
         )
 
     @classmethod
-    def from_calculation(cls, calculation: 'Calculation') -> 'CalculationResults':
+    def from_calculation(cls, calculation: Calculation) -> CalculationResults:
         """Create CalculationResults from a Calculation object.
 
         Args:
@@ -197,7 +199,7 @@ class CalculationResults:
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
 
-    def __getitem__(self, key: str) -> 'ComponentResults' | 'BusResults' | 'EffectResults':
+    def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
             return self.components[key]
         if key in self.buses:
@@ -207,7 +209,7 @@ class CalculationResults:
         raise KeyError(f'No element with label {key} found.')
 
     @property
-    def storages(self) -> List['ComponentResults']:
+    def storages(self) -> List[ComponentResults]:
         """Get all storage components in the results."""
         return [comp for comp in self.components.values() if comp.is_storage]
 
@@ -790,7 +792,7 @@ class SegmentedCalculationResults:
     """
 
     @classmethod
-    def from_calculation(cls, calculation: 'SegmentedCalculation'):
+    def from_calculation(cls, calculation: SegmentedCalculation):
         return cls(
             [calc.results for calc in calculation.sub_calculations],
             all_timesteps=calculation.all_timesteps,

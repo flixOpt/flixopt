@@ -5,6 +5,8 @@ Different Datatypes are used to represent the effects with assigned values by th
 which are then transformed into the internal data structure.
 """
 
+from __future__ import annotations
+
 import logging
 import warnings
 from typing import TYPE_CHECKING, Dict, Iterator, List, Literal
@@ -137,8 +139,8 @@ class Effect(Element):
         meta_data: Dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        specific_share_to_other_effects_operation: 'EffectValuesUser' | None = None,
-        specific_share_to_other_effects_invest: 'EffectValuesUser' | None = None,
+        specific_share_to_other_effects_operation: EffectValuesUser | None = None,
+        specific_share_to_other_effects_invest: EffectValuesUser | None = None,
         minimum_operation: Scalar | None = None,
         maximum_operation: Scalar | None = None,
         minimum_invest: Scalar | None = None,
@@ -167,7 +169,7 @@ class Effect(Element):
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         self.minimum_operation_per_hour = flow_system.create_time_series(
             f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
         )
@@ -180,7 +182,7 @@ class Effect(Element):
             f'{self.label_full}|operation->', self.specific_share_to_other_effects_operation, 'operation'
         )
 
-    def create_model(self, model: SystemModel) -> 'EffectModel':
+    def create_model(self, model: SystemModel) -> EffectModel:
         self._plausibility_checks()
         self.model = EffectModel(model, self)
         return self.model
@@ -270,7 +272,7 @@ class EffectCollection:
         self.model: EffectCollectionModel | None = None
         self.add_effects(*effects)
 
-    def create_model(self, model: SystemModel) -> 'EffectCollectionModel':
+    def create_model(self, model: SystemModel) -> EffectCollectionModel:
         self._plausibility_checks()
         self.model = EffectCollectionModel(model, self)
         return self.model
@@ -344,7 +346,7 @@ class EffectCollection:
                     f'Error: circular invest-shares \n{error_str(target_effect.label, target_effect.label)}'
                 )
 
-    def __getitem__(self, effect: str | Effect) -> 'Effect':
+    def __getitem__(self, effect: str | Effect) -> Effect:
         """
         Get an effect by label, or return the standard effect if None is passed
 
@@ -370,7 +372,7 @@ class EffectCollection:
     def __len__(self) -> int:
         return len(self._effects)
 
-    def __contains__(self, item: str | 'Effect') -> bool:
+    def __contains__(self, item: str | Effect) -> bool:
         """Check if the effect exists. Checks for label or object"""
         if isinstance(item, str):
             return item in self.effects  # Check if the label exists

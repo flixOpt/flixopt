@@ -23,6 +23,8 @@ The module integrates seamlessly with flixopt's result classes while remaining
 accessible for standalone data visualization tasks.
 """
 
+from __future__ import annotations
+
 import itertools
 import logging
 import pathlib

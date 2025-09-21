@@ -2,6 +2,8 @@
 This module contains the FlowSystem class, which is used to collect instances of many other classes by the end User.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib
@@ -101,7 +103,7 @@ class FlowSystem:
         return flow_system
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'FlowSystem':
+    def from_dict(cls, data: Dict) -> FlowSystem:
         """
         Load a FlowSystem from a dictionary.
 

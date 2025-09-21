@@ -3,6 +3,8 @@ This module contains the core structure of the flixopt framework.
 These classes are not directly used by the end user, but are used by other modules.
 """
 
+from __future__ import annotations
+
 import inspect
 import json
 import logging
@@ -49,7 +51,7 @@ class SystemModel(linopy.Model):
     It is used to create and store the variables and constraints for the flow_system.
     """
 
-    def __init__(self, flow_system: 'FlowSystem'):
+    def __init__(self, flow_system: FlowSystem):
         """
         Args:
             flow_system: The flow_system that is used to create the model.
@@ -112,7 +114,7 @@ class Interface:
     This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixopt.
     """
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         """Transforms the data of the interface to match the FlowSystem's dimensions"""
         raise NotImplementedError('Every Interface needs a transform_data() method')
 
@@ -232,7 +234,7 @@ class Interface:
         return value
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'Interface':
+    def from_dict(cls, data: Dict) -> Interface:
         """
         Create an instance from a dictionary representation.
 
@@ -271,7 +273,7 @@ class Element(Interface):
         """This function is used to do some basic plausibility checks for each Element during initialization"""
         raise NotImplementedError('Every Element needs a _plausibility_checks() method')
 
-    def create_model(self, model: SystemModel) -> 'ElementModel':
+    def create_model(self, model: SystemModel) -> ElementModel:
         raise NotImplementedError('Every Element needs a create_model() method')
 
     @property

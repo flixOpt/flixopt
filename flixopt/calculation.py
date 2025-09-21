@@ -8,6 +8,8 @@ There are three different Calculation types:
     3. SegmentedCalculation: Solves a SystemModel for each individual Segment of the FlowSystem.
 """
 
+from __future__ import annotations
+
 import logging
 import math
 import pathlib

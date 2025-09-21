@@ -2,6 +2,8 @@
 This module contains the basic components of the flixopt framework.
 """
 
+from __future__ import annotations
+
 import logging
 import warnings
 from typing import TYPE_CHECKING, Dict, List, Literal, Set, Tuple
@@ -166,7 +168,7 @@ class LinearConverter(Component):
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
-    def create_model(self, model: SystemModel) -> 'LinearConverterModel':
+    def create_model(self, model: SystemModel) -> LinearConverterModel:
         self._plausibility_checks()
         self.model = LinearConverterModel(model, self)
         return self.model
@@ -200,14 +202,14 @@ class LinearConverter(Component):
                         f'(in flow {flow.label_full}) do not make sense together!'
                     )
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         super().transform_data(flow_system)
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
         if self.piecewise_conversion:
             self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
-    def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, TimeSeries]]:
+    def _transform_conversion_factors(self, flow_system: FlowSystem) -> List[Dict[str, TimeSeries]]:
         """macht alle Faktoren, die nicht TimeSeries sind, zu TimeSeries"""
         list_of_conversion_factors = []
         for idx, conversion_factor in enumerate(self.conversion_factors):
@@ -402,12 +404,12 @@ class Storage(Component):
         self.relative_loss_per_hour: NumericDataTS = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
 
-    def create_model(self, model: SystemModel) -> 'StorageModel':
+    def create_model(self, model: SystemModel) -> StorageModel:
         self._plausibility_checks()
         self.model = StorageModel(model, self)
         return self.model
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: FlowSystem) -> None:
         super().transform_data(flow_system)
         self.relative_minimum_charge_state = flow_system.create_time_series(
             f'{self.label_full}|relative_minimum_charge_state',
@@ -623,12 +625,12 @@ class Transmission(Component):
                     'Please use Flow in1. The size of in2 is equal to in1. THis is handled internally'
                 )
 
-    def create_model(self, model) -> 'TransmissionModel':
+    def create_model(self, model) -> TransmissionModel:
         self._plausibility_checks()
         self.model = TransmissionModel(model, self)
         return self.model
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: FlowSystem) -> None:
         super().transform_data(flow_system)
         self.relative_losses = flow_system.create_time_series(
             f'{self.label_full}|relative_losses', self.relative_losses

@@ -2,6 +2,8 @@
 This module contains several utility functions used throughout the flixopt framework.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any, Dict, List, Literal
 

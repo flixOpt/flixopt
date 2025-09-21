@@ -2,6 +2,8 @@
 This module contains the solvers of the flixopt framework, making them available to the end user in a compact way.
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict

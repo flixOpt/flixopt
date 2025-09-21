@@ -3,12 +3,14 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
+from __future__ import annotations
+
 import inspect
 import json
 import logging
 import pathlib
 from collections import Counter
-from typing import Any, Dict, Iterator, List, Literal, Tuple
+from typing import Any, Dict, Iterator, List, Literal, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -22,7 +24,7 @@ Scalar = int | float
 NumericData = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Represents any form of numeric data, from simple scalars to complex data structures."""
 
-NumericDataTS = NumericData | 'TimeSeriesData'
+NumericDataTS = Union[NumericData, 'TimeSeriesData']
 """Represents either standard numeric data or TimeSeriesData."""
 
 
@@ -170,7 +172,7 @@ class TimeSeries:
         aggregation_weight: float | None = None,
         aggregation_group: str | None = None,
         needs_extra_timestep: bool = False,
-    ) -> 'TimeSeries':
+    ) -> TimeSeries:
         """
         Initialize the TimeSeries from multiple data sources.
 
@@ -194,7 +196,7 @@ class TimeSeries:
         )
 
     @classmethod
-    def from_json(cls, data: Dict[str, Any] | None = None, path: str | None = None) -> 'TimeSeries':
+    def from_json(cls, data: Dict[str, Any] | None = None, path: str | None = None) -> TimeSeries:
         """
         Load a TimeSeries from a dictionary or json file.
 
@@ -584,7 +586,7 @@ class TimeSeriesCollection:
     @classmethod
     def with_uniform_timesteps(
         cls, start_time: pd.Timestamp, periods: int, freq: str, hours_per_step: float | None = None
-    ) -> 'TimeSeriesCollection':
+    ) -> TimeSeriesCollection:
         """Create a collection with uniform timesteps."""
         timesteps = pd.date_range(start_time, periods=periods, freq=freq, name='time')
         return cls(timesteps, hours_of_previous_timesteps=hours_per_step)

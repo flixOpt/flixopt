@@ -3,6 +3,8 @@ This module contains the Aggregation functionality for the flixopt framework.
 Through this, aggregating TimeSeriesData is possible.
 """
 
+from __future__ import annotations
+
 import copy
 import logging
 import pathlib

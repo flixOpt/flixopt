@@ -3,6 +3,8 @@ This module contains the features of the flixopt framework.
 Features extend the functionality of Elements.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Dict, List, Tuple
 
