@@ -41,6 +41,7 @@ Until here -->
 
 ### Fixed
 - Fix color scheme selection in network_app; color pickers now update when a scheme is selected.
+- Fix error handling in network visualization if networkx is not installed.
 
 ### Known Issues
 

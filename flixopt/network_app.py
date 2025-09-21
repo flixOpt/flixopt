@@ -2,12 +2,12 @@ import json
 import logging
 import socket
 import threading
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 try:
     import dash_cytoscape as cyto
     import dash_daq as daq
-    import networkx
+    import networkx as nx
     from dash import Dash, Input, Output, State, callback_context, dcc, html, no_update
     from werkzeug.serving import make_server
 
@@ -16,6 +16,9 @@ try:
 except ImportError as e:
     DASH_CYTOSCAPE_AVAILABLE = False
     VISUALIZATION_ERROR = str(e)
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
 from .elements import Bus, Component, Flow
@@ -110,8 +113,16 @@ class VisualizationConfig:
     ]
 
 
-def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
+def flow_graph(flow_system: FlowSystem) -> 'nx.DiGraph':
     """Convert FlowSystem to NetworkX graph - simplified and more robust"""
+    if not DASH_CYTOSCAPE_AVAILABLE:
+        raise ImportError(
+            'Network visualization requires optional dependencies. '
+            'Install with: pip install flixopt[viz] or '
+            'pip install dash dash-cytoscape networkx werkzeug. '
+            f'Original error: {VISUALIZATION_ERROR}'
+        )
+
     nodes = list(flow_system.components.values()) + list(flow_system.buses.values())
     edges = list(flow_system.flows.values())
 
@@ -141,7 +152,7 @@ def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
         else:
             return 'rectangle'
 
-    graph = networkx.DiGraph()
+    graph = nx.DiGraph()
 
     # Add nodes with attributes
     for node in nodes:
@@ -168,7 +179,7 @@ def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
     return graph
 
 
-def make_cytoscape_elements(graph: networkx.DiGraph) -> List[Dict[str, Any]]:
+def make_cytoscape_elements(graph: 'nx.DiGraph') -> List[Dict[str, Any]]:
     """Convert NetworkX graph to Cytoscape elements"""
     elements = []
 
@@ -378,7 +389,7 @@ def create_sidebar():
     )
 
 
-def shownetwork(graph: networkx.DiGraph):
+def shownetwork(graph: 'nx.DiGraph'):
     """Main function to create and run the network visualization"""
     if not DASH_CYTOSCAPE_AVAILABLE:
         raise ImportError(f'Required packages not available: {VISUALIZATION_ERROR}')
