@@ -46,6 +46,8 @@ Until here -->
 ### Known Issues
 
 ### *Development*
+- Pin dev dependencies to specific versions
+- Improve CI workflows to run faster and smarter
 
 ## [2.1.7] - 2025-09-13
 
