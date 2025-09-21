@@ -4,7 +4,7 @@ to model the same energy system. THe Results will be compared to each other.
 """
 
 import pathlib
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -159,7 +159,7 @@ if __name__ == '__main__':
     flow_system.plot_network(controls=False, show=True)
 
     # Calculations
-    calculations: List[Union[fx.FullCalculation, fx.AggregatedCalculation, fx.SegmentedCalculation]] = []
+    calculations: List[fx.FullCalculation | fx.AggregatedCalculation | fx.SegmentedCalculation] = []
 
     if full:
         calculation = fx.FullCalculation('Full', flow_system)
