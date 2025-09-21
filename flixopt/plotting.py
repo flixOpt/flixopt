@@ -262,7 +262,7 @@ class ColorProcessor:
             return self._generate_colors_from_colormap(self.default_colormap, len(labels))
 
         # Find missing labels
-        missing_labels = set(labels) - set(colors.keys())
+        missing_labels = sorted(set(labels) - set(colors.keys()))
         if missing_labels:
             logger.warning(
                 f'Some labels have no color specified: {missing_labels}. Using {self.default_colormap} for these.'
