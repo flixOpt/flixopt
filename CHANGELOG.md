@@ -34,6 +34,7 @@ Until here -->
 ### Added
 
 ### Changed
+- Greatly improved docstrings and documentation of all public classes
 
 ### Deprecated
 
