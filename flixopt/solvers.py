@@ -4,7 +4,7 @@ This module contains the solvers of the flixopt framework, making them available
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Dict, Optional
+from typing import Any, ClassVar, Dict
 
 logger = logging.getLogger('flixopt')
 
@@ -64,10 +64,10 @@ class HighsSolver(_Solver):
         mip_gap: Acceptable relative optimality gap in [0.0, 1.0]; mapped to HiGHS `mip_rel_gap`.
         time_limit_seconds: Time limit in seconds; mapped to HiGHS `time_limit`.
         extra_options: Additional solver options merged into `options`.
-        threads (Optional[int]): Number of threads to use. If None, HiGHS chooses.
+        threads (int | None): Number of threads to use. If None, HiGHS chooses.
     """
 
-    threads: Optional[int] = None
+    threads: int | None = None
     name: ClassVar[str] = 'highs'
 
     @property

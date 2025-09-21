@@ -3,7 +3,7 @@ This Module contains high-level classes to easily model a FlowSystem.
 """
 
 import logging
-from typing import Dict, Optional
+from typing import Dict
 
 import numpy as np
 
@@ -76,7 +76,7 @@ class Boiler(LinearConverter):
         Q_fu: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
     ):
         super().__init__(
             label,
@@ -163,7 +163,7 @@ class Power2Heat(LinearConverter):
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
     ):
         super().__init__(
             label,
@@ -250,7 +250,7 @@ class HeatPump(LinearConverter):
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
     ):
         super().__init__(
             label,
@@ -339,7 +339,7 @@ class CoolingTower(LinearConverter):
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
     ):
         super().__init__(
             label,
@@ -439,7 +439,7 @@ class CHP(LinearConverter):
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
     ):
         heat = {Q_fu.label: eta_th, Q_th.label: 1}
         electricity = {Q_fu.label: eta_el, P_el.label: 1}
@@ -552,7 +552,7 @@ class HeatPumpWithSource(LinearConverter):
         Q_ab: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: Dict | None = None,
     ):
         # super:
         electricity = {P_el.label: COP, Q_th.label: 1}

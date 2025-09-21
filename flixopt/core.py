@@ -8,7 +8,7 @@ import json
 import logging
 import pathlib
 from collections import Counter
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Literal, Tuple
 
 import numpy as np
 import pandas as pd
@@ -547,7 +547,7 @@ class TimeSeriesCollection:
         self,
         timesteps: pd.DatetimeIndex,
         hours_of_last_timestep: float | None = None,
-        hours_of_previous_timesteps: Optional[float | np.ndarray] = None,
+        hours_of_previous_timesteps: float | np.ndarray | None = None,
     ):
         """
         Args:
@@ -834,7 +834,7 @@ class TimeSeriesCollection:
 
     @staticmethod
     def _calculate_hours_of_previous_timesteps(
-        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: Optional[float | np.ndarray]
+        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: float | np.ndarray | None
     ) -> float | np.ndarray:
         """Calculate duration of regular timesteps."""
         if hours_of_previous_timesteps is not None:
