@@ -6,7 +6,6 @@ Features extend the functionality of Elements.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List
 
 import linopy
 import numpy as np
@@ -207,13 +206,13 @@ class StateModel(Model):
         self,
         model: SystemModel,
         label_of_element: str,
-        defining_variables: List[linopy.Variable],
-        defining_bounds: List[tuple[NumericData, NumericData]],
-        previous_values: List[NumericData | None] | None = None,
+        defining_variables: list[linopy.Variable],
+        defining_bounds: list[tuple[NumericData, NumericData]],
+        previous_values: list[NumericData | None] | None = None,
         use_off: bool = True,
         on_hours_total_min: NumericData | None = 0,
         on_hours_total_max: NumericData | None = None,
-        effects_per_running_hour: Dict[str, NumericData] | None = None,
+        effects_per_running_hour: dict[str, NumericData] | None = None,
         label: str | None = None,
     ):
         """
@@ -639,9 +638,9 @@ class OnOffModel(Model):
         model: SystemModel,
         on_off_parameters: OnOffParameters,
         label_of_element: str,
-        defining_variables: List[linopy.Variable],
-        defining_bounds: List[tuple[NumericData, NumericData]],
-        previous_values: List[NumericData | None],
+        defining_variables: list[linopy.Variable],
+        defining_bounds: list[tuple[NumericData, NumericData]],
+        previous_values: list[NumericData | None],
         label: str | None = None,
     ):
         """
@@ -860,7 +859,7 @@ class PiecewiseModel(Model):
         self._zero_point = zero_point
         self._as_time_series = as_time_series
 
-        self.pieces: List[PieceModel] = []
+        self.pieces: list[PieceModel] = []
         self.zero_point: linopy.Variable | None = None
 
     def do_modeling(self):
@@ -939,8 +938,8 @@ class ShareAllocationModel(Model):
             )
         self.total_per_timestep: linopy.Variable | None = None
         self.total: linopy.Variable | None = None
-        self.shares: Dict[str, linopy.Variable] = {}
-        self.share_constraints: Dict[str, linopy.Constraint] = {}
+        self.shares: dict[str, linopy.Variable] = {}
+        self.share_constraints: dict[str, linopy.Constraint] = {}
 
         self._eq_total_per_timestep: linopy.Constraint | None = None
         self._eq_total: linopy.Constraint | None = None
@@ -1031,7 +1030,7 @@ class PiecewiseEffectsModel(Model):
         model: SystemModel,
         label_of_element: str,
         piecewise_origin: tuple[str, Piecewise],
-        piecewise_shares: Dict[str, Piecewise],
+        piecewise_shares: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
         label: str = 'PiecewiseEffects',
     ):
@@ -1042,7 +1041,7 @@ class PiecewiseEffectsModel(Model):
         self._zero_point = zero_point
         self._piecewise_origin = piecewise_origin
         self._piecewise_shares = piecewise_shares
-        self.shares: Dict[str, linopy.Variable] = {}
+        self.shares: dict[str, linopy.Variable] = {}
 
         self.piecewise_model: PiecewiseModel | None = None
 
@@ -1102,7 +1101,7 @@ class PreventSimultaneousUsageModel(Model):
     def __init__(
         self,
         model: SystemModel,
-        variables: List[linopy.Variable],
+        variables: list[linopy.Variable],
         label_of_element: str,
         label: str = 'PreventSimultaneousUsage',
     ):

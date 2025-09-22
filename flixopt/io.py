@@ -148,7 +148,7 @@ def _process_complex_strings(data):
         return data
 
 
-def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dict[str, str]:
+def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> dict[str, str]:
     """
     Convert all model variables and constraints to a structured string representation.
     This can take multiple seconds for large models.
@@ -276,7 +276,7 @@ class CalculationResultsPaths:
         self.flow_system = self.folder / f'{self.name}--flow_system.nc4'
         self.model_documentation = self.folder / f'{self.name}--model_documentation.yaml'
 
-    def all_paths(self) -> Dict[str, pathlib.Path]:
+    def all_paths(self) -> dict[str, pathlib.Path]:
         """Return a dictionary of all paths."""
         return {
             'linopy_model': self.linopy_model,
