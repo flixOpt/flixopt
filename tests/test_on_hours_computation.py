@@ -67,7 +67,7 @@ class TestComputePreviousOnStates:
             ([np.array([0.1, 0, 0.3]), None, np.array([0, 0, 0])], np.array([1, 0, 1])),
             ([np.array([0, 0, 0]), np.array([0, 1, 0])], np.array([0, 1, 0])),
             ([np.array([0.1, 0, 0]), np.array([0, 0, 0.2])], np.array([1, 0, 1])),
-            # Case 6: Mix of None, 1D and 2D arrays
+            # Case 6: Mix of None and 1D arrays
             ([None, np.array([0, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 0])], np.array([0, 1, 0])),
             ([np.array([0, 0, 0]), None, np.array([0, 0, 0]), np.array([0, 0, 0])], np.array([0, 0, 0])),
         ],
