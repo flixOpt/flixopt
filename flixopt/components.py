@@ -703,7 +703,7 @@ class LinearConverterModel(ComponentModel):
         super().__init__(model, element)
         self.element: LinearConverter = element
         self.on_off: OnOffModel | None = None
-        self.piecewise_conversion: PiecewiseConversion | None = None
+        self.piecewise_conversion: PiecewiseModel | None = None
 
     def do_modeling(self):
         super().do_modeling()
