@@ -576,15 +576,24 @@ class HeatPumpWithSource(LinearConverter):
         self.Q_ab = Q_ab
         self.Q_th = Q_th
 
+        if np.any(np.asarray(self.COP) <= 1):
+            raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
+
     @property
     def COP(self):  # noqa: N802
-        return self.conversion_factors[0][self.Q_th.label]
+        return self.conversion_factors[0][self.P_el.label]
 
     @COP.setter
     def COP(self, value):  # noqa: N802
         check_bounds(value, 'COP', self.label_full, 1, 20)
-        self.conversion_factors[0][self.Q_th.label] = value
-        self.conversion_factors[1][self.Q_th.label] = value / (value - 1)
+        if np.any(np.asarray(self.COP) <= 1):
+            raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
+        # electricity equation: COP * P_el == 1 * Q_th
+        self.conversion_factors[0][self.P_el.label] = value
+        self.conversion_factors[0][self.Q_th.label] = 1
+        # heat source equation: (COP/(COP-1)) * Q_ab == 1 * Q_th  -> Q_ab = Q_th*(COP-1)/COP
+        self.conversion_factors[1][self.Q_ab.label] = value / (value - 1)
+        self.conversion_factors[1][self.Q_th.label] = 1
 
 
 def check_bounds(

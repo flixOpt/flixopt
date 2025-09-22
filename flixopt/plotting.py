@@ -264,7 +264,7 @@ class ColorProcessor:
             return self._generate_colors_from_colormap(self.default_colormap, len(labels))
 
         # Find missing labels
-        missing_labels = set(labels) - set(colors.keys())
+        missing_labels = sorted(set(labels) - set(colors.keys()))
         if missing_labels:
             logger.warning(
                 f'Some labels have no color specified: {missing_labels}. Using {self.default_colormap} for these.'
@@ -354,7 +354,8 @@ def with_plotly(
     Returns:
         A Plotly figure object containing the generated plot.
     """
-    assert mode in ['bar', 'line', 'area'], f"'mode' must be one of {['bar', 'line', 'area']}"
+    if mode not in ('bar', 'line', 'area'):
+        raise ValueError(f"'mode' must be one of {{'bar','line','area'}}, got {mode!r}")
     if data.empty:
         return go.Figure()
 
@@ -500,7 +501,8 @@ def with_matplotlib(
         - If `mode` is 'line', stepped lines are drawn for each data series.
         - The legend is placed below the plot to accommodate multiple data series.
     """
-    assert mode in ['bar', 'line'], f"'mode' must be one of {['bar', 'line']} for matplotlib"
+    if mode not in ('bar', 'line'):
+        raise ValueError(f"'mode' must be one of {{'bar','line'}} for matplotlib, got {mode!r}")
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -595,7 +597,7 @@ def heat_map_matplotlib(
 
     # Create the heatmap plot
     fig, ax = plt.subplots(figsize=figsize)
-    ax.pcolormesh(data.values, cmap=color_map)
+    ax.pcolormesh(data.values, cmap=color_map, shading='auto')
     ax.invert_yaxis()  # Flip the y-axis to start at the top
 
     # Adjust ticks and labels for x and y axes
@@ -615,7 +617,7 @@ def heat_map_matplotlib(
 
     # Add the colorbar
     sm1 = plt.cm.ScalarMappable(cmap=color_map, norm=plt.Normalize(vmin=color_bar_min, vmax=color_bar_max))
-    sm1._A = []
+    sm1.set_array([])
     fig.colorbar(sm1, ax=ax, pad=0.12, aspect=15, fraction=0.2, orientation='horizontal')
 
     fig.tight_layout()
@@ -772,6 +774,8 @@ def heat_map_data_from_df(
         ('h', 'min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
     }
 
+    if df.empty:
+        raise ValueError('DataFrame is empty.')
     diffs = df.index.to_series().diff().dropna()
     minimum_time_diff_in_min = diffs.min().total_seconds() / 60
     time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
@@ -783,7 +787,8 @@ def heat_map_data_from_df(
 
     # Select the format based on the `periods` and `steps_per_period` combination
     format_pair = (periods, steps_per_period)
-    assert format_pair in formats, f'{format_pair} is not a valid format. Choose from {list(formats.keys())}'
+    if format_pair not in formats:
+        raise ValueError(f'{format_pair} is not a valid format. Choose from {list(formats.keys())}')
     period_format, step_format = formats[format_pair]
 
     df = df.sort_index()  # Ensure DataFrame is sorted by time index
@@ -950,7 +955,7 @@ def pie_with_plotly(
     values = data_sum.values.tolist()
 
     # Apply color mapping using the unified color processor
-    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, list(data.columns))
+    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, labels)
 
     # Create figure if not provided
     fig = fig if fig is not None else go.Figure()
@@ -1119,7 +1124,7 @@ def dual_pie_with_plotly(
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
-        hole: Size of the hole as a fraction of the radius (0.0–1.0).
+        hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
         lower_percentage_group: Group segments whose cumulative share is below this percentage (0–100) into "Other".
         hover_template: Template for hover text. Use %{label}, %{value}, %{percent}.
         text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
@@ -1441,8 +1446,9 @@ def export_figure(
 
     if isinstance(figure_like, plotly.graph_objs.Figure):
         fig = figure_like
-        if not filename.suffix == '.html':
-            logger.debug(f'To save a plotly figure, the filename should end with ".html". Got {filename}')
+        if filename.suffix != '.html':
+            logger.warning(f'To save a Plotly figure, using .html. Adjusting suffix for {filename}')
+            filename = filename.with_suffix('.html')
         if show and not save:
             fig.show()
         elif save and show:

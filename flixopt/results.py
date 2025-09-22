@@ -287,9 +287,6 @@ class CalculationResults:
             controls: Enable/disable interactive controls.
             path: Save path for network HTML.
             show: Whether to display the plot.
-
-        Returns:
-            pyvis.network.Network: Interactive network object.
         """
         try:
             from .flow_system import FlowSystem
@@ -815,9 +812,8 @@ class SegmentedCalculationResults:
         """
         folder = pathlib.Path(folder)
         path = folder / name
-        nc_file = path.with_suffix('.nc4')
-        logger.info(f'loading calculation "{name}" from file ("{nc_file}")')
-        with open(path.with_suffix('.json'), encoding='utf-8') as f:
+        logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
+        with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
             [CalculationResults.from_file(folder, name) for name in meta_data['sub_calculations']],

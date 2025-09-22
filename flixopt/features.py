@@ -619,7 +619,7 @@ class ConsecutiveStateModel(Model):
         if len(hours_per_timestep) < nr_of_indexes_with_consecutive_ones:
             raise ValueError(
                 f'When trying to calculate the consecutive duration, the length of the last duration '
-                f'({len(nr_of_indexes_with_consecutive_ones)}) is longer than the provided hours_per_timestep ({len(hours_per_timestep)}), '
+                f'({nr_of_indexes_with_consecutive_ones}) is longer than the provided hours_per_timestep ({len(hours_per_timestep)}), '
                 f'as {binary_values=}'
             )
 
@@ -948,7 +948,7 @@ class ShareAllocationModel(Model):
 
         # Parameters
         self._shares_are_time_series = shares_are_time_series
-        self._total_max = total_max if total_min is not None else np.inf
+        self._total_max = total_max if total_max is not None else np.inf
         self._total_min = total_min if total_min is not None else -np.inf
         self._max_per_hour = max_per_hour if max_per_hour is not None else np.inf
         self._min_per_hour = min_per_hour if min_per_hour is not None else -np.inf
