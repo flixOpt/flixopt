@@ -32,6 +32,7 @@ Until here -->
 ## [Unreleased]
 
 ### Added
+- Extra Check for HeatPumpWithSource.COP to be strictly > 1 to avoid division by zero
 
 ### Changed
 - Greatly improved docstrings and documentation of all public classes
