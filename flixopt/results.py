@@ -257,7 +257,7 @@ class CalculationResults:
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> plotly.graph_objs.Figure | Tuple[plt.Figure, plt.Axes]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         return plot_heatmap(
             dataarray=self.solution[variable_name],
             name=variable_name,
@@ -432,7 +432,7 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> plotly.graph_objs.Figure | Tuple[plt.Figure, plt.Axes]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot node balance flows.
 
         Args:
@@ -480,7 +480,7 @@ class _NodeResults(_ElementResults):
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> plotly.graph_objects.Figure | Tuple[plt.Figure, List[plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
 
         Args:
@@ -884,7 +884,7 @@ class SegmentedCalculationResults:
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> plotly.graph_objs.Figure | Tuple[plt.Figure, plt.Axes]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
         Args:

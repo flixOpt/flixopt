@@ -28,7 +28,7 @@ class InvestmentModel(Model):
         model: SystemModel,
         label_of_element: str,
         parameters: InvestParameters,
-        defining_variable: [linopy.Variable],
+        defining_variable: linopy.Variable,
         relative_bounds_of_defining_variable: tuple[NumericData, NumericData],
         label: str | None = None,
         on_variable: linopy.Variable | None = None,
@@ -347,7 +347,7 @@ class StateModel(Model):
         return 1 - self.previous_states
 
     @staticmethod
-    def compute_previous_states(previous_values: List[NumericData], epsilon: float = 1e-5) -> np.ndarray:
+    def compute_previous_states(previous_values: list[NumericData | None] | None, epsilon: float = 1e-5) -> np.ndarray:
         """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
         if not previous_values or all([val is None for val in previous_values]):
             return np.array([0])

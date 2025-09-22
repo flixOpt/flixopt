@@ -28,7 +28,7 @@ from __future__ import annotations
 import itertools
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -63,7 +63,7 @@ else:  # Matplotlib < 3.7
         plt.register_cmap(name='portland', cmap=mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
-ColorType = str | List[str] | Dict[str, str]
+ColorType = str | list[str] | dict[str, str]
 """Flexible color specification type supporting multiple input formats for visualization.
 
 Color specifications can take several forms to accommodate different use cases:
@@ -472,7 +472,7 @@ def with_matplotlib(
     figsize: tuple[int, int] = (12, 6),
     fig: plt.Figure | None = None,
     ax: plt.Axes | None = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
 
@@ -565,7 +565,7 @@ def heat_map_matplotlib(
     xlabel: str = 'Period',
     ylabel: str = 'Step',
     figsize: tuple[float, float] = (12, 6),
-) -> Tuple[plt.Figure, plt.Axes]:
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Plots a DataFrame as a heatmap using Matplotlib. The columns of the DataFrame will be displayed on the x-axis,
     the index will be displayed on the y-axis, and the values will represent the 'heat' intensity in the plot.
@@ -989,7 +989,7 @@ def pie_with_matplotlib(
     figsize: tuple[int, int] = (10, 8),
     fig: plt.Figure | None = None,
     ax: plt.Axes | None = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Create a pie chart with Matplotlib to visualize the proportion of values in a DataFrame.
 
@@ -1258,8 +1258,8 @@ def dual_pie_with_matplotlib(
     lower_percentage_group: float = 5.0,
     figsize: tuple[int, int] = (14, 7),
     fig: plt.Figure | None = None,
-    axes: List[plt.Axes] | None = None,
-) -> Tuple[plt.Figure, List[plt.Axes]]:
+    axes: list[plt.Axes] | None = None,
+) -> tuple[plt.Figure, list[plt.Axes]]:
     """
     Create two pie charts side by side with Matplotlib, with consistent coloring across both charts.
     Leverages the existing pie_with_matplotlib function.

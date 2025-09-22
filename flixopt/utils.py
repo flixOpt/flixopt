@@ -13,7 +13,7 @@ import xarray as xr
 logger = logging.getLogger('flixopt')
 
 
-def is_number(number_alias: int | float | str):
+def is_number(number_alias: int | float | str) -> bool:
     """Returns True is string is a number."""
     try:
         float(number_alias)
