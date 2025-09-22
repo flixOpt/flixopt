@@ -580,7 +580,7 @@ class HeatPumpWithSource(LinearConverter):
     @COP.setter
     def COP(self, value):  # noqa: N802
         check_bounds(value, 'COP', self.label_full, 1, 20)
-        if np.any(np.asarray(self.COP) <= 1):
+        if np.any(np.asarray(value) <= 1):
             raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
         self.conversion_factors = [
             {self.P_el.label: value, self.Q_th.label: 1},
