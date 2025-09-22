@@ -282,7 +282,7 @@ class AggregationParameters:
 
     @property
     def use_low_peaks(self) -> bool:
-        return self.time_series_for_low_peaks is not None
+        return bool(self.time_series_for_low_peaks)
 
 
 class AggregationModel(Model):
