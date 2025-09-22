@@ -1212,7 +1212,7 @@ def dual_pie_with_plotly(
             labels=labels,
             values=values,
             name=side,
-            marker_colors=trace_colors,
+            marker=dict(colors=trace_colors),
             hole=hole,
             textinfo=text_info,
             textposition=text_position,

@@ -385,13 +385,13 @@ class FlowSystem:
         followed by the label of the Effect in the nested_values and the label_suffix.
         If the key in the EffectValues is None, the alias 'Standard_Effect' is used
         """
-        effect_values: EffectValuesDict | None = self.effects.create_effect_values_dict(effect_values)
-        if effect_values is None:
+        effect_values_dict: EffectValuesDict | None = self.effects.create_effect_values_dict(effect_values)
+        if effect_values_dict is None:
             return None
 
         return {
             effect: self.create_time_series('|'.join(filter(None, [label_prefix, effect, label_suffix])), value)
-            for effect, value in effect_values.items()
+            for effect, value in effect_values_dict.items()
         }
 
     def create_model(self) -> SystemModel:
