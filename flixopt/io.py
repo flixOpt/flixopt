@@ -234,7 +234,7 @@ def save_dataset_to_netcdf(
         path,
         encoding=None
         if not apply_encoding
-        else {data_var: {'zlib': True, 'complevel': 5} for data_var in ds.data_vars},
+        else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
     )
 
 
