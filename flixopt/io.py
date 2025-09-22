@@ -250,7 +250,7 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     Returns:
         Dataset: Loaded dataset.
     """
-    ds = xr.load_dataset(path)
+    ds = xr.load_dataset(str(path))
     ds.attrs = json.loads(ds.attrs['attrs'])
     return ds
 
