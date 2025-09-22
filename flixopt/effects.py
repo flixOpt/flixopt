@@ -346,7 +346,7 @@ class EffectCollection:
                     f'Error: circular invest-shares \n{error_str(target_effect.label, target_effect.label)}'
                 )
 
-    def __getitem__(self, effect: str | Effect) -> Effect:
+    def __getitem__(self, effect: str | Effect | None) -> Effect:
         """
         Get an effect by label, or return the standard effect if None is passed
 
