@@ -963,8 +963,8 @@ class SourceAndSink(Component):
     def __init__(
         self,
         label: str,
-        inputs: list[Flow] = None,
-        outputs: list[Flow] = None,
+        inputs: list[Flow] | None = None,
+        outputs: list[Flow] | None = None,
         prevent_simultaneous_flow_rates: bool = True,
         meta_data: dict | None = None,
         **kwargs,
@@ -1116,7 +1116,7 @@ class Source(Component):
     def __init__(
         self,
         label: str,
-        outputs: list[Flow] = None,
+        outputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
@@ -1230,7 +1230,7 @@ class Sink(Component):
     def __init__(
         self,
         label: str,
-        inputs: list[Flow] = None,
+        inputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
