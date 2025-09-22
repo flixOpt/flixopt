@@ -836,7 +836,7 @@ class PiecewiseModel(Model):
         self,
         model: SystemModel,
         label_of_element: str,
-        piecewise_variables: Dict[str, Piecewise],
+        piecewise_variables: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
         as_time_series: bool,
         label: str = '',
