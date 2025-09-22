@@ -3,16 +3,15 @@ This module contains the Aggregation functionality for the flixopt framework.
 Through this, aggregating TimeSeriesData is possible.
 """
 
+from __future__ import annotations
+
 import copy
 import logging
 import pathlib
 import timeit
-import warnings
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING
 
-import linopy
 import numpy as np
-import pandas as pd
 
 try:
     import tsam.timeseriesaggregation as tsam
@@ -22,17 +21,19 @@ except ImportError:
     TSAM_AVAILABLE = False
 
 from .components import Storage
-from .core import Scalar, TimeSeriesData
-from .elements import Component
-from .flow_system import FlowSystem
 from .structure import (
-    Element,
     Model,
     SystemModel,
 )
 
 if TYPE_CHECKING:
+    import linopy
+    import pandas as pd
     import plotly.graph_objects as go
+
+    from .core import Scalar, TimeSeriesData
+    from .elements import Component
+    from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
 
@@ -48,9 +49,9 @@ class Aggregation:
         hours_per_time_step: Scalar,
         hours_per_period: Scalar,
         nr_of_periods: int = 8,
-        weights: Dict[str, float] = None,
-        time_series_for_high_peaks: List[str] = None,
-        time_series_for_low_peaks: List[str] = None,
+        weights: dict[str, float] | None = None,
+        time_series_for_high_peaks: list[str] | None = None,
+        time_series_for_low_peaks: list[str] | None = None,
     ):
         """
         Args:
@@ -75,9 +76,9 @@ class Aggregation:
         self.time_series_for_high_peaks = time_series_for_high_peaks or []
         self.time_series_for_low_peaks = time_series_for_low_peaks or []
 
-        self.aggregated_data: Optional[pd.DataFrame] = None
+        self.aggregated_data: pd.DataFrame | None = None
         self.clustering_duration_seconds = None
-        self.tsam: Optional[tsam.TimeSeriesAggregation] = None
+        self.tsam: tsam.TimeSeriesAggregation | None = None
 
     def cluster(self) -> None:
         """
@@ -140,7 +141,7 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str = 'viridis', show: bool = True, save: Optional[pathlib.Path] = None) -> 'go.Figure':
+    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
         from . import plotting
 
         df_org = self.original_data.copy().rename(
@@ -162,14 +163,14 @@ class Aggregation:
             figure_like=fig,
             default_path=pathlib.Path('aggregated data.html'),
             default_filetype='.html',
-            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            user_path=save,
             show=show,
-            save=True if save else False,
+            save=save is not None,
         )
 
         return fig
 
-    def get_cluster_indices(self) -> Dict[str, List[np.ndarray]]:
+    def get_cluster_indices(self) -> dict[str, list[np.ndarray]]:
         """
         Generates a dictionary that maps each cluster to a list of index vectors representing the time steps
         assigned to that cluster for each period.
@@ -192,7 +193,7 @@ class Aggregation:
 
         return index_vectors
 
-    def get_equation_indices(self, skip_first_index_of_period: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+    def get_equation_indices(self, skip_first_index_of_period: bool = True) -> tuple[np.ndarray, np.ndarray]:
         """
         Generates pairs of indices for the equations by comparing index vectors of the same cluster.
         If `skip_first_index_of_period` is True, the first index of each period is skipped.
@@ -201,7 +202,7 @@ class Aggregation:
             skip_first_index_of_period (bool): Whether to include or skip the first index of each period.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: Two arrays of indices.
+            tuple[np.ndarray, np.ndarray]: Two arrays of indices.
         """
         idx_var1 = []
         idx_var2 = []
@@ -237,8 +238,8 @@ class AggregationParameters:
         aggregate_data_and_fix_non_binary_vars: bool,
         percentage_of_period_freedom: float = 0,
         penalty_of_period_freedom: float = 0,
-        time_series_for_high_peaks: List[TimeSeriesData] = None,
-        time_series_for_low_peaks: List[TimeSeriesData] = None,
+        time_series_for_high_peaks: list[TimeSeriesData] | None = None,
+        time_series_for_low_peaks: list[TimeSeriesData] | None = None,
     ):
         """
         Initializes aggregation parameters for time series data
@@ -264,24 +265,24 @@ class AggregationParameters:
         self.aggregate_data_and_fix_non_binary_vars = aggregate_data_and_fix_non_binary_vars
         self.percentage_of_period_freedom = percentage_of_period_freedom
         self.penalty_of_period_freedom = penalty_of_period_freedom
-        self.time_series_for_high_peaks: List[TimeSeriesData] = time_series_for_high_peaks or []
-        self.time_series_for_low_peaks: List[TimeSeriesData] = time_series_for_low_peaks or []
+        self.time_series_for_high_peaks: list[TimeSeriesData] = time_series_for_high_peaks or []
+        self.time_series_for_low_peaks: list[TimeSeriesData] = time_series_for_low_peaks or []
 
     @property
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
     @property
-    def labels_for_high_peaks(self) -> List[str]:
+    def labels_for_high_peaks(self) -> list[str]:
         return [ts.label for ts in self.time_series_for_high_peaks]
 
     @property
-    def labels_for_low_peaks(self) -> List[str]:
+    def labels_for_low_peaks(self) -> list[str]:
         return [ts.label for ts in self.time_series_for_low_peaks]
 
     @property
-    def use_low_peaks(self):
-        return self.time_series_for_low_peaks is not None
+    def use_low_peaks(self) -> bool:
+        return bool(self.time_series_for_low_peaks)
 
 
 class AggregationModel(Model):
@@ -295,7 +296,7 @@ class AggregationModel(Model):
         aggregation_parameters: AggregationParameters,
         flow_system: FlowSystem,
         aggregation_data: Aggregation,
-        components_to_clusterize: Optional[List[Component]],
+        components_to_clusterize: list[Component] | None,
     ):
         """
         Modeling-Element for "index-equating"-equations
@@ -314,9 +315,9 @@ class AggregationModel(Model):
 
         indices = self.aggregation_data.get_equation_indices(skip_first_index_of_period=True)
 
-        time_variables: Set[str] = {k for k, v in self._model.variables.data.items() if 'time' in v.indexes}
-        binary_variables: Set[str] = {k for k, v in self._model.variables.data.items() if k in self._model.binaries}
-        binary_time_variables: Set[str] = time_variables & binary_variables
+        time_variables: set[str] = {k for k, v in self._model.variables.data.items() if 'time' in v.indexes}
+        binary_variables: set[str] = {k for k, v in self._model.variables.data.items() if k in self._model.binaries}
+        binary_time_variables: set[str] = time_variables & binary_variables
 
         for component in components:
             if isinstance(component, Storage) and not self.aggregation_parameters.fix_storage_flows:
@@ -336,7 +337,7 @@ class AggregationModel(Model):
             for variable in self.variables_direct.values():
                 self._model.effects.add_share_to_penalty('Aggregation', variable * penalty)
 
-    def _equate_indices(self, variable: linopy.Variable, indices: Tuple[np.ndarray, np.ndarray]) -> None:
+    def _equate_indices(self, variable: linopy.Variable, indices: tuple[np.ndarray, np.ndarray]) -> None:
         assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!!'
         length = len(indices[0])
 

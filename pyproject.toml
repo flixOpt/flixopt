@@ -124,6 +124,7 @@ exclude = ["tests", "docs", "examples", "examples.*", "Tutorials", ".git", ".vsc
 version_scheme = "post-release"
 
 [tool.ruff]
+target-version = "py310"  # Adjust to your minimum version
 # Files or directories to exclude (e.g., virtual environments, cache, build artifacts)
 exclude = [
     "venv",  # Virtual environments
@@ -137,11 +138,28 @@ exclude = [
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "N"]  # Enable linting rules by category (e.g., error, warnings, unused imports)
-ignore = [  # Ignore specific rules
-    "E501",  # Ignore line-length checks (use Black for formatting)
-    "F401",  # Allow unused imports in some cases (use __all__)
+select = [
+    # Core Python issues
+    "E",     # pycodestyle errors (PEP 8 violations)
+    "F",     # Pyflakes (undefined names, unused imports, etc.)
+    "W",     # pycodestyle warnings (whitespace, line length, etc.)
+
+    # Code organization
+    "I",     # isort (import sorting and organization)
+    "B",     # flake8-bugbear (likely bugs and design problems)
+    "N",     # pep8-naming (naming convention violations)
+
+    # Modern Python upgrades
+    "UP",    # pyupgrade (modernize syntax for target Python version)
+    "FA",    # flake8-future-annotations (enforce `from __future__ import annotations`)
+    "TCH",   # flake8-type-checking (optimize imports for type checking)
 ]
+ignore = [  # Ignore specific rules
+    "F401",  # Allow unused imports in some cases (use __all__)
+    "UP038",
+    "E501"  # ignore long lines
+]
+
 extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any rules specified by `fixable`.
 
 # Apply rule exceptions to specific files or directories
@@ -154,6 +172,9 @@ extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any ru
 quote-style = "single"
 indent-style = "space"
 docstring-code-format = true
+
+[tool.ruff.lint.pyupgrade]
+keep-runtime-typing = false  # Allow pyupgrade to drop runtime typing; prefer postponed annotations
 
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load

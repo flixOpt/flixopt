@@ -3,25 +3,28 @@ This module contains the core structure of the flixopt framework.
 These classes are not directly used by the end user, but are used by other modules.
 """
 
+from __future__ import annotations
+
 import inspect
 import json
 import logging
-import pathlib
 from datetime import datetime
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 import linopy
 import numpy as np
-import pandas as pd
 import xarray as xr
 from rich.console import Console
 from rich.pretty import Pretty
 
-from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import TimeSeries, TimeSeriesData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
+    import pathlib
+
+    import pandas as pd
+
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
 
@@ -49,7 +52,7 @@ class SystemModel(linopy.Model):
     It is used to create and store the variables and constraints for the flow_system.
     """
 
-    def __init__(self, flow_system: 'FlowSystem'):
+    def __init__(self, flow_system: FlowSystem):
         """
         Args:
             flow_system: The flow_system that is used to create the model.
@@ -57,7 +60,7 @@ class SystemModel(linopy.Model):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
         self.time_series_collection = flow_system.time_series_collection
-        self.effects: Optional[EffectCollectionModel] = None
+        self.effects: EffectCollectionModel | None = None
 
     def do_modeling(self):
         self.effects = self.flow_system.effects.create_model(self)
@@ -99,11 +102,11 @@ class SystemModel(linopy.Model):
         return self.time_series_collection.hours_of_previous_timesteps
 
     @property
-    def coords(self) -> Tuple[pd.DatetimeIndex]:
+    def coords(self) -> tuple[pd.DatetimeIndex]:
         return (self.time_series_collection.timesteps,)
 
     @property
-    def coords_extra(self) -> Tuple[pd.DatetimeIndex]:
+    def coords_extra(self) -> tuple[pd.DatetimeIndex]:
         return (self.time_series_collection.timesteps_extra,)
 
 
@@ -112,11 +115,11 @@ class Interface:
     This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixopt.
     """
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         """Transforms the data of the interface to match the FlowSystem's dimensions"""
         raise NotImplementedError('Every Interface needs a transform_data() method')
 
-    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
+    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> dict:
         """
         Generate a dictionary representation of the object's constructor arguments.
         Excludes default values and empty dictionaries and lists.
@@ -150,7 +153,7 @@ class Interface:
             details[name] = copy_and_convert_datatypes(value, use_numpy, use_element_label)
         return details
 
-    def to_json(self, path: Union[str, pathlib.Path]):
+    def to_json(self, path: str | pathlib.Path):
         """
         Saves the element to a json file.
         This not meant to be reloaded and recreate the object, but rather used to document or compare the object.
@@ -162,7 +165,7 @@ class Interface:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert the object to a dictionary representation."""
         data = {'__class__': self.__class__.__name__}
 
@@ -200,7 +203,7 @@ class Interface:
         return {k: self._serialize_value(v) for k, v in d.items()}
 
     @classmethod
-    def _deserialize_dict(cls, data: Dict) -> Union[Dict, 'Interface']:
+    def _deserialize_dict(cls, data: dict) -> dict | Interface:
         if '__class__' in data:
             class_name = data.pop('__class__')
             try:
@@ -217,7 +220,7 @@ class Interface:
             return {k: cls._deserialize_value(v) for k, v in data.items()}
 
     @classmethod
-    def _deserialize_list(cls, data: List) -> List:
+    def _deserialize_list(cls, data: list) -> list:
         return [cls._deserialize_value(value) for value in data]
 
     @classmethod
@@ -232,7 +235,7 @@ class Interface:
         return value
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'Interface':
+    def from_dict(cls, data: dict) -> Interface:
         """
         Create an instance from a dictionary representation.
 
@@ -257,7 +260,7 @@ class Interface:
 class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
 
-    def __init__(self, label: str, meta_data: Dict = None):
+    def __init__(self, label: str, meta_data: dict | None = None):
         """
         Args:
             label: The label of the element
@@ -265,13 +268,13 @@ class Element(Interface):
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
-        self.model: Optional[ElementModel] = None
+        self.model: ElementModel | None = None
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization"""
         raise NotImplementedError('Every Element needs a _plausibility_checks() method')
 
-    def create_model(self, model: SystemModel) -> 'ElementModel':
+    def create_model(self, model: SystemModel) -> ElementModel:
         raise NotImplementedError('Every Element needs a create_model() method')
 
     @property
@@ -303,7 +306,7 @@ class Element(Interface):
 class Model:
     """Stores Variables and Constraints."""
 
-    def __init__(self, model: SystemModel, label_of_element: str, label: str = '', label_full: Optional[str] = None):
+    def __init__(self, model: SystemModel, label_of_element: str, label: str = '', label_full: str | None = None):
         """
         Args:
             model: The SystemModel that is used to create the model.
@@ -316,21 +319,21 @@ class Model:
         self._label = label
         self._label_full = label_full
 
-        self._variables_direct: List[str] = []
-        self._constraints_direct: List[str] = []
-        self.sub_models: List[Model] = []
+        self._variables_direct: list[str] = []
+        self._constraints_direct: list[str] = []
+        self.sub_models: list[Model] = []
 
-        self._variables_short: Dict[str, str] = {}
-        self._constraints_short: Dict[str, str] = {}
-        self._sub_models_short: Dict[str, str] = {}
+        self._variables_short: dict[str, str] = {}
+        self._constraints_short: dict[str, str] = {}
+        self._sub_models_short: dict[str, str] = {}
         logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
 
     def do_modeling(self):
         raise NotImplementedError('Every Model needs a do_modeling() method')
 
     def add(
-        self, item: Union[linopy.Variable, linopy.Constraint, 'Model'], short_name: Optional[str] = None
-    ) -> Union[linopy.Variable, linopy.Constraint, 'Model']:
+        self, item: linopy.Variable | linopy.Constraint | Model, short_name: str | None = None
+    ) -> linopy.Variable | linopy.Constraint | Model:
         """
         Add a variable, constraint or sub-model to the model
 
@@ -356,8 +359,8 @@ class Model:
 
     def filter_variables(
         self,
-        filter_by: Optional[Literal['binary', 'continuous', 'integer']] = None,
-        length: Literal['scalar', 'time'] = None,
+        filter_by: Literal['binary', 'continuous', 'integer'] | None = None,
+        length: Literal['scalar', 'time'] | None = None,
     ):
         if filter_by is None:
             all_variables = self.variables
@@ -399,7 +402,7 @@ class Model:
         return self._model.constraints[self._constraints_direct]
 
     @property
-    def _variables(self) -> List[str]:
+    def _variables(self) -> list[str]:
         all_variables = self._variables_direct.copy()
         for sub_model in self.sub_models:
             for variable in sub_model._variables:
@@ -411,7 +414,7 @@ class Model:
         return all_variables
 
     @property
-    def _constraints(self) -> List[str]:
+    def _constraints(self) -> list[str]:
         all_constraints = self._constraints_direct.copy()
         for sub_model in self.sub_models:
             for constraint in sub_model._constraints:
@@ -429,7 +432,7 @@ class Model:
         return self._model.constraints[self._constraints]
 
     @property
-    def all_sub_models(self) -> List['Model']:
+    def all_sub_models(self) -> list[Model]:
         return [model for sub_model in self.sub_models for model in [sub_model] + sub_model.all_sub_models]
 
 
@@ -547,7 +550,7 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
         raise TypeError(f'copy_and_convert_datatypes() did get unexpected data of type "{type(data)}": {data=}')
 
 
-def get_compact_representation(data: Any, array_threshold: int = 50, decimals: int = 2) -> Dict:
+def get_compact_representation(data: Any, array_threshold: int = 50, decimals: int = 2) -> dict:
     """
     Generate a compact json serializable representation of deeply nested data.
     Numpy arrays are statistically described if they exceed a threshold and converted to lists.
@@ -558,7 +561,7 @@ def get_compact_representation(data: Any, array_threshold: int = 50, decimals: i
         decimals (int): Number of decimal places in which to describe the arrays.
 
     Returns:
-        Dict: A dictionary representation of the data
+        dict: A dictionary representation of the data
     """
 
     def format_np_array_if_found(value: Any) -> Any:
@@ -577,7 +580,7 @@ def get_compact_representation(data: Any, array_threshold: int = 50, decimals: i
             )
             return value
 
-    def describe_numpy_arrays(arr: np.ndarray) -> Union[str, List]:
+    def describe_numpy_arrays(arr: np.ndarray) -> str | list:
         """Shortens NumPy arrays if they exceed the specified length."""
 
         def normalized_center_of_mass(array: Any) -> float:

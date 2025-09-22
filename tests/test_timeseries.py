@@ -1,14 +1,12 @@
-import json
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt.core import ConversionError, DataConverter, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from flixopt.core import TimeSeries, TimeSeriesCollection, TimeSeriesData
 
 
 @pytest.fixture

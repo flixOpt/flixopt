@@ -8,7 +8,8 @@ import json
 import logging
 import pathlib
 from collections import Counter
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from collections.abc import Iterator
+from typing import Any, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -16,14 +17,11 @@ import xarray as xr
 
 logger = logging.getLogger('flixopt')
 
-Scalar = Union[int, float]
+Scalar = int | float
 """A type representing a single number, either integer or float."""
 
-NumericData = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
+NumericData = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Represents any form of numeric data, from simple scalars to complex data structures."""
-
-NumericDataTS = Union[NumericData, 'TimeSeriesData']
-"""Represents either standard numeric data or TimeSeriesData."""
 
 
 class PlausibilityError(Exception):
@@ -126,13 +124,13 @@ class TimeSeriesData:
     """
 
     # TODO: Move to Interface.py
-    def __init__(self, data: NumericData, agg_group: Optional[str] = None, agg_weight: Optional[float] = None):
+    def __init__(self, data: NumericData, agg_group: str | None = None, agg_weight: float | None = None):
         self.data = data
         self.agg_group = agg_group
         self.agg_weight = agg_weight
         if (agg_group is not None) and (agg_weight is not None):
             raise ValueError('Either <agg_group> or explicit <agg_weigth> can be used. Not both!')
-        self.label: Optional[str] = None
+        self.label: str | None = None
 
     def __repr__(self):
         # Get the constructor arguments and their current values
@@ -145,6 +143,10 @@ class TimeSeriesData:
 
     def __str__(self):
         return str(self.data)
+
+
+NumericDataTS = NumericData | TimeSeriesData
+"""Represents either standard numeric data or TimeSeriesData."""
 
 
 class TimeSeries:
@@ -167,8 +169,8 @@ class TimeSeries:
         data: NumericData,
         name: str,
         timesteps: pd.DatetimeIndex,
-        aggregation_weight: Optional[float] = None,
-        aggregation_group: Optional[str] = None,
+        aggregation_weight: float | None = None,
+        aggregation_group: str | None = None,
         needs_extra_timestep: bool = False,
     ) -> 'TimeSeries':
         """
@@ -194,7 +196,7 @@ class TimeSeries:
         )
 
     @classmethod
-    def from_json(cls, data: Optional[Dict[str, Any]] = None, path: Optional[str] = None) -> 'TimeSeries':
+    def from_json(cls, data: dict[str, Any] | None = None, path: str | None = None) -> 'TimeSeries':
         """
         Load a TimeSeries from a dictionary or json file.
 
@@ -212,7 +214,7 @@ class TimeSeries:
             raise ValueError("Exactly one of 'path' or 'data' must be provided")
 
         if path is not None:
-            with open(path, 'r') as f:
+            with open(path) as f:
                 data = json.load(f)
 
         # Convert ISO date strings to datetime objects
@@ -231,8 +233,8 @@ class TimeSeries:
         self,
         data: xr.DataArray,
         name: str,
-        aggregation_weight: Optional[float] = None,
-        aggregation_group: Optional[str] = None,
+        aggregation_weight: float | None = None,
+        aggregation_group: str | None = None,
         needs_extra_timestep: bool = False,
     ):
         """
@@ -278,7 +280,7 @@ class TimeSeries:
         self._stored_data = self._backup.copy(deep=True)
         self.reset()
 
-    def to_json(self, path: Optional[pathlib.Path] = None) -> Dict[str, Any]:
+    def to_json(self, path: pathlib.Path | None = None) -> dict[str, Any]:
         """
         Save the TimeSeries to a dictionary or JSON file.
 
@@ -334,7 +336,7 @@ class TimeSeries:
         return self._active_timesteps
 
     @active_timesteps.setter
-    def active_timesteps(self, timesteps: Optional[pd.DatetimeIndex]):
+    def active_timesteps(self, timesteps: pd.DatetimeIndex | None):
         """
         Set active_timesteps and refresh active_data.
 
@@ -546,8 +548,8 @@ class TimeSeriesCollection:
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
-        hours_of_last_timestep: Optional[float] = None,
-        hours_of_previous_timesteps: Optional[Union[float, np.ndarray]] = None,
+        hours_of_last_timestep: float | None = None,
+        hours_of_previous_timesteps: float | np.ndarray | None = None,
     ):
         """
         Args:
@@ -575,22 +577,22 @@ class TimeSeriesCollection:
         self._active_hours_per_timestep = None
 
         # Dictionary of time series by name
-        self.time_series_data: Dict[str, TimeSeries] = {}
+        self.time_series_data: dict[str, TimeSeries] = {}
 
         # Aggregation
-        self.group_weights: Dict[str, float] = {}
-        self.weights: Dict[str, float] = {}
+        self.group_weights: dict[str, float] = {}
+        self.weights: dict[str, float] = {}
 
     @classmethod
     def with_uniform_timesteps(
-        cls, start_time: pd.Timestamp, periods: int, freq: str, hours_per_step: Optional[float] = None
+        cls, start_time: pd.Timestamp, periods: int, freq: str, hours_per_step: float | None = None
     ) -> 'TimeSeriesCollection':
         """Create a collection with uniform timesteps."""
         timesteps = pd.date_range(start_time, periods=periods, freq=freq, name='time')
         return cls(timesteps, hours_of_previous_timesteps=hours_per_step)
 
     def create_time_series(
-        self, data: Union[NumericData, TimeSeriesData], name: str, needs_extra_timestep: bool = False
+        self, data: NumericData | TimeSeriesData, name: str, needs_extra_timestep: bool = False
     ) -> TimeSeries:
         """
         Creates a TimeSeries from the given data and adds it to the collection.
@@ -633,7 +635,7 @@ class TimeSeriesCollection:
 
         return time_series
 
-    def calculate_aggregation_weights(self) -> Dict[str, float]:
+    def calculate_aggregation_weights(self) -> dict[str, float]:
         """Calculate and return aggregation weights for all time series."""
         self.group_weights = self._calculate_group_weights()
         self.weights = self._calculate_weights()
@@ -643,7 +645,7 @@ class TimeSeriesCollection:
 
         return self.weights
 
-    def activate_timesteps(self, active_timesteps: Optional[pd.DatetimeIndex] = None):
+    def activate_timesteps(self, active_timesteps: pd.DatetimeIndex | None = None):
         """
         Update active timesteps for the collection and all time series.
         If no arguments are provided, the active timesteps are reset.
@@ -819,7 +821,7 @@ class TimeSeriesCollection:
 
     @staticmethod
     def _create_timesteps_with_extra(
-        timesteps: pd.DatetimeIndex, hours_of_last_timestep: Optional[float]
+        timesteps: pd.DatetimeIndex, hours_of_last_timestep: float | None
     ) -> pd.DatetimeIndex:
         """Create timesteps with an extra step at the end."""
         if hours_of_last_timestep is not None:
@@ -834,8 +836,8 @@ class TimeSeriesCollection:
 
     @staticmethod
     def _calculate_hours_of_previous_timesteps(
-        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: Optional[Union[float, np.ndarray]]
-    ) -> Union[float, np.ndarray]:
+        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: float | np.ndarray | None
+    ) -> float | np.ndarray:
         """Calculate duration of regular timesteps."""
         if hours_of_previous_timesteps is not None:
             return hours_of_previous_timesteps
@@ -854,7 +856,7 @@ class TimeSeriesCollection:
             data=hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=('time',), name='hours_per_step'
         )
 
-    def _calculate_group_weights(self) -> Dict[str, float]:
+    def _calculate_group_weights(self) -> dict[str, float]:
         """Calculate weights for aggregation groups."""
         # Count series in each group
         groups = [ts.aggregation_group for ts in self.time_series_data.values() if ts.aggregation_group is not None]
@@ -863,7 +865,7 @@ class TimeSeriesCollection:
         # Calculate weight for each group (1/count)
         return {group: 1 / count for group, count in group_counts.items()}
 
-    def _calculate_weights(self) -> Dict[str, float]:
+    def _calculate_weights(self) -> dict[str, float]:
         """Calculate weights for all time series."""
         # Calculate weight for each time series
         weights = {}
@@ -905,7 +907,7 @@ class TimeSeriesCollection:
         """Get the number of TimeSeries in the collection."""
         return len(self.time_series_data)
 
-    def __contains__(self, item: Union[str, TimeSeries]) -> bool:
+    def __contains__(self, item: str | TimeSeries) -> bool:
         """Check if a TimeSeries exists in the collection."""
         if isinstance(item, str):
             return item in self.time_series_data
@@ -914,12 +916,12 @@ class TimeSeriesCollection:
         return False
 
     @property
-    def non_constants(self) -> List[TimeSeries]:
+    def non_constants(self) -> list[TimeSeries]:
         """Get time series with varying values."""
         return [ts for ts in self.time_series_data.values() if not ts.all_equal]
 
     @property
-    def constants(self) -> List[TimeSeries]:
+    def constants(self) -> list[TimeSeries]:
         """Get time series with constant values."""
         return [ts for ts in self.time_series_data.values() if ts.all_equal]
 

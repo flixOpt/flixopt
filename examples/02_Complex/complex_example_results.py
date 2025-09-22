@@ -2,9 +2,6 @@
 This script shows how load results of a prior calcualtion and how to analyze them.
 """
 
-import pandas as pd
-import plotly.offline
-
 import flixopt as fx
 
 if __name__ == '__main__':

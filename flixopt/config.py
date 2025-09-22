@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 import os
 import types
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, get_type_hints
 
 import yaml
 from rich.console import Console
@@ -37,11 +39,15 @@ def dataclass_from_dict_with_validation(cls, data: dict):
     if not is_dataclass(cls):
         raise TypeError(f'{cls} must be a dataclass')
 
+    # Get resolved type hints to handle postponed evaluation
+    type_hints = get_type_hints(cls)
+
     # Build kwargs for the dataclass constructor
     kwargs = {}
     for field in fields(cls):
         field_name = field.name
-        field_type = field.type
+        # Use resolved type from get_type_hints instead of field.type
+        field_type = type_hints.get(field_name, field.type)
         field_value = data.get(field_name)
 
         # If the field type is a dataclass and the value is a dict, recursively initialize
@@ -57,7 +63,10 @@ def dataclass_from_dict_with_validation(cls, data: dict):
 class ValidatedConfig:
     def __setattr__(self, name, value):
         if field := self.__dataclass_fields__.get(name):
-            if metadata := getattr(field.type, '__metadata__', None):
+            # Get resolved type hints to handle postponed evaluation
+            type_hints = get_type_hints(self.__class__, include_extras=True)
+            field_type = type_hints.get(name, field.type)
+            if metadata := getattr(field_type, '__metadata__', None):
                 assert metadata[0](value), f'Invalid value passed to {name!r}: {value=}'
         super().__setattr__(name, value)
 
@@ -96,7 +105,7 @@ class CONFIG:
     logging: LoggingConfig = None
 
     @classmethod
-    def load_config(cls, user_config_file: Optional[str] = None):
+    def load_config(cls, user_config_file: str | None = None):
         """
         Initialize configuration using defaults or user-specified file.
         """
@@ -104,12 +113,12 @@ class CONFIG:
         default_config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
 
         if user_config_file is None:
-            with open(default_config_path, 'r') as file:
+            with open(default_config_path) as file:
                 new_config = yaml.safe_load(file)
         elif not os.path.exists(user_config_file):
             raise FileNotFoundError(f'Config file not found: {user_config_file}')
         else:
-            with open(user_config_file, 'r') as user_file:
+            with open(user_config_file) as user_file:
                 new_config = yaml.safe_load(user_file)
 
         # Convert the merged config to ConfigSchema
@@ -186,7 +195,7 @@ class ColoredMultilineFormater(MultilineFormater):
         return '\n'.join(formatted_lines)
 
 
-def _get_logging_handler(log_file: Optional[str] = None, use_rich_handler: bool = False) -> logging.Handler:
+def _get_logging_handler(log_file: str | None = None, use_rich_handler: bool = False) -> logging.Handler:
     """Returns a logging handler for the given log file."""
     if use_rich_handler and log_file is None:
         # RichHandler for console output
@@ -225,7 +234,7 @@ def _get_logging_handler(log_file: Optional[str] = None, use_rich_handler: bool 
 
 def setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
-    log_file: Optional[str] = 'flixopt.log',
+    log_file: str | None = 'flixopt.log',
     use_rich_handler: bool = False,
 ):
     """Setup logging configuration"""

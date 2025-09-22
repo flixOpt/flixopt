@@ -2,21 +2,24 @@
 This module contains the basic elements of the flixopt framework.
 """
 
+from __future__ import annotations
+
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
-import linopy
 import numpy as np
 
 from .config import CONFIG
-from .core import NumericData, NumericDataTS, PlausibilityError, Scalar, TimeSeriesCollection
-from .effects import EffectValuesUser
+from .core import NumericData, NumericDataTS, PlausibilityError, Scalar
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, SystemModel, register_class_for_io
 
 if TYPE_CHECKING:
+    import linopy
+
+    from .effects import EffectValuesUser
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -37,15 +40,15 @@ class Component(Element):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        inputs: List of input Flows feeding into the component. These represent
+        inputs: list of input Flows feeding into the component. These represent
             energy/material consumption by the component.
-        outputs: List of output Flows leaving the component. These represent
+        outputs: list of output Flows leaving the component. These represent
             energy/material production by the component.
         on_off_parameters: Defines binary operation constraints and costs when the
             component has discrete on/off states. Creates binary variables for all
             connected Flows. For better performance, prefer defining OnOffParameters
             on individual Flows when possible.
-        prevent_simultaneous_flows: List of Flows that cannot be active simultaneously.
+        prevent_simultaneous_flows: list of Flows that cannot be active simultaneously.
             Creates binary variables to enforce mutual exclusivity. Use sparingly as
             it increases computational complexity.
         meta_data: Used to store additional information. Not used internally but saved
@@ -72,31 +75,31 @@ class Component(Element):
     def __init__(
         self,
         label: str,
-        inputs: Optional[List['Flow']] = None,
-        outputs: Optional[List['Flow']] = None,
-        on_off_parameters: Optional[OnOffParameters] = None,
-        prevent_simultaneous_flows: Optional[List['Flow']] = None,
-        meta_data: Optional[Dict] = None,
+        inputs: list[Flow] | None = None,
+        outputs: list[Flow] | None = None,
+        on_off_parameters: OnOffParameters | None = None,
+        prevent_simultaneous_flows: list[Flow] | None = None,
+        meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.inputs: List['Flow'] = inputs or []
-        self.outputs: List['Flow'] = outputs or []
+        self.inputs: list[Flow] = inputs or []
+        self.outputs: list[Flow] = outputs or []
         self._check_unique_flow_labels()
         self.on_off_parameters = on_off_parameters
-        self.prevent_simultaneous_flows: List['Flow'] = prevent_simultaneous_flows or []
+        self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
-        self.flows: Dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
+        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
-    def create_model(self, model: SystemModel) -> 'ComponentModel':
+    def create_model(self, model: SystemModel) -> ComponentModel:
         self._plausibility_checks()
         self.model = ComponentModel(model, self)
         return self.model
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: FlowSystem) -> None:
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
 
-    def infos(self, use_numpy=True, use_element_label: bool = False) -> Dict:
+    def infos(self, use_numpy=True, use_element_label: bool = False) -> dict:
         infos = super().infos(use_numpy, use_element_label)
         infos['inputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.inputs]
         infos['outputs'] = [flow.infos(use_numpy, use_element_label) for flow in self.outputs]
@@ -172,26 +175,33 @@ class Bus(Element):
     """
 
     def __init__(
-        self, label: str, excess_penalty_per_flow_hour: Optional[NumericDataTS] = 1e5, meta_data: Optional[Dict] = None
+        self,
+        label: str,
+        excess_penalty_per_flow_hour: NumericData | NumericDataTS | None = 1e5,
+        meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
         self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
-        self.inputs: List[Flow] = []
-        self.outputs: List[Flow] = []
+        self.inputs: list[Flow] = []
+        self.outputs: list[Flow] = []
 
-    def create_model(self, model: SystemModel) -> 'BusModel':
+    def create_model(self, model: SystemModel) -> BusModel:
         self._plausibility_checks()
         self.model = BusModel(model, self)
         return self.model
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         self.excess_penalty_per_flow_hour = flow_system.create_time_series(
             f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
-        if self.excess_penalty_per_flow_hour is not None and (self.excess_penalty_per_flow_hour == 0).all():
-            logger.warning(f'In Bus {self.label}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.')
+        if self.excess_penalty_per_flow_hour is not None:
+            zero_penalty = np.all(np.equal(self.excess_penalty_per_flow_hour, 0))
+            if zero_penalty:
+                logger.warning(
+                    f'In Bus {self.label}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
+                )
 
     @property
     def with_excess(self) -> bool:
@@ -347,7 +357,7 @@ class Flow(Element):
 
     Notes:
         - Default size (CONFIG.modeling.BIG) is used when size=None
-        - List inputs for previous_flow_rate are converted to NumPy arrays
+        - list inputs for previous_flow_rate are converted to NumPy arrays
         - Flow direction is determined by component input/output designation
 
     Deprecated:
@@ -359,21 +369,21 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Union[Scalar, InvestParameters] = None,
-        fixed_relative_profile: Optional[NumericDataTS] = None,
+        size: Scalar | InvestParameters | None = None,
+        fixed_relative_profile: NumericDataTS | None = None,
         relative_minimum: NumericDataTS = 0,
         relative_maximum: NumericDataTS = 1,
-        effects_per_flow_hour: Optional[EffectValuesUser] = None,
-        on_off_parameters: Optional[OnOffParameters] = None,
-        flow_hours_total_max: Optional[Scalar] = None,
-        flow_hours_total_min: Optional[Scalar] = None,
-        load_factor_min: Optional[Scalar] = None,
-        load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[NumericData] = None,
-        meta_data: Optional[Dict] = None,
+        effects_per_flow_hour: EffectValuesUser | None = None,
+        on_off_parameters: OnOffParameters | None = None,
+        flow_hours_total_max: Scalar | None = None,
+        flow_hours_total_min: Scalar | None = None,
+        load_factor_min: Scalar | None = None,
+        load_factor_max: Scalar | None = None,
+        previous_flow_rate: NumericData | None = None,
+        meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.size = size or CONFIG.modeling.BIG  # Default size
+        self.size = CONFIG.modeling.BIG if size is None else size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
@@ -391,7 +401,7 @@ class Flow(Element):
         )
 
         self.component: str = 'UnknownComponent'
-        self.is_input_in_component: Optional[bool] = None
+        self.is_input_in_component: bool | None = None
         if isinstance(bus, Bus):
             self.bus = bus.label_full
             warnings.warn(
@@ -405,12 +415,12 @@ class Flow(Element):
             self.bus = bus
             self._bus_object = None
 
-    def create_model(self, model: SystemModel) -> 'FlowModel':
+    def create_model(self, model: SystemModel) -> FlowModel:
         self._plausibility_checks()
         self.model = FlowModel(model, self)
         return self.model
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         self.relative_minimum = flow_system.create_time_series(
             f'{self.label_full}|relative_minimum', self.relative_minimum
         )
@@ -428,12 +438,12 @@ class Flow(Element):
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system)
 
-    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
+    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> dict:
         infos = super().infos(use_numpy, use_element_label)
         infos['is_input_in_component'] = self.is_input_in_component
         return infos
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         data = super().to_dict()
         if isinstance(data.get('previous_flow_rate'), np.ndarray):
             data['previous_flow_rate'] = data['previous_flow_rate'].tolist()
@@ -486,11 +496,11 @@ class FlowModel(ElementModel):
     def __init__(self, model: SystemModel, element: Flow):
         super().__init__(model, element)
         self.element: Flow = element
-        self.flow_rate: Optional[linopy.Variable] = None
-        self.total_flow_hours: Optional[linopy.Variable] = None
+        self.flow_rate: linopy.Variable | None = None
+        self.total_flow_hours: linopy.Variable | None = None
 
-        self.on_off: Optional[OnOffModel] = None
-        self._investment: Optional[InvestmentModel] = None
+        self.on_off: OnOffModel | None = None
+        self._investment: InvestmentModel | None = None
 
     def do_modeling(self):
         # eq relative_minimum(t) * size <= flow_rate(t) <= relative_maximum(t) * size
@@ -605,7 +615,7 @@ class FlowModel(ElementModel):
             )
 
     @property
-    def flow_rate_bounds_on(self) -> Tuple[NumericData, NumericData]:
+    def flow_rate_bounds_on(self) -> tuple[NumericData, NumericData]:
         """Returns absolute flow rate bounds. Important for OnOffModel"""
         relative_minimum, relative_maximum = self.flow_rate_lower_bound_relative, self.flow_rate_upper_bound_relative
         size = self.element.size
@@ -660,8 +670,8 @@ class BusModel(ElementModel):
     def __init__(self, model: SystemModel, element: Bus):
         super().__init__(model, element)
         self.element: Bus = element
-        self.excess_input: Optional[linopy.Variable] = None
-        self.excess_output: Optional[linopy.Variable] = None
+        self.excess_input: linopy.Variable | None = None
+        self.excess_output: linopy.Variable | None = None
 
     def do_modeling(self) -> None:
         # inputs == outputs
@@ -703,7 +713,7 @@ class ComponentModel(ElementModel):
     def __init__(self, model: SystemModel, element: Component):
         super().__init__(model, element)
         self.element: Component = element
-        self.on_off: Optional[OnOffModel] = None
+        self.on_off: OnOffModel | None = None
 
     def do_modeling(self):
         """Initiates all FlowModels"""

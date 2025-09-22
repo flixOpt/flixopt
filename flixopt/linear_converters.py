@@ -2,16 +2,20 @@
 This Module contains high-level classes to easily model a FlowSystem.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Dict, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .components import LinearConverter
 from .core import NumericDataTS, TimeSeriesData
-from .elements import Flow
-from .interface import OnOffParameters
 from .structure import register_class_for_io
+
+if TYPE_CHECKING:
+    from .elements import Flow
+    from .interface import OnOffParameters
 
 logger = logging.getLogger('flixopt')
 
@@ -75,8 +79,8 @@ class Boiler(LinearConverter):
         eta: NumericDataTS,
         Q_fu: Flow,
         Q_th: Flow,
-        on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        on_off_parameters: OnOffParameters | None = None,
+        meta_data: dict | None = None,
     ):
         super().__init__(
             label,
@@ -162,8 +166,8 @@ class Power2Heat(LinearConverter):
         eta: NumericDataTS,
         P_el: Flow,
         Q_th: Flow,
-        on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        on_off_parameters: OnOffParameters | None = None,
+        meta_data: dict | None = None,
     ):
         super().__init__(
             label,
@@ -249,8 +253,8 @@ class HeatPump(LinearConverter):
         COP: NumericDataTS,
         P_el: Flow,
         Q_th: Flow,
-        on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        on_off_parameters: OnOffParameters | None = None,
+        meta_data: dict | None = None,
     ):
         super().__init__(
             label,
@@ -338,8 +342,8 @@ class CoolingTower(LinearConverter):
         specific_electricity_demand: NumericDataTS,
         P_el: Flow,
         Q_th: Flow,
-        on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        on_off_parameters: OnOffParameters | None = None,
+        meta_data: dict | None = None,
     ):
         super().__init__(
             label,
@@ -438,8 +442,8 @@ class CHP(LinearConverter):
         Q_fu: Flow,
         P_el: Flow,
         Q_th: Flow,
-        on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        on_off_parameters: OnOffParameters | None = None,
+        meta_data: dict | None = None,
     ):
         heat = {Q_fu.label: eta_th, Q_th.label: 1}
         electricity = {Q_fu.label: eta_el, P_el.label: 1}
@@ -551,9 +555,11 @@ class HeatPumpWithSource(LinearConverter):
         P_el: Flow,
         Q_ab: Flow,
         Q_th: Flow,
-        on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        on_off_parameters: OnOffParameters | None = None,
+        meta_data: dict | None = None,
     ):
+        # Validate COP to avoid division by zero before factor construction
+        check_bounds(COP, 'COP', f'HeatPumpWithSource({label})', 1, 20)
         # super:
         electricity = {P_el.label: COP, Q_th.label: 1}
         heat_source = {Q_ab.label: COP / (COP - 1), Q_th.label: 1}

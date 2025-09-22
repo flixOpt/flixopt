@@ -1,11 +1,12 @@
+from __future__ import annotations
+
 import datetime
 import json
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Literal
 
 import linopy
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly
@@ -17,6 +18,7 @@ from . import plotting
 from .core import TimeSeriesCollection
 
 if TYPE_CHECKING:
+    import matplotlib.pyplot as plt
     import pyvis
 
     from .calculation import Calculation, SegmentedCalculation
@@ -106,7 +108,7 @@ class CalculationResults:
     """
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str) -> 'CalculationResults':
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> CalculationResults:
         """Load CalculationResults from saved files.
 
         Args:
@@ -127,7 +129,7 @@ class CalculationResults:
             except Exception as e:
                 logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
-        with open(paths.summary, 'r', encoding='utf-8') as f:
+        with open(paths.summary, encoding='utf-8') as f:
             summary = yaml.load(f, Loader=yaml.FullLoader)
 
         return cls(
@@ -140,7 +142,7 @@ class CalculationResults:
         )
 
     @classmethod
-    def from_calculation(cls, calculation: 'Calculation') -> 'CalculationResults':
+    def from_calculation(cls, calculation: Calculation) -> CalculationResults:
         """Create CalculationResults from a Calculation object.
 
         Args:
@@ -163,9 +165,9 @@ class CalculationResults:
         solution: xr.Dataset,
         flow_system: xr.Dataset,
         name: str,
-        summary: Dict,
-        folder: Optional[pathlib.Path] = None,
-        model: Optional[linopy.Model] = None,
+        summary: dict,
+        folder: pathlib.Path | None = None,
+        model: linopy.Model | None = None,
     ):
         """Initialize CalculationResults with optimization data.
         Usually, this class is instantiated by the Calculation class, or by loading from file.
@@ -197,7 +199,7 @@ class CalculationResults:
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.timesteps_extra)
 
-    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults']:
+    def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
             return self.components[key]
         if key in self.buses:
@@ -207,7 +209,7 @@ class CalculationResults:
         raise KeyError(f'No element with label {key} found.')
 
     @property
-    def storages(self) -> List['ComponentResults']:
+    def storages(self) -> list[ComponentResults]:
         """Get all storage components in the results."""
         return [comp for comp in self.components.values() if comp.is_storage]
 
@@ -231,7 +233,7 @@ class CalculationResults:
         return self.model.constraints
 
     def filter_solution(
-        self, variable_dims: Optional[Literal['scalar', 'time']] = None, element: Optional[str] = None
+        self, variable_dims: Literal['scalar', 'time'] | None = None, element: str | None = None
     ) -> xr.Dataset:
         """Filter solution by variable dimension and/or element.
 
@@ -252,10 +254,10 @@ class CalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         return plot_heatmap(
             dataarray=self.solution[variable_name],
             name=variable_name,
@@ -270,15 +272,15 @@ class CalculationResults:
 
     def plot_network(
         self,
-        controls: Union[
-            bool,
-            List[
+        controls: (
+            bool
+            | list[
                 Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-            ],
-        ] = True,
-        path: Optional[pathlib.Path] = None,
+            ]
+        ) = True,
+        path: pathlib.Path | None = None,
         show: bool = False,
-    ) -> Optional['pyvis.network.Network']:
+    ) -> pyvis.network.Network | None:
         """Plot interactive network visualization of the system.
 
         Args:
@@ -299,8 +301,8 @@ class CalculationResults:
 
     def to_file(
         self,
-        folder: Optional[Union[str, pathlib.Path]] = None,
-        name: Optional[str] = None,
+        folder: str | pathlib.Path | None = None,
+        name: str | None = None,
         compression: int = 5,
         document_model: bool = True,
         save_linopy_model: bool = False,
@@ -349,11 +351,11 @@ class CalculationResults:
 
 class _ElementResults:
     @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_ElementResults':
+    def from_json(cls, calculation_results, json_data: dict) -> _ElementResults:
         return cls(calculation_results, json_data['label'], json_data['variables'], json_data['constraints'])
 
     def __init__(
-        self, calculation_results: CalculationResults, label: str, variables: List[str], constraints: List[str]
+        self, calculation_results: CalculationResults, label: str, variables: list[str], constraints: list[str]
     ):
         self._calculation_results = calculation_results
         self.label = label
@@ -384,7 +386,7 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
 
-    def filter_solution(self, variable_dims: Optional[Literal['scalar', 'time']] = None) -> xr.Dataset:
+    def filter_solution(self, variable_dims: Literal['scalar', 'time'] | None = None) -> xr.Dataset:
         """Filter element solution by dimension.
 
         Args:
@@ -398,7 +400,7 @@ class _ElementResults:
 
 class _NodeResults(_ElementResults):
     @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_NodeResults':
+    def from_json(cls, calculation_results, json_data: dict) -> _NodeResults:
         return cls(
             calculation_results,
             json_data['label'],
@@ -412,10 +414,10 @@ class _NodeResults(_ElementResults):
         self,
         calculation_results: CalculationResults,
         label: str,
-        variables: List[str],
-        constraints: List[str],
-        inputs: List[str],
-        outputs: List[str],
+        variables: list[str],
+        constraints: list[str],
+        inputs: list[str],
+        outputs: list[str],
     ):
         super().__init__(calculation_results, label, variables, constraints)
         self.inputs = inputs
@@ -423,11 +425,11 @@ class _NodeResults(_ElementResults):
 
     def plot_node_balance(
         self,
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot node balance flows.
 
         Args:
@@ -472,10 +474,10 @@ class _NodeResults(_ElementResults):
         lower_percentage_group: float = 5,
         colors: plotting.ColorType = 'viridis',
         text_info: str = 'percent+label+value',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objects.Figure, Tuple[plt.Figure, List[plt.Axes]]]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
 
         Args:
@@ -545,7 +547,7 @@ class _NodeResults(_ElementResults):
         self,
         negate_inputs: bool = True,
         negate_outputs: bool = False,
-        threshold: Optional[float] = 1e-5,
+        threshold: float | None = 1e-5,
         with_last_timestep: bool = False,
     ) -> xr.Dataset:
         return sanitize_dataset(
@@ -588,7 +590,7 @@ class ComponentResults(_NodeResults):
 
     def plot_charge_state(
         self,
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
@@ -641,7 +643,7 @@ class ComponentResults(_NodeResults):
         )
 
     def node_balance_with_charge_state(
-        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: Optional[float] = 1e-5
+        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: float | None = 1e-5
     ) -> xr.Dataset:
         """Get storage node balance including charge state.
 
@@ -787,7 +789,7 @@ class SegmentedCalculationResults:
     """
 
     @classmethod
-    def from_calculation(cls, calculation: 'SegmentedCalculation'):
+    def from_calculation(cls, calculation: SegmentedCalculation):
         return cls(
             [calc.results for calc in calculation.sub_calculations],
             all_timesteps=calculation.all_timesteps,
@@ -798,7 +800,7 @@ class SegmentedCalculationResults:
         )
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str):
+    def from_file(cls, folder: str | pathlib.Path, name: str):
         """Load SegmentedCalculationResults from saved files.
 
         Args:
@@ -811,7 +813,7 @@ class SegmentedCalculationResults:
         folder = pathlib.Path(folder)
         path = folder / name
         logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
-        with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
+        with open(path.with_suffix('.json'), encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
             [CalculationResults.from_file(folder, name) for name in meta_data['sub_calculations']],
@@ -826,12 +828,12 @@ class SegmentedCalculationResults:
 
     def __init__(
         self,
-        segment_results: List[CalculationResults],
+        segment_results: list[CalculationResults],
         all_timesteps: pd.DatetimeIndex,
         timesteps_per_segment: int,
         overlap_timesteps: int,
         name: str,
-        folder: Optional[pathlib.Path] = None,
+        folder: pathlib.Path | None = None,
     ):
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
@@ -842,7 +844,7 @@ class SegmentedCalculationResults:
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
 
     @property
-    def meta_data(self) -> Dict[str, Union[int, List[str]]]:
+    def meta_data(self) -> dict[str, int | list[str]]:
         return {
             'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
             'timesteps_per_segment': self.timesteps_per_segment,
@@ -851,7 +853,7 @@ class SegmentedCalculationResults:
         }
 
     @property
-    def segment_names(self) -> List[str]:
+    def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
@@ -875,10 +877,10 @@ class SegmentedCalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
         Args:
@@ -905,9 +907,7 @@ class SegmentedCalculationResults:
             engine=engine,
         )
 
-    def to_file(
-        self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, compression: int = 5
-    ):
+    def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
         """Save segmented results to files.
 
         Args:
@@ -940,7 +940,7 @@ def plot_heatmap(
     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
     color_map: str = 'portland',
-    save: Union[bool, pathlib.Path] = False,
+    save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
 ):
@@ -991,9 +991,9 @@ def plot_heatmap(
 
 def sanitize_dataset(
     ds: xr.Dataset,
-    timesteps: Optional[pd.DatetimeIndex] = None,
-    threshold: Optional[float] = 1e-5,
-    negate: Optional[List[str]] = None,
+    timesteps: pd.DatetimeIndex | None = None,
+    threshold: float | None = 1e-5,
+    negate: list[str] | None = None,
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
 ) -> xr.Dataset:
@@ -1025,7 +1025,7 @@ def sanitize_dataset(
 
         # Option 1: Drop variables where all values are below threshold
         if drop_small_vars:
-            vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all()]
+            vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all().item()]
             ds = ds.drop_vars(vars_to_drop)
 
         # Option 2: Set small values to zero
@@ -1034,7 +1034,7 @@ def sanitize_dataset(
                 # Create a boolean mask of values below threshold
                 mask = ds_no_nan_abs[var] <= threshold
                 # Only proceed if there are values to zero out
-                if mask.any():
+                if bool(mask.any().item()):
                     # Create a copy to ensure we don't modify data with views
                     ds[var] = ds[var].copy()
                     # Set values below threshold to zero
@@ -1049,7 +1049,7 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
-    variable_dims: Optional[Literal['scalar', 'time']] = None,
+    variable_dims: Literal['scalar', 'time'] | None = None,
 ) -> xr.Dataset:
     """Filter dataset by variable dimensions.
 

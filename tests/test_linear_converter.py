@@ -1,10 +1,8 @@
 import numpy as np
-import pandas as pd
 import pytest
 import xarray as xr
 
 import flixopt as fx
-from flixopt.features import PiecewiseModel
 
 from .conftest import assert_conequal, assert_var_equal, create_linopy_model
 

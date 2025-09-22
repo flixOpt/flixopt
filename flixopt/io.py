@@ -1,16 +1,20 @@
+from __future__ import annotations
+
 import importlib.util
 import json
 import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Dict, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Literal
 
-import linopy
 import xarray as xr
 import yaml
 
 from .core import TimeSeries
+
+if TYPE_CHECKING:
+    import linopy
 
 logger = logging.getLogger('flixopt')
 
@@ -146,7 +150,7 @@ def _process_complex_strings(data):
         return data
 
 
-def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dict[str, str]:
+def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None) -> dict[str, str]:
     """
     Convert all model variables and constraints to a structured string representation.
     This can take multiple seconds for large models.
@@ -195,14 +199,14 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
     if path is not None:
         if path.suffix not in ['.yaml', '.yml']:
             raise ValueError(f'Invalid file extension for path {path}. Only .yaml and .yml are supported')
-        _save_to_yaml(documentation, path)
+        _save_to_yaml(documentation, str(path))
 
     return documentation
 
 
 def save_dataset_to_netcdf(
     ds: xr.Dataset,
-    path: Union[str, pathlib.Path],
+    path: str | pathlib.Path,
     compression: int = 0,
 ) -> None:
     """
@@ -216,6 +220,7 @@ def save_dataset_to_netcdf(
     Raises:
         ValueError: If the path has an invalid file extension.
     """
+    path = pathlib.Path(path)
     if path.suffix not in ['.nc', '.nc4']:
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
 
@@ -238,7 +243,7 @@ def save_dataset_to_netcdf(
     )
 
 
-def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
+def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     """
     Load a dataset from a netcdf file. Load the attrs from the 'attrs' attribute.
 
@@ -248,7 +253,7 @@ def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
     Returns:
         Dataset: Loaded dataset.
     """
-    ds = xr.load_dataset(path)
+    ds = xr.load_dataset(str(path))
     ds.attrs = json.loads(ds.attrs['attrs'])
     return ds
 
@@ -273,7 +278,7 @@ class CalculationResultsPaths:
         self.flow_system = self.folder / f'{self.name}--flow_system.nc4'
         self.model_documentation = self.folder / f'{self.name}--model_documentation.yaml'
 
-    def all_paths(self) -> Dict[str, pathlib.Path]:
+    def all_paths(self) -> dict[str, pathlib.Path]:
         """Return a dictionary of all paths."""
         return {
             'linopy_model': self.linopy_model,
@@ -297,7 +302,7 @@ class CalculationResultsPaths:
                     f'Folder {self.folder} and its parent do not exist. Please create them first.'
                 ) from e
 
-    def update(self, new_name: Optional[str] = None, new_folder: Optional[pathlib.Path] = None) -> None:
+    def update(self, new_name: str | None = None, new_folder: pathlib.Path | None = None) -> None:
         """Update name and/or folder and refresh all paths."""
         if new_name is not None:
             self.name = new_name

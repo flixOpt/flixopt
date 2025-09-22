@@ -1,8 +1,9 @@
-import json
+from __future__ import annotations
+
 import logging
 import socket
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any
 
 try:
     import dash_cytoscape as cyto
@@ -18,11 +19,12 @@ except ImportError as e:
     VISUALIZATION_ERROR = str(e)
 
 if TYPE_CHECKING:
-    import networkx as nx
+    from .flow_system import FlowSystem
+
+import networkx as nx
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
-from .elements import Bus, Component, Flow
-from .flow_system import FlowSystem
+from .elements import Bus
 
 logger = logging.getLogger('flixopt')
 
@@ -113,7 +115,7 @@ class VisualizationConfig:
     ]
 
 
-def flow_graph(flow_system: FlowSystem) -> 'nx.DiGraph':
+def flow_graph(flow_system: FlowSystem) -> nx.DiGraph:
     """Convert FlowSystem to NetworkX graph - simplified and more robust"""
     if not DASH_CYTOSCAPE_AVAILABLE:
         raise ImportError(
@@ -179,7 +181,7 @@ def flow_graph(flow_system: FlowSystem) -> 'nx.DiGraph':
     return graph
 
 
-def make_cytoscape_elements(graph: 'nx.DiGraph') -> List[Dict[str, Any]]:
+def make_cytoscape_elements(graph: nx.DiGraph) -> list[dict[str, Any]]:
     """Convert NetworkX graph to Cytoscape elements"""
     elements = []
 
@@ -236,7 +238,7 @@ def create_color_picker_input(label: str, input_id: str, default_color: str):
     )
 
 
-def create_style_section(title: str, children: List):
+def create_style_section(title: str, children: list):
     """Create a collapsible section for organizing controls"""
     return html.Div(
         [
@@ -389,7 +391,7 @@ def create_sidebar():
     )
 
 
-def shownetwork(graph: 'nx.DiGraph'):
+def shownetwork(graph: nx.DiGraph):
     """Main function to create and run the network visualization"""
     if not DASH_CYTOSCAPE_AVAILABLE:
         raise ImportError(f'Required packages not available: {VISUALIZATION_ERROR}')
