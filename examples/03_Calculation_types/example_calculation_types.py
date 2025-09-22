@@ -4,7 +4,6 @@ to model the same energy system. The results will be compared to each other.
 """
 
 import pathlib
-from typing import Dict
 
 import numpy as np
 import pandas as pd

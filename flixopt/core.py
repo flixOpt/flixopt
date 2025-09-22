@@ -10,7 +10,7 @@ import json
 import logging
 import pathlib
 from collections import Counter
-from typing import Any, Dict, Iterator, List, Literal, Tuple, Union
+from typing import Any, Iterator, Literal, Union
 
 import numpy as np
 import pandas as pd
@@ -196,7 +196,7 @@ class TimeSeries:
         )
 
     @classmethod
-    def from_json(cls, data: Dict[str, Any] | None = None, path: str | None = None) -> TimeSeries:
+    def from_json(cls, data: dict[str, Any] | None = None, path: str | None = None) -> TimeSeries:
         """
         Load a TimeSeries from a dictionary or json file.
 
@@ -280,7 +280,7 @@ class TimeSeries:
         self._stored_data = self._backup.copy(deep=True)
         self.reset()
 
-    def to_json(self, path: pathlib.Path | None = None) -> Dict[str, Any]:
+    def to_json(self, path: pathlib.Path | None = None) -> dict[str, Any]:
         """
         Save the TimeSeries to a dictionary or JSON file.
 
@@ -577,11 +577,11 @@ class TimeSeriesCollection:
         self._active_hours_per_timestep = None
 
         # Dictionary of time series by name
-        self.time_series_data: Dict[str, TimeSeries] = {}
+        self.time_series_data: dict[str, TimeSeries] = {}
 
         # Aggregation
-        self.group_weights: Dict[str, float] = {}
-        self.weights: Dict[str, float] = {}
+        self.group_weights: dict[str, float] = {}
+        self.weights: dict[str, float] = {}
 
     @classmethod
     def with_uniform_timesteps(
@@ -635,7 +635,7 @@ class TimeSeriesCollection:
 
         return time_series
 
-    def calculate_aggregation_weights(self) -> Dict[str, float]:
+    def calculate_aggregation_weights(self) -> dict[str, float]:
         """Calculate and return aggregation weights for all time series."""
         self.group_weights = self._calculate_group_weights()
         self.weights = self._calculate_weights()
@@ -856,7 +856,7 @@ class TimeSeriesCollection:
             data=hours_per_step, coords={'time': timesteps_extra[:-1]}, dims=('time',), name='hours_per_step'
         )
 
-    def _calculate_group_weights(self) -> Dict[str, float]:
+    def _calculate_group_weights(self) -> dict[str, float]:
         """Calculate weights for aggregation groups."""
         # Count series in each group
         groups = [ts.aggregation_group for ts in self.time_series_data.values() if ts.aggregation_group is not None]
@@ -865,7 +865,7 @@ class TimeSeriesCollection:
         # Calculate weight for each group (1/count)
         return {group: 1 / count for group, count in group_counts.items()}
 
-    def _calculate_weights(self) -> Dict[str, float]:
+    def _calculate_weights(self) -> dict[str, float]:
         """Calculate weights for all time series."""
         # Calculate weight for each time series
         weights = {}
@@ -916,12 +916,12 @@ class TimeSeriesCollection:
         return False
 
     @property
-    def non_constants(self) -> List[TimeSeries]:
+    def non_constants(self) -> list[TimeSeries]:
         """Get time series with varying values."""
         return [ts for ts in self.time_series_data.values() if not ts.all_equal]
 
     @property
-    def constants(self) -> List[TimeSeries]:
+    def constants(self) -> list[TimeSeries]:
         """Get time series with constant values."""
         return [ts for ts in self.time_series_data.values() if ts.all_equal]
 

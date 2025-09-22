@@ -9,7 +9,7 @@ import logging
 import pathlib
 import warnings
 from io import StringIO
-from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
@@ -74,8 +74,8 @@ class FlowSystem:
         )
 
         # defaults:
-        self.components: Dict[str, Component] = {}
-        self.buses: Dict[str, Bus] = {}
+        self.components: dict[str, Component] = {}
+        self.buses: dict[str, Bus] = {}
         self.effects: EffectCollection = EffectCollection()
         self.model: SystemModel | None = None
 
@@ -103,7 +103,7 @@ class FlowSystem:
         return flow_system
 
     @classmethod
-    def from_dict(cls, data: Dict) -> FlowSystem:
+    def from_dict(cls, data: dict) -> FlowSystem:
         """
         Load a FlowSystem from a dictionary.
 
@@ -176,7 +176,7 @@ class FlowSystem:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(self.as_dict('stats'), f, indent=4, ensure_ascii=False)
 
-    def as_dict(self, data_mode: Literal['data', 'name', 'stats'] = 'data') -> Dict:
+    def as_dict(self, data_mode: Literal['data', 'name', 'stats'] = 'data') -> dict:
         """Convert the object to a dictionary representation."""
         data = {
             'components': {
@@ -226,7 +226,7 @@ class FlowSystem:
         self,
         path: bool | str | pathlib.Path = 'flow_system.html',
         controls: bool
-        | List[
+        | list[
             Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
         ] = True,
         show: bool = False,
@@ -315,7 +315,7 @@ class FlowSystem:
         finally:
             self._network_app = None
 
-    def network_infos(self) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
+    def network_infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
         if not self._connected:
             self._connect_network()
         nodes = {
@@ -474,10 +474,10 @@ class FlowSystem:
         return value
 
     @property
-    def flows(self) -> Dict[str, Flow]:
+    def flows(self) -> dict[str, Flow]:
         set_of_flows = {flow for comp in self.components.values() for flow in comp.inputs + comp.outputs}
         return {flow.label_full: flow for flow in set_of_flows}
 
     @property
-    def all_elements(self) -> Dict[str, Element]:
+    def all_elements(self) -> dict[str, Element]:
         return {**self.components, **self.effects.effects, **self.flows, **self.buses}

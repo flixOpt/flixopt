@@ -4,7 +4,7 @@ import datetime
 import json
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
+from typing import TYPE_CHECKING, Literal
 
 import linopy
 import matplotlib.pyplot as plt
@@ -165,7 +165,7 @@ class CalculationResults:
         solution: xr.Dataset,
         flow_system: xr.Dataset,
         name: str,
-        summary: Dict,
+        summary: dict,
         folder: pathlib.Path | None = None,
         model: linopy.Model | None = None,
     ):
@@ -209,7 +209,7 @@ class CalculationResults:
         raise KeyError(f'No element with label {key} found.')
 
     @property
-    def storages(self) -> List[ComponentResults]:
+    def storages(self) -> list[ComponentResults]:
         """Get all storage components in the results."""
         return [comp for comp in self.components.values() if comp.is_storage]
 
@@ -274,7 +274,7 @@ class CalculationResults:
         self,
         controls: (
             bool
-            | List[
+            | list[
                 Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
             ]
         ) = True,
@@ -354,11 +354,11 @@ class CalculationResults:
 
 class _ElementResults:
     @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_ElementResults':
+    def from_json(cls, calculation_results, json_data: dict) -> '_ElementResults':
         return cls(calculation_results, json_data['label'], json_data['variables'], json_data['constraints'])
 
     def __init__(
-        self, calculation_results: CalculationResults, label: str, variables: List[str], constraints: List[str]
+        self, calculation_results: CalculationResults, label: str, variables: list[str], constraints: list[str]
     ):
         self._calculation_results = calculation_results
         self.label = label
@@ -403,7 +403,7 @@ class _ElementResults:
 
 class _NodeResults(_ElementResults):
     @classmethod
-    def from_json(cls, calculation_results, json_data: Dict) -> '_NodeResults':
+    def from_json(cls, calculation_results, json_data: dict) -> '_NodeResults':
         return cls(
             calculation_results,
             json_data['label'],
@@ -417,10 +417,10 @@ class _NodeResults(_ElementResults):
         self,
         calculation_results: CalculationResults,
         label: str,
-        variables: List[str],
-        constraints: List[str],
-        inputs: List[str],
-        outputs: List[str],
+        variables: list[str],
+        constraints: list[str],
+        inputs: list[str],
+        outputs: list[str],
     ):
         super().__init__(calculation_results, label, variables, constraints)
         self.inputs = inputs
@@ -832,7 +832,7 @@ class SegmentedCalculationResults:
 
     def __init__(
         self,
-        segment_results: List[CalculationResults],
+        segment_results: list[CalculationResults],
         all_timesteps: pd.DatetimeIndex,
         timesteps_per_segment: int,
         overlap_timesteps: int,
@@ -848,7 +848,7 @@ class SegmentedCalculationResults:
         self.hours_per_timestep = TimeSeriesCollection.calculate_hours_per_timestep(self.all_timesteps)
 
     @property
-    def meta_data(self) -> Dict[str, int | List[str]]:
+    def meta_data(self) -> dict[str, int | list[str]]:
         return {
             'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
             'timesteps_per_segment': self.timesteps_per_segment,
@@ -857,7 +857,7 @@ class SegmentedCalculationResults:
         }
 
     @property
-    def segment_names(self) -> List[str]:
+    def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
@@ -997,7 +997,7 @@ def sanitize_dataset(
     ds: xr.Dataset,
     timesteps: pd.DatetimeIndex | None = None,
     threshold: float | None = 1e-5,
-    negate: List[str] | None = None,
+    negate: list[str] | None = None,
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
 ) -> xr.Dataset:

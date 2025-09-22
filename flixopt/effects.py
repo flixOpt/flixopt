@@ -162,8 +162,8 @@ class Effect(Element):
         self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
         self.minimum_operation = minimum_operation
         self.maximum_operation = maximum_operation
-        self.minimum_operation_per_hour: NumericDataTS = minimum_operation_per_hour
-        self.maximum_operation_per_hour: NumericDataTS = maximum_operation_per_hour
+        self.minimum_operation_per_hour = minimum_operation_per_hour
+        self.maximum_operation_per_hour = maximum_operation_per_hour
         self.minimum_invest = minimum_invest
         self.maximum_invest = maximum_invest
         self.minimum_total = minimum_total
@@ -313,7 +313,7 @@ class EffectCollection:
                     UserWarning,
                     stacklevel=2,
                 )
-                return eff.label_full
+                return eff.label
             else:
                 return eff
 
@@ -321,7 +321,7 @@ class EffectCollection:
             return None
         if isinstance(effect_values_user, dict):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
-        return {self.standard_effect.label_full: effect_values_user}
+        return {self.standard_effect.label: effect_values_user}
 
     def _plausibility_checks(self) -> None:
         # Check circular loops in effects:

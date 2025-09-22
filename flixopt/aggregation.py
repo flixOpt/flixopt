@@ -10,7 +10,7 @@ import logging
 import pathlib
 import timeit
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Set
+from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
@@ -50,9 +50,9 @@ class Aggregation:
         hours_per_time_step: Scalar,
         hours_per_period: Scalar,
         nr_of_periods: int = 8,
-        weights: Dict[str, float] = None,
-        time_series_for_high_peaks: List[str] = None,
-        time_series_for_low_peaks: List[str] = None,
+        weights: dict[str, float] = None,
+        time_series_for_high_peaks: list[str] = None,
+        time_series_for_low_peaks: list[str] = None,
     ):
         """
         Args:
@@ -164,14 +164,14 @@ class Aggregation:
             figure_like=fig,
             default_path=pathlib.Path('aggregated data.html'),
             default_filetype='.html',
-            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            user_path=save,
             show=show,
-            save=True if save else False,
+            save=save is not None,
         )
 
         return fig
 
-    def get_cluster_indices(self) -> Dict[str, List[np.ndarray]]:
+    def get_cluster_indices(self) -> dict[str, list[np.ndarray]]:
         """
         Generates a dictionary that maps each cluster to a list of index vectors representing the time steps
         assigned to that cluster for each period.
@@ -239,8 +239,8 @@ class AggregationParameters:
         aggregate_data_and_fix_non_binary_vars: bool,
         percentage_of_period_freedom: float = 0,
         penalty_of_period_freedom: float = 0,
-        time_series_for_high_peaks: List[TimeSeriesData] = None,
-        time_series_for_low_peaks: List[TimeSeriesData] = None,
+        time_series_for_high_peaks: list[TimeSeriesData] = None,
+        time_series_for_low_peaks: list[TimeSeriesData] = None,
     ):
         """
         Initializes aggregation parameters for time series data
@@ -266,19 +266,19 @@ class AggregationParameters:
         self.aggregate_data_and_fix_non_binary_vars = aggregate_data_and_fix_non_binary_vars
         self.percentage_of_period_freedom = percentage_of_period_freedom
         self.penalty_of_period_freedom = penalty_of_period_freedom
-        self.time_series_for_high_peaks: List[TimeSeriesData] = time_series_for_high_peaks or []
-        self.time_series_for_low_peaks: List[TimeSeriesData] = time_series_for_low_peaks or []
+        self.time_series_for_high_peaks: list[TimeSeriesData] = time_series_for_high_peaks or []
+        self.time_series_for_low_peaks: list[TimeSeriesData] = time_series_for_low_peaks or []
 
     @property
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
     @property
-    def labels_for_high_peaks(self) -> List[str]:
+    def labels_for_high_peaks(self) -> list[str]:
         return [ts.label for ts in self.time_series_for_high_peaks]
 
     @property
-    def labels_for_low_peaks(self) -> List[str]:
+    def labels_for_low_peaks(self) -> list[str]:
         return [ts.label for ts in self.time_series_for_low_peaks]
 
     @property
@@ -297,7 +297,7 @@ class AggregationModel(Model):
         aggregation_parameters: AggregationParameters,
         flow_system: FlowSystem,
         aggregation_data: Aggregation,
-        components_to_clusterize: List[Component] | None,
+        components_to_clusterize: list[Component] | None,
     ):
         """
         Modeling-Element for "index-equating"-equations
@@ -316,9 +316,9 @@ class AggregationModel(Model):
 
         indices = self.aggregation_data.get_equation_indices(skip_first_index_of_period=True)
 
-        time_variables: Set[str] = {k for k, v in self._model.variables.data.items() if 'time' in v.indexes}
-        binary_variables: Set[str] = {k for k, v in self._model.variables.data.items() if k in self._model.binaries}
-        binary_time_variables: Set[str] = time_variables & binary_variables
+        time_variables: set[str] = {k for k, v in self._model.variables.data.items() if 'time' in v.indexes}
+        binary_variables: set[str] = {k for k, v in self._model.variables.data.items() if k in self._model.binaries}
+        binary_time_variables: set[str] = time_variables & binary_variables
 
         for component in components:
             if isinstance(component, Storage) and not self.aggregation_parameters.fix_storage_flows:

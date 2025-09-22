@@ -6,7 +6,7 @@ import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Dict, Literal, Tuple
+from typing import Literal
 
 import linopy
 import xarray as xr
@@ -218,6 +218,7 @@ def save_dataset_to_netcdf(
     Raises:
         ValueError: If the path has an invalid file extension.
     """
+    path = pathlib.Path(path)
     if path.suffix not in ['.nc', '.nc4']:
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
 

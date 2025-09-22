@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Literal, Set
+from typing import TYPE_CHECKING, Literal
 
 import linopy
 import numpy as np
@@ -40,8 +40,8 @@ class LinearConverter(Component):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        inputs: List of input Flows that feed into the converter.
-        outputs: List of output Flows that are produced by the converter.
+        inputs: list of input Flows that feed into the converter.
+        outputs: list of output Flows that are produced by the converter.
         on_off_parameters: Information about on and off state of LinearConverter.
             Component is On/Off if all connected Flows are On/Off. This induces an
             On-Variable (binary) in all Flows! If possible, use OnOffParameters in a
@@ -157,12 +157,12 @@ class LinearConverter(Component):
     def __init__(
         self,
         label: str,
-        inputs: List[Flow],
-        outputs: List[Flow],
-        on_off_parameters: OnOffParameters = None,
-        conversion_factors: List[Dict[str, NumericDataTS]] = None,
+        inputs: list[Flow],
+        outputs: list[Flow],
+        on_off_parameters: OnOffParameters | None = None,
+        conversion_factors: list[dict[str, NumericDataTS]] = None,
         piecewise_conversion: PiecewiseConversion | None = None,
-        meta_data: Dict | None = None,
+        meta_data: dict | None = None,
     ):
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
@@ -209,7 +209,7 @@ class LinearConverter(Component):
         if self.piecewise_conversion:
             self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
-    def _transform_conversion_factors(self, flow_system: FlowSystem) -> List[Dict[str, TimeSeries]]:
+    def _transform_conversion_factors(self, flow_system: FlowSystem) -> list[dict[str, TimeSeries]]:
         """macht alle Faktoren, die nicht TimeSeries sind, zu TimeSeries"""
         list_of_conversion_factors = []
         for idx, conversion_factor in enumerate(self.conversion_factors):
@@ -378,7 +378,7 @@ class Storage(Component):
         eta_discharge: NumericData = 1,
         relative_loss_per_hour: NumericData = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
-        meta_data: Dict | None = None,
+        meta_data: dict | None = None,
     ):
         # TODO: fixed_relative_chargeState implementieren
         super().__init__(
@@ -584,9 +584,9 @@ class Transmission(Component):
         out2: Flow | None = None,
         relative_losses: NumericDataTS | None = None,
         absolute_losses: NumericDataTS | None = None,
-        on_off_parameters: OnOffParameters = None,
+        on_off_parameters: OnOffParameters | None = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
-        meta_data: Dict | None = None,
+        meta_data: dict | None = None,
     ):
         super().__init__(
             label,
@@ -716,8 +716,8 @@ class LinearConverterModel(ComponentModel):
             # für alle linearen Gleichungen:
             for i, conv_factors in enumerate(self.element.conversion_factors):
                 used_flows = set([self.element.flows[flow_label] for flow_label in conv_factors])
-                used_inputs: Set = all_input_flows & used_flows
-                used_outputs: Set = all_output_flows & used_flows
+                used_inputs: set = all_input_flows & used_flows
+                used_outputs: set = all_output_flows & used_flows
 
                 self.add(
                     self._model.add_constraints(
@@ -967,18 +967,19 @@ class SourceAndSink(Component):
     def __init__(
         self,
         label: str,
-        inputs: List[Flow] = None,
-        outputs: List[Flow] = None,
+        inputs: list[Flow] = None,
+        outputs: list[Flow] = None,
         prevent_simultaneous_flow_rates: bool = True,
-        meta_data: Dict | None = None,
+        meta_data: dict | None = None,
         **kwargs,
     ):
         source = kwargs.pop('source', None)
         sink = kwargs.pop('sink', None)
         prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
         if source is not None:
-            warnings.deprecated(
+            warnings.warn(
                 'The use of the source argument is deprecated. Use the outputs argument instead.',
+                DeprecationWarning,
                 stacklevel=2,
             )
             if outputs is not None:
@@ -986,8 +987,9 @@ class SourceAndSink(Component):
             outputs = [source]
 
         if sink is not None:
-            warnings.deprecated(
+            warnings.warn(
                 'The use of the sink argument is deprecated. Use the inputs argument instead.',
+                DeprecationWarning,
                 stacklevel=2,
             )
             if inputs is not None:
@@ -995,8 +997,9 @@ class SourceAndSink(Component):
             inputs = [sink]
 
         if prevent_simultaneous_sink_and_source is not None:
-            warnings.deprecated(
+            warnings.warn(
                 'The use of the prevent_simultaneous_sink_and_source argument is deprecated. Use the prevent_simultaneous_flow_rates argument instead.',
+                DeprecationWarning,
                 stacklevel=2,
             )
             prevent_simultaneous_flow_rates = prevent_simultaneous_sink_and_source
@@ -1005,7 +1008,7 @@ class SourceAndSink(Component):
             label,
             inputs=inputs,
             outputs=outputs,
-            prevent_simultaneous_flows=inputs + outputs if prevent_simultaneous_flow_rates is True else None,
+            prevent_simultaneous_flows=(inputs or []) + (outputs or []) if prevent_simultaneous_flow_rates else None,
             meta_data=meta_data,
         )
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
@@ -1117,8 +1120,8 @@ class Source(Component):
     def __init__(
         self,
         label: str,
-        outputs: List[Flow] = None,
-        meta_data: Dict | None = None,
+        outputs: list[Flow] = None,
+        meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
@@ -1231,8 +1234,8 @@ class Sink(Component):
     def __init__(
         self,
         label: str,
-        inputs: List[Flow] = None,
-        meta_data: Dict | None = None,
+        inputs: list[Flow] = None,
+        meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
@@ -1243,7 +1246,7 @@ class Sink(Component):
 
         Parameters:
             label (str): Unique element label.
-            inputs (List[Flow], optional): Input flows for the sink.
+            inputs (list[Flow], optional): Input flows for the sink.
             meta_data (dict, optional): Arbitrary metadata attached to the element.
             prevent_simultaneous_flow_rates (bool, optional): If True, prevents simultaneous nonzero flow rates across the element's inputs by wiring that restriction into the base Component setup.
 

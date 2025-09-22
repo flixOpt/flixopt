@@ -4,7 +4,7 @@ import json
 import logging
 import socket
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any
 
 try:
     import dash_cytoscape as cyto
@@ -181,7 +181,7 @@ def flow_graph(flow_system: FlowSystem) -> 'nx.DiGraph':
     return graph
 
 
-def make_cytoscape_elements(graph: 'nx.DiGraph') -> List[Dict[str, Any]]:
+def make_cytoscape_elements(graph: 'nx.DiGraph') -> list[dict[str, Any]]:
     """Convert NetworkX graph to Cytoscape elements"""
     elements = []
 
@@ -238,7 +238,7 @@ def create_color_picker_input(label: str, input_id: str, default_color: str):
     )
 
 
-def create_style_section(title: str, children: List):
+def create_style_section(title: str, children: list):
     """Create a collapsible section for organizing controls"""
     return html.Div(
         [

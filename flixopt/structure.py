@@ -11,7 +11,7 @@ import logging
 import pathlib
 from datetime import datetime
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple
+from typing import TYPE_CHECKING, Any, Literal
 
 import linopy
 import numpy as np
@@ -101,11 +101,11 @@ class SystemModel(linopy.Model):
         return self.time_series_collection.hours_of_previous_timesteps
 
     @property
-    def coords(self) -> Tuple[pd.DatetimeIndex]:
+    def coords(self) -> tuple[pd.DatetimeIndex]:
         return (self.time_series_collection.timesteps,)
 
     @property
-    def coords_extra(self) -> Tuple[pd.DatetimeIndex]:
+    def coords_extra(self) -> tuple[pd.DatetimeIndex]:
         return (self.time_series_collection.timesteps_extra,)
 
 
@@ -118,7 +118,7 @@ class Interface:
         """Transforms the data of the interface to match the FlowSystem's dimensions"""
         raise NotImplementedError('Every Interface needs a transform_data() method')
 
-    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> Dict:
+    def infos(self, use_numpy: bool = True, use_element_label: bool = False) -> dict:
         """
         Generate a dictionary representation of the object's constructor arguments.
         Excludes default values and empty dictionaries and lists.
@@ -164,7 +164,7 @@ class Interface:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert the object to a dictionary representation."""
         data = {'__class__': self.__class__.__name__}
 
@@ -202,7 +202,7 @@ class Interface:
         return {k: self._serialize_value(v) for k, v in d.items()}
 
     @classmethod
-    def _deserialize_dict(cls, data: Dict) -> Dict | 'Interface':
+    def _deserialize_dict(cls, data: dict) -> dict | 'Interface':
         if '__class__' in data:
             class_name = data.pop('__class__')
             try:
@@ -219,7 +219,7 @@ class Interface:
             return {k: cls._deserialize_value(v) for k, v in data.items()}
 
     @classmethod
-    def _deserialize_list(cls, data: List) -> List:
+    def _deserialize_list(cls, data: list) -> list:
         return [cls._deserialize_value(value) for value in data]
 
     @classmethod
@@ -234,7 +234,7 @@ class Interface:
         return value
 
     @classmethod
-    def from_dict(cls, data: Dict) -> Interface:
+    def from_dict(cls, data: dict) -> Interface:
         """
         Create an instance from a dictionary representation.
 
@@ -259,7 +259,7 @@ class Interface:
 class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
 
-    def __init__(self, label: str, meta_data: Dict = None):
+    def __init__(self, label: str, meta_data: dict = None):
         """
         Args:
             label: The label of the element
@@ -318,13 +318,13 @@ class Model:
         self._label = label
         self._label_full = label_full
 
-        self._variables_direct: List[str] = []
-        self._constraints_direct: List[str] = []
-        self.sub_models: List[Model] = []
+        self._variables_direct: list[str] = []
+        self._constraints_direct: list[str] = []
+        self.sub_models: list[Model] = []
 
-        self._variables_short: Dict[str, str] = {}
-        self._constraints_short: Dict[str, str] = {}
-        self._sub_models_short: Dict[str, str] = {}
+        self._variables_short: dict[str, str] = {}
+        self._constraints_short: dict[str, str] = {}
+        self._sub_models_short: dict[str, str] = {}
         logger.debug(f'Created {self.__class__.__name__}  "{self.label_full}"')
 
     def do_modeling(self):
@@ -401,7 +401,7 @@ class Model:
         return self._model.constraints[self._constraints_direct]
 
     @property
-    def _variables(self) -> List[str]:
+    def _variables(self) -> list[str]:
         all_variables = self._variables_direct.copy()
         for sub_model in self.sub_models:
             for variable in sub_model._variables:
@@ -413,7 +413,7 @@ class Model:
         return all_variables
 
     @property
-    def _constraints(self) -> List[str]:
+    def _constraints(self) -> list[str]:
         all_constraints = self._constraints_direct.copy()
         for sub_model in self.sub_models:
             for constraint in sub_model._constraints:
@@ -431,7 +431,7 @@ class Model:
         return self._model.constraints[self._constraints]
 
     @property
-    def all_sub_models(self) -> List['Model']:
+    def all_sub_models(self) -> list['Model']:
         return [model for sub_model in self.sub_models for model in [sub_model] + sub_model.all_sub_models]
 
 
@@ -549,7 +549,7 @@ def copy_and_convert_datatypes(data: Any, use_numpy: bool = True, use_element_la
         raise TypeError(f'copy_and_convert_datatypes() did get unexpected data of type "{type(data)}": {data=}')
 
 
-def get_compact_representation(data: Any, array_threshold: int = 50, decimals: int = 2) -> Dict:
+def get_compact_representation(data: Any, array_threshold: int = 50, decimals: int = 2) -> dict:
     """
     Generate a compact json serializable representation of deeply nested data.
     Numpy arrays are statistically described if they exceed a threshold and converted to lists.
@@ -560,7 +560,7 @@ def get_compact_representation(data: Any, array_threshold: int = 50, decimals: i
         decimals (int): Number of decimal places in which to describe the arrays.
 
     Returns:
-        Dict: A dictionary representation of the data
+        dict: A dictionary representation of the data
     """
 
     def format_np_array_if_found(value: Any) -> Any:
@@ -579,7 +579,7 @@ def get_compact_representation(data: Any, array_threshold: int = 50, decimals: i
             )
             return value
 
-    def describe_numpy_arrays(arr: np.ndarray) -> str | List:
+    def describe_numpy_arrays(arr: np.ndarray) -> str | list:
         """Shortens NumPy arrays if they exceed the specified length."""
 
         def normalized_center_of_mass(array: Any) -> float:
