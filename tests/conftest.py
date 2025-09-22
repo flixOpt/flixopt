@@ -5,7 +5,7 @@ It helps avoid redundancy and centralizes reusable test logic.
 """
 
 import os
-from typing import Dict, Iterable
+from collections.abc import Iterable
 
 import linopy.testing
 import numpy as np

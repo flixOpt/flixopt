@@ -3,7 +3,6 @@ This Module contains high-level classes to easily model a FlowSystem.
 """
 
 import logging
-from typing import Dict, Optional
 
 import numpy as np
 
@@ -25,7 +24,7 @@ class Boiler(LinearConverter):
         Q_fu: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
     ):
         """
         Args:
@@ -66,7 +65,7 @@ class Power2Heat(LinearConverter):
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
     ):
         """
         Args:
@@ -108,7 +107,7 @@ class HeatPump(LinearConverter):
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
     ):
         """
         Args:
@@ -150,7 +149,7 @@ class CoolingTower(LinearConverter):
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
     ):
         """
         Args:
@@ -196,7 +195,7 @@ class CHP(LinearConverter):
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
     ):
         """
         Args:
@@ -256,7 +255,7 @@ class HeatPumpWithSource(LinearConverter):
         Q_ab: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters = None,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
     ):
         """
         Args:

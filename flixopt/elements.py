@@ -4,7 +4,7 @@ This module contains the basic elements of the flixopt framework.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
@@ -37,11 +37,11 @@ class Component(Element):
     def __init__(
         self,
         label: str,
-        inputs: Optional[List['Flow']] = None,
-        outputs: Optional[List['Flow']] = None,
-        on_off_parameters: Optional[OnOffParameters] = None,
-        prevent_simultaneous_flows: Optional[List['Flow']] = None,
-        meta_data: Optional[Dict] = None,
+        inputs: list['Flow'] | None = None,
+        outputs: list['Flow'] | None = None,
+        on_off_parameters: OnOffParameters | None = None,
+        prevent_simultaneous_flows: list['Flow'] | None = None,
+        meta_data: dict | None = None,
     ):
         """
         Args:
@@ -57,13 +57,13 @@ class Component(Element):
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
         """
         super().__init__(label, meta_data=meta_data)
-        self.inputs: List['Flow'] = inputs or []
-        self.outputs: List['Flow'] = outputs or []
+        self.inputs: list[Flow] = inputs or []
+        self.outputs: list[Flow] = outputs or []
         self._check_unique_flow_labels()
         self.on_off_parameters = on_off_parameters
-        self.prevent_simultaneous_flows: List['Flow'] = prevent_simultaneous_flows or []
+        self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
-        self.flows: Dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
+        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
     def create_model(self, model: FlowSystemModel) -> 'ComponentModel':
         self._plausibility_checks()
@@ -97,8 +97,8 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
-        excess_penalty_per_flow_hour: Optional[TemporalDataUser] = 1e5,
-        meta_data: Optional[Dict] = None,
+        excess_penalty_per_flow_hour: TemporalDataUser | None = 1e5,
+        meta_data: dict | None = None,
     ):
         """
         Args:
@@ -110,8 +110,8 @@ class Bus(Element):
         """
         super().__init__(label, meta_data=meta_data)
         self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
-        self.inputs: List[Flow] = []
-        self.outputs: List[Flow] = []
+        self.inputs: list[Flow] = []
+        self.outputs: list[Flow] = []
 
     def create_model(self, model: FlowSystemModel) -> 'BusModel':
         self._plausibility_checks()
@@ -158,18 +158,18 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Union[Scalar, InvestParameters] = None,
-        fixed_relative_profile: Optional[TemporalDataUser] = None,
+        size: Scalar | InvestParameters = None,
+        fixed_relative_profile: TemporalDataUser | None = None,
         relative_minimum: TemporalDataUser = 0,
         relative_maximum: TemporalDataUser = 1,
-        effects_per_flow_hour: Optional[TemporalEffectsUser] = None,
-        on_off_parameters: Optional[OnOffParameters] = None,
-        flow_hours_total_max: Optional[Scalar] = None,
-        flow_hours_total_min: Optional[Scalar] = None,
-        load_factor_min: Optional[Scalar] = None,
-        load_factor_max: Optional[Scalar] = None,
-        previous_flow_rate: Optional[Union[Scalar, List[Scalar]]] = None,
-        meta_data: Optional[Dict] = None,
+        effects_per_flow_hour: TemporalEffectsUser | None = None,
+        on_off_parameters: OnOffParameters | None = None,
+        flow_hours_total_max: Scalar | None = None,
+        flow_hours_total_min: Scalar | None = None,
+        load_factor_min: Scalar | None = None,
+        load_factor_max: Scalar | None = None,
+        previous_flow_rate: Scalar | list[Scalar] | None = None,
+        meta_data: dict | None = None,
     ):
         r"""
         Args:
@@ -219,7 +219,7 @@ class Flow(Element):
         self.previous_flow_rate = previous_flow_rate
 
         self.component: str = 'UnknownComponent'
-        self.is_input_in_component: Optional[bool] = None
+        self.is_input_in_component: bool | None = None
         if isinstance(bus, Bus):
             self.bus = bus.label_full
             warnings.warn(
@@ -490,13 +490,13 @@ class FlowModel(ElementModel):
             )
 
     @property
-    def relative_flow_rate_bounds(self) -> Tuple[TemporalData, TemporalData]:
+    def relative_flow_rate_bounds(self) -> tuple[TemporalData, TemporalData]:
         if self.element.fixed_relative_profile is not None:
             return self.element.fixed_relative_profile, self.element.fixed_relative_profile
         return self.element.relative_minimum, self.element.relative_maximum
 
     @property
-    def absolute_flow_rate_bounds(self) -> Tuple[TemporalData, TemporalData]:
+    def absolute_flow_rate_bounds(self) -> tuple[TemporalData, TemporalData]:
         """
         Returns the absolute bounds the flow_rate can reach.
         Further constraining might be needed
@@ -520,26 +520,26 @@ class FlowModel(ElementModel):
         return lb, ub
 
     @property
-    def on_off(self) -> Optional[OnOffModel]:
+    def on_off(self) -> OnOffModel | None:
         """OnOff feature"""
         if 'on_off' not in self.submodels:
             return None
         return self.submodels['on_off']
 
     @property
-    def _investment(self) -> Optional[InvestmentModel]:
+    def _investment(self) -> InvestmentModel | None:
         """Deprecated alias for investment"""
         return self.investment
 
     @property
-    def investment(self) -> Optional[InvestmentModel]:
+    def investment(self) -> InvestmentModel | None:
         """OnOff feature"""
         if 'investment' not in self.submodels:
             return None
         return self.submodels['investment']
 
     @property
-    def previous_states(self) -> Optional[TemporalData]:
+    def previous_states(self) -> TemporalData | None:
         """Previous states of the flow rate"""
         # TODO: This would be nicer to handle in the Flow itself, and allow DataArrays as well.
         previous_flow_rate = self.element.previous_flow_rate
@@ -559,8 +559,8 @@ class BusModel(ElementModel):
     element: Bus  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Bus):
-        self.excess_input: Optional[linopy.Variable] = None
-        self.excess_output: Optional[linopy.Variable] = None
+        self.excess_input: linopy.Variable | None = None
+        self.excess_output: linopy.Variable | None = None
         super().__init__(model, element)
 
     def _do_modeling(self) -> None:
@@ -606,7 +606,7 @@ class ComponentModel(ElementModel):
     element: Component  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Component):
-        self.on_off: Optional[OnOffModel] = None
+        self.on_off: OnOffModel | None = None
         super().__init__(model, element)
 
     def _do_modeling(self):
@@ -667,7 +667,7 @@ class ComponentModel(ElementModel):
         }
 
     @property
-    def previous_states(self) -> Optional[xr.DataArray]:
+    def previous_states(self) -> xr.DataArray | None:
         """Previous state of the component, derived from its flows"""
         if self.element.on_off_parameters is None:
             raise ValueError(f'OnOffModel not present in \n{self}\nCant access previous_states')

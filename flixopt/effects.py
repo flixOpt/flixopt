@@ -7,7 +7,8 @@ which are then transformed into the internal data structure.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Set, Tuple, Union
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Literal, Optional, Union
 
 import linopy
 import numpy as np
@@ -15,7 +16,7 @@ import xarray as xr
 
 from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, FlowSystemModel, Interface, Submodel, register_class_for_io
+from .structure import Element, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -35,19 +36,19 @@ class Effect(Element):
         label: str,
         unit: str,
         description: str,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
         specific_share_to_other_effects_operation: Optional['TemporalEffectsUser'] = None,
         specific_share_to_other_effects_invest: Optional['NonTemporalEffectsUser'] = None,
-        minimum_operation: Optional[Scalar] = None,
-        maximum_operation: Optional[Scalar] = None,
-        minimum_invest: Optional[Scalar] = None,
-        maximum_invest: Optional[Scalar] = None,
-        minimum_operation_per_hour: Optional[TemporalDataUser] = None,
-        maximum_operation_per_hour: Optional[TemporalDataUser] = None,
-        minimum_total: Optional[Scalar] = None,
-        maximum_total: Optional[Scalar] = None,
+        minimum_operation: Scalar | None = None,
+        maximum_operation: Scalar | None = None,
+        minimum_invest: Scalar | None = None,
+        maximum_invest: Scalar | None = None,
+        minimum_operation_per_hour: TemporalDataUser | None = None,
+        maximum_operation_per_hour: TemporalDataUser | None = None,
+        minimum_total: Scalar | None = None,
+        maximum_total: Scalar | None = None,
     ):
         """
         Args:
@@ -148,7 +149,7 @@ class EffectModel(ElementModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
-        self.total: Optional[linopy.Variable] = None
+        self.total: linopy.Variable | None = None
         self.invest: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
                 model=self._model,
@@ -189,19 +190,19 @@ class EffectModel(ElementModel):
         self.add_constraints(self.total == self.operation.total + self.invest.total, short_name='total')
 
 
-TemporalEffectsUser = Union[TemporalDataUser, Dict[str, TemporalDataUser]]  # User-specified Shares to Effects
+TemporalEffectsUser = TemporalDataUser | dict[str, TemporalDataUser]  # User-specified Shares to Effects
 """ This datatype is used to define a temporal share to an effect by a certain attribute. """
 
-NonTemporalEffectsUser = Union[Scalar, Dict[str, Scalar]]  # User-specified Shares to Effects
+NonTemporalEffectsUser = Scalar | dict[str, Scalar]  # User-specified Shares to Effects
 """ This datatype is used to define a scalar share to an effect by a certain attribute. """
 
-TemporalEffects = Dict[str, TemporalData]  # User-specified Shares to Effects
+TemporalEffects = dict[str, TemporalData]  # User-specified Shares to Effects
 """ This datatype is used internally to handle temporal shares to an effect. """
 
-NonTemporalEffects = Dict[str, Scalar]
+NonTemporalEffects = dict[str, Scalar]
 """ This datatype is used internally to handle scalar shares to an effect. """
 
-EffectExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
+EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
 
 
 class EffectCollection:
@@ -209,12 +210,12 @@ class EffectCollection:
     Handling all Effects
     """
 
-    def __init__(self, *effects: List[Effect]):
+    def __init__(self, *effects: list[Effect]):
         self._effects = {}
-        self._standard_effect: Optional[Effect] = None
-        self._objective_effect: Optional[Effect] = None
+        self._standard_effect: Effect | None = None
+        self._objective_effect: Effect | None = None
 
-        self.submodel: Optional[EffectCollectionModel] = None
+        self.submodel: EffectCollectionModel | None = None
         self.add_effects(*effects)
 
     def create_model(self, model: FlowSystemModel) -> 'EffectCollectionModel':
@@ -234,8 +235,8 @@ class EffectCollection:
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
-        self, effect_values_user: Union[NonTemporalEffectsUser, TemporalEffectsUser]
-    ) -> Optional[Dict[str, Union[Scalar, TemporalDataUser]]]:
+        self, effect_values_user: NonTemporalEffectsUser | TemporalEffectsUser
+    ) -> dict[str, Scalar | TemporalDataUser] | None:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
@@ -251,7 +252,7 @@ class EffectCollection:
             A dictionary with None or Effect as the key, or None if input is None.
         """
 
-        def get_effect_label(eff: Union[Effect, str]) -> str:
+        def get_effect_label(eff: Effect | str) -> str:
             """Temporary function to get the label of an effect and warn for deprecation"""
             if isinstance(eff, Effect):
                 warnings.warn(
@@ -287,7 +288,7 @@ class EffectCollection:
             cycle_str = '\n'.join([' -> '.join(cycle) for cycle in invest_cycles])
             raise ValueError(f'Error: circular invest-shares detected:\n{cycle_str}')
 
-    def __getitem__(self, effect: Union[str, Effect]) -> 'Effect':
+    def __getitem__(self, effect: str | Effect) -> 'Effect':
         """
         Get an effect by label, or return the standard effect if None is passed
 
@@ -325,7 +326,7 @@ class EffectCollection:
         return False
 
     @property
-    def effects(self) -> Dict[str, Effect]:
+    def effects(self) -> dict[str, Effect]:
         return self._effects
 
     @property
@@ -354,9 +355,9 @@ class EffectCollection:
 
     def calculate_effect_share_factors(
         self,
-    ) -> Tuple[
-        Dict[Tuple[str, str], xr.DataArray],
-        Dict[Tuple[str, str], xr.DataArray],
+    ) -> tuple[
+        dict[tuple[str, str], xr.DataArray],
+        dict[tuple[str, str], xr.DataArray],
     ]:
         shares_invest = {}
         for name, effect in self.effects.items():
@@ -384,7 +385,7 @@ class EffectCollectionModel(Submodel):
 
     def __init__(self, model: FlowSystemModel, effects: EffectCollection):
         self.effects = effects
-        self.penalty: Optional[ShareAllocationModel] = None
+        self.penalty: ShareAllocationModel | None = None
         super().__init__(model, label_of_element='Effects')
 
     def add_share_to_effects(
@@ -448,8 +449,8 @@ class EffectCollectionModel(Submodel):
 
 
 def calculate_all_conversion_paths(
-    conversion_dict: Dict[str, Dict[str, xr.DataArray]],
-) -> Dict[Tuple[str, str], xr.DataArray]:
+    conversion_dict: dict[str, dict[str, xr.DataArray]],
+) -> dict[tuple[str, str], xr.DataArray]:
     """
     Calculates all possible direct and indirect conversion factors between units/domains.
     This function uses Breadth-First Search (BFS) to find all possible conversion paths
@@ -518,7 +519,7 @@ def calculate_all_conversion_paths(
     return result
 
 
-def detect_cycles(graph: Dict[str, List[str]]) -> List[List[str]]:
+def detect_cycles(graph: dict[str, list[str]]) -> list[list[str]]:
     """
     Detects cycles in a directed graph using DFS.
 
@@ -568,7 +569,7 @@ def detect_cycles(graph: Dict[str, List[str]]) -> List[List[str]]:
     return cycles
 
 
-def tuples_to_adjacency_list(edges: List[Tuple[str, str]]) -> Dict[str, List[str]]:
+def tuples_to_adjacency_list(edges: list[tuple[str, str]]) -> dict[str, list[str]]:
     """
     Converts a list of edge tuples (source, target) to an adjacency list representation.
 

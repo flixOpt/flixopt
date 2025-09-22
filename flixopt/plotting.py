@@ -7,7 +7,7 @@ It's meant to be used in results.py, but is designed to be used by the end user 
 import itertools
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -37,7 +37,7 @@ if 'portland' not in plt.colormaps:
     plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
-ColorType = Union[str, List[str], Dict[str, str]]
+ColorType = str | list[str] | dict[str, str]
 """Identifier for the colors to use.
 Use the name of a colorscale, a list of colors or a dictionary of labels to colors.
 The colors must be valid color strings (HEX or names). Depending on the Engine used, other formats are possible.
@@ -67,7 +67,7 @@ class ColorProcessor:
         self.engine = engine
         self.default_colormap = default_colormap
 
-    def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> List[Any]:
+    def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> list[Any]:
         """
         Generate colors from a named colormap.
 
@@ -100,7 +100,7 @@ class ColorProcessor:
 
             return [cmap(i) for i in range(num_colors)]
 
-    def _handle_color_list(self, colors: List[str], num_labels: int) -> List[str]:
+    def _handle_color_list(self, colors: list[str], num_labels: int) -> list[str]:
         """
         Handle a list of colors, cycling if necessary.
 
@@ -130,7 +130,7 @@ class ColorProcessor:
                 )
             return colors[:num_labels]
 
-    def _handle_color_dict(self, colors: Dict[str, str], labels: List[str]) -> List[str]:
+    def _handle_color_dict(self, colors: dict[str, str], labels: list[str]) -> list[str]:
         """
         Handle a dictionary mapping labels to colors.
 
@@ -168,9 +168,9 @@ class ColorProcessor:
     def process_colors(
         self,
         colors: ColorType,
-        labels: List[str],
+        labels: list[str],
         return_mapping: bool = False,
-    ) -> Union[List[Any], Dict[str, Any]]:
+    ) -> list[Any] | dict[str, Any]:
         """
         Process colors for the specified labels.
 
@@ -214,7 +214,7 @@ def with_plotly(
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
-    fig: Optional[go.Figure] = None,
+    fig: go.Figure | None = None,
 ) -> go.Figure:
     """
     Plot a DataFrame with Plotly, using either stacked bars or stepped lines.
@@ -354,10 +354,10 @@ def with_matplotlib(
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
-    figsize: Tuple[int, int] = (12, 6),
-    fig: Optional[plt.Figure] = None,
-    ax: Optional[plt.Axes] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    figsize: tuple[int, int] = (12, 6),
+    fig: plt.Figure | None = None,
+    ax: plt.Axes | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
 
@@ -448,8 +448,8 @@ def heat_map_matplotlib(
     title: str = '',
     xlabel: str = 'Period',
     ylabel: str = 'Step',
-    figsize: Tuple[float, float] = (12, 6),
-) -> Tuple[plt.Figure, plt.Axes]:
+    figsize: tuple[float, float] = (12, 6),
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Plots a DataFrame as a heatmap using Matplotlib. The columns of the DataFrame will be displayed on the x-axis,
     the index will be displayed on the y-axis, and the values will represent the 'heat' intensity in the plot.
@@ -615,7 +615,7 @@ def heat_map_data_from_df(
     df: pd.DataFrame,
     periods: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'],
     steps_per_period: Literal['W', 'D', 'h', '15min', 'min'],
-    fill: Optional[Literal['ffill', 'bfill']] = None,
+    fill: Literal['ffill', 'bfill'] | None = None,
 ) -> pd.DataFrame:
     """
     Reshapes a DataFrame with a DateTime index into a 2D array for heatmap plotting,
@@ -692,10 +692,10 @@ def heat_map_data_from_df(
 def plot_network(
     node_infos: dict,
     edge_infos: dict,
-    path: Optional[Union[str, pathlib.Path]] = None,
-    controls: Union[
-        bool,
-        List[Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']],
+    path: str | pathlib.Path | None = None,
+    controls: bool
+    | list[
+        Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
     ] = True,
     show: bool = False,
 ) -> Optional['pyvis.network.Network']:
@@ -781,7 +781,7 @@ def pie_with_plotly(
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
-    fig: Optional[go.Figure] = None,
+    fig: go.Figure | None = None,
 ) -> go.Figure:
     """
     Create a pie chart with Plotly to visualize the proportion of values in a DataFrame.
@@ -867,10 +867,10 @@ def pie_with_matplotlib(
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
-    figsize: Tuple[int, int] = (10, 8),
-    fig: Optional[plt.Figure] = None,
-    ax: Optional[plt.Axes] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    figsize: tuple[int, int] = (10, 8),
+    fig: plt.Figure | None = None,
+    ax: plt.Axes | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Create a pie chart with Matplotlib to visualize the proportion of values in a DataFrame.
 
@@ -979,7 +979,7 @@ def dual_pie_with_plotly(
     data_right: pd.Series,
     colors: ColorType = 'viridis',
     title: str = '',
-    subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
+    subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
     hole: float = 0.2,
     lower_percentage_group: float = 5.0,
@@ -1132,14 +1132,14 @@ def dual_pie_with_matplotlib(
     data_right: pd.Series,
     colors: ColorType = 'viridis',
     title: str = '',
-    subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
+    subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
     hole: float = 0.2,
     lower_percentage_group: float = 5.0,
-    figsize: Tuple[int, int] = (14, 7),
-    fig: Optional[plt.Figure] = None,
-    axes: Optional[List[plt.Axes]] = None,
-) -> Tuple[plt.Figure, List[plt.Axes]]:
+    figsize: tuple[int, int] = (14, 7),
+    fig: plt.Figure | None = None,
+    axes: list[plt.Axes] | None = None,
+) -> tuple[plt.Figure, list[plt.Axes]]:
     """
     Create two pie charts side by side with Matplotlib, with consistent coloring across both charts.
     Leverages the existing pie_with_matplotlib function.
@@ -1290,13 +1290,13 @@ def dual_pie_with_matplotlib(
 
 
 def export_figure(
-    figure_like: Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]],
+    figure_like: plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes],
     default_path: pathlib.Path,
-    default_filetype: Optional[str] = None,
-    user_path: Optional[pathlib.Path] = None,
+    default_filetype: str | None = None,
+    user_path: pathlib.Path | None = None,
     show: bool = True,
     save: bool = False,
-) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
     """
     Export a figure to a file and or show it.
 

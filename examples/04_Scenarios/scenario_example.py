@@ -4,7 +4,6 @@ This script shows how to use the flixopt framework to model a simple energy syst
 
 import numpy as np
 import pandas as pd
-from rich.pretty import pprint  # Used for pretty printing
 
 import flixopt as fx
 

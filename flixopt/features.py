@@ -4,14 +4,12 @@ Features extend the functionality of Elements.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple, Union
 
 import linopy
 import numpy as np
 
-from .config import CONFIG
-from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
-from .interface import InvestParameters, OnOffParameters, Piecewise, PiecewiseEffects
+from .core import FlowSystemDimensions, Scalar, TemporalData
+from .interface import InvestParameters, OnOffParameters, Piecewise
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
@@ -26,7 +24,7 @@ class InvestmentModel(Submodel):
         model: FlowSystemModel,
         label_of_element: str,
         parameters: InvestParameters,
-        label_of_model: Optional[str] = None,
+        label_of_model: str | None = None,
     ):
         """
         This feature model is used to model the investment of a variable.
@@ -39,7 +37,7 @@ class InvestmentModel(Submodel):
             label_of_model: The label of the model. This is needed to construct the full label of the model.
 
         """
-        self.piecewise_effects: Optional[PiecewiseEffectsModel] = None
+        self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
@@ -119,7 +117,7 @@ class InvestmentModel(Submodel):
         return self._variables['size']
 
     @property
-    def is_invested(self) -> Optional[linopy.Variable]:
+    def is_invested(self) -> linopy.Variable | None:
         """Binary investment decision variable"""
         if 'is_invested' not in self._variables:
             return None
@@ -135,8 +133,8 @@ class OnOffModel(Submodel):
         label_of_element: str,
         parameters: OnOffParameters,
         on_variable: linopy.Variable,
-        previous_states: Optional[TemporalData],
-        label_of_model: Optional[str] = None,
+        previous_states: TemporalData | None,
+        label_of_model: str | None = None,
     ):
         """
         This feature model is used to model the on/off state of flow_rate(s). It does not matter of the flow_rates are
@@ -247,37 +245,37 @@ class OnOffModel(Submodel):
     # Properties access variables from Submodel's tracking system
 
     @property
-    def total_on_hours(self) -> Optional[linopy.Variable]:
+    def total_on_hours(self) -> linopy.Variable | None:
         """Total on hours variable"""
         return self['total_on_hours']
 
     @property
-    def off(self) -> Optional[linopy.Variable]:
+    def off(self) -> linopy.Variable | None:
         """Binary off state variable"""
         return self.get('off')
 
     @property
-    def switch_on(self) -> Optional[linopy.Variable]:
+    def switch_on(self) -> linopy.Variable | None:
         """Switch on variable"""
         return self.get('switch|on')
 
     @property
-    def switch_off(self) -> Optional[linopy.Variable]:
+    def switch_off(self) -> linopy.Variable | None:
         """Switch off variable"""
         return self.get('switch|off')
 
     @property
-    def switch_on_nr(self) -> Optional[linopy.Variable]:
+    def switch_on_nr(self) -> linopy.Variable | None:
         """Number of switch-ons variable"""
         return self.get('switch|count')
 
     @property
-    def consecutive_on_hours(self) -> Optional[linopy.Variable]:
+    def consecutive_on_hours(self) -> linopy.Variable | None:
         """Consecutive on hours variable"""
         return self.get('consecutive_on_hours')
 
     @property
-    def consecutive_off_hours(self) -> Optional[linopy.Variable]:
+    def consecutive_off_hours(self) -> linopy.Variable | None:
         """Consecutive off hours variable"""
         return self.get('consecutive_off_hours')
 
@@ -308,9 +306,9 @@ class PieceModel(Submodel):
         label_of_model: str,
         as_time_series: bool = True,
     ):
-        self.inside_piece: Optional[linopy.Variable] = None
-        self.lambda0: Optional[linopy.Variable] = None
-        self.lambda1: Optional[linopy.Variable] = None
+        self.inside_piece: linopy.Variable | None = None
+        self.lambda0: linopy.Variable | None = None
+        self.lambda1: linopy.Variable | None = None
         self._as_time_series = as_time_series
 
         super().__init__(model, label_of_element, label_of_model)
@@ -347,8 +345,8 @@ class PiecewiseModel(Submodel):
         model: FlowSystemModel,
         label_of_element: str,
         label_of_model: str,
-        piecewise_variables: Dict[str, Piecewise],
-        zero_point: Optional[Union[bool, linopy.Variable]],
+        piecewise_variables: dict[str, Piecewise],
+        zero_point: bool | linopy.Variable | None,
         as_time_series: bool,
     ):
         """
@@ -368,8 +366,8 @@ class PiecewiseModel(Submodel):
         self._zero_point = zero_point
         self._as_time_series = as_time_series
 
-        self.pieces: List[PieceModel] = []
-        self.zero_point: Optional[linopy.Variable] = None
+        self.pieces: list[PieceModel] = []
+        self.zero_point: linopy.Variable | None = None
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
@@ -430,9 +428,9 @@ class PiecewiseEffectsModel(Submodel):
         model: FlowSystemModel,
         label_of_element: str,
         label_of_model: str,
-        piecewise_origin: Tuple[str, Piecewise],
-        piecewise_shares: Dict[str, Piecewise],
-        zero_point: Optional[Union[bool, linopy.Variable]],
+        piecewise_origin: tuple[str, Piecewise],
+        piecewise_shares: dict[str, Piecewise],
+        zero_point: bool | linopy.Variable | None,
     ):
         assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
             'Piece length of variable_segments and share_segments must be equal'
@@ -440,9 +438,9 @@ class PiecewiseEffectsModel(Submodel):
         self._zero_point = zero_point
         self._piecewise_origin = piecewise_origin
         self._piecewise_shares = piecewise_shares
-        self.shares: Dict[str, linopy.Variable] = {}
+        self.shares: dict[str, linopy.Variable] = {}
 
-        self.piecewise_model: Optional[PiecewiseModel] = None
+        self.piecewise_model: PiecewiseModel | None = None
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
@@ -484,25 +482,25 @@ class ShareAllocationModel(Submodel):
     def __init__(
         self,
         model: FlowSystemModel,
-        dims: List[FlowSystemDimensions],
-        label_of_element: Optional[str] = None,
-        label_of_model: Optional[str] = None,
-        total_max: Optional[Scalar] = None,
-        total_min: Optional[Scalar] = None,
-        max_per_hour: Optional[TemporalData] = None,
-        min_per_hour: Optional[TemporalData] = None,
+        dims: list[FlowSystemDimensions],
+        label_of_element: str | None = None,
+        label_of_model: str | None = None,
+        total_max: Scalar | None = None,
+        total_min: Scalar | None = None,
+        max_per_hour: TemporalData | None = None,
+        min_per_hour: TemporalData | None = None,
     ):
         if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
             raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')
 
         self._dims = dims
-        self.total_per_timestep: Optional[linopy.Variable] = None
-        self.total: Optional[linopy.Variable] = None
-        self.shares: Dict[str, linopy.Variable] = {}
-        self.share_constraints: Dict[str, linopy.Constraint] = {}
+        self.total_per_timestep: linopy.Variable | None = None
+        self.total: linopy.Variable | None = None
+        self.shares: dict[str, linopy.Variable] = {}
+        self.share_constraints: dict[str, linopy.Constraint] = {}
 
-        self._eq_total_per_timestep: Optional[linopy.Constraint] = None
-        self._eq_total: Optional[linopy.Constraint] = None
+        self._eq_total_per_timestep: linopy.Constraint | None = None
+        self._eq_total: linopy.Constraint | None = None
 
         # Parameters
         self._total_max = total_max if total_max is not None else np.inf
@@ -542,7 +540,7 @@ class ShareAllocationModel(Submodel):
         self,
         name: str,
         expression: linopy.LinearExpression,
-        dims: Optional[List[FlowSystemDimensions]] = None,
+        dims: list[FlowSystemDimensions] | None = None,
     ):
         """
         Add a share to the share allocation model. If the share already exists, the expression is added to the existing share.

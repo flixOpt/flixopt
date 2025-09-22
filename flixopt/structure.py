@@ -7,22 +7,13 @@ import inspect
 import json
 import logging
 import pathlib
+from collections.abc import Collection, ItemsView, Iterator
 from dataclasses import dataclass
 from io import StringIO
 from typing import (
     TYPE_CHECKING,
     Any,
-    Collection,
-    Dict,
-    ItemsView,
-    Iterator,
-    List,
     Literal,
-    Optional,
-    Protocol,
-    Tuple,
-    Union,
-    runtime_checkable,
 )
 
 import linopy
@@ -33,8 +24,7 @@ from rich.console import Console
 from rich.pretty import Pretty
 
 from . import io as fx_io
-from .config import CONFIG
-from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalDataUser, TimeSeriesData, get_dataarray_stats
+from .core import TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -64,7 +54,7 @@ class SubmodelsMixin:
     submodels: 'Submodels'
 
     @property
-    def all_submodels(self) -> List['Submodel']:
+    def all_submodels(self) -> list['Submodel']:
         """Get all submodels including nested ones recursively."""
         direct_submodels = list(self.submodels.values())
 
@@ -99,7 +89,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
-        self.effects: Optional[EffectCollectionModel] = None
+        self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
 
     def do_modeling(self):
@@ -145,9 +135,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     def get_coords(
         self,
-        dims: Optional[Collection[str]] = None,
+        dims: Collection[str] | None = None,
         extra_timestep: bool = False,
-    ) -> Optional[xr.Coordinates]:
+    ) -> xr.Coordinates | None:
         """
         Returns the coordinates of the model
 
@@ -175,7 +165,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         return xr.Coordinates(coords) if coords else None
 
     @property
-    def weights(self) -> Union[int, xr.DataArray]:
+    def weights(self) -> int | xr.DataArray:
         """Returns the scenario weights of the FlowSystem. If None, return weights that are normalized to 1 (one)"""
         if self.flow_system.weights is None:
             weights = self.flow_system.fit_to_model_coords('weights', 1, dims=['year', 'scenario'])
@@ -199,7 +189,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Format sections with headers and underlines
         formatted_sections = []
         for section_header, section_content in sections.items():
-            formatted_sections.append((f'{section_header}\n{"-" * len(section_header)}\n{section_content}'))
+            formatted_sections.append(f'{section_header}\n{"-" * len(section_header)}\n{section_content}')
 
         title = f'FlowSystemModel ({self.type})'
         all_sections = '\n'.join(formatted_sections)
@@ -236,7 +226,7 @@ class Interface:
         """
         raise NotImplementedError('Every Interface subclass needs a transform_data() method')
 
-    def _create_reference_structure(self) -> Tuple[Dict, Dict[str, xr.DataArray]]:
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Convert all DataArrays to references and extract them.
         This is the core method that both to_dict() and to_dataset() build upon.
@@ -292,7 +282,7 @@ class Interface:
         """Check if object is an empty container (dict, list, tuple, set)."""
         return isinstance(obj, (dict, list, tuple, set)) and len(obj) == 0
 
-    def _extract_dataarrays_recursive(self, obj, context_name: str = '') -> Tuple[Any, Dict[str, xr.DataArray]]:
+    def _extract_dataarrays_recursive(self, obj, context_name: str = '') -> tuple[Any, dict[str, xr.DataArray]]:
         """
         Recursively extract DataArrays from nested structures.
 
@@ -371,8 +361,8 @@ class Interface:
 
     @classmethod
     def _resolve_dataarray_reference(
-        cls, reference: str, arrays_dict: Dict[str, xr.DataArray]
-    ) -> Union[xr.DataArray, TimeSeriesData]:
+        cls, reference: str, arrays_dict: dict[str, xr.DataArray]
+    ) -> xr.DataArray | TimeSeriesData:
         """
         Resolve a single DataArray reference (:::name) to actual DataArray or TimeSeriesData.
 
@@ -404,7 +394,7 @@ class Interface:
         return array
 
     @classmethod
-    def _resolve_reference_structure(cls, structure, arrays_dict: Dict[str, xr.DataArray]):
+    def _resolve_reference_structure(cls, structure, arrays_dict: dict[str, xr.DataArray]):
         """
         Convert reference structure back to actual objects using provided arrays.
 
@@ -523,7 +513,7 @@ class Interface:
                 f'Original Error: {e}'
             ) from e
 
-    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0):
         """
         Save the object to a NetCDF file.
 
@@ -539,7 +529,7 @@ class Interface:
             ds = self.to_dataset()
             fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
         except Exception as e:
-            raise IOError(f'Failed to save {self.__class__.__name__} to NetCDF file {path}: {e}') from e
+            raise OSError(f'Failed to save {self.__class__.__name__} to NetCDF file {path}: {e}') from e
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> 'Interface':
@@ -578,7 +568,7 @@ class Interface:
             raise ValueError(f'Failed to create {cls.__name__} from dataset: {e}') from e
 
     @classmethod
-    def from_netcdf(cls, path: Union[str, pathlib.Path]) -> 'Interface':
+    def from_netcdf(cls, path: str | pathlib.Path) -> 'Interface':
         """
         Load an instance from a NetCDF file.
 
@@ -596,9 +586,9 @@ class Interface:
             ds = fx_io.load_dataset_from_netcdf(path)
             return cls.from_dataset(ds)
         except Exception as e:
-            raise IOError(f'Failed to load {cls.__name__} from NetCDF file {path}: {e}') from e
+            raise OSError(f'Failed to load {cls.__name__} from NetCDF file {path}: {e}') from e
 
-    def get_structure(self, clean: bool = False, stats: bool = False) -> Dict:
+    def get_structure(self, clean: bool = False, stats: bool = False) -> dict:
         """
         Get object structure as a dictionary.
 
@@ -619,7 +609,7 @@ class Interface:
             return fx_io.remove_none_and_empty(reference_structure)
         return reference_structure
 
-    def _replace_references_with_stats(self, structure, arrays_dict: Dict[str, xr.DataArray]):
+    def _replace_references_with_stats(self, structure, arrays_dict: dict[str, xr.DataArray]):
         """Replace DataArray references with statistical summaries."""
         if isinstance(structure, str) and structure.startswith(':::'):
             array_name = structure[3:]
@@ -635,7 +625,7 @@ class Interface:
 
         return structure
 
-    def to_json(self, path: Union[str, pathlib.Path]):
+    def to_json(self, path: str | pathlib.Path):
         """
         Save the object to a JSON file.
         This is meant for documentation and comparison, not for reloading.
@@ -652,7 +642,7 @@ class Interface:
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            raise IOError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
+            raise OSError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
 
     def __repr__(self):
         """Return a detailed string representation for debugging."""
@@ -717,7 +707,7 @@ class Interface:
 class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
 
-    def __init__(self, label: str, meta_data: Dict = None):
+    def __init__(self, label: str, meta_data: dict = None):
         """
         Args:
             label: The label of the element
@@ -725,7 +715,7 @@ class Element(Interface):
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
-        self.submodel: Optional[ElementModel] = None
+        self.submodel: ElementModel | None = None
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization"""
@@ -777,8 +767,8 @@ class Submodel(SubmodelsMixin):
         self.label_of_element = label_of_element
         self.label_of_model = label_of_model if label_of_model is not None else self.label_of_element
 
-        self._variables: Dict[str, linopy.Variable] = {}  # Mapping from short name to variable
-        self._constraints: Dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
+        self._variables: dict[str, linopy.Variable] = {}  # Mapping from short name to variable
+        self._constraints: dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
         self.submodels: Submodels = Submodels({})
 
         logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
@@ -845,14 +835,14 @@ class Submodel(SubmodelsMixin):
 
     def get_coords(
         self,
-        dims: Optional[Collection[str]] = None,
+        dims: Collection[str] | None = None,
         extra_timestep: bool = False,
-    ) -> Optional[xr.Coordinates]:
+    ) -> xr.Coordinates | None:
         return self._model.get_coords(dims=dims, extra_timestep=extra_timestep)
 
     def filter_variables(
         self,
-        filter_by: Optional[Literal['binary', 'continuous', 'integer']] = None,
+        filter_by: Literal['binary', 'continuous', 'integer'] | None = None,
         length: Literal['scalar', 'time'] = None,
     ):
         if filter_by is None:
@@ -923,7 +913,7 @@ class Submodel(SubmodelsMixin):
         # Format sections with headers and underlines
         formatted_sections = []
         for section_header, section_content in sections.items():
-            formatted_sections.append((f'{section_header}\n{"-" * len(section_header)}\n{section_content}'))
+            formatted_sections.append(f'{section_header}\n{"-" * len(section_header)}\n{section_content}')
 
         model_string = f'Submodel "{self.label_of_model}":'
         all_sections = '\n'.join(formatted_sections)
@@ -943,7 +933,7 @@ class Submodel(SubmodelsMixin):
 class Submodels:
     """A simple collection for storing submodels with easy access and representation."""
 
-    data: Dict[str, 'Submodel']
+    data: dict[str, 'Submodel']
 
     def __getitem__(self, name: str) -> 'Submodel':
         """Get a submodel by its name."""

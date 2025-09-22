@@ -3,7 +3,7 @@ import json
 import logging
 import pathlib
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Literal, Union
 
 import linopy
 import matplotlib.pyplot as plt
@@ -67,7 +67,7 @@ class CalculationResults:
     """
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str):
+    def from_file(cls, folder: str | pathlib.Path, name: str):
         """Create CalculationResults instance by loading from saved files.
 
         This method loads the calculation results from previously saved files,
@@ -95,7 +95,7 @@ class CalculationResults:
             except Exception as e:
                 logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
-        with open(paths.summary, 'r', encoding='utf-8') as f:
+        with open(paths.summary, encoding='utf-8') as f:
             summary = yaml.load(f, Loader=yaml.FullLoader)
 
         return cls(
@@ -138,9 +138,9 @@ class CalculationResults:
         solution: xr.Dataset,
         flow_system_data: xr.Dataset,
         name: str,
-        summary: Dict,
-        folder: Optional[pathlib.Path] = None,
-        model: Optional[linopy.Model] = None,
+        summary: dict,
+        folder: pathlib.Path | None = None,
+        model: linopy.Model | None = None,
         **kwargs,  # To accept old "flow_system" parameter
     ):
         """
@@ -214,7 +214,7 @@ class CalculationResults:
         raise KeyError(f'No element with label {key} found.')
 
     @property
-    def storages(self) -> List['ComponentResults']:
+    def storages(self) -> list['ComponentResults']:
         """All storages in the results."""
         return [comp for comp in self.components.values() if comp.is_storage]
 
@@ -271,12 +271,12 @@ class CalculationResults:
 
     def filter_solution(
         self,
-        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
-        element: Optional[str] = None,
-        timesteps: Optional[pd.DatetimeIndex] = None,
-        scenarios: Optional[pd.Index] = None,
-        contains: Optional[Union[str, List[str]]] = None,
-        startswith: Optional[Union[str, List[str]]] = None,
+        variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
+        element: str | None = None,
+        timesteps: pd.DatetimeIndex | None = None,
+        scenarios: pd.Index | None = None,
+        contains: str | list[str] | None = None,
+        startswith: str | list[str] | None = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -333,9 +333,9 @@ class CalculationResults:
 
     def flow_rates(
         self,
-        start: Optional[Union[str, List[str]]] = None,
-        end: Optional[Union[str, List[str]]] = None,
-        component: Optional[Union[str, List[str]]] = None,
+        start: str | list[str] | None = None,
+        end: str | list[str] | None = None,
+        component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow rates of each Flow.
 
@@ -366,9 +366,9 @@ class CalculationResults:
 
     def flow_hours(
         self,
-        start: Optional[Union[str, List[str]]] = None,
-        end: Optional[Union[str, List[str]]] = None,
-        component: Optional[Union[str, List[str]]] = None,
+        start: str | list[str] | None = None,
+        end: str | list[str] | None = None,
+        component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow hours of each Flow.
 
@@ -398,9 +398,9 @@ class CalculationResults:
 
     def sizes(
         self,
-        start: Optional[Union[str, List[str]]] = None,
-        end: Optional[Union[str, List[str]]] = None,
-        component: Optional[Union[str, List[str]]] = None,
+        start: str | list[str] | None = None,
+        end: str | list[str] | None = None,
+        component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a dataset with the sizes of the Flows.
         Args:
@@ -444,7 +444,7 @@ class CalculationResults:
         self,
         element: str,
         effect: str,
-        mode: Optional[Literal['operation', 'invest']] = None,
+        mode: Literal['operation', 'invest'] | None = None,
         include_flows: bool = False,
     ) -> xr.Dataset:
         """Retrieves individual effect shares for a specific element and effect.
@@ -656,11 +656,11 @@ class CalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+        indexer: dict['FlowSystemDimensions', Any] | None = None,
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap of the solution of a variable.
 
@@ -718,13 +718,11 @@ class CalculationResults:
 
     def plot_network(
         self,
-        controls: Union[
-            bool,
-            List[
-                Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-            ],
+        controls: bool
+        | list[
+            Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
         ] = True,
-        path: Optional[pathlib.Path] = None,
+        path: pathlib.Path | None = None,
         show: bool = False,
     ) -> 'pyvis.network.Network':
         """See flixopt.flow_system.FlowSystem.plot_network"""
@@ -734,8 +732,8 @@ class CalculationResults:
 
     def to_file(
         self,
-        folder: Optional[Union[str, pathlib.Path]] = None,
-        name: Optional[str] = None,
+        folder: str | pathlib.Path | None = None,
+        name: str | None = None,
         compression: int = 5,
         document_model: bool = True,
         save_linopy_model: bool = False,
@@ -785,7 +783,7 @@ class CalculationResults:
 
 class _ElementResults:
     def __init__(
-        self, calculation_results: CalculationResults, label: str, variables: List[str], constraints: List[str]
+        self, calculation_results: CalculationResults, label: str, variables: list[str], constraints: list[str]
     ):
         self._calculation_results = calculation_results
         self.label = label
@@ -820,11 +818,11 @@ class _ElementResults:
 
     def filter_solution(
         self,
-        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
-        timesteps: Optional[pd.DatetimeIndex] = None,
-        scenarios: Optional[pd.Index] = None,
-        contains: Optional[Union[str, List[str]]] = None,
-        startswith: Optional[Union[str, List[str]]] = None,
+        variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
+        timesteps: pd.DatetimeIndex | None = None,
+        scenarios: pd.Index | None = None,
+        contains: str | list[str] | None = None,
+        startswith: str | list[str] | None = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -865,11 +863,11 @@ class _NodeResults(_ElementResults):
         self,
         calculation_results: CalculationResults,
         label: str,
-        variables: List[str],
-        constraints: List[str],
-        inputs: List[str],
-        outputs: List[str],
-        flows: List[str],
+        variables: list[str],
+        constraints: list[str],
+        inputs: list[str],
+        outputs: list[str],
+        flows: list[str],
     ):
         super().__init__(calculation_results, label, variables, constraints)
         self.inputs = inputs
@@ -878,15 +876,15 @@ class _NodeResults(_ElementResults):
 
     def plot_node_balance(
         self,
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
+        indexer: dict['FlowSystemDimensions', Any] | None = None,
         mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots the node balance of the Component or Bus.
         Args:
@@ -942,10 +940,10 @@ class _NodeResults(_ElementResults):
         lower_percentage_group: float = 5,
         colors: plotting.ColorType = 'viridis',
         text_info: str = 'percent+label+value',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
+        indexer: dict['FlowSystemDimensions', Any] | None = None,
     ) -> plotly.graph_objects.Figure:
         """
         Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
@@ -1025,11 +1023,11 @@ class _NodeResults(_ElementResults):
         self,
         negate_inputs: bool = True,
         negate_outputs: bool = False,
-        threshold: Optional[float] = 1e-5,
+        threshold: float | None = 1e-5,
         with_last_timestep: bool = False,
         mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
+        indexer: dict['FlowSystemDimensions', Any] | None = None,
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Component or Bus.
@@ -1097,12 +1095,12 @@ class ComponentResults(_NodeResults):
 
     def plot_charge_state(
         self,
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
+        indexer: dict['FlowSystemDimensions', Any] | None = None,
     ) -> plotly.graph_objs.Figure:
         """
         Plots the charge state of a Storage.
@@ -1170,7 +1168,7 @@ class ComponentResults(_NodeResults):
         )
 
     def node_balance_with_charge_state(
-        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: Optional[float] = 1e-5
+        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: float | None = 1e-5
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Storage including its charge state.
@@ -1214,8 +1212,8 @@ class FlowResults(_ElementResults):
         self,
         calculation_results: CalculationResults,
         label: str,
-        variables: List[str],
-        constraints: List[str],
+        variables: list[str],
+        constraints: list[str],
         start: str,
         end: str,
         component: str,
@@ -1262,13 +1260,13 @@ class SegmentedCalculationResults:
         )
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str):
+    def from_file(cls, folder: str | pathlib.Path, name: str):
         """Create SegmentedCalculationResults directly from file"""
         folder = pathlib.Path(folder)
         path = folder / name
         nc_file = path.with_suffix('.nc4')
         logger.info(f'loading calculation "{name}" from file ("{nc_file}")')
-        with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
+        with open(path.with_suffix('.json'), encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
             [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
@@ -1283,12 +1281,12 @@ class SegmentedCalculationResults:
 
     def __init__(
         self,
-        segment_results: List[CalculationResults],
+        segment_results: list[CalculationResults],
         all_timesteps: pd.DatetimeIndex,
         timesteps_per_segment: int,
         overlap_timesteps: int,
         name: str,
-        folder: Optional[pathlib.Path] = None,
+        folder: pathlib.Path | None = None,
     ):
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
@@ -1299,7 +1297,7 @@ class SegmentedCalculationResults:
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
 
     @property
-    def meta_data(self) -> Dict[str, Union[int, List[str]]]:
+    def meta_data(self) -> dict[str, int | list[str]]:
         return {
             'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
             'timesteps_per_segment': self.timesteps_per_segment,
@@ -1308,7 +1306,7 @@ class SegmentedCalculationResults:
         }
 
     @property
-    def segment_names(self) -> List[str]:
+    def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
@@ -1325,10 +1323,10 @@ class SegmentedCalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap of the solution of a variable.
 
@@ -1353,9 +1351,7 @@ class SegmentedCalculationResults:
             engine=engine,
         )
 
-    def to_file(
-        self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, compression: int = 5
-    ):
+    def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
         """Save the results to a file"""
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -1382,10 +1378,10 @@ def plot_heatmap(
     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
     color_map: str = 'portland',
-    save: Union[bool, pathlib.Path] = False,
+    save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
-    indexer: Optional[Dict[str, Any]] = None,
+    indexer: dict[str, Any] | None = None,
 ):
     """
     Plots a heatmap of the solution of a variable.
@@ -1439,12 +1435,12 @@ def plot_heatmap(
 
 def sanitize_dataset(
     ds: xr.Dataset,
-    timesteps: Optional[pd.DatetimeIndex] = None,
-    threshold: Optional[float] = 1e-5,
-    negate: Optional[List[str]] = None,
+    timesteps: pd.DatetimeIndex | None = None,
+    threshold: float | None = 1e-5,
+    negate: list[str] | None = None,
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
-    drop_suffix: Optional[str] = None,
+    drop_suffix: str | None = None,
 ) -> xr.Dataset:
     """
     Sanitizes a dataset by handling small values (dropping or zeroing) and optionally reindexing the time axis.
@@ -1514,11 +1510,11 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
-    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
-    timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
-    scenarios: Optional[Union[pd.Index, str, int]] = None,
-    contains: Optional[Union[str, List[str]]] = None,
-    startswith: Optional[Union[str, List[str]]] = None,
+    variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
+    timesteps: pd.DatetimeIndex | str | pd.Timestamp | None = None,
+    scenarios: pd.Index | str | int | None = None,
+    contains: str | list[str] | None = None,
+    startswith: str | list[str] | None = None,
 ) -> xr.Dataset:
     """
     Filters a dataset by its dimensions, indexes, and with string filters for variable names.
@@ -1612,7 +1608,7 @@ def filter_dataset(
     return filtered_ds
 
 
-def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: Optional[Union[str, List[str]]]) -> xr.DataArray:
+def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None) -> xr.DataArray:
     """Filter flows by node and component attributes.
 
     Filters are applied in the order they are specified. All filters must match for an edge to be included.
@@ -1634,7 +1630,7 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: Optional[Union[str, Li
     """
 
     # Helper function to process filters
-    def apply_filter(array, coord_name: str, coord_values: Union[Any, List[Any]]):
+    def apply_filter(array, coord_name: str, coord_values: Any | list[Any]):
         # Verify coord exists
         if coord_name not in array.coords:
             raise AttributeError(f"Missing required coordinate '{coord_name}'")
@@ -1670,8 +1666,8 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: Optional[Union[str, Li
 
 
 def _apply_indexer_to_data(
-    data: Union[xr.DataArray, xr.Dataset], indexer: Optional[Dict[str, Any]] = None, drop=False
-) -> Tuple[Union[xr.DataArray, xr.Dataset], List[str]]:
+    data: xr.DataArray | xr.Dataset, indexer: dict[str, Any] | None = None, drop=False
+) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
     Apply indexer selection or auto-select first values for non-time dimensions.
 

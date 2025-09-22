@@ -4,12 +4,9 @@ to model the same energy system. THe Results will be compared to each other.
 """
 
 import pathlib
-from typing import Dict, List, Union
 
-import numpy as np
 import pandas as pd
 import xarray as xr
-from rich.pretty import pprint  # Used for pretty printing
 
 import flixopt as fx
 
@@ -159,7 +156,7 @@ if __name__ == '__main__':
     flow_system.plot_network(controls=False, show=True)
 
     # Calculations
-    calculations: List[Union[fx.FullCalculation, fx.AggregatedCalculation, fx.SegmentedCalculation]] = []
+    calculations: list[fx.FullCalculation | fx.AggregatedCalculation | fx.SegmentedCalculation] = []
 
     if full:
         calculation = fx.FullCalculation('Full', flow_system)
@@ -182,7 +179,7 @@ if __name__ == '__main__':
         calculations.append(calculation)
 
     # Get solutions for plotting for different calculations
-    def get_solutions(calcs: List, variable: str) -> xr.Dataset:
+    def get_solutions(calcs: list, variable: str) -> xr.Dataset:
         dataarrays = []
         for calc in calcs:
             if calc.name == 'Segmented':

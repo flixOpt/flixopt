@@ -14,7 +14,7 @@ import pathlib
 import timeit
 import warnings
 from collections import Counter
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,9 @@ from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
 from .solvers import _Solver
-from .structure import FlowSystemModel
+
+if TYPE_CHECKING:
+    from .structure import FlowSystemModel
 
 logger = logging.getLogger('flixopt')
 
@@ -47,10 +49,10 @@ class Calculation:
         name: str,
         flow_system: FlowSystem,
         active_timesteps: Annotated[
-            Optional[pd.DatetimeIndex],
+            pd.DatetimeIndex | None,
             'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
         ] = None,
-        folder: Optional[pathlib.Path] = None,
+        folder: pathlib.Path | None = None,
     ):
         """
         Args:
@@ -81,11 +83,11 @@ class Calculation:
         flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
-        self.model: Optional[FlowSystemModel] = None
+        self.model: FlowSystemModel | None = None
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
-        self.results: Optional[CalculationResults] = None
+        self.results: CalculationResults | None = None
 
         if self.folder.exists() and not self.folder.is_dir():
             raise NotADirectoryError(f'Path {self.folder} exists and is not a directory.')
@@ -94,7 +96,7 @@ class Calculation:
         self._modeled = False
 
     @property
-    def main_results(self) -> Dict[str, Union[Scalar, Dict]]:
+    def main_results(self) -> dict[str, Scalar | dict]:
         from flixopt.features import InvestmentModel
 
         main_results = {
@@ -181,7 +183,7 @@ class FullCalculation(Calculation):
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self
 
-    def fix_sizes(self, ds: xr.Dataset, decimal_rounding: Optional[int] = 5) -> 'FullCalculation':
+    def fix_sizes(self, ds: xr.Dataset, decimal_rounding: int | None = 5) -> 'FullCalculation':
         """Fix the sizes of the calculations to specified values.
 
         Args:
@@ -209,7 +211,7 @@ class FullCalculation(Calculation):
         return self
 
     def solve(
-        self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = True
+        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = True
     ) -> 'FullCalculation':
         t_start = timeit.default_timer()
 
@@ -260,12 +262,12 @@ class AggregatedCalculation(FullCalculation):
         name: str,
         flow_system: FlowSystem,
         aggregation_parameters: AggregationParameters,
-        components_to_clusterize: Optional[List[Component]] = None,
+        components_to_clusterize: list[Component] | None = None,
         active_timesteps: Annotated[
-            Optional[pd.DatetimeIndex],
+            pd.DatetimeIndex | None,
             'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
         ] = None,
-        folder: Optional[pathlib.Path] = None,
+        folder: pathlib.Path | None = None,
     ):
         """
         Class for Optimizing the `FlowSystem` including:
@@ -368,7 +370,7 @@ class AggregatedCalculation(FullCalculation):
         self.durations['aggregation'] = round(timeit.default_timer() - t_start_agg, 2)
 
     @classmethod
-    def calculate_aggregation_weights(cls, ds: xr.Dataset) -> Dict[str, float]:
+    def calculate_aggregation_weights(cls, ds: xr.Dataset) -> dict[str, float]:
         """Calculate weights for all datavars in the dataset. Weights are pulled from the attrs of the datavars."""
 
         groups = [da.attrs['aggregation_group'] for da in ds.values() if 'aggregation_group' in da.attrs]
@@ -399,7 +401,7 @@ class SegmentedCalculation(Calculation):
         timesteps_per_segment: int,
         overlap_timesteps: int,
         nr_of_previous_values: int = 1,
-        folder: Optional[pathlib.Path] = None,
+        folder: pathlib.Path | None = None,
     ):
         """
         Dividing and Modeling the problem in (overlapping) segments.
@@ -424,7 +426,7 @@ class SegmentedCalculation(Calculation):
         self.timesteps_per_segment = timesteps_per_segment
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
-        self.sub_calculations: List[FullCalculation] = []
+        self.sub_calculations: list[FullCalculation] = []
 
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
@@ -446,7 +448,7 @@ class SegmentedCalculation(Calculation):
                 if isinstance(comp, Storage)
             },
         }
-        self._transfered_start_values: List[Dict[str, Any]] = []
+        self._transfered_start_values: list[dict[str, Any]] = []
 
     def _create_sub_calculations(self):
         for i, (segment_name, timesteps_of_segment) in enumerate(
@@ -462,7 +464,7 @@ class SegmentedCalculation(Calculation):
             )
 
     def do_modeling_and_solve(
-        self, solver: _Solver, log_file: Optional[pathlib.Path] = None, log_main_results: bool = False
+        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = False
     ) -> 'SegmentedCalculation':
         logger.info(f'{"":#^80}')
         logger.info(f'{" Segmented Solving ":#^80}')
@@ -541,7 +543,7 @@ class SegmentedCalculation(Calculation):
 
         self._transfered_start_values.append(start_values_of_this_segment)
 
-    def _calculate_timesteps_per_segment(self) -> List[pd.DatetimeIndex]:
+    def _calculate_timesteps_per_segment(self) -> list[pd.DatetimeIndex]:
         timesteps_per_segment = []
         for i, _ in enumerate(self.segment_names):
             start = self.timesteps_per_segment * i
@@ -554,7 +556,7 @@ class SegmentedCalculation(Calculation):
         return self.timesteps_per_segment + self.overlap_timesteps
 
     @property
-    def start_values_of_segments(self) -> List[Dict[str, Any]]:
+    def start_values_of_segments(self) -> list[dict[str, Any]]:
         """Gives an overview of the start values of all Segments"""
         return [{name: value for name, value in self._original_start_values.items()}] + [
             start_values for start_values in self._transfered_start_values

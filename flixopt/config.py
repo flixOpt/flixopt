@@ -2,7 +2,7 @@ import logging
 import os
 import types
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
 import yaml
 from rich.console import Console
@@ -96,7 +96,7 @@ class CONFIG:
     logging: LoggingConfig = None
 
     @classmethod
-    def load_config(cls, user_config_file: Optional[str] = None):
+    def load_config(cls, user_config_file: str | None = None):
         """
         Initialize configuration using defaults or user-specified file.
         """
@@ -104,12 +104,12 @@ class CONFIG:
         default_config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
 
         if user_config_file is None:
-            with open(default_config_path, 'r') as file:
+            with open(default_config_path) as file:
                 new_config = yaml.safe_load(file)
         elif not os.path.exists(user_config_file):
             raise FileNotFoundError(f'Config file not found: {user_config_file}')
         else:
-            with open(user_config_file, 'r') as user_file:
+            with open(user_config_file) as user_file:
                 new_config = yaml.safe_load(user_file)
 
         # Convert the merged config to ConfigSchema
@@ -186,7 +186,7 @@ class ColoredMultilineFormater(MultilineFormater):
         return '\n'.join(formatted_lines)
 
 
-def _get_logging_handler(log_file: Optional[str] = None, use_rich_handler: bool = False) -> logging.Handler:
+def _get_logging_handler(log_file: str | None = None, use_rich_handler: bool = False) -> logging.Handler:
     """Returns a logging handler for the given log file."""
     if use_rich_handler and log_file is None:
         # RichHandler for console output
@@ -225,7 +225,7 @@ def _get_logging_handler(log_file: Optional[str] = None, use_rich_handler: bool 
 
 def setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
-    log_file: Optional[str] = 'flixopt.log',
+    log_file: str | None = 'flixopt.log',
     use_rich_handler: bool = False,
 ):
     """Setup logging configuration"""

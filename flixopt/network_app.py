@@ -1,8 +1,7 @@
-import json
 import logging
 import socket
 import threading
-from typing import Any, Dict, List
+from typing import Any
 
 try:
     import dash_cytoscape as cyto
@@ -18,7 +17,7 @@ except ImportError as e:
     VISUALIZATION_ERROR = str(e)
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
-from .elements import Bus, Component, Flow
+from .elements import Bus
 from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -168,7 +167,7 @@ def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
     return graph
 
 
-def make_cytoscape_elements(graph: networkx.DiGraph) -> List[Dict[str, Any]]:
+def make_cytoscape_elements(graph: networkx.DiGraph) -> list[dict[str, Any]]:
     """Convert NetworkX graph to Cytoscape elements"""
     elements = []
 
@@ -225,7 +224,7 @@ def create_color_picker_input(label: str, input_id: str, default_color: str):
     )
 
 
-def create_style_section(title: str, children: List):
+def create_style_section(title: str, children: list):
     """Create a collapsible section for organizing controls"""
     return html.Div(
         [

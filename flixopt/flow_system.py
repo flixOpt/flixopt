@@ -2,12 +2,11 @@
 This module contains the FlowSystem class, which is used to collect instances of many other classes by the end User.
 """
 
-import json
 import logging
 import pathlib
 import warnings
-from io import StringIO
-from typing import TYPE_CHECKING, Any, Collection, Dict, List, Literal, Optional, Tuple, Union
+from collections.abc import Collection
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -59,11 +58,11 @@ class FlowSystem(Interface):
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
-        years: Optional[pd.Index] = None,
-        scenarios: Optional[pd.Index] = None,
-        hours_of_last_timestep: Optional[float] = None,
-        hours_of_previous_timesteps: Optional[Union[int, float, np.ndarray]] = None,
-        weights: Optional[NonTemporalDataUser] = None,
+        years: pd.Index | None = None,
+        scenarios: pd.Index | None = None,
+        hours_of_last_timestep: float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        weights: NonTemporalDataUser | None = None,
     ):
         """
         Args:
@@ -97,10 +96,10 @@ class FlowSystem(Interface):
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
         # Element collections
-        self.components: Dict[str, Component] = {}
-        self.buses: Dict[str, Bus] = {}
+        self.components: dict[str, Component] = {}
+        self.buses: dict[str, Bus] = {}
         self.effects: EffectCollection = EffectCollection()
-        self.model: Optional[FlowSystemModel] = None
+        self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False
         self._used_in_calculation = False
@@ -161,7 +160,7 @@ class FlowSystem(Interface):
 
     @staticmethod
     def _create_timesteps_with_extra(
-        timesteps: pd.DatetimeIndex, hours_of_last_timestep: Optional[float]
+        timesteps: pd.DatetimeIndex, hours_of_last_timestep: float | None
     ) -> pd.DatetimeIndex:
         """Create timesteps with an extra step at the end."""
         if hours_of_last_timestep is None:
@@ -180,8 +179,8 @@ class FlowSystem(Interface):
 
     @staticmethod
     def _calculate_hours_of_previous_timesteps(
-        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: Optional[Union[float, np.ndarray]]
-    ) -> Union[float, np.ndarray]:
+        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: float | np.ndarray | None
+    ) -> float | np.ndarray:
         """Calculate duration of regular timesteps."""
         if hours_of_previous_timesteps is not None:
             return hours_of_previous_timesteps
@@ -189,7 +188,7 @@ class FlowSystem(Interface):
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
 
-    def _create_reference_structure(self) -> Tuple[Dict, Dict[str, xr.DataArray]]:
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.
         Combines custom FlowSystem logic with Interface pattern for nested objects.
@@ -299,7 +298,7 @@ class FlowSystem(Interface):
 
         return flow_system
 
-    def to_netcdf(self, path: Union[str, pathlib.Path], compression: int = 0):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0):
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
@@ -315,7 +314,7 @@ class FlowSystem(Interface):
         super().to_netcdf(path, compression)
         logger.info(f'Saved FlowSystem to {path}')
 
-    def get_structure(self, clean: bool = False, stats: bool = False) -> Dict:
+    def get_structure(self, clean: bool = False, stats: bool = False) -> dict:
         """
         Get FlowSystem structure.
         Ensures FlowSystem is connected before getting structure.
@@ -330,7 +329,7 @@ class FlowSystem(Interface):
 
         return super().get_structure(clean, stats)
 
-    def to_json(self, path: Union[str, pathlib.Path]):
+    def to_json(self, path: str | pathlib.Path):
         """
         Save the flow system to a JSON file.
         Ensures FlowSystem is connected before saving.
@@ -349,10 +348,10 @@ class FlowSystem(Interface):
     def fit_to_model_coords(
         self,
         name: str,
-        data: Optional[Union[TemporalDataUser, NonTemporalDataUser]],
+        data: TemporalDataUser | NonTemporalDataUser | None,
         has_time_dim: bool = True,
-        dims: Optional[Collection[FlowSystemDimensions]] = None,
-    ) -> Optional[Union[TemporalData, NonTemporalData]]:
+        dims: Collection[FlowSystemDimensions] | None = None,
+    ) -> TemporalData | NonTemporalData | None:
         """
         Fit data to model coordinate system (currently time, but extensible).
 
@@ -399,12 +398,12 @@ class FlowSystem(Interface):
 
     def fit_effects_to_model_coords(
         self,
-        label_prefix: Optional[str],
-        effect_values: Optional[Union[TemporalEffectsUser, NonTemporalEffectsUser]],
-        label_suffix: Optional[str] = None,
+        label_prefix: str | None,
+        effect_values: TemporalEffectsUser | NonTemporalEffectsUser | None,
+        label_suffix: str | None = None,
         has_time_dim: bool = True,
-        dims: Optional[Collection[FlowSystemDimensions]] = None,
-    ) -> Optional[Union[TemporalEffects, NonTemporalEffects]]:
+        dims: Collection[FlowSystemDimensions] | None = None,
+    ) -> TemporalEffects | NonTemporalEffects | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """
@@ -477,12 +476,10 @@ class FlowSystem(Interface):
 
     def plot_network(
         self,
-        path: Union[bool, str, pathlib.Path] = 'flow_system.html',
-        controls: Union[
-            bool,
-            List[
-                Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-            ],
+        path: bool | str | pathlib.Path = 'flow_system.html',
+        controls: bool
+        | list[
+            Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
         ] = True,
         show: bool = False,
     ) -> Optional['pyvis.network.Network']:
@@ -546,7 +543,7 @@ class FlowSystem(Interface):
         finally:
             self._network_app = None
 
-    def network_infos(self) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
+    def network_infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
         if not self.connected_and_transformed:
             self.connect_and_transform()
         nodes = {
@@ -712,16 +709,16 @@ class FlowSystem(Interface):
         return iter(self.all_elements.keys())
 
     @property
-    def flows(self) -> Dict[str, Flow]:
+    def flows(self) -> dict[str, Flow]:
         set_of_flows = {flow for comp in self.components.values() for flow in comp.inputs + comp.outputs}
         return {flow.label_full: flow for flow in set_of_flows}
 
     @property
-    def all_elements(self) -> Dict[str, Element]:
+    def all_elements(self) -> dict[str, Element]:
         return {**self.components, **self.effects.effects, **self.flows, **self.buses}
 
     @property
-    def coords(self) -> Dict[FlowSystemDimensions, pd.Index]:
+    def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
         active_coords = {'time': self.timesteps}
         if self.years is not None:
             active_coords['year'] = self.years
@@ -735,9 +732,9 @@ class FlowSystem(Interface):
 
     def sel(
         self,
-        time: Optional[Union[str, slice, List[str], pd.Timestamp, pd.DatetimeIndex]] = None,
-        year: Optional[Union[int, slice, List[int], pd.Index]] = None,
-        scenario: Optional[Union[str, slice, List[str], pd.Index]] = None,
+        time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
+        year: int | slice | list[int] | pd.Index | None = None,
+        scenario: str | slice | list[str] | pd.Index | None = None,
     ) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by the time coordinate.
@@ -770,9 +767,9 @@ class FlowSystem(Interface):
 
     def isel(
         self,
-        time: Optional[Union[int, slice, List[int]]] = None,
-        year: Optional[Union[int, slice, List[int]]] = None,
-        scenario: Optional[Union[int, slice, List[int]]] = None,
+        time: int | slice | list[int] | None = None,
+        year: int | slice | list[int] | None = None,
+        scenario: int | slice | list[int] | None = None,
     ) -> 'FlowSystem':
         """
         Select a subset of the flowsystem by integer indices.

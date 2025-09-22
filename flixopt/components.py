@@ -4,16 +4,15 @@ This module contains the basic components of the flixopt framework.
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Literal
 
 import linopy
 import numpy as np
 import xarray as xr
 
-from . import utils
-from .core import NonTemporalDataUser, PlausibilityError, Scalar, TemporalData, TemporalDataUser
+from .core import NonTemporalDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
-from .features import InvestmentModel, OnOffModel, PiecewiseModel
+from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
@@ -34,12 +33,12 @@ class LinearConverter(Component):
     def __init__(
         self,
         label: str,
-        inputs: List[Flow],
-        outputs: List[Flow],
+        inputs: list[Flow],
+        outputs: list[Flow],
         on_off_parameters: OnOffParameters = None,
-        conversion_factors: List[Dict[str, TemporalDataUser]] = None,
-        piecewise_conversion: Optional[PiecewiseConversion] = None,
-        meta_data: Optional[Dict] = None,
+        conversion_factors: list[dict[str, TemporalDataUser]] = None,
+        piecewise_conversion: PiecewiseConversion | None = None,
+        meta_data: dict | None = None,
     ):
         """
         Args:
@@ -102,7 +101,7 @@ class LinearConverter(Component):
             self.piecewise_conversion.has_time_dim = True
             self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
-    def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> List[Dict[str, xr.DataArray]]:
+    def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
         list_of_conversion_factors = []
         for idx, conversion_factor in enumerate(self.conversion_factors):
@@ -131,20 +130,20 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: Union[NonTemporalDataUser, InvestParameters],
+        capacity_in_flow_hours: NonTemporalDataUser | InvestParameters,
         relative_minimum_charge_state: TemporalDataUser = 0,
         relative_maximum_charge_state: TemporalDataUser = 1,
-        initial_charge_state: Union[NonTemporalDataUser, Literal['lastValueOfSim']] = 0,
-        minimal_final_charge_state: Optional[NonTemporalDataUser] = None,
-        maximal_final_charge_state: Optional[NonTemporalDataUser] = None,
-        relative_minimum_final_charge_state: Optional[NonTemporalDataUser] = None,
-        relative_maximum_final_charge_state: Optional[NonTemporalDataUser] = None,
+        initial_charge_state: NonTemporalDataUser | Literal['lastValueOfSim'] = 0,
+        minimal_final_charge_state: NonTemporalDataUser | None = None,
+        maximal_final_charge_state: NonTemporalDataUser | None = None,
+        relative_minimum_final_charge_state: NonTemporalDataUser | None = None,
+        relative_maximum_final_charge_state: NonTemporalDataUser | None = None,
         eta_charge: TemporalDataUser = 1,
         eta_discharge: TemporalDataUser = 1,
         relative_loss_per_hour: TemporalDataUser = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
         balanced: bool = False,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
     ):
         """
         Storages have one incoming and one outgoing Flow each with an efficiency.
@@ -316,14 +315,14 @@ class Transmission(Component):
         label: str,
         in1: Flow,
         out1: Flow,
-        in2: Optional[Flow] = None,
-        out2: Optional[Flow] = None,
-        relative_losses: Optional[TemporalDataUser] = None,
-        absolute_losses: Optional[TemporalDataUser] = None,
+        in2: Flow | None = None,
+        out2: Flow | None = None,
+        relative_losses: TemporalDataUser | None = None,
+        absolute_losses: TemporalDataUser | None = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
     ):
         """
         Initializes a Transmission component (Pipe, cable, ...) that models the flows between two sides
@@ -451,7 +450,7 @@ class LinearConverterModel(ComponentModel):
     element: LinearConverter
 
     def __init__(self, model: FlowSystemModel, element: LinearConverter):
-        self.piecewise_conversion: Optional[PiecewiseConversion] = None
+        self.piecewise_conversion: PiecewiseConversion | None = None
         super().__init__(model, element)
 
     def _do_modeling(self):
@@ -464,8 +463,8 @@ class LinearConverterModel(ComponentModel):
             # für alle linearen Gleichungen:
             for i, conv_factors in enumerate(self.element.conversion_factors):
                 used_flows = set([self.element.flows[flow_label] for flow_label in conv_factors])
-                used_inputs: Set = all_input_flows & used_flows
-                used_outputs: Set = all_output_flows & used_flows
+                used_inputs: set = all_input_flows & used_flows
+                used_outputs: set = all_output_flows & used_flows
 
                 self.add_constraints(
                     sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_inputs])
@@ -591,7 +590,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def _absolute_charge_state_bounds(self) -> Tuple[TemporalData, TemporalData]:
+    def _absolute_charge_state_bounds(self) -> tuple[TemporalData, TemporalData]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (
@@ -605,7 +604,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def _relative_charge_state_bounds(self) -> Tuple[xr.DataArray, xr.DataArray]:
+    def _relative_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Get relative charge state bounds with final timestep values.
 
@@ -634,12 +633,12 @@ class StorageModel(ComponentModel):
         return min_bounds, max_bounds
 
     @property
-    def _investment(self) -> Optional[InvestmentModel]:
+    def _investment(self) -> InvestmentModel | None:
         """Deprecated alias for investment"""
         return self.investment
 
     @property
-    def investment(self) -> Optional[InvestmentModel]:
+    def investment(self) -> InvestmentModel | None:
         """OnOff feature"""
         if 'investment' not in self.submodels:
             return None
@@ -665,10 +664,10 @@ class SourceAndSink(Component):
     def __init__(
         self,
         label: str,
-        inputs: List[Flow] = None,
-        outputs: List[Flow] = None,
+        inputs: list[Flow] = None,
+        outputs: list[Flow] = None,
         prevent_simultaneous_flow_rates: bool = True,
-        meta_data: Optional[Dict] = None,
+        meta_data: dict | None = None,
         **kwargs,
     ):
         """
@@ -749,8 +748,8 @@ class Source(Component):
     def __init__(
         self,
         label: str,
-        outputs: List[Flow] = None,
-        meta_data: Optional[Dict] = None,
+        outputs: list[Flow] = None,
+        meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
@@ -794,8 +793,8 @@ class Sink(Component):
     def __init__(
         self,
         label: str,
-        inputs: List[Flow] = None,
-        meta_data: Optional[Dict] = None,
+        inputs: list[Flow] = None,
+        meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):

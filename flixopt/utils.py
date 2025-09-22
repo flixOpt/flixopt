@@ -3,7 +3,7 @@ This module contains several utility functions used throughout the flixopt frame
 """
 
 import logging
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -56,7 +56,7 @@ def round_nested_floats(obj, decimals=2):
 
 def convert_dataarray(
     data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray', 'structure']
-) -> Union[List, np.ndarray, xr.DataArray, str]:
+) -> list | np.ndarray | xr.DataArray | str:
     """
     Convert a DataArray to a different format.
 

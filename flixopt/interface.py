@@ -4,7 +4,8 @@ These are tightly connected to features.py
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Literal, Optional
 
 from .config import CONFIG
 from .core import NonTemporalData, NonTemporalDataUser, Scalar, TemporalDataUser
@@ -40,7 +41,7 @@ class Piece(Interface):
 
 @register_class_for_io
 class Piecewise(Interface):
-    def __init__(self, pieces: List[Piece]):
+    def __init__(self, pieces: list[Piece]):
         """
         Define a Piecewise, consisting of a list of Pieces.
 
@@ -76,7 +77,7 @@ class Piecewise(Interface):
 
 @register_class_for_io
 class PiecewiseConversion(Interface):
-    def __init__(self, piecewises: Dict[str, Piecewise]):
+    def __init__(self, piecewises: dict[str, Piecewise]):
         """
         Define a piecewise conversion between multiple Flows.
         --> "gaps" can be expressed by a piece not starting at the end of the prior piece: [(1,3), (4,5)]
@@ -109,7 +110,7 @@ class PiecewiseConversion(Interface):
 
 @register_class_for_io
 class PiecewiseEffects(Interface):
-    def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
+    def __init__(self, piecewise_origin: Piecewise, piecewise_shares: dict[str, Piecewise]):
         """
         Define piecewise effects related to a variable.
 
@@ -147,15 +148,15 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: Optional[NonTemporalDataUser] = None,
-        minimum_size: Optional[NonTemporalDataUser] = None,
-        maximum_size: Optional[NonTemporalDataUser] = None,
+        fixed_size: NonTemporalDataUser | None = None,
+        minimum_size: NonTemporalDataUser | None = None,
+        maximum_size: NonTemporalDataUser | None = None,
         optional: bool = True,  # Investition ist weglassbar
         fix_effects: Optional['NonTemporalEffectsUser'] = None,
         specific_effects: Optional['NonTemporalEffectsUser'] = None,  # costs per Flow-Unit/Storage-Size/...
-        piecewise_effects: Optional[PiecewiseEffects] = None,
+        piecewise_effects: PiecewiseEffects | None = None,
         divest_effects: Optional['NonTemporalEffectsUser'] = None,
-        investment_scenarios: Optional[Union[Literal['individual'], List[Union[int, str]]]] = None,
+        investment_scenarios: Literal['individual'] | list[int | str] | None = None,
     ):
         """
         Args:
@@ -174,11 +175,11 @@ class InvestParameters(Interface):
                 - List of scenario names: Optimize the size for the passed scenario names (equal size in all). All other scenarios will have the size 0.
                 - None: Equals to a list of all scenarios (default)
         """
-        self.fix_effects: 'NonTemporalEffectsUser' = fix_effects if fix_effects is not None else {}
-        self.divest_effects: 'NonTemporalEffectsUser' = divest_effects if divest_effects is not None else {}
+        self.fix_effects: NonTemporalEffectsUser = fix_effects if fix_effects is not None else {}
+        self.divest_effects: NonTemporalEffectsUser = divest_effects if divest_effects is not None else {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: 'NonTemporalEffectsUser' = specific_effects if specific_effects is not None else {}
+        self.specific_effects: NonTemporalEffectsUser = specific_effects if specific_effects is not None else {}
         self.piecewise_effects = piecewise_effects
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
@@ -249,13 +250,13 @@ class OnOffParameters(Interface):
         self,
         effects_per_switch_on: Optional['TemporalEffectsUser'] = None,
         effects_per_running_hour: Optional['TemporalEffectsUser'] = None,
-        on_hours_total_min: Optional[int] = None,
-        on_hours_total_max: Optional[int] = None,
-        consecutive_on_hours_min: Optional[TemporalDataUser] = None,
-        consecutive_on_hours_max: Optional[TemporalDataUser] = None,
-        consecutive_off_hours_min: Optional[TemporalDataUser] = None,
-        consecutive_off_hours_max: Optional[TemporalDataUser] = None,
-        switch_on_total_max: Optional[int] = None,
+        on_hours_total_min: int | None = None,
+        on_hours_total_max: int | None = None,
+        consecutive_on_hours_min: TemporalDataUser | None = None,
+        consecutive_on_hours_max: TemporalDataUser | None = None,
+        consecutive_off_hours_min: TemporalDataUser | None = None,
+        consecutive_off_hours_max: TemporalDataUser | None = None,
+        switch_on_total_max: int | None = None,
         force_switch_on: bool = False,
     ):
         """
@@ -278,10 +279,10 @@ class OnOffParameters(Interface):
             switch_on_total_max: max nr of switchOn operations
             force_switch_on: force creation of switch on variable, even if there is no switch_on_total_max
         """
-        self.effects_per_switch_on: 'TemporalEffectsUser' = (
+        self.effects_per_switch_on: TemporalEffectsUser = (
             effects_per_switch_on if effects_per_switch_on is not None else {}
         )
-        self.effects_per_running_hour: 'TemporalEffectsUser' = (
+        self.effects_per_running_hour: TemporalEffectsUser = (
             effects_per_running_hour if effects_per_running_hour is not None else {}
         )
         self.on_hours_total_min: Scalar = on_hours_total_min
