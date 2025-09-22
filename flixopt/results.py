@@ -813,7 +813,7 @@ class SegmentedCalculationResults:
         folder = pathlib.Path(folder)
         path = folder / name
         logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
-        with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
+        with open(path.with_suffix('.json'), encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
             [CalculationResults.from_file(folder, name) for name in meta_data['sub_calculations']],
