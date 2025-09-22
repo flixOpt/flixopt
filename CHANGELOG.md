@@ -45,6 +45,9 @@ Until here -->
 - Fix error handling in network visualization if networkx is not installed.
 - Fix broken links in docs.
 - Fix missing args in docstrings in `plotting.py`, `solvers.py`, and `core.py`.
+- Fix COP getter and setter of `HeatPumpWithSource` returning and setting wrong conversion factors.
+- Fix custom compression levels in `io.save_dataset_to_netcdf`
+- Fix `total_max` did not work when total min was not used.
 
 ### Known Issues
 
