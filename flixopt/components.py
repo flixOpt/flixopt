@@ -447,20 +447,15 @@ class Storage(Component):
                 maximum_capacity = self.capacity_in_flow_hours
                 minimum_capacity = self.capacity_in_flow_hours
 
-            # initial capacity >= allowed min for maximum_size:
-            minimum_inital_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
-            # initial capacity <= allowed max for minimum_size:
-            maximum_inital_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
-
-            if self.initial_charge_state > maximum_inital_capacity:
+            minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
+            maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
+            if self.initial_charge_state > maximum_initial_capacity:
                 raise ValueError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is above allowed maximum charge_state {maximum_inital_capacity}'
+                    f'{self.label_full}: {self.initial_charge_state=} is above allowed maximum {maximum_initial_capacity}'
                 )
-            if self.initial_charge_state < minimum_inital_capacity:
+            if self.initial_charge_state < minimum_initial_capacity:
                 raise ValueError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is below allowed minimum charge_state {minimum_inital_capacity}'
+                    f'{self.label_full}: {self.initial_charge_state=} is below allowed minimum {minimum_initial_capacity}'
                 )
         elif self.initial_charge_state != 'lastValueOfSim':
             raise ValueError(f'{self.label_full}: {self.initial_charge_state=} has an invalid value')
@@ -994,7 +989,7 @@ class SourceAndSink(Component):
                 stacklevel=2,
             )
             if inputs is not None:
-                raise ValueError('Either sink or outputs can be specified, but not both.')
+                raise ValueError('Either sink or inputs can be specified, but not both.')
             inputs = [sink]
 
         if prevent_simultaneous_sink_and_source is not None:
@@ -1026,7 +1021,7 @@ class SourceAndSink(Component):
     @property
     def sink(self) -> Flow:
         warnings.warn(
-            'The sink property is deprecated. Use the outputs property instead.',
+            'The sink property is deprecated. Use the inputs property instead.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1262,7 +1257,7 @@ class Sink(Component):
                 stacklevel=2,
             )
             if inputs is not None:
-                raise ValueError('Either sink or outputs can be specified, but not both.')
+                raise ValueError('Either sink or inputs can be specified, but not both.')
             inputs = [sink]
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
@@ -1276,7 +1271,7 @@ class Sink(Component):
     @property
     def sink(self) -> Flow:
         warnings.warn(
-            'The sink property is deprecated. Use the outputs property instead.',
+            'The sink property is deprecated. Use the inputs property instead.',
             DeprecationWarning,
             stacklevel=2,
         )
