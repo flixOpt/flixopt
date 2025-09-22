@@ -29,6 +29,24 @@ Please remove all irrelevant sections before releasing.
 
 Until here -->
 
+## [Unreleased] - ????-??-??
+
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+- Fix `eta_discharge` Constraint in `Storage` leading to incorrect losses in discharge and therefore incorrect charge states and discharge values.
+
+### Known issues
+
+### *Development*
+
+
 ## [2.1.8] - 2025-09-22
 This release focuses on code quality improvements, enhanced documentation, and bug fixes for heat pump components and visualization features.
 
