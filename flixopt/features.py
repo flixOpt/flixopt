@@ -616,7 +616,7 @@ class ConsecutiveStateModel(Model):
         if len(hours_per_timestep) < nr_of_indexes_with_consecutive_ones:
             raise ValueError(
                 f'When trying to calculate the consecutive duration, the length of the last duration '
-                f'({len(nr_of_indexes_with_consecutive_ones)}) is longer than the provided hours_per_timestep ({len(hours_per_timestep)}), '
+                f'({nr_of_indexes_with_consecutive_ones}) is longer than the provided hours_per_timestep ({len(hours_per_timestep)}), '
                 f'as {binary_values=}'
             )
 
