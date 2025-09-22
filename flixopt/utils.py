@@ -18,7 +18,7 @@ def is_number(number_alias: int | float | str) -> bool:
     try:
         float(number_alias)
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 
