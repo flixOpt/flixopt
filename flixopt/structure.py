@@ -331,8 +331,8 @@ class Model:
         raise NotImplementedError('Every Model needs a do_modeling() method')
 
     def add(
-        self, item: linopy.Variable | linopy.Constraint | 'Model', short_name: str | None = None
-    ) -> linopy.Variable | linopy.Constraint | 'Model':
+        self, item: linopy.Variable | linopy.Constraint | Model, short_name: str | None = None
+    ) -> linopy.Variable | linopy.Constraint | Model:
         """
         Add a variable, constraint or sub-model to the model
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal
+from typing import TYPE_CHECKING, Iterator, Literal
 
 import linopy
 import numpy as np
@@ -136,7 +136,7 @@ class Effect(Element):
         label: str,
         unit: str,
         description: str,
-        meta_data: Dict | None = None,
+        meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
         specific_share_to_other_effects_operation: EffectValuesUser | None = None,
@@ -249,13 +249,13 @@ class EffectModel(ElementModel):
         )
 
 
-EffectValuesExpr = Dict[str, linopy.LinearExpression]  # Used to create Shares
-EffectTimeSeries = Dict[str, TimeSeries]  # Used internally to index values
-EffectValuesDict = Dict[str, NumericDataTS]  # How effect values are stored
-EffectValuesUser = NumericDataTS | Dict[str, NumericDataTS]  # User-specified Shares to Effects
+EffectValuesExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
+EffectTimeSeries = dict[str, TimeSeries]  # Used internally to index values
+EffectValuesDict = dict[str, NumericDataTS]  # How effect values are stored
+EffectValuesUser = NumericDataTS | dict[str, NumericDataTS]  # User-specified Shares to Effects
 """ This datatype is used to define the share to an effect by a certain attribute. """
 
-EffectValuesUserScalar = Scalar | Dict[str, Scalar]  # User-specified Shares to Effects
+EffectValuesUserScalar = Scalar | dict[str, Scalar]  # User-specified Shares to Effects
 """ This datatype is used to define the share to an effect by a certain attribute. Only scalars are allowed. """
 
 
@@ -264,7 +264,7 @@ class EffectCollection:
     Handling all Effects
     """
 
-    def __init__(self, *effects: List[Effect]):
+    def __init__(self, *effects: list[Effect]):
         self._effects = {}
         self._standard_effect: Effect | None = None
         self._objective_effect: Effect | None = None
@@ -381,7 +381,7 @@ class EffectCollection:
         return False
 
     @property
-    def effects(self) -> Dict[str, Effect]:
+    def effects(self) -> dict[str, Effect]:
         return self._effects
 
     @property

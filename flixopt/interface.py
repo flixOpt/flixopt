@@ -6,7 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Dict, Iterator, List
+from typing import TYPE_CHECKING, Iterator
 
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, Scalar
@@ -83,7 +83,7 @@ class Piecewise(Interface):
     Piece objects into a single piecewise linear function.
 
     Args:
-        pieces: List of Piece objects defining the linear segments. The arrangement
+        pieces: list of Piece objects defining the linear segments. The arrangement
             and relationships between pieces determine the function behavior:
             - Touching pieces (end of one = start of next) ensure continuity
             - Gaps between pieces create forbidden regions
@@ -188,7 +188,7 @@ class Piecewise(Interface):
 
     """
 
-    def __init__(self, pieces: List[Piece]):
+    def __init__(self, pieces: list[Piece]):
         self.pieces = pieces
 
     def __len__(self):
@@ -404,7 +404,7 @@ class PiecewiseConversion(Interface):
 
     """
 
-    def __init__(self, piecewises: Dict[str, Piecewise]):
+    def __init__(self, piecewises: dict[str, Piecewise]):
         self.piecewises = piecewises
 
     def items(self):
@@ -611,7 +611,7 @@ class PiecewiseEffects(Interface):
 
     """
 
-    def __init__(self, piecewise_origin: Piecewise, piecewise_shares: Dict[str, Piecewise]):
+    def __init__(self, piecewise_origin: Piecewise, piecewise_shares: dict[str, Piecewise]):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
 
@@ -825,11 +825,11 @@ class InvestParameters(Interface):
         piecewise_effects: PiecewiseEffects | None = None,
         divest_effects: EffectValuesUserScalar | None = None,
     ):
-        self.fix_effects: EffectValuesUser = fix_effects or {}
-        self.divest_effects: EffectValuesUser = divest_effects or {}
+        self.fix_effects: EffectValuesUserScalar = fix_effects or {}
+        self.divest_effects: EffectValuesUserScalar = divest_effects or {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: EffectValuesUser = specific_effects or {}
+        self.specific_effects: EffectValuesUserScalar = specific_effects or {}
         self.piecewise_effects = piecewise_effects
         self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
@@ -1041,13 +1041,13 @@ class OnOffParameters(Interface):
     ):
         self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}
         self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}
-        self.on_hours_total_min: Scalar = on_hours_total_min
-        self.on_hours_total_max: Scalar = on_hours_total_max
-        self.consecutive_on_hours_min: NumericDataTS = consecutive_on_hours_min
-        self.consecutive_on_hours_max: NumericDataTS = consecutive_on_hours_max
-        self.consecutive_off_hours_min: NumericDataTS = consecutive_off_hours_min
-        self.consecutive_off_hours_max: NumericDataTS = consecutive_off_hours_max
-        self.switch_on_total_max: Scalar = switch_on_total_max
+        self.on_hours_total_min = on_hours_total_min
+        self.on_hours_total_max = on_hours_total_max
+        self.consecutive_on_hours_min = consecutive_on_hours_min
+        self.consecutive_on_hours_max = consecutive_on_hours_max
+        self.consecutive_off_hours_min = consecutive_off_hours_min
+        self.consecutive_off_hours_max = consecutive_off_hours_max
+        self.switch_on_total_max = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str):

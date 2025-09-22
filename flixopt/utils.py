@@ -5,7 +5,7 @@ This module contains several utility functions used throughout the flixopt frame
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Literal
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -14,7 +14,7 @@ logger = logging.getLogger('flixopt')
 
 
 def is_number(number_alias: int | float | str) -> bool:
-    """Returns True is string is a number."""
+    """Returns True if value is a number or a number-like string."""
     try:
         float(number_alias)
         return True
@@ -34,7 +34,7 @@ def round_floats(obj, decimals=2):
 
 def convert_dataarray(
     data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray', 'structure']
-) -> List | np.ndarray | xr.DataArray | str:
+) -> list[Any] | np.ndarray | xr.DataArray | str:
     """
     Convert a DataArray to a different format.
 

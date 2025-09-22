@@ -14,7 +14,7 @@ import logging
 import math
 import pathlib
 import timeit
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -69,7 +69,7 @@ class Calculation:
         self.folder.mkdir(parents=False, exist_ok=True)
 
     @property
-    def main_results(self) -> Dict[str, Scalar | Dict]:
+    def main_results(self) -> dict[str, Scalar | dict]:
         from flixopt.features import InvestmentModel
 
         return {
@@ -205,7 +205,7 @@ class AggregatedCalculation(FullCalculation):
         name: Name of the calculation
         flow_system: FlowSystem to be optimized
         aggregation_parameters: Parameters for aggregation. See AggregationParameters class documentation
-        components_to_clusterize: List of Components to perform aggregation on. If None, all components are aggregated.
+        components_to_clusterize: list of Components to perform aggregation on. If None, all components are aggregated.
             This equalizes variables in the components according to the typical periods computed in the aggregation
         active_timesteps: DatetimeIndex of timesteps to use for calculation. If None, all timesteps are used
         folder: Folder where results should be saved. If None, current working directory is used
@@ -217,7 +217,7 @@ class AggregatedCalculation(FullCalculation):
         name: str,
         flow_system: FlowSystem,
         aggregation_parameters: AggregationParameters,
-        components_to_clusterize: List[Component] | None = None,
+        components_to_clusterize: list[Component] | None = None,
         active_timesteps: pd.DatetimeIndex | None = None,
         folder: pathlib.Path | None = None,
     ):
@@ -418,7 +418,7 @@ class SegmentedCalculation(Calculation):
         self.timesteps_per_segment = timesteps_per_segment
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
-        self.sub_calculations: List[FullCalculation] = []
+        self.sub_calculations: list[FullCalculation] = []
 
         self.all_timesteps = self.flow_system.time_series_collection.all_timesteps
         self.all_timesteps_extra = self.flow_system.time_series_collection.all_timesteps_extra
@@ -443,7 +443,7 @@ class SegmentedCalculation(Calculation):
                 if isinstance(comp, Storage)
             },
         }
-        self._transfered_start_values: List[Dict[str, Any]] = []
+        self._transfered_start_values: list[dict[str, Any]] = []
 
     def do_modeling_and_solve(
         self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = False
@@ -527,7 +527,7 @@ class SegmentedCalculation(Calculation):
             if isinstance(comp, Storage):
                 comp.initial_charge_state = self._original_start_values[comp.label_full]
 
-    def _calculate_timesteps_of_segment(self) -> List[pd.DatetimeIndex]:
+    def _calculate_timesteps_of_segment(self) -> list[pd.DatetimeIndex]:
         active_timesteps_per_segment = []
         for i, _ in enumerate(self.segment_names):
             start = self.timesteps_per_segment * i
@@ -540,7 +540,7 @@ class SegmentedCalculation(Calculation):
         return self.timesteps_per_segment + self.overlap_timesteps
 
     @property
-    def start_values_of_segments(self) -> Dict[int, Dict[str, Any]]:
+    def start_values_of_segments(self) -> dict[int, dict[str, Any]]:
         """Gives an overview of the start values of all Segments"""
         return {
             0: {element.label_full: value for element, value in self._original_start_values.items()},

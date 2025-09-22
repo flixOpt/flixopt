@@ -28,7 +28,7 @@ from __future__ import annotations
 import itertools
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Any, Dict, List, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -73,12 +73,12 @@ Color specifications can take several forms to accommodate different use cases:
     - Energy-focused: 'portland' (custom flixopt colormap for energy systems)
     - Backend-specific maps available in Plotly and Matplotlib
 
-**Color Lists** (List[str]):
+**Color Lists** (list[str]):
     - Explicit color sequences: ['red', 'blue', 'green', 'orange']
     - HEX codes: ['#FF0000', '#0000FF', '#00FF00', '#FFA500']
     - Mixed formats: ['red', '#0000FF', 'green', 'orange']
 
-**Label-to-Color Mapping** (Dict[str, str]):
+**Label-to-Color Mapping** (dict[str, str]):
     - Explicit associations: {'Wind': 'skyblue', 'Solar': 'gold', 'Gas': 'brown'}
     - Ensures consistent colors across different plots and datasets
     - Ideal for energy system components with semantic meaning
@@ -185,7 +185,7 @@ class ColorProcessor:
         self.engine = engine
         self.default_colormap = default_colormap
 
-    def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> List[Any]:
+    def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> list[Any]:
         """
         Generate colors from a named colormap.
 
@@ -194,7 +194,7 @@ class ColorProcessor:
             num_colors: Number of colors to generate
 
         Returns:
-            List of colors in the format appropriate for the engine
+            list of colors in the format appropriate for the engine
         """
         if self.engine == 'plotly':
             try:
@@ -218,16 +218,16 @@ class ColorProcessor:
 
             return [cmap(i) for i in range(num_colors)]
 
-    def _handle_color_list(self, colors: List[str], num_labels: int) -> List[str]:
+    def _handle_color_list(self, colors: list[str], num_labels: int) -> list[str]:
         """
         Handle a list of colors, cycling if necessary.
 
         Args:
-            colors: List of color strings
+            colors: list of color strings
             num_labels: Number of labels that need colors
 
         Returns:
-            List of colors matching the number of labels
+            list of colors matching the number of labels
         """
         if len(colors) == 0:
             logger.warning(f'Empty color list provided. Using {self.default_colormap} instead.')
@@ -248,16 +248,16 @@ class ColorProcessor:
                 )
             return colors[:num_labels]
 
-    def _handle_color_dict(self, colors: Dict[str, str], labels: List[str]) -> List[str]:
+    def _handle_color_dict(self, colors: dict[str, str], labels: list[str]) -> list[str]:
         """
         Handle a dictionary mapping labels to colors.
 
         Args:
             colors: Dictionary mapping labels to colors
-            labels: List of labels that need colors
+            labels: list of labels that need colors
 
         Returns:
-            List of colors in the same order as labels
+            list of colors in the same order as labels
         """
         if len(colors) == 0:
             logger.warning(f'Empty color dictionary provided. Using {self.default_colormap} instead.')
@@ -286,15 +286,15 @@ class ColorProcessor:
     def process_colors(
         self,
         colors: ColorType,
-        labels: List[str],
+        labels: list[str],
         return_mapping: bool = False,
-    ) -> List[Any] | Dict[str, Any]:
+    ) -> list[Any] | dict[str, Any]:
         """
         Process colors for the specified labels.
 
         Args:
             colors: Color specification (colormap name, list of colors, or label-to-color mapping)
-            labels: List of data labels that need colors assigned
+            labels: list of data labels that need colors assigned
             return_mapping: If True, returns a dictionary mapping labels to colors;
                            if False, returns a list of colors in the same order as labels
 
@@ -813,7 +813,7 @@ def plot_network(
     edge_infos: dict,
     path: str | pathlib.Path | None = None,
     controls: bool
-    | List[
+    | list[
         Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
     ] = True,
     show: bool = False,
@@ -823,7 +823,7 @@ def plot_network(
 
     Args:
         path: Path to save the HTML visualization. `False`: Visualization is created but not saved. `str` or `Path`: Specifies file path (default: 'results/network.html').
-        controls: UI controls to add to the visualization. `True`: Enables all available controls. `List`: Specify controls, e.g., ['nodes', 'layout'].
+        controls: UI controls to add to the visualization. `True`: Enables all available controls. `list`: Specify controls, e.g., ['nodes', 'layout'].
             Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
             You can play with these and generate a Dictionary from it that can be applied to the network returned by this function.
             network.set_options()
@@ -1119,8 +1119,8 @@ def dual_pie_with_plotly(
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
-        hole: Size of the hole in the center for creating donut charts (0.0 to 100).
-        lower_percentage_group: Whether to group small segments (below percentage (0...1)) into an "Other" category.
+        hole: Size of the hole as a fraction of the radius (0.0–1.0).
+        lower_percentage_group: Group segments whose cumulative share is below this percentage (0–100) into "Other".
         hover_template: Template for hover text. Use %{label}, %{value}, %{percent}.
         text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
                   'label+value', 'percent+value', 'label+percent+value', or 'none'.
@@ -1410,13 +1410,13 @@ def dual_pie_with_matplotlib(
 
 
 def export_figure(
-    figure_like: plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes],
+    figure_like: go.Figure | tuple[plt.Figure, plt.Axes],
     default_path: pathlib.Path,
     default_filetype: str | None = None,
     user_path: pathlib.Path | None = None,
     show: bool = True,
     save: bool = False,
-) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
+) -> go.Figure | tuple[plt.Figure, plt.Axes]:
     """
     Export a figure to a file and or show it.
 

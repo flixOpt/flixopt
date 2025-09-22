@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Literal, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Literal, Set
 
 import linopy
 import numpy as np

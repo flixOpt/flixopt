@@ -10,7 +10,7 @@ import logging
 import pathlib
 import timeit
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Set
 
 import linopy
 import numpy as np
@@ -194,7 +194,7 @@ class Aggregation:
 
         return index_vectors
 
-    def get_equation_indices(self, skip_first_index_of_period: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+    def get_equation_indices(self, skip_first_index_of_period: bool = True) -> tuple[np.ndarray, np.ndarray]:
         """
         Generates pairs of indices for the equations by comparing index vectors of the same cluster.
         If `skip_first_index_of_period` is True, the first index of each period is skipped.
@@ -203,7 +203,7 @@ class Aggregation:
             skip_first_index_of_period (bool): Whether to include or skip the first index of each period.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: Two arrays of indices.
+            tuple[np.ndarray, np.ndarray]: Two arrays of indices.
         """
         idx_var1 = []
         idx_var2 = []
@@ -338,7 +338,7 @@ class AggregationModel(Model):
             for variable in self.variables_direct.values():
                 self._model.effects.add_share_to_penalty('Aggregation', variable * penalty)
 
-    def _equate_indices(self, variable: linopy.Variable, indices: Tuple[np.ndarray, np.ndarray]) -> None:
+    def _equate_indices(self, variable: linopy.Variable, indices: tuple[np.ndarray, np.ndarray]) -> None:
         assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!!'
         length = len(indices[0])
 
