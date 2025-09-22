@@ -153,9 +153,6 @@ select = [
     "UP",    # pyupgrade (modernize syntax for target Python version)
     "FA",    # flake8-future-annotations (enforce `from __future__ import annotations`)
     "TCH",   # flake8-type-checking (optimize imports for type checking)
-
-    # Import cleanup
-    "F401",  # Specifically target unused imports for removal
 ]
 ignore = [  # Ignore specific rules
     "F401",  # Allow unused imports in some cases (use __all__)
@@ -177,7 +174,7 @@ indent-style = "space"
 docstring-code-format = true
 
 [tool.ruff.lint.pyupgrade]
-keep-runtime-typing = false  # Keep quotes around annotations
+keep-runtime-typing = false  # Allow pyupgrade to drop runtime typing; prefer postponed annotations
 
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load

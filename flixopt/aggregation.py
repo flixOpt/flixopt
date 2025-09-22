@@ -281,7 +281,7 @@ class AggregationParameters:
         return [ts.label for ts in self.time_series_for_low_peaks]
 
     @property
-    def use_low_peaks(self):
+    def use_low_peaks(self) -> bool:
         return self.time_series_for_low_peaks is not None
 
 

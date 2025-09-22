@@ -161,7 +161,7 @@ class LinearConverter(Component):
         inputs: list[Flow],
         outputs: list[Flow],
         on_off_parameters: OnOffParameters | None = None,
-        conversion_factors: list[dict[str, NumericDataTS]] = None,
+        conversion_factors: list[dict[str, NumericDataTS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
