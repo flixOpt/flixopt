@@ -29,28 +29,29 @@ Please remove all irrelevant sections before releasing.
 
 Until here -->
 
-## [Unreleased]
+## [2.1.8] - 2025-09-22
+This release focuses on code quality improvements, enhanced documentation, and bug fixes for heat pump components and visualization features.
 
 ### Added
 - Extra Check for HeatPumpWithSource.COP to be strictly > 1 to avoid division by zero
+- Apply deterministic color assignment by using sorted() in `plotting.py`
+- Add missing args in docstrings in `plotting.py`, `solvers.py`, and `core.py`.
 
 ### Changed
 - Greatly improved docstrings and documentation of all public classes
 - Make path handling to be gentle about missing .html suffix in `plotting.py`
 - Default for `relative_losses` in `Transmission` is now 0 instead of None
 - Setter of COP in `HeatPumpWithSource` now completely overwrites the conversion factors, which is safer.
+- Fix some docstrings in plotting.py
+- Change assertions to raise Exceptions in `plotting.py`
 
 ### Fixed
 - Fix color scheme selection in network_app; color pickers now update when a scheme is selected.
 - Fix error handling in network visualization if networkx is not installed.
 - Fix broken links in docs.
-- Fix missing args in docstrings in `plotting.py`, `solvers.py`, and `core.py`.
 - Fix COP getter and setter of `HeatPumpWithSource` returning and setting wrong conversion factors.
 - Fix custom compression levels in `io.save_dataset_to_netcdf`
 - Fix `total_max` did not work when total min was not used.
-- Change assertions to raise Exceptions in `plotting.py`
-- Fix some docstrings in plotting.py
-- Apply deterministic color assignment by using sorted() in `plotting.py`
 
 ### *Development*
 - Pin dev dependencies to specific versions
