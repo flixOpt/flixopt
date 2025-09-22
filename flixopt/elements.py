@@ -8,17 +8,18 @@ import logging
 import warnings
 from typing import TYPE_CHECKING
 
-import linopy
 import numpy as np
 
 from .config import CONFIG
 from .core import NumericData, NumericDataTS, PlausibilityError, Scalar
-from .effects import EffectValuesUser
 from .features import InvestmentModel, OnOffModel, PreventSimultaneousUsageModel
 from .interface import InvestParameters, OnOffParameters
 from .structure import Element, ElementModel, SystemModel, register_class_for_io
 
 if TYPE_CHECKING:
+    import linopy
+
+    from .effects import EffectValuesUser
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')

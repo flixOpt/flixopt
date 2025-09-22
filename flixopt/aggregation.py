@@ -11,9 +11,7 @@ import pathlib
 import timeit
 from typing import TYPE_CHECKING
 
-import linopy
 import numpy as np
-import pandas as pd
 
 try:
     import tsam.timeseriesaggregation as tsam
@@ -23,16 +21,19 @@ except ImportError:
     TSAM_AVAILABLE = False
 
 from .components import Storage
-from .core import Scalar, TimeSeriesData
-from .elements import Component
-from .flow_system import FlowSystem
 from .structure import (
     Model,
     SystemModel,
 )
 
 if TYPE_CHECKING:
+    import linopy
+    import pandas as pd
     import plotly.graph_objects as go
+
+    from .core import Scalar, TimeSeriesData
+    from .elements import Component
+    from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
 

@@ -6,14 +6,11 @@ from __future__ import annotations
 
 import json
 import logging
-import pathlib
 import warnings
 from io import StringIO
 from typing import TYPE_CHECKING, Literal
 
-import numpy as np
 import pandas as pd
-import xarray as xr
 from rich.console import Console
 from rich.pretty import Pretty
 
@@ -24,7 +21,11 @@ from .elements import Bus, Component, Flow
 from .structure import CLASS_REGISTRY, Element, SystemModel
 
 if TYPE_CHECKING:
+    import pathlib
+
+    import numpy as np
     import pyvis
+    import xarray as xr
 
 logger = logging.getLogger('flixopt')
 

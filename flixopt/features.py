@@ -6,14 +6,17 @@ Features extend the functionality of Elements.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
 
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
-from .interface import InvestParameters, OnOffParameters, Piecewise
 from .structure import Model, SystemModel
+
+if TYPE_CHECKING:
+    from .interface import InvestParameters, OnOffParameters, Piecewise
 
 logger = logging.getLogger('flixopt')
 

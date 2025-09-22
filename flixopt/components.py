@@ -8,7 +8,6 @@ import logging
 import warnings
 from typing import TYPE_CHECKING, Literal
 
-import linopy
 import numpy as np
 
 from . import utils
@@ -19,6 +18,8 @@ from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
 from .structure import SystemModel, register_class_for_io
 
 if TYPE_CHECKING:
+    import linopy
+
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')

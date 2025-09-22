@@ -8,14 +8,12 @@ from __future__ import annotations
 import inspect
 import json
 import logging
-import pathlib
 from datetime import datetime
 from io import StringIO
 from typing import TYPE_CHECKING, Any, Literal
 
 import linopy
 import numpy as np
-import pandas as pd
 import xarray as xr
 from rich.console import Console
 from rich.pretty import Pretty
@@ -23,6 +21,10 @@ from rich.pretty import Pretty
 from .core import TimeSeries, TimeSeriesData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
+    import pathlib
+
+    import pandas as pd
+
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
 

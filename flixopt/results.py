@@ -7,7 +7,6 @@ import pathlib
 from typing import TYPE_CHECKING, Literal
 
 import linopy
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly
@@ -19,6 +18,7 @@ from . import plotting
 from .core import TimeSeriesCollection
 
 if TYPE_CHECKING:
+    import matplotlib.pyplot as plt
     import pyvis
 
     from .calculation import Calculation, SegmentedCalculation

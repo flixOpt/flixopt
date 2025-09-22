@@ -5,14 +5,17 @@ This Module contains high-level classes to easily model a FlowSystem.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .components import LinearConverter
 from .core import NumericDataTS, TimeSeriesData
-from .elements import Flow
-from .interface import OnOffParameters
 from .structure import register_class_for_io
+
+if TYPE_CHECKING:
+    from .elements import Flow
+    from .interface import OnOffParameters
 
 logger = logging.getLogger('flixopt')
 

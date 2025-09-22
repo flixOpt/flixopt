@@ -5,10 +5,11 @@ This module contains several utility functions used throughout the flixopt frame
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-import numpy as np
-import xarray as xr
+if TYPE_CHECKING:
+    import numpy as np
+    import xarray as xr
 
 logger = logging.getLogger('flixopt')
 

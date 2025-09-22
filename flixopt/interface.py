@@ -6,14 +6,15 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from .config import CONFIG
-from .core import NumericData
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
+    from collections.abc import Iterator
+
+    from .core import NumericData
     from .effects import EffectValuesUser, EffectValuesUserScalar
     from .flow_system import FlowSystem
 

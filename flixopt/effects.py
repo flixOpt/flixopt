@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import warnings
-from collections.abc import Iterator
 from typing import TYPE_CHECKING, Literal
 
 import linopy
@@ -20,6 +19,8 @@ from .features import ShareAllocationModel
 from .structure import Element, ElementModel, Model, SystemModel, register_class_for_io
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')

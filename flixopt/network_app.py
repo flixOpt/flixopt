@@ -19,11 +19,12 @@ except ImportError as e:
     VISUALIZATION_ERROR = str(e)
 
 if TYPE_CHECKING:
-    import networkx as nx
+    from .flow_system import FlowSystem
+
+import networkx as nx
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
 from .elements import Bus
-from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
 

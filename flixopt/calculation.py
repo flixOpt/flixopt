@@ -14,10 +14,9 @@ import logging
 import math
 import pathlib
 import timeit
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 import yaml
 
 from . import io as fx_io
@@ -25,13 +24,17 @@ from . import utils as utils
 from .aggregation import AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
-from .core import Scalar
-from .elements import Component
 from .features import InvestmentModel
-from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
-from .solvers import _Solver
-from .structure import SystemModel
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+    from .core import Scalar
+    from .elements import Component
+    from .flow_system import FlowSystem
+    from .solvers import _Solver
+    from .structure import SystemModel
 
 logger = logging.getLogger('flixopt')
 

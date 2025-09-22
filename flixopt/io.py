@@ -6,13 +6,15 @@ import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-import linopy
 import xarray as xr
 import yaml
 
 from .core import TimeSeries
+
+if TYPE_CHECKING:
+    import linopy
 
 logger = logging.getLogger('flixopt')
 
