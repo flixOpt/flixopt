@@ -1,11 +1,8 @@
 import pytest
 
 import flixopt as fx
-from flixopt.io import CalculationResultsPaths
 
 from .conftest import (
-    assert_almost_equal_numeric,
-    flow_system_base,
     flow_system_long,
     flow_system_segments_of_flows_2,
     simple_flow_system,

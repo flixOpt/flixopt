@@ -5,10 +5,8 @@ to model the same energy system. The results will be compared to each other.
 
 import pathlib
 
-import numpy as np
 import pandas as pd
 import xarray as xr
-from rich.pretty import pprint  # Used for pretty printing
 
 import flixopt as fx
 

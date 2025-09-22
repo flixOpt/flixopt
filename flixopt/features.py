@@ -10,7 +10,6 @@ import logging
 import linopy
 import numpy as np
 
-from . import utils
 from .config import CONFIG
 from .core import NumericData, Scalar, TimeSeries
 from .interface import InvestParameters, OnOffParameters, Piecewise

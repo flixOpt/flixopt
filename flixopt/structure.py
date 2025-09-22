@@ -20,8 +20,7 @@ import xarray as xr
 from rich.console import Console
 from rich.pretty import Pretty
 
-from .config import CONFIG
-from .core import NumericData, Scalar, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from .core import TimeSeries, TimeSeriesData
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .effects import EffectCollectionModel
@@ -202,7 +201,7 @@ class Interface:
         return {k: self._serialize_value(v) for k, v in d.items()}
 
     @classmethod
-    def _deserialize_dict(cls, data: dict) -> dict | 'Interface':
+    def _deserialize_dict(cls, data: dict) -> dict | Interface:
         if '__class__' in data:
             class_name = data.pop('__class__')
             try:
@@ -431,7 +430,7 @@ class Model:
         return self._model.constraints[self._constraints]
 
     @property
-    def all_sub_models(self) -> list['Model']:
+    def all_sub_models(self) -> list[Model]:
         return [model for sub_model in self.sub_models for model in [sub_model] + sub_model.all_sub_models]
 
 

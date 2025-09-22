@@ -1,4 +1,3 @@
-import json
 import tempfile
 from pathlib import Path
 
@@ -7,7 +6,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt.core import ConversionError, DataConverter, TimeSeries, TimeSeriesCollection, TimeSeriesData
+from flixopt.core import TimeSeries, TimeSeriesCollection, TimeSeriesData
 
 
 @pytest.fixture

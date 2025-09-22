@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Iterator, Literal
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Literal
 
 import linopy
 import numpy as np
-import pandas as pd
 
-from .core import NumericData, NumericDataTS, Scalar, TimeSeries, TimeSeriesCollection
+from .core import NumericDataTS, Scalar, TimeSeries
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, Interface, Model, SystemModel, register_class_for_io
+from .structure import Element, ElementModel, Model, SystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem

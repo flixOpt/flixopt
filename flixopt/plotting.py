@@ -817,7 +817,7 @@ def plot_network(
         Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
     ] = True,
     show: bool = False,
-) -> 'pyvis.network.Network' | None:
+) -> pyvis.network.Network | None:
     """
     Visualizes the network structure of a FlowSystem using PyVis, using info-dictionaries.
 

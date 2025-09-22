@@ -113,12 +113,12 @@ class CONFIG:
         default_config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
 
         if user_config_file is None:
-            with open(default_config_path, 'r') as file:
+            with open(default_config_path) as file:
                 new_config = yaml.safe_load(file)
         elif not os.path.exists(user_config_file):
             raise FileNotFoundError(f'Config file not found: {user_config_file}')
         else:
-            with open(user_config_file, 'r') as user_file:
+            with open(user_config_file) as user_file:
                 new_config = yaml.safe_load(user_file)
 
         # Convert the merged config to ConfigSchema

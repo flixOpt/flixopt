@@ -129,7 +129,7 @@ class CalculationResults:
             except Exception as e:
                 logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
-        with open(paths.summary, 'r', encoding='utf-8') as f:
+        with open(paths.summary, encoding='utf-8') as f:
             summary = yaml.load(f, Loader=yaml.FullLoader)
 
         return cls(
@@ -280,7 +280,7 @@ class CalculationResults:
         ) = True,
         path: pathlib.Path | None = None,
         show: bool = False,
-    ) -> 'pyvis.network.Network' | None:
+    ) -> pyvis.network.Network | None:
         """Plot interactive network visualization of the system.
 
         Args:
@@ -354,7 +354,7 @@ class CalculationResults:
 
 class _ElementResults:
     @classmethod
-    def from_json(cls, calculation_results, json_data: dict) -> '_ElementResults':
+    def from_json(cls, calculation_results, json_data: dict) -> _ElementResults:
         return cls(calculation_results, json_data['label'], json_data['variables'], json_data['constraints'])
 
     def __init__(
@@ -403,7 +403,7 @@ class _ElementResults:
 
 class _NodeResults(_ElementResults):
     @classmethod
-    def from_json(cls, calculation_results, json_data: dict) -> '_NodeResults':
+    def from_json(cls, calculation_results, json_data: dict) -> _NodeResults:
         return cls(
             calculation_results,
             json_data['label'],
@@ -817,7 +817,7 @@ class SegmentedCalculationResults:
         path = folder / name
         nc_file = path.with_suffix('.nc4')
         logger.info(f'loading calculation "{name}" from file ("{nc_file}")')
-        with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
+        with open(path.with_suffix('.json'), encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
             [CalculationResults.from_file(folder, name) for name in meta_data['sub_calculations']],

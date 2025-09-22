@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import socket
 import threading
@@ -23,7 +22,7 @@ if TYPE_CHECKING:
     import networkx as nx
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
-from .elements import Bus, Component, Flow
+from .elements import Bus
 from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -115,7 +114,7 @@ class VisualizationConfig:
     ]
 
 
-def flow_graph(flow_system: FlowSystem) -> 'nx.DiGraph':
+def flow_graph(flow_system: FlowSystem) -> nx.DiGraph:
     """Convert FlowSystem to NetworkX graph - simplified and more robust"""
     if not DASH_CYTOSCAPE_AVAILABLE:
         raise ImportError(
@@ -181,7 +180,7 @@ def flow_graph(flow_system: FlowSystem) -> 'nx.DiGraph':
     return graph
 
 
-def make_cytoscape_elements(graph: 'nx.DiGraph') -> list[dict[str, Any]]:
+def make_cytoscape_elements(graph: nx.DiGraph) -> list[dict[str, Any]]:
     """Convert NetworkX graph to Cytoscape elements"""
     elements = []
 
@@ -391,7 +390,7 @@ def create_sidebar():
     )
 
 
-def shownetwork(graph: 'nx.DiGraph'):
+def shownetwork(graph: nx.DiGraph):
     """Main function to create and run the network visualization"""
     if not DASH_CYTOSCAPE_AVAILABLE:
         raise ImportError(f'Required packages not available: {VISUALIZATION_ERROR}')

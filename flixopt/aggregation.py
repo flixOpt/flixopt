@@ -9,7 +9,6 @@ import copy
 import logging
 import pathlib
 import timeit
-import warnings
 from typing import TYPE_CHECKING
 
 import linopy
@@ -28,7 +27,6 @@ from .core import Scalar, TimeSeriesData
 from .elements import Component
 from .flow_system import FlowSystem
 from .structure import (
-    Element,
     Model,
     SystemModel,
 )
@@ -142,7 +140,7 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> 'go.Figure':
+    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
         from . import plotting
 
         df_org = self.original_data.copy().rename(

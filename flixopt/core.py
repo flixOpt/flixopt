@@ -3,14 +3,13 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
-from __future__ import annotations
-
 import inspect
 import json
 import logging
 import pathlib
 from collections import Counter
-from typing import Any, Iterator, Literal, Union
+from collections.abc import Iterator
+from typing import Any, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -23,9 +22,6 @@ Scalar = int | float
 
 NumericData = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Represents any form of numeric data, from simple scalars to complex data structures."""
-
-NumericDataTS = Union[NumericData, 'TimeSeriesData']
-"""Represents either standard numeric data or TimeSeriesData."""
 
 
 class PlausibilityError(Exception):
@@ -149,6 +145,10 @@ class TimeSeriesData:
         return str(self.data)
 
 
+NumericDataTS = NumericData | TimeSeriesData
+"""Represents either standard numeric data or TimeSeriesData."""
+
+
 class TimeSeries:
     """
     A class representing time series data with active and stored states.
@@ -158,8 +158,8 @@ class TimeSeries:
 
     Attributes:
         name (str): The name of the time series
-        aggregation_weight (float | None): Weight used for aggregation
-        aggregation_group (str | None): Group name for shared aggregation weighting
+        aggregation_weight (Optional[float]): Weight used for aggregation
+        aggregation_group (Optional[str]): Group name for shared aggregation weighting
         needs_extra_timestep (bool): Whether this series needs an extra timestep
     """
 
@@ -172,7 +172,7 @@ class TimeSeries:
         aggregation_weight: float | None = None,
         aggregation_group: str | None = None,
         needs_extra_timestep: bool = False,
-    ) -> TimeSeries:
+    ) -> 'TimeSeries':
         """
         Initialize the TimeSeries from multiple data sources.
 
@@ -196,7 +196,7 @@ class TimeSeries:
         )
 
     @classmethod
-    def from_json(cls, data: dict[str, Any] | None = None, path: str | None = None) -> TimeSeries:
+    def from_json(cls, data: dict[str, Any] | None = None, path: str | None = None) -> 'TimeSeries':
         """
         Load a TimeSeries from a dictionary or json file.
 
@@ -214,7 +214,7 @@ class TimeSeries:
             raise ValueError("Exactly one of 'path' or 'data' must be provided")
 
         if path is not None:
-            with open(path, 'r') as f:
+            with open(path) as f:
                 data = json.load(f)
 
         # Convert ISO date strings to datetime objects
@@ -586,7 +586,7 @@ class TimeSeriesCollection:
     @classmethod
     def with_uniform_timesteps(
         cls, start_time: pd.Timestamp, periods: int, freq: str, hours_per_step: float | None = None
-    ) -> TimeSeriesCollection:
+    ) -> 'TimeSeriesCollection':
         """Create a collection with uniform timesteps."""
         timesteps = pd.date_range(start_time, periods=periods, freq=freq, name='time')
         return cls(timesteps, hours_of_previous_timesteps=hours_per_step)

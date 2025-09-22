@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Manual test script for plots
 """
