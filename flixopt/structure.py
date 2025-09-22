@@ -271,7 +271,8 @@ class Element(Interface):
         self.model: ElementModel | None = None
 
     def _plausibility_checks(self) -> None:
-        """This function is used to do some basic plausibility checks for each Element during initialization"""
+        """This function is used to do some basic plausibility checks for each Element during initialization.
+        This is run after all data is transformed to the correct format/type"""
         raise NotImplementedError('Every Element needs a _plausibility_checks() method')
 
     def create_model(self, model: SystemModel) -> ElementModel:

@@ -37,10 +37,8 @@ Until here -->
 ### Changed
 - Greatly improved docstrings and documentation of all public classes
 - Make path handling to be gentle about missing .html suffix in `plotting.py`
-
-### Deprecated
-
-### Removed
+- Default for `relative_losses` in `Transmission` is now 0 instead of None
+- Setter of COP in `HeatPumpWithSource` now completely overwrites the conversion factors, which is safer.
 
 ### Fixed
 - Fix color scheme selection in network_app; color pickers now update when a scheme is selected.
@@ -53,8 +51,6 @@ Until here -->
 - Change assertions to raise Exceptions in `plotting.py`
 - Fix some docstrings in plotting.py
 - Apply deterministic color assignment by using sorted() in `plotting.py`
-
-### Known Issues
 
 ### *Development*
 - Pin dev dependencies to specific versions

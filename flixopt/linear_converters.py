@@ -558,17 +558,11 @@ class HeatPumpWithSource(LinearConverter):
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
     ):
-        # Validate COP to avoid division by zero before factor construction
-        check_bounds(COP, 'COP', f'HeatPumpWithSource({label})', 1, 20)
-        # super:
-        electricity = {P_el.label: COP, Q_th.label: 1}
-        heat_source = {Q_ab.label: COP / (COP - 1), Q_th.label: 1}
-
         super().__init__(
             label,
             inputs=[P_el, Q_ab],
             outputs=[Q_th],
-            conversion_factors=[electricity, heat_source],
+            conversion_factors=[{P_el.label: COP, Q_th.label: 1}, {Q_ab.label: COP / (COP - 1), Q_th.label: 1}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
@@ -588,12 +582,10 @@ class HeatPumpWithSource(LinearConverter):
         check_bounds(value, 'COP', self.label_full, 1, 20)
         if np.any(np.asarray(self.COP) <= 1):
             raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
-        # electricity equation: COP * P_el == 1 * Q_th
-        self.conversion_factors[0][self.P_el.label] = value
-        self.conversion_factors[0][self.Q_th.label] = 1
-        # heat source equation: (COP/(COP-1)) * Q_ab == 1 * Q_th  -> Q_ab = Q_th*(COP-1)/COP
-        self.conversion_factors[1][self.Q_ab.label] = value / (value - 1)
-        self.conversion_factors[1][self.Q_th.label] = 1
+        self.conversion_factors = [
+            {self.P_el.label: value, self.Q_th.label: 1},
+            {self.Q_ab.label: value / (value - 1), self.Q_th.label: 1},
+        ]
 
 
 def check_bounds(

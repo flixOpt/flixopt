@@ -217,9 +217,10 @@ class LinearConverter(Component):
             transformed_dict = {}
             for flow, values in conversion_factor.items():
                 # TODO: Might be better to use the label of the component instead of the flow
-                transformed_dict[flow] = flow_system.create_time_series(
-                    f'{self.flows[flow].label_full}|conversion_factor{idx}', values
-                )
+                ts = flow_system.create_time_series(f'{self.flows[flow].label_full}|conversion_factor{idx}', values)
+                if ts is None:
+                    raise PlausibilityError(f'{self.label_full}: conversion factor for flow "{flow}" must not be None')
+                transformed_dict[flow] = ts
             list_of_conversion_factors.append(transformed_dict)
         return list_of_conversion_factors
 
@@ -578,7 +579,7 @@ class Transmission(Component):
         out1: Flow,
         in2: Flow | None = None,
         out2: Flow | None = None,
-        relative_losses: NumericDataTS | None = None,
+        relative_losses: NumericDataTS = 0,
         absolute_losses: NumericDataTS | None = None,
         on_off_parameters: OnOffParameters | None = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
