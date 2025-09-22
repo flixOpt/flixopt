@@ -48,9 +48,9 @@ class Aggregation:
         hours_per_time_step: Scalar,
         hours_per_period: Scalar,
         nr_of_periods: int = 8,
-        weights: dict[str, float] = None,
-        time_series_for_high_peaks: list[str] = None,
-        time_series_for_low_peaks: list[str] = None,
+        weights: dict[str, float] | None = None,
+        time_series_for_high_peaks: list[str] | None = None,
+        time_series_for_low_peaks: list[str] | None = None,
     ):
         """
         Args:
@@ -237,8 +237,8 @@ class AggregationParameters:
         aggregate_data_and_fix_non_binary_vars: bool,
         percentage_of_period_freedom: float = 0,
         penalty_of_period_freedom: float = 0,
-        time_series_for_high_peaks: list[TimeSeriesData] = None,
-        time_series_for_low_peaks: list[TimeSeriesData] = None,
+        time_series_for_high_peaks: list[TimeSeriesData] | None = None,
+        time_series_for_low_peaks: list[TimeSeriesData] | None = None,
     ):
         """
         Initializes aggregation parameters for time series data

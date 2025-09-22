@@ -258,7 +258,7 @@ class Interface:
 class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
 
-    def __init__(self, label: str, meta_data: dict = None):
+    def __init__(self, label: str, meta_data: dict | None = None):
         """
         Args:
             label: The label of the element
@@ -358,7 +358,7 @@ class Model:
     def filter_variables(
         self,
         filter_by: Literal['binary', 'continuous', 'integer'] | None = None,
-        length: Literal['scalar', 'time'] = None,
+        length: Literal['scalar', 'time'] | None = None,
     ):
         if filter_by is None:
             all_variables = self.variables

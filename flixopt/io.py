@@ -148,7 +148,7 @@ def _process_complex_strings(data):
         return data
 
 
-def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> dict[str, str]:
+def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None) -> dict[str, str]:
     """
     Convert all model variables and constraints to a structured string representation.
     This can take multiple seconds for large models.
@@ -197,7 +197,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> dic
     if path is not None:
         if path.suffix not in ['.yaml', '.yml']:
             raise ValueError(f'Invalid file extension for path {path}. Only .yaml and .yml are supported')
-        _save_to_yaml(documentation, path)
+        _save_to_yaml(documentation, str(path))
 
     return documentation
 

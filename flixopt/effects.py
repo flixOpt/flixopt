@@ -264,7 +264,7 @@ class EffectCollection:
     Handling all Effects
     """
 
-    def __init__(self, *effects: list[Effect]):
+    def __init__(self, *effects: Effect):
         self._effects = {}
         self._standard_effect: Effect | None = None
         self._objective_effect: Effect | None = None
@@ -338,12 +338,12 @@ class EffectCollection:
             # operation:
             for target_effect in effect.specific_share_to_other_effects_operation.keys():
                 assert effect not in self[target_effect].specific_share_to_other_effects_operation.keys(), (
-                    f'Error: circular operation-shares \n{error_str(target_effect.label, target_effect.label)}'
+                    f'Error: circular operation-shares \n{error_str(effect.label, self[target_effect].label)}'
                 )
             # invest:
             for target_effect in effect.specific_share_to_other_effects_invest.keys():
                 assert effect not in self[target_effect].specific_share_to_other_effects_invest.keys(), (
-                    f'Error: circular invest-shares \n{error_str(target_effect.label, target_effect.label)}'
+                    f'Error: circular invest-shares \n{error_str(effect.label, self[target_effect].label)}'
                 )
 
     def __getitem__(self, effect: str | Effect | None) -> Effect:

@@ -716,8 +716,8 @@ class LinearConverterModel(ComponentModel):
             # für alle linearen Gleichungen:
             for i, conv_factors in enumerate(self.element.conversion_factors):
                 used_flows = set([self.element.flows[flow_label] for flow_label in conv_factors])
-                used_inputs: set = all_input_flows & used_flows
-                used_outputs: set = all_output_flows & used_flows
+                used_inputs: set[Flow] = all_input_flows & used_flows
+                used_outputs: set[Flow] = all_output_flows & used_flows
 
                 self.add(
                     self._model.add_constraints(
