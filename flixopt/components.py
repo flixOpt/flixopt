@@ -987,7 +987,7 @@ class SourceAndSink(Component):
 
         if sink is not None:
             warnings.deprecated(
-                'The use of the sink argument is deprecated. Use the outputs argument instead.',
+                'The use of the sink argument is deprecated. Use the inputs argument instead.',
                 stacklevel=2,
             )
             if inputs is not None:
@@ -1253,7 +1253,7 @@ class Sink(Component):
         sink = kwargs.pop('sink', None)
         if sink is not None:
             warnings.warn(
-                'The use of the sink argument is deprecated. Use the outputs argument instead.',
+                'The use of the sink argument is deprecated. Use the inputs argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
