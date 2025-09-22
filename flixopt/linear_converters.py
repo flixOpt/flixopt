@@ -556,6 +556,8 @@ class HeatPumpWithSource(LinearConverter):
         on_off_parameters: OnOffParameters = None,
         meta_data: Dict | None = None,
     ):
+        # Validate COP to avoid division by zero before factor construction
+        check_bounds(COP, 'COP', f'HeatPumpWithSource({label})', 1, 20)
         # super:
         electricity = {P_el.label: COP, Q_th.label: 1}
         heat_source = {Q_ab.label: COP / (COP - 1), Q_th.label: 1}
