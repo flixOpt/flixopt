@@ -1029,7 +1029,7 @@ def sanitize_dataset(
 
         # Option 1: Drop variables where all values are below threshold
         if drop_small_vars:
-            vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all()]
+            vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all().item()]
             ds = ds.drop_vars(vars_to_drop)
 
         # Option 2: Set small values to zero
@@ -1038,7 +1038,7 @@ def sanitize_dataset(
                 # Create a boolean mask of values below threshold
                 mask = ds_no_nan_abs[var] <= threshold
                 # Only proceed if there are values to zero out
-                if mask.any():
+                if bool(mask.any().item()):
                     # Create a copy to ensure we don't modify data with views
                     ds[var] = ds[var].copy()
                     # Set values below threshold to zero
