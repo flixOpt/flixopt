@@ -64,7 +64,7 @@ class ValidatedConfig:
     def __setattr__(self, name, value):
         if field := self.__dataclass_fields__.get(name):
             # Get resolved type hints to handle postponed evaluation
-            type_hints = get_type_hints(self.__class__)
+            type_hints = get_type_hints(self.__class__, include_extras=True)
             field_type = type_hints.get(name, field.type)
             if metadata := getattr(field_type, '__metadata__', None):
                 assert metadata[0](value), f'Invalid value passed to {name!r}: {value=}'
