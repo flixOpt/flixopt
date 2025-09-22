@@ -233,7 +233,7 @@ jobs:
             echo "Attempting to install $PACKAGE_NAME==$VERSION from TestPyPI (retry after ${d}s)..."
 
             # Install specific version and verify it matches
-            if uv pip --timeout 60 install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
+            if uv pip install --timeout 60 --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
                python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
               INSTALL_SUCCESS=true
               break
@@ -318,7 +318,7 @@ jobs:
             echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
 
             # Install specific version and verify it matches
-            if uv pip --timeout 60 install "$PACKAGE_NAME==$VERSION" && \
+            if uv pip install --timeout 60 "$PACKAGE_NAME==$VERSION" && \
                python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
               INSTALL_SUCCESS=true
               break
