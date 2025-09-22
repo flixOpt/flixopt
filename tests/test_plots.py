@@ -93,7 +93,7 @@ class TestPlots(unittest.TestCase):
         heatmap_data = plotting.reshape_to_2d(data.iloc[:, 0].values.flatten(), 24)
         # Plotting heatmaps with Plotly and Matplotlib
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
+        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.show()
 
     def test_heat_map_plots_resampling(self):
@@ -121,13 +121,13 @@ class TestPlots(unittest.TestCase):
         heatmap_data = plotting.heat_map_data_from_df(data, 'W', 'h', fill='ffill')
         # Plotting heatmaps with Plotly and Matplotlib
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
+        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.show()
 
         heatmap_data = plotting.heat_map_data_from_df(data, 'D', 'h', fill='ffill')
         # Plotting heatmaps with Plotly and Matplotlib
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
+        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.show()
 
 
