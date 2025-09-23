@@ -43,8 +43,8 @@ def calculate_annual_payment(total_cost: float, remaining_years: int, discount_r
 
 
 def create_annualized_effects(
-    year_of_investments: Union[range, list, pd.Index],
-    all_years: Union[range, list, pd.Index],
+    year_of_investments: range | list | pd.Index,
+    all_years: range | list | pd.Index,
     total_cost: float,
     discount_rate: float,
     horizon_end: int,
