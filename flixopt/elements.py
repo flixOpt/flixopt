@@ -97,7 +97,7 @@ class Component(Element):
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem) -> None:
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
 
@@ -189,7 +189,7 @@ class Bus(Element):
         self.submodel = BusModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
@@ -417,7 +417,7 @@ class Flow(Element):
         self.submodel = FlowModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.relative_minimum = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum', self.relative_minimum
         )

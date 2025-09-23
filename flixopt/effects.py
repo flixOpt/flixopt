@@ -174,7 +174,7 @@ class Effect(Element):
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
-    def transform_data(self, flow_system: FlowSystem):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.minimum_operation_per_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
         )
