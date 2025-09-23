@@ -175,40 +175,41 @@ class Effect(Element):
         self.maximum_total = maximum_total
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        base = '|'.join(filter(None, [name_prefix, self.label_full]))
         self.minimum_operation_per_hour = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
+            f'{base}|minimum_operation_per_hour', self.minimum_operation_per_hour
         )
 
         self.maximum_operation_per_hour = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_operation_per_hour', self.maximum_operation_per_hour
+            f'{base}|maximum_operation_per_hour', self.maximum_operation_per_hour
         )
 
         self.specific_share_to_other_effects_operation = flow_system.fit_effects_to_model_coords(
-            f'{self.label_full}|operation->', self.specific_share_to_other_effects_operation, 'operation'
+            f'{base}|operation->', self.specific_share_to_other_effects_operation, 'operation'
         )
 
         self.minimum_operation = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_operation', self.minimum_operation, dims=['year', 'scenario']
+            f'{base}|minimum_operation', self.minimum_operation, dims=['year', 'scenario']
         )
         self.maximum_operation = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_operation', self.maximum_operation, dims=['year', 'scenario']
+            f'{base}|maximum_operation', self.maximum_operation, dims=['year', 'scenario']
         )
         self.minimum_invest = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_invest', self.minimum_invest, dims=['year', 'scenario']
+            f'{base}|minimum_invest', self.minimum_invest, dims=['year', 'scenario']
         )
         self.maximum_invest = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_invest', self.maximum_invest, dims=['year', 'scenario']
+            f'{base}|maximum_invest', self.maximum_invest, dims=['year', 'scenario']
         )
         self.minimum_total = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_total',
+            f'{base}|minimum_total',
             self.minimum_total,
             dims=['year', 'scenario'],
         )
         self.maximum_total = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_total', self.maximum_total, dims=['year', 'scenario']
+            f'{base}|maximum_total', self.maximum_total, dims=['year', 'scenario']
         )
         self.specific_share_to_other_effects_invest = flow_system.fit_effects_to_model_coords(
-            f'{self.label_full}|invest->',
+            f'{base}|invest->',
             self.specific_share_to_other_effects_invest,
             'invest',
             dims=['year', 'scenario'],

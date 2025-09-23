@@ -99,10 +99,11 @@ class Component(Element):
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         if self.on_off_parameters is not None:
-            self.on_off_parameters.transform_data(flow_system, self.label_full)
+            prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+            self.on_off_parameters.transform_data(flow_system, prefix)
 
         for flow in self.inputs + self.outputs:
-            flow.transform_data(flow_system)
+            flow.transform_data(flow_system, name_prefix)
 
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
@@ -190,8 +191,9 @@ class Bus(Element):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        base = '|'.join(filter(None, [name_prefix, self.label_full]))
         self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
-            f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
+            f'{base}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
@@ -418,37 +420,34 @@ class Flow(Element):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.relative_minimum = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_minimum', self.relative_minimum
-        )
-        self.relative_maximum = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_maximum', self.relative_maximum
-        )
+        base = '|'.join(filter(None, [name_prefix, self.label_full]))
+        self.relative_minimum = flow_system.fit_to_model_coords(f'{base}|relative_minimum', self.relative_minimum)
+        self.relative_maximum = flow_system.fit_to_model_coords(f'{base}|relative_maximum', self.relative_maximum)
         self.fixed_relative_profile = flow_system.fit_to_model_coords(
-            f'{self.label_full}|fixed_relative_profile', self.fixed_relative_profile
+            f'{base}|fixed_relative_profile', self.fixed_relative_profile
         )
         self.effects_per_flow_hour = flow_system.fit_effects_to_model_coords(
-            self.label_full, self.effects_per_flow_hour, 'per_flow_hour'
+            base, self.effects_per_flow_hour, 'per_flow_hour'
         )
         self.flow_hours_total_max = flow_system.fit_to_model_coords(
-            f'{self.label_full}|flow_hours_total_max', self.flow_hours_total_max, dims=['year', 'scenario']
+            f'{base}|flow_hours_total_max', self.flow_hours_total_max, dims=['year', 'scenario']
         )
         self.flow_hours_total_min = flow_system.fit_to_model_coords(
-            f'{self.label_full}|flow_hours_total_min', self.flow_hours_total_min, dims=['year', 'scenario']
+            f'{base}|flow_hours_total_min', self.flow_hours_total_min, dims=['year', 'scenario']
         )
         self.load_factor_max = flow_system.fit_to_model_coords(
-            f'{self.label_full}|load_factor_max', self.load_factor_max, dims=['year', 'scenario']
+            f'{base}|load_factor_max', self.load_factor_max, dims=['year', 'scenario']
         )
         self.load_factor_min = flow_system.fit_to_model_coords(
-            f'{self.label_full}|load_factor_min', self.load_factor_min, dims=['year', 'scenario']
+            f'{base}|load_factor_min', self.load_factor_min, dims=['year', 'scenario']
         )
 
         if self.on_off_parameters is not None:
-            self.on_off_parameters.transform_data(flow_system, self.label_full)
+            self.on_off_parameters.transform_data(flow_system, base)
         if isinstance(self.size, InvestParameters):
-            self.size.transform_data(flow_system, self.label_full)
+            self.size.transform_data(flow_system, base)
         else:
-            self.size = flow_system.fit_to_model_coords(f'{self.label_full}|size', self.size, dims=['year', 'scenario'])
+            self.size = flow_system.fit_to_model_coords(f'{base}|size', self.size, dims=['year', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound

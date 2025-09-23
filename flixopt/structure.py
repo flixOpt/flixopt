@@ -222,7 +222,7 @@ class Interface:
         transform_data(flow_system): Transform data to match FlowSystem dimensions
     """
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = ''):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
         Args:
