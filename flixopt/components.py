@@ -261,10 +261,12 @@ class Storage(Component):
         initial_charge_state: Storage charge state at the beginning of the time horizon.
             Can be numeric value or 'lastValueOfSim', which is recommended for if the initial start state is not known.
             Default is 0.
-        minimal_final_charge_state: Minimum absolute charge state required at the end
-            of the time horizon. Useful for ensuring energy security or meeting contracts.
-        maximal_final_charge_state: Maximum absolute charge state allowed at the end
-            of the time horizon. Useful for preventing overcharge or managing inventory.
+        minimal_final_charge_state: Minimum absolute charge state required at the end of the time horizon.
+        maximal_final_charge_state: Maximum absolute charge state allowed at the end of the time horizon.
+        relative_minimum_final_charge_state: Minimum relative charge state required at the end of the time horizon.
+            Defaults to the last value of the relative_minimum_charge_state.
+        relative_maximum_final_charge_state: Maximum relative charge state allowed at the end of the time horizon.
+            Defaults to the last value of the relative_maximum_charge_state.
         eta_charge: Charging efficiency factor (0-1 range). Accounts for conversion
             losses during charging. Default is 1 (perfect efficiency).
         eta_discharge: Discharging efficiency factor (0-1 range). Accounts for

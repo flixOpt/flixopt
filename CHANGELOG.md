@@ -67,17 +67,17 @@ The weighted sum of the total objective effect of each scenario is used as the o
 
 
 ### Added
-* FlowSystem Restoring: The used FlowSystem will now get restired from the results (lazily). ALll Parameters can be safely acessed anytime after the solve.
-* FLowResults added as a new class to store the results of Flows. They can now be accessed directly.
+* FlowSystem Restoring: The used FlowSystem is now acessible directly form the results without manual restoring (lazily). All Parameters can be safely accessed anytime after the solve.
+* FlowResults added as a new class to store the results of Flows. They can now be accessed directly.
 * Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
 * Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
-* Improved filter methods for Results
-* Balanced storage - Storage charging and discharging sizes can now be forced to be equal in when optimizing their size.
+* Improved filter methods in `resulty.py`
+* Balanced storage - Storage charging and discharging sizes can now be forced to be equal when optimizing their size.
 * Added Example for 2-stage Investment decisions leveraging the resampling of a FlowSystem
-* New Storage Parameter: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameter for final state control
+* New Storage Parameter: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameter for final state control. Default to last value of `relative_minimum_charge_state` and `relative_maximum_charge_state`, which will prevent change of behaviour for most users.
 
 ### Changed
-* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
+* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
 * **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
 * **BREAKING**: Renamed class `Model` to `Submodel`
 * **BREAKING**: Renamed `mode` parameter in plotting methods to `style`
