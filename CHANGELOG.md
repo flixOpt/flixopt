@@ -30,12 +30,14 @@ Please remove all irrelevant sections before releasing.
 Until here -->
 
 ## [Unreleased] - ????-??-??
-Multi-Period and stochastic modeling is coming to flixopt in this release.
+This Release brings Multi-year-investments and stochastic modeling to flixopt.
+Further, IO methods were improved and resampling and selection of parts of the FlowSystem is now possible.
+Several internal improvements were made to the codebase.
 
-In this release, we introduce the following new features:
-#### Multi-period-support
+
+#### Multi-year-investments
 A flixopt model might be modeled with a "year" dimension.
-This enables to model transformation pathways over multiple years.
+This enables to model transformation pathways over multiple years with several investment decisions
 
 #### Stochastic modeling
 A flixopt model can be modeled with a scenario dimension.
