@@ -512,7 +512,7 @@ class Storage(Component):
                 raise PlausibilityError(
                     f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
                     f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
-                    f'{self.charging.size.minimum_size=}, {self.charging.size.maximum_size=}.'
+                    f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
                 )
 
 
