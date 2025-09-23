@@ -872,7 +872,6 @@ class InvestParameters(Interface):
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self._plausibility_checks(flow_system)
         self.fix_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.fix_effects,
