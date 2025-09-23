@@ -705,7 +705,6 @@ class InvestParameters(Interface):
         divest_effects: Costs incurred if the investment is NOT made, such as
             demolition of existing equipment, contractual penalties, or lost opportunities.
             Dictionary mapping effect names to values.
-        previous_size: Initial size of the investment. Only relevant in multi-period investments.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
