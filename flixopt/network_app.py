@@ -18,13 +18,11 @@ except ImportError as e:
     DASH_CYTOSCAPE_AVAILABLE = False
     VISUALIZATION_ERROR = str(e)
 
-if TYPE_CHECKING:
-    from .flow_system import FlowSystem
-
-import networkx as nx
-
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
 from .elements import Bus
+
+if TYPE_CHECKING:
+    from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
 
