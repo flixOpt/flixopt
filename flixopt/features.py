@@ -22,7 +22,19 @@ logger = logging.getLogger('flixopt')
 
 
 class InvestmentModel(Submodel):
-    """Investment model using factory patterns but keeping old interface"""
+    """
+    This feature model is used to model the investment of a variable.
+    It applies the corresponding bounds to the variable and the on/off state of the variable.
+
+    Args:
+        model: The optimization model instance
+        label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+        parameters: The parameters of the feature model.
+        label_of_model: The label of the model. This is needed to construct the full label of the model.
+
+    """
+
+    parameters: InvestParameters
 
     def __init__(
         self,
@@ -31,17 +43,6 @@ class InvestmentModel(Submodel):
         parameters: InvestParameters,
         label_of_model: str | None = None,
     ):
-        """
-        This feature model is used to model the investment of a variable.
-        It applies the corresponding bounds to the variable and the on/off state of the variable.
-
-        Args:
-            model: The optimization model instance
-            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            parameters: The parameters of the feature model.
-            label_of_model: The label of the model. This is needed to construct the full label of the model.
-
-        """
         self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
