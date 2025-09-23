@@ -89,7 +89,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
 * Improved Model Structure - Views and organisation is now divided into:
   * Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
-  * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler acess and clearer code.
+  * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler access and clearer code.
 
 ### Deprecated
 * The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
@@ -105,7 +105,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * Better type consistency across all framework components
 
 ### Known issues
-* IO for single Interfaces/Elemenets to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arrises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem thats connected and transformed.
+* IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
 
 ### *Development*
 * **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
