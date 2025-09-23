@@ -8,8 +8,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Literal, Optional
 
-import xarray as xr
-
 from .config import CONFIG
 from .structure import Interface, register_class_for_io
 
@@ -864,7 +862,6 @@ class InvestParameters(Interface):
         specific_effects: NonTemporalEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: PiecewiseEffects | None = None,
         divest_effects: NonTemporalEffectsUser | None = None,
-        previous_size: NonTemporalDataUser | None = None,
     ):
         self.fix_effects: NonTemporalEffectsUser = fix_effects or {}
         self.divest_effects: NonTemporalEffectsUser = divest_effects or {}
@@ -874,7 +871,6 @@ class InvestParameters(Interface):
         self.piecewise_effects = piecewise_effects
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
-        self.previous_size = previous_size
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self._plausibility_checks(flow_system)
@@ -910,9 +906,6 @@ class InvestParameters(Interface):
             self.fixed_size = flow_system.fit_to_model_coords(
                 f'{name_prefix}|fixed_size', self.fixed_size, dims=['year', 'scenario']
             )
-        self.previous_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|previous_size', self.previous_size, dims=['year', 'scenario']
-        )
 
     @property
     def minimum_or_fixed_size(self) -> NonTemporalData:

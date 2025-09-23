@@ -58,7 +58,6 @@ class FlowSystem(Interface):
             If None, the first time increment of time_series is used.
             This is needed to calculate previous durations (for example consecutive_on_hours).
             If you use an array, take care that its long enough to cover all previous values!
-        years_of_last_year: The duration of the last year. Defaults to the duration of the last year interval.
         weights: The weights of each year and scenario. If None, all scenarios have the same weight, while the years have the weight of their represented year (all normalized to 1). Its recommended to scale the weights to sum up to 1.
 
     Notes:

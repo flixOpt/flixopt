@@ -73,8 +73,8 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * FlowResults added as a new class to store the results of Flows. They can now be accessed directly.
 * Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
 * Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
-* Improved filter methods in `resulty.py`
-* Balanced storage - Storage charging and discharging sizes can now be forced to be equal when optimizing their size.
+* Improved filter methods in `results.py`
+* Balanced storage - Storage charging and discharging sizes can now be forced to be equal when optimizing their size by the `balanced` parameter.
 * Added Example for 2-stage Investment decisions leveraging the resampling of a FlowSystem
 * New Storage Parameter: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameter for final state control. Default to last value of `relative_minimum_charge_state` and `relative_maximum_charge_state`, which will prevent change of behaviour for most users.
 
