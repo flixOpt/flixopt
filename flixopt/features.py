@@ -49,11 +49,14 @@ class InvestmentModel(Submodel):
 
     def _do_modeling(self):
         super()._do_modeling()
-        self._create_variables_and_constraints()
+        if self._model.flow_system.years is None:
+            self._create_variables_and_constraints_without_years()
+        else:
+            self._create_variables_and_constraints_with_years()
         self._add_effects()
 
-    def _create_variables_and_constraints(self):
-        size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
+    def _create_variables_and_constraints_without_years(self):
+        size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
         self.add_variables(
             short_name='size',
             lower=0 if self.parameters.optional else size_min,
@@ -72,8 +75,30 @@ class InvestmentModel(Submodel):
                 self,
                 variable=self.size,
                 variable_state=self.is_invested,
-                bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+                bounds=(size_min, size_max),
             )
+
+    def _create_variables_and_constraints_with_years(self):
+        size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
+        self.add_variables(
+            short_name='size',
+            lower=0,
+            upper=size_max,
+            coords=self._model.get_coords(['year', 'scenario']),
+        )
+
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='is_invested',
+        )
+
+        BoundingPatterns.bounds_with_state(
+            self,
+            variable=self.size,
+            variable_state=self.is_invested,
+            bounds=(size_min, size_max),
+        )
 
     def _add_effects(self):
         """Add investment effects"""
