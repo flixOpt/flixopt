@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING
 import linopy
 import numpy as np
 
-from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
+from .config import CONFIG
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, ModelingUtilitiesAbstract
 from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
@@ -99,6 +100,67 @@ class InvestmentModel(Submodel):
             variable_state=self.is_invested,
             bounds=(size_min, size_max),
         )
+        ########################################################################
+        previous_size = self.parameters.previous_size if self.parameters.previous_size is not None else 0
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|investment_occurs',
+        )
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|decommissioning_occurs',
+        )
+        BoundingPatterns.state_transition_bounds(
+            self,
+            state_variable=self.is_invested,
+            switch_on=self.investment_occurs,
+            switch_off=self.decommissioning_occurs,
+            name=self.is_invested.name,
+            previous_state=ModelingUtilitiesAbstract.to_binary(values=previous_size, epsilon=CONFIG.modeling.EPSILON),
+            coord='year',
+        )
+        if self.parameters.optional:
+            self.add_constraints(
+                self.investment_occurs.sum('year') <= 1,
+                short_name='investment_occurs|once',
+            )
+        else:
+            self.add_constraints(
+                self.investment_occurs.sum('year') == 1,
+                short_name='investment_occurs|once',
+            )
+
+        self.add_constraints(
+            self.decommissioning_occurs.sum('year') <= 1,
+            short_name='decommissioning_occurs|once',
+        )
+        ########################################################################
+        self.add_variables(
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|increase',
+            lower=0,
+            upper=size_max,
+        )
+        self.add_variables(
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|decrease',
+            lower=0,
+            upper=size_max,
+        )
+        BoundingPatterns.link_changes_to_level_with_binaries(
+            self,
+            level_variable=self.size,
+            increase_variable=self.size_increase,
+            decrease_variable=self.size_decrease,
+            increase_binary=self.investment_occurs,
+            decrease_binary=self.decommissioning_occurs,
+            name=f'{self.label_of_element}|size|changes',
+            max_change=size_max,
+            initial_level=previous_size,
+            coord='year',
+        )
 
     def _add_effects(self):
         """Add investment effects"""
@@ -153,6 +215,26 @@ class InvestmentModel(Submodel):
         if 'is_invested' not in self._variables:
             return None
         return self._variables['is_invested']
+
+    @property
+    def investment_occurs(self) -> linopy.Variable:
+        """Binary increase decision variable"""
+        return self._variables['size|investment_occurs']
+
+    @property
+    def decommissioning_occurs(self) -> linopy.Variable:
+        """Binary decrease decision variable"""
+        return self._variables['size|decommissioning_occurs']
+
+    @property
+    def size_decrease(self) -> linopy.Variable:
+        """Binary decrease decision variable"""
+        return self._variables['size|decrease']
+
+    @property
+    def size_increase(self) -> linopy.Variable:
+        """Binary increase decision variable"""
+        return self._variables['size|increase']
 
 
 class OnOffModel(Submodel):

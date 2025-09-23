@@ -707,6 +707,7 @@ class InvestParameters(Interface):
         divest_effects: Costs incurred if the investment is NOT made, such as
             demolition of existing equipment, contractual penalties, or lost opportunities.
             Dictionary mapping effect names to values.
+        previous_size: Initial size of the investment. Only relevant in multi-period investments.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -863,7 +864,7 @@ class InvestParameters(Interface):
         specific_effects: NonTemporalEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: PiecewiseEffects | None = None,
         divest_effects: NonTemporalEffectsUser | None = None,
-        investment_scenarios: Literal['individual'] | list[int | str] | None = None,
+        previous_size: NonTemporalDataUser | None = None,
     ):
         self.fix_effects: NonTemporalEffectsUser = fix_effects or {}
         self.divest_effects: NonTemporalEffectsUser = divest_effects or {}
@@ -873,7 +874,7 @@ class InvestParameters(Interface):
         self.piecewise_effects = piecewise_effects
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
-        self.investment_scenarios = investment_scenarios
+        self.previous_size = previous_size
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self._plausibility_checks(flow_system)
@@ -909,21 +910,9 @@ class InvestParameters(Interface):
             self.fixed_size = flow_system.fit_to_model_coords(
                 f'{name_prefix}|fixed_size', self.fixed_size, dims=['year', 'scenario']
             )
-
-    def _plausibility_checks(self, flow_system):
-        if isinstance(self.investment_scenarios, list):
-            if not set(self.investment_scenarios).issubset(flow_system.scenarios):
-                raise ValueError(
-                    f'Some scenarios in investment_scenarios are not present in the time_series_collection: '
-                    f'{set(self.investment_scenarios) - set(flow_system.scenarios)}'
-                )
-        if self.investment_scenarios is not None:
-            if not self.optional:
-                if self.minimum_size is not None or self.fixed_size is not None:
-                    logger.warning(
-                        'When using investment_scenarios, minimum_size and fixed_size should only ne used if optional is True.'
-                        'Otherwise the investment cannot be 0 incertain scenarios while being non-zero in others.'
-                    )
+        self.previous_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|previous_size', self.previous_size, dims=['year', 'scenario']
+        )
 
     @property
     def minimum_or_fixed_size(self) -> NonTemporalData:
