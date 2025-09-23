@@ -5,7 +5,7 @@ It provides Datatypes, logging functionality, and some functions to transform da
 
 import logging
 import warnings
-from typing import Dict, Literal, Optional, Tuple, Union
+from typing import Literal, Union
 
 import numpy as np
 import pandas as pd
@@ -13,18 +13,10 @@ import xarray as xr
 
 logger = logging.getLogger('flixopt')
 
-Scalar = Union[int, float]
+Scalar = int | float
 """A single number, either integer or float."""
 
-TemporalDataUser = Union[
-    int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray, 'TimeSeriesData'
-]
-"""User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension."""
-
-TemporalData = Union[xr.DataArray, 'TimeSeriesData']
-"""Internally used datatypes for temporal data (data with a time dimension)."""
-
-NonTemporalDataUser = Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]
+NonTemporalDataUser = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension."""
 
 NonTemporalData = xr.DataArray
@@ -54,10 +46,10 @@ class TimeSeriesData(xr.DataArray):
     def __init__(
         self,
         *args,
-        aggregation_group: Optional[str] = None,
-        aggregation_weight: Optional[float] = None,
-        agg_group: Optional[str] = None,
-        agg_weight: Optional[float] = None,
+        aggregation_group: str | None = None,
+        aggregation_weight: float | None = None,
+        agg_group: str | None = None,
+        agg_weight: float | None = None,
         **kwargs,
     ):
         """
@@ -93,8 +85,8 @@ class TimeSeriesData(xr.DataArray):
 
     def fit_to_coords(
         self,
-        coords: Dict[str, pd.Index],
-        name: Optional[str] = None,
+        coords: dict[str, pd.Index],
+        name: str | None = None,
     ) -> 'TimeSeriesData':
         """Fit the data to the given coordinates. Returns a new TimeSeriesData object if the current coords are different."""
         if self.coords.equals(xr.Coordinates(coords)):
@@ -109,16 +101,16 @@ class TimeSeriesData(xr.DataArray):
         )
 
     @property
-    def aggregation_group(self) -> Optional[str]:
+    def aggregation_group(self) -> str | None:
         return self.attrs.get('aggregation_group')
 
     @property
-    def aggregation_weight(self) -> Optional[float]:
+    def aggregation_weight(self) -> float | None:
         return self.attrs.get('aggregation_weight')
 
     @classmethod
     def from_dataarray(
-        cls, da: xr.DataArray, aggregation_group: Optional[str] = None, aggregation_weight: Optional[float] = None
+        cls, da: xr.DataArray, aggregation_group: str | None = None, aggregation_weight: float | None = None
     ):
         """Create TimeSeriesData from DataArray, extracting metadata from attrs."""
         # Get aggregation metadata from attrs or parameters
@@ -157,6 +149,15 @@ class TimeSeriesData(xr.DataArray):
         return self._aggregation_weight
 
 
+TemporalDataUser = (
+    int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray | TimeSeriesData
+)
+"""User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension."""
+
+TemporalData = xr.DataArray | TimeSeriesData
+"""Internally used datatypes for temporal data (data with a time dimension)."""
+
+
 class DataConverter:
     """
     Converts data into xarray.DataArray with specified coordinates.
@@ -173,7 +174,7 @@ class DataConverter:
 
     @staticmethod
     def _match_series_to_dimension(
-        data: pd.Series, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
+        data: pd.Series, coords: dict[str, pd.Index], target_dims: tuple[str, ...]
     ) -> xr.DataArray:
         """
         Match pandas Series to a dimension by comparing its index to coordinates.
@@ -206,7 +207,7 @@ class DataConverter:
 
     @staticmethod
     def _match_array_to_dimension(
-        data: np.ndarray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
+        data: np.ndarray, coords: dict[str, pd.Index], target_dims: tuple[str, ...]
     ) -> xr.DataArray:
         """
         Match 1D numpy array to a dimension by comparing its length to coordinate lengths.
@@ -249,7 +250,7 @@ class DataConverter:
 
     @staticmethod
     def _match_multidim_array_to_dimensions(
-        data: np.ndarray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
+        data: np.ndarray, coords: dict[str, pd.Index], target_dims: tuple[str, ...]
     ) -> xr.DataArray:
         """
         Match multi-dimensional numpy array to dimensions by finding the correct shape permutation.
@@ -298,7 +299,7 @@ class DataConverter:
 
     @staticmethod
     def _broadcast_to_target(
-        data: xr.DataArray, coords: Dict[str, pd.Index], target_dims: Tuple[str, ...]
+        data: xr.DataArray, coords: dict[str, pd.Index], target_dims: tuple[str, ...]
     ) -> xr.DataArray:
         """
         Broadcast DataArray to target dimensions with validation.
@@ -327,8 +328,8 @@ class DataConverter:
     @classmethod
     def to_dataarray(
         cls,
-        data: Union[float, int, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray],
-        coords: Optional[Dict[str, pd.Index]] = None,
+        data: float | int | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray,
+        coords: dict[str, pd.Index] | None = None,
     ) -> xr.DataArray:
         """
         Convert various data types to xarray.DataArray with specified coordinates.
@@ -391,7 +392,7 @@ class DataConverter:
         return cls._broadcast_to_target(intermediate, validated_coords, target_dims)
 
     @staticmethod
-    def _prepare_coordinates(coords: Dict[str, pd.Index]) -> Tuple[Dict[str, pd.Index], Tuple[str, ...]]:
+    def _prepare_coordinates(coords: dict[str, pd.Index]) -> tuple[dict[str, pd.Index], tuple[str, ...]]:
         """
         Validate coordinates and prepare them for DataArray creation.
 
@@ -426,7 +427,7 @@ class DataConverter:
         return validated_coords, tuple(dims)
 
 
-def get_dataarray_stats(arr: xr.DataArray) -> Dict:
+def get_dataarray_stats(arr: xr.DataArray) -> dict:
     """Generate statistical summary of a DataArray."""
     stats = {}
     if arr.dtype.kind in 'biufc':  # bool, int, uint, float, complex

@@ -2,12 +2,15 @@ name: Python Package CI/CD
 
 on:
   push:
-    branches: [main, dev]  # Added develop branch
-    tags:
-      - 'v*.*.*'  # Trigger on semantic version tags
+    branches: [main]        # Only main branch
+    tags: ['v*.*.*']
   pull_request:
-    branches: [main, dev, 'feature/*', 'hotfix/*', 'fix/*']
+    branches: [main, dev]
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'README*'
   workflow_dispatch:  # Allow manual triggering
 
 # Set permissions for security
@@ -24,39 +27,40 @@ env:
 
 jobs:
   lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.19"
+          enable-cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install Ruff
         run: |
-          python -m pip install --upgrade pip
-          pip install "ruff==0.9.*"
-          ruff --version
+          uvx ruff --version
 
       - name: Run Ruff Linting
         run: |
           echo "::group::Ruff Linting"
-          ruff check . --output-format=github
+          uvx ruff check . --output-format=github
           echo "::endgroup::"
 
       - name: Run Ruff Formatting Check
         run: |
           echo "::group::Ruff Formatting"
-          ruff format --check --diff .
+          uvx ruff format --check --diff .
           echo "::endgroup::"
 
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: lint  # Run tests only after linting passes
     strategy:
@@ -66,51 +70,51 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.19"
+          enable-cache: true
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install .[dev] pytest-xdist
+          uv pip install --system .[dev] "pytest-xdist==3.*"
 
       - name: Run tests
         run: pytest -v -p no:warnings --numprocesses=auto
 
   security:
     name: Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: lint
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.19"
+          enable-cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
-
-      - name: Install security tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install bandit[toml]
 
       - name: Run Bandit security scan
         run: |
           # Gate on HIGH severity & MEDIUM confidence; produce JSON artifact
-          bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json -q -lll -ii
+          uvx bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json -q --severity-level high --confidence-level medium
           # Human-readable output without affecting job status
-          bandit -r flixopt/ -c pyproject.toml -q --exit-zero
+          uvx bandit -r flixopt/ -c pyproject.toml -q --exit-zero
 
       - name: Upload security reports
         uses: actions/upload-artifact@v4
@@ -122,7 +126,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     needs: [lint, test, security]
@@ -130,12 +134,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.19"
+          enable-cache: true
+
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -157,46 +167,54 @@ jobs:
 
   publish-testpypi:
     name: Publish to TestPyPI
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: [test, create-release]  # Run after tests and release creation
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
     environment:
       name: testpypi
       url: https://test.pypi.org/p/flixopt
+    env:
+      SKIP_TESTPYPI_UPLOAD: "false"
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.19"
+          enable-cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install build setuptools wheel twine
+          uv pip install --system twine
 
       - name: Build the distribution
         run: |
-          python -m build
+          uv build
 
       - name: Upload to TestPyPI
         run: |
-          twine upload --repository-url https://test.pypi.org/legacy/ dist/* --verbose
+          twine upload --repository-url https://test.pypi.org/legacy/ dist/* --verbose --skip-existing
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          TWINE_NON_INTERACTIVE: "1"
 
       - name: Test install from TestPyPI
+        if: env.SKIP_TESTPYPI_UPLOAD != 'true'
         run: |
+          set -Eeuo pipefail
           # Create a temporary environment to test installation
-          python -m venv test_env
+          uv venv test_env
           source test_env/bin/activate
+
           # Get project name from pyproject.toml (PEP 621)
           PACKAGE_NAME=$(python - <<'PY'
           import sys, tomllib, pathlib
@@ -204,15 +222,18 @@ jobs:
           print(data["project"]["name"])
           PY
           )
+
           # Extract version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
+
           # Wait and retry while TestPyPI indexes the package
           INSTALL_SUCCESS=false
-          for d in 15 30 60 120 180 360 720 1080; do
+          for d in 10 20 40 80 120; do
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from TestPyPI (retry after ${d}s)..."
+
             # Install specific version and verify it matches
-            if pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
+            if uv pip install --index-strategy unsafe-best-match --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
                python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
               INSTALL_SUCCESS=true
               break
@@ -234,7 +255,7 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: [publish-testpypi]  # Only run after TestPyPI publish succeeds
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
     environment:
@@ -243,37 +264,42 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.19"
+          enable-cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install build setuptools wheel twine
+          uv pip install --system twine
 
       - name: Build the distribution
         run: |
-          python -m build
+          uv build
 
       - name: Upload to PyPI
         run: |
-          twine upload dist/* --verbose
+          twine upload dist/* --verbose --skip-existing
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          TWINE_NON_INTERACTIVE: "1"
 
       - name: Verify PyPI installation
         run: |
+          set -Eeuo pipefail
           # Create a temporary environment to test installation
-          python -m venv prod_test_env
+          uv venv prod_test_env
           source prod_test_env/bin/activate
+
           # Get project name from pyproject.toml (PEP 621)
           PACKAGE_NAME=$(python - <<'PY'
           import sys, tomllib, pathlib
@@ -281,15 +307,18 @@ jobs:
           print(data["project"]["name"])
           PY
           )
+
           # Extract version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
+
           # Wait and retry while PyPI indexes the package
           INSTALL_SUCCESS=false
-          for d in 5 10 15 30 60 120 180 360 720 1080; do
+          for d in 10 20 40 80 120; do
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
+
             # Install specific version and verify it matches
-            if pip install "$PACKAGE_NAME==$VERSION" && \
+            if uv pip install "$PACKAGE_NAME==$VERSION" && \
                python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
               INSTALL_SUCCESS=true
               break
@@ -311,7 +340,7 @@ jobs:
 
   deploy-docs:
     name: Deploy Documentation
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     needs: [publish-pypi]  # Deploy docs after successful PyPI publishing
@@ -319,17 +348,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Fetch all history for proper versioning
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.19"
+          enable-cache: true
+
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Sync changelog to docs
         run: |
@@ -338,8 +370,7 @@ jobs:
 
       - name: Install documentation dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[docs]"
+          uv pip install --system ".[docs]"
 
       - name: Configure Git Credentials
         run: |

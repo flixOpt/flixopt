@@ -1,6 +1,23 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    ":dependencyDashboard",
+    ":semanticPrefixFixDepsChoreOthers",
+    ":ignoreModulesAndTests",
+    ":semanticCommits",
+    "group:monorepos",
+    "group:recommended",
+    "mergeConfidence:age-confidence-badges",
+    "replacements:all",
+    "workarounds:all",
+    "schedule:earlyMondays"
+  ],
+  "automerge": false,
+  "labels": ["dependencies"],
+  "rangeStrategy": "widen",
+  "packageRules": [
+    {
+      "matchDepTypes": ["dev-dependencies", "devDependencies"],
+      "rangeStrategy": "pin"
+    }
   ]
 }

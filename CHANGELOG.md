@@ -5,41 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased - New Model dimensions]
+<!-- This text won't be rendered
+Note: The CI will automatically append a "What's Changed" section to the changelog.
+This contains all commits, PRs, and contributors.
+Therefore, the Changelog should focus on the user-facing changes.
+Please remove all irrelevant sections before releasing.
 
-### Changed
-* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
-* **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
-* **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
-* **BREAKING**: Renamed class `Model` to `Submodel`
-* **BREAKING**: Renamed `mode` parameter in plotting methods to `style`
-* FlowSystems can not be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
-* Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
-* Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
-* Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
-* Improved Model Structure - Views and organisation is now divided into:
-  * Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
-  * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler acess and clearer code.
-*
-
-#### Internal:
-* **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
-* **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
-* **BREAKING**: Renamed class `Model` to `Submodel`
-* FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
-* Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
-* Added new module `.modeling`that contains Modelling primitives and utilities
-
+## [Unreleased] - ????-??-??
 
 ### Added
-* FlowSystem Restoring: The used FlowSystem will now get restired from the results (lazily). ALll Parameters can be safely acessed anytime after the solve.
-* FLowResults added as a new class to store the results of Flows. They can now be accessed directly.
-* Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
-* Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
-* Improved filter methods for Results
 
-#### Scenarios
-Scenarios are a new feature of flixopt. They can be used to model uncertainties in the flow system, such as:
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Known issues
+
+### *Development*
+
+Until here -->
+
+## [Unreleased] - ????-??-??
+Multi-Period and stochastic modeling is coming to flixopt in this release.
+
+In this release, we introduce the following new features:
+#### Multi-period-support
+A flixopt model might be modeled with a "year" dimension.
+This enables to model transformation pathways over multiple years.
+
+#### Stochastic modeling
+A flixopt model can be modeled with a scenario dimension.
+Scenarios can be weighted and variables can be equated across scenarios. This enables to model uncertainties in the flow system, such as:
 * Different demand profiles
 * Different price forecasts
 * Different weather conditions
@@ -50,64 +50,128 @@ Common use cases are:
 
 The weighted sum of the total objective effect of each scenario is used as the objective of the optimization.
 
-#### Years (Investment periods)
-A flixopt model might be modeled with a "year" dimension.
-This enables to model transformation pathways over multiple years.
-
-%%%%% TODO: New Interfaces to model sizes changing over time, annuity, etc.
-
 #### Improved Data handling: IO, resampling and more through xarray
-* Complete serialization infrastructure through `Interface` base class
-   * IO for all Interfaces and the FlowSystem with round-trip serialization support
-   * Automatic DataArray extraction and restoration
-   * NetCDF export/import capabilities for all Interface objects and FlowSystem
-   * JSON export for documentation purposes
-   * Recursive handling of nested Interface objects
+* IO for all Interfaces and the FlowSystem with round-trip serialization support
+    * NetCDF export/import capabilities for all Interface objects and FlowSystem
+    * JSON export for documentation purposes
+    * Recursive handling of nested Interface objects
 * FlowSystem data manipulation methods
    * `sel()` and `isel()` methods for temporal data selection
    * `resample()` method for temporal resampling
    * `copy()` method to create a copy of a FlowSystem, including all underlying Elements and their data
    * `__eq__()` method for FlowSystem comparison
-* Storage component enhancements
-   * `relative_minimum_final_charge_state` parameter for final state control
-   * `relative_maximum_final_charge_state` parameter for final state control
+
 * Core data handling improvements
    * `get_dataarray_stats()` function for statistical summaries
    * Enhanced `DataConverter` class with better TimeSeriesData support
-* Internal: Enhanced data handling methods
-   * `fit_to_model_coords()` method for data alignment
-   * `fit_effects_to_model_coords()` method for effect data processing
-   * `connect_and_transform()` method replacing several operations
-
-#### Internal: Improved Model organisation and access
-* Clearer separation between the main Model and "Submodels"
-* Improved access to the Submodels and their variables, constraints and submodels
-* Added __repr__() for Submodels to easily inspect its content
 
 
-#### Other new features
+### Added
+* FlowSystem Restoring: The used FlowSystem will now get restired from the results (lazily). ALll Parameters can be safely acessed anytime after the solve.
+* FLowResults added as a new class to store the results of Flows. They can now be accessed directly.
+* Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
+* Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
+* Improved filter methods for Results
 * Balanced storage - Storage charging and discharging sizes can now be forced to be equal in when optimizing their size.
-
-#### Examples:
 * Added Example for 2-stage Investment decisions leveraging the resampling of a FlowSystem
+* New Storage Parameter: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameter for final state control
 
-
-### Fixed
-* Enhanced NetCDF I/O with proper attribute preservation for DataArrays
-* Improved error handling and validation in serialization processes
-* Better type consistency across all framework components
-
-
-### Know Issues
-* Plotly >= 6 may raise errors if "nbformat" is not installed. We pinned plotly to <6, but this may be fixed in the future.
-* IO for single Interfaces/Elemenets to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arrises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem thats connected and transformed.
-
+### Changed
+* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
+* **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
+* **BREAKING**: Renamed class `Model` to `Submodel`
+* **BREAKING**: Renamed `mode` parameter in plotting methods to `style`
+* FlowSystems can not be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
+* Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
+* Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
+* Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
+* Improved Model Structure - Views and organisation is now divided into:
+  * Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
+  * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler acess and clearer code.
 
 ### Deprecated
 * The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
 * The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
+
+### Removed
+
+### Fixed
+* Enhanced NetCDF I/O with proper attribute preservation for DataArrays
+* Improved error handling and validation in serialization processes
+* Better type consistency across all framework components
+
+### Known issues
+* IO for single Interfaces/Elemenets to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arrises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem thats connected and transformed.
+
+### *Development*
+* **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
+* **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
+* **BREAKING**: Renamed class `Model` to `Submodel`
+* FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
+* Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
+* Added new module `.modeling`that contains Modelling primitives and utilities
+* Clearer separation between the main Model and "Submodels"
+* Improved access to the Submodels and their variables, constraints and submodels
+* Added __repr__() for Submodels to easily inspect its content
+* Enhanced data handling methods
+   * `fit_to_model_coords()` method for data alignment
+   * `fit_effects_to_model_coords()` method for effect data processing
+   * `connect_and_transform()` method replacing several operations
+
+
+## [2.1.9] - 2025-09-23
+Small Bugfix which was supposed to be fixed in 2.1.8
+
+### Fixed
+- Fix error handling in network visualization if networkx is not installed.
+
+
+## [2.1.8] - 2025-09-22
+This release focuses on code quality improvements, enhanced documentation, and bug fixes for heat pump components and visualization features.
+
+### Added
+- Extra Check for HeatPumpWithSource.COP to be strictly > 1 to avoid division by zero
+- Apply deterministic color assignment by using sorted() in `plotting.py`
+- Add missing args in docstrings in `plotting.py`, `solvers.py`, and `core.py`.
+
+### Changed
+- Greatly improved docstrings and documentation of all public classes
+- Make path handling to be gentle about missing .html suffix in `plotting.py`
+- Default for `relative_losses` in `Transmission` is now 0 instead of None
+- Setter of COP in `HeatPumpWithSource` now completely overwrites the conversion factors, which is safer.
+- Fix some docstrings in plotting.py
+- Change assertions to raise Exceptions in `plotting.py`
+
+### Fixed
+- Fix color scheme selection in network_app; color pickers now update when a scheme is selected.
+- Fix error handling in network visualization if networkx is not installed.
+- Fix broken links in docs.
+- Fix COP getter and setter of `HeatPumpWithSource` returning and setting wrong conversion factors.
+- Fix custom compression levels in `io.save_dataset_to_netcdf`
+- Fix `total_max` did not work when total min was not used.
+
+### *Development*
+- Pin dev dependencies to specific versions
+- Improve CI workflows to run faster and smarter
+
+## [2.1.7] - 2025-09-13
+
+This update is a maintenance release to improve Code Quality, CI and update the dependencies.
+There are no changes or new features.
+
+### Added
+- Added __version__ to flixopt
+
+### *Development*
+- ruff format the whole Codebase
+- Added renovate config
+- Added pre-commit
+- lint and format in CI
+- improved CI
+- Updated Dependencies
+- Updated Issue Templates
 
 
 ## [2.1.6] - 2025-09-02

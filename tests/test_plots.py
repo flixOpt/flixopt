@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 """
 Manual test script for plots
 """
 
 import unittest
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,7 +23,7 @@ class TestPlots(unittest.TestCase):
         nr_of_columns: int = 7,
         nr_of_periods: int = 10,
         time_steps_per_period: int = 24,
-        drop_fraction_of_indices: Optional[float] = None,
+        drop_fraction_of_indices: float | None = None,
         only_pos_or_neg: bool = True,
         column_prefix: str = '',
     ):
@@ -94,7 +92,7 @@ class TestPlots(unittest.TestCase):
         heatmap_data = plotting.reshape_to_2d(data.iloc[:, 0].values.flatten(), 24)
         # Plotting heatmaps with Plotly and Matplotlib
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
+        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.show()
 
     def test_heat_map_plots_resampling(self):
@@ -122,13 +120,13 @@ class TestPlots(unittest.TestCase):
         heatmap_data = plotting.heat_map_data_from_df(data, 'W', 'h', fill='ffill')
         # Plotting heatmaps with Plotly and Matplotlib
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
+        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.show()
 
         heatmap_data = plotting.heat_map_data_from_df(data, 'D', 'h', fill='ffill')
         # Plotting heatmaps with Plotly and Matplotlib
         plotly.offline.plot(plotting.heat_map_plotly(pd.DataFrame(heatmap_data)))
-        plotting.heat_map_matplotlib(pd.DataFrame(pd.DataFrame(heatmap_data)))
+        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.show()
 
 

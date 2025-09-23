@@ -1,13 +1,14 @@
-import json
+from __future__ import annotations
+
 import logging
 import socket
 import threading
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any
 
 try:
     import dash_cytoscape as cyto
     import dash_daq as daq
-    import networkx
+    import networkx as nx
     from dash import Dash, Input, Output, State, callback_context, dcc, html, no_update
     from werkzeug.serving import make_server
 
@@ -18,8 +19,10 @@ except ImportError as e:
     VISUALIZATION_ERROR = str(e)
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
-from .elements import Bus, Component, Flow
-from .flow_system import FlowSystem
+from .elements import Bus
+
+if TYPE_CHECKING:
+    from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
 
@@ -110,8 +113,16 @@ class VisualizationConfig:
     ]
 
 
-def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
+def flow_graph(flow_system: FlowSystem) -> nx.DiGraph:
     """Convert FlowSystem to NetworkX graph - simplified and more robust"""
+    if not DASH_CYTOSCAPE_AVAILABLE:
+        raise ImportError(
+            'Network visualization requires optional dependencies. '
+            'Install with: pip install flixopt[viz] or '
+            'pip install dash dash-cytoscape networkx werkzeug. '
+            f'Original error: {VISUALIZATION_ERROR}'
+        )
+
     nodes = list(flow_system.components.values()) + list(flow_system.buses.values())
     edges = list(flow_system.flows.values())
 
@@ -141,7 +152,7 @@ def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
         else:
             return 'rectangle'
 
-    graph = networkx.DiGraph()
+    graph = nx.DiGraph()
 
     # Add nodes with attributes
     for node in nodes:
@@ -168,7 +179,7 @@ def flow_graph(flow_system: FlowSystem) -> networkx.DiGraph:
     return graph
 
 
-def make_cytoscape_elements(graph: networkx.DiGraph) -> List[Dict[str, Any]]:
+def make_cytoscape_elements(graph: nx.DiGraph) -> list[dict[str, Any]]:
     """Convert NetworkX graph to Cytoscape elements"""
     elements = []
 
@@ -225,7 +236,7 @@ def create_color_picker_input(label: str, input_id: str, default_color: str):
     )
 
 
-def create_style_section(title: str, children: List):
+def create_style_section(title: str, children: list):
     """Create a collapsible section for organizing controls"""
     return html.Div(
         [
@@ -378,7 +389,7 @@ def create_sidebar():
     )
 
 
-def shownetwork(graph: networkx.DiGraph):
+def shownetwork(graph: nx.DiGraph):
     """Main function to create and run the network visualization"""
     if not DASH_CYTOSCAPE_AVAILABLE:
         raise ImportError(f'Required packages not available: {VISUALIZATION_ERROR}')
@@ -535,10 +546,46 @@ def shownetwork(graph: networkx.DiGraph):
 
         return sidebar_style, main_style
 
+    # Combined callback to handle both color scheme changes and reset
+    @app.callback(
+        [
+            Output('bus-color-picker', 'value'),
+            Output('source-color-picker', 'value'),
+            Output('sink-color-picker', 'value'),
+            Output('storage-color-picker', 'value'),
+            Output('converter-color-picker', 'value'),
+        ],
+        [Input('color-scheme-dropdown', 'value'), Input('reset-btn', 'n_clicks')],
+    )
+    def update_color_pickers(color_scheme, reset_clicks):
+        """Update color pickers when color scheme changes or reset is clicked"""
+        ctx = callback_context
+
+        # Determine which input triggered the callback
+        if ctx.triggered:
+            trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            if trigger_id == 'reset-btn' and reset_clicks and reset_clicks > 0:
+                # Reset was clicked, use default colors
+                colors = VisualizationConfig.DEFAULT_COLORS
+            else:
+                # Color scheme changed
+                colors = VisualizationConfig.COLOR_PRESETS.get(color_scheme, VisualizationConfig.DEFAULT_COLORS)
+        else:
+            # Initial load
+            colors = VisualizationConfig.COLOR_PRESETS.get(color_scheme, VisualizationConfig.DEFAULT_COLORS)
+
+        return (
+            {'hex': colors['Bus']},
+            {'hex': colors['Source']},
+            {'hex': colors['Sink']},
+            {'hex': colors['Storage']},
+            {'hex': colors['Converter']},
+        )
+
+    # Updated main visualization callback - simplified logic
     @app.callback(
         [Output('cytoscape', 'elements'), Output('cytoscape', 'stylesheet')],
         [
-            Input('color-scheme-dropdown', 'value'),
             Input('bus-color-picker', 'value'),
             Input('source-color-picker', 'value'),
             Input('sink-color-picker', 'value'),
@@ -551,7 +598,6 @@ def shownetwork(graph: networkx.DiGraph):
         [State('elements-store', 'data')],
     )
     def update_visualization(
-        color_scheme,
         bus_color,
         source_color,
         sink_color,
@@ -562,23 +608,20 @@ def shownetwork(graph: networkx.DiGraph):
         font_size,
         stored_elements,
     ):
+        """Update visualization based on current color picker values"""
         if not stored_elements:
             return no_update, no_update
 
-        # Determine colors to use
-        if any(picker for picker in [bus_color, source_color, sink_color, storage_color, converter_color, edge_color]):
-            # Use custom colors from pickers
-            colors = {
-                'Bus': bus_color.get('hex') if bus_color else '#7F8C8D',
-                'Source': source_color.get('hex') if source_color else '#F1C40F',
-                'Sink': sink_color.get('hex') if sink_color else '#F1C40F',
-                'Storage': storage_color.get('hex') if storage_color else '#2980B9',
-                'Converter': converter_color.get('hex') if converter_color else '#D35400',
-                'Other': '#27AE60',
-            }
-        else:
-            # Use preset scheme
-            colors = VisualizationConfig.COLOR_PRESETS.get(color_scheme, VisualizationConfig.DEFAULT_COLORS)
+        # Use colors from pickers (which are now synced with scheme selection)
+        default_colors = VisualizationConfig.DEFAULT_COLORS
+        colors = {
+            'Bus': bus_color.get('hex') if bus_color else default_colors['Bus'],
+            'Source': source_color.get('hex') if source_color else default_colors['Source'],
+            'Sink': sink_color.get('hex') if sink_color else default_colors['Sink'],
+            'Storage': storage_color.get('hex') if storage_color else default_colors['Storage'],
+            'Converter': converter_color.get('hex') if converter_color else default_colors['Converter'],
+            'Other': default_colors['Other'],
+        }
 
         # Update element colors
         updated_elements = []
@@ -681,15 +724,10 @@ def shownetwork(graph: networkx.DiGraph):
     def update_layout(selected_layout):
         return {'name': selected_layout}
 
-    # Reset callback
+    # Reset callback for non-color-picker controls
     @app.callback(
         [
             Output('color-scheme-dropdown', 'value'),
-            Output('bus-color-picker', 'value'),
-            Output('source-color-picker', 'value'),
-            Output('sink-color-picker', 'value'),
-            Output('storage-color-picker', 'value'),
-            Output('converter-color-picker', 'value'),
             Output('edge-color-picker', 'value'),
             Output('node-size-slider', 'value'),
             Output('font-size-slider', 'value'),
@@ -698,15 +736,11 @@ def shownetwork(graph: networkx.DiGraph):
         [Input('reset-btn', 'n_clicks')],
     )
     def reset_controls(n_clicks):
+        """Reset all controls to defaults (color pickers handled separately)"""
         if n_clicks and n_clicks > 0:
             return (
-                'Default',  # color scheme
-                {'hex': '#7F8C8D'},  # bus
-                {'hex': '#F1C40F'},  # source
-                {'hex': '#F1C40F'},  # sink
-                {'hex': '#2980B9'},  # storage
-                {'hex': '#D35400'},  # converter
-                {'hex': '#808080'},  # edge
+                'Default',  # color scheme (will trigger color picker updates)
+                {'hex': '#808080'},  # edge color
                 90,  # node size
                 10,  # font size
                 'klay',  # layout

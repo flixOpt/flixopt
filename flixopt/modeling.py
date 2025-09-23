@@ -1,13 +1,12 @@
 import logging
-from typing import Dict, List, Optional, Tuple, Union
 
 import linopy
 import numpy as np
 import xarray as xr
 
 from .config import CONFIG
-from .core import FlowSystemDimensions, NonTemporalData, Scalar, TemporalData
-from .structure import FlowSystemModel, Submodel
+from .core import TemporalData
+from .structure import Submodel
 
 logger = logging.getLogger('flixopt')
 
@@ -18,8 +17,8 @@ class ModelingUtilitiesAbstract:
     @staticmethod
     def to_binary(
         values: xr.DataArray,
-        epsilon: Optional[float] = None,
-        dims: Optional[Union[str, List[str]]] = None,
+        epsilon: float | None = None,
+        dims: str | list[str] | None = None,
     ) -> xr.DataArray:
         """
         Converts a DataArray to binary {0, 1} values.
@@ -103,7 +102,7 @@ class ModelingUtilities:
     @staticmethod
     def compute_consecutive_hours_in_state(
         binary_values: TemporalData,
-        hours_per_timestep: Union[int, float],
+        hours_per_timestep: int | float,
         epsilon: float = None,
     ) -> float:
         """
@@ -126,14 +125,12 @@ class ModelingUtilities:
         )
 
     @staticmethod
-    def compute_previous_states(
-        previous_values: Optional[xr.DataArray], epsilon: Optional[float] = None
-    ) -> xr.DataArray:
+    def compute_previous_states(previous_values: xr.DataArray | None, epsilon: float | None = None) -> xr.DataArray:
         return ModelingUtilitiesAbstract.to_binary(values=previous_values, epsilon=epsilon, dims='time')
 
     @staticmethod
     def compute_previous_on_duration(
-        previous_values: xr.DataArray, hours_per_step: Union[xr.DataArray, float, int]
+        previous_values: xr.DataArray, hours_per_step: xr.DataArray | float | int
     ) -> float:
         return (
             ModelingUtilitiesAbstract.count_consecutive_states(ModelingUtilitiesAbstract.to_binary(previous_values))
@@ -142,7 +139,7 @@ class ModelingUtilities:
 
     @staticmethod
     def compute_previous_off_duration(
-        previous_values: xr.DataArray, hours_per_step: Union[xr.DataArray, float, int]
+        previous_values: xr.DataArray, hours_per_step: xr.DataArray | float | int
     ) -> float:
         """
         Compute previous consecutive 'off' duration.
@@ -162,7 +159,7 @@ class ModelingUtilities:
         return ModelingUtilities.compute_consecutive_hours_in_state(previous_off_states, hours_per_step)
 
     @staticmethod
-    def get_most_recent_state(previous_values: Optional[xr.DataArray]) -> int:
+    def get_most_recent_state(previous_values: xr.DataArray | None) -> int:
         """
         Get the most recent binary state from previous values.
 
@@ -188,9 +185,9 @@ class ModelingPrimitives:
         tracked_expression,
         name: str = None,
         short_name: str = None,
-        bounds: Tuple[TemporalData, TemporalData] = None,
-        coords: Optional[Union[str, List[str]]] = None,
-    ) -> Tuple[linopy.Variable, linopy.Constraint]:
+        bounds: tuple[TemporalData, TemporalData] = None,
+        coords: str | list[str] | None = None,
+    ) -> tuple[linopy.Variable, linopy.Constraint]:
         """
         Creates variable that equals a given expression.
 
@@ -227,12 +224,12 @@ class ModelingPrimitives:
         state_variable: linopy.Variable,
         name: str = None,
         short_name: str = None,
-        minimum_duration: Optional[TemporalData] = None,
-        maximum_duration: Optional[TemporalData] = None,
+        minimum_duration: TemporalData | None = None,
+        maximum_duration: TemporalData | None = None,
         duration_dim: str = 'time',
-        duration_per_step: Union[Scalar, xr.DataArray] = None,
+        duration_per_step: int | float | TemporalData = None,
         previous_duration: TemporalData = 0,
-    ) -> Tuple[linopy.Variable, Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]]:
+    ) -> tuple[linopy.Variable, tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]]:
         """
         Creates consecutive duration tracking for a binary state variable.
 
@@ -323,7 +320,7 @@ class ModelingPrimitives:
     @staticmethod
     def mutual_exclusivity_constraint(
         model: Submodel,
-        binary_variables: List[linopy.Variable],
+        binary_variables: list[linopy.Variable],
         tolerance: float = 1,
         short_name: str = 'mutual_exclusivity',
     ) -> linopy.Constraint:
@@ -373,7 +370,7 @@ class BoundingPatterns:
     def basic_bounds(
         model: Submodel,
         variable: linopy.Variable,
-        bounds: Tuple[TemporalData, TemporalData],
+        bounds: tuple[TemporalData, TemporalData],
         name: str = None,
     ):
         """Create simple bounds.
@@ -407,10 +404,10 @@ class BoundingPatterns:
     def bounds_with_state(
         model: Submodel,
         variable: linopy.Variable,
-        bounds: Tuple[TemporalData, TemporalData],
+        bounds: tuple[TemporalData, TemporalData],
         variable_state: linopy.Variable,
         name: str = None,
-    ) -> List[linopy.Constraint]:
+    ) -> list[linopy.Constraint]:
         """Constraint a variable to bounds, that can be escaped from to 0 by a binary variable.
         variable ∈ {0, [max(ε, lower_bound), upper_bound]}
 
@@ -454,9 +451,9 @@ class BoundingPatterns:
         model: Submodel,
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
-        relative_bounds: Tuple[TemporalData, TemporalData],
+        relative_bounds: tuple[TemporalData, TemporalData],
         name: str = None,
-    ) -> List[linopy.Constraint]:
+    ) -> list[linopy.Constraint]:
         """Constraint a variable by scaling bounds, dependent on another variable.
         variable ∈ [lower_bound * scaling_variable, upper_bound * scaling_variable]
 
@@ -497,11 +494,11 @@ class BoundingPatterns:
         model: Submodel,
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
-        relative_bounds: Tuple[TemporalData, TemporalData],
-        scaling_bounds: Tuple[TemporalData, TemporalData],
+        relative_bounds: tuple[TemporalData, TemporalData],
+        scaling_bounds: tuple[TemporalData, TemporalData],
         variable_state: linopy.Variable,
         name: str = None,
-    ) -> List[linopy.Constraint]:
+    ) -> list[linopy.Constraint]:
         """Constraint a variable by scaling bounds with binary state control.
 
         variable ∈ {0, [max(ε, lower_relative_bound) * scaling_variable, upper_relative_bound * scaling_variable]}
@@ -558,7 +555,7 @@ class BoundingPatterns:
         name: str,
         previous_state=0,
         coord: str = 'time',
-    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+    ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
         Creates switch-on/off variables with state transition logic.
 
@@ -601,10 +598,10 @@ class BoundingPatterns:
         switch_on: linopy.Variable,
         switch_off: linopy.Variable,
         name: str,
-        max_change: Union[float, xr.DataArray],
-        previous_value: Union[float, xr.DataArray] = 0,
+        max_change: float | xr.DataArray,
+        previous_value: float | xr.DataArray = 0.0,
         coord: str = 'time',
-    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+    ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
         Constrains a continuous variable to only change when switch variables are active.
 
@@ -669,10 +666,10 @@ class BoundingPatterns:
         increase_binary: linopy.Variable,
         decrease_binary: linopy.Variable,
         name: str,
-        max_change: Union[float, xr.DataArray],
-        initial_level: Union[float, xr.DataArray] = 0,
+        max_change: float | xr.DataArray,
+        initial_level: float | xr.DataArray = 0.0,
         coord: str = 'year',
-    ) -> Tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+    ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
         Link changes to level evolution with binary control and mutual exclusivity.
 

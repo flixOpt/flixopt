@@ -1,12 +1,13 @@
+from __future__ import annotations
+
 import datetime
 import json
 import logging
 import pathlib
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 import linopy
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly
@@ -18,6 +19,7 @@ from . import plotting
 from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
+    import matplotlib.pyplot as plt
     import pyvis
 
     from .calculation import Calculation, SegmentedCalculation
@@ -34,55 +36,95 @@ class _FlowSystemRestorationError(Exception):
 
 
 class CalculationResults:
-    """Results container for Calculation results.
+    """Comprehensive container for optimization calculation results and analysis tools.
 
-    This class is used to collect the results of a Calculation.
-    It provides access to component, bus, and effect
-    results, and includes methods for filtering, plotting, and saving results.
+    This class provides unified access to all optimization results including flow rates,
+    component states, bus balances, and system effects. It offers powerful analysis
+    capabilities through filtering, plotting, and export functionality, making it
+    the primary interface for post-processing optimization results.
 
-    The recommended way to create instances is through the class methods
-    `from_file()` or `from_calculation()`, rather than direct initialization.
+    Key Features:
+        **Unified Access**: Single interface to all solution variables and constraints
+        **Element Results**: Direct access to component, bus, and effect-specific results
+        **Visualization**: Built-in plotting methods for heatmaps, time series, and networks
+        **Persistence**: Save/load functionality with compression for large datasets
+        **Analysis Tools**: Filtering, aggregation, and statistical analysis methods
+
+    Result Organization:
+        - **Components**: Equipment-specific results (flows, states, constraints)
+        - **Buses**: Network node balances and energy flows
+        - **Effects**: System-wide impacts (costs, emissions, resource consumption)
+        - **Solution**: Raw optimization variables and their values
+        - **Metadata**: Calculation parameters, timing, and system configuration
 
     Attributes:
-        solution (xr.Dataset): Dataset containing optimization results.
-        flow_system_data (xr.Dataset): Dataset containing the flow system.
-        summary (Dict): Information about the calculation.
-        name (str): Name identifier for the calculation.
-        model (linopy.Model): The optimization model (if available).
-        folder (pathlib.Path): Path to the results directory.
-        components (Dict[str, ComponentResults]): Results for each component.
-        buses (Dict[str, BusResults]): Results for each bus.
-        effects (Dict[str, EffectResults]): Results for each effect.
-        timesteps_extra (pd.DatetimeIndex): The extended timesteps.
-        hours_per_timestep (xr.DataArray): Duration of each timestep in hours.
+        solution: Dataset containing all optimization variable solutions
+        flow_system_data: Dataset with complete system configuration and parameters. Restore the used FlowSystem for further analysis.
+        summary: Calculation metadata including solver status, timing, and statistics
+        name: Unique identifier for this calculation
+        model: Original linopy optimization model (if available)
+        folder: Directory path for result storage and loading
+        components: Dictionary mapping component labels to ComponentResults objects
+        buses: Dictionary mapping bus labels to BusResults objects
+        effects: Dictionary mapping effect names to EffectResults objects
+        timesteps_extra: Extended time index including boundary conditions
+        hours_per_timestep: Duration of each timestep for proper energy calculations
 
-    Example:
-        Load results from saved files:
+    Examples:
+        Load and analyze saved results:
 
-        >>> results = CalculationResults.from_file('results_dir', 'optimization_run_1')
-        >>> element_result = results['Boiler']
-        >>> results.plot_heatmap('Boiler(Q_th)|flow_rate')
-        >>> results.to_file(compression=5)
-        >>> results.to_file(folder='new_results_dir', compression=5)  # Save the results to a new folder
+        ```python
+        # Load results from file
+        results = CalculationResults.from_file('results', 'annual_optimization')
+
+        # Access specific component results
+        boiler_results = results['Boiler_01']
+        heat_pump_results = results['HeatPump_02']
+
+        # Plot component flow rates
+        results.plot_heatmap('Boiler_01(Natural_Gas)|flow_rate')
+        results['Boiler_01'].plot_node_balance()
+
+        # Access raw solution dataarrays
+        electricity_flows = results.solution[['Generator_01(Grid)|flow_rate', 'HeatPump_02(Grid)|flow_rate']]
+
+        # Filter and analyze results
+        peak_demand_hours = results.filter_solution(variable_dims='time')
+        costs_solution = results.effects['cost'].solution
+        ```
+
+        Advanced filtering and aggregation:
+
+        ```python
+        # Filter by variable type
+        scalar_results = results.filter_solution(variable_dims='scalar')
+        time_series = results.filter_solution(variable_dims='time')
+
+        # Custom data analysis leveraging xarray
+        peak_power = results.solution['Generator_01(Grid)|flow_rate'].max()
+        avg_efficiency = (
+            results.solution['HeatPump(Heat)|flow_rate'] / results.solution['HeatPump(Electricity)|flow_rate']
+        ).mean()
+        ```
+
+    Design Patterns:
+        **Factory Methods**: Use `from_file()` and `from_calculation()` for creation or access directly from `Calculation.results`
+        **Dictionary Access**: Use `results[element_label]` for element-specific results
+        **Lazy Loading**: Results objects created on-demand for memory efficiency
+        **Unified Interface**: Consistent API across different result types
+
     """
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str):
-        """Create CalculationResults instance by loading from saved files.
-
-        This method loads the calculation results from previously saved files,
-        including the solution, flow system, model (if available), and metadata.
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> CalculationResults:
+        """Load CalculationResults from saved files.
 
         Args:
-            folder: Path to the directory containing the saved files.
-            name: Base name of the saved files (without file extensions).
+            folder: Directory containing saved files.
+            name: Base name of saved files (without extensions).
 
         Returns:
-            CalculationResults: A new instance containing the loaded data.
-
-        Raises:
-            FileNotFoundError: If required files cannot be found.
-            ValueError: If files exist but cannot be properly loaded.
+            CalculationResults: Loaded instance.
         """
         folder = pathlib.Path(folder)
         paths = fx_io.CalculationResultsPaths(folder, name)
@@ -95,7 +137,7 @@ class CalculationResults:
             except Exception as e:
                 logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
-        with open(paths.summary, 'r', encoding='utf-8') as f:
+        with open(paths.summary, encoding='utf-8') as f:
             summary = yaml.load(f, Loader=yaml.FullLoader)
 
         return cls(
@@ -108,21 +150,14 @@ class CalculationResults:
         )
 
     @classmethod
-    def from_calculation(cls, calculation: 'Calculation'):
-        """Create CalculationResults directly from a Calculation object.
-
-        This method extracts the solution, flow system, and other relevant
-        information directly from an existing Calculation object.
+    def from_calculation(cls, calculation: Calculation) -> CalculationResults:
+        """Create CalculationResults from a Calculation object.
 
         Args:
-            calculation: A Calculation object containing a solved model.
+            calculation: Calculation object with solved model.
 
         Returns:
-            CalculationResults: A new instance containing the results from
-                the provided calculation.
-
-        Raises:
-            AttributeError: If the calculation doesn't have required attributes.
+            CalculationResults: New instance with extracted results.
         """
         return cls(
             solution=calculation.model.solution,
@@ -138,19 +173,21 @@ class CalculationResults:
         solution: xr.Dataset,
         flow_system_data: xr.Dataset,
         name: str,
-        summary: Dict,
-        folder: Optional[pathlib.Path] = None,
-        model: Optional[linopy.Model] = None,
+        summary: dict,
+        folder: pathlib.Path | None = None,
+        model: linopy.Model | None = None,
         **kwargs,  # To accept old "flow_system" parameter
     ):
-        """
+        """Initialize CalculationResults with optimization data.
+        Usually, this class is instantiated by the Calculation class, or by loading from file.
+
         Args:
-            solution: The solution of the optimization.
-            flow_system_data: The flow_system that was used to create the calculation as a datatset.
-            name: The name of the calculation.
-            summary: Information about the calculation,
-            folder: The folder where the results are saved.
-            model: The linopy model that was used to solve the calculation.
+            solution: Optimization solution dataset.
+            flow_system_data: Flow system configuration dataset.
+            name: Calculation name.
+            summary: Calculation metadata.
+            folder: Results storage folder.
+            model: Linopy optimization model.
         Deprecated:
             flow_system: Use flow_system_data instead.
         """
@@ -202,7 +239,7 @@ class CalculationResults:
         self._sizes = None
         self._effects_per_component = None
 
-    def __getitem__(self, key: str) -> Union['ComponentResults', 'BusResults', 'EffectResults', 'FlowResults']:
+    def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
             return self.components[key]
         if key in self.buses:
@@ -214,13 +251,13 @@ class CalculationResults:
         raise KeyError(f'No element with label {key} found.')
 
     @property
-    def storages(self) -> List['ComponentResults']:
-        """All storages in the results."""
+    def storages(self) -> list[ComponentResults]:
+        """Get all storage components in the results."""
         return [comp for comp in self.components.values() if comp.is_storage]
 
     @property
     def objective(self) -> float:
-        """The objective result of the optimization."""
+        """Get optimization objective value."""
         # Deprecated. Fallback
         if 'objective' not in self.solution:
             logger.warning('Objective not found in solution. Fallback to summary (rounded value). This is deprecated')
@@ -230,14 +267,14 @@ class CalculationResults:
 
     @property
     def variables(self) -> linopy.Variables:
-        """The variables of the optimization. Only available if the linopy.Model is available."""
+        """Get optimization variables (requires linopy model)."""
         if self.model is None:
             raise ValueError('The linopy model is not available.')
         return self.model.variables
 
     @property
     def constraints(self) -> linopy.Constraints:
-        """The constraints of the optimization. Only available if the linopy.Model is available."""
+        """Get optimization constraints (requires linopy model)."""
         if self.model is None:
             raise ValueError('The linopy model is not available.')
         return self.model.constraints
@@ -250,7 +287,7 @@ class CalculationResults:
         return self._effect_share_factors
 
     @property
-    def flow_system(self) -> 'FlowSystem':
+    def flow_system(self) -> FlowSystem:
         """The restored flow_system that was used to create the calculation.
         Contains all input parameters."""
         if self._flow_system is None:
@@ -271,16 +308,14 @@ class CalculationResults:
 
     def filter_solution(
         self,
-        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
-        element: Optional[str] = None,
-        timesteps: Optional[pd.DatetimeIndex] = None,
-        scenarios: Optional[pd.Index] = None,
-        contains: Optional[Union[str, List[str]]] = None,
-        startswith: Optional[Union[str, List[str]]] = None,
+        variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
+        element: str | None = None,
+        timesteps: pd.DatetimeIndex | None = None,
+        scenarios: pd.Index | None = None,
+        contains: str | list[str] | None = None,
+        startswith: str | list[str] | None = None,
     ) -> xr.Dataset:
-        """
-        Filter the solution to a specific variable dimension and element.
-        If no element is specified, all elements are included.
+        """Filter solution by variable dimension and/or element.
 
         Args:
             variable_dims: The dimension of which to get variables from.
@@ -333,9 +368,9 @@ class CalculationResults:
 
     def flow_rates(
         self,
-        start: Optional[Union[str, List[str]]] = None,
-        end: Optional[Union[str, List[str]]] = None,
-        component: Optional[Union[str, List[str]]] = None,
+        start: str | list[str] | None = None,
+        end: str | list[str] | None = None,
+        component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow rates of each Flow.
 
@@ -366,9 +401,9 @@ class CalculationResults:
 
     def flow_hours(
         self,
-        start: Optional[Union[str, List[str]]] = None,
-        end: Optional[Union[str, List[str]]] = None,
-        component: Optional[Union[str, List[str]]] = None,
+        start: str | list[str] | None = None,
+        end: str | list[str] | None = None,
+        component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow hours of each Flow.
 
@@ -398,9 +433,9 @@ class CalculationResults:
 
     def sizes(
         self,
-        start: Optional[Union[str, List[str]]] = None,
-        end: Optional[Union[str, List[str]]] = None,
-        component: Optional[Union[str, List[str]]] = None,
+        start: str | list[str] | None = None,
+        end: str | list[str] | None = None,
+        component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a dataset with the sizes of the Flows.
         Args:
@@ -444,7 +479,7 @@ class CalculationResults:
         self,
         element: str,
         effect: str,
-        mode: Optional[Literal['operation', 'invest']] = None,
+        mode: Literal['operation', 'invest'] | None = None,
         include_flows: bool = False,
     ) -> xr.Dataset:
         """Retrieves individual effect shares for a specific element and effect.
@@ -656,11 +691,11 @@ class CalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap of the solution of a variable.
 
@@ -718,37 +753,42 @@ class CalculationResults:
 
     def plot_network(
         self,
-        controls: Union[
-            bool,
-            List[
+        controls: (
+            bool
+            | list[
                 Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-            ],
-        ] = True,
-        path: Optional[pathlib.Path] = None,
+            ]
+        ) = True,
+        path: pathlib.Path | None = None,
         show: bool = False,
-    ) -> 'pyvis.network.Network':
-        """See flixopt.flow_system.FlowSystem.plot_network"""
+    ) -> pyvis.network.Network | None:
+        """Plot interactive network visualization of the system.
+
+        Args:
+            controls: Enable/disable interactive controls.
+            path: Save path for network HTML.
+            show: Whether to display the plot.
+        """
         if path is None:
             path = self.folder / f'{self.name}--network.html'
         return self.flow_system.plot_network(controls=controls, path=path, show=show)
 
     def to_file(
         self,
-        folder: Optional[Union[str, pathlib.Path]] = None,
-        name: Optional[str] = None,
+        folder: str | pathlib.Path | None = None,
+        name: str | None = None,
         compression: int = 5,
         document_model: bool = True,
         save_linopy_model: bool = False,
     ):
-        """
-        Save the results to a file
+        """Save results to files.
+
         Args:
-            folder: The folder where the results should be saved. Defaults to the folder of the calculation.
-            name: The name of the results file. If not provided, Defaults to the name of the calculation.
-            compression: The compression level to use when saving the solution file (0-9). 0 means no compression.
-            document_model: Wether to document the mathematical formulations in the model.
-            save_linopy_model: Wether to save the model to file. If True, the (linopy) model is saved as a .nc4 file.
-                The model file size is rougly 100 times larger than the solution file.
+            folder: Save folder (defaults to calculation folder).
+            name: File name (defaults to calculation name).
+            compression: Compression level 0-9.
+            document_model: Whether to document model formulations as yaml.
+            save_linopy_model: Whether to save linopy model file.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -785,7 +825,7 @@ class CalculationResults:
 
 class _ElementResults:
     def __init__(
-        self, calculation_results: CalculationResults, label: str, variables: List[str], constraints: List[str]
+        self, calculation_results: CalculationResults, label: str, variables: list[str], constraints: list[str]
     ):
         self._calculation_results = calculation_results
         self.label = label
@@ -796,11 +836,10 @@ class _ElementResults:
 
     @property
     def variables(self) -> linopy.Variables:
-        """
-        Returns the variables of the element.
+        """Get element variables (requires linopy model).
 
         Raises:
-            ValueError: If the linopy model is not availlable.
+            ValueError: If linopy model is unavailable.
         """
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
@@ -808,11 +847,10 @@ class _ElementResults:
 
     @property
     def constraints(self) -> linopy.Constraints:
-        """
-        Returns the variables of the element.
+        """Get element constraints (requires linopy model).
 
         Raises:
-            ValueError: If the linopy model is not availlable.
+            ValueError: If linopy model is unavailable.
         """
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
@@ -820,11 +858,11 @@ class _ElementResults:
 
     def filter_solution(
         self,
-        variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
-        timesteps: Optional[pd.DatetimeIndex] = None,
-        scenarios: Optional[pd.Index] = None,
-        contains: Optional[Union[str, List[str]]] = None,
-        startswith: Optional[Union[str, List[str]]] = None,
+        variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
+        timesteps: pd.DatetimeIndex | None = None,
+        scenarios: pd.Index | None = None,
+        contains: str | list[str] | None = None,
+        startswith: str | list[str] | None = None,
     ) -> xr.Dataset:
         """
         Filter the solution to a specific variable dimension and element.
@@ -865,11 +903,11 @@ class _NodeResults(_ElementResults):
         self,
         calculation_results: CalculationResults,
         label: str,
-        variables: List[str],
-        constraints: List[str],
-        inputs: List[str],
-        outputs: List[str],
-        flows: List[str],
+        variables: list[str],
+        constraints: list[str],
+        inputs: list[str],
+        outputs: list[str],
+        flows: list[str],
     ):
         super().__init__(calculation_results, label, variables, constraints)
         self.inputs = inputs
@@ -878,15 +916,15 @@ class _NodeResults(_ElementResults):
 
     def plot_node_balance(
         self,
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
         mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots the node balance of the Component or Bus.
         Args:
@@ -897,7 +935,7 @@ class _NodeResults(_ElementResults):
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
                  If None, uses first value for each dimension (except time).
                  If empty dict {}, uses all values.
-            mode: The mode to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
+            style: The style to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             drop_suffix: Whether to drop the suffix from the variable names.
@@ -942,21 +980,19 @@ class _NodeResults(_ElementResults):
         lower_percentage_group: float = 5,
         colors: plotting.ColorType = 'viridis',
         text_info: str = 'percent+label+value',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
-    ) -> plotly.graph_objects.Figure:
-        """
-        Plots a pie chart of the flow hours of the inputs and outputs of buses or components.
-
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
+        """Plot pie chart of flow hours distribution.
         Args:
-            colors: a colorscale or a list of colors to use for the plot
-            lower_percentage_group: The percentage of flow_hours that is grouped in "Others" (0...100)
-            text_info: What information to display on the pie plot
-            save: Whether to save the figure.
-            show: Whether to show the figure.
-            engine: Plotting engine to use. Only 'plotly' is implemented atm.
+            lower_percentage_group: Percentage threshold for "Others" grouping.
+            colors: Color scheme. Also see plotly.
+            text_info: Information to display on pie slices.
+            save: Whether to save plot.
+            show: Whether to display plot.
+            engine: Plotting engine ('plotly' or 'matplotlib').
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
@@ -1025,11 +1061,11 @@ class _NodeResults(_ElementResults):
         self,
         negate_inputs: bool = True,
         negate_outputs: bool = False,
-        threshold: Optional[float] = 1e-5,
+        threshold: float | None = 1e-5,
         with_last_timestep: bool = False,
         mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Component or Bus.
@@ -1074,11 +1110,11 @@ class _NodeResults(_ElementResults):
 
 
 class BusResults(_NodeResults):
-    """Results for a Bus"""
+    """Results container for energy/material balance nodes in the system."""
 
 
 class ComponentResults(_NodeResults):
-    """Results for a Component"""
+    """Results container for individual system components with specialized analysis tools."""
 
     @property
     def is_storage(self) -> bool:
@@ -1090,34 +1126,34 @@ class ComponentResults(_NodeResults):
 
     @property
     def charge_state(self) -> xr.DataArray:
-        """Get the solution of the charge state of the Storage."""
+        """Get storage charge state solution."""
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
         return self.solution[self._charge_state]
 
     def plot_charge_state(
         self,
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
-        indexer: Optional[Dict['FlowSystemDimensions', Any]] = None,
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure:
-        """
-        Plots the charge state of a Storage.
+        """Plot storage charge state over time, combined with the node balance.
+
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
-            colors: The c
+            colors: Color scheme. Also see plotly.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
-            style: The plotting mode for the flow_rate
+            style: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
 
         Raises:
-            ValueError: If the Component is not a Storage.
+            ValueError: If component is not a storage.
         """
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
@@ -1170,17 +1206,20 @@ class ComponentResults(_NodeResults):
         )
 
     def node_balance_with_charge_state(
-        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: Optional[float] = 1e-5
+        self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: float | None = 1e-5
     ) -> xr.Dataset:
-        """
-        Returns a dataset with the node balance of the Storage including its charge state.
+        """Get storage node balance including charge state.
+
         Args:
-            negate_inputs: Whether to negate the inputs of the Storage.
-            negate_outputs: Whether to negate the outputs of the Storage.
-            threshold: The threshold for small values.
+            negate_inputs: Whether to negate input flows.
+            negate_outputs: Whether to negate output flows.
+            threshold: Threshold for small values.
+
+        Returns:
+            xr.Dataset: Node balance with charge state.
 
         Raises:
-            ValueError: If the Component is not a Storage.
+            ValueError: If component is not a storage.
         """
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
@@ -1205,7 +1244,14 @@ class EffectResults(_ElementResults):
     """Results for an Effect"""
 
     def get_shares_from(self, element: str):
-        """Get the shares from an Element (without subelements) to the Effect"""
+        """Get effect shares from specific element.
+
+        Args:
+            element: Element label to get shares from.
+
+        Returns:
+            xr.Dataset: Element shares to this effect.
+        """
         return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
 
 
@@ -1214,8 +1260,8 @@ class FlowResults(_ElementResults):
         self,
         calculation_results: CalculationResults,
         label: str,
-        variables: List[str],
-        constraints: List[str],
+        variables: list[str],
+        constraints: list[str],
         start: str,
         end: str,
         component: str,
@@ -1246,12 +1292,103 @@ class FlowResults(_ElementResults):
 
 
 class SegmentedCalculationResults:
-    """
-    Class to store the results of a SegmentedCalculation.
+    """Results container for segmented optimization calculations with temporal decomposition.
+
+    This class manages results from SegmentedCalculation runs where large optimization
+    problems are solved by dividing the time horizon into smaller, overlapping segments.
+    It provides unified access to results across all segments while maintaining the
+    ability to analyze individual segment behavior.
+
+    Key Features:
+        **Unified Time Series**: Automatically assembles results from all segments into
+        continuous time series, removing overlaps and boundary effects
+        **Segment Analysis**: Access individual segment results for debugging and validation
+        **Consistency Checks**: Verify solution continuity at segment boundaries
+        **Memory Efficiency**: Handles large datasets that exceed single-segment memory limits
+
+    Temporal Handling:
+        The class manages the complex task of combining overlapping segment solutions
+        into coherent time series, ensuring proper treatment of:
+        - Storage state continuity between segments
+        - Flow rate transitions at segment boundaries
+        - Aggregated results over the full time horizon
+
+    Examples:
+        Load and analyze segmented results:
+
+        ```python
+        # Load segmented calculation results
+        results = SegmentedCalculationResults.from_file('results', 'annual_segmented')
+
+        # Access unified results across all segments
+        full_timeline = results.all_timesteps
+        total_segments = len(results.segment_results)
+
+        # Analyze individual segments
+        for i, segment in enumerate(results.segment_results):
+            print(f'Segment {i + 1}: {len(segment.solution.time)} timesteps')
+            segment_costs = segment.effects['cost'].total_value
+
+        # Check solution continuity at boundaries
+        segment_boundaries = results.get_boundary_analysis()
+        max_discontinuity = segment_boundaries['max_storage_jump']
+        ```
+
+        Create from segmented calculation:
+
+        ```python
+        # After running segmented calculation
+        segmented_calc = SegmentedCalculation(
+            name='annual_system',
+            flow_system=system,
+            timesteps_per_segment=730,  # Monthly segments
+            overlap_timesteps=48,  # 2-day overlap
+        )
+        segmented_calc.do_modeling_and_solve(solver='gurobi')
+
+        # Extract unified results
+        results = SegmentedCalculationResults.from_calculation(segmented_calc)
+
+        # Save combined results
+        results.to_file(compression=5)
+        ```
+
+        Performance analysis across segments:
+
+        ```python
+        # Compare segment solve times
+        solve_times = [seg.summary['durations']['solving'] for seg in results.segment_results]
+        avg_solve_time = sum(solve_times) / len(solve_times)
+
+        # Verify solution quality consistency
+        segment_objectives = [seg.summary['objective_value'] for seg in results.segment_results]
+
+        # Storage continuity analysis
+        if 'Battery' in results.segment_results[0].components:
+            storage_continuity = results.check_storage_continuity('Battery')
+        ```
+
+    Design Considerations:
+        **Boundary Effects**: Monitor solution quality at segment interfaces where
+        foresight is limited compared to full-horizon optimization.
+
+        **Memory Management**: Individual segment results are maintained for detailed
+        analysis while providing unified access for system-wide metrics.
+
+        **Validation Tools**: Built-in methods to verify temporal consistency and
+        identify potential issues from segmentation approach.
+
+    Common Use Cases:
+        - **Large-Scale Analysis**: Annual or multi-year optimization results
+        - **Memory-Constrained Systems**: Results from systems exceeding hardware limits
+        - **Segment Validation**: Verifying segmentation approach effectiveness
+        - **Performance Monitoring**: Comparing segmented vs. full-horizon solutions
+        - **Debugging**: Identifying issues specific to temporal decomposition
+
     """
 
     @classmethod
-    def from_calculation(cls, calculation: 'SegmentedCalculation'):
+    def from_calculation(cls, calculation: SegmentedCalculation):
         return cls(
             [calc.results for calc in calculation.sub_calculations],
             all_timesteps=calculation.all_timesteps,
@@ -1262,13 +1399,20 @@ class SegmentedCalculationResults:
         )
 
     @classmethod
-    def from_file(cls, folder: Union[str, pathlib.Path], name: str):
-        """Create SegmentedCalculationResults directly from file"""
+    def from_file(cls, folder: str | pathlib.Path, name: str):
+        """Load SegmentedCalculationResults from saved files.
+
+        Args:
+            folder: Directory containing saved files.
+            name: Base name of saved files.
+
+        Returns:
+            SegmentedCalculationResults: Loaded instance.
+        """
         folder = pathlib.Path(folder)
         path = folder / name
-        nc_file = path.with_suffix('.nc4')
-        logger.info(f'loading calculation "{name}" from file ("{nc_file}")')
-        with open(path.with_suffix('.json'), 'r', encoding='utf-8') as f:
+        logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
+        with open(path.with_suffix('.json'), encoding='utf-8') as f:
             meta_data = json.load(f)
         return cls(
             [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
@@ -1283,12 +1427,12 @@ class SegmentedCalculationResults:
 
     def __init__(
         self,
-        segment_results: List[CalculationResults],
+        segment_results: list[CalculationResults],
         all_timesteps: pd.DatetimeIndex,
         timesteps_per_segment: int,
         overlap_timesteps: int,
         name: str,
-        folder: Optional[pathlib.Path] = None,
+        folder: pathlib.Path | None = None,
     ):
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
@@ -1299,7 +1443,7 @@ class SegmentedCalculationResults:
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
 
     @property
-    def meta_data(self) -> Dict[str, Union[int, List[str]]]:
+    def meta_data(self) -> dict[str, int | list[str]]:
         return {
             'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
             'timesteps_per_segment': self.timesteps_per_segment,
@@ -1308,11 +1452,18 @@ class SegmentedCalculationResults:
         }
 
     @property
-    def segment_names(self) -> List[str]:
+    def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
-        """Returns the solution of a variable without overlapping timesteps"""
+        """Get variable solution removing segment overlaps.
+
+        Args:
+            variable_name: Name of variable to extract.
+
+        Returns:
+            xr.DataArray: Continuous solution without overlaps.
+        """
         dataarrays = [
             result.solution[variable_name].isel(time=slice(None, self.timesteps_per_segment))
             for result in self.segment_results[:-1]
@@ -1325,21 +1476,23 @@ class SegmentedCalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
         color_map: str = 'portland',
-        save: Union[bool, pathlib.Path] = False,
+        save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-    ) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
-        """
-        Plots a heatmap of the solution of a variable.
+    ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
+        """Plot heatmap of variable solution across segments.
 
         Args:
-            variable_name: The name of the variable to plot.
-            heatmap_timeframes: The timeframes to use for the heatmap.
-            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
-            color_map: The color map to use for the heatmap.
-            save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
-            show: Whether to show the plot or not.
-            engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+            variable_name: Variable to plot.
+            heatmap_timeframes: Time aggregation level.
+            heatmap_timesteps_per_frame: Timesteps per frame.
+            color_map: Color scheme. Also see plotly.
+            save: Whether to save plot.
+            show: Whether to display plot.
+            engine: Plotting engine.
+
+        Returns:
+            Figure object.
         """
         return plot_heatmap(
             dataarray=self.solution_without_overlap(variable_name),
@@ -1353,10 +1506,14 @@ class SegmentedCalculationResults:
             engine=engine,
         )
 
-    def to_file(
-        self, folder: Optional[Union[str, pathlib.Path]] = None, name: Optional[str] = None, compression: int = 5
-    ):
-        """Save the results to a file"""
+    def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
+        """Save segmented results to files.
+
+        Args:
+            folder: Save folder (defaults to instance folder).
+            name: File name (defaults to instance name).
+            compression: Compression level 0-9.
+        """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
         path = folder / name
@@ -1382,24 +1539,23 @@ def plot_heatmap(
     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
     color_map: str = 'portland',
-    save: Union[bool, pathlib.Path] = False,
+    save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
-    indexer: Optional[Dict[str, Any]] = None,
+    indexer: dict[str, Any] | None = None,
 ):
-    """
-    Plots a heatmap of the solution of a variable.
+    """Plot heatmap of time series data.
 
     Args:
-        dataarray: The dataarray to plot.
-        name: The name of the variable to plot.
-        folder: The folder to save the plot to.
-        heatmap_timeframes: The timeframes to use for the heatmap.
-        heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
-        color_map: The color map to use for the heatmap.
-        save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
-        show: Whether to show the plot or not.
-        engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+        dataarray: Data to plot.
+        name: Variable name for title.
+        folder: Save folder.
+        heatmap_timeframes: Time aggregation level.
+        heatmap_timesteps_per_frame: Timesteps per frame.
+        color_map: Color scheme. Also see plotly.
+        save: Whether to save plot.
+        show: Whether to display plot.
+        engine: Plotting engine.
         indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
              If None, uses first value for each dimension.
              If empty dict {}, uses all values.
@@ -1439,27 +1595,23 @@ def plot_heatmap(
 
 def sanitize_dataset(
     ds: xr.Dataset,
-    timesteps: Optional[pd.DatetimeIndex] = None,
-    threshold: Optional[float] = 1e-5,
-    negate: Optional[List[str]] = None,
+    timesteps: pd.DatetimeIndex | None = None,
+    threshold: float | None = 1e-5,
+    negate: list[str] | None = None,
     drop_small_vars: bool = True,
     zero_small_values: bool = False,
-    drop_suffix: Optional[str] = None,
+    drop_suffix: str | None = None,
 ) -> xr.Dataset:
-    """
-    Sanitizes a dataset by handling small values (dropping or zeroing) and optionally reindexing the time axis.
+    """Clean dataset by handling small values and reindexing time.
 
     Args:
-        ds: The dataset to sanitize.
-        timesteps: The timesteps to reindex the dataset to. If None, the original timesteps are kept.
-        threshold: The threshold for small values processing. If None, no processing is done.
-        negate: The variables to negate. If None, no variables are negated.
-        drop_small_vars: If True, drops variables where all values are below threshold.
-        zero_small_values: If True, sets values below threshold to zero.
+        ds: Dataset to sanitize.
+        timesteps: Time index for reindexing (optional).
+        threshold: Threshold for small values processing.
+        negate: Variables to negate.
+        drop_small_vars: Whether to drop variables below threshold.
+        zero_small_values: Whether to zero values below threshold.
         drop_suffix: Drop suffix of data var names. Split by the provided str.
-
-    Returns:
-        xr.Dataset: The sanitized dataset.
     """
     # Create a copy to avoid modifying the original
     ds = ds.copy()
@@ -1476,7 +1628,7 @@ def sanitize_dataset(
 
         # Option 1: Drop variables where all values are below threshold
         if drop_small_vars:
-            vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all()]
+            vars_to_drop = [var for var in ds.data_vars if (ds_no_nan_abs[var] <= threshold).all().item()]
             ds = ds.drop_vars(vars_to_drop)
 
         # Option 2: Set small values to zero
@@ -1485,7 +1637,7 @@ def sanitize_dataset(
                 # Create a boolean mask of values below threshold
                 mask = ds_no_nan_abs[var] <= threshold
                 # Only proceed if there are values to zero out
-                if mask.any():
+                if bool(mask.any().item()):
                     # Create a copy to ensure we don't modify data with views
                     ds[var] = ds[var].copy()
                     # Set values below threshold to zero
@@ -1514,14 +1666,13 @@ def sanitize_dataset(
 
 def filter_dataset(
     ds: xr.Dataset,
-    variable_dims: Optional[Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly']] = None,
-    timesteps: Optional[Union[pd.DatetimeIndex, str, pd.Timestamp]] = None,
-    scenarios: Optional[Union[pd.Index, str, int]] = None,
-    contains: Optional[Union[str, List[str]]] = None,
-    startswith: Optional[Union[str, List[str]]] = None,
+    variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
+    timesteps: pd.DatetimeIndex | str | pd.Timestamp | None = None,
+    scenarios: pd.Index | str | int | None = None,
+    contains: str | list[str] | None = None,
+    startswith: str | list[str] | None = None,
 ) -> xr.Dataset:
-    """
-    Filters a dataset by its dimensions, indexes, and with string filters for variable names.
+    """Filter dataset by variable dimensions, indexes, and with string filters for variable names.
 
     Args:
         ds: The dataset to filter.
@@ -1543,9 +1694,6 @@ def filter_dataset(
             If a list is provided, variables must contain ALL strings in the list.
         startswith: Filter variables that start with this string or strings.
             If a list is provided, variables must start with ANY of the strings in the list.
-
-    Returns:
-        Filtered dataset with specified variables and indexes.
     """
     # First filter by dimensions
     filtered_ds = ds.copy()
@@ -1612,7 +1760,7 @@ def filter_dataset(
     return filtered_ds
 
 
-def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: Optional[Union[str, List[str]]]) -> xr.DataArray:
+def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None) -> xr.DataArray:
     """Filter flows by node and component attributes.
 
     Filters are applied in the order they are specified. All filters must match for an edge to be included.
@@ -1634,7 +1782,7 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: Optional[Union[str, Li
     """
 
     # Helper function to process filters
-    def apply_filter(array, coord_name: str, coord_values: Union[Any, List[Any]]):
+    def apply_filter(array, coord_name: str, coord_values: Any | list[Any]):
         # Verify coord exists
         if coord_name not in array.coords:
             raise AttributeError(f"Missing required coordinate '{coord_name}'")
@@ -1670,8 +1818,8 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: Optional[Union[str, Li
 
 
 def _apply_indexer_to_data(
-    data: Union[xr.DataArray, xr.Dataset], indexer: Optional[Dict[str, Any]] = None, drop=False
-) -> Tuple[Union[xr.DataArray, xr.Dataset], List[str]]:
+    data: xr.DataArray | xr.Dataset, indexer: dict[str, Any] | None = None, drop=False
+) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
     Apply indexer selection or auto-select first values for non-time dimensions.
 
