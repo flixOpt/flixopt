@@ -69,7 +69,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 
 
 ### Added
-* FlowSystem Restoring: The used FlowSystem is now acessible directly form the results without manual restoring (lazily). All Parameters can be safely accessed anytime after the solve.
+* FlowSystem Restoring: The used FlowSystem is now accessible directly form the results without manual restoring (lazily). All Parameters can be safely accessed anytime after the solve.
 * FlowResults added as a new class to store the results of Flows. They can now be accessed directly.
 * Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
 * Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
