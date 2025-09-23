@@ -11,8 +11,7 @@ from typing import TYPE_CHECKING
 import linopy
 import numpy as np
 
-from .config import CONFIG
-from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, ModelingUtilitiesAbstract
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
