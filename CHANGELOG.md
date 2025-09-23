@@ -134,6 +134,13 @@ This enables to model transformation pathways over multiple years.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
 
 
+## [2.1.9] - 2025-09-23
+Small Bugfix which was supposed to be fixed in 2.1.8
+
+### Fixed
+- Fix error handling in network visualization if networkx is not installed.
+
+
 ## [2.1.8] - 2025-09-22
 This release focuses on code quality improvements, enhanced documentation, and bug fixes for heat pump components and visualization features.
 
