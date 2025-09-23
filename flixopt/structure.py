@@ -3,11 +3,11 @@ This module contains the core structure of the flixopt framework.
 These classes are not directly used by the end user, but are used by other modules.
 """
 
+from __future__ import annotations
+
 import inspect
 import json
 import logging
-import pathlib
-from collections.abc import Collection, ItemsView, Iterator
 from dataclasses import dataclass
 from io import StringIO
 from typing import (
@@ -27,6 +27,9 @@ from . import io as fx_io
 from .core import TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
+    import pathlib
+    from collections.abc import Collection, ItemsView, Iterator
+
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
 
@@ -51,10 +54,10 @@ def register_class_for_io(cls):
 class SubmodelsMixin:
     """Mixin that provides submodel functionality for both FlowSystemModel and Submodel."""
 
-    submodels: 'Submodels'
+    submodels: Submodels
 
     @property
-    def all_submodels(self) -> list['Submodel']:
+    def all_submodels(self) -> list[Submodel]:
         """Get all submodels including nested ones recursively."""
         direct_submodels = list(self.submodels.values())
 
@@ -65,7 +68,7 @@ class SubmodelsMixin:
 
         return direct_submodels + nested_submodels
 
-    def add_submodels(self, submodel: 'Submodel', short_name: str = None) -> 'Submodel':
+    def add_submodels(self, submodel: Submodel, short_name: str = None) -> Submodel:
         """Register a sub-model with the model"""
         if short_name is None:
             short_name = submodel.__class__.__name__
@@ -82,7 +85,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     It is used to create and store the variables and constraints for the flow_system.
     """
 
-    def __init__(self, flow_system: 'FlowSystem'):
+    def __init__(self, flow_system: FlowSystem):
         """
         Args:
             flow_system: The flow_system that is used to create the model.
@@ -215,7 +218,7 @@ class Interface:
         transform_data(flow_system): Transform data to match FlowSystem dimensions
     """
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
         Args:
@@ -532,7 +535,7 @@ class Interface:
             raise OSError(f'Failed to save {self.__class__.__name__} to NetCDF file {path}: {e}') from e
 
     @classmethod
-    def from_dataset(cls, ds: xr.Dataset) -> 'Interface':
+    def from_dataset(cls, ds: xr.Dataset) -> Interface:
         """
         Create an instance from an xarray Dataset.
 
@@ -568,7 +571,7 @@ class Interface:
             raise ValueError(f'Failed to create {cls.__name__} from dataset: {e}') from e
 
     @classmethod
-    def from_netcdf(cls, path: str | pathlib.Path) -> 'Interface':
+    def from_netcdf(cls, path: str | pathlib.Path) -> Interface:
         """
         Load an instance from a NetCDF file.
 
@@ -681,7 +684,7 @@ class Interface:
             # Fallback if structure generation fails
             return f'{self.__class__.__name__} instance'
 
-    def copy(self) -> 'Interface':
+    def copy(self) -> Interface:
         """
         Create a copy of the Interface object.
 
@@ -707,7 +710,7 @@ class Interface:
 class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
 
-    def __init__(self, label: str, meta_data: dict = None):
+    def __init__(self, label: str, meta_data: dict | None = None):
         """
         Args:
             label: The label of the element
@@ -718,10 +721,11 @@ class Element(Interface):
         self.submodel: ElementModel | None = None
 
     def _plausibility_checks(self) -> None:
-        """This function is used to do some basic plausibility checks for each Element during initialization"""
+        """This function is used to do some basic plausibility checks for each Element during initialization.
+        This is run after all data is transformed to the correct format/type"""
         raise NotImplementedError('Every Element needs a _plausibility_checks() method')
 
-    def create_model(self, model: FlowSystemModel) -> 'ElementModel':
+    def create_model(self, model: FlowSystemModel) -> ElementModel:
         raise NotImplementedError('Every Element needs a create_model() method')
 
     @property
@@ -756,7 +760,7 @@ class Submodel(SubmodelsMixin):
     Can have other Submodels assigned, and can be a Submodel of another Submodel.
     """
 
-    def __init__(self, model: FlowSystemModel, label_of_element: str, label_of_model=None):
+    def __init__(self, model: FlowSystemModel, label_of_element: str, label_of_model: str | None = None):
         """
         Args:
             model: The FlowSystemModel that is used to create the model.
@@ -843,7 +847,7 @@ class Submodel(SubmodelsMixin):
     def filter_variables(
         self,
         filter_by: Literal['binary', 'continuous', 'integer'] | None = None,
-        length: Literal['scalar', 'time'] = None,
+        length: Literal['scalar', 'time'] | None = None,
     ):
         if filter_by is None:
             all_variables = self.variables
@@ -933,13 +937,13 @@ class Submodel(SubmodelsMixin):
 class Submodels:
     """A simple collection for storing submodels with easy access and representation."""
 
-    data: dict[str, 'Submodel']
+    data: dict[str, Submodel]
 
-    def __getitem__(self, name: str) -> 'Submodel':
+    def __getitem__(self, name: str) -> Submodel:
         """Get a submodel by its name."""
         return self.data[name]
 
-    def __getattr__(self, name: str) -> 'Submodel':
+    def __getattr__(self, name: str) -> Submodel:
         """Get a submodel by attribute access."""
         if name in self.data:
             return self.data[name]
@@ -978,7 +982,7 @@ class Submodels:
 
         return f'{title}\n{underline}{sub_models_string}\n'
 
-    def items(self) -> ItemsView[str, 'Submodel']:
+    def items(self) -> ItemsView[str, Submodel]:
         return self.data.items()
 
     def keys(self):
@@ -987,7 +991,7 @@ class Submodels:
     def values(self):
         return self.data.values()
 
-    def add(self, submodel: 'Submodel', name: str) -> None:
+    def add(self, submodel: Submodel, name: str) -> None:
         """Add a submodel to the collection."""
         self.data[name] = submodel
 

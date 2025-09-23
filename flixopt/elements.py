@@ -2,23 +2,26 @@
 This module contains the basic elements of the flixopt framework.
 """
 
+from __future__ import annotations
+
 import logging
 import warnings
 from typing import TYPE_CHECKING
 
-import linopy
 import numpy as np
 import xarray as xr
 
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
-from .effects import TemporalEffectsUser
 from .features import InvestmentModel, ModelingPrimitives, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingUtilitiesAbstract
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
+    import linopy
+
+    from .effects import TemporalEffectsUser
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -27,35 +30,59 @@ logger = logging.getLogger('flixopt')
 @register_class_for_io
 class Component(Element):
     """
-    A Component contains incoming and outgoing [`Flows`][flixopt.elements.Flow]. It defines how these Flows interact with each other.
-    The On or Off state of the Component is defined by all its Flows. Its on, if any of its FLows is On.
-    It's mathematically advisable to define the On/Off state in a FLow rather than a Component if possible,
-    as this introduces less binary variables to the Submodel
-    Constraints to the On/Off state are defined by the [`on_off_parameters`][flixopt.interface.OnOffParameters].
+    Base class for all system components that transform, convert, or process flows.
+
+    Components are the active elements in energy systems that define how input and output
+    Flows interact with each other. They represent equipment, processes, or logical
+    operations that transform energy or materials between different states, carriers,
+    or locations.
+
+    Components serve as connection points between Buses through their associated Flows,
+    enabling the modeling of complex energy system topologies and operational constraints.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        inputs: list of input Flows feeding into the component. These represent
+            energy/material consumption by the component.
+        outputs: list of output Flows leaving the component. These represent
+            energy/material production by the component.
+        on_off_parameters: Defines binary operation constraints and costs when the
+            component has discrete on/off states. Creates binary variables for all
+            connected Flows. For better performance, prefer defining OnOffParameters
+            on individual Flows when possible.
+        prevent_simultaneous_flows: list of Flows that cannot be active simultaneously.
+            Creates binary variables to enforce mutual exclusivity. Use sparingly as
+            it increases computational complexity.
+        meta_data: Used to store additional information. Not used internally but saved
+            in results. Only use Python native types.
+
+    Note:
+        Component operational state is determined by its connected Flows:
+        - Component is "on" if ANY of its Flows is active (flow_rate > 0)
+        - Component is "off" only when ALL Flows are inactive (flow_rate = 0)
+
+        Binary variables and constraints:
+        - on_off_parameters creates binary variables for ALL connected Flows
+        - prevent_simultaneous_flows creates binary variables for specified Flows
+        - For better computational performance, prefer Flow-level OnOffParameters
+
+        Component is an abstract base class. In practice, use specialized subclasses:
+        - LinearConverter: Linear input/output relationships
+        - Storage: Temporal energy/material storage
+        - Transmission: Transport between locations
+        - Source/Sink: System boundaries
+
     """
 
     def __init__(
         self,
         label: str,
-        inputs: list['Flow'] | None = None,
-        outputs: list['Flow'] | None = None,
+        inputs: list[Flow] | None = None,
+        outputs: list[Flow] | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        prevent_simultaneous_flows: list['Flow'] | None = None,
+        prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            inputs: input flows.
-            outputs: output flows.
-            on_off_parameters: Information about on and off state of Component.
-                Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
-                If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
-                See class OnOffParameters.
-            prevent_simultaneous_flows: Define a Group of Flows. Only one them can be on at a time.
-                Induces On-Variable in all Flows! If possible, use OnOffParameters in a single Flow instead.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, meta_data=meta_data)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
@@ -65,12 +92,12 @@ class Component(Element):
 
         self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
-    def create_model(self, model: FlowSystemModel) -> 'ComponentModel':
+    def create_model(self, model: FlowSystemModel) -> ComponentModel:
         self._plausibility_checks()
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: FlowSystem) -> None:
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
 
@@ -91,7 +118,59 @@ class Component(Element):
 @register_class_for_io
 class Bus(Element):
     """
-    A Bus represents a nodal balance between the flow rates of its incoming and outgoing Flows.
+    Buses represent nodal balances between flow rates, serving as connection points.
+
+    A Bus enforces energy or material balance constraints where the sum of all incoming
+    flows must equal the sum of all outgoing flows at each time step. Buses represent
+    physical or logical connection points for energy carriers (electricity, heat, gas)
+    or material flows between different Components.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        excess_penalty_per_flow_hour: Penalty costs for bus balance violations.
+            When None, no excess/deficit is allowed (hard constraint). When set to a
+            value > 0, allows bus imbalances at penalty cost. Default is 1e5 (high penalty).
+        meta_data: Used to store additional information. Not used internally but saved
+            in results. Only use Python native types.
+
+    Examples:
+        Electrical bus with strict balance:
+
+        ```python
+        electricity_bus = Bus(
+            label='main_electrical_bus',
+            excess_penalty_per_flow_hour=None,  # No imbalance allowed
+        )
+        ```
+
+        Heat network with penalty for imbalances:
+
+        ```python
+        heat_network = Bus(
+            label='district_heating_network',
+            excess_penalty_per_flow_hour=1000,  # €1000/MWh penalty for imbalance
+        )
+        ```
+
+        Material flow with time-varying penalties:
+
+        ```python
+        material_hub = Bus(
+            label='material_processing_hub',
+            excess_penalty_per_flow_hour=waste_disposal_costs,  # Time series
+        )
+        ```
+
+    Note:
+        The bus balance equation enforced is: Σ(inflows) = Σ(outflows) + excess - deficit
+
+        When excess_penalty_per_flow_hour is None, excess and deficit are forced to zero.
+        When a penalty cost is specified, the optimization can choose to violate the
+        balance if economically beneficial, paying the penalty.
+        The penalty is added to the objective directly.
+
+        Empty `inputs` and `outputs` lists are initialized and populated automatically
+        by the FlowSystem during system setup.
     """
 
     def __init__(
@@ -100,34 +179,28 @@ class Bus(Element):
         excess_penalty_per_flow_hour: TemporalDataUser | None = 1e5,
         meta_data: dict | None = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            excess_penalty_per_flow_hour: excess costs / penalty costs (bus balance compensation)
-                (none/ 0 -> no penalty). The default is 1e5.
-                (Take care: if you use a timeseries (no scalar), timeseries is aggregated if calculation_type = aggregated!)
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, meta_data=meta_data)
         self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
 
-    def create_model(self, model: FlowSystemModel) -> 'BusModel':
+    def create_model(self, model: FlowSystemModel) -> BusModel:
         self._plausibility_checks()
         self.submodel = BusModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
-        if self.excess_penalty_per_flow_hour is not None and (self.excess_penalty_per_flow_hour == 0).all():
-            logger.warning(
-                f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
-            )
+        if self.excess_penalty_per_flow_hour is not None:
+            zero_penalty = np.all(np.equal(self.excess_penalty_per_flow_hour, 0))
+            if zero_penalty:
+                logger.warning(
+                    f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
+                )
 
     @property
     def with_excess(self) -> bool:
@@ -149,9 +222,146 @@ class Connection:
 
 @register_class_for_io
 class Flow(Element):
-    r"""
-    A **Flow** moves energy (or material) between a [Bus][flixopt.elements.Bus] and a [Component][flixopt.elements.Component] in a predefined direction.
-    The flow-rate is the main optimization variable of the **Flow**.
+    """Define a directed flow of energy or material between bus and component.
+
+    A Flow represents the transfer of energy (electricity, heat, fuel) or material
+    between a Bus and a Component in a specific direction. The flow rate is the
+    primary optimization variable, with constraints and costs defined through
+    various parameters. Flows can have fixed or variable sizes, operational
+    constraints, and complex on/off behavior.
+
+    Key Concepts:
+        **Flow Rate**: The instantaneous rate of energy/material transfer (optimization variable) [kW, m³/h, kg/h]
+        **Flow Hours**: Amount of energy/material transferred per timestep. [kWh, m³, kg]
+        **Flow Size**: The maximum capacity or nominal rating of the flow [kW, m³/h, kg/h]
+        **Relative Bounds**: Flow rate limits expressed as fractions of flow size
+
+    Integration with Parameter Classes:
+        - **InvestParameters**: Used for `size` when flow Size is an investment decision
+        - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
+
+    Args:
+        label: Unique identifier for the flow within its component.
+            The full label combines component and flow labels.
+        bus: Label of the bus this flow connects to. Must match a bus in the FlowSystem.
+        size: Flow capacity or nominal rating. Can be:
+            - Scalar value for fixed capacity
+            - InvestParameters for investment-based sizing decisions
+            - None to use large default value (CONFIG.modeling.BIG)
+        relative_minimum: Minimum flow rate as fraction of size.
+            Example: 0.2 means flow cannot go below 20% of rated capacity.
+        relative_maximum: Maximum flow rate as fraction of size (typically 1.0).
+            Values >1.0 allow temporary overload operation.
+        load_factor_min: Minimum average utilization over the time horizon (0-1).
+            Calculated as total flow hours divided by (size × total time).
+        load_factor_max: Maximum average utilization over the time horizon (0-1).
+            Useful for equipment duty cycle limits or maintenance scheduling.
+        effects_per_flow_hour: Operational costs and impacts per unit of flow-time.
+            Dictionary mapping effect names to unit costs (e.g., fuel costs, emissions).
+        on_off_parameters: Binary operation constraints using OnOffParameters.
+            Enables modeling of startup costs, minimum run times, cycling limits.
+            Only relevant when relative_minimum > 0 or discrete operation is required.
+        flow_hours_total_max: Maximum cumulative flow-hours over time horizon.
+            Alternative to load_factor_max for absolute energy/material limits.
+        flow_hours_total_min: Minimum cumulative flow-hours over time horizon.
+            Alternative to load_factor_min for contractual or operational requirements.
+        fixed_relative_profile: Predetermined flow pattern as fraction of size.
+            When specified, flow rate becomes: size × fixed_relative_profile(t).
+            Used for: demand profiles, renewable generation, fixed schedules.
+        previous_flow_rate: Initial flow state for startup/shutdown dynamics.
+            Used with on_off_parameters to determine initial on/off status.
+            If None, assumes flow was off in previous time period.
+        meta_data: Additional information stored with results but not used in optimization.
+            Must contain only Python native types (dict, list, str, int, float, bool).
+
+    Examples:
+        Basic power flow with fixed capacity:
+
+        ```python
+        generator_output = Flow(
+            label='electricity_out',
+            bus='electricity_grid',
+            size=100,  # 100 MW capacity
+            relative_minimum=0.4,  # Cannot operate below 40 MW
+            effects_per_flow_hour={'fuel_cost': 45, 'co2_emissions': 0.8},
+        )
+        ```
+
+        Investment decision for battery capacity:
+
+        ```python
+        battery_flow = Flow(
+            label='electricity_storage',
+            bus='electricity_grid',
+            size=InvestParameters(
+                minimum_size=10,  # Minimum 10 MWh
+                maximum_size=100,  # Maximum 100 MWh
+                specific_effects={'cost': 150_000},  # €150k/MWh annualized
+            ),
+        )
+        ```
+
+        Heat pump with startup costs and minimum run times:
+
+        ```python
+        heat_pump = Flow(
+            label='heat_output',
+            bus='heating_network',
+            size=50,  # 50 kW thermal
+            relative_minimum=0.3,  # Minimum 15 kW output when on
+            effects_per_flow_hour={'electricity_cost': 25, 'maintenance': 2},
+            on_off_parameters=OnOffParameters(
+                effects_per_switch_on={'startup_cost': 100, 'wear': 0.1},
+                consecutive_on_hours_min=2,  # Must run at least 2 hours
+                consecutive_off_hours_min=1,  # Must stay off at least 1 hour
+                switch_on_total_max=200,  # Maximum 200 starts per year
+            ),
+        )
+        ```
+
+        Fixed renewable generation profile:
+
+        ```python
+        solar_generation = Flow(
+            label='solar_power',
+            bus='electricity_grid',
+            size=25,  # 25 MW installed capacity
+            fixed_relative_profile=np.array([0, 0.1, 0.4, 0.8, 0.9, 0.7, 0.3, 0.1, 0]),
+            effects_per_flow_hour={'maintenance_costs': 5},  # €5/MWh maintenance
+        )
+        ```
+
+        Industrial process with annual utilization limits:
+
+        ```python
+        production_line = Flow(
+            label='product_output',
+            bus='product_market',
+            size=1000,  # 1000 units/hour capacity
+            load_factor_min=0.6,  # Must achieve 60% annual utilization
+            load_factor_max=0.85,  # Cannot exceed 85% for maintenance
+            effects_per_flow_hour={'variable_cost': 12, 'quality_control': 0.5},
+        )
+        ```
+
+    Design Considerations:
+        **Size vs Load Factors**: Use `flow_hours_total_min/max` for absolute limits,
+        `load_factor_min/max` for utilization-based constraints.
+
+        **Relative Bounds**: Set `relative_minimum > 0` only when equipment cannot
+        operate below that level. Use `on_off_parameters` for discrete on/off behavior.
+
+        **Fixed Profiles**: Use `fixed_relative_profile` for known exact patterns,
+        `relative_maximum` for upper bounds on optimization variables.
+
+    Notes:
+        - Default size (CONFIG.modeling.BIG) is used when size=None
+        - list inputs for previous_flow_rate are converted to NumPy arrays
+        - Flow direction is determined by component input/output designation
+
+    Deprecated:
+        Passing Bus objects to `bus` parameter. Use bus label strings instead.
+
     """
 
     def __init__(
@@ -171,39 +381,8 @@ class Flow(Element):
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
     ):
-        r"""
-        Args:
-            label: The label of the FLow. Used to identify it in the FlowSystem. Its `full_label` consists of the label of the Component and the label of the Flow.
-            bus: blabel of the bus the flow is connected to.
-            size: size of the flow. If InvestmentParameters is used, size is optimized.
-                If size is None, a default value is used.
-            relative_minimum: min value is relative_minimum multiplied by size
-            relative_maximum: max value is relative_maximum multiplied by size. If size = max then relative_maximum=1
-            load_factor_min: minimal load factor  general: avg Flow per nominalVal/investSize
-                (e.g. boiler, kW/kWh=h; solarthermal: kW/m²;
-                 def: :math:`load\_factor:= sumFlowHours/ (nominal\_val \cdot \Delta t_{tot})`
-            load_factor_max: maximal load factor (see minimal load factor)
-            effects_per_flow_hour: operational costs, costs per flow-"work"
-            on_off_parameters: If present, flow can be "off", i.e. be zero (only relevant if relative_minimum > 0)
-                Therefore a binary var "on" is used. Further, several other restrictions and effects can be modeled
-                through this On/Off State (See OnOffParameters)
-            flow_hours_total_max: maximum flow-hours ("flow-work")
-                (if size is not const, maybe load_factor_max is the better choice!)
-            flow_hours_total_min: minimum flow-hours ("flow-work")
-                (if size is not predefined, maybe load_factor_min is the better choice!)
-            fixed_relative_profile: fixed relative values for flow (if given).
-                flow_rate(t) := fixed_relative_profile(t) * size(t)
-                With this value, the flow_rate is no optimization-variable anymore.
-                (relative_minimum and relative_maximum are ignored)
-                used for fixed load or supply profiles, i.g. heat demand, wind-power, solarthermal
-                If the load-profile is just an upper limit, use relative_maximum instead.
-            previous_flow_rate: previous flow rate of the flow. Used to determine if and how long the
-                flow is already on / off. If None, the flow is considered to be off for one timestep.
-                Currently does not support different values in different years or scenarios!
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, meta_data=meta_data)
-        self.size = size if size is not None else CONFIG.modeling.BIG  # Default size
+        self.size = CONFIG.modeling.BIG if size is None else size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
@@ -233,12 +412,12 @@ class Flow(Element):
             self.bus = bus
             self._bus_object = None
 
-    def create_model(self, model: FlowSystemModel) -> 'FlowModel':
+    def create_model(self, model: FlowSystemModel) -> FlowModel:
         self._plausibility_checks()
         self.submodel = FlowModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         self.relative_minimum = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum', self.relative_minimum
         )

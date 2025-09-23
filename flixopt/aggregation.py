@@ -3,15 +3,15 @@ This module contains the Aggregation functionality for the flixopt framework.
 Through this, aggregating TimeSeriesData is possible.
 """
 
+from __future__ import annotations
+
 import copy
 import logging
 import pathlib
 import timeit
 from typing import TYPE_CHECKING
 
-import linopy
 import numpy as np
-import pandas as pd
 
 try:
     import tsam.timeseriesaggregation as tsam
@@ -21,16 +21,19 @@ except ImportError:
     TSAM_AVAILABLE = False
 
 from .components import Storage
-from .core import Scalar, TimeSeriesData
-from .elements import Component
-from .flow_system import FlowSystem
 from .structure import (
     FlowSystemModel,
     Submodel,
 )
 
 if TYPE_CHECKING:
+    import linopy
+    import pandas as pd
     import plotly.graph_objects as go
+
+    from .core import Scalar, TimeSeriesData
+    from .elements import Component
+    from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
 
@@ -46,9 +49,9 @@ class Aggregation:
         hours_per_time_step: Scalar,
         hours_per_period: Scalar,
         nr_of_periods: int = 8,
-        weights: dict[str, float] = None,
-        time_series_for_high_peaks: list[str] = None,
-        time_series_for_low_peaks: list[str] = None,
+        weights: dict[str, float] | None = None,
+        time_series_for_high_peaks: list[str] | None = None,
+        time_series_for_low_peaks: list[str] | None = None,
     ):
         """
         Args:
@@ -138,7 +141,7 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> 'go.Figure':
+    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
         from . import plotting
 
         df_org = self.original_data.copy().rename(
@@ -160,9 +163,9 @@ class Aggregation:
             figure_like=fig,
             default_path=pathlib.Path('aggregated data.html'),
             default_filetype='.html',
-            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+            user_path=save,
             show=show,
-            save=True if save else False,
+            save=save is not None,
         )
 
         return fig
@@ -199,7 +202,7 @@ class Aggregation:
             skip_first_index_of_period (bool): Whether to include or skip the first index of each period.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: Two arrays of indices.
+            tuple[np.ndarray, np.ndarray]: Two arrays of indices.
         """
         idx_var1 = []
         idx_var2 = []
@@ -235,8 +238,8 @@ class AggregationParameters:
         aggregate_data_and_fix_non_binary_vars: bool,
         percentage_of_period_freedom: float = 0,
         penalty_of_period_freedom: float = 0,
-        time_series_for_high_peaks: list[TimeSeriesData] = None,
-        time_series_for_low_peaks: list[TimeSeriesData] = None,
+        time_series_for_high_peaks: list[TimeSeriesData] | None = None,
+        time_series_for_low_peaks: list[TimeSeriesData] | None = None,
     ):
         """
         Initializes aggregation parameters for time series data
@@ -278,8 +281,8 @@ class AggregationParameters:
         return [ts.name for ts in self.time_series_for_low_peaks]
 
     @property
-    def use_low_peaks(self):
-        return self.time_series_for_low_peaks is not None
+    def use_low_peaks(self) -> bool:
+        return bool(self.time_series_for_low_peaks)
 
 
 class AggregationModel(Submodel):

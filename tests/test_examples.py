@@ -35,8 +35,7 @@ def test_example_scripts(example_script):
         # Run the script
         result = subprocess.run(
             [sys.executable, example_script.name],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
         )
         assert result.returncode == 0, f'Script {example_script} failed:\n{result.stderr}'

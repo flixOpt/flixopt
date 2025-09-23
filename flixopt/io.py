@@ -1,13 +1,18 @@
+from __future__ import annotations
+
 import importlib.util
 import json
 import logging
 import pathlib
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
-import linopy
 import xarray as xr
 import yaml
+
+if TYPE_CHECKING:
+    import linopy
 
 logger = logging.getLogger('flixopt')
 
@@ -136,7 +141,7 @@ def _normalize_string_content(text):
     return text.strip()
 
 
-def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> dict[str, str]:
+def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None) -> dict[str, str]:
     """
     Convert all model variables and constraints to a structured string representation.
     This can take multiple seconds for large models.
@@ -185,7 +190,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> dic
     if path is not None:
         if path.suffix not in ['.yaml', '.yml']:
             raise ValueError(f'Invalid file extension for path {path}. Only .yaml and .yml are supported')
-        _save_to_yaml(documentation, path)
+        _save_to_yaml(documentation, str(path))
 
     return documentation
 
@@ -237,7 +242,7 @@ def save_dataset_to_netcdf(
         path,
         encoding=None
         if not apply_encoding
-        else {data_var: {'zlib': True, 'complevel': 5} for data_var in ds.data_vars},
+        else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
     )
 
 

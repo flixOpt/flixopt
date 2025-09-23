@@ -1,13 +1,34 @@
+"""Comprehensive visualization toolkit for flixopt optimization results and data analysis.
+
+This module provides a unified plotting interface supporting both Plotly (interactive)
+and Matplotlib (static) backends for visualizing energy system optimization results.
+It offers specialized plotting functions for time series, heatmaps, network diagrams,
+and statistical analyses commonly needed in energy system modeling.
+
+Key Features:
+    **Dual Backend Support**: Seamless switching between Plotly and Matplotlib
+    **Energy System Focus**: Specialized plots for power flows, storage states, emissions
+    **Color Management**: Intelligent color processing and palette management
+    **Export Capabilities**: High-quality export for reports and publications
+    **Integration Ready**: Designed for use with CalculationResults and standalone analysis
+
+Main Plot Types:
+    - **Time Series**: Flow rates, power profiles, storage states over time
+    - **Heatmaps**: High-resolution temporal data visualization with customizable aggregation
+    - **Network Diagrams**: System topology with flow visualization
+    - **Statistical Plots**: Distribution analysis, correlation studies, performance metrics
+    - **Comparative Analysis**: Multi-scenario and sensitivity study visualizations
+
+The module integrates seamlessly with flixopt's result classes while remaining
+accessible for standalone data visualization tasks.
 """
-This module contains the plotting functionality of the flixopt framework.
-It provides high level functions to plot data with plotly and matplotlib.
-It's meant to be used in results.py, but is designed to be used by the end user as well.
-"""
+
+from __future__ import annotations
 
 import itertools
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Any, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -33,18 +54,63 @@ _portland_colors = [
 ]
 
 # Check if the colormap already exists before registering it
-if 'portland' not in plt.colormaps:
-    plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
+if hasattr(plt, 'colormaps'):  # Matplotlib >= 3.7
+    registry = plt.colormaps
+    if 'portland' not in registry:
+        registry.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
+else:  # Matplotlib < 3.7
+    if 'portland' not in [c for c in plt.colormaps()]:
+        plt.register_cmap(name='portland', cmap=mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
 ColorType = str | list[str] | dict[str, str]
-"""Identifier for the colors to use.
-Use the name of a colorscale, a list of colors or a dictionary of labels to colors.
-The colors must be valid color strings (HEX or names). Depending on the Engine used, other formats are possible.
-See also:
-- https://htmlcolorcodes.com/color-names/
-- https://matplotlib.org/stable/tutorials/colors/colormaps.html
-- https://plotly.com/python/builtin-colorscales/
+"""Flexible color specification type supporting multiple input formats for visualization.
+
+Color specifications can take several forms to accommodate different use cases:
+
+**Named Colormaps** (str):
+    - Standard colormaps: 'viridis', 'plasma', 'cividis', 'tab10', 'Set1'
+    - Energy-focused: 'portland' (custom flixopt colormap for energy systems)
+    - Backend-specific maps available in Plotly and Matplotlib
+
+**Color Lists** (list[str]):
+    - Explicit color sequences: ['red', 'blue', 'green', 'orange']
+    - HEX codes: ['#FF0000', '#0000FF', '#00FF00', '#FFA500']
+    - Mixed formats: ['red', '#0000FF', 'green', 'orange']
+
+**Label-to-Color Mapping** (dict[str, str]):
+    - Explicit associations: {'Wind': 'skyblue', 'Solar': 'gold', 'Gas': 'brown'}
+    - Ensures consistent colors across different plots and datasets
+    - Ideal for energy system components with semantic meaning
+
+Examples:
+    ```python
+    # Named colormap
+    colors = 'viridis'  # Automatic color generation
+
+    # Explicit color list
+    colors = ['red', 'blue', 'green', '#FFD700']
+
+    # Component-specific mapping
+    colors = {
+        'Wind_Turbine': 'skyblue',
+        'Solar_Panel': 'gold',
+        'Natural_Gas': 'brown',
+        'Battery': 'green',
+        'Electric_Load': 'darkred'
+    }
+    ```
+
+Color Format Support:
+    - **Named Colors**: 'red', 'blue', 'forestgreen', 'darkorange'
+    - **HEX Codes**: '#FF0000', '#0000FF', '#228B22', '#FF8C00'
+    - **RGB Tuples**: (255, 0, 0), (0, 0, 255) [Matplotlib only]
+    - **RGBA**: 'rgba(255,0,0,0.8)' [Plotly only]
+
+References:
+    - HTML Color Names: https://htmlcolorcodes.com/color-names/
+    - Matplotlib Colormaps: https://matplotlib.org/stable/tutorials/colors/colormaps.html
+    - Plotly Built-in Colorscales: https://plotly.com/python/builtin-colorscales/
 """
 
 PlottingEngine = Literal['plotly', 'matplotlib']
@@ -52,16 +118,68 @@ PlottingEngine = Literal['plotly', 'matplotlib']
 
 
 class ColorProcessor:
-    """Class to handle color processing for different visualization engines."""
+    """Intelligent color management system for consistent multi-backend visualization.
+
+    This class provides unified color processing across Plotly and Matplotlib backends,
+    ensuring consistent visual appearance regardless of the plotting engine used.
+    It handles color palette generation, named colormap translation, and intelligent
+    color cycling for complex datasets with many categories.
+
+    Key Features:
+        **Backend Agnostic**: Automatic color format conversion between engines
+        **Palette Management**: Support for named colormaps, custom palettes, and color lists
+        **Intelligent Cycling**: Smart color assignment for datasets with many categories
+        **Fallback Handling**: Graceful degradation when requested colormaps are unavailable
+        **Energy System Colors**: Built-in palettes optimized for energy system visualization
+
+    Color Input Types:
+        - **Named Colormaps**: 'viridis', 'plasma', 'portland', 'tab10', etc.
+        - **Color Lists**: ['red', 'blue', 'green'] or ['#FF0000', '#0000FF', '#00FF00']
+        - **Label Dictionaries**: {'Generator': 'red', 'Storage': 'blue', 'Load': 'green'}
+
+    Examples:
+        Basic color processing:
+
+        ```python
+        # Initialize for Plotly backend
+        processor = ColorProcessor(engine='plotly', default_colormap='viridis')
+
+        # Process different color specifications
+        colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
+        colors = processor.process_colors(['red', 'blue', 'green'], ['A', 'B', 'C'])
+        colors = processor.process_colors({'Wind': 'skyblue', 'Solar': 'gold'}, ['Wind', 'Solar', 'Gas'])
+
+        # Switch to Matplotlib
+        processor = ColorProcessor(engine='matplotlib')
+        mpl_colors = processor.process_colors('tab10', component_labels)
+        ```
+
+        Energy system visualization:
+
+        ```python
+        # Specialized energy system palette
+        energy_colors = {
+            'Natural_Gas': '#8B4513',  # Brown
+            'Electricity': '#FFD700',  # Gold
+            'Heat': '#FF4500',  # Red-orange
+            'Cooling': '#87CEEB',  # Sky blue
+            'Hydrogen': '#E6E6FA',  # Lavender
+            'Battery': '#32CD32',  # Lime green
+        }
+
+        processor = ColorProcessor('plotly')
+        flow_colors = processor.process_colors(energy_colors, flow_labels)
+        ```
+
+    Args:
+        engine: Plotting backend ('plotly' or 'matplotlib'). Determines output color format.
+        default_colormap: Fallback colormap when requested palettes are unavailable.
+            Common options: 'viridis', 'plasma', 'tab10', 'portland'.
+
+    """
 
     def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str = 'viridis'):
-        """
-        Initialize the color processor.
-
-        Args:
-            engine: The plotting engine to use ('plotly' or 'matplotlib')
-            default_colormap: Default colormap to use if none is specified
-        """
+        """Initialize the color processor with specified backend and defaults."""
         if engine not in ['plotly', 'matplotlib']:
             raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
         self.engine = engine
@@ -76,7 +194,7 @@ class ColorProcessor:
             num_colors: Number of colors to generate
 
         Returns:
-            List of colors in the format appropriate for the engine
+            list of colors in the format appropriate for the engine
         """
         if self.engine == 'plotly':
             try:
@@ -105,11 +223,11 @@ class ColorProcessor:
         Handle a list of colors, cycling if necessary.
 
         Args:
-            colors: List of color strings
+            colors: list of color strings
             num_labels: Number of labels that need colors
 
         Returns:
-            List of colors matching the number of labels
+            list of colors matching the number of labels
         """
         if len(colors) == 0:
             logger.warning(f'Empty color list provided. Using {self.default_colormap} instead.')
@@ -136,17 +254,17 @@ class ColorProcessor:
 
         Args:
             colors: Dictionary mapping labels to colors
-            labels: List of labels that need colors
+            labels: list of labels that need colors
 
         Returns:
-            List of colors in the same order as labels
+            list of colors in the same order as labels
         """
         if len(colors) == 0:
             logger.warning(f'Empty color dictionary provided. Using {self.default_colormap} instead.')
             return self._generate_colors_from_colormap(self.default_colormap, len(labels))
 
         # Find missing labels
-        missing_labels = set(labels) - set(colors.keys())
+        missing_labels = sorted(set(labels) - set(colors.keys()))
         if missing_labels:
             logger.warning(
                 f'Some labels have no color specified: {missing_labels}. Using {self.default_colormap} for these.'
@@ -176,7 +294,7 @@ class ColorProcessor:
 
         Args:
             colors: Color specification (colormap name, list of colors, or label-to-color mapping)
-            labels: List of data labels that need colors assigned
+            labels: list of data labels that need colors assigned
             return_mapping: If True, returns a dictionary mapping labels to colors;
                            if False, returns a list of colors in the same order as labels
 
@@ -230,13 +348,14 @@ def with_plotly(
             - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         ylabel: The label for the y-axis.
+        xlabel: The label for the x-axis.
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
 
     Returns:
         A Plotly figure object containing the generated plot.
     """
-    if style not in ['stacked_bar', 'line', 'area', 'grouped_bar']:
-        raise ValueError(f"'style' must be one of {['stacked_bar', 'line', 'area', 'grouped_bar']}")
+    if style not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
+        raise ValueError(f"'style' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {style!r}")
     if data.empty:
         return go.Figure()
 
@@ -384,7 +503,8 @@ def with_matplotlib(
           Negative values are stacked separately without extra labels in the legend.
         - If `style` is 'line', stepped lines are drawn for each data series.
     """
-    assert style in ['stacked_bar', 'line'], f"'style' must be one of {['stacked_bar', 'line']} for matplotlib"
+    if style not in ('stacked_bar', 'line'):
+        raise ValueError(f"'style' must be one of {{'stacked_bar','line'}} for matplotlib, got {style!r}")
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -458,6 +578,9 @@ def heat_map_matplotlib(
         data: A DataFrame containing the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
             The values in the DataFrame will be represented as colors in the heatmap.
         color_map: The colormap to use for the heatmap. Default is 'viridis'. Matplotlib supports various colormaps like 'plasma', 'inferno', 'cividis', etc.
+        title: The title of the plot.
+        xlabel: The label for the x-axis.
+        ylabel: The label for the y-axis.
         figsize: The size of the figure to create. Default is (12, 6), which results in a width of 12 inches and a height of 6 inches.
 
     Returns:
@@ -476,7 +599,7 @@ def heat_map_matplotlib(
 
     # Create the heatmap plot
     fig, ax = plt.subplots(figsize=figsize)
-    ax.pcolormesh(data.values, cmap=color_map)
+    ax.pcolormesh(data.values, cmap=color_map, shading='auto')
     ax.invert_yaxis()  # Flip the y-axis to start at the top
 
     # Adjust ticks and labels for x and y axes
@@ -496,7 +619,7 @@ def heat_map_matplotlib(
 
     # Add the colorbar
     sm1 = plt.cm.ScalarMappable(cmap=color_map, norm=plt.Normalize(vmin=color_bar_min, vmax=color_bar_max))
-    sm1._A = []
+    sm1.set_array([])
     fig.colorbar(sm1, ax=ax, pad=0.12, aspect=15, fraction=0.2, orientation='horizontal')
 
     fig.tight_layout()
@@ -520,11 +643,11 @@ def heat_map_plotly(
         data: A DataFrame with the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
             The values in the DataFrame will be represented as colors in the heatmap.
         color_map: The color scale to use for the heatmap. Default is 'viridis'. Plotly supports various color scales like 'Cividis', 'Inferno', etc.
+        title: The title of the heatmap. Default is an empty string.
+        xlabel: The label for the x-axis. Default is 'Period'.
+        ylabel: The label for the y-axis. Default is 'Step'.
         categorical_labels: If True, the x and y axes are treated as categorical data (i.e., the index and columns will not be interpreted as continuous data).
             Default is True. If False, the axes are treated as continuous, which may be useful for time series or numeric data.
-        show: Wether to show the figure after creation. (This includes saving the figure)
-        save: Wether to save the figure after creation (without showing)
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the heatmap. This can be further customized and saved
@@ -620,7 +743,7 @@ def heat_map_data_from_df(
     """
     Reshapes a DataFrame with a DateTime index into a 2D array for heatmap plotting,
     based on a specified sample rate.
-    If a non-valid combination of periods and steps per period is used, falls back to numerical indices
+    Only specific combinations of `periods` and `steps_per_period` are supported; invalid combinations raise an assertion.
 
     Args:
         df: A DataFrame with a DateTime index containing the data to reshape.
@@ -635,7 +758,7 @@ def heat_map_data_from_df(
         and columns representing each period.
     """
     assert pd.api.types.is_datetime64_any_dtype(df.index), (
-        'The index of the Dataframe must be datetime to transfrom it properly for a heatmap plot'
+        'The index of the DataFrame must be datetime to transform it properly for a heatmap plot'
     )
 
     # Define formats for different combinations of `periods` and `steps_per_period`
@@ -648,15 +771,17 @@ def heat_map_data_from_df(
         ('W', 'D'): ('%Y-w%W', '%w_%A'),  # week and day of week (with prefix for proper sorting)
         ('W', 'h'): ('%Y-w%W', '%w_%A %H:00'),
         ('D', 'h'): ('%Y-%m-%d', '%H:00'),  # Day and hour
-        ('D', '15min'): ('%Y-%m-%d', '%H:%MM'),  # Day and hour
+        ('D', '15min'): ('%Y-%m-%d', '%H:%M'),  # Day and minute
         ('h', '15min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
         ('h', 'min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
     }
 
-    minimum_time_diff_in_min = df.index.to_series().diff().min().total_seconds() / 60  # Smallest time_diff in minutes
+    if df.empty:
+        raise ValueError('DataFrame is empty.')
+    diffs = df.index.to_series().diff().dropna()
+    minimum_time_diff_in_min = diffs.min().total_seconds() / 60
     time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
     if time_intervals[steps_per_period] > minimum_time_diff_in_min:
-        time_intervals[steps_per_period]
         logger.warning(
             f'To compute the heatmap, the data was aggregated from {minimum_time_diff_in_min:.2f} min to '
             f'{time_intervals[steps_per_period]:.2f} min. Mean values are displayed.'
@@ -664,7 +789,8 @@ def heat_map_data_from_df(
 
     # Select the format based on the `periods` and `steps_per_period` combination
     format_pair = (periods, steps_per_period)
-    assert format_pair in formats, f'{format_pair} is not a valid format. Choose from {list(formats.keys())}'
+    if format_pair not in formats:
+        raise ValueError(f'{format_pair} is not a valid format. Choose from {list(formats.keys())}')
     period_format, step_format = formats[format_pair]
 
     df = df.sort_index()  # Ensure DataFrame is sorted by time index
@@ -678,7 +804,7 @@ def heat_map_data_from_df(
 
     resampled_data['period'] = resampled_data.index.strftime(period_format)
     resampled_data['step'] = resampled_data.index.strftime(step_format)
-    if '%w_%A' in step_format:  # SHift index of strings to ensure proper sorting
+    if '%w_%A' in step_format:  # Shift index of strings to ensure proper sorting
         resampled_data['step'] = resampled_data['step'].apply(
             lambda x: x.replace('0_Sunday', '7_Sunday') if '0_Sunday' in x else x
         )
@@ -698,13 +824,13 @@ def plot_network(
         Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
     ] = True,
     show: bool = False,
-) -> Optional['pyvis.network.Network']:
+) -> pyvis.network.Network | None:
     """
     Visualizes the network structure of a FlowSystem using PyVis, using info-dictionaries.
 
     Args:
         path: Path to save the HTML visualization. `False`: Visualization is created but not saved. `str` or `Path`: Specifies file path (default: 'results/network.html').
-        controls: UI controls to add to the visualization. `True`: Enables all available controls. `List`: Specify controls, e.g., ['nodes', 'layout'].
+        controls: UI controls to add to the visualization. `True`: Enables all available controls. `list`: Specify controls, e.g., ['nodes', 'layout'].
             Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
             You can play with these and generate a Dictionary from it that can be applied to the network returned by this function.
             network.set_options()
@@ -831,7 +957,7 @@ def pie_with_plotly(
     values = data_sum.values.tolist()
 
     # Apply color mapping using the unified color processor
-    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, list(data.columns))
+    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, labels)
 
     # Create figure if not provided
     fig = fig if fig is not None else go.Figure()
@@ -1000,8 +1126,8 @@ def dual_pie_with_plotly(
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
-        hole: Size of the hole in the center for creating donut charts (0.0 to 100).
-        lower_percentage_group: Whether to group small segments (below percentage (0...1)) into an "Other" category.
+        hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
+        lower_percentage_group: Group segments whose cumulative share is below this percentage (0–100) into "Other".
         hover_template: Template for hover text. Use %{label}, %{value}, %{percent}.
         text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
                   'label+value', 'percent+value', 'label+percent+value', or 'none'.
@@ -1093,7 +1219,7 @@ def dual_pie_with_plotly(
             labels=labels,
             values=values,
             name=side,
-            marker_colors=trace_colors,
+            marker=dict(colors=trace_colors),
             hole=hole,
             textinfo=text_info,
             textposition=text_position,
@@ -1290,13 +1416,13 @@ def dual_pie_with_matplotlib(
 
 
 def export_figure(
-    figure_like: plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes],
+    figure_like: go.Figure | tuple[plt.Figure, plt.Axes],
     default_path: pathlib.Path,
     default_filetype: str | None = None,
     user_path: pathlib.Path | None = None,
     show: bool = True,
     save: bool = False,
-) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
+) -> go.Figure | tuple[plt.Figure, plt.Axes]:
     """
     Export a figure to a file and or show it.
 
@@ -1321,14 +1447,15 @@ def export_figure(
 
     if isinstance(figure_like, plotly.graph_objs.Figure):
         fig = figure_like
-        if not filename.suffix == '.html':
-            logger.debug(f'To save a plotly figure, the filename should end with ".html". Got {filename}')
+        if filename.suffix != '.html':
+            logger.warning(f'To save a Plotly figure, using .html. Adjusting suffix for {filename}')
+            filename = filename.with_suffix('.html')
         if show and not save:
             fig.show()
         elif save and show:
             plotly.offline.plot(fig, filename=str(filename))
         elif save and not show:
-            fig.write_html(filename)
+            fig.write_html(str(filename))
         return figure_like
 
     elif isinstance(figure_like, tuple):

@@ -159,6 +159,7 @@ ignore = [  # Ignore specific rules
     "UP038",
     "E501"  # ignore long lines
 ]
+
 extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any rules specified by `fixable`.
 
 # Apply rule exceptions to specific files or directories

@@ -2,11 +2,12 @@
 This module contains the basic components of the flixopt framework.
 """
 
+from __future__ import annotations
+
 import logging
 import warnings
 from typing import TYPE_CHECKING, Literal
 
-import linopy
 import numpy as np
 import xarray as xr
 
@@ -18,6 +19,8 @@ from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
+    import linopy
+
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -26,7 +29,130 @@ logger = logging.getLogger('flixopt')
 @register_class_for_io
 class LinearConverter(Component):
     """
-    Converts input-Flows into output-Flows via linear conversion factors
+    Converts input-Flows into output-Flows via linear conversion factors.
+
+    LinearConverter models equipment that transforms one or more input flows into one or
+    more output flows through linear relationships. This includes heat exchangers,
+    electrical converters, chemical reactors, and other equipment where the
+    relationship between inputs and outputs can be expressed as linear equations.
+
+    The component supports two modeling approaches: simple conversion factors for
+    straightforward linear relationships, or piecewise conversion for complex non-linear
+    behavior approximated through piecewise linear segments.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        inputs: list of input Flows that feed into the converter.
+        outputs: list of output Flows that are produced by the converter.
+        on_off_parameters: Information about on and off state of LinearConverter.
+            Component is On/Off if all connected Flows are On/Off. This induces an
+            On-Variable (binary) in all Flows! If possible, use OnOffParameters in a
+            single Flow instead to keep the number of binary variables low.
+        conversion_factors: Linear relationships between flows expressed as a list of
+            dictionaries. Each dictionary maps flow labels to their coefficients in one
+            linear equation. The number of conversion factors must be less than the total
+            number of flows to ensure degrees of freedom > 0. Either 'conversion_factors'
+            OR 'piecewise_conversion' can be used, but not both.
+            For examples also look into the linear_converters.py file.
+        piecewise_conversion: Define piecewise linear relationships between flow rates
+            of different flows. Enables modeling of non-linear conversion behavior through
+            linear approximation. Either 'conversion_factors' or 'piecewise_conversion'
+            can be used, but not both.
+        meta_data: Used to store additional information about the Element. Not used
+            internally, but saved in results. Only use Python native types.
+
+    Examples:
+        Simple 1:1 heat exchanger with 95% efficiency:
+
+        ```python
+        heat_exchanger = LinearConverter(
+            label='primary_hx',
+            inputs=[hot_water_in],
+            outputs=[hot_water_out],
+            conversion_factors=[{'hot_water_in': 0.95, 'hot_water_out': 1}],
+        )
+        ```
+
+        Multi-input heat pump with COP=3:
+
+        ```python
+        heat_pump = LinearConverter(
+            label='air_source_hp',
+            inputs=[electricity_in],
+            outputs=[heat_output],
+            conversion_factors=[{'electricity_in': 3, 'heat_output': 1}],
+        )
+        ```
+
+        Combined heat and power (CHP) unit with multiple outputs:
+
+        ```python
+        chp_unit = LinearConverter(
+            label='gas_chp',
+            inputs=[natural_gas],
+            outputs=[electricity_out, heat_out],
+            conversion_factors=[
+                {'natural_gas': 0.35, 'electricity_out': 1},
+                {'natural_gas': 0.45, 'heat_out': 1},
+            ],
+        )
+        ```
+
+        Electrolyzer with multiple conversion relationships:
+
+        ```python
+        electrolyzer = LinearConverter(
+            label='pem_electrolyzer',
+            inputs=[electricity_in, water_in],
+            outputs=[hydrogen_out, oxygen_out],
+            conversion_factors=[
+                {'electricity_in': 1, 'hydrogen_out': 50},  # 50 kWh/kg H2
+                {'water_in': 1, 'hydrogen_out': 9},  # 9 kg H2O/kg H2
+                {'hydrogen_out': 8, 'oxygen_out': 1},  # Mass balance
+            ],
+        )
+        ```
+
+        Complex converter with piecewise efficiency:
+
+        ```python
+        variable_efficiency_converter = LinearConverter(
+            label='variable_converter',
+            inputs=[fuel_in],
+            outputs=[power_out],
+            piecewise_conversion=PiecewiseConversion(
+                {
+                    'fuel_in': Piecewise(
+                        [
+                            Piece(0, 10),  # Low load operation
+                            Piece(10, 25),  # High load operation
+                        ]
+                    ),
+                    'power_out': Piecewise(
+                        [
+                            Piece(0, 3.5),  # Lower efficiency at part load
+                            Piece(3.5, 10),  # Higher efficiency at full load
+                        ]
+                    ),
+                }
+            ),
+        )
+        ```
+
+    Note:
+        Conversion factors define linear relationships where the sum of (coefficient × flow_rate)
+        equals zero for each equation: factor1×flow1 + factor2×flow2 + ... = 0
+        Conversion factors define linear relationships.
+        `{flow1: a1, flow2: a2, ...}` leads to `a1×flow_rate1 + a2×flow_rate2 + ... = 0`
+        Unfortunately the current input format doest read intuitively:
+        {"electricity": 1, "H2": 50} means that the electricity_in flow rate is multiplied by 1
+        and the hydrogen_out flow rate is multiplied by 50. THis leads to 50 electricity --> 1 H2.
+
+        The system must have fewer conversion factors than total flows (degrees of freedom > 0)
+        to avoid over-constraining the problem. For n total flows, use at most n-1 conversion factors.
+
+        When using piecewise_conversion, the converter operates on one piece at a time,
+        with binary variables determining which piece is active.
 
     """
 
@@ -35,31 +161,16 @@ class LinearConverter(Component):
         label: str,
         inputs: list[Flow],
         outputs: list[Flow],
-        on_off_parameters: OnOffParameters = None,
-        conversion_factors: list[dict[str, TemporalDataUser]] = None,
+        on_off_parameters: OnOffParameters | None = None,
+        conversion_factors: list[dict[str, TemporalDataUser]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            inputs: The input Flows
-            outputs: The output Flows
-            on_off_parameters: Information about on and off state of LinearConverter.
-                Component is On/Off, if all connected Flows are On/Off. This induces an On-Variable (binary) in all Flows!
-                If possible, use OnOffParameters in a single Flow instead to keep the number of binary variables low.
-                See class OnOffParameters.
-            conversion_factors: linear relation between flows.
-                Either 'conversion_factors' or 'piecewise_conversion' can be used!
-            piecewise_conversion: Define a piecewise linear relation between flow rates of different flows.
-                Either 'conversion_factors' or 'piecewise_conversion' can be used!
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
-    def create_model(self, model: FlowSystemModel) -> 'LinearConverterModel':
+    def create_model(self, model: FlowSystemModel) -> LinearConverterModel:
         self._plausibility_checks()
         self.submodel = LinearConverterModel(model, self)
         return self.submodel
@@ -93,7 +204,7 @@ class LinearConverter(Component):
                         f'(in {self.label_full}) and variable size is uncommon. Please check if this is intended!'
                     )
 
-    def transform_data(self, flow_system: 'FlowSystem'):
+    def transform_data(self, flow_system: FlowSystem):
         super().transform_data(flow_system)
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
@@ -101,16 +212,17 @@ class LinearConverter(Component):
             self.piecewise_conversion.has_time_dim = True
             self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
 
-    def _transform_conversion_factors(self, flow_system: 'FlowSystem') -> list[dict[str, xr.DataArray]]:
+    def _transform_conversion_factors(self, flow_system: FlowSystem) -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
         list_of_conversion_factors = []
         for idx, conversion_factor in enumerate(self.conversion_factors):
             transformed_dict = {}
             for flow, values in conversion_factor.items():
                 # TODO: Might be better to use the label of the component instead of the flow
-                transformed_dict[flow] = flow_system.fit_to_model_coords(
-                    f'{self.flows[flow].label_full}|conversion_factor{idx}', values
-                )
+                ts = flow_system.fit_to_model_coords(f'{self.flows[flow].label_full}|conversion_factor{idx}', values)
+                if ts is None:
+                    raise PlausibilityError(f'{self.label_full}: conversion factor for flow "{flow}" must not be None')
+                transformed_dict[flow] = ts
             list_of_conversion_factors.append(transformed_dict)
         return list_of_conversion_factors
 
@@ -122,7 +234,137 @@ class LinearConverter(Component):
 @register_class_for_io
 class Storage(Component):
     """
-    Used to model the storage of energy or material.
+    A Storage models the temporary storage and release of energy or material.
+
+    Storages have one incoming and one outgoing Flow, each with configurable efficiency
+    factors. They maintain a charge state variable that represents the stored amount,
+    bounded by capacity limits and evolving over time based on charging, discharging,
+    and self-discharge losses.
+
+    The storage model handles complex temporal dynamics including initial conditions,
+    final state constraints, and time-varying parameters. It supports both fixed-size
+    and investment-optimized storage systems with comprehensive techno-economic modeling.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        charging: Incoming flow for loading the storage. Represents energy or material
+            flowing into the storage system.
+        discharging: Outgoing flow for unloading the storage. Represents energy or
+            material flowing out of the storage system.
+        capacity_in_flow_hours: Nominal capacity/size of the storage in flow-hours
+            (e.g., kWh for electrical storage, m³ or kg for material storage). Can be a scalar
+            for fixed capacity or InvestParameters for optimization.
+        relative_minimum_charge_state: Minimum relative charge state (0-1 range).
+            Prevents deep discharge that could damage equipment. Default is 0.
+        relative_maximum_charge_state: Maximum relative charge state (0-1 range).
+            Accounts for practical capacity limits, safety margins or temperature impacts. Default is 1.
+        initial_charge_state: Storage charge state at the beginning of the time horizon.
+            Can be numeric value or 'lastValueOfSim', which is recommended for if the initial start state is not known.
+            Default is 0.
+        minimal_final_charge_state: Minimum absolute charge state required at the end
+            of the time horizon. Useful for ensuring energy security or meeting contracts.
+        maximal_final_charge_state: Maximum absolute charge state allowed at the end
+            of the time horizon. Useful for preventing overcharge or managing inventory.
+        eta_charge: Charging efficiency factor (0-1 range). Accounts for conversion
+            losses during charging. Default is 1 (perfect efficiency).
+        eta_discharge: Discharging efficiency factor (0-1 range). Accounts for
+            conversion losses during discharging. Default is 1 (perfect efficiency).
+        relative_loss_per_hour: Self-discharge rate per hour (typically 0-0.1 range).
+            Represents standby losses, leakage, or degradation. Default is 0.
+        prevent_simultaneous_charge_and_discharge: If True, prevents charging and
+            discharging simultaneously. Increases binary variables but improves model
+            realism and solution interpretation. Default is True.
+        meta_data: Used to store additional information about the Element. Not used
+            internally, but saved in results. Only use Python native types.
+
+    Examples:
+        Battery energy storage system:
+
+        ```python
+        battery = Storage(
+            label='lithium_battery',
+            charging=battery_charge_flow,
+            discharging=battery_discharge_flow,
+            capacity_in_flow_hours=100,  # 100 kWh capacity
+            eta_charge=0.95,  # 95% charging efficiency
+            eta_discharge=0.95,  # 95% discharging efficiency
+            relative_loss_per_hour=0.001,  # 0.1% loss per hour
+            relative_minimum_charge_state=0.1,  # Never below 10% SOC
+            relative_maximum_charge_state=0.9,  # Never above 90% SOC
+        )
+        ```
+
+        Thermal storage with cycling constraints:
+
+        ```python
+        thermal_storage = Storage(
+            label='hot_water_tank',
+            charging=heat_input,
+            discharging=heat_output,
+            capacity_in_flow_hours=500,  # 500 kWh thermal capacity
+            initial_charge_state=250,  # Start half full
+            # Impact of temperature on energy capacity
+            relative_maximum_charge_state=water_temperature_spread / rated_temeprature_spread,
+            eta_charge=0.90,  # Heat exchanger losses
+            eta_discharge=0.85,  # Distribution losses
+            relative_loss_per_hour=0.02,  # 2% thermal loss per hour
+            prevent_simultaneous_charge_and_discharge=True,
+        )
+        ```
+
+        Pumped hydro storage with investment optimization:
+
+        ```python
+        pumped_hydro = Storage(
+            label='pumped_hydro',
+            charging=pump_flow,
+            discharging=turbine_flow,
+            capacity_in_flow_hours=InvestParameters(
+                minimum_size=1000,  # Minimum economic scale
+                maximum_size=10000,  # Site constraints
+                specific_effects={'cost': 150},  # €150/MWh capacity
+                fix_effects={'cost': 50_000_000},  # €50M fixed costs
+            ),
+            eta_charge=0.85,  # Pumping efficiency
+            eta_discharge=0.90,  # Turbine efficiency
+            initial_charge_state='lastValueOfSim',  # Ensuring no deficit compared to start
+            relative_loss_per_hour=0.0001,  # Minimal evaporation
+        )
+        ```
+
+        Material storage with inventory management:
+
+        ```python
+        fuel_storage = Storage(
+            label='natural_gas_storage',
+            charging=gas_injection,
+            discharging=gas_withdrawal,
+            capacity_in_flow_hours=10000,  # 10,000 m³ storage volume
+            initial_charge_state=3000,  # Start with 3,000 m³
+            minimal_final_charge_state=1000,  # Strategic reserve
+            maximal_final_charge_state=9000,  # Prevent overflow
+            eta_charge=0.98,  # Compression losses
+            eta_discharge=0.95,  # Pressure reduction losses
+            relative_loss_per_hour=0.0005,  # 0.05% leakage per hour
+            prevent_simultaneous_charge_and_discharge=False,  # Allow flow-through
+        )
+        ```
+
+    Note:
+        Charge state evolution follows the equation:
+        charge[t+1] = charge[t] × (1-loss_rate)^hours_per_step +
+                      charge_flow[t] × eta_charge × hours_per_step -
+                      discharge_flow[t] × hours_per_step / eta_discharge
+
+        All efficiency parameters (eta_charge, eta_discharge) are dimensionless (0-1 range).
+        The relative_loss_per_hour parameter represents exponential decay per hour.
+
+        When prevent_simultaneous_charge_and_discharge is True, binary variables are
+        created to enforce mutual exclusivity, which increases solution time but
+        prevents unrealistic simultaneous charging and discharging.
+
+        Initial and final charge state constraints use absolute values (not relative),
+        matching the capacity_in_flow_hours units.
     """
 
     def __init__(
@@ -145,34 +387,6 @@ class Storage(Component):
         balanced: bool = False,
         meta_data: dict | None = None,
     ):
-        """
-        Storages have one incoming and one outgoing Flow each with an efficiency.
-        Further, storages have a `size` and a `charge_state`.
-        Similarly to the flow-rate of a Flow, the `size` combined with a relative upper and lower bound
-        limits the `charge_state` of the storage.
-
-        For mathematical details take a look at our online documentation
-
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            charging: ingoing flow.
-            discharging: outgoing flow.
-            capacity_in_flow_hours: nominal capacity/size of the storage
-            relative_minimum_charge_state: minimum relative charge state. The default is 0.
-            relative_maximum_charge_state: maximum relative charge state. The default is 1.
-            initial_charge_state: storage charge_state at the beginning. The default is 0.
-            minimal_final_charge_state: minimal value of chargeState at the end of timeseries.
-            maximal_final_charge_state: maximal value of chargeState at the end of timeseries.
-            minimal_final_charge_state: relative minimal value of chargeState at the end of timeseries.
-            maximal_final_charge_state: relative maximal value of chargeState at the end of timeseries.
-            eta_charge: efficiency factor of charging/loading. The default is 1.
-            eta_discharge: efficiency factor of uncharging/unloading. The default is 1.
-            relative_loss_per_hour: loss per chargeState-Unit per hour. The default is 0.
-            prevent_simultaneous_charge_and_discharge: If True, loading and unloading at the same time is not possible.
-                Increases the number of binary variables, but is recommended for easier evaluation. The default is True.
-            balanced: Wether to equate the size of the charging and discharging flow. Only if not fixed.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         # TODO: fixed_relative_chargeState implementieren
         super().__init__(
             label,
@@ -201,12 +415,12 @@ class Storage(Component):
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
         self.balanced = balanced
 
-    def create_model(self, model: FlowSystemModel) -> 'StorageModel':
+    def create_model(self, model: FlowSystemModel) -> StorageModel:
         self._plausibility_checks()
         self.submodel = StorageModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: FlowSystem) -> None:
         super().transform_data(flow_system)
         self.relative_minimum_charge_state = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_minimum_charge_state',
@@ -268,29 +482,25 @@ class Storage(Component):
             maximum_capacity = self.capacity_in_flow_hours
             minimum_capacity = self.capacity_in_flow_hours
 
-        # initial capacity >= allowed min for maximum_size:
-        minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-        # initial capacity <= allowed max for minimum_size:
-        maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
-
-        if (self.initial_charge_state > maximum_initial_capacity).any():
-            raise ValueError(
-                f'{self.label_full}: {self.initial_charge_state=} '
-                f'is above allowed maximum charge_state {maximum_initial_capacity}'
-            )
-        if (self.initial_charge_state < minimum_initial_capacity).any():
-            raise ValueError(
-                f'{self.label_full}: {self.initial_charge_state=} '
-                f'is below allowed minimum charge_state {minimum_initial_capacity}'
-            )
-
-        if self.balanced:
-            if not isinstance(self.charging.size, InvestParameters) or not isinstance(
-                self.discharging.size, InvestParameters
-            ):
-                raise PlausibilityError(
-                    f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
+            minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
+            maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
+            if self.initial_charge_state > maximum_initial_capacity:
+                raise ValueError(
+                    f'{self.label_full}: {self.initial_charge_state=} is above allowed maximum {maximum_initial_capacity}'
                 )
+            if self.initial_charge_state < minimum_initial_capacity:
+                raise ValueError(
+                    f'{self.label_full}: {self.initial_charge_state=} is below allowed minimum {minimum_initial_capacity}'
+                )
+
+            if self.balanced:
+                if not isinstance(self.charging.size, InvestParameters) or not isinstance(
+                    self.discharging.size, InvestParameters
+                ):
+                    raise PlausibilityError(
+                        f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
+                    )
+
             if (
                 self.charging.size.minimum_size > self.discharging.size.maximum_size
                 or self.charging.size.maximum_size < self.discharging.size.minimum_size
@@ -304,11 +514,114 @@ class Storage(Component):
 
 @register_class_for_io
 class Transmission(Component):
-    # TODO: automatic on-Value in Flows if loss_abs
-    # TODO: loss_abs must be: investment_size * loss_abs_rel!!!
-    # TODO: investmentsize only on 1 flow
-    # TODO: automatic investArgs for both in-flows (or alternatively both out-flows!)
-    # TODO: optional: capacities should be recognised for losses
+    """
+    Models transmission infrastructure that transports flows between two locations with losses.
+
+    Transmission components represent physical infrastructure like pipes, cables,
+    transmission lines, or conveyor systems that transport energy or materials between
+    two points. They can model both unidirectional and bidirectional flow with
+    configurable loss mechanisms and operational constraints.
+
+    The component supports complex transmission scenarios including relative losses
+    (proportional to flow), absolute losses (fixed when active), and bidirectional
+    operation with flow direction constraints.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        in1: The primary inflow (side A). Pass InvestParameters here for capacity optimization.
+        out1: The primary outflow (side B).
+        in2: Optional secondary inflow (side B) for bidirectional operation.
+            If in1 has InvestParameters, in2 will automatically have matching capacity.
+        out2: Optional secondary outflow (side A) for bidirectional operation.
+        relative_losses: Proportional losses as fraction of throughput (e.g., 0.02 for 2% loss).
+            Applied as: output = input × (1 - relative_losses)
+        absolute_losses: Fixed losses that occur when transmission is active.
+            Automatically creates binary variables for on/off states.
+        on_off_parameters: Parameters defining binary operation constraints and costs.
+        prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
+            flow in both directions. Increases binary variables but reflects physical
+            reality for most transmission systems. Default is True.
+        balanced: Whether to equate the size of the in1 and in2 Flow. Needs InvestParameters in both Flows.
+        meta_data: Used to store additional information. Not used internally but saved
+            in results. Only use Python native types.
+
+    Examples:
+        Simple electrical transmission line:
+
+        ```python
+        power_line = Transmission(
+            label='110kv_line',
+            in1=substation_a_out,
+            out1=substation_b_in,
+            relative_losses=0.03,  # 3% line losses
+        )
+        ```
+
+        Bidirectional natural gas pipeline:
+
+        ```python
+        gas_pipeline = Transmission(
+            label='interstate_pipeline',
+            in1=compressor_station_a,
+            out1=distribution_hub_b,
+            in2=compressor_station_b,
+            out2=distribution_hub_a,
+            relative_losses=0.005,  # 0.5% friction losses
+            absolute_losses=50,  # 50 kW compressor power when active
+            prevent_simultaneous_flows_in_both_directions=True,
+        )
+        ```
+
+        District heating network with investment optimization:
+
+        ```python
+        heating_network = Transmission(
+            label='dh_main_line',
+            in1=Flow(
+                label='heat_supply',
+                bus=central_plant_bus,
+                size=InvestParameters(
+                    minimum_size=1000,  # Minimum 1 MW capacity
+                    maximum_size=10000,  # Maximum 10 MW capacity
+                    specific_effects={'cost': 200},  # €200/kW capacity
+                    fix_effects={'cost': 500000},  # €500k fixed installation
+                ),
+            ),
+            out1=district_heat_demand,
+            relative_losses=0.15,  # 15% thermal losses in distribution
+        )
+        ```
+
+        Material conveyor with on/off operation:
+
+        ```python
+        conveyor_belt = Transmission(
+            label='material_transport',
+            in1=loading_station,
+            out1=unloading_station,
+            absolute_losses=25,  # 25 kW motor power when running
+            on_off_parameters=OnOffParameters(
+                effects_per_switch_on={'maintenance': 0.1},
+                consecutive_on_hours_min=2,  # Minimum 2-hour operation
+                switch_on_total_max=10,  # Maximum 10 starts per day
+            ),
+        )
+        ```
+
+    Note:
+        The transmission equation balances flows with losses:
+        output_flow = input_flow × (1 - relative_losses) - absolute_losses
+
+        For bidirectional transmission, each direction has independent loss calculations.
+
+        When using InvestParameters on in1, the capacity automatically applies to in2
+        to maintain consistent bidirectional capacity without additional investment variables.
+
+        Absolute losses force the creation of binary on/off variables, which increases
+        computational complexity but enables realistic modeling of equipment with
+        standby power consumption.
+
+    """
 
     def __init__(
         self,
@@ -324,24 +637,6 @@ class Transmission(Component):
         balanced: bool = False,
         meta_data: dict | None = None,
     ):
-        """
-        Initializes a Transmission component (Pipe, cable, ...) that models the flows between two sides
-        with potential losses.
-
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            in1: The inflow at side A. Pass InvestmentParameters here.
-            out1: The outflow at side B.
-            in2: The optional inflow at side B.
-                If in1 got InvestParameters, the size of this Flow will be equal to in1 (with no extra effects!)
-            out2: The optional outflow at side A.
-            relative_losses: The relative loss between inflow and outflow, e.g., 0.02 for 2% loss.
-            absolute_losses: The absolute loss, occur only when the Flow is on. Induces the creation of the ON-Variable
-            on_off_parameters: Parameters defining the on/off behavior of the component.
-            prevent_simultaneous_flows_in_both_directions: If True, inflow and outflow are not allowed to be both non-zero at same timestep.
-            balanced: Wether to equate the size of the in1 and in2 Flow. Needs InvestParameters in both Flows.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         super().__init__(
             label,
             inputs=[flow for flow in (in1, in2) if flow is not None],
@@ -387,12 +682,12 @@ class Transmission(Component):
                     f'{self.in2.size.minimum_size=}, {self.in2.size.maximum_size=}, {self.in2.size.fixed_size=}.'
                 )
 
-    def create_model(self, model) -> 'TransmissionModel':
+    def create_model(self, model) -> TransmissionModel:
         self._plausibility_checks()
         self.submodel = TransmissionModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: 'FlowSystem') -> None:
+    def transform_data(self, flow_system: FlowSystem) -> None:
         super().transform_data(flow_system)
         self.relative_losses = flow_system.fit_to_model_coords(
             f'{self.label_full}|relative_losses', self.relative_losses
@@ -463,8 +758,8 @@ class LinearConverterModel(ComponentModel):
             # für alle linearen Gleichungen:
             for i, conv_factors in enumerate(self.element.conversion_factors):
                 used_flows = set([self.element.flows[flow_label] for flow_label in conv_factors])
-                used_inputs: set = all_input_flows & used_flows
-                used_outputs: set = all_output_flows & used_flows
+                used_inputs: set[Flow] = all_input_flows & used_flows
+                used_outputs: set[Flow] = all_output_flows & used_flows
 
                 self.add_constraints(
                     sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_inputs])
@@ -658,32 +953,105 @@ class StorageModel(ComponentModel):
 @register_class_for_io
 class SourceAndSink(Component):
     """
-    class for source (output-flow) and sink (input-flow) in one commponent
+    A SourceAndSink combines both supply and demand capabilities in a single component.
+
+    SourceAndSink components can both consume AND provide energy or material flows
+    from and to the system, making them ideal for modeling markets, (simple) storage facilities,
+    or bidirectional grid connections where buying and selling occur at the same location.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        inputs: Input-flows into the SourceAndSink representing consumption/demand side.
+        outputs: Output-flows from the SourceAndSink representing supply/generation side.
+        prevent_simultaneous_flow_rates: If True, prevents simultaneous input and output
+            flows. This enforces that the component operates either as a source OR sink
+            at any given time, but not both simultaneously. Default is True.
+        meta_data: Used to store additional information about the Element. Not used
+            internally but saved in results. Only use Python native types.
+
+    Examples:
+        Electricity market connection (buy/sell to grid):
+
+        ```python
+        electricity_market = SourceAndSink(
+            label='grid_connection',
+            inputs=[electricity_purchase],  # Buy from grid
+            outputs=[electricity_sale],  # Sell to grid
+            prevent_simultaneous_flow_rates=True,  # Can't buy and sell simultaneously
+        )
+        ```
+
+        Natural gas storage facility:
+
+        ```python
+        gas_storage_facility = SourceAndSink(
+            label='underground_gas_storage',
+            inputs=[gas_injection_flow],  # Inject gas into storage
+            outputs=[gas_withdrawal_flow],  # Withdraw gas from storage
+            prevent_simultaneous_flow_rates=True,  # Injection or withdrawal, not both
+        )
+        ```
+
+        District heating network connection:
+
+        ```python
+        dh_connection = SourceAndSink(
+            label='district_heating_tie',
+            inputs=[heat_purchase_flow],  # Purchase heat from network
+            outputs=[heat_sale_flow],  # Sell excess heat to network
+            prevent_simultaneous_flow_rates=False,  # May allow simultaneous flows
+        )
+        ```
+
+        Industrial waste heat exchange:
+
+        ```python
+        waste_heat_exchange = SourceAndSink(
+            label='industrial_heat_hub',
+            inputs=[
+                waste_heat_input_a,  # Receive waste heat from process A
+                waste_heat_input_b,  # Receive waste heat from process B
+            ],
+            outputs=[
+                useful_heat_supply_c,  # Supply heat to process C
+                useful_heat_supply_d,  # Supply heat to process D
+            ],
+            prevent_simultaneous_flow_rates=False,  # Multiple simultaneous flows allowed
+        )
+        ```
+
+    Note:
+        When prevent_simultaneous_flow_rates is True, binary variables are created to
+        ensure mutually exclusive operation between input and output flows, which
+        increases computational complexity but reflects realistic market or storage
+        operation constraints.
+
+        SourceAndSink is particularly useful for modeling:
+        - Energy markets with bidirectional trading
+        - Storage facilities with injection/withdrawal operations
+        - Grid tie points with import/export capabilities
+        - Waste exchange networks with multiple participants
+
+    Deprecated:
+        The deprecated `sink` and `source` kwargs are accepted for compatibility but will be removed in future releases.
     """
 
     def __init__(
         self,
         label: str,
-        inputs: list[Flow] = None,
-        outputs: list[Flow] = None,
+        inputs: list[Flow] | None = None,
+        outputs: list[Flow] | None = None,
         prevent_simultaneous_flow_rates: bool = True,
         meta_data: dict | None = None,
         **kwargs,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            outputs: output-flows of this component
-            inputs: input-flows of this component
-            prevent_simultaneous_flow_rates: If True, inflow and outflow can not be active simultaniously.
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         source = kwargs.pop('source', None)
         sink = kwargs.pop('sink', None)
         prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
         if source is not None:
-            warnings.deprecated(
+            warnings.warn(
                 'The use of the source argument is deprecated. Use the outputs argument instead.',
+                DeprecationWarning,
                 stacklevel=2,
             )
             if outputs is not None:
@@ -691,17 +1059,19 @@ class SourceAndSink(Component):
             outputs = [source]
 
         if sink is not None:
-            warnings.deprecated(
-                'The use of the sink argument is deprecated. Use the outputs argument instead.',
+            warnings.warn(
+                'The use of the sink argument is deprecated. Use the inputs argument instead.',
+                DeprecationWarning,
                 stacklevel=2,
             )
             if inputs is not None:
-                raise ValueError('Either sink or outputs can be specified, but not both.')
+                raise ValueError('Either sink or inputs can be specified, but not both.')
             inputs = [sink]
 
         if prevent_simultaneous_sink_and_source is not None:
-            warnings.deprecated(
+            warnings.warn(
                 'The use of the prevent_simultaneous_sink_and_source argument is deprecated. Use the prevent_simultaneous_flow_rates argument instead.',
+                DeprecationWarning,
                 stacklevel=2,
             )
             prevent_simultaneous_flow_rates = prevent_simultaneous_sink_and_source
@@ -710,7 +1080,7 @@ class SourceAndSink(Component):
             label,
             inputs=inputs,
             outputs=outputs,
-            prevent_simultaneous_flows=inputs + outputs if prevent_simultaneous_flow_rates is True else None,
+            prevent_simultaneous_flows=(inputs or []) + (outputs or []) if prevent_simultaneous_flow_rates else None,
             meta_data=meta_data,
         )
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
@@ -727,7 +1097,7 @@ class SourceAndSink(Component):
     @property
     def sink(self) -> Flow:
         warnings.warn(
-            'The sink property is deprecated. Use the outputs property instead.',
+            'The sink property is deprecated. Use the inputs property instead.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -745,20 +1115,88 @@ class SourceAndSink(Component):
 
 @register_class_for_io
 class Source(Component):
+    """
+    A Source generates or provides energy or material flows into the system.
+
+    Sources represent supply points like power plants, fuel suppliers, renewable
+    energy sources, or any system boundary where flows originate. They provide
+    unlimited supply capability subject to flow constraints, demand patterns and effects.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        outputs: Output-flows from the source. Can be single flow or list of flows
+            for sources providing multiple commodities or services.
+        meta_data: Used to store additional information about the Element. Not used
+            internally but saved in results. Only use Python native types.
+        prevent_simultaneous_flow_rates: If True, only one output flow can be active
+            at a time. Useful for modeling mutually exclusive supply options. Default is False.
+
+    Examples:
+        Simple electricity grid connection:
+
+        ```python
+        grid_source = Source(label='electrical_grid', outputs=[grid_electricity_flow])
+        ```
+
+        Natural gas supply with cost and capacity constraints:
+
+        ```python
+        gas_supply = Source(
+            label='gas_network',
+            outputs=[
+                Flow(
+                    label='natural_gas_flow',
+                    bus=gas_bus,
+                    size=1000,  # Maximum 1000 kW supply capacity
+                    effects_per_flow_hour={'cost': 0.04},  # €0.04/kWh gas cost
+                )
+            ],
+        )
+        ```
+
+        Multi-fuel power plant with switching constraints:
+
+        ```python
+        multi_fuel_plant = Source(
+            label='flexible_generator',
+            outputs=[coal_electricity, gas_electricity, biomass_electricity],
+            prevent_simultaneous_flow_rates=True,  # Can only use one fuel at a time
+        )
+        ```
+
+        Renewable energy source with investment optimization:
+
+        ```python
+        solar_farm = Source(
+            label='solar_pv',
+            outputs=[
+                Flow(
+                    label='solar_power',
+                    bus=electricity_bus,
+                    size=InvestParameters(
+                        minimum_size=0,
+                        maximum_size=50000,  # Up to 50 MW
+                        specific_effects={'cost': 800},  # €800/kW installed
+                        fix_effects={'cost': 100000},  # €100k development costs
+                    ),
+                    fixed_relative_profile=solar_profile,  # Hourly generation profile
+                )
+            ],
+        )
+        ```
+
+    Deprecated:
+        The deprecated `source` kwarg is accepted for compatibility but will be removed in future releases.
+    """
+
     def __init__(
         self,
         label: str,
-        outputs: list[Flow] = None,
+        outputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
-        """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            outputs: output-flows of source
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-        """
         source = kwargs.pop('source', None)
         if source is not None:
             warnings.warn(
@@ -790,29 +1228,112 @@ class Source(Component):
 
 @register_class_for_io
 class Sink(Component):
+    """
+    A Sink consumes energy or material flows from the system.
+
+    Sinks represent demand points like electrical loads, heat demands, material
+    consumption, or any system boundary where flows terminate. They provide
+    unlimited consumption capability subject to flow constraints, demand patterns and effects.
+
+    Args:
+        label: The label of the Element. Used to identify it in the FlowSystem.
+        inputs: Input-flows into the sink. Can be single flow or list of flows
+            for sinks consuming multiple commodities or services.
+        meta_data: Used to store additional information about the Element. Not used
+            internally but saved in results. Only use Python native types.
+        prevent_simultaneous_flow_rates: If True, only one input flow can be active
+            at a time. Useful for modeling mutually exclusive consumption options. Default is False.
+
+    Examples:
+        Simple electrical demand:
+
+        ```python
+        electrical_load = Sink(label='building_load', inputs=[electricity_demand_flow])
+        ```
+
+        Heat demand with time-varying profile:
+
+        ```python
+        heat_demand = Sink(
+            label='district_heating_load',
+            inputs=[
+                Flow(
+                    label='heat_consumption',
+                    bus=heat_bus,
+                    fixed_relative_profile=hourly_heat_profile,  # Demand profile
+                    size=2000,  # Peak demand of 2000 kW
+                )
+            ],
+        )
+        ```
+
+        Multi-energy building with switching capabilities:
+
+        ```python
+        flexible_building = Sink(
+            label='smart_building',
+            inputs=[electricity_heating, gas_heating, heat_pump_heating],
+            prevent_simultaneous_flow_rates=True,  # Can only use one heating mode
+        )
+        ```
+
+        Industrial process with variable demand:
+
+        ```python
+        factory_load = Sink(
+            label='manufacturing_plant',
+            inputs=[
+                Flow(
+                    label='electricity_process',
+                    bus=electricity_bus,
+                    size=5000,  # Base electrical load
+                    effects_per_flow_hour={'cost': -0.1},  # Value of service (negative cost)
+                ),
+                Flow(
+                    label='steam_process',
+                    bus=steam_bus,
+                    size=3000,  # Process steam demand
+                    fixed_relative_profile=production_schedule,
+                ),
+            ],
+        )
+        ```
+
+    Deprecated:
+        The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
+    """
+
     def __init__(
         self,
         label: str,
-        inputs: list[Flow] = None,
+        inputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
         """
-        Args:
-            label: The label of the Element. Used to identify it in the FlowSystem
-            inputs: output-flows of source
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+        Initialize a Sink (consumes flow from the system).
+
+        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided it is used as the single input flow and a DeprecationWarning is issued; specifying both `inputs` and `sink` raises ValueError.
+
+        Parameters:
+            label (str): Unique element label.
+            inputs (list[Flow], optional): Input flows for the sink.
+            meta_data (dict, optional): Arbitrary metadata attached to the element.
+            prevent_simultaneous_flow_rates (bool, optional): If True, prevents simultaneous nonzero flow rates across the element's inputs by wiring that restriction into the base Component setup.
+
+        Note:
+            The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
         """
         sink = kwargs.pop('sink', None)
         if sink is not None:
             warnings.warn(
-                'The use of the sink argument is deprecated. Use the outputs argument instead.',
+                'The use of the sink argument is deprecated. Use the inputs argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
             if inputs is not None:
-                raise ValueError('Either sink or outputs can be specified, but not both.')
+                raise ValueError('Either sink or inputs can be specified, but not both.')
             inputs = [sink]
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
@@ -826,7 +1347,7 @@ class Sink(Component):
     @property
     def sink(self) -> Flow:
         warnings.warn(
-            'The sink property is deprecated. Use the outputs property instead.',
+            'The sink property is deprecated. Use the inputs property instead.',
             DeprecationWarning,
             stacklevel=2,
         )

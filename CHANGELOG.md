@@ -5,7 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased - New Model dimensions]
+<!-- This text won't be rendered
+Note: The CI will automatically append a "What's Changed" section to the changelog.
+This contains all commits, PRs, and contributors.
+Therefore, the Changelog should focus on the user-facing changes.
+Please remove all irrelevant sections before releasing.
+
+## [Unreleased] - ????-??-??
+
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Known issues
+
+### *Development*
+
+Until here -->
+
+## [Unreleased] - ????-??-??
 
 ### Changed
 * **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
@@ -108,6 +132,52 @@ This enables to model transformation pathways over multiple years.
 * The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
+
+
+## [2.1.8] - 2025-09-22
+This release focuses on code quality improvements, enhanced documentation, and bug fixes for heat pump components and visualization features.
+
+### Added
+- Extra Check for HeatPumpWithSource.COP to be strictly > 1 to avoid division by zero
+- Apply deterministic color assignment by using sorted() in `plotting.py`
+- Add missing args in docstrings in `plotting.py`, `solvers.py`, and `core.py`.
+
+### Changed
+- Greatly improved docstrings and documentation of all public classes
+- Make path handling to be gentle about missing .html suffix in `plotting.py`
+- Default for `relative_losses` in `Transmission` is now 0 instead of None
+- Setter of COP in `HeatPumpWithSource` now completely overwrites the conversion factors, which is safer.
+- Fix some docstrings in plotting.py
+- Change assertions to raise Exceptions in `plotting.py`
+
+### Fixed
+- Fix color scheme selection in network_app; color pickers now update when a scheme is selected.
+- Fix error handling in network visualization if networkx is not installed.
+- Fix broken links in docs.
+- Fix COP getter and setter of `HeatPumpWithSource` returning and setting wrong conversion factors.
+- Fix custom compression levels in `io.save_dataset_to_netcdf`
+- Fix `total_max` did not work when total min was not used.
+
+### *Development*
+- Pin dev dependencies to specific versions
+- Improve CI workflows to run faster and smarter
+
+## [2.1.7] - 2025-09-13
+
+This update is a maintenance release to improve Code Quality, CI and update the dependencies.
+There are no changes or new features.
+
+### Added
+- Added __version__ to flixopt
+
+### *Development*
+- ruff format the whole Codebase
+- Added renovate config
+- Added pre-commit
+- lint and format in CI
+- improved CI
+- Updated Dependencies
+- Updated Issue Templates
 
 
 ## [2.1.6] - 2025-09-02

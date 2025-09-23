@@ -1,6 +1,6 @@
 """
-This script demonstrates how to use the different calcualtion types in the flixOPt framework
-to model the same energy system. THe Results will be compared to each other.
+This script demonstrates how to use the different calculation types in the flixopt framework
+to model the same energy system. The results will be compared to each other.
 """
 
 import pathlib
@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
     # Data Import
     data_import = pd.read_csv(pathlib.Path('Zeitreihen2020.csv'), index_col=0).sort_index()
-    filtered_data = data_import['2020-01-01':'2020-01-2 23:45:00']
+    filtered_data = data_import['2020-01-01':'2020-01-02 23:45:00']
     # filtered_data = data_import[0:500]  # Alternatively filter by index
 
     filtered_data.index = pd.to_datetime(filtered_data.index)

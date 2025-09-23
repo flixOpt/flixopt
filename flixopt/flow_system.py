@@ -2,10 +2,11 @@
 This module contains the FlowSystem class, which is used to collect instances of many other classes by the end User.
 """
 
+from __future__ import annotations
+
+import json
 import logging
-import pathlib
 import warnings
-from collections.abc import Collection
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import numpy as np
@@ -34,6 +35,9 @@ from .elements import Bus, Component, Flow
 from .structure import Element, FlowSystemModel, Interface
 
 if TYPE_CHECKING:
+    import pathlib
+    from collections.abc import Collection
+
     import pyvis
 
 logger = logging.getLogger('flixopt')
@@ -41,18 +45,24 @@ logger = logging.getLogger('flixopt')
 
 class FlowSystem(Interface):
     """
-    FlowSystem serves as the main container for energy system modeling, organizing
-    high-level elements including Components (like boilers, heat pumps, storages),
-    Buses (connection points), and Effects (system-wide influences). It handles
-    time series data management, network connectivity, and provides serialization
-    capabilities for saving and loading complete system configurations.
+    A FlowSystem organizes the high level Elements (Components, Buses & Effects).
 
-    The system uses xarray.Dataset for efficient time series data handling. It can be exported and restored to NETCDF.
+    This is the main container class that users work with to build and manage their System.
 
-    See Also:
-        Component: Base class for system components like boilers, heat pumps.
-        Bus: Connection points for flows between components.
-        Effect: System-wide effects, like the optimization objective.
+    Args:
+            timesteps: The timesteps of the model.
+            years: The years of the model.
+            scenarios: The scenarios of the model.
+            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
+            hours_of_previous_timesteps: The duration of previous timesteps.
+                If None, the first time increment of time_series is used.
+                This is needed to calculate previous durations (for example consecutive_on_hours).
+                If you use an array, take care that its long enough to cover all previous values!
+            weights: The weights of each year and scenario. If None, all have the same weight (normalized to 1). Its recommended to scale the weights to sum up to 1.
+
+    Notes:
+        - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
+        - The instance starts disconnected (self._connected == False) and will be connected automatically when trying to solve a calculation.
     """
 
     def __init__(
@@ -64,18 +74,6 @@ class FlowSystem(Interface):
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weights: NonTemporalDataUser | None = None,
     ):
-        """
-        Args:
-            timesteps: The timesteps of the model.
-            years: The years of the model.
-            scenarios: The scenarios of the model.
-            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
-            hours_of_previous_timesteps: The duration of previous timesteps.
-                If None, the first time increment of time_series is used.
-                This is needed to calculate previous durations (for example consecutive_on_hours).
-                If you use an array, take care that its long enough to cover all previous values!
-            weights: The weights of each year and scenario. If None, all have the same weight (normalized to 1). Its recommended to scale the weights to sum up to 1.
-        """
         self.timesteps = self._validate_timesteps(timesteps)
 
         self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
@@ -243,7 +241,7 @@ class FlowSystem(Interface):
         return super().to_dataset()
 
     @classmethod
-    def from_dataset(cls, ds: xr.Dataset) -> 'FlowSystem':
+    def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:
         """
         Create a FlowSystem from an xarray Dataset.
         Handles FlowSystem-specific reconstruction logic.
@@ -482,9 +480,31 @@ class FlowSystem(Interface):
             Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
         ] = True,
         show: bool = False,
-    ) -> Optional['pyvis.network.Network']:
+    ) -> pyvis.network.Network | None:
         """
         Visualizes the network structure of a FlowSystem using PyVis, saving it as an interactive HTML file.
+
+        Args:
+            path: Path to save the HTML visualization.
+                - `False`: Visualization is created but not saved.
+                - `str` or `Path`: Specifies file path (default: 'flow_system.html').
+            controls: UI controls to add to the visualization.
+                - `True`: Enables all available controls.
+                - `List`: Specify controls, e.g., ['nodes', 'layout'].
+                - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
+            show: Whether to open the visualization in the web browser.
+
+        Returns:
+        - 'pyvis.network.Network' | None: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
+
+        Examples:
+            >>> flow_system.plot_network()
+            >>> flow_system.plot_network(show=False)
+            >>> flow_system.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
+
+        Notes:
+        - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
+        - Nodes are styled based on type (e.g., circles for buses, boxes for components) and annotated with node information.
         """
         from . import plotting
 
@@ -493,7 +513,7 @@ class FlowSystem(Interface):
 
     def start_network_app(self):
         """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
-        Requires optional dependencies: dash, dash-cytoscape, networkx, werkzeug.
+        Requires optional dependencies: dash, dash-cytoscape, dash-daq, networkx, flask, werkzeug.
         """
         from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR, flow_graph, shownetwork
 
@@ -506,7 +526,8 @@ class FlowSystem(Interface):
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
-                f'Install with: pip install flixopt[viz], flixopt[full] or pip install dash dash_cytoscape networkx werkzeug. '
+                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
+                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
@@ -526,7 +547,8 @@ class FlowSystem(Interface):
         if not DASH_CYTOSCAPE_AVAILABLE:
             raise ImportError(
                 f'Network visualization requires optional dependencies. '
-                f'Install with: pip install flixopt[viz]. '
+                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
+                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
@@ -604,14 +626,14 @@ class FlowSystem(Interface):
 
                 # Add Bus if not already added (deprecated)
                 if flow._bus_object is not None and flow._bus_object not in self.buses.values():
-                    self._add_buses(flow._bus_object)
                     warnings.warn(
                         f'The Bus {flow._bus_object.label_full} was added to the FlowSystem from {flow.label_full}.'
                         f'This is deprecated and will be removed in the future. '
                         f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead.',
-                        UserWarning,
+                        DeprecationWarning,
                         stacklevel=1,
                     )
+                    self._add_buses(flow._bus_object)
 
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
@@ -666,7 +688,7 @@ class FlowSystem(Interface):
 
         return '\n'.join(lines)
 
-    def __eq__(self, other: 'FlowSystem'):
+    def __eq__(self, other: FlowSystem):
         """Check if two FlowSystems are equal by comparing their dataset representations."""
         if not isinstance(other, FlowSystem):
             raise NotImplementedError('Comparison with other types is not implemented for class FlowSystem')
@@ -735,7 +757,7 @@ class FlowSystem(Interface):
         time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
         year: int | slice | list[int] | pd.Index | None = None,
         scenario: str | slice | list[str] | pd.Index | None = None,
-    ) -> 'FlowSystem':
+    ) -> FlowSystem:
         """
         Select a subset of the flowsystem by the time coordinate.
 
@@ -770,7 +792,7 @@ class FlowSystem(Interface):
         time: int | slice | list[int] | None = None,
         year: int | slice | list[int] | None = None,
         scenario: int | slice | list[int] | None = None,
-    ) -> 'FlowSystem':
+    ) -> FlowSystem:
         """
         Select a subset of the flowsystem by integer indices.
 
@@ -805,7 +827,7 @@ class FlowSystem(Interface):
         time: str,
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
         **kwargs: Any,
-    ) -> 'FlowSystem':
+    ) -> FlowSystem:
         """
         Create a resampled FlowSystem by resampling data along the time dimension (like xr.Dataset.resample()).
         Only resamples data variables that have a time dimension.

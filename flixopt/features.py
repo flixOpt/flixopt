@@ -3,15 +3,21 @@ This module contains the features of the flixopt framework.
 Features extend the functionality of Elements.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
 
-from .core import FlowSystemDimensions, Scalar, TemporalData
 from .interface import InvestParameters, OnOffParameters, Piecewise
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
+
+if TYPE_CHECKING:
+    from .core import FlowSystemDimensions, Scalar, TemporalData
+    from .interface import InvestParameters, OnOffParameters, Piecewise
 
 logger = logging.getLogger('flixopt')
 
