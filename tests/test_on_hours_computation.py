@@ -40,7 +40,7 @@ class TestComputeConsecutiveDuration:
     )
     def test_compute_duration_raises_error(self, binary_values, hours_per_timestep):
         """Test error conditions."""
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeError):
             ModelingUtilities.compute_consecutive_hours_in_state(binary_values, hours_per_timestep)
 
 

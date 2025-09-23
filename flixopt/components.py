@@ -482,29 +482,33 @@ class Storage(Component):
             maximum_capacity = self.capacity_in_flow_hours
             minimum_capacity = self.capacity_in_flow_hours
 
-            minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=1)
-            maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=1)
-            if self.initial_charge_state > maximum_initial_capacity:
-                raise ValueError(
-                    f'{self.label_full}: {self.initial_charge_state=} is above allowed maximum {maximum_initial_capacity}'
-                )
-            if self.initial_charge_state < minimum_initial_capacity:
-                raise ValueError(
-                    f'{self.label_full}: {self.initial_charge_state=} is below allowed minimum {minimum_initial_capacity}'
-                )
+        # initial capacity >= allowed min for maximum_size:
+        minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
+        # initial capacity <= allowed max for minimum_size:
+        maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
-            if self.balanced:
-                if not isinstance(self.charging.size, InvestParameters) or not isinstance(
-                    self.discharging.size, InvestParameters
-                ):
-                    raise PlausibilityError(
-                        f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
-                    )
+        if (self.initial_charge_state > maximum_initial_capacity).any():
+            raise ValueError(
+                f'{self.label_full}: {self.initial_charge_state=} '
+                f'is above allowed maximum charge_state {maximum_initial_capacity}'
+            )
+        if (self.initial_charge_state < minimum_initial_capacity).any():
+            raise ValueError(
+                f'{self.label_full}: {self.initial_charge_state=} '
+                f'is below allowed minimum charge_state {minimum_initial_capacity}'
+            )
 
-            if (
-                self.charging.size.minimum_size > self.discharging.size.maximum_size
-                or self.charging.size.maximum_size < self.discharging.size.minimum_size
+        if self.balanced:
+            if not isinstance(self.charging.size, InvestParameters) or not isinstance(
+                self.discharging.size, InvestParameters
             ):
+                raise PlausibilityError(
+                    f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
+                )
+
+            if (self.charging.size.minimum_size > self.discharging.size.maximum_size).any() or (
+                self.charging.size.maximum_size < self.discharging.size.minimum_size
+            ).any():
                 raise PlausibilityError(
                     f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
                     f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
