@@ -365,7 +365,6 @@ class FlowSystem(Interface):
         name: str,
         data: TemporalDataUser | NonTemporalDataUser | None,
         dims: Collection[FlowSystemDimensions] | None = None,
-        with_year_of_investment: bool = False,
     ) -> TemporalData | NonTemporalData | None:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -374,7 +373,6 @@ class FlowSystem(Interface):
             name: Name of the data
             data: Data to fit to model coordinates
             dims: Collection of dimension names to use for fitting. If None, all dimensions are used.
-            with_year_of_investment: Wether to use the year_of_investment dimension or not. Only if "year" is in dims.
 
         Returns:
             xr.DataArray aligned to model coordinate system. If data is None, returns None.
@@ -386,9 +384,6 @@ class FlowSystem(Interface):
 
         if dims is not None:
             coords = {k: coords[k] for k in dims if k in coords}
-
-        if with_year_of_investment and 'year' in coords:
-            coords['year_of_investment'] = coords['year'].rename('year_of_investment')
 
         # Rest of your method stays the same, just pass coords
         if isinstance(data, TimeSeriesData):
@@ -411,7 +406,6 @@ class FlowSystem(Interface):
         effect_values: TemporalEffectsUser | NonTemporalEffectsUser | None,
         label_suffix: str | None = None,
         dims: Collection[FlowSystemDimensions] | None = None,
-        with_year_of_investment: bool = False,
     ) -> TemporalEffects | NonTemporalEffects | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
@@ -426,7 +420,6 @@ class FlowSystem(Interface):
                 '|'.join(filter(None, [label_prefix, effect, label_suffix])),
                 value,
                 dims=dims,
-                with_year_of_investment=with_year_of_investment,
             )
             for effect, value in effect_values_dict.items()
         }
@@ -791,8 +784,6 @@ class FlowSystem(Interface):
             indexers['time'] = time
         if year is not None:
             indexers['year'] = year
-            if 'year_of_investment' in ds.dims:
-                indexers['year_of_investment'] = year
         if scenario is not None:
             indexers['scenario'] = scenario
 
@@ -800,12 +791,6 @@ class FlowSystem(Interface):
             return self.copy()  # Return a copy when no selection
 
         selected_dataset = ds.sel(**indexers)
-        if 'year_of_investment' in selected_dataset.coords and selected_dataset.coords['year_of_investment'].size == 1:
-            logger.critical(
-                'Selected a single year while using InvestmentTiming. This is not supported and will lead to Errors '
-                'when trying to create a Calculation from this FlowSystem. Please select multiple years instead, '
-                'or remove the InvestmentTimingParameters.'
-            )
         return self.__class__.from_dataset(selected_dataset)
 
     def isel(
@@ -836,8 +821,6 @@ class FlowSystem(Interface):
             indexers['time'] = time
         if year is not None:
             indexers['year'] = year
-            if 'year_of_investment' in ds.dims:
-                indexers['year_of_investment'] = year
         if scenario is not None:
             indexers['scenario'] = scenario
 
@@ -845,12 +828,6 @@ class FlowSystem(Interface):
             return self.copy()  # Return a copy when no selection
 
         selected_dataset = ds.isel(**indexers)
-        if 'year_of_investment' in selected_dataset.coords and selected_dataset.coords['year_of_investment'].size == 1:
-            logger.critical(
-                'Selected a single year while using InvestmentTiming. This is not supported and will lead to Errors '
-                'when trying to create a Calculation from this FlowSystem. Please select multiple years instead, '
-                'or remove the InvestmentTimingParameters.'
-            )
         return self.__class__.from_dataset(selected_dataset)
 
     def resample(

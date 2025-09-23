@@ -13,8 +13,8 @@ import xarray as xr
 
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
-from .features import InvestmentModel, InvestmentTimingModel, ModelingPrimitives, OnOffModel
-from .interface import InvestParameters, InvestTimingParameters, OnOffParameters
+from .features import InvestmentModel, ModelingPrimitives, OnOffModel
+from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingUtilitiesAbstract
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
@@ -368,7 +368,7 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Scalar | InvestParameters | InvestTimingParameters = None,
+        size: Scalar | InvestParameters = None,
         fixed_relative_profile: TemporalDataUser | None = None,
         relative_minimum: TemporalDataUser = 0,
         relative_maximum: TemporalDataUser = 1,
@@ -445,7 +445,7 @@ class Flow(Element):
 
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, self.label_full)
-        if isinstance(self.size, (InvestParameters, InvestTimingParameters)):
+        if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system, self.label_full)
         else:
             self.size = flow_system.fit_to_model_coords(f'{self.label_full}|size', self.size, dims=['year', 'scenario'])
@@ -455,7 +455,7 @@ class Flow(Element):
         if np.any(self.relative_minimum > self.relative_maximum):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
-        if not isinstance(self.size, (InvestParameters, InvestTimingParameters)) and (
+        if not isinstance(self.size, InvestParameters) and (
             np.any(self.size == CONFIG.modeling.BIG) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
@@ -556,28 +556,15 @@ class FlowModel(ElementModel):
         )
 
     def _create_investment_model(self):
-        if isinstance(self.element.size, InvestParameters):
-            self.add_submodels(
-                InvestmentModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    parameters=self.element.size,
-                    label_of_model=self.label_of_element,
-                ),
-                'investment',
-            )
-        elif isinstance(self.element.size, InvestTimingParameters):
-            self.add_submodels(
-                InvestmentTimingModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    parameters=self.element.size,
-                    label_of_model=self.label_of_element,
-                ),
-                'investment',
-            )
-        else:
-            raise ValueError(f'Invalid InvestParameters type: {type(self.element.size)}')
+        self.add_submodels(
+            InvestmentModel(
+                model=self._model,
+                label_of_element=self.label_of_element,
+                parameters=self.element.size,
+                label_of_model=self.label_of_element,
+            ),
+            'investment',
+        )
 
     def _constraint_flow_rate(self):
         if not self.with_investment and not self.with_on_off:
@@ -627,7 +614,7 @@ class FlowModel(ElementModel):
 
     @property
     def with_investment(self) -> bool:
-        return isinstance(self.element.size, (InvestParameters, InvestTimingParameters))
+        return isinstance(self.element.size, InvestParameters)
 
     # Properties for clean access to variables
     @property
