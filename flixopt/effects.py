@@ -16,7 +16,7 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .core import Scalar, TemporalData, TemporalDataUser
+from .core import NonTemporalDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 
@@ -174,7 +174,7 @@ class Effect(Element):
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
-    def transform_data(self, flow_system: FlowSystem):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.minimum_operation_per_hour = flow_system.fit_to_model_coords(
             f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
         )
@@ -275,7 +275,7 @@ class EffectModel(ElementModel):
 TemporalEffectsUser = TemporalDataUser | dict[str, TemporalDataUser]  # User-specified Shares to Effects
 """ This datatype is used to define a temporal share to an effect by a certain attribute. """
 
-NonTemporalEffectsUser = Scalar | dict[str, Scalar]  # User-specified Shares to Effects
+NonTemporalEffectsUser = NonTemporalDataUser | dict[str, NonTemporalDataUser]  # User-specified Shares to Effects
 """ This datatype is used to define a scalar share to an effect by a certain attribute. """
 
 TemporalEffects = dict[str, TemporalData]  # User-specified Shares to Effects

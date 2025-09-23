@@ -50,15 +50,16 @@ class FlowSystem(Interface):
     This is the main container class that users work with to build and manage their System.
 
     Args:
-            timesteps: The timesteps of the model.
-            years: The years of the model.
-            scenarios: The scenarios of the model.
-            hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
-            hours_of_previous_timesteps: The duration of previous timesteps.
-                If None, the first time increment of time_series is used.
-                This is needed to calculate previous durations (for example consecutive_on_hours).
-                If you use an array, take care that its long enough to cover all previous values!
-            weights: The weights of each year and scenario. If None, all have the same weight (normalized to 1). Its recommended to scale the weights to sum up to 1.
+        timesteps: The timesteps of the model.
+        years: The years of the model.
+        scenarios: The scenarios of the model.
+        hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
+        hours_of_previous_timesteps: The duration of previous timesteps.
+            If None, the first time increment of time_series is used.
+            This is needed to calculate previous durations (for example consecutive_on_hours).
+            If you use an array, take care that its long enough to cover all previous values!
+        years_of_last_year: The duration of the last year. Defaults to the duration of the last year interval.
+        weights: The weights of each year and scenario. If None, all scenarios have the same weight, while the years have the weight of their represented year (all normalized to 1). Its recommended to scale the weights to sum up to 1.
 
     Notes:
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
@@ -72,16 +73,21 @@ class FlowSystem(Interface):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        years_of_last_year: int | None = None,
         weights: NonTemporalDataUser | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
-
         self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
         )
 
-        self.years = None if years is None else self._validate_years(years)
+        if years is None:
+            self.years, self.years_per_year, self.years_of_investment = None, None, None
+        else:
+            self.years = self._validate_years(years)
+            self.years_per_year = self.calculate_years_per_year(self.years, years_of_last_year)
+            self.years_of_investment = self.years.rename('year_of_investment')
 
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
@@ -173,6 +179,17 @@ class FlowSystem(Interface):
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
             hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='hours_per_timestep'
+        )
+
+    @staticmethod
+    def calculate_years_per_year(years: pd.Index, years_of_last_year: int | None = None) -> xr.DataArray:
+        """Calculate duration of each timestep as a 1D DataArray."""
+        years_per_year = np.diff(years)
+        return xr.DataArray(
+            np.append(years_per_year, years_of_last_year or years_per_year[-1]),
+            coords={'year': years},
+            dims='year',
+            name='years_per_year',
         )
 
     @staticmethod
@@ -347,8 +364,8 @@ class FlowSystem(Interface):
         self,
         name: str,
         data: TemporalDataUser | NonTemporalDataUser | None,
-        has_time_dim: bool = True,
         dims: Collection[FlowSystemDimensions] | None = None,
+        with_year_of_investment: bool = False,
     ) -> TemporalData | NonTemporalData | None:
         """
         Fit data to model coordinate system (currently time, but extensible).
@@ -356,8 +373,8 @@ class FlowSystem(Interface):
         Args:
             name: Name of the data
             data: Data to fit to model coordinates
-            has_time_dim: Wether to use the time dimension or not
             dims: Collection of dimension names to use for fitting. If None, all dimensions are used.
+            with_year_of_investment: Wether to use the year_of_investment dimension or not. Only if "year" is in dims.
 
         Returns:
             xr.DataArray aligned to model coordinate system. If data is None, returns None.
@@ -365,19 +382,13 @@ class FlowSystem(Interface):
         if data is None:
             return None
 
-        if dims is None:
-            coords = self.coords
+        coords = self.coords
 
-            if not has_time_dim:
-                warnings.warn(
-                    'has_time_dim is deprecated. Please pass dims to fit_to_model_coords instead.',
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                coords.pop('time')
-        else:
-            coords = self.coords
+        if dims is not None:
             coords = {k: coords[k] for k in dims if k in coords}
+
+        if with_year_of_investment and 'year' in coords:
+            coords['year_of_investment'] = coords['year'].rename('year_of_investment')
 
         # Rest of your method stays the same, just pass coords
         if isinstance(data, TimeSeriesData):
@@ -399,8 +410,8 @@ class FlowSystem(Interface):
         label_prefix: str | None,
         effect_values: TemporalEffectsUser | NonTemporalEffectsUser | None,
         label_suffix: str | None = None,
-        has_time_dim: bool = True,
         dims: Collection[FlowSystemDimensions] | None = None,
+        with_year_of_investment: bool = False,
     ) -> TemporalEffects | NonTemporalEffects | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
@@ -414,8 +425,8 @@ class FlowSystem(Interface):
             effect: self.fit_to_model_coords(
                 '|'.join(filter(None, [label_prefix, effect, label_suffix])),
                 value,
-                has_time_dim=has_time_dim,
                 dims=dims,
+                with_year_of_investment=with_year_of_investment,
             )
             for effect, value in effect_values_dict.items()
         }
@@ -772,19 +783,29 @@ class FlowSystem(Interface):
         if not self.connected_and_transformed:
             self.connect_and_transform()
 
+        ds = self.to_dataset()
+
         # Build indexers dict from non-None parameters
         indexers = {}
         if time is not None:
             indexers['time'] = time
         if year is not None:
             indexers['year'] = year
+            if 'year_of_investment' in ds.dims:
+                indexers['year_of_investment'] = year
         if scenario is not None:
             indexers['scenario'] = scenario
 
         if not indexers:
             return self.copy()  # Return a copy when no selection
 
-        selected_dataset = self.to_dataset().sel(**indexers)
+        selected_dataset = ds.sel(**indexers)
+        if 'year_of_investment' in selected_dataset.coords and selected_dataset.coords['year_of_investment'].size == 1:
+            logger.critical(
+                'Selected a single year while using InvestmentTiming. This is not supported and will lead to Errors '
+                'when trying to create a Calculation from this FlowSystem. Please select multiple years instead, '
+                'or remove the InvestmentTimingParameters.'
+            )
         return self.__class__.from_dataset(selected_dataset)
 
     def isel(
@@ -807,19 +828,29 @@ class FlowSystem(Interface):
         if not self.connected_and_transformed:
             self.connect_and_transform()
 
+        ds = self.to_dataset()
+
         # Build indexers dict from non-None parameters
         indexers = {}
         if time is not None:
             indexers['time'] = time
         if year is not None:
             indexers['year'] = year
+            if 'year_of_investment' in ds.dims:
+                indexers['year_of_investment'] = year
         if scenario is not None:
             indexers['scenario'] = scenario
 
         if not indexers:
             return self.copy()  # Return a copy when no selection
 
-        selected_dataset = self.to_dataset().isel(**indexers)
+        selected_dataset = ds.isel(**indexers)
+        if 'year_of_investment' in selected_dataset.coords and selected_dataset.coords['year_of_investment'].size == 1:
+            logger.critical(
+                'Selected a single year while using InvestmentTiming. This is not supported and will lead to Errors '
+                'when trying to create a Calculation from this FlowSystem. Please select multiple years instead, '
+                'or remove the InvestmentTimingParameters.'
+            )
         return self.__class__.from_dataset(selected_dataset)
 
     def resample(
