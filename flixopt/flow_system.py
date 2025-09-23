@@ -82,11 +82,10 @@ class FlowSystem(Interface):
         )
 
         if years is None:
-            self.years, self.years_per_year, self.years_of_investment = None, None, None
+            self.years, self.years_per_year = None, None
         else:
             self.years = self._validate_years(years)
             self.years_per_year = self.calculate_years_per_year(self.years, years_of_last_year)
-            self.years_of_investment = self.years.rename('year_of_investment')
 
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
