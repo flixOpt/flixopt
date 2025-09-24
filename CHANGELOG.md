@@ -13,21 +13,23 @@ Please remove all irrelevant sections before releasing.
 
 ## [Unreleased] - ????-??-??
 
-### 🚀 Added
+### ✨ Added
 
-### 🔄 Changed
+### ♻️ Changed
 
-### ⚠️ Deprecated
+### 🗑️ Deprecated
 
-### 🗑️ Removed
+### 🔥 Removed
 
 ### 🐛 Fixed
 
-### 📚 Docs
+### 🔒 Security
+
+### 📝 Docs
 
 ### 🚧 Known issues
 
-### 🛠️ Development
+### 👷 Development
 
 Until here -->
 ---
@@ -45,12 +47,12 @@ Until here -->
 
 **Summary:** Code quality improvements, enhanced documentation, and bug fixes for heat pump components and visualization features.
 
-### 🚀 Added
+### ✨ Added
 - Extra Check for HeatPumpWithSource.COP to be strictly > 1 to avoid division by zero
 - Apply deterministic color assignment by using sorted() in `plotting.py`
 - Add missing args in docstrings in `plotting.py`, `solvers.py`, and `core.py`.
 
-### 🔄 Changed
+### ♻️ Changed
 - Greatly improved docstrings and documentation of all public classes
 - Make path handling to be gentle about missing .html suffix in `plotting.py`
 - Default for `relative_losses` in `Transmission` is now 0 instead of None
@@ -70,10 +72,10 @@ Until here -->
 - Fix error handling in network visualization if networkx is not installed
 - Fix some docstrings in plotting.py
 
-### 📚 Docs
+### 📝 Docs
 - Fix broken links in docs
 
-### 🛠️ Development
+### 👷 Development
 - Pin dev dependencies to specific versions
 - Improve CI workflows to run faster and smarter
 
@@ -83,10 +85,10 @@ Until here -->
 
 **Summary:** Maintenance release to improve Code Quality, CI and update the dependencies. There are no changes or new features.
 
-### 🚀 Added
+### ✨ Added
 - Added __version__ to flixopt
 
-### 🛠️ Development
+### 👷 Development
 - ruff format the whole Codebase
 - Added renovate config
 - Added pre-commit
@@ -101,15 +103,15 @@ Until here -->
 
 **Summary:** Enhanced Sink/Source components with multi-flow support and new interactive network visualization.
 
-### 🔄 Changed
+### ♻️ Changed
 - **Multi-Flow Support**: `Sink`, `Source` and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables to model more use cases using these classes
 - **Flow Control**: Both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their Flows
 
-### 🚀 Added
+### ✨ Added
 - **Network Visualization**: Added `FlowSystem.start_network_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive dash web app
   - *Note: This is still experimental and might change in the future*
 
-### ⚠️ Deprecated
+### 🗑️ Deprecated
 - For the classes `Sink`, `Source` and `SourceAndSink`: `.sink`, `.source` and `.prevent_simultaneous_sink_and_source` are deprecated in favor of the new arguments `inputs`, `outputs` and `prevent_simultaneous_flow_rates`
 
 ### 🐛 Fixed
@@ -155,13 +157,13 @@ Until here -->
 ### 🐛 Fixed
 - Fixed bug in the `_ElementResults.constraints` not returning the constraints but rather the variables
 
-### 🔄 Changed
+### ♻️ Changed
 - Improved docstring and tests
 
 ---
 ## **[2.1.0] - 2025-04-11**
 
-### 🚀 Added
+### ✨ Added
 - Python 3.13 support added
 - Logger warning if relative_minimum is used without on_off_parameters in Flow
 - Greatly improved internal testing infrastructure by leveraging linopy's testing framework
@@ -171,8 +173,8 @@ Until here -->
 - Fixed bug that prevented divest effects from working
 - Added lower bounds of 0 to two unbounded vars (numerical improvement)
 
-### 🔄 Changed
-- **🚨 BREAKING**: Restructured the modeling of the On/Off state of Flows or Components
+### ♻️ Changed
+- **💥 BREAKING**: Restructured the modeling of the On/Off state of Flows or Components
   - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
   - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
   - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
@@ -182,7 +184,7 @@ Until here -->
 
 ## **[2.0.1] - 2025-04-10**
 
-### 🚀 Added
+### ✨ Added
 - Logger warning if relative_minimum is used without on_off_parameters in Flow
 
 ### 🐛 Fixed
@@ -191,9 +193,9 @@ Until here -->
 
 ## **[2.0.0] - 2025-03-29**
 
-**Summary:** 🚨 **MAJOR RELEASE** - Complete framework migration from Pyomo to Linopy with redesigned architecture.
+**Summary:** 💥 **MAJOR RELEASE** - Complete framework migration from Pyomo to Linopy with redesigned architecture.
 
-### 🚨 Breaking Changes
+### 💥 Breaking Changes
 
 **Framework Migration:**
 - **Optimization Engine**: Complete migration from Pyomo to Linopy optimization framework
@@ -208,7 +210,7 @@ Until here -->
   - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
   - Similar pattern for all consecutive on/off constraints
 
-### 🚀 Added
+### ✨ Added
 
 **Model Capabilities:**
 - Full model serialization support - save and restore unsolved Models
@@ -222,7 +224,7 @@ Until here -->
 - `to_netcdf/from_netcdf` methods for FlowSystem and core components
 - xarray integration for TimeSeries with improved datatypes support
 
-### 📚 Docs
+### 📝 Docs
 - Google Style Docstrings throughout the codebase
 
 ### 🐛 Fixed
@@ -230,6 +232,6 @@ Until here -->
 - Enhanced time series management and serialization
 - Reduced file size through improved compression
 
-### 🗑️ Removed
+### 🔥 Removed
 - **Pyomo dependency** (replaced by linopy)
 - **Period concepts** in time management (simplified to timesteps)
