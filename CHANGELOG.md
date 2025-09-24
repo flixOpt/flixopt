@@ -30,16 +30,16 @@ Please remove all irrelevant sections before releasing.
 Until here -->
 
 ## [Unreleased] - ????-??-??
-This Release brings Multi-year-investments and stochastic modeling to flixopt.
-Further, IO methods were improved and resampling and selection of parts of the FlowSystem is now possible.
+This release brings multi-year investments and stochastic modeling to flixopt.
+Furthermore, I/O methods were improved, and resampling and selection of parts of the FlowSystem are now possible.
 Several internal improvements were made to the codebase.
 
 
-#### Multi-year-investments
+### Multi-year investments
 A flixopt model might be modeled with a "year" dimension.
 This enables to model transformation pathways over multiple years with several investment decisions
 
-#### Stochastic modeling
+### Stochastic modeling
 A flixopt model can be modeled with a scenario dimension.
 Scenarios can be weighted and variables can be equated across scenarios. This enables to model uncertainties in the flow system, such as:
 * Different demand profiles
@@ -52,7 +52,7 @@ Common use cases are:
 
 The weighted sum of the total objective effect of each scenario is used as the objective of the optimization.
 
-#### Improved Data handling: IO, resampling and more through xarray
+#### Improved Data handling: I/O, resampling and more through xarray
 * IO for all Interfaces and the FlowSystem with round-trip serialization support
     * NetCDF export/import capabilities for all Interface objects and FlowSystem
     * JSON export for documentation purposes
@@ -69,7 +69,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 
 
 ### Added
-* FlowSystem Restoring: The used FlowSystem is now accessible directly form the results without manual restoring (lazily). All Parameters can be safely accessed anytime after the solve.
+* FlowSystem restoring: The used FlowSystem is now accessible directly from the results without manual restoring (lazily). All parameters can be safely accessed anytime after the solve.
 * FlowResults added as a new class to store the results of Flows. They can now be accessed directly.
 * Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
 * Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
@@ -83,7 +83,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
 * **BREAKING**: Renamed class `Model` to `Submodel`
 * **BREAKING**: Renamed `mode` parameter in plotting methods to `style`
-* FlowSystems can not be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
+* FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
 * Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
 * Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
 * Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
@@ -116,7 +116,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * Added new module `.modeling`that contains Modelling primitives and utilities
 * Clearer separation between the main Model and "Submodels"
 * Improved access to the Submodels and their variables, constraints and submodels
-* Added __repr__() for Submodels to easily inspect its content
+* Added `__repr__()` for Submodels to easily inspect its content
 * Enhanced data handling methods
    * `fit_to_model_coords()` method for data alignment
    * `fit_effects_to_model_coords()` method for effect data processing
