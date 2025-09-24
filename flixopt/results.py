@@ -292,8 +292,6 @@ class CalculationResults:
         Contains all input parameters."""
         if self._flow_system is None:
             try:
-                from . import FlowSystem
-
                 current_logger_level = logger.getEffectiveLevel()
                 logger.setLevel(logging.CRITICAL)
                 self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
