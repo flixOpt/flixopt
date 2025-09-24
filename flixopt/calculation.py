@@ -322,20 +322,15 @@ class AggregatedCalculation(FullCalculation):
         t_start_agg = timeit.default_timer()
 
         # Validation
-        dt_min, dt_max = (
-            np.min(self.flow_system.hours_per_timestep),
-            np.max(self.flow_system.hours_per_timestep),
-        )
+        dt_min = float(self.flow_system.hours_per_timestep.min().item())
+        dt_max = float(self.flow_system.hours_per_timestep.max().item())
         if not dt_min == dt_max:
             raise ValueError(
                 f'Aggregation failed due to inconsistent time step sizes:'
                 f'delta_t varies from {dt_min} to {dt_max} hours.'
             )
-        steps_per_period = self.aggregation_parameters.hours_per_period / self.flow_system.hours_per_timestep.max()
-        is_integer = (
-            self.aggregation_parameters.hours_per_period % self.flow_system.hours_per_timestep.max()
-        ).item() == 0
-        if not (steps_per_period.size == 1 and is_integer):
+        is_integer = (self.aggregation_parameters.hours_per_period % dt_max) == 0
+        if not is_integer:
             raise ValueError(
                 f'The selected {self.aggregation_parameters.hours_per_period=} does not match the time '
                 f'step size of {dt_min} hours). It must be a multiple of {dt_min} hours.'
