@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections import deque
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Literal
 
@@ -570,10 +571,10 @@ def calculate_all_conversion_paths(
         # Keep track of visited paths to avoid repeating calculations
         processed_paths = set()
         # Use a queue with (current_domain, factor, path_history)
-        queue = [(origin, 1, [origin])]
+        queue = deque([(origin, 1, [origin])])
 
         while queue:
-            current_domain, factor, path = queue.pop(0)
+            current_domain, factor, path = queue.popleft()
 
             # Skip if we've processed this exact path before
             path_key = tuple(path)
