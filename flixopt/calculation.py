@@ -329,11 +329,11 @@ class AggregatedCalculation(FullCalculation):
                 f'Aggregation failed due to inconsistent time step sizes:'
                 f'delta_t varies from {dt_min} to {dt_max} hours.'
             )
-        is_integer = (self.aggregation_parameters.hours_per_period % dt_max) == 0
-        if not is_integer:
+        ratio = self.aggregation_parameters.hours_per_period / dt_max
+        if not np.isclose(ratio, round(ratio), atol=1e-9):
             raise ValueError(
                 f'The selected {self.aggregation_parameters.hours_per_period=} does not match the time '
-                f'step size of {dt_min} hours). It must be a multiple of {dt_min} hours.'
+                f'step size of {dt_max} hours. It must be an integer multiple of {dt_max} hours.'
             )
 
         logger.info(f'{"":#^80}')
