@@ -124,8 +124,8 @@ if __name__ == '__main__':
     calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_dispatch = timeit.default_timer() - start
 
-    if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all():
-        logger.info('Sizes where correctly equalized')
+    if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all().item():
+        logger.info('Sizes were correctly equalized')
     else:
         raise RuntimeError('Sizes were not correctly equalized')
 
