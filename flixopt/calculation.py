@@ -160,7 +160,7 @@ class Calculation:
     @property
     def active_timesteps(self) -> pd.DatetimeIndex:
         warnings.warn(
-            'active_timesteps is deprecated. Use active_timesteps instead.',
+            'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
             DeprecationWarning,
             stacklevel=2,
         )
