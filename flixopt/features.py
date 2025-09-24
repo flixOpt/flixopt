@@ -255,9 +255,9 @@ class OnOffModel(Submodel):
     # Properties access variables from Submodel's tracking system
 
     @property
-    def total_on_hours(self) -> linopy.Variable | None:
+    def on_hours_total(self) -> linopy.Variable:
         """Total on hours variable"""
-        return self['total_on_hours']
+        return self['on_hours_total']
 
     @property
     def off(self) -> linopy.Variable | None:
