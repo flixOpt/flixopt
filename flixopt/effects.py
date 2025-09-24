@@ -325,7 +325,7 @@ class EffectCollection:
 
         Examples
         --------
-        effect_values_user = 20                             -> {None: 20}
+        effect_values_user = 20                             -> {'<standard_effect_label>': 20}
         effect_values_user = None                           -> None
         effect_values_user = {effect1: 20, effect2: 0.3}    -> {effect1: 20, effect2: 0.3}
 
@@ -355,7 +355,7 @@ class EffectCollection:
             return None
         if isinstance(effect_values_user, dict):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
-        if self._standard_effect is None:
+        if self.standard_effect is None:
             raise KeyError(
                 'Scalar effect value provided but no standard effect is configured. '
                 'Either set an effect as is_standard=True or provide a mapping {effect_label: value}.'
