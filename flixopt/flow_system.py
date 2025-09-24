@@ -82,6 +82,7 @@ class FlowSystem(Interface):
             timesteps, hours_of_previous_timesteps
         )
 
+        self.years_of_last_year = years_of_last_year
         if years is None:
             self.years, self.years_per_year = None, None
         else:
@@ -279,6 +280,7 @@ class FlowSystem(Interface):
             timesteps=ds.indexes['time'],
             years=ds.indexes.get('year'),
             scenarios=ds.indexes.get('scenario'),
+            years_of_last_year=reference_structure.get('years_of_last_year'),
             weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
             if 'weights' in reference_structure
             else None,
