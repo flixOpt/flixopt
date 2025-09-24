@@ -77,7 +77,7 @@ class FlowSystem(Interface):
         weights: NonTemporalDataUser | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
-        self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
+        self.timesteps_extra = self._create_timesteps_with_extra(self.timesteps, hours_of_last_timestep)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
             timesteps, hours_of_previous_timesteps
         )
