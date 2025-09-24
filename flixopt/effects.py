@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import warnings
 from collections import deque
-from collections.abc import Iterator
 from typing import TYPE_CHECKING, Literal
 
 import linopy
