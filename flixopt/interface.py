@@ -1166,7 +1166,7 @@ class OnOffParameters(Interface):
 
     @property
     def use_switch_on(self) -> bool:
-        """Determines wether a Variable for SWITCH-ON is needed or not"""
+        """Determines whether a variable for SWITCH-ON is needed or not"""
         if self.force_switch_on:
             return True
 

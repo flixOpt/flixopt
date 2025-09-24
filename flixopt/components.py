@@ -142,11 +142,11 @@ class LinearConverter(Component):
     Note:
         Conversion factors define linear relationships where the sum of (coefficient × flow_rate)
         equals zero for each equation: factor1×flow1 + factor2×flow2 + ... = 0
-        Conversion factors define linear relationships.
-        `{flow1: a1, flow2: a2, ...}` leads to `a1×flow_rate1 + a2×flow_rate2 + ... = 0`
-        Unfortunately the current input format doest read intuitively:
-        {"electricity": 1, "H2": 50} means that the electricity_in flow rate is multiplied by 1
-        and the hydrogen_out flow rate is multiplied by 50. THis leads to 50 electricity --> 1 H2.
+        Conversion factors define linear relationships:
+        `{flow1: a1, flow2: a2, ...}` yields `a1×flow_rate1 + a2×flow_rate2 + ... = 0`.
+        Note: The input format may be unintuitive. For example,
+        `{"electricity": 1, "H2": 50}` implies `1×electricity = 50×H2`,
+        i.e., 50 units of electricity produce 1 unit of H2.
 
         The system must have fewer conversion factors than total flows (degrees of freedom > 0)
         to avoid over-constraining the problem. For n total flows, use at most n-1 conversion factors.
@@ -200,8 +200,9 @@ class LinearConverter(Component):
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
                     logger.warning(
-                        f'Using a FLow with a fixed size ({flow.label_full}) AND a piecewise_conversion '
-                        f'(in {self.label_full}) and variable size is uncommon. Please check if this is intended!'
+                        f'Using a Flow with variable size (InvestParameters without fixed_size) '
+                        f'and a piecewise_conversion in {self.label_full} is uncommon. Please verify intent '
+                        f'({flow.label_full}).'
                     )
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:

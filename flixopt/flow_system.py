@@ -434,7 +434,7 @@ class FlowSystem(Interface):
         self.weights = self.fit_to_model_coords('weights', self.weights, dims=['year', 'scenario'])
         if self.weights is not None and self.weights.sum() != 1:
             logger.warning(
-                f'Scenario weights are not normalized to 1. This is recomended for a better scaled model. '
+                f'Scenario weights are not normalized to 1. This is recommended for a better scaled model. '
                 f'Sum of weights={self.weights.sum().item()}'
             )
 

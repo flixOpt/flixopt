@@ -485,7 +485,7 @@ class Flow(Element):
             ):
                 raise TypeError(
                     f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}.'
-                    f'Different values in different years or scenarios are not yetsupported.'
+                    f'Different values in different years or scenarios are not yet supported.'
                 )
 
     @property

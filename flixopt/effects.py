@@ -332,7 +332,8 @@ class EffectCollection:
         Returns
         -------
         dict or None
-            A dictionary with None or Effect as the key, or None if input is None.
+            A dictionary keyed by effect label, or None if input is None.
+            Note: a standard effect must be defined when passing scalars or None labels.
         """
 
         def get_effect_label(eff: Effect | str) -> str:
@@ -354,6 +355,11 @@ class EffectCollection:
             return None
         if isinstance(effect_values_user, dict):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
+        if self._standard_effect is None:
+            raise KeyError(
+                'Scalar effect value provided but no standard effect is configured. '
+                'Either set an effect as is_standard=True or provide a mapping {effect_label: value}.'
+            )
         return {self.standard_effect.label: effect_values_user}
 
     def _plausibility_checks(self) -> None:
