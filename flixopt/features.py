@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 import linopy
 import numpy as np
 
-from .interface import InvestParameters, OnOffParameters, Piecewise
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
@@ -23,7 +22,19 @@ logger = logging.getLogger('flixopt')
 
 
 class InvestmentModel(Submodel):
-    """Investment model using factory patterns but keeping old interface"""
+    """
+    This feature model is used to model the investment of a variable.
+    It applies the corresponding bounds to the variable and the on/off state of the variable.
+
+    Args:
+        model: The optimization model instance
+        label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+        parameters: The parameters of the feature model.
+        label_of_model: The label of the model. This is needed to construct the full label of the model.
+
+    """
+
+    parameters: InvestParameters
 
     def __init__(
         self,
@@ -32,17 +43,6 @@ class InvestmentModel(Submodel):
         parameters: InvestParameters,
         label_of_model: str | None = None,
     ):
-        """
-        This feature model is used to model the investment of a variable.
-        It applies the corresponding bounds to the variable and the on/off state of the variable.
-
-        Args:
-            model: The optimization model instance
-            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            parameters: The parameters of the feature model.
-            label_of_model: The label of the model. This is needed to construct the full label of the model.
-
-        """
         self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
@@ -210,6 +210,8 @@ class OnOffModel(Submodel):
                 short_name='consecutive_on_hours',
                 minimum_duration=self.parameters.consecutive_on_hours_min,
                 maximum_duration=self.parameters.consecutive_on_hours_max,
+                duration_per_step=self.hours_per_step,
+                duration_dim='time',
                 previous_duration=self._get_previous_on_duration(),
             )
 
@@ -221,6 +223,8 @@ class OnOffModel(Submodel):
                 short_name='consecutive_off_hours',
                 minimum_duration=self.parameters.consecutive_off_hours_min,
                 maximum_duration=self.parameters.consecutive_off_hours_max,
+                duration_per_step=self.hours_per_step,
+                duration_dim='time',
                 previous_duration=self._get_previous_off_duration(),
             )
             # TODO:
@@ -251,9 +255,9 @@ class OnOffModel(Submodel):
     # Properties access variables from Submodel's tracking system
 
     @property
-    def total_on_hours(self) -> linopy.Variable | None:
+    def on_hours_total(self) -> linopy.Variable:
         """Total on hours variable"""
-        return self['total_on_hours']
+        return self['on_hours_total']
 
     @property
     def off(self) -> linopy.Variable | None:

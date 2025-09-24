@@ -30,12 +30,14 @@ Please remove all irrelevant sections before releasing.
 Until here -->
 
 ## [Unreleased] - ????-??-??
-Multi-Period and stochastic modeling is coming to flixopt in this release.
+This Release brings Multi-year-investments and stochastic modeling to flixopt.
+Further, IO methods were improved and resampling and selection of parts of the FlowSystem is now possible.
+Several internal improvements were made to the codebase.
 
-In this release, we introduce the following new features:
-#### Multi-period-support
+
+#### Multi-year-investments
 A flixopt model might be modeled with a "year" dimension.
-This enables to model transformation pathways over multiple years.
+This enables to model transformation pathways over multiple years with several investment decisions
 
 #### Stochastic modeling
 A flixopt model can be modeled with a scenario dimension.
@@ -67,17 +69,17 @@ The weighted sum of the total objective effect of each scenario is used as the o
 
 
 ### Added
-* FlowSystem Restoring: The used FlowSystem will now get restired from the results (lazily). ALll Parameters can be safely acessed anytime after the solve.
-* FLowResults added as a new class to store the results of Flows. They can now be accessed directly.
+* FlowSystem Restoring: The used FlowSystem is now accessible directly form the results without manual restoring (lazily). All Parameters can be safely accessed anytime after the solve.
+* FlowResults added as a new class to store the results of Flows. They can now be accessed directly.
 * Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
 * Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
-* Improved filter methods for Results
-* Balanced storage - Storage charging and discharging sizes can now be forced to be equal in when optimizing their size.
+* Improved filter methods in `results.py`
+* Balanced storage - Storage charging and discharging sizes can now be forced to be equal when optimizing their size by the `balanced` parameter.
 * Added Example for 2-stage Investment decisions leveraging the resampling of a FlowSystem
-* New Storage Parameter: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameter for final state control
+* New Storage Parameter: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameter for final state control. Default to last value of `relative_minimum_charge_state` and `relative_maximum_charge_state`, which will prevent change of behaviour for most users.
 
 ### Changed
-* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. The final charge state can now be constrained by parameters `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` instead
+* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
 * **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
 * **BREAKING**: Renamed class `Model` to `Submodel`
 * **BREAKING**: Renamed `mode` parameter in plotting methods to `style`
@@ -87,7 +89,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
 * Improved Model Structure - Views and organisation is now divided into:
   * Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
-  * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler acess and clearer code.
+  * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler access and clearer code.
 
 ### Deprecated
 * The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
@@ -103,7 +105,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * Better type consistency across all framework components
 
 ### Known issues
-* IO for single Interfaces/Elemenets to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arrises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem thats connected and transformed.
+* IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
 
 ### *Development*
 * **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model

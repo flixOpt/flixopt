@@ -171,7 +171,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     def weights(self) -> int | xr.DataArray:
         """Returns the scenario weights of the FlowSystem. If None, return weights that are normalized to 1 (one)"""
         if self.flow_system.weights is None:
-            weights = self.flow_system.fit_to_model_coords('weights', 1, dims=['year', 'scenario'])
+            weights = self.flow_system.fit_to_model_coords(
+                'weights',
+                1 if self.flow_system.years is None else self.flow_system.years_per_year,
+                dims=['year', 'scenario'],
+            )
 
             return weights / weights.sum()
 
@@ -218,11 +222,12 @@ class Interface:
         transform_data(flow_system): Transform data to match FlowSystem dimensions
     """
 
-    def transform_data(self, flow_system: FlowSystem):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
         Args:
             flow_system: The FlowSystem containing timing and dimensional information
+            name_prefix: The prefix to use for the names of the variables. Defaults to '', which results in no prefix.
 
         Raises:
             NotImplementedError: Must be implemented by subclasses

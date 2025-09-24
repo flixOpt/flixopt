@@ -73,7 +73,7 @@ class Piece(Interface):
         self.end = end
         self.has_time_dim = False
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         dims = None if self.has_time_dim else ['year', 'scenario']
         self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, dims=dims)
         self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, dims=dims)
@@ -219,7 +219,7 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         for i, piece in enumerate(self.pieces):
             piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
 
@@ -441,7 +441,7 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         for name, piecewise in self.piecewises.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
@@ -653,7 +653,7 @@ class PiecewiseEffects(Interface):
         for piecewise in self.piecewise_shares.values():
             piecewise.has_time_dim = value
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
         for effect, piecewise in self.piecewise_shares.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
@@ -861,7 +861,6 @@ class InvestParameters(Interface):
         specific_effects: NonTemporalEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: PiecewiseEffects | None = None,
         divest_effects: NonTemporalEffectsUser | None = None,
-        investment_scenarios: Literal['individual'] | list[int | str] | None = None,
     ):
         self.fix_effects: NonTemporalEffectsUser = fix_effects or {}
         self.divest_effects: NonTemporalEffectsUser = divest_effects or {}
@@ -871,10 +870,8 @@ class InvestParameters(Interface):
         self.piecewise_effects = piecewise_effects
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
-        self.investment_scenarios = investment_scenarios
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
-        self._plausibility_checks(flow_system)
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.fix_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.fix_effects,
@@ -907,21 +904,6 @@ class InvestParameters(Interface):
             self.fixed_size = flow_system.fit_to_model_coords(
                 f'{name_prefix}|fixed_size', self.fixed_size, dims=['year', 'scenario']
             )
-
-    def _plausibility_checks(self, flow_system):
-        if isinstance(self.investment_scenarios, list):
-            if not set(self.investment_scenarios).issubset(flow_system.scenarios):
-                raise ValueError(
-                    f'Some scenarios in investment_scenarios are not present in the time_series_collection: '
-                    f'{set(self.investment_scenarios) - set(flow_system.scenarios)}'
-                )
-        if self.investment_scenarios is not None:
-            if not self.optional:
-                if self.minimum_size is not None or self.fixed_size is not None:
-                    logger.warning(
-                        'When using investment_scenarios, minimum_size and fixed_size should only ne used if optional is True.'
-                        'Otherwise the investment cannot be 0 incertain scenarios while being non-zero in others.'
-                    )
 
     @property
     def minimum_or_fixed_size(self) -> NonTemporalData:
@@ -1138,7 +1120,7 @@ class OnOffParameters(Interface):
         self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.effects_per_switch_on = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_switch_on, 'per_switch_on'
         )
