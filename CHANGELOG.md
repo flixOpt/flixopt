@@ -19,17 +19,19 @@ Please remove all irrelevant sections before releasing.
 
 ### 🗑️ Deprecated
 
-### 🔥 Removed
+### 📝 Docs
 
 ### 🐛 Fixed
 
-### 🔒 Security
+### 🔥 Removed
 
-### 📝 Docs
+### 🔒 Security
 
 ### 🚧 Known issues
 
 ### 👷 Development
+
+### 📦 Dependencies
 
 Until here -->
 ---
