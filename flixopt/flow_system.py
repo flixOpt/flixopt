@@ -558,7 +558,7 @@ class FlowSystem(Interface):
             )
 
         if self._network_app is None:
-            logger.warning('No network app is currently running. Cant stop it')
+            logger.warning("No network app is currently running. Can't stop it")
             return
 
         try:
