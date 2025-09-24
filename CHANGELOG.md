@@ -15,23 +15,25 @@ Please remove all irrelevant sections before releasing.
 
 ### ✨ Added
 
+### 💥 Breaking Changes
+
 ### ♻️ Changed
 
 ### 🗑️ Deprecated
 
-### 📝 Docs
+### 🔥 Removed
 
 ### 🐛 Fixed
 
-### 🔥 Removed
-
 ### 🔒 Security
 
-### 🚧 Known issues
+### 📦 Dependencies
+
+### 📝 Docs
 
 ### 👷 Development
 
-### 📦 Dependencies
+### 🚧 Known Issues
 
 Until here -->
 ---
@@ -105,13 +107,13 @@ Until here -->
 
 **Summary:** Enhanced Sink/Source components with multi-flow support and new interactive network visualization.
 
-### ♻️ Changed
-- **Multi-Flow Support**: `Sink`, `Source` and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables to model more use cases using these classes
-- **Flow Control**: Both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their Flows
-
 ### ✨ Added
 - **Network Visualization**: Added `FlowSystem.start_network_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive dash web app
   - *Note: This is still experimental and might change in the future*
+
+### ♻️ Changed
+- **Multi-Flow Support**: `Sink`, `Source` and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables to model more use cases using these classes
+- **Flow Control**: Both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their Flows
 
 ### 🗑️ Deprecated
 - For the classes `Sink`, `Source` and `SourceAndSink`: `.sink`, `.source` and `.prevent_simultaneous_sink_and_source` are deprecated in favor of the new arguments `inputs`, `outputs` and `prevent_simultaneous_flow_rates`
@@ -156,11 +158,11 @@ Until here -->
 
 ## **[2.1.1] - 2025-05-08**
 
-### 🐛 Fixed
-- Fixed bug in the `_ElementResults.constraints` not returning the constraints but rather the variables
-
 ### ♻️ Changed
 - Improved docstring and tests
+
+### 🐛 Fixed
+- Fixed bug in the `_ElementResults.constraints` not returning the constraints but rather the variables
 
 ---
 ## **[2.1.0] - 2025-04-11**
@@ -170,17 +172,17 @@ Until here -->
 - Logger warning if relative_minimum is used without on_off_parameters in Flow
 - Greatly improved internal testing infrastructure by leveraging linopy's testing framework
 
-### 🐛 Fixed
-- Fixed the lower bound of `flow_rate` when using optional investments without OnOffParameters
-- Fixed bug that prevented divest effects from working
-- Added lower bounds of 0 to two unbounded vars (numerical improvement)
-
-### ♻️ Changed
-- **💥 BREAKING**: Restructured the modeling of the On/Off state of Flows or Components
+### 💥 Breaking Changes
+- Restructured the modeling of the On/Off state of Flows or Components
   - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
   - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
   - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
   - Similar pattern for all consecutive on/off constraints
+
+### 🐛 Fixed
+- Fixed the lower bound of `flow_rate` when using optional investments without OnOffParameters
+- Fixed bug that prevented divest effects from working
+- Added lower bounds of 0 to two unbounded vars (numerical improvement)
 
 ---
 
@@ -197,6 +199,20 @@ Until here -->
 
 **Summary:** 💥 **MAJOR RELEASE** - Complete framework migration from Pyomo to Linopy with redesigned architecture.
 
+### ✨ Added
+
+**Model Capabilities:**
+- Full model serialization support - save and restore unsolved Models
+- Enhanced model documentation with YAML export containing human-readable mathematical formulations
+- Extend flixopt models with native linopy language support
+- Full Model Export/Import capabilities via linopy.Model
+
+**Results & Data:**
+- Unified solution exploration through `Calculation.results` attribute
+- Compression support for result files
+- `to_netcdf/from_netcdf` methods for FlowSystem and core components
+- xarray integration for TimeSeries with improved datatypes support
+
 ### 💥 Breaking Changes
 
 **Framework Migration:**
@@ -212,28 +228,14 @@ Until here -->
   - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
   - Similar pattern for all consecutive on/off constraints
 
-### ✨ Added
-
-**Model Capabilities:**
-- Full model serialization support - save and restore unsolved Models
-- Enhanced model documentation with YAML export containing human-readable mathematical formulations
-- Extend flixopt models with native linopy language support
-- Full Model Export/Import capabilities via linopy.Model
-
-**Results & Data:**
-- Unified solution exploration through `Calculation.results` attribute
-- Compression support for result files
-- `to_netcdf/from_netcdf` methods for FlowSystem and core components
-- xarray integration for TimeSeries with improved datatypes support
-
-### 📝 Docs
-- Google Style Docstrings throughout the codebase
+### 🔥 Removed
+- **Pyomo dependency** (replaced by linopy)
+- **Period concepts** in time management (simplified to timesteps)
 
 ### 🐛 Fixed
 - Improved infeasible model detection and reporting
 - Enhanced time series management and serialization
 - Reduced file size through improved compression
 
-### 🔥 Removed
-- **Pyomo dependency** (replaced by linopy)
-- **Period concepts** in time management (simplified to timesteps)
+### 📝 Docs
+- Google Style Docstrings throughout the codebase
