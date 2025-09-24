@@ -539,7 +539,7 @@ class EffectCollectionModel(Submodel):
 
 
 def calculate_all_conversion_paths(
-    conversion_dict: dict[str, dict[str, xr.DataArray]],
+    conversion_dict: dict[str, dict[str, Scalar | xr.DataArray]],
 ) -> dict[tuple[str, str], xr.DataArray]:
     """
     Calculates all possible direct and indirect conversion factors between units/domains.
