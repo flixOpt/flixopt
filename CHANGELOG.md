@@ -37,11 +37,11 @@ Several internal improvements were made to the codebase.
 
 ### Multi-year investments
 A flixopt model might be modeled with a "year" dimension.
-This enables to model transformation pathways over multiple years with several investment decisions
+This enables modeling transformation pathways over multiple years with several investment decisions
 
 ### Stochastic modeling
 A flixopt model can be modeled with a scenario dimension.
-Scenarios can be weighted and variables can be equated across scenarios. This enables to model uncertainties in the flow system, such as:
+Scenarios can be weighted and variables can be equated across scenarios. This enables modeling uncertainties in the flow system, such as:
 * Different demand profiles
 * Different price forecasts
 * Different weather conditions
@@ -109,8 +109,6 @@ The weighted sum of the total objective effect of each scenario is used as the o
 
 ### *Development*
 * **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
-* **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
-* **BREAKING**: Renamed class `Model` to `Submodel`
 * FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
 * Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
 * Added new module `.modeling`that contains Modelling primitives and utilities
@@ -179,7 +177,7 @@ There are no changes or new features.
 ## [2.1.6] - 2025-09-02
 
 ### Changed
-- `Sink`, `Source` and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables to model more use cases using these classes. [[#291](https://github.com/flixOpt/flixopt/pull/291) by [@FBumann](https://github.com/FBumann)]
+- `Sink`, `Source` and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables modeling more use cases using these classes. [[#291](https://github.com/flixOpt/flixopt/pull/291) by [@FBumann](https://github.com/FBumann)]
 - Further, both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their Flows. [[#291](https://github.com/flixOpt/flixopt/pull/291) by [@FBumann](https://github.com/FBumann)]
 
 ### Added
