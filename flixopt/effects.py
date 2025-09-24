@@ -325,9 +325,10 @@ class EffectCollection:
 
         Examples
         --------
-        effect_values_user = 20                             -> {'<standard_effect_label>': 20}
-        effect_values_user = None                           -> None
-        effect_values_user = {effect1: 20, effect2: 0.3}    -> {effect1: 20, effect2: 0.3}
+        effect_values_user = 20                               -> {'<standard_effect_label>': 20}
+        effect_values_user = {None: 20}                       -> {'<standard_effect_label>': 20}
+        effect_values_user = None                             -> None
+        effect_values_user = {'effect1': 20, 'effect2': 0.3}  -> {'effect1': 20, 'effect2': 0.3}
 
         Returns
         -------
