@@ -33,12 +33,12 @@ def extract_releases():
     content = re.sub(r'<!-- This text won\'t be rendered.*?Until here -->', '', content, flags=re.DOTALL)
 
     # Split by release headers
-    sections = re.split(r'^## \*\*\[', content, flags=re.MULTILINE)
+    sections = re.split(r'^## \[', content, flags=re.MULTILINE)
 
     releases = []
     for section in sections[1:]:  # Skip first empty section
         # Extract version and date from start of section
-        match = re.match(r'([^\]]+)\] - ([^\*]+)\*\*(.*)', section, re.DOTALL)
+        match = re.match(r'([^\]]+)\] - ([^\n]+)\n(.*)', section, re.DOTALL)
         if match:
             version, date, release_content = match.groups()
             releases.append((version, date.strip(), release_content.strip()))
