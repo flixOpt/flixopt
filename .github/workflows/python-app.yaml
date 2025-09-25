@@ -369,7 +369,7 @@ jobs:
           uv pip install --system packaging
 
           # Extract individual release files
-          python scripts/extract-changelog.py
+          python scripts/extract_changelog.py
 
           echo "✅ Extracted changelog to docs/changelog/"
 
