@@ -481,6 +481,6 @@ class TestStorageModel:
             if 'InvestStorage|is_invested' in model.variables:
                 var = model.variables['InvestStorage|is_invested']
                 # Check if the lower and upper bounds are both 1
-                assert var.upper == 1 and var.lower == 1, (
+                assert np.all(var.upper == 1) and np.all(var.lower == 1), (
                     'is_invested variable should be fixed to 1 when optional=False'
                 )
