@@ -103,7 +103,7 @@ class Component(Element):
             self.on_off_parameters.transform_data(flow_system, prefix)
 
         for flow in self.inputs + self.outputs:
-            flow.transform_data(flow_system, name_prefix)
+            flow.transform_data(flow_system)  # Flow doesnt need the name_prefix
 
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
