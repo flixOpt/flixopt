@@ -135,7 +135,7 @@ class TestOneDimensionalArrayConversion:
         }
         arr = np.array([1, 2, 3])
 
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr, coords=coords_3x3)
 
     def test_1d_array_broadcast_to_many_dimensions(self, standard_coords):
@@ -351,7 +351,7 @@ class TestMultiDimensionalArrayConversion:
         }
 
         data_2d = np.random.rand(3, 3)
-        with pytest.raises(ConversionError, match='matches multiple dimension'):
+        with pytest.raises(ConversionError, match='matches multiple dimension combinations'):
             DataConverter.to_dataarray(data_2d, coords=coords_ambiguous)
 
     def test_multid_array_no_coords(self):
@@ -376,7 +376,7 @@ class TestMultiDimensionalArrayConversion:
             'scenario': standard_coords['scenario'],  # length 3
         }
 
-        with pytest.raises(ConversionError, match='Array shape'):
+        with pytest.raises(ConversionError, match='cannot be mapped to any combination'):
             DataConverter.to_dataarray(data_2d, coords=coords_2d)
 
     def test_multid_array_special_values(self, standard_coords):
@@ -626,14 +626,14 @@ class TestErrorHandling:
         """Error messages should be informative."""
         # Array with wrong length
         wrong_arr = np.array([1, 2])  # Length 2, but no dimension has length 2
-        with pytest.raises(ConversionError, match='matches none of the target dimensions'):
+        with pytest.raises(ConversionError, match='does not match any target dimension lengths'):
             DataConverter.to_dataarray(wrong_arr, coords={'time': time_coords, 'scenario': scenario_coords})
 
     def test_multidimensional_array_dimension_count_mismatch(self, standard_coords):
         """Array with wrong number of dimensions should fail with clear error."""
         # 4D array with 3D coordinates
         data_4d = np.random.rand(5, 3, 2, 4)
-        with pytest.raises(ConversionError, match='matches multiple dimensions|Array dimensions do not match'):
+        with pytest.raises(ConversionError, match='cannot be mapped to any combination'):
             DataConverter.to_dataarray(data_4d, coords=standard_coords)
 
     def test_error_message_quality(self, standard_coords):
@@ -650,8 +650,8 @@ class TestErrorHandling:
             raise AssertionError('Should have raised ConversionError')
         except ConversionError as e:
             error_msg = str(e)
-            assert 'Array shape: (7, 8)' in error_msg
-            assert 'Coordinate lengths:' in error_msg
+            assert 'Array shape (7, 8)' in error_msg
+            assert 'target coordinate lengths:' in error_msg
 
 
 class TestDataIntegrity:
@@ -804,17 +804,17 @@ class TestAdvancedBroadcasting:
 
         # 1D array - should fail
         arr_1d = np.array([1, 2, 3])
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_1d, coords=coords_3x3x3)
 
         # 2D array - should fail
         arr_2d = np.random.rand(3, 3)
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_2d, coords=coords_3x3x3)
 
         # 3D array - should fail
         arr_3d = np.random.rand(3, 3, 3)
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_3d, coords=coords_3x3x3)
 
     def test_mixed_broadcasting_scenarios(self):
@@ -866,7 +866,7 @@ class TestAmbiguousDimensionLengthHandling:
 
         arr_1d = np.array([1, 2, 3])  # length 3 - matches both dimensions
 
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_1d, coords=coords_ambiguous)
 
     def test_1d_array_ambiguous_dimensions_complex(self):
@@ -882,7 +882,7 @@ class TestAmbiguousDimensionLengthHandling:
         # Array matching the ambiguous length
         arr_1d = np.array([10, 20, 30, 40])  # length 4 - matches time, scenario, region
 
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_1d, coords=coords_4x4x4)
 
         # Array matching the unique length should work
@@ -903,7 +903,7 @@ class TestAmbiguousDimensionLengthHandling:
         # 3x3 array - could be any combination of the three dimensions
         arr_2d = np.random.rand(3, 3)
 
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_2d, coords=coords_3x3x3)
 
     def test_2d_array_one_dimension_ambiguous(self):
@@ -919,7 +919,7 @@ class TestAmbiguousDimensionLengthHandling:
         # but second dimension could be scenario or region (both length 3)
         arr_5x3 = np.random.rand(5, 3)
 
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_5x3, coords=coords_mixed)
 
         # 5x2 array should work - dimensions are unambiguous
@@ -943,7 +943,7 @@ class TestAmbiguousDimensionLengthHandling:
         # 2x2x2 array - could be any combination of 3 dimensions from the 4 available
         arr_3d = np.random.rand(2, 2, 2)
 
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_3d, coords=coords_2x2x2x2)
 
     def test_3d_array_partial_ambiguity(self):
@@ -959,7 +959,7 @@ class TestAmbiguousDimensionLengthHandling:
         # This should still fail because middle dimension (length 3) could be scenario or region
         arr_4x3x2 = np.random.rand(4, 3, 2)
 
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_4x3x2, coords=coords_partial)
 
     def test_pandas_series_ambiguous_dimensions(self):
@@ -973,7 +973,7 @@ class TestAmbiguousDimensionLengthHandling:
         generic_series = pd.Series([10, 20, 30], index=[0, 1, 2])
 
         # Should fail because length matches multiple dimensions and index doesn't match any
-        with pytest.raises(ConversionError, match='index does not match any target dimension'):
+        with pytest.raises(ConversionError, match='Series index does not match any target dimension coordinates'):
             DataConverter.to_dataarray(generic_series, coords=coords_ambiguous)
 
         # Series with index that matches one of the ambiguous coordinates should work
@@ -995,17 +995,17 @@ class TestAmbiguousDimensionLengthHandling:
 
         # 1D array
         arr_1d = np.array([1, 2])
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_1d, coords=coords_many)
 
         # 2D array
         arr_2d = np.random.rand(2, 2)
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_2d, coords=coords_many)
 
         # 3D array
         arr_3d = np.random.rand(2, 2, 2)
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_3d, coords=coords_many)
 
     def test_mixed_lengths_with_duplicates(self):
@@ -1033,7 +1033,7 @@ class TestAmbiguousDimensionLengthHandling:
 
         # Arrays with ambiguous length should fail
         arr_3 = np.array([1, 2, 3])  # matches both scenario and region
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_3, coords=coords_mixed)
 
     def test_dataframe_with_ambiguous_dimensions(self):
@@ -1047,7 +1047,7 @@ class TestAmbiguousDimensionLengthHandling:
         df = pd.DataFrame({'col1': [1, 2, 3], 'col2': [4, 5, 6], 'col3': [7, 8, 9]})  # 3x3 DataFrame
 
         # Should fail due to ambiguous dimensions
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(df, coords=coords_ambiguous)
 
     def test_error_message_quality_for_ambiguous_dimensions(self):
@@ -1065,7 +1065,7 @@ class TestAmbiguousDimensionLengthHandling:
             raise AssertionError('Should have raised ConversionError')
         except ConversionError as e:
             error_msg = str(e)
-            assert 'matches multiple dimensions' in error_msg
+            assert 'matches multiple dimension' in error_msg
             assert 'scenario' in error_msg
             assert 'region' in error_msg
             assert 'technology' in error_msg
@@ -1077,7 +1077,7 @@ class TestAmbiguousDimensionLengthHandling:
             raise AssertionError('Should have raised ConversionError')
         except ConversionError as e:
             error_msg = str(e)
-            assert 'matches multiple dimensions' in error_msg
+            assert 'matches multiple dimension combinations' in error_msg
             assert '(3, 3)' in error_msg
 
     def test_ambiguous_with_broadcasting_target(self):
@@ -1093,13 +1093,13 @@ class TestAmbiguousDimensionLengthHandling:
         arr_3 = np.array([10, 20, 30])  # length 3, matches scenario and region
 
         # Should fail even though it would broadcast to other dimensions
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_3, coords=coords_ambiguous_plus)
 
         # 2D array with one ambiguous dimension
         arr_5x3 = np.random.rand(5, 3)  # 5 is unique (time), 3 is ambiguous (scenario/region)
 
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(arr_5x3, coords=coords_ambiguous_plus)
 
     def test_time_dimension_ambiguity(self):
@@ -1119,7 +1119,7 @@ class TestAmbiguousDimensionLengthHandling:
 
         # But generic array with length 3 should still fail
         generic_array = np.array([100, 200, 300])
-        with pytest.raises(ConversionError, match='matches multiple dimensions'):
+        with pytest.raises(ConversionError, match='matches multiple dimension'):
             DataConverter.to_dataarray(generic_array, coords=coords_time_ambiguous)
 
 
