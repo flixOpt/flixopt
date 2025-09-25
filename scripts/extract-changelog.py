@@ -68,8 +68,41 @@ def extract_releases():
         # Clean up content - remove trailing --- separators and emojis from headers
         cleaned_content = re.sub(r'\s*---\s*$', '', release_content.strip())
 
-        # Create content
-        content_lines = [f'# {version_str} - {date.strip()}', '', cleaned_content]
+        # Generate navigation links
+        nav_links = []
+
+        # Previous version (newer release)
+        if i > 0:
+            prev_index = 99999 - (i - 1)
+            prev_version = releases[i - 1][0]
+            prev_filename = f'{prev_index:05d}-v{prev_version.replace(" ", "-")}.md'
+            nav_links.append(f'← [Previous: {prev_version}]({prev_filename})')
+
+        # Next version (older release)
+        if i < len(releases) - 1:
+            next_index = 99999 - (i + 1)
+            next_version = releases[i + 1][0]
+            next_filename = f'{next_index:05d}-v{next_version.replace(" ", "-")}.md'
+            nav_links.append(f'[Next: {next_version}]({next_filename}) →')
+
+        # Always add link back to index
+        nav_links.append('[📋 All Releases](index.md)')
+        nav_links.append(f'[🏷️ GitHub Release](https://github.com/flixOpt/flixopt/releases/tag/v{version_str})')
+
+        # Create content with navigation
+        content_lines = [
+            f'# {version_str} - {date.strip()}',
+            '',
+            ' | '.join(nav_links),
+            '',
+            '---',
+            '',
+            cleaned_content,
+            '',
+            '---',
+            '',
+            ' | '.join(nav_links),
+        ]
 
         # Write file
         with open(filepath, 'w', encoding='utf-8') as f:
