@@ -176,6 +176,13 @@ docstring-code-format = true
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = false  # Allow pyupgrade to drop runtime typing; prefer postponed annotations
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow",
+    "examples: marks example tests (run only on releases)",
+]
+addopts = "-m 'not examples'"  # Skip examples by default
+
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load
 exclude_dirs = ["tests/"]
