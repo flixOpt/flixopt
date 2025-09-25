@@ -363,10 +363,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Sync changelog to docs
+      - name: Extract changelog to docs
         run: |
-          cp CHANGELOG.md docs/changelog.md
-          echo "✅ Synced changelog to docs"
+          # Install packaging dependency for changelog extraction
+          uv pip install --system packaging
+
+          # Extract individual release files
+          python scripts/extract_changelog.py
+
+          echo "✅ Extracted changelog to docs/changelog/"
 
       - name: Install documentation dependencies
         run: |
