@@ -829,7 +829,7 @@ class ComponentModel(ElementModel):
             )
 
         if self.element.prevent_simultaneous_flows:
-            # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
+            # Simultaneous Usage --> Only One Flow is On at a time, but needs a Binary for every flow
             ModelingPrimitives.mutual_exclusivity_constraint(
                 self,
                 binary_variables=[flow.submodel.on_off.on for flow in self.element.prevent_simultaneous_flows],
