@@ -19,23 +19,15 @@ def extract_release_notes(version: str) -> str:
 
     content = changelog_path.read_text(encoding='utf-8')
 
-    # Remove template section (HTML comments)
-    content = re.sub(r'<!-- This text won\'t be rendered.*?Until here -->', '', content, flags=re.DOTALL)
-
-    # Pattern to match version section: ## **[2.1.9] - 2025-09-23**
-    pattern = rf'## \*\*\[{re.escape(version)}\] - [^\*]+\*\*(.*?)(?=^## \*\*\[|^---\s*$|\Z)'
-    match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
+    # Pattern to match version section: ## [2.1.2] - 2025-06-14
+    pattern = rf'## \[{re.escape(version)}\] - [^\n]+\n(.*?)(?=\n## \[|\n\[Unreleased\]|\Z)'
+    match = re.search(pattern, content, re.DOTALL)
 
     if not match:
         print(f"❌ Error: No release notes found for version '{version}'", file=sys.stderr)
         sys.exit(1)
 
-    release_content = match.group(1).strip()
-
-    # Clean up content - remove trailing separators
-    release_content = re.sub(r'\s*---\s*$', '', release_content)
-
-    return release_content
+    return match.group(1).strip()
 
 
 def main():
