@@ -313,7 +313,7 @@ jobs:
 
           # Wait and retry while PyPI indexes the package
           INSTALL_SUCCESS=false
-          for d in 10 20 40 80 120; do
+          for d in 10 20 40 80 120 240 480; do
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
 
