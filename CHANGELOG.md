@@ -58,6 +58,8 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Improved CHANGELOG.md formatting by adding better categories and formating by Gitmoji.
+- Added a script to extract the release notes from the CHANGELOG.md file for better organized documentation.
 
 ### 👷 Development
 
