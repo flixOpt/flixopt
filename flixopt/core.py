@@ -405,7 +405,16 @@ class DataConverter:
     @classmethod
     def to_dataarray(
         cls,
-        data: int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray,
+        data: int
+        | float
+        | bool
+        | np.integer
+        | np.floating
+        | np.bool_
+        | np.ndarray
+        | pd.Series
+        | pd.DataFrame
+        | xr.DataArray,
         coords: dict[str, pd.Index] | None = None,
     ) -> xr.DataArray:
         """
@@ -417,7 +426,7 @@ class DataConverter:
 
         Args:
             data: Input data to convert. Supported types:
-                - Scalars: int, float, np.integer, np.floating
+                - Scalars: int, float, bool, np.integer, np.floating, np.bool_
                 - Arrays: np.ndarray (1D and multi-dimensional)
                 - Pandas: pd.Series, pd.DataFrame
                 - xarray: xr.DataArray
@@ -455,7 +464,7 @@ class DataConverter:
         validated_coords, target_dims = cls._validate_and_prepare_target_coordinates(coords)
 
         # Convert input data to intermediate DataArray based on type
-        if isinstance(data, (int, float, np.integer, np.floating)):
+        if isinstance(data, (int, float, bool, np.integer, np.floating, np.bool_)):
             # Scalar values - create scalar DataArray
             intermediate = xr.DataArray(data.item() if hasattr(data, 'item') else data)
 
@@ -503,8 +512,10 @@ class DataConverter:
             supported_types = [
                 'int',
                 'float',
+                'bool',
                 'np.integer',
                 'np.floating',
+                'np.bool_',
                 'np.ndarray',
                 'pd.Series',
                 'pd.DataFrame',

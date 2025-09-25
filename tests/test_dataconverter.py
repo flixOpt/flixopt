@@ -516,6 +516,33 @@ class TestTimeSeriesDataConversion:
             assert np.array_equal(result.sel(scenario=scenario).values, [10, 20, 30, 40, 50])
 
 
+class TestAsDataArrayAlias:
+    """Test that as_dataarray works as an alias for to_dataarray."""
+
+    def test_as_dataarray_is_alias(self, time_coords, scenario_coords):
+        """as_dataarray should work identically to to_dataarray."""
+        # Test with scalar
+        result_to = DataConverter.to_dataarray(42, coords={'time': time_coords})
+        result_as = DataConverter.as_dataarray(42, coords={'time': time_coords})
+        assert np.array_equal(result_to.values, result_as.values)
+        assert result_to.dims == result_as.dims
+        assert result_to.shape == result_as.shape
+
+        # Test with array
+        arr = np.array([10, 20, 30, 40, 50])
+        result_to_arr = DataConverter.to_dataarray(arr, coords={'time': time_coords})
+        result_as_arr = DataConverter.as_dataarray(arr, coords={'time': time_coords})
+        assert np.array_equal(result_to_arr.values, result_as_arr.values)
+        assert result_to_arr.dims == result_as_arr.dims
+
+        # Test with Series
+        series = pd.Series([100, 200, 300, 400, 500], index=time_coords)
+        result_to_series = DataConverter.to_dataarray(series, coords={'time': time_coords, 'scenario': scenario_coords})
+        result_as_series = DataConverter.as_dataarray(series, coords={'time': time_coords, 'scenario': scenario_coords})
+        assert np.array_equal(result_to_series.values, result_as_series.values)
+        assert result_to_series.dims == result_as_series.dims
+
+
 class TestCustomDimensions:
     """Test with custom dimension names beyond time/scenario."""
 
@@ -702,6 +729,135 @@ class TestDataIntegrity:
 
         # Original should be unchanged
         assert original_data[0, 0] != 999
+
+
+class TestBooleanValues:
+    """Test handling of boolean values and arrays."""
+
+    def test_scalar_boolean_to_dataarray(self, time_coords):
+        """Scalar boolean values should work with to_dataarray."""
+        result_true = DataConverter.to_dataarray(True, coords={'time': time_coords})
+        assert result_true.shape == (5,)
+        assert result_true.dtype == bool
+        assert np.all(result_true.values)
+
+        result_false = DataConverter.to_dataarray(False, coords={'time': time_coords})
+        assert result_false.shape == (5,)
+        assert result_false.dtype == bool
+        assert not np.any(result_false.values)
+
+    def test_scalar_boolean_as_dataarray(self, time_coords):
+        """Scalar boolean values should work with as_dataarray."""
+        result_true = DataConverter.as_dataarray(True, coords={'time': time_coords})
+        assert result_true.shape == (5,)
+        assert result_true.dtype == bool
+        assert np.all(result_true.values)
+
+        result_false = DataConverter.as_dataarray(False, coords={'time': time_coords})
+        assert result_false.shape == (5,)
+        assert result_false.dtype == bool
+        assert not np.any(result_false.values)
+
+    def test_numpy_boolean_scalar(self, time_coords):
+        """Numpy boolean scalars should work."""
+        result_np_true = DataConverter.to_dataarray(np.bool_(True), coords={'time': time_coords})
+        assert result_np_true.shape == (5,)
+        assert result_np_true.dtype == bool
+        assert np.all(result_np_true.values)
+
+        result_np_false = DataConverter.as_dataarray(np.bool_(False), coords={'time': time_coords})
+        assert result_np_false.shape == (5,)
+        assert result_np_false.dtype == bool
+        assert not np.any(result_np_false.values)
+
+    def test_boolean_array_to_dataarray(self, time_coords):
+        """Boolean arrays should work with to_dataarray."""
+        bool_arr = np.array([True, False, True, False, True])
+        result = DataConverter.to_dataarray(bool_arr, coords={'time': time_coords})
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert result.dtype == bool
+        assert np.array_equal(result.values, bool_arr)
+
+    def test_boolean_array_as_dataarray(self, time_coords):
+        """Boolean arrays should work with as_dataarray."""
+        bool_arr = np.array([True, False, True, False, True])
+        result = DataConverter.as_dataarray(bool_arr, coords={'time': time_coords})
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert result.dtype == bool
+        assert np.array_equal(result.values, bool_arr)
+
+    def test_boolean_no_coords(self):
+        """Boolean scalar without coordinates should create 0D DataArray."""
+        result = DataConverter.to_dataarray(True)
+        assert result.shape == ()
+        assert result.dims == ()
+        assert result.item()
+
+        result_as = DataConverter.as_dataarray(False)
+        assert result_as.shape == ()
+        assert result_as.dims == ()
+        assert not result_as.item()
+
+    def test_boolean_multidimensional_broadcast(self, standard_coords):
+        """Boolean values should broadcast to multiple dimensions."""
+        result = DataConverter.to_dataarray(True, coords=standard_coords)
+        assert result.shape == (5, 3, 2)
+        assert result.dims == ('time', 'scenario', 'region')
+        assert result.dtype == bool
+        assert np.all(result.values)
+
+        result_as = DataConverter.as_dataarray(False, coords=standard_coords)
+        assert result_as.shape == (5, 3, 2)
+        assert result_as.dims == ('time', 'scenario', 'region')
+        assert result_as.dtype == bool
+        assert not np.any(result_as.values)
+
+    def test_boolean_series(self, time_coords):
+        """Boolean Series should work."""
+        bool_series = pd.Series([True, False, True, False, True], index=time_coords)
+        result = DataConverter.to_dataarray(bool_series, coords={'time': time_coords})
+        assert result.shape == (5,)
+        assert result.dtype == bool
+        assert np.array_equal(result.values, bool_series.values)
+
+        result_as = DataConverter.as_dataarray(bool_series, coords={'time': time_coords})
+        assert result_as.shape == (5,)
+        assert result_as.dtype == bool
+        assert np.array_equal(result_as.values, bool_series.values)
+
+    def test_boolean_dataframe(self, time_coords):
+        """Boolean DataFrame should work."""
+        bool_df = pd.DataFrame({'values': [True, False, True, False, True]}, index=time_coords)
+        result = DataConverter.to_dataarray(bool_df, coords={'time': time_coords})
+        assert result.shape == (5,)
+        assert result.dtype == bool
+        assert np.array_equal(result.values, bool_df['values'].values)
+
+        result_as = DataConverter.as_dataarray(bool_df, coords={'time': time_coords})
+        assert result_as.shape == (5,)
+        assert result_as.dtype == bool
+        assert np.array_equal(result_as.values, bool_df['values'].values)
+
+    def test_multidimensional_boolean_array(self, standard_coords):
+        """Multi-dimensional boolean arrays should work."""
+        bool_data = np.array(
+            [[True, False, True], [False, True, False], [True, True, False], [False, False, True], [True, False, True]]
+        )
+        result = DataConverter.to_dataarray(
+            bool_data, coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']}
+        )
+        assert result.shape == (5, 3)
+        assert result.dtype == bool
+        assert np.array_equal(result.values, bool_data)
+
+        result_as = DataConverter.as_dataarray(
+            bool_data, coords={'time': standard_coords['time'], 'scenario': standard_coords['scenario']}
+        )
+        assert result_as.shape == (5, 3)
+        assert result_as.dtype == bool
+        assert np.array_equal(result_as.values, bool_data)
 
 
 class TestSpecialValues:
