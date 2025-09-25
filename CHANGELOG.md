@@ -73,11 +73,10 @@ Until here -->
 
 **Visualization:**
 - Fix color scheme selection in network_app; color pickers now update when a scheme is selected
-- Fix error handling in network visualization if `networkx` is not installed
-- Fix some docstrings in plotting.py
 
 ### 📝 Docs
 - Fix broken links in docs
+- Fix some docstrings in plotting.py
 
 ### 👷 Development
 - Pin dev dependencies to specific versions
@@ -90,7 +89,7 @@ Until here -->
 **Summary:** Maintenance release to improve Code Quality, CI and update the dependencies. There are no changes or new features.
 
 ### ✨ Added
-- Added __version__ to flixopt
+- Added `__version__` to flixopt
 
 ### 👷 Development
 - ruff format the whole Codebase
