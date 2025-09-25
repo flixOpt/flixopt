@@ -52,7 +52,7 @@ Common use cases are:
 
 The weighted sum of the total objective effect of each scenario is used as the objective of the optimization.
 
-#### Improved Data handling: I/O, resampling and more through xarray
+### Improved Data handling: I/O, resampling and more through xarray
 * IO for all Interfaces and the FlowSystem with round-trip serialization support
     * NetCDF export/import capabilities for all Interface objects and FlowSystem
     * JSON export for documentation purposes
@@ -105,13 +105,13 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * Better type consistency across all framework components
 
 ### Known issues
-* IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
+* IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from numeric data not being stored as xr.DataArray by the user. To avoid this, always use `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
 
 ### *Development*
 * **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
 * FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
 * Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
-* Added new module `.modeling`that contains Modelling primitives and utilities
+* Added new module `.modeling` that contains modeling primitives and utilities
 * Clearer separation between the main Model and "Submodels"
 * Improved access to the Submodels and their variables, constraints and submodels
 * Added `__repr__()` for Submodels to easily inspect its content
