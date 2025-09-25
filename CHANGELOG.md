@@ -1,14 +1,18 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Gitmoji](https://gitmoji.dev), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Formating is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Gitmoji](https://gitmoji.dev).
+For more details regarding the individual PR's and contributers, please refer to our [Github releases](https://github.com/flixOpt/flixopt/releases).
 
 <!-- This text won't be rendered
-Note: The CI will automatically append a "What's Changed" section to the changelog.
+Note: The CI will automatically append a "What's Changed" section to the changelog for github releases.
 This contains all commits, PRs, and contributors.
 Therefore, the Changelog should focus on the user-facing changes.
+
 Please remove all irrelevant sections before releasing.
+Please keep the format of the changelog consistent with the other releases, so the extraction for mkdocs works.
+
+---
 
 ## [Unreleased] - ????-??-??
 
