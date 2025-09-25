@@ -910,7 +910,7 @@ class InvestParameters(Interface):
                 f'{name_prefix}|fixed_size', self.fixed_size, dims=['year', 'scenario']
             )
         self.previous_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|previous_size', self.previous_size, dims=['year', 'scenario']
+            f'{name_prefix}|previous_size', self.previous_size, dims=['scenario']
         )
 
     @property
