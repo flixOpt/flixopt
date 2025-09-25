@@ -52,7 +52,7 @@ def extract_releases():
         except InvalidVersion:
             return parse_version('0.0.0')  # fallback for invalid versions
 
-    releases.sort(key=version_key, reverse=True)
+    releases.sort(key=version_key, reverse=False)
 
     # Show what we captured for debugging
     if releases:
@@ -60,7 +60,8 @@ def extract_releases():
 
     for i, (version_str, date, release_content) in enumerate(releases):
         # Clean up version for filename with numeric prefix (newest first)
-        prefix = f'{i + 1:03d}'  # Zero-padded 3-digit number
+        index = 99999 - i  # Newest first, while keeping the same file names for old releases
+        prefix = f'{index:05d}'  # Zero-padded 5-digit number
         filename = f'{prefix}-v{version_str.replace(" ", "-")}.md'
         filepath = output_dir / filename
 
@@ -79,5 +80,34 @@ def extract_releases():
     print(f'🎉 Extracted {len(releases)} releases to docs/changelog/')
 
 
+def extract_index():
+    changelog_path = Path('CHANGELOG.md')
+    output_dir = Path('docs/changelog')
+    index_path = output_dir / 'index.md'
+
+    if not changelog_path.exists():
+        print('❌ CHANGELOG.md not found')
+        return
+
+    # Create output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Read changelog
+    with open(changelog_path, encoding='utf-8') as f:
+        content = f.read()
+
+    intro_match = re.search(r'# Changelog\s+([\s\S]*?)(?=<!--)', content)
+    if not intro_match:
+        raise ValueError('Intro section not found before comment block')
+    final_content = intro_match.group(1).strip()
+
+    # Write file
+    with open(index_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(['# Changelog\n', final_content]))
+
+    print('✅ Created index.md')
+
+
 if __name__ == '__main__':
     extract_releases()
+    extract_index()
