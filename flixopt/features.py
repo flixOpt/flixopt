@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
+import xarray as xr
 
 from .config import CONFIG
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, ModelingUtilitiesAbstract
@@ -101,7 +102,7 @@ class InvestmentModel(Submodel):
             bounds=(size_min, size_max),
         )
         ########################################################################
-        previous_size = self.parameters.previous_size if self.parameters.previous_size is not None else 0
+        previous_size = self.parameters.previous_size if self.parameters.previous_size is not None else xr.DataArray(0)
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
