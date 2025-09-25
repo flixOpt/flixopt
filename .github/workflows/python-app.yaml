@@ -85,7 +85,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system .[dev] "pytest-xdist==3.*"
+          uv pip install --system .[dev]
 
       - name: Run tests
         run: pytest -v -p no:warnings --numprocesses=auto
@@ -114,7 +114,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system .[dev] "pytest-xdist==3.*"
+          uv pip install --system .[dev]
 
       - name: Run example tests
         run: pytest -v -p no:warnings -m examples
