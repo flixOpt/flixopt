@@ -1,8 +1,8 @@
 # Changelog
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Formating is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Gitmoji](https://gitmoji.dev).
-For more details regarding the individual PR's and contributers, please refer to our [Github releases](https://github.com/flixOpt/flixopt/releases).
+Formatting is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Gitmoji](https://gitmoji.dev).
+For more details regarding the individual PRs and contributors, please refer to our [GitHub releases](https://github.com/flixOpt/flixopt/releases).
 
 <!-- This text won't be rendered
 Note: The CI will automatically append a "What's Changed" section to the changelog for github releases.
