@@ -87,8 +87,10 @@ def extract_releases():
 
         # Always add link back to index
         nav_links.append('[📋 All Releases](index.md)')
-        nav_links.append(f'[🏷️ GitHub Release](https://github.com/flixOpt/flixopt/releases/tag/v{version_str})')
-
+        # Add GitHub tag link only for valid PEP 440 versions (skip e.g. "Unreleased")
+        ver_obj = parse_version(version_str)
+        if isinstance(ver_obj, Version):
+            nav_links.append(f'[🏷️ GitHub Release](https://github.com/flixOpt/flixopt/releases/tag/v{version_str})')
         # Create content with navigation
         content_lines = [
             f'# {version_str} - {date.strip()}',
