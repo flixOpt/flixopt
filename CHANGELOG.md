@@ -37,7 +37,7 @@ Please remove all irrelevant sections before releasing.
 Until here -->
 ---
 
-## **[2.1.9] - 2025-09-23**
+## [2.1.9] - 2025-09-23
 
 **Summary:** Small bugfix release addressing network visualization error handling.
 
@@ -46,7 +46,7 @@ Until here -->
 
 ---
 
-## **[2.1.8] - 2025-09-22**
+## [2.1.8] - 2025-09-22
 
 **Summary:** Code quality improvements, enhanced documentation, and bug fixes for heat pump components and visualization features.
 
@@ -83,7 +83,7 @@ Until here -->
 
 ---
 
-## **[2.1.7] - 2025-09-13**
+## [2.1.7] - 2025-09-13
 
 **Summary:** Maintenance release to improve Code Quality, CI and update the dependencies. There are no changes or new features.
 
@@ -101,7 +101,7 @@ Until here -->
 
 ---
 
-## **[2.1.6] - 2025-09-02**
+## [2.1.6] - 2025-09-02
 
 **Summary:** Enhanced Sink/Source components with multi-flow support and new interactive network visualization.
 
@@ -121,28 +121,28 @@ Until here -->
 
 ---
 
-## **[2.1.5] - 2025-07-08**
+## [2.1.5] - 2025-07-08
 
 ### 🐛 Fixed
 - Fixed Docs deployment
 
 ---
 
-## **[2.1.4] - 2025-07-08**
+## [2.1.4] - 2025-07-08
 
 ### 🐛 Fixed
 - Fixing release notes of 2.1.3, as well as documentation build.
 
 ---
 
-## **[2.1.3] - 2025-07-08**
+## [2.1.3] - 2025-07-08
 
 ### 🐛 Fixed
 - Using `Effect.maximum_operation_per_hour` raised an error, needing an extra timestep. This has been fixed thanks to @PRse4.
 
 ---
 
-## **[2.1.2] - 2025-06-14**
+## [2.1.2] - 2025-06-14
 
 ### 🐛 Fixed
 - Storage losses per hour were not calculated correctly, as mentioned by @brokenwings01. This might have led to issues when modeling large losses and long timesteps.
@@ -154,7 +154,7 @@ Until here -->
 
 ---
 
-## **[2.1.1] - 2025-05-08**
+## [2.1.1] - 2025-05-08
 
 ### ♻️ Changed
 - Improved docstring and tests
@@ -163,7 +163,7 @@ Until here -->
 - Fixed bug in the `_ElementResults.constraints` not returning the constraints but rather the variables
 
 ---
-## **[2.1.0] - 2025-04-11**
+## [2.1.0] - 2025-04-11
 
 ### ✨ Added
 - Python 3.13 support added
@@ -184,7 +184,7 @@ Until here -->
 
 ---
 
-## **[2.0.1] - 2025-04-10**
+## [2.0.1] - 2025-04-10
 
 ### ✨ Added
 - Logger warning if relative_minimum is used without on_off_parameters in Flow
@@ -193,7 +193,7 @@ Until here -->
 - Replace "|" with "__" in filenames when saving figures (Windows compatibility)
 - Fixed bug that prevented the load factor from working without InvestmentParameters
 
-## **[2.0.0] - 2025-03-29**
+## [2.0.0] - 2025-03-29
 
 **Summary:** 💥 **MAJOR RELEASE** - Complete framework migration from Pyomo to Linopy with redesigned architecture.
 
