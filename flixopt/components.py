@@ -206,12 +206,12 @@ class LinearConverter(Component):
                     )
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system, name_prefix)
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        super().transform_data(flow_system, prefix)
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
         if self.piecewise_conversion:
             self.piecewise_conversion.has_time_dim = True
-            prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
             self.piecewise_conversion.transform_data(flow_system, f'{prefix}|PiecewiseConversion')
 
     def _transform_conversion_factors(self, flow_system: FlowSystem) -> list[dict[str, xr.DataArray]]:
@@ -425,46 +425,46 @@ class Storage(Component):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system, name_prefix)
-        base = '|'.join(filter(None, [name_prefix, self.label_full]))
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        super().transform_data(flow_system, prefix)
         self.relative_minimum_charge_state = flow_system.fit_to_model_coords(
-            f'{base}|relative_minimum_charge_state',
+            f'{prefix}|relative_minimum_charge_state',
             self.relative_minimum_charge_state,
         )
         self.relative_maximum_charge_state = flow_system.fit_to_model_coords(
-            f'{base}|relative_maximum_charge_state',
+            f'{prefix}|relative_maximum_charge_state',
             self.relative_maximum_charge_state,
         )
-        self.eta_charge = flow_system.fit_to_model_coords(f'{base}|eta_charge', self.eta_charge)
-        self.eta_discharge = flow_system.fit_to_model_coords(f'{base}|eta_discharge', self.eta_discharge)
+        self.eta_charge = flow_system.fit_to_model_coords(f'{prefix}|eta_charge', self.eta_charge)
+        self.eta_discharge = flow_system.fit_to_model_coords(f'{prefix}|eta_discharge', self.eta_discharge)
         self.relative_loss_per_hour = flow_system.fit_to_model_coords(
-            f'{base}|relative_loss_per_hour', self.relative_loss_per_hour
+            f'{prefix}|relative_loss_per_hour', self.relative_loss_per_hour
         )
         if not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = flow_system.fit_to_model_coords(
-                f'{base}|initial_charge_state', self.initial_charge_state, dims=['year', 'scenario']
+                f'{prefix}|initial_charge_state', self.initial_charge_state, dims=['year', 'scenario']
             )
         self.minimal_final_charge_state = flow_system.fit_to_model_coords(
-            f'{base}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['year', 'scenario']
+            f'{prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['year', 'scenario']
         )
         self.maximal_final_charge_state = flow_system.fit_to_model_coords(
-            f'{base}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['year', 'scenario']
+            f'{prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['year', 'scenario']
         )
         self.relative_minimum_final_charge_state = flow_system.fit_to_model_coords(
-            f'{base}|relative_minimum_final_charge_state',
+            f'{prefix}|relative_minimum_final_charge_state',
             self.relative_minimum_final_charge_state,
             dims=['year', 'scenario'],
         )
         self.relative_maximum_final_charge_state = flow_system.fit_to_model_coords(
-            f'{base}|relative_maximum_final_charge_state',
+            f'{prefix}|relative_maximum_final_charge_state',
             self.relative_maximum_final_charge_state,
             dims=['year', 'scenario'],
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(flow_system, f'{base}|InvestParameters')
+            self.capacity_in_flow_hours.transform_data(flow_system, f'{prefix}|InvestParameters')
         else:
             self.capacity_in_flow_hours = flow_system.fit_to_model_coords(
-                f'{base}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['year', 'scenario']
+                f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['year', 'scenario']
             )
 
     def _plausibility_checks(self) -> None:
@@ -697,10 +697,10 @@ class Transmission(Component):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system, name_prefix)
-        base = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.relative_losses = flow_system.fit_to_model_coords(f'{base}|relative_losses', self.relative_losses)
-        self.absolute_losses = flow_system.fit_to_model_coords(f'{base}|absolute_losses', self.absolute_losses)
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        super().transform_data(flow_system, prefix)
+        self.relative_losses = flow_system.fit_to_model_coords(f'{prefix}|relative_losses', self.relative_losses)
+        self.absolute_losses = flow_system.fit_to_model_coords(f'{prefix}|absolute_losses', self.absolute_losses)
 
 
 class TransmissionModel(ComponentModel):
