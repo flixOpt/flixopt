@@ -11,6 +11,31 @@ Therefore, the Changelog should focus on the user-facing changes.
 
 Please remove all irrelevant sections before releasing.
 Please keep the format of the changelog consistent with the other releases, so the extraction for mkdocs works.
+---
+
+## [Template] - ????-??-??
+
+### ✨ Added
+
+### 💥 Breaking Changes
+
+### ♻️ Changed
+
+### 🗑️ Deprecated
+
+### 🔥 Removed
+
+### 🐛 Fixed
+
+### 🔒 Security
+
+### 📦 Dependencies
+
+### 📝 Docs
+
+### 👷 Development
+
+### 🚧 Known Issues
 
 ---
 
