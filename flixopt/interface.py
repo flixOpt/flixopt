@@ -422,7 +422,7 @@ class PiecewiseConversion(Interface):
     def __init__(self, piecewises: dict[str, Piecewise]):
         self.piecewises = piecewises
         self._has_time_dim = True
-        self.has_time_dim = True  # Inital propagation
+        self.has_time_dim = True  # Initial propagation
 
     @property
     def has_time_dim(self):
@@ -642,7 +642,7 @@ class PiecewiseEffects(Interface):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
         self._has_time_dim = False
-        self.has_time_dim = False  # Inital propagation
+        self.has_time_dim = False  # Initial propagation
 
     @property
     def has_time_dim(self):
@@ -877,7 +877,6 @@ class InvestParameters(Interface):
         self.previous_size = previous_size
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self._plausibility_checks(flow_system)
         self.fix_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.fix_effects,
@@ -1175,7 +1174,7 @@ class OnOffParameters(Interface):
 
     @property
     def use_switch_on(self) -> bool:
-        """Determines wether a Variable for SWITCH-ON is needed or not"""
+        """Determines whether a variable for switch_on is needed or not"""
         if self.force_switch_on:
             return True
 

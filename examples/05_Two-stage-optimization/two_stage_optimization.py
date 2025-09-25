@@ -1,9 +1,9 @@
 """
 This script demonstrates how to use downsampling of a FlowSystem to effectively reduce the size of a model.
-This can be very useful when working with large models or during developement state,
+This can be very useful when working with large models or during development,
 as it can drastically reduce the computational time.
 This leads to faster results and easier debugging.
-A common use case is to do optimize the investments of a model with a downsampled version of the original model, and than fix the computed sizes when calculating th actual dispatch.
+A common use case is to optimize the investments of a model with a downsampled version of the original model, and then fix the computed sizes when calculating the actual dispatch.
 While the final optimum might differ from the global optimum, the solving will be much faster.
 """
 
@@ -124,10 +124,10 @@ if __name__ == '__main__':
     calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_dispatch = timeit.default_timer() - start
 
-    if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all():
-        logger.info('Sizes where correctly equalized')
+    if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all().item():
+        logger.info('Sizes were correctly equalized')
     else:
-        raise RuntimeError('Sizes where not correctly equalized')
+        raise RuntimeError('Sizes were not correctly equalized')
 
     # Optimization of both flow sizes and dispatch together
     start = timeit.default_timer()

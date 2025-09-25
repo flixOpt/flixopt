@@ -142,11 +142,11 @@ class LinearConverter(Component):
     Note:
         Conversion factors define linear relationships where the sum of (coefficient × flow_rate)
         equals zero for each equation: factor1×flow1 + factor2×flow2 + ... = 0
-        Conversion factors define linear relationships.
-        `{flow1: a1, flow2: a2, ...}` leads to `a1×flow_rate1 + a2×flow_rate2 + ... = 0`
-        Unfortunately the current input format doest read intuitively:
-        {"electricity": 1, "H2": 50} means that the electricity_in flow rate is multiplied by 1
-        and the hydrogen_out flow rate is multiplied by 50. THis leads to 50 electricity --> 1 H2.
+        Conversion factors define linear relationships:
+        `{flow1: a1, flow2: a2, ...}` yields `a1×flow_rate1 + a2×flow_rate2 + ... = 0`.
+        Note: The input format may be unintuitive. For example,
+        `{"electricity": 1, "H2": 50}` implies `1×electricity = 50×H2`,
+        i.e., 50 units of electricity produce 1 unit of H2.
 
         The system must have fewer conversion factors than total flows (degrees of freedom > 0)
         to avoid over-constraining the problem. For n total flows, use at most n-1 conversion factors.
@@ -200,17 +200,19 @@ class LinearConverter(Component):
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
                     logger.warning(
-                        f'Using a FLow with a fixed size ({flow.label_full}) AND a piecewise_conversion '
-                        f'(in {self.label_full}) and variable size is uncommon. Please check if this is intended!'
+                        f'Using a Flow with variable size (InvestParameters without fixed_size) '
+                        f'and a piecewise_conversion in {self.label_full} is uncommon. Please verify intent '
+                        f'({flow.label_full}).'
                     )
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system)
+        super().transform_data(flow_system, name_prefix)
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
         if self.piecewise_conversion:
             self.piecewise_conversion.has_time_dim = True
-            self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
+            prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+            self.piecewise_conversion.transform_data(flow_system, f'{prefix}|PiecewiseConversion')
 
     def _transform_conversion_factors(self, flow_system: FlowSystem) -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
@@ -423,45 +425,46 @@ class Storage(Component):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system)
+        super().transform_data(flow_system, name_prefix)
+        base = '|'.join(filter(None, [name_prefix, self.label_full]))
         self.relative_minimum_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_minimum_charge_state',
+            f'{base}|relative_minimum_charge_state',
             self.relative_minimum_charge_state,
         )
         self.relative_maximum_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_maximum_charge_state',
+            f'{base}|relative_maximum_charge_state',
             self.relative_maximum_charge_state,
         )
-        self.eta_charge = flow_system.fit_to_model_coords(f'{self.label_full}|eta_charge', self.eta_charge)
-        self.eta_discharge = flow_system.fit_to_model_coords(f'{self.label_full}|eta_discharge', self.eta_discharge)
+        self.eta_charge = flow_system.fit_to_model_coords(f'{base}|eta_charge', self.eta_charge)
+        self.eta_discharge = flow_system.fit_to_model_coords(f'{base}|eta_discharge', self.eta_discharge)
         self.relative_loss_per_hour = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_loss_per_hour', self.relative_loss_per_hour
+            f'{base}|relative_loss_per_hour', self.relative_loss_per_hour
         )
         if not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = flow_system.fit_to_model_coords(
-                f'{self.label_full}|initial_charge_state', self.initial_charge_state, dims=['year', 'scenario']
+                f'{base}|initial_charge_state', self.initial_charge_state, dims=['year', 'scenario']
             )
         self.minimal_final_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['year', 'scenario']
+            f'{base}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['year', 'scenario']
         )
         self.maximal_final_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['year', 'scenario']
+            f'{base}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['year', 'scenario']
         )
         self.relative_minimum_final_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_minimum_final_charge_state',
+            f'{base}|relative_minimum_final_charge_state',
             self.relative_minimum_final_charge_state,
             dims=['year', 'scenario'],
         )
         self.relative_maximum_final_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_maximum_final_charge_state',
+            f'{base}|relative_maximum_final_charge_state',
             self.relative_maximum_final_charge_state,
             dims=['year', 'scenario'],
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(flow_system, f'{self.label_full}|InvestParameters')
+            self.capacity_in_flow_hours.transform_data(flow_system, f'{base}|InvestParameters')
         else:
             self.capacity_in_flow_hours = flow_system.fit_to_model_coords(
-                f'{self.label_full}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['year', 'scenario']
+                f'{base}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['year', 'scenario']
             )
 
     def _plausibility_checks(self) -> None:
@@ -694,13 +697,10 @@ class Transmission(Component):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system)
-        self.relative_losses = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_losses', self.relative_losses
-        )
-        self.absolute_losses = flow_system.fit_to_model_coords(
-            f'{self.label_full}|absolute_losses', self.absolute_losses
-        )
+        super().transform_data(flow_system, name_prefix)
+        base = '|'.join(filter(None, [name_prefix, self.label_full]))
+        self.relative_losses = flow_system.fit_to_model_coords(f'{base}|relative_losses', self.relative_losses)
+        self.absolute_losses = flow_system.fit_to_model_coords(f'{base}|absolute_losses', self.absolute_losses)
 
 
 class TransmissionModel(ComponentModel):

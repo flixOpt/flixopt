@@ -525,7 +525,7 @@ class BoundingPatterns:
             List[linopy.Constraint]: List of constraint objects
         """
         if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.active_bounds_with_state() can only be used with a Submodel')
+            raise ValueError('BoundingPatterns.scaled_bounds_with_state() can only be used with a Submodel')
 
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
@@ -627,7 +627,7 @@ class BoundingPatterns:
             Tuple of constraints: (transition_upper, transition_lower, initial_upper, initial_lower)
         """
         if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.continuous_transition_bounds() can only be used with a Submodel')
+            raise ValueError('ModelingPrimitives.continuous_transition_bounds() can only be used with a Submodel')
 
         # Transition constraints for t > 0: continuous variable can only change when switches are active
         transition_upper = model.add_constraints(

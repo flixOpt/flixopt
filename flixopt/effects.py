@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from collections.abc import Iterator
+from collections import deque
 from typing import TYPE_CHECKING, Literal
 
 import linopy
@@ -175,40 +175,41 @@ class Effect(Element):
         self.maximum_total = maximum_total
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        base = '|'.join(filter(None, [name_prefix, self.label_full]))
         self.minimum_operation_per_hour = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
+            f'{base}|minimum_operation_per_hour', self.minimum_operation_per_hour
         )
 
         self.maximum_operation_per_hour = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_operation_per_hour', self.maximum_operation_per_hour
+            f'{base}|maximum_operation_per_hour', self.maximum_operation_per_hour
         )
 
         self.specific_share_to_other_effects_operation = flow_system.fit_effects_to_model_coords(
-            f'{self.label_full}|operation->', self.specific_share_to_other_effects_operation, 'operation'
+            f'{base}|operation->', self.specific_share_to_other_effects_operation, 'operation'
         )
 
         self.minimum_operation = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_operation', self.minimum_operation, dims=['year', 'scenario']
+            f'{base}|minimum_operation', self.minimum_operation, dims=['year', 'scenario']
         )
         self.maximum_operation = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_operation', self.maximum_operation, dims=['year', 'scenario']
+            f'{base}|maximum_operation', self.maximum_operation, dims=['year', 'scenario']
         )
         self.minimum_invest = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_invest', self.minimum_invest, dims=['year', 'scenario']
+            f'{base}|minimum_invest', self.minimum_invest, dims=['year', 'scenario']
         )
         self.maximum_invest = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_invest', self.maximum_invest, dims=['year', 'scenario']
+            f'{base}|maximum_invest', self.maximum_invest, dims=['year', 'scenario']
         )
         self.minimum_total = flow_system.fit_to_model_coords(
-            f'{self.label_full}|minimum_total',
+            f'{base}|minimum_total',
             self.minimum_total,
             dims=['year', 'scenario'],
         )
         self.maximum_total = flow_system.fit_to_model_coords(
-            f'{self.label_full}|maximum_total', self.maximum_total, dims=['year', 'scenario']
+            f'{base}|maximum_total', self.maximum_total, dims=['year', 'scenario']
         )
         self.specific_share_to_other_effects_invest = flow_system.fit_effects_to_model_coords(
-            f'{self.label_full}|invest->',
+            f'{base}|invest->',
             self.specific_share_to_other_effects_invest,
             'invest',
             dims=['year', 'scenario'],
@@ -324,14 +325,16 @@ class EffectCollection:
 
         Examples
         --------
-        effect_values_user = 20                             -> {None: 20}
-        effect_values_user = None                           -> None
-        effect_values_user = {effect1: 20, effect2: 0.3}    -> {effect1: 20, effect2: 0.3}
+        effect_values_user = 20                               -> {'<standard_effect_label>': 20}
+        effect_values_user = {None: 20}                       -> {'<standard_effect_label>': 20}
+        effect_values_user = None                             -> None
+        effect_values_user = {'effect1': 20, 'effect2': 0.3}  -> {'effect1': 20, 'effect2': 0.3}
 
         Returns
         -------
         dict or None
-            A dictionary with None or Effect as the key, or None if input is None.
+            A dictionary keyed by effect label, or None if input is None.
+            Note: a standard effect must be defined when passing scalars or None labels.
         """
 
         def get_effect_label(eff: Effect | str) -> str:
@@ -353,6 +356,11 @@ class EffectCollection:
             return None
         if isinstance(effect_values_user, dict):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
+        if self.standard_effect is None:
+            raise KeyError(
+                'Scalar effect value provided but no standard effect is configured. '
+                'Either set an effect as is_standard=True or provide a mapping {effect_label: value}.'
+            )
         return {self.standard_effect.label: effect_values_user}
 
     def _plausibility_checks(self) -> None:
@@ -531,7 +539,7 @@ class EffectCollectionModel(Submodel):
 
 
 def calculate_all_conversion_paths(
-    conversion_dict: dict[str, dict[str, xr.DataArray]],
+    conversion_dict: dict[str, dict[str, Scalar | xr.DataArray]],
 ) -> dict[tuple[str, str], xr.DataArray]:
     """
     Calculates all possible direct and indirect conversion factors between units/domains.
@@ -563,10 +571,10 @@ def calculate_all_conversion_paths(
         # Keep track of visited paths to avoid repeating calculations
         processed_paths = set()
         # Use a queue with (current_domain, factor, path_history)
-        queue = [(origin, 1, [origin])]
+        queue = deque([(origin, 1, [origin])])
 
         while queue:
-            current_domain, factor, path = queue.pop(0)
+            current_domain, factor, path = queue.popleft()
 
             # Skip if we've processed this exact path before
             path_key = tuple(path)

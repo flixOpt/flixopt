@@ -58,7 +58,7 @@ class FlowSystem(Interface):
             If None, the first time increment of time_series is used.
             This is needed to calculate previous durations (for example consecutive_on_hours).
             If you use an array, take care that its long enough to cover all previous values!
-        years_of_last_year: The duration of the last year. Defaults to the duration of the last year interval.
+        years_of_last_year: The duration of the last year. Uses the last year interval if not specified
         weights: The weights of each year and scenario. If None, all scenarios have the same weight, while the years have the weight of their represented year (all normalized to 1). Its recommended to scale the weights to sum up to 1.
 
     Notes:
@@ -77,17 +77,17 @@ class FlowSystem(Interface):
         weights: NonTemporalDataUser | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
-        self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
+        self.timesteps_extra = self._create_timesteps_with_extra(self.timesteps, hours_of_last_timestep)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
-            timesteps, hours_of_previous_timesteps
+            self.timesteps, hours_of_previous_timesteps
         )
 
+        self.years_of_last_year = years_of_last_year
         if years is None:
-            self.years, self.years_per_year, self.years_of_investment = None, None, None
+            self.years, self.years_per_year = None, None
         else:
             self.years = self._validate_years(years)
             self.years_per_year = self.calculate_years_per_year(self.years, years_of_last_year)
-            self.years_of_investment = self.years.rename('year_of_investment')
 
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
@@ -280,6 +280,7 @@ class FlowSystem(Interface):
             timesteps=ds.indexes['time'],
             years=ds.indexes.get('year'),
             scenarios=ds.indexes.get('scenario'),
+            years_of_last_year=reference_structure.get('years_of_last_year'),
             weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
             if 'weights' in reference_structure
             else None,
@@ -431,11 +432,13 @@ class FlowSystem(Interface):
             return
 
         self.weights = self.fit_to_model_coords('weights', self.weights, dims=['year', 'scenario'])
-        if self.weights is not None and self.weights.sum() != 1:
-            logger.warning(
-                f'Scenario weights are not normalized to 1. This is recomended for a better scaled model. '
-                f'Sum of weights={self.weights.sum().item()}'
-            )
+        if self.weights is not None:
+            total = float(self.weights.sum().item())
+            if not np.isclose(total, 1.0, atol=1e-12):
+                logger.warning(
+                    'Scenario weights are not normalized to 1. Normalizing to 1 is recommended for a better scaled model. '
+                    f'Sum of weights={total}'
+                )
 
         self._connect_network()
         for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
@@ -473,8 +476,8 @@ class FlowSystem(Interface):
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
             )
-        self.submodel = FlowSystemModel(self)
-        return self.submodel
+        self.model = FlowSystemModel(self)
+        return self.model
 
     def plot_network(
         self,
@@ -557,7 +560,7 @@ class FlowSystem(Interface):
             )
 
         if self._network_app is None:
-            logger.warning('No network app is currently running. Cant stop it')
+            logger.warning("No network app is currently running. Can't stop it")
             return
 
         try:
