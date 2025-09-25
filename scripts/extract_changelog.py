@@ -8,7 +8,7 @@ import os
 import re
 from pathlib import Path
 
-from packaging.version import InvalidVersion
+from packaging.version import InvalidVersion, Version
 from packaging.version import parse as parse_version
 
 
@@ -45,7 +45,7 @@ def extract_releases():
 
     print(f'🔍 Found {len(releases)} releases')
 
-    # Sort releases by version (newest first)
+    # Sort releases by version (oldest first) to keep existing file prefixes stable.
     def version_key(release):
         try:
             return parse_version(release[0])
@@ -71,14 +71,14 @@ def extract_releases():
         # Generate navigation links
         nav_links = []
 
-        # Previous version (newer release)
+        # Previous version (older release)
         if i > 0:
             prev_index = 99999 - (i - 1)
             prev_version = releases[i - 1][0]
             prev_filename = f'{prev_index:05d}-v{prev_version.replace(" ", "-")}.md'
             nav_links.append(f'← [Previous: {prev_version}]({prev_filename})')
 
-        # Next version (older release)
+        # Next version (newer release)
         if i < len(releases) - 1:
             next_index = 99999 - (i + 1)
             next_version = releases[i + 1][0]
