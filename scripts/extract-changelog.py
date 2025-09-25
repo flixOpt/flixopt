@@ -8,6 +8,9 @@ import os
 import re
 from pathlib import Path
 
+from packaging.version import InvalidVersion
+from packaging.version import parse as parse_version
+
 
 def extract_releases():
     """Extract releases from CHANGELOG.md and save to individual files."""
@@ -42,22 +45,30 @@ def extract_releases():
 
     print(f'🔍 Found {len(releases)} releases')
 
+    # Sort releases by version (newest first)
+    def version_key(release):
+        try:
+            return parse_version(release[0])
+        except InvalidVersion:
+            return parse_version('0.0.0')  # fallback for invalid versions
+
+    releases.sort(key=version_key, reverse=True)
+
     # Show what we captured for debugging
     if releases:
         print(f'🔧 First release content length: {len(releases[0][2])}')
 
-    for version, date, release_content in releases:
-        # Clean up version for filename
-        filename = f'v{version.replace(" ", "-")}.md'
+    for i, (version_str, date, release_content) in enumerate(releases):
+        # Clean up version for filename with numeric prefix (newest first)
+        prefix = f'{i + 1:03d}'  # Zero-padded 3-digit number
+        filename = f'{prefix}-v{version_str.replace(" ", "-")}.md'
         filepath = output_dir / filename
 
         # Clean up content - remove trailing --- separators and emojis from headers
         cleaned_content = re.sub(r'\s*---\s*$', '', release_content.strip())
-        # Remove emojis from section headers like "### ✨ Added" -> "### Added"
-        cleaned_content = re.sub(r'^(###\s+)[^\s]+\s+', r'\1', cleaned_content, flags=re.MULTILINE)
 
         # Create content
-        content_lines = [f'# {version} - {date.strip()}', '', cleaned_content]
+        content_lines = [f'# {version_str} - {date.strip()}', '', cleaned_content]
 
         # Write file
         with open(filepath, 'w', encoding='utf-8') as f:
