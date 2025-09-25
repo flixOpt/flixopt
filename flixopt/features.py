@@ -70,7 +70,7 @@ class InvestmentModel(Submodel):
             self.add_variables(
                 binary=True,
                 coords=self._model.get_coords(['year', 'scenario']),
-                short_name='is_invested',
+                short_name='is_invested',  # TODO: rename to invested
             )
 
             BoundingPatterns.bounds_with_state(
@@ -80,29 +80,10 @@ class InvestmentModel(Submodel):
                 bounds=(size_min, size_max),
             )
 
-    def _create_variables_and_constraints_with_years(self):
-        size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
-        self.add_variables(
-            short_name='size',
-            lower=0,
-            upper=size_max,
-            coords=self._model.get_coords(['year', 'scenario']),
-        )
-
-        self.add_variables(
-            binary=True,
-            coords=self._model.get_coords(['year', 'scenario']),
-            short_name='is_invested',
-        )
-
-        BoundingPatterns.bounds_with_state(
-            self,
-            variable=self.size,
-            variable_state=self.is_invested,
-            bounds=(size_min, size_max),
-        )
         ########################################################################
+        # Global investment decision variables (same as with_years version)
         previous_size = self.parameters.previous_size if self.parameters.previous_size is not None else xr.DataArray(0)
+
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['year', 'scenario']),
@@ -113,6 +94,7 @@ class InvestmentModel(Submodel):
             coords=self._model.get_coords(['year', 'scenario']),
             short_name='size|decommissioning_occurs',
         )
+
         BoundingPatterns.state_transition_bounds(
             self,
             state_variable=self.is_invested,
@@ -122,22 +104,9 @@ class InvestmentModel(Submodel):
             previous_state=ModelingUtilitiesAbstract.to_binary(values=previous_size, epsilon=CONFIG.modeling.EPSILON),
             coord='year',
         )
-        if self.parameters.optional:
-            self.add_constraints(
-                self.investment_occurs.sum('year') <= 1,
-                short_name='investment_occurs|once',
-            )
-        else:
-            self.add_constraints(
-                self.investment_occurs.sum('year') == 1,
-                short_name='investment_occurs|once',
-            )
 
-        self.add_constraints(
-            self.decommissioning_occurs.sum('year') <= 1,
-            short_name='decommissioning_occurs|once',
-        )
         ########################################################################
+        # Size change variables (same as with_years version)
         self.add_variables(
             coords=self._model.get_coords(['year', 'scenario']),
             short_name='size|increase',
@@ -150,6 +119,115 @@ class InvestmentModel(Submodel):
             lower=0,
             upper=size_max,
         )
+
+        BoundingPatterns.link_changes_to_level_with_binaries(
+            self,
+            level_variable=self.size,
+            increase_variable=self.size_increase,
+            decrease_variable=self.size_decrease,
+            increase_binary=self.investment_occurs,
+            decrease_binary=self.decommissioning_occurs,
+            name=f'{self.label_of_element}|size|changes',
+            max_change=size_max,
+            initial_level=previous_size,
+            coord='year',
+        )
+
+    def _create_variables_and_constraints_with_years(self):
+        size_min, size_max = self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size
+
+        # Always create size variable
+        self.add_variables(
+            short_name='size',
+            lower=0,
+            upper=size_max,
+            coords=self._model.get_coords(['year', 'scenario']),
+        )
+
+        # Always create is_invested variable (yearly)
+        if self.parameters.optional:
+            self.add_variables(
+                binary=True,
+                coords=self._model.get_coords(['year', 'scenario']),
+                short_name='is_invested',
+            )
+        else:
+            # When not optional, fix is_invested to 1 for all years
+            self.add_variables(
+                coords=self._model.get_coords(['year', 'scenario']),
+                short_name='is_invested',
+                lower=1,
+                upper=1,
+            )
+
+        # Apply bounds with state for both cases
+        BoundingPatterns.bounds_with_state(
+            self,
+            variable=self.size,
+            variable_state=self.is_invested,
+            bounds=(size_min, size_max),
+        )
+
+        ########################################################################
+        # Global investment decision variables
+        previous_size = self.parameters.previous_size if self.parameters.previous_size is not None else xr.DataArray(0)
+
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|investment_occurs',
+        )
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|decommissioning_occurs',
+        )
+
+        BoundingPatterns.state_transition_bounds(
+            self,
+            state_variable=self.is_invested,
+            switch_on=self.investment_occurs,
+            switch_off=self.decommissioning_occurs,
+            name=self.is_invested.name,
+            previous_state=ModelingUtilitiesAbstract.to_binary(values=previous_size, epsilon=CONFIG.modeling.EPSILON),
+            coord='year',
+        )
+
+        # Global investment constraints
+        if self.parameters.optional:
+            # Can invest at most once
+            self.add_constraints(
+                self.investment_occurs.sum('year') <= 1,
+                short_name='investment_occurs|once',
+            )
+        else:
+            # Must invest exactly once
+            self.add_constraints(
+                self.investment_occurs.sum('year') == 1,
+                short_name='investment_occurs|once',
+            )
+
+        # Can decommission at most once
+        self.add_constraints(
+            self.decommissioning_occurs.sum('year') <= 1,
+            short_name='decommissioning_occurs|once',
+        )
+
+        ########################################################################
+        # Size change variables
+        self.add_variables(
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|increase',
+            lower=0,
+            upper=size_max,
+        )
+        self.add_variables(
+            coords=self._model.get_coords(['year', 'scenario']),
+            short_name='size|decrease',
+            lower=0,
+            upper=size_max,
+        )
+
         BoundingPatterns.link_changes_to_level_with_binaries(
             self,
             level_variable=self.size,
