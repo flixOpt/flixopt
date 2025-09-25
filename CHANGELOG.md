@@ -43,7 +43,7 @@ Until here -->
 **Summary:** Small bugfix release addressing network visualization error handling.
 
 ### 🐛 Fixed
-- Fix error handling in network visualization if networkx is not installed
+- Fix error handling in network visualization if `networkx` is not installed
 
 ---
 
@@ -73,7 +73,7 @@ Until here -->
 
 **Visualization:**
 - Fix color scheme selection in network_app; color pickers now update when a scheme is selected
-- Fix error handling in network visualization if networkx is not installed
+- Fix error handling in network visualization if `networkx` is not installed
 - Fix some docstrings in plotting.py
 
 ### 📝 Docs
@@ -108,12 +108,12 @@ Until here -->
 **Summary:** Enhanced Sink/Source components with multi-flow support and new interactive network visualization.
 
 ### ✨ Added
-- **Network Visualization**: Added `FlowSystem.start_network_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive dash web app
+- **Network Visualization**: Added `FlowSystem.start_network_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive Dash web app
   - *Note: This is still experimental and might change in the future*
 
 ### ♻️ Changed
-- **Multi-Flow Support**: `Sink`, `Source` and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables to model more use cases using these classes
-- **Flow Control**: Both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their Flows
+- **Multi-Flow Support**: `Sink`, `Source`, and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables modeling more use cases with these classes
+- **Flow Control**: Both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their flows
 
 ### 🗑️ Deprecated
 - For the classes `Sink`, `Source` and `SourceAndSink`: `.sink`, `.source` and `.prevent_simultaneous_sink_and_source` are deprecated in favor of the new arguments `inputs`, `outputs` and `prevent_simultaneous_flow_rates`
@@ -147,7 +147,7 @@ Until here -->
 ## **[2.1.2] - 2025-06-14**
 
 ### 🐛 Fixed
-- Storage losses per hour where not calculated correctly, as mentioned by @brokenwings01. This might have lead to issues with modeling large losses and long timesteps.
+- Storage losses per hour were not calculated correctly, as mentioned by @brokenwings01. This might have led to issues when modeling large losses and long timesteps.
   - Old implementation:     $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) \cdot \Delta \text{t}_{i}$
   - Correct implementation: $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) ^{\Delta \text{t}_{i}}$
 
