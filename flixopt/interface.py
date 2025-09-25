@@ -833,7 +833,7 @@ class InvestParameters(Interface):
         self.optional = optional
         self.specific_effects: EffectValuesUserScalar = specific_effects or {}
         self.piecewise_effects = piecewise_effects
-        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self._minimum_size = minimum_size if minimum_size is not None else 0
         self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
     def transform_data(self, flow_system: FlowSystem):
