@@ -420,7 +420,7 @@ class PiecewiseConversion(Interface):
     def __init__(self, piecewises: dict[str, Piecewise]):
         self.piecewises = piecewises
         self._has_time_dim = True
-        self.has_time_dim = True  # Inital propagation
+        self.has_time_dim = True  # Initial propagation
 
     @property
     def has_time_dim(self):
@@ -640,7 +640,7 @@ class PiecewiseEffects(Interface):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
         self._has_time_dim = False
-        self.has_time_dim = False  # Inital propagation
+        self.has_time_dim = False  # Initial propagation
 
     @property
     def has_time_dim(self):
@@ -1166,7 +1166,7 @@ class OnOffParameters(Interface):
 
     @property
     def use_switch_on(self) -> bool:
-        """Determines wether a Variable for SWITCH-ON is needed or not"""
+        """Determines whether a variable for switch_on is needed or not"""
         if self.force_switch_on:
             return True
 

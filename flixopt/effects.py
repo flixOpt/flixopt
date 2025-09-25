@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from collections.abc import Iterator
+from collections import deque
 from typing import TYPE_CHECKING, Literal
 
 import linopy
@@ -325,14 +325,16 @@ class EffectCollection:
 
         Examples
         --------
-        effect_values_user = 20                             -> {None: 20}
-        effect_values_user = None                           -> None
-        effect_values_user = {effect1: 20, effect2: 0.3}    -> {effect1: 20, effect2: 0.3}
+        effect_values_user = 20                               -> {'<standard_effect_label>': 20}
+        effect_values_user = {None: 20}                       -> {'<standard_effect_label>': 20}
+        effect_values_user = None                             -> None
+        effect_values_user = {'effect1': 20, 'effect2': 0.3}  -> {'effect1': 20, 'effect2': 0.3}
 
         Returns
         -------
         dict or None
-            A dictionary with None or Effect as the key, or None if input is None.
+            A dictionary keyed by effect label, or None if input is None.
+            Note: a standard effect must be defined when passing scalars or None labels.
         """
 
         def get_effect_label(eff: Effect | str) -> str:
@@ -354,6 +356,11 @@ class EffectCollection:
             return None
         if isinstance(effect_values_user, dict):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
+        if self.standard_effect is None:
+            raise KeyError(
+                'Scalar effect value provided but no standard effect is configured. '
+                'Either set an effect as is_standard=True or provide a mapping {effect_label: value}.'
+            )
         return {self.standard_effect.label: effect_values_user}
 
     def _plausibility_checks(self) -> None:
@@ -532,7 +539,7 @@ class EffectCollectionModel(Submodel):
 
 
 def calculate_all_conversion_paths(
-    conversion_dict: dict[str, dict[str, xr.DataArray]],
+    conversion_dict: dict[str, dict[str, Scalar | xr.DataArray]],
 ) -> dict[tuple[str, str], xr.DataArray]:
     """
     Calculates all possible direct and indirect conversion factors between units/domains.
@@ -564,10 +571,10 @@ def calculate_all_conversion_paths(
         # Keep track of visited paths to avoid repeating calculations
         processed_paths = set()
         # Use a queue with (current_domain, factor, path_history)
-        queue = [(origin, 1, [origin])]
+        queue = deque([(origin, 1, [origin])])
 
         while queue:
-            current_domain, factor, path = queue.pop(0)
+            current_domain, factor, path = queue.popleft()
 
             # Skip if we've processed this exact path before
             path_key = tuple(path)

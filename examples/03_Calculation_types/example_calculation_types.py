@@ -136,7 +136,10 @@ if __name__ == '__main__':
     a_strom_tarif = fx.Source(
         'Stromtarif',
         source=fx.Flow(
-            'P_el', bus='Strom', size=1000, effects_per_flow_hour={costs.label: TS_electricity_price_buy, CO2: 0.3}
+            'P_el',
+            bus='Strom',
+            size=1000,
+            effects_per_flow_hour={costs.label: TS_electricity_price_buy, CO2.label: 0.3},
         ),
     )
 

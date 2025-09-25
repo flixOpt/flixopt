@@ -525,7 +525,7 @@ class BoundingPatterns:
             List[linopy.Constraint]: List of constraint objects
         """
         if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.active_bounds_with_state() can only be used with a Submodel')
+            raise ValueError('BoundingPatterns.scaled_bounds_with_state() can only be used with a Submodel')
 
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
