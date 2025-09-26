@@ -4,6 +4,7 @@ import datetime
 import json
 import logging
 import pathlib
+import warnings
 from typing import TYPE_CHECKING, Literal
 
 import linopy
@@ -25,6 +26,65 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger('flixopt')
+
+
+class BackwardsCompatibleDataset:
+    """Wrapper around xarray.Dataset to provide backwards compatibility for renamed variables."""
+
+    # Mapping from old variable names to new variable names
+    DEPRECATED_VARIABLE_MAPPING = {
+        # Effect variable names
+        'costs|total': 'costs',
+        # Cross-effect variable names (operation -> temporal, invest -> nontemporal)
+        # This will be handled dynamically in __getitem__
+    }
+
+    def __init__(self, dataset: xr.Dataset):
+        self._dataset = dataset
+
+    def __getitem__(self, key):
+        """Access dataset variables with backwards compatibility."""
+        # Handle direct mapping first
+        if key in self.DEPRECATED_VARIABLE_MAPPING:
+            new_key = self.DEPRECATED_VARIABLE_MAPPING[key]
+            warnings.warn(
+                f"Variable name '{key}' is deprecated. Use '{new_key}' instead.", DeprecationWarning, stacklevel=2
+            )
+            return self._dataset[new_key]
+
+        # Handle cross-effect variables dynamically
+        if '->' in key and ('(operation)' in key or '(invest)' in key):
+            # Replace (operation) -> (temporal) and (invest) -> (nontemporal)
+            new_key = key.replace('(operation)', '(temporal)').replace('(invest)', '(nontemporal)')
+            if new_key in self._dataset:
+                warnings.warn(
+                    f"Variable name '{key}' is deprecated. Use '{new_key}' instead.", DeprecationWarning, stacklevel=2
+                )
+                return self._dataset[new_key]
+
+        # Default to original dataset behavior
+        return self._dataset[key]
+
+    def __getattr__(self, name):
+        """Delegate all other attributes to the wrapped dataset."""
+        return getattr(self._dataset, name)
+
+    def __contains__(self, key):
+        """Check if key exists in dataset (with backwards compatibility)."""
+        if key in self._dataset:
+            return True
+        if key in self.DEPRECATED_VARIABLE_MAPPING:
+            return self.DEPRECATED_VARIABLE_MAPPING[key] in self._dataset
+        # Check cross-effect variables
+        if '->' in key and ('(operation)' in key or '(invest)' in key):
+            new_key = key.replace('(operation)', '(temporal)').replace('(invest)', '(nontemporal)')
+            return new_key in self._dataset
+        return False
+
+    @property
+    def _raw_dataset(self):
+        """Access to the underlying dataset without backwards compatibility."""
+        return self._dataset
 
 
 class CalculationResults:
@@ -180,20 +240,25 @@ class CalculationResults:
             folder: Results storage folder.
             model: Linopy optimization model.
         """
-        self.solution = solution
+        self.solution = BackwardsCompatibleDataset(solution)
         self.flow_system = flow_system
         self.summary = summary
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {
-            label: ComponentResults.from_json(self, infos) for label, infos in self.solution.attrs['Components'].items()
+            label: ComponentResults.from_json(self, infos)
+            for label, infos in self.solution._raw_dataset.attrs['Components'].items()
         }
 
-        self.buses = {label: BusResults.from_json(self, infos) for label, infos in self.solution.attrs['Buses'].items()}
+        self.buses = {
+            label: BusResults.from_json(self, infos)
+            for label, infos in self.solution._raw_dataset.attrs['Buses'].items()
+        }
 
         self.effects = {
-            label: EffectResults.from_json(self, infos) for label, infos in self.solution.attrs['Effects'].items()
+            label: EffectResults.from_json(self, infos)
+            for label, infos in self.solution._raw_dataset.attrs['Effects'].items()
         }
 
         self.timesteps_extra = self.solution.indexes['time']
@@ -246,7 +311,7 @@ class CalculationResults:
         """
         if element is not None:
             return filter_dataset(self[element].solution, variable_dims)
-        return filter_dataset(self.solution, variable_dims)
+        return filter_dataset(self.solution._raw_dataset, variable_dims)
 
     def plot_heatmap(
         self,
@@ -328,7 +393,7 @@ class CalculationResults:
 
         paths = fx_io.CalculationResultsPaths(folder, name)
 
-        fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.solution._raw_dataset, paths.solution, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
 
         with open(paths.summary, 'w', encoding='utf-8') as f:
@@ -362,7 +427,7 @@ class _ElementResults:
         self._variable_names = variables
         self._constraint_names = constraints
 
-        self.solution = self._calculation_results.solution[self._variable_names]
+        self.solution = self._calculation_results.solution._raw_dataset[self._variable_names]
 
     @property
     def variables(self) -> linopy.Variables:

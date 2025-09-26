@@ -63,6 +63,14 @@ class Effect(Element):
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
+    **Deprecated Parameters** (for backwards compatibility):
+        minimum_operation: Use `minimum_temporal` instead.
+        maximum_operation: Use `maximum_temporal` instead.
+        minimum_invest: Use `minimum_nontemporal` instead.
+        maximum_invest: Use `maximum_nontemporal` instead.
+        minimum_operation_per_hour: Use `minimum_temporal_per_hour` instead.
+        maximum_operation_per_hour: Use `maximum_temporal_per_hour` instead.
+
     Examples:
         Basic cost objective:
 
@@ -150,6 +158,14 @@ class Effect(Element):
         maximum_temporal_per_hour: NumericDataTS | None = None,
         minimum_total: Scalar | None = None,
         maximum_total: Scalar | None = None,
+        # Backwards compatibility parameters (deprecated)
+        minimum_operation: Scalar | None = None,
+        maximum_operation: Scalar | None = None,
+        minimum_invest: Scalar | None = None,
+        maximum_invest: Scalar | None = None,
+        minimum_operation_per_hour: NumericDataTS | None = None,
+        maximum_operation_per_hour: NumericDataTS | None = None,
+        **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
         self.label = label
@@ -161,6 +177,65 @@ class Effect(Element):
             specific_share_to_other_effects_operation or {}
         )
         self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
+        # Handle backwards compatibility for deprecated parameters
+        import warnings
+
+        # Check for deprecated parameters and issue warnings
+        if minimum_operation is not None:
+            warnings.warn(
+                "Parameter 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if minimum_temporal is None:
+                minimum_temporal = minimum_operation
+
+        if maximum_operation is not None:
+            warnings.warn(
+                "Parameter 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if maximum_temporal is None:
+                maximum_temporal = maximum_operation
+
+        if minimum_invest is not None:
+            warnings.warn(
+                "Parameter 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if minimum_nontemporal is None:
+                minimum_nontemporal = minimum_invest
+
+        if maximum_invest is not None:
+            warnings.warn(
+                "Parameter 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if maximum_nontemporal is None:
+                maximum_nontemporal = maximum_invest
+
+        if minimum_operation_per_hour is not None:
+            warnings.warn(
+                "Parameter 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if minimum_temporal_per_hour is None:
+                minimum_temporal_per_hour = minimum_operation_per_hour
+
+        if maximum_operation_per_hour is not None:
+            warnings.warn(
+                "Parameter 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if maximum_temporal_per_hour is None:
+                maximum_temporal_per_hour = maximum_operation_per_hour
+
+        # Assign the final values (either new parameters or backwards-compatible ones)
         self.minimum_temporal = minimum_temporal
         self.maximum_temporal = maximum_temporal
         self.minimum_temporal_per_hour = minimum_temporal_per_hour
