@@ -6,6 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import TYPE_CHECKING
 
 from .config import CONFIG
@@ -658,9 +659,7 @@ class InvestParameters(Interface):
         mandatory: Controls whether investment is required. When True, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
             When False (default), optimization can choose not to invest.
-        optional: DEPRECATED. Use `mandatory` instead. Controls whether investment is required.
-            When True (default), optimization can choose not to invest. When False, forces
-            investment to occur. This parameter is maintained for backwards compatibility.
+        optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
         fix_effects: Fixed costs incurred once if investment is made, regardless
             of size. Dictionary mapping effect names to values
             (e.g., {'cost': 10000, 'CO2_construction': 500}).
@@ -824,12 +823,13 @@ class InvestParameters(Interface):
         fixed_size: int | float | None = None,
         minimum_size: int | float | None = None,
         maximum_size: int | float | None = None,
-        mandatory: bool | None = None,
-        optional: bool | None = None,  # DEPRECATED: use mandatory instead
+        mandatory: bool = False,
         fix_effects: EffectValuesUserScalar | None = None,
         specific_effects: EffectValuesUserScalar | None = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: PiecewiseEffects | None = None,
         divest_effects: EffectValuesUserScalar | None = None,
+        # Backwards compatibility - deprecated parameter
+        optional: bool | None = None,
     ):
         self.fix_effects: EffectValuesUserScalar = fix_effects or {}
         self.divest_effects: EffectValuesUserScalar = divest_effects or {}
@@ -838,23 +838,11 @@ class InvestParameters(Interface):
         self.piecewise_effects = piecewise_effects
         self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
+        self.mandatory = mandatory
 
-        # Handle backwards compatibility between mandatory and optional
-        if mandatory is not None and optional is not None:
-            raise ValueError("Cannot specify both 'mandatory' and 'optional' parameters. Use 'mandatory' instead.")
-        elif mandatory is not None:
-            self._mandatory = mandatory
-        elif optional is not None:
-            import warnings
-
-            warnings.warn(
-                "Parameter 'optional' is deprecated. Use 'mandatory=not optional' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            self._mandatory = not optional
-        else:
-            self._mandatory = False  # Default: not mandatory (i.e., optional)
+        # Handle backwards compatibility for optional parameter
+        if optional is not None:
+            self.optional = optional
 
     def transform_data(self, flow_system: FlowSystem):
         self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)
@@ -862,30 +850,18 @@ class InvestParameters(Interface):
         self.specific_effects = flow_system.effects.create_effect_values_dict(self.specific_effects)
 
     @property
-    def mandatory(self) -> bool:
-        """Controls whether investment is required."""
-        return self._mandatory
-
-    @mandatory.setter
-    def mandatory(self, value: bool):
-        """Set whether investment is required."""
-        self._mandatory = value
-
-    @property
     def optional(self) -> bool:
         """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
         import warnings
 
         warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
-        return not self._mandatory
+        return not self.mandatory
 
     @optional.setter
     def optional(self, value: bool):
         """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
-        import warnings
-
         warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
-        self._mandatory = not value
+        self.mandatory = not value
 
     @property
     def minimum_size(self):

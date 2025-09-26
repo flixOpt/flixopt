@@ -489,7 +489,16 @@ class Flow(Element):
     @property
     def invest_is_optional(self) -> bool:
         # Wenn kein InvestParameters existiert: # Investment ist nicht optional -> Keine Variable --> False
+        warnings.warn(
+            "The 'invest_is_optional' property is deprecated. Use 'invest_is_mandatory' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return False if (isinstance(self.size, InvestParameters) and self.size.mandatory) else True
+
+    @property
+    def invest_is_mandatory(self) -> bool:
+        return False if (isinstance(self.size, InvestParameters) and not self.size.mandatory) else True
 
 
 class FlowModel(ElementModel):
