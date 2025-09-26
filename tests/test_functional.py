@@ -112,7 +112,7 @@ def test_solve_and_load(solver_fixture, time_steps_fixture):
 
 def test_minimal_model(solver_fixture, time_steps_fixture):
     results = solve_and_load(flow_system_minimal(time_steps_fixture), solver_fixture)
-    assert_allclose(results.model.variables['costs|total'].solution.values, 80, rtol=1e-5, atol=1e-10)
+    assert_allclose(results.model.variables['costs'].solution.values, 80, rtol=1e-5, atol=1e-10)
 
     assert_allclose(
         results.model.variables['Boiler(Q_th)|flow_rate'].solution.values,
@@ -122,14 +122,14 @@ def test_minimal_model(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        results.model.variables['costs(operation)|total_per_timestep'].solution.values,
+        results.model.variables['costs(temporal)|per_timestep'].solution.values,
         [-0.0, 20.0, 40.0, -0.0, 20.0],
         rtol=1e-5,
         atol=1e-10,
     )
 
     assert_allclose(
-        results.model.variables['Gastarif(Gas)->costs(operation)'].solution.values,
+        results.model.variables['Gastarif(Gas)->costs(temporal)'].solution.values,
         [-0.0, 20.0, 40.0, -0.0, 20.0],
         rtol=1e-5,
         atol=1e-10,

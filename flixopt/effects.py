@@ -142,12 +142,12 @@ class Effect(Element):
         is_objective: bool = False,
         specific_share_to_other_effects_operation: EffectValuesUser | None = None,
         specific_share_to_other_effects_invest: EffectValuesUser | None = None,
-        minimum_operation: Scalar | None = None,
-        maximum_operation: Scalar | None = None,
-        minimum_invest: Scalar | None = None,
-        maximum_invest: Scalar | None = None,
-        minimum_operation_per_hour: NumericDataTS | None = None,
-        maximum_operation_per_hour: NumericDataTS | None = None,
+        minimum_temporal: Scalar | None = None,
+        maximum_temporal: Scalar | None = None,
+        minimum_nontemporal: Scalar | None = None,
+        maximum_nontemporal: Scalar | None = None,
+        minimum_temporal_per_hour: NumericDataTS | None = None,
+        maximum_temporal_per_hour: NumericDataTS | None = None,
         minimum_total: Scalar | None = None,
         maximum_total: Scalar | None = None,
     ):
@@ -161,22 +161,22 @@ class Effect(Element):
             specific_share_to_other_effects_operation or {}
         )
         self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
-        self.minimum_operation = minimum_operation
-        self.maximum_operation = maximum_operation
-        self.minimum_operation_per_hour = minimum_operation_per_hour
-        self.maximum_operation_per_hour = maximum_operation_per_hour
-        self.minimum_invest = minimum_invest
-        self.maximum_invest = maximum_invest
+        self.minimum_temporal = minimum_temporal
+        self.maximum_temporal = maximum_temporal
+        self.minimum_temporal_per_hour = minimum_temporal_per_hour
+        self.maximum_temporal_per_hour = maximum_temporal_per_hour
+        self.minimum_nontemporal = minimum_nontemporal
+        self.maximum_nontemporal = maximum_nontemporal
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
     def transform_data(self, flow_system: FlowSystem):
-        self.minimum_operation_per_hour = flow_system.create_time_series(
-            f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
+        self.minimum_temporal_per_hour = flow_system.create_time_series(
+            f'{self.label_full}|minimum_temporal_per_hour', self.minimum_temporal_per_hour
         )
-        self.maximum_operation_per_hour = flow_system.create_time_series(
-            f'{self.label_full}|maximum_operation_per_hour',
-            self.maximum_operation_per_hour,
+        self.maximum_temporal_per_hour = flow_system.create_time_series(
+            f'{self.label_full}|maximum_temporal_per_hour',
+            self.maximum_temporal_per_hour,
         )
 
         self.specific_share_to_other_effects_operation = flow_system.create_effect_time_series(
@@ -198,32 +198,32 @@ class EffectModel(ElementModel):
         super().__init__(model, element)
         self.element: Effect = element
         self.total: linopy.Variable | None = None
-        self.invest: ShareAllocationModel = self.add(
+        self.nontemporal: ShareAllocationModel = self.add(
             ShareAllocationModel(
                 self._model,
                 False,
                 self.label_of_element,
-                'invest',
-                label_full=f'{self.label_full}(invest)',
-                total_max=self.element.maximum_invest,
-                total_min=self.element.minimum_invest,
+                'nontemporal',
+                label_full=f'{self.label_full}(nontemporal)',
+                total_max=self.element.maximum_nontemporal,
+                total_min=self.element.minimum_nontemporal,
             )
         )
 
-        self.operation: ShareAllocationModel = self.add(
+        self.temporal: ShareAllocationModel = self.add(
             ShareAllocationModel(
                 self._model,
                 True,
                 self.label_of_element,
-                'operation',
-                label_full=f'{self.label_full}(operation)',
-                total_max=self.element.maximum_operation,
-                total_min=self.element.minimum_operation,
-                min_per_hour=self.element.minimum_operation_per_hour.active_data
-                if self.element.minimum_operation_per_hour is not None
+                'temporal',
+                label_full=f'{self.label_full}(temporal)',
+                total_max=self.element.maximum_temporal,
+                total_min=self.element.minimum_temporal,
+                min_per_hour=self.element.minimum_temporal_per_hour.active_data
+                if self.element.minimum_temporal_per_hour is not None
                 else None,
-                max_per_hour=self.element.maximum_operation_per_hour.active_data
-                if self.element.maximum_operation_per_hour is not None
+                max_per_hour=self.element.maximum_temporal_per_hour.active_data
+                if self.element.maximum_temporal_per_hour is not None
                 else None,
             )
         )
@@ -237,14 +237,14 @@ class EffectModel(ElementModel):
                 lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
                 upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
                 coords=None,
-                name=f'{self.label_full}|total',
+                name=f'{self.label_full}',
             ),
             'total',
         )
 
         self.add(
             self._model.add_constraints(
-                self.total == self.operation.total.sum() + self.invest.total.sum(), name=f'{self.label_full}|total'
+                self.total == self.temporal.total.sum() + self.nontemporal.total.sum(), name=f'{self.label_full}'
             ),
             'total',
         )
@@ -424,13 +424,13 @@ class EffectCollectionModel(Model):
         self,
         name: str,
         expressions: EffectValuesExpr,
-        target: Literal['operation', 'invest'],
+        target: Literal['temporal', 'nontemporal'],
     ) -> None:
         for effect, expression in expressions.items():
-            if target == 'operation':
-                self.effects[effect].model.operation.add_share(name, expression)
-            elif target == 'invest':
-                self.effects[effect].model.invest.add_share(name, expression)
+            if target == 'temporal':
+                self.effects[effect].model.temporal.add_share(name, expression)
+            elif target == 'nontemporal':
+                self.effects[effect].model.nontemporal.add_share(name, expression)
             else:
                 raise ValueError(f'Target {target} not supported!')
 
@@ -454,15 +454,15 @@ class EffectCollectionModel(Model):
 
     def _add_share_between_effects(self):
         for origin_effect in self.effects:
-            # 1. operation: -> hier sind es Zeitreihen (share_TS)
+            # 1. temporal: -> hier sind es Zeitreihen (share_TS)
             for target_effect, time_series in origin_effect.specific_share_to_other_effects_operation.items():
-                self.effects[target_effect].model.operation.add_share(
-                    origin_effect.model.operation.label_full,
-                    origin_effect.model.operation.total_per_timestep * time_series.active_data,
+                self.effects[target_effect].model.temporal.add_share(
+                    origin_effect.model.temporal.label_full,
+                    origin_effect.model.temporal.total_per_timestep * time_series.active_data,
                 )
-            # 2. invest:    -> hier ist es Scalar (share)
+            # 2. nontemporal:    -> hier ist es Scalar (share)
             for target_effect, factor in origin_effect.specific_share_to_other_effects_invest.items():
-                self.effects[target_effect].model.invest.add_share(
-                    origin_effect.model.invest.label_full,
-                    origin_effect.model.invest.total * factor,
+                self.effects[target_effect].model.nontemporal.add_share(
+                    origin_effect.model.nontemporal.label_full,
+                    origin_effect.model.nontemporal.total * factor,
                 )

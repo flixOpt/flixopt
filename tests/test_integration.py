@@ -185,7 +185,7 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['costs(operation)|total_per_timestep'].solution.values,
+            calculation.results.model['costs(temporal)|per_timestep'].solution.values,
             [
                 -2.38500000e03,
                 -2.21681333e03,
@@ -249,7 +249,7 @@ class TestComplex:
             'CO2 doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            calculation.results.model['CO2(invest)|total'].solution.values,
+            calculation.results.model['CO2(nontemporal)'].solution.values,
             0.9999999999999994,
             'CO2 doesnt match expected value',
         )
@@ -413,7 +413,7 @@ class TestModelingTypes:
             )
         else:
             assert_almost_equal_numeric(
-                calc.results.solution_without_overlap('costs(operation)|total_per_timestep').sum(),
+                calc.results.solution_without_overlap('costs(temporal)|per_timestep').sum(),
                 expected_costs[modeling_type],
                 f'Costs do not match for {modeling_type} modeling type',
             )

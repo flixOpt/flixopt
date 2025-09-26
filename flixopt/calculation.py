@@ -80,8 +80,8 @@ class Calculation:
             'Penalty': float(self.model.effects.penalty.total.solution.values),
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
-                    'operation': float(effect.model.operation.total.solution.values),
-                    'invest': float(effect.model.invest.total.solution.values),
+                    'temporal': float(effect.model.temporal.total.solution.values),
+                    'nontemporal': float(effect.model.nontemporal.total.solution.values),
                     'total': float(effect.model.total.solution.values),
                 }
                 for effect in self.flow_system.effects

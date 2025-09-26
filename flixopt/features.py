@@ -86,7 +86,7 @@ class InvestmentModel(Model):
                     effect: self.is_invested * factor if self.is_invested is not None else factor
                     for effect, factor in fix_effects.items()
                 },
-                target='invest',
+                target='nontemporal',
             )
 
         if self.parameters.divest_effects != {} and self.parameters.optional:
@@ -97,14 +97,14 @@ class InvestmentModel(Model):
                     effect: -self.is_invested * factor + factor
                     for effect, factor in self.parameters.divest_effects.items()
                 },
-                target='invest',
+                target='nontemporal',
             )
 
         if self.parameters.specific_effects != {}:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
-                target='invest',
+                target='nontemporal',
             )
 
         if self.parameters.piecewise_effects:
@@ -736,7 +736,7 @@ class OnOffModel(Model):
                     effect: self.state_model.on * factor * self._model.hours_per_step
                     for effect, factor in self.parameters.effects_per_running_hour.items()
                 },
-                target='operation',
+                target='temporal',
             )
 
         if self.parameters.effects_per_switch_on:
@@ -746,7 +746,7 @@ class OnOffModel(Model):
                     effect: self.switch_state_model.switch_on * factor
                     for effect, factor in self.parameters.effects_per_switch_on.items()
                 },
-                target='operation',
+                target='temporal',
             )
 
     @property
@@ -956,14 +956,12 @@ class ShareAllocationModel(Model):
     def do_modeling(self):
         self.total = self.add(
             self._model.add_variables(
-                lower=self._total_min, upper=self._total_max, coords=None, name=f'{self.label_full}|total'
+                lower=self._total_min, upper=self._total_max, coords=None, name=f'{self.label_full}'
             ),
             'total',
         )
         # eq: sum = sum(share_i) # skalar
-        self._eq_total = self.add(
-            self._model.add_constraints(self.total == 0, name=f'{self.label_full}|total'), 'total'
-        )
+        self._eq_total = self.add(self._model.add_constraints(self.total == 0, name=f'{self.label_full}'))
 
         if self._shares_are_time_series:
             self.total_per_timestep = self.add(
@@ -975,14 +973,14 @@ class ShareAllocationModel(Model):
                     if (self._max_per_hour is None)
                     else np.multiply(self._max_per_hour, self._model.hours_per_step),
                     coords=self._model.coords,
-                    name=f'{self.label_full}|total_per_timestep',
+                    name=f'{self.label_full}|per_timestep',
                 ),
-                'total_per_timestep',
+                'per_timestep',
             )
 
             self._eq_total_per_timestep = self.add(
-                self._model.add_constraints(self.total_per_timestep == 0, name=f'{self.label_full}|total_per_timestep'),
-                'total_per_timestep',
+                self._model.add_constraints(self.total_per_timestep == 0, name=f'{self.label_full}|per_timestep'),
+                'per_timestep',
             )
 
             # Add it to the total
