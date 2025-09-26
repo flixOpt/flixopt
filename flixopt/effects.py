@@ -180,6 +180,24 @@ class Effect(Element):
         # Handle backwards compatibility for deprecated parameters
         import warnings
 
+        # Validate that both old and new parameters are not set simultaneously
+        self._validate_parameter_conflicts(minimum_operation, minimum_temporal, 'minimum_operation', 'minimum_temporal')
+        self._validate_parameter_conflicts(maximum_operation, maximum_temporal, 'maximum_operation', 'maximum_temporal')
+        self._validate_parameter_conflicts(minimum_invest, minimum_nontemporal, 'minimum_invest', 'minimum_nontemporal')
+        self._validate_parameter_conflicts(maximum_invest, maximum_nontemporal, 'maximum_invest', 'maximum_nontemporal')
+        self._validate_parameter_conflicts(
+            minimum_operation_per_hour,
+            minimum_temporal_per_hour,
+            'minimum_operation_per_hour',
+            'minimum_temporal_per_hour',
+        )
+        self._validate_parameter_conflicts(
+            maximum_operation_per_hour,
+            maximum_temporal_per_hour,
+            'maximum_operation_per_hour',
+            'maximum_temporal_per_hour',
+        )
+
         # Check for deprecated parameters and issue warnings
         if minimum_operation is not None:
             warnings.warn(
@@ -235,15 +253,239 @@ class Effect(Element):
             if maximum_temporal_per_hour is None:
                 maximum_temporal_per_hour = maximum_operation_per_hour
 
-        # Assign the final values (either new parameters or backwards-compatible ones)
-        self.minimum_temporal = minimum_temporal
-        self.maximum_temporal = maximum_temporal
-        self.minimum_temporal_per_hour = minimum_temporal_per_hour
-        self.maximum_temporal_per_hour = maximum_temporal_per_hour
-        self.minimum_nontemporal = minimum_nontemporal
-        self.maximum_nontemporal = maximum_nontemporal
-        self.minimum_total = minimum_total
-        self.maximum_total = maximum_total
+        # Store values in private attributes for property access
+        self._minimum_temporal = minimum_temporal if minimum_temporal is not None else minimum_operation
+        self._maximum_temporal = maximum_temporal if maximum_temporal is not None else maximum_operation
+        self._minimum_nontemporal = minimum_nontemporal if minimum_nontemporal is not None else minimum_invest
+        self._maximum_nontemporal = maximum_nontemporal if maximum_nontemporal is not None else maximum_invest
+        self._minimum_temporal_per_hour = (
+            minimum_temporal_per_hour if minimum_temporal_per_hour is not None else minimum_operation_per_hour
+        )
+        self._maximum_temporal_per_hour = (
+            maximum_temporal_per_hour if maximum_temporal_per_hour is not None else maximum_operation_per_hour
+        )
+        self._minimum_total = minimum_total
+        self._maximum_total = maximum_total
+
+    def _validate_parameter_conflicts(self, old_value, new_value, old_name, new_name):
+        """Validate that both old and new parameters are not set simultaneously."""
+        if old_value is not None and new_value is not None:
+            raise ValueError(
+                f"Cannot specify both '{old_name}' and '{new_name}' parameters. "
+                f"Use only '{new_name}' as '{old_name}' is deprecated."
+            )
+
+    # New parameter properties
+    @property
+    def minimum_temporal(self):
+        """Minimum allowed total temporal contribution across all timesteps."""
+        return self._minimum_temporal
+
+    @minimum_temporal.setter
+    def minimum_temporal(self, value):
+        self._minimum_temporal = value
+
+    @property
+    def maximum_temporal(self):
+        """Maximum allowed total temporal contribution across all timesteps."""
+        return self._maximum_temporal
+
+    @maximum_temporal.setter
+    def maximum_temporal(self, value):
+        self._maximum_temporal = value
+
+    @property
+    def minimum_nontemporal(self):
+        """Minimum allowed total nontemporal contribution."""
+        return self._minimum_nontemporal
+
+    @minimum_nontemporal.setter
+    def minimum_nontemporal(self, value):
+        self._minimum_nontemporal = value
+
+    @property
+    def maximum_nontemporal(self):
+        """Maximum allowed total nontemporal contribution."""
+        return self._maximum_nontemporal
+
+    @maximum_nontemporal.setter
+    def maximum_nontemporal(self, value):
+        self._maximum_nontemporal = value
+
+    @property
+    def minimum_temporal_per_hour(self):
+        """Minimum allowed temporal contribution per timestep."""
+        return self._minimum_temporal_per_hour
+
+    @minimum_temporal_per_hour.setter
+    def minimum_temporal_per_hour(self, value):
+        self._minimum_temporal_per_hour = value
+
+    @property
+    def maximum_temporal_per_hour(self):
+        """Maximum allowed temporal contribution per timestep."""
+        return self._maximum_temporal_per_hour
+
+    @maximum_temporal_per_hour.setter
+    def maximum_temporal_per_hour(self, value):
+        self._maximum_temporal_per_hour = value
+
+    @property
+    def minimum_total(self):
+        """Minimum allowed total effect (temporal + nontemporal combined)."""
+        return self._minimum_total
+
+    @minimum_total.setter
+    def minimum_total(self, value):
+        self._minimum_total = value
+
+    @property
+    def maximum_total(self):
+        """Maximum allowed total effect (temporal + nontemporal combined)."""
+        return self._maximum_total
+
+    @maximum_total.setter
+    def maximum_total(self, value):
+        self._maximum_total = value
+
+    # Backwards compatible properties (deprecated)
+    @property
+    def minimum_operation(self):
+        """[DEPRECATED] Use minimum_temporal instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._minimum_temporal
+
+    @minimum_operation.setter
+    def minimum_operation(self, value):
+        import warnings
+
+        warnings.warn(
+            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._minimum_temporal = value
+
+    @property
+    def maximum_operation(self):
+        """[DEPRECATED] Use maximum_temporal instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._maximum_temporal
+
+    @maximum_operation.setter
+    def maximum_operation(self, value):
+        import warnings
+
+        warnings.warn(
+            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._maximum_temporal = value
+
+    @property
+    def minimum_invest(self):
+        """[DEPRECATED] Use minimum_nontemporal instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._minimum_nontemporal
+
+    @minimum_invest.setter
+    def minimum_invest(self, value):
+        import warnings
+
+        warnings.warn(
+            "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._minimum_nontemporal = value
+
+    @property
+    def maximum_invest(self):
+        """[DEPRECATED] Use maximum_nontemporal instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._maximum_nontemporal
+
+    @maximum_invest.setter
+    def maximum_invest(self, value):
+        import warnings
+
+        warnings.warn(
+            "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._maximum_nontemporal = value
+
+    @property
+    def minimum_operation_per_hour(self):
+        """[DEPRECATED] Use minimum_temporal_per_hour instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._minimum_temporal_per_hour
+
+    @minimum_operation_per_hour.setter
+    def minimum_operation_per_hour(self, value):
+        import warnings
+
+        warnings.warn(
+            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._minimum_temporal_per_hour = value
+
+    @property
+    def maximum_operation_per_hour(self):
+        """[DEPRECATED] Use maximum_temporal_per_hour instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._maximum_temporal_per_hour
+
+    @maximum_operation_per_hour.setter
+    def maximum_operation_per_hour(self, value):
+        import warnings
+
+        warnings.warn(
+            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._maximum_temporal_per_hour = value
 
     def transform_data(self, flow_system: FlowSystem):
         self.minimum_temporal_per_hour = flow_system.create_time_series(
