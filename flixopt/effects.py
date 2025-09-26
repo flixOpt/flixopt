@@ -52,14 +52,14 @@ class Effect(Element):
             Maps this effect's operational values to contributions to other effects
         specific_share_to_other_effects_invest: Investment cross-effect contributions.
             Maps this effect's investment values to contributions to other effects.
-        minimum_operation: Minimum allowed total operational contribution across all timesteps.
-        maximum_operation: Maximum allowed total operational contribution across all timesteps.
-        minimum_operation_per_hour: Minimum allowed operational contribution per timestep.
-        maximum_operation_per_hour: Maximum allowed operational contribution per timestep.
-        minimum_invest: Minimum allowed total investment contribution.
-        maximum_invest: Maximum allowed total investment contribution.
-        minimum_total: Minimum allowed total effect (operation + investment combined).
-        maximum_total: Maximum allowed total effect (operation + investment combined).
+        minimum_temporal: Minimum allowed total contribution across all timesteps.
+        maximum_temporal: Maximum allowed total contribution across all timesteps.
+        minimum_temporal_per_hour: Minimum allowed contribution per hour.
+        maximum_temporal_per_hour: Maximum allowed contribution per hour.
+        minimum_nontemporal: Minimum allowed total nontemporal contribution.
+        maximum_nontemporal: Maximum allowed total nontemporal contribution.
+        minimum_total: Minimum allowed total effect (temporal + nontemporal combined).
+        maximum_total: Maximum allowed total effect (temporal + nontemporal combined).
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -111,8 +111,8 @@ class Effect(Element):
             label='water_consumption',
             unit='m³',
             description='Industrial water usage',
-            minimum_operation_per_hour=10,  # Minimum 10 m³/h for process stability
-            maximum_operation_per_hour=500,  # Maximum 500 m³/h capacity limit
+            minimum_temporal_per_hour=10,  # Minimum 10 m³/h for process stability
+            maximum_temporal_per_hour=500,  # Maximum 500 m³/h capacity limit
             maximum_total=100_000,  # Annual permit limit: 100,000 m³
         )
         ```

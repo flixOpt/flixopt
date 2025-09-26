@@ -184,10 +184,10 @@ class TestLinearConverterModel:
         )
 
         # Check on_off effects
-        assert 'Converter->Costs(operation)' in model.constraints
+        assert 'Converter->Costs(temporal)' in model.constraints
         assert_conequal(
-            model.constraints['Converter->Costs(operation)'],
-            model.variables['Converter->Costs(operation)']
+            model.constraints['Converter->Costs(temporal)'],
+            model.variables['Converter->Costs(temporal)']
             == converter.model.on_off.variables['Converter|on'] * model.hours_per_step * 5,
         )
 
@@ -488,10 +488,10 @@ class TestLinearConverterModel:
         )
 
         # Verify that the costs effect is applied
-        assert 'Converter->Costs(operation)' in model.constraints
+        assert 'Converter->Costs(temporal)' in model.constraints
         assert_conequal(
-            model.constraints['Converter->Costs(operation)'],
-            model.variables['Converter->Costs(operation)']
+            model.constraints['Converter->Costs(temporal)'],
+            model.variables['Converter->Costs(temporal)']
             == converter.model.on_off.variables['Converter|on'] * model.hours_per_step * 5,
         )
 
