@@ -1001,16 +1001,8 @@ class SourceAndSink(Component):
             )
             prevent_simultaneous_flow_rates = prevent_simultaneous_sink_and_source
 
-        # Check for any remaining unexpected kwargs using inspect module
-        import inspect
-
-        sig = inspect.signature(self.__init__)
-        known_params = set(sig.parameters.keys()) - {'self', 'kwargs'}
-        # Also filter out 'kwargs' itself which can appear during deserialization
-        extra_kwargs = {k: v for k, v in kwargs.items() if k not in known_params and k != 'kwargs'}
-        if extra_kwargs:
-            unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
-            raise TypeError(f'SourceAndSink.__init__() got unexpected keyword argument(s): {unexpected_params}')
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
@@ -1144,16 +1136,8 @@ class Source(Component):
                 raise ValueError('Either source or outputs can be specified, but not both.')
             outputs = [source]
 
-        # Check for any remaining unexpected kwargs using inspect module
-        import inspect
-
-        sig = inspect.signature(self.__init__)
-        known_params = set(sig.parameters.keys()) - {'self', 'kwargs'}
-        # Also filter out 'kwargs' itself which can appear during deserialization
-        extra_kwargs = {k: v for k, v in kwargs.items() if k not in known_params and k != 'kwargs'}
-        if extra_kwargs:
-            unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
-            raise TypeError(f'Source.__init__() got unexpected keyword argument(s): {unexpected_params}')
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
@@ -1283,16 +1267,8 @@ class Sink(Component):
                 raise ValueError('Either sink or inputs can be specified, but not both.')
             inputs = [sink]
 
-        # Check for any remaining unexpected kwargs using inspect module
-        import inspect
-
-        sig = inspect.signature(self.__init__)
-        known_params = set(sig.parameters.keys()) - {'self', 'kwargs'}
-        # Also filter out 'kwargs' itself which can appear during deserialization
-        extra_kwargs = {k: v for k, v in kwargs.items() if k not in known_params and k != 'kwargs'}
-        if extra_kwargs:
-            unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
-            raise TypeError(f'Sink.__init__() got unexpected keyword argument(s): {unexpected_params}')
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
