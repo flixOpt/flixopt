@@ -57,7 +57,7 @@ costs = fx.Effect(
     share_from_nontemporal={'land': 100}  # €100 per m² land use
 )
 ```
-This replaces the less intuitive `specific_share_to_other_effects_*` parameters and makes it clearer where effect contributions are coming from, rather then where they are going to.
+This replaces the less intuitive `specific_share_to_other_effects_*` parameters and makes it clearer where effect contributions are coming from, rather than where they are going to.
 
 **Multi-year investments:**
 A flixopt model might be modeled with a "year" dimension.
@@ -129,7 +129,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
   - `maximum_operation_per_hour` → `maximum_per_hour`
 
 ### 🔥 Removed
-* **Effect share parameters**: The old `specific_share_to_other_effects_*` parameters were replaced WITHOUT DEPRECTATION
+* **Effect share parameters**: The old `specific_share_to_other_effects_*` parameters were replaced WITHOUT DEPRECATION
   - `specific_share_to_other_effects_operation` → `share_from_temporal` (with inverted direction)
   - `specific_share_to_other_effects_invest` → `share_from_nontemporal` (with inverted direction)
 
