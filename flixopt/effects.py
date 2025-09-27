@@ -407,7 +407,7 @@ class Effect(Element):
         self.minimum_nontemporal = flow_system.fit_to_model_coords(
             f'{prefix}|minimum_nontemporal', self.minimum_nontemporal, dims=['year', 'scenario']
         )
-        self.minimum_nontemporal = flow_system.fit_to_model_coords(
+        self.maximum_nontemporal = flow_system.fit_to_model_coords(
             f'{prefix}|maximum_nontemporal', self.maximum_nontemporal, dims=['year', 'scenario']
         )
         self.minimum_total = flow_system.fit_to_model_coords(
