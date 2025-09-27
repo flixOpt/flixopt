@@ -77,17 +77,21 @@ class Effect(Element):
         Basic cost objective:
 
         ```python
-        cost_effect = Effect(label='system_costs', unit='€', description='Total system costs', is_objective=True)
+        cost_effect = Effect(
+            label='system_costs',
+            unit='€',
+            description='Total system costs',
+            is_objective=True,
+        )
         ```
 
-        CO2 emissions with carbon pricing:
+        CO2 emissions:
 
         ```python
         co2_effect = Effect(
-            label='co2_emissions',
+            label='CO2',
             unit='kg_CO2',
             description='Carbon dioxide emissions',
-            share_from_temporal={'CO2': 0.2},  # €0.2 per kg CO2
             maximum_total=1_000_000,  # 1000 t CO2 annual limit
         )
         ```
@@ -110,7 +114,21 @@ class Effect(Element):
             label='primary_energy',
             unit='kWh_primary',
             description='Primary energy consumption',
-            share_from_temporal={'primary_energy': 0.08},  # €0.08/kWh
+        )
+        ```
+
+       Cost objective with carbon and primary energy pricing:
+
+        ```python
+        cost_effect = Effect(
+            label='system_costs',
+            unit='€',
+            description='Total system costs',
+            is_objective=True,
+            share_from_temporal={
+                'primary_energy': 0.08,  # 0.08 €/kWh_primary
+                'CO2': 0.2,  # Carbon pricing: 0.2 €/kg_CO2 into costs if used on a cost effect
+            },
         )
         ```
 
@@ -137,8 +155,7 @@ class Effect(Element):
         across all contributions to each effect manually.
 
         Effects are accumulated as:
-        - Total = Σ(operational contributions) + Σ(investment contributions)
-        - Cross-effects add to target effects based on specific_share ratios
+        - Total = Σ(temporal contributions) + Σ(nontemporal contributions)
 
     """
 
