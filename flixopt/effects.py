@@ -172,96 +172,34 @@ class Effect(Element):
         self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
 
         # Handle backwards compatibility for deprecated parameters
-        import warnings
+        deprecated_mappings = {
+            'minimum_operation': 'minimum_temporal',
+            'maximum_operation': 'maximum_temporal',
+            'minimum_invest': 'minimum_nontemporal',
+            'maximum_invest': 'maximum_nontemporal',
+            'minimum_operation_per_hour': 'minimum_temporal_per_hour',
+            'maximum_operation_per_hour': 'maximum_temporal_per_hour',
+        }
 
-        # Extract deprecated parameters from kwargs
-        minimum_operation = kwargs.pop('minimum_operation', None)
-        maximum_operation = kwargs.pop('maximum_operation', None)
-        minimum_invest = kwargs.pop('minimum_invest', None)
-        maximum_invest = kwargs.pop('maximum_invest', None)
-        minimum_operation_per_hour = kwargs.pop('minimum_operation_per_hour', None)
-        maximum_operation_per_hour = kwargs.pop('maximum_operation_per_hour', None)
-
-        # Handle minimum_temporal
-        if minimum_operation is not None:
-            warnings.warn(
-                "Parameter 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if minimum_temporal is not None:
-                raise ValueError('Either minimum_operation or minimum_temporal can be specified, but not both.')
-            minimum_temporal = minimum_operation
-
-        # Handle maximum_temporal
-        if maximum_operation is not None:
-            warnings.warn(
-                "Parameter 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if maximum_temporal is not None:
-                raise ValueError('Either maximum_operation or maximum_temporal can be specified, but not both.')
-            maximum_temporal = maximum_operation
-
-        # Handle minimum_nontemporal
-        if minimum_invest is not None:
-            warnings.warn(
-                "Parameter 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if minimum_nontemporal is not None:
-                raise ValueError('Either minimum_invest or minimum_nontemporal can be specified, but not both.')
-            minimum_nontemporal = minimum_invest
-
-        # Handle maximum_nontemporal
-        if maximum_invest is not None:
-            warnings.warn(
-                "Parameter 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if maximum_nontemporal is not None:
-                raise ValueError('Either maximum_invest or maximum_nontemporal can be specified, but not both.')
-            maximum_nontemporal = maximum_invest
-
-        # Handle minimum_temporal_per_hour
-        if minimum_operation_per_hour is not None:
-            warnings.warn(
-                "Parameter 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if minimum_temporal_per_hour is not None:
-                raise ValueError(
-                    'Either minimum_operation_per_hour or minimum_temporal_per_hour can be specified, but not both.'
-                )
-            minimum_temporal_per_hour = minimum_operation_per_hour
-
-        # Handle maximum_temporal_per_hour
-        if maximum_operation_per_hour is not None:
-            warnings.warn(
-                "Parameter 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if maximum_temporal_per_hour is not None:
-                raise ValueError(
-                    'Either maximum_operation_per_hour or maximum_temporal_per_hour can be specified, but not both.'
-                )
-            maximum_temporal_per_hour = maximum_operation_per_hour
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
-        # Set attributes directly
+        # Set attribute values before calling _handle_deprecated_params to allow conflict checking
         self.minimum_temporal = minimum_temporal
         self.maximum_temporal = maximum_temporal
         self.minimum_nontemporal = minimum_nontemporal
         self.maximum_nontemporal = maximum_nontemporal
         self.minimum_temporal_per_hour = minimum_temporal_per_hour
         self.maximum_temporal_per_hour = maximum_temporal_per_hour
+
+        # Handle deprecated parameters using centralized method
+        updated_params = self._handle_deprecated_params(kwargs, deprecated_mappings)
+
+        # Update attributes with deprecated values if provided
+        for param_name, param_value in updated_params.items():
+            setattr(self, param_name, param_value)
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
+
+        # Set remaining attributes
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
