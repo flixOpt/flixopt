@@ -407,6 +407,7 @@ class FlowSystem(Interface):
         effect_values: TemporalEffectsUser | NonTemporalEffectsUser | None,
         label_suffix: str | None = None,
         dims: Collection[FlowSystemDimensions] | None = None,
+        delimiter: str = '|',
     ) -> TemporalEffects | NonTemporalEffects | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
@@ -418,7 +419,7 @@ class FlowSystem(Interface):
 
         return {
             effect: self.fit_to_model_coords(
-                '|'.join(filter(None, [label_prefix, effect, label_suffix])),
+                str(delimiter).join(filter(None, [label_prefix, effect, label_suffix])),
                 value,
                 dims=dims,
             )
