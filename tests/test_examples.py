@@ -16,7 +16,7 @@ EXAMPLES_DIR = Path(__file__).parent.parent / 'examples'
     ),  # Sort by parent and script name
     ids=lambda path: str(path.relative_to(EXAMPLES_DIR)),  # Show relative file paths
 )
-@pytest.mark.slow
+@pytest.mark.examples
 def test_example_scripts(example_script):
     """
     Test all example scripts in the examples directory.
