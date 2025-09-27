@@ -29,41 +29,113 @@ logger = logging.getLogger('flixopt')
 
 
 class BackwardsCompatibleDataset:
-    """Wrapper around xarray.Dataset to provide backwards compatibility for renamed variables."""
+    """Wrapper around xarray.Dataset to provide backwards compatibility for renamed variables.
 
-    # Mapping from old variable names to new variable names
+    This class handles multiple types of backwards compatibility:
+    1. Direct variable name mappings (e.g., 'costs|total' -> 'costs')
+    2. Pattern-based substitutions (e.g., (operation) -> (temporal))
+    3. Dynamic renaming rules for complex variable naming schemes
+    """
+
+    # Direct mapping from old variable names to new variable names
     DEPRECATED_VARIABLE_MAPPING = {
         # Effect variable names
         'costs|total': 'costs',
-        # Cross-effect variable names (operation -> temporal, invest -> nontemporal)
-        # This will be handled dynamically in __getitem__
     }
+
+    # Pattern-based substitution rules (old_pattern, new_pattern, condition_func)
+    PATTERN_SUBSTITUTION_RULES = [
+        # Cross-effect variables: (operation) -> (temporal), (invest) -> (nontemporal)
+        ('(operation)', '(temporal)', lambda key: '->' in key),
+        ('(invest)', '(nontemporal)', lambda key: '->' in key),
+    ]
+
+    # Regex-based renaming patterns for more complex cases
+    @staticmethod
+    def _get_regex_patterns():
+        """Get regex patterns for complex variable renaming.
+
+        Returns:
+            List of tuples (pattern, replacement, description) for regex-based renaming.
+        """
+        import re
+
+        return [
+            # Pattern for effect parameter names: *_operation -> *_temporal
+            (re.compile(r'(.+)_operation($|_)'), r'\1_temporal\2', 'operation suffix to temporal'),
+            # Pattern for effect parameter names: *_invest -> *_nontemporal
+            (re.compile(r'(.+)_invest($|_)'), r'\1_nontemporal\2', 'invest suffix to nontemporal'),
+            # Pattern for per-hour variants: *_operation_per_hour -> *_temporal_per_hour
+            (
+                re.compile(r'(.+)_operation_per_hour'),
+                r'\1_temporal_per_hour',
+                'operation_per_hour to temporal_per_hour',
+            ),
+        ]
 
     def __init__(self, dataset: xr.Dataset):
         self._dataset = dataset
+        # Cache for resolved mappings to improve performance
+        self._mapping_cache = {}
+
+    def _resolve_deprecated_key(self, key):
+        """Resolve a deprecated variable name to its current equivalent.
+
+        Args:
+            key: Variable name to resolve
+
+        Returns:
+            Tuple of (new_key, found) where found indicates if a mapping was found
+        """
+        # Check cache first
+        if key in self._mapping_cache:
+            return self._mapping_cache[key], True
+
+        # 1. Direct mapping
+        if key in self.DEPRECATED_VARIABLE_MAPPING:
+            new_key = self.DEPRECATED_VARIABLE_MAPPING[key]
+            if new_key in self._dataset:
+                self._mapping_cache[key] = new_key
+                return new_key, True
+
+        # 2. Pattern-based substitution
+        for old_pattern, new_pattern, condition_func in self.PATTERN_SUBSTITUTION_RULES:
+            if condition_func(key) and old_pattern in key:
+                new_key = key.replace(old_pattern, new_pattern)
+                if new_key in self._dataset:
+                    self._mapping_cache[key] = new_key
+                    return new_key, True
+
+        # 3. Regex-based patterns
+        for pattern, replacement, _description in self._get_regex_patterns():
+            if pattern.search(key):
+                new_key = pattern.sub(replacement, key)
+                if new_key in self._dataset:
+                    self._mapping_cache[key] = new_key
+                    return new_key, True
+
+        # 4. Check if key exists as-is in dataset
+        if key in self._dataset:
+            return key, True
+
+        return key, False
 
     def __getitem__(self, key):
         """Access dataset variables with backwards compatibility."""
-        # Handle direct mapping first
-        if key in self.DEPRECATED_VARIABLE_MAPPING:
-            new_key = self.DEPRECATED_VARIABLE_MAPPING[key]
+        new_key, found = self._resolve_deprecated_key(key)
+
+        if found and new_key != key:
+            # Issue deprecation warning for renamed variables
             warnings.warn(
                 f"Variable name '{key}' is deprecated. Use '{new_key}' instead.", DeprecationWarning, stacklevel=2
             )
             return self._dataset[new_key]
-
-        # Handle cross-effect variables dynamically
-        if '->' in key and ('(operation)' in key or '(invest)' in key):
-            # Replace (operation) -> (temporal) and (invest) -> (nontemporal)
-            new_key = key.replace('(operation)', '(temporal)').replace('(invest)', '(nontemporal)')
-            if new_key in self._dataset:
-                warnings.warn(
-                    f"Variable name '{key}' is deprecated. Use '{new_key}' instead.", DeprecationWarning, stacklevel=2
-                )
-                return self._dataset[new_key]
-
-        # Default to original dataset behavior
-        return self._dataset[key]
+        elif found:
+            # Key exists as-is
+            return self._dataset[key]
+        else:
+            # Key not found - let dataset handle the error
+            return self._dataset[key]
 
     def __getattr__(self, name):
         """Delegate all other attributes to the wrapped dataset."""
@@ -71,15 +143,58 @@ class BackwardsCompatibleDataset:
 
     def __contains__(self, key):
         """Check if key exists in dataset (with backwards compatibility)."""
-        if key in self._dataset:
-            return True
-        if key in self.DEPRECATED_VARIABLE_MAPPING:
-            return self.DEPRECATED_VARIABLE_MAPPING[key] in self._dataset
-        # Check cross-effect variables
-        if '->' in key and ('(operation)' in key or '(invest)' in key):
-            new_key = key.replace('(operation)', '(temporal)').replace('(invest)', '(nontemporal)')
-            return new_key in self._dataset
-        return False
+        new_key, found = self._resolve_deprecated_key(key)
+        return found
+
+    def __iter__(self):
+        """Iterate over dataset variables."""
+        return iter(self._dataset)
+
+    def __len__(self):
+        """Get number of variables in dataset."""
+        return len(self._dataset)
+
+    def keys(self):
+        """Get dataset variable names."""
+        return self._dataset.keys()
+
+    def values(self):
+        """Get dataset variable values."""
+        return self._dataset.values()
+
+    def items(self):
+        """Get dataset variable items."""
+        return self._dataset.items()
+
+    def get_deprecated_mappings(self):
+        """Get all currently active deprecated mappings for debugging.
+
+        Returns:
+            Dict mapping deprecated names to current names for variables in this dataset.
+        """
+        mappings = {}
+
+        # Check all variables in dataset against all deprecation rules
+        for var_name in self._dataset.data_vars:
+            # Check if any deprecated patterns would map TO this variable
+
+            # Direct mappings (reverse lookup)
+            for old_name, new_name in self.DEPRECATED_VARIABLE_MAPPING.items():
+                if new_name == var_name and old_name not in self._dataset:
+                    mappings[old_name] = var_name
+
+            # Pattern-based rules (generate potential old names)
+            for old_pattern, new_pattern, condition_func in self.PATTERN_SUBSTITUTION_RULES:
+                if new_pattern in var_name:
+                    potential_old_name = var_name.replace(new_pattern, old_pattern)
+                    if condition_func(potential_old_name) and potential_old_name not in self._dataset:
+                        mappings[potential_old_name] = var_name
+
+            # Regex patterns (reverse lookup)
+            # This is complex for reverse lookup, so we'll skip for now
+            # Could be added if needed for debugging
+
+        return mappings
 
     @property
     def _raw_dataset(self):
