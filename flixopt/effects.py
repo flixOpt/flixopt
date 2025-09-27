@@ -593,6 +593,11 @@ class EffectCollection:
         # Check circular loops in effects:
         temporal, nontemporal = self.calculate_effect_share_factors()
 
+        # Validate all referenced sources exist
+        unknown = {src for src, _ in list(temporal.keys()) + list(nontemporal.keys()) if src not in self.effects}
+        if unknown:
+            raise KeyError(f'Unknown effects used in in effect share mappings: {sorted(unknown)}')
+
         temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
         nontemporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in nontemporal]))
 
