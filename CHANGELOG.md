@@ -47,6 +47,18 @@ Several internal improvements were made to the codebase.
 
 ### ✨ Added
 
+**Intuitive effect share syntax:**
+Effects now support an intuitive `share_from_*` syntax for cross-effect relationships:
+```python
+costs = fx.Effect(
+    'costs', '€', 'Total costs',
+    is_standard=True, is_objective=True,
+    share_from_temporal={'CO2': 0.2, 'energy': 0.05},  # Costs receive contributions from other effects
+    share_from_nontemporal={'land': 100}  # €100 per m² land use
+)
+```
+This replaces the less intuitive `specific_share_to_other_effects_*` parameters and makes it clearer where effect contributions are coming from, rather then where they are going to.
+
 **Multi-year investments:**
 A flixopt model might be modeled with a "year" dimension.
 This enables modeling transformation pathways over multiple years with several investment decisions
@@ -116,6 +128,10 @@ The weighted sum of the total objective effect of each scenario is used as the o
   - `minimum_operation_per_hour` → `minimum_per_hour`
   - `maximum_operation_per_hour` → `maximum_per_hour`
 
+### 🔥 Removed
+* **Effect share parameters**: The old `specific_share_to_other_effects_*` parameters were replaced WITHOUT DEPRECTATION
+  - `specific_share_to_other_effects_operation` → `share_from_temporal` (with inverted direction)
+  - `specific_share_to_other_effects_invest` → `share_from_nontemporal` (with inverted direction)
 
 ### 🐛 Fixed
 * Enhanced NetCDF I/O with proper attribute preservation for DataArrays

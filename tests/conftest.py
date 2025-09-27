@@ -100,16 +100,12 @@ class Effects:
         return fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True)
 
     @staticmethod
-    def co2():
-        return fx.Effect('CO2', 'kg', 'CO2_e-Emissionen')
+    def costs_with_co2_share():
+        return fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True, share_from_temporal={'CO2': 0.2})
 
     @staticmethod
-    def co2_with_costs_share():
-        return fx.Effect(
-            'CO2',
-            'kg',
-            'CO2_e-Emissionen',
-        )
+    def co2():
+        return fx.Effect('CO2', 'kg', 'CO2_e-Emissionen')
 
     @staticmethod
     def primary_energy():
@@ -387,8 +383,8 @@ def simple_flow_system() -> fx.FlowSystem:
     base_timesteps = pd.date_range('2020-01-01', periods=9, freq='h', name='time')
 
     # Define effects
-    costs = Effects.costs()
-    co2 = Effects.co2_with_costs_share()
+    costs = Effects.costs_with_co2_share()
+    co2 = Effects.co2()
     co2.maximum_operation_per_hour = 1000
 
     # Create components
@@ -417,8 +413,8 @@ def simple_flow_system_scenarios() -> fx.FlowSystem:
     base_timesteps = pd.date_range('2020-01-01', periods=9, freq='h', name='time')
 
     # Define effects
-    costs = Effects.costs()
-    co2 = Effects.co2_with_costs_share()
+    costs = Effects.costs_with_co2_share()
+    co2 = Effects.co2()
     co2.maximum_operation_per_hour = 1000
 
     # Create components
