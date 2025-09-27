@@ -486,11 +486,6 @@ class Flow(Element):
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
 
-    @property
-    def invest_is_optional(self) -> bool:
-        # Wenn kein InvestParameters existiert: # Investment ist nicht optional -> Keine Variable --> False
-        return False if (isinstance(self.size, InvestParameters) and not self.size.optional) else True
-
 
 class FlowModel(ElementModel):
     def __init__(self, model: SystemModel, element: Flow):
@@ -650,7 +645,7 @@ class FlowModel(ElementModel):
         if self.element.on_off_parameters is not None:
             return 0
         if isinstance(self.element.size, InvestParameters):
-            if self.element.size.optional:
+            if not self.element.size.mandatory:
                 return 0
             return self.flow_rate_lower_bound_relative * self.element.size.minimum_size
         return self.flow_rate_lower_bound_relative * self.element.size

@@ -46,7 +46,7 @@ class InvestmentModel(Model):
         self.parameters = parameters
 
     def do_modeling(self):
-        if self.parameters.fixed_size and not self.parameters.optional:
+        if self.parameters.fixed_size and self.parameters.mandatory:
             self.size = self.add(
                 self._model.add_variables(
                     lower=self.parameters.fixed_size, upper=self.parameters.fixed_size, name=f'{self.label_full}|size'
@@ -56,15 +56,15 @@ class InvestmentModel(Model):
         else:
             self.size = self.add(
                 self._model.add_variables(
-                    lower=0 if self.parameters.optional else self.parameters.minimum_size,
+                    lower=0 if not self.parameters.mandatory else self.parameters.minimum_size,
                     upper=self.parameters.maximum_size,
                     name=f'{self.label_full}|size',
                 ),
                 'size',
             )
 
-        # Optional
-        if self.parameters.optional:
+        # Optional (not mandatory)
+        if not self.parameters.mandatory:
             self.is_invested = self.add(
                 self._model.add_variables(binary=True, name=f'{self.label_full}|is_invested'), 'is_invested'
             )
@@ -89,7 +89,7 @@ class InvestmentModel(Model):
                 target='invest',
             )
 
-        if self.parameters.divest_effects != {} and self.parameters.optional:
+        if self.parameters.divest_effects != {} and not self.parameters.mandatory:
             # share: divest_effects - isInvested * divest_effects
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
