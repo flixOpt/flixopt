@@ -4,7 +4,6 @@ import datetime
 import json
 import logging
 import pathlib
-import warnings
 from typing import TYPE_CHECKING, Literal
 
 import linopy
@@ -188,18 +187,13 @@ class CalculationResults:
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.components = {
-            label: ComponentResults.from_json(self, infos)
-            for label, infos in self.solution._raw_dataset.attrs['Components'].items()
+            label: ComponentResults.from_json(self, infos) for label, infos in self.solution.attrs['Components'].items()
         }
 
-        self.buses = {
-            label: BusResults.from_json(self, infos)
-            for label, infos in self.solution._raw_dataset.attrs['Buses'].items()
-        }
+        self.buses = {label: BusResults.from_json(self, infos) for label, infos in self.solution.attrs['Buses'].items()}
 
         self.effects = {
-            label: EffectResults.from_json(self, infos)
-            for label, infos in self.solution._raw_dataset.attrs['Effects'].items()
+            label: EffectResults.from_json(self, infos) for label, infos in self.solution.attrs['Effects'].items()
         }
 
         self.timesteps_extra = self.solution.indexes['time']
@@ -252,7 +246,7 @@ class CalculationResults:
         """
         if element is not None:
             return filter_dataset(self[element].solution, variable_dims)
-        return filter_dataset(self.solution._raw_dataset, variable_dims)
+        return filter_dataset(self.solution, variable_dims)
 
     def plot_heatmap(
         self,
@@ -334,7 +328,7 @@ class CalculationResults:
 
         paths = fx_io.CalculationResultsPaths(folder, name)
 
-        fx_io.save_dataset_to_netcdf(self.solution._raw_dataset, paths.solution, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
 
         with open(paths.summary, 'w', encoding='utf-8') as f:
@@ -368,7 +362,7 @@ class _ElementResults:
         self._variable_names = variables
         self._constraint_names = constraints
 
-        self.solution = self._calculation_results.solution._raw_dataset[self._variable_names]
+        self.solution = self._calculation_results.solution[self._variable_names]
 
     @property
     def variables(self) -> linopy.Variables:
