@@ -116,13 +116,9 @@ class Interface:
     """
 
     _DEPRECATED_PROPERTIES = {}
-    """Dictionary of deprecated properties and their new names."""
 
     def __getattr__(self, name):
-        """
-        Handle deprecated property access. Custom getters might be defined by a method named
-        "_get_deprecated_<property_name>()". This allows to apply transformations or add extra warnings/errors.
-        """
+        # Handle deprecated properties
         if name in self._DEPRECATED_PROPERTIES:
             import warnings
 
@@ -132,61 +128,23 @@ class Interface:
                 DeprecationWarning,
                 stacklevel=2,
             )
-
-            # Check if subclass has custom transformation logic
-            custom_getter = getattr(self, f'_get_deprecated_{name}', None)
-            if custom_getter:
-                return custom_getter()
-            else:
-                # Default behavior: just get the new attribute
-                return getattr(self, new_name)
-
+            return getattr(self, new_name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def __setattr__(self, name, value):
-        """
-        Handle deprecated property setting. Custom setters might be defined by a method named
-        "_set_deprecated_<property_name>()". This allows to apply transformations or add extra warnings/errors.
-        """
-        deprecated_props = getattr(self.__class__, '_DEPRECATED_PROPERTIES', {})
-
-        if name in deprecated_props:
+        # Handle deprecated properties
+        if name in getattr(self, '_DEPRECATED_PROPERTIES', {}):
             import warnings
 
-            new_name = deprecated_props[name]
+            new_name = self._DEPRECATED_PROPERTIES[name]
             warnings.warn(
                 f"Property '{name}' is deprecated. Use '{new_name}' instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-
-            # Check if subclass has custom transformation logic
-            custom_setter = getattr(self, f'_set_deprecated_{name}', None)
-            if custom_setter:
-                custom_setter(value)
-            else:
-                # Default behavior: just set the new attribute
-                setattr(self, new_name, value)
+            setattr(self, new_name, value)
             return
-
         super().__setattr__(name, value)
-
-    @staticmethod
-    def handle_deprecated_param(kwargs, old_name, new_name, current_value):
-        """Helper to handle a single deprecated parameter."""
-        import warnings
-
-        old_value = kwargs.pop(old_name, None)
-        if old_value is not None:
-            warnings.warn(
-                f"Parameter '{old_name}' is deprecated. Use '{new_name}' instead.",
-                DeprecationWarning,
-                stacklevel=4,  # Adjusted for call stack depth
-            )
-            if current_value is not None:
-                raise ValueError(f'Either {old_name} or {new_name} can be specified, but not both.')
-            return old_value
-        return current_value
 
     def transform_data(self, flow_system: FlowSystem):
         """Transforms the data of the interface to match the FlowSystem's dimensions"""
@@ -733,3 +691,20 @@ def get_str_representation(data: Any, array_threshold: int = 50, decimals: int =
         console = Console(file=output_buffer, width=1000)  # Adjust width as needed
         console.print(Pretty(formatted_data, expand_all=True, indent_guides=True))
         return output_buffer.getvalue()
+
+
+def handle_deprecated_param(kwargs, old_name, new_name, current_value):
+    """Helper to handle a single deprecated parameter."""
+    import warnings
+
+    old_value = kwargs.pop(old_name, None)
+    if old_value is not None:
+        warnings.warn(
+            f"Parameter '{old_name}' is deprecated. Use '{new_name}' instead.",
+            DeprecationWarning,
+            stacklevel=4,  # Adjusted for call stack depth
+        )
+        if current_value is not None:
+            raise ValueError(f'Either {old_name} or {new_name} can be specified, but not both.')
+        return old_value
+    return current_value

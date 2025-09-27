@@ -16,7 +16,7 @@ import numpy as np
 
 from .core import NumericDataTS, Scalar, TimeSeries
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, Model, SystemModel, register_class_for_io
+from .structure import Element, ElementModel, Model, SystemModel, handle_deprecated_param, register_class_for_io
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -227,7 +227,7 @@ class Effect(Element):
         # Process each deprecated parameter
         results = []
         for old_name, new_name, current_value in deprecated_mappings:
-            new_value = self._handle_deprecated_param(kwargs, old_name, new_name, current_value)
+            new_value = handle_deprecated_param(kwargs, old_name, new_name, current_value)
             results.append(new_value)
 
         return tuple(results)
