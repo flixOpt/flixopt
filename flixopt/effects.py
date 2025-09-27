@@ -16,7 +16,7 @@ import numpy as np
 
 from .core import NumericDataTS, Scalar, TimeSeries
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, Model, SystemModel, register_class_for_io
+from .structure import Element, ElementModel, Model, SystemModel, handle_deprecated_param, register_class_for_io
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -213,237 +213,62 @@ class Effect(Element):
         maximum_temporal_per_hour,
     ):
         """Handle deprecated parameter names for Effect class."""
-        import warnings
 
-        # Handle minimum_operation -> minimum_temporal
-        minimum_operation = kwargs.pop('minimum_operation', None)
-        if minimum_operation is not None:
+        # Define the mappings: (old_name, new_name, current_value)
+        deprecated_mappings = [
+            ('minimum_operation', 'minimum_temporal', minimum_temporal),
+            ('maximum_operation', 'maximum_temporal', maximum_temporal),
+            ('minimum_invest', 'minimum_nontemporal', minimum_nontemporal),
+            ('maximum_invest', 'maximum_nontemporal', maximum_nontemporal),
+            ('minimum_operation_per_hour', 'minimum_temporal_per_hour', minimum_temporal_per_hour),
+            ('maximum_operation_per_hour', 'maximum_temporal_per_hour', maximum_temporal_per_hour),
+        ]
+
+        # Process each deprecated parameter
+        results = []
+        for old_name, new_name, current_value in deprecated_mappings:
+            new_value = self._handle_deprecated_param(kwargs, old_name, new_name, current_value)
+            results.append(new_value)
+
+        return tuple(results)
+
+    _DEPRECATED_PROPERTIES = {
+        'minimum_operation': 'minimum_temporal',
+        'maximum_operation': 'maximum_temporal',
+        'minimum_invest': 'minimum_nontemporal',
+        'maximum_invest': 'maximum_nontemporal',
+        'minimum_operation_per_hour': 'minimum_temporal_per_hour',
+        'maximum_operation_per_hour': 'maximum_temporal_per_hour',
+    }
+
+    def __getattr__(self, name):
+        # Handle deprecated properties
+        if name in self._DEPRECATED_PROPERTIES:
+            import warnings
+
+            new_name = self._DEPRECATED_PROPERTIES[name]
             warnings.warn(
-                "Parameter 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+                f"Property '{name}' is deprecated. Use '{new_name}' instead.",
                 DeprecationWarning,
-                stacklevel=3,
+                stacklevel=2,
             )
-            if minimum_temporal is not None:
-                raise ValueError('Either minimum_operation or minimum_temporal can be specified, but not both.')
-            minimum_temporal = minimum_operation
+            return getattr(self, new_name)
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
-        # Handle maximum_operation -> maximum_temporal
-        maximum_operation = kwargs.pop('maximum_operation', None)
-        if maximum_operation is not None:
+    def __setattr__(self, name, value):
+        # Handle deprecated properties
+        if name in getattr(self, '_DEPRECATED_PROPERTIES', {}):
+            import warnings
+
+            new_name = self._DEPRECATED_PROPERTIES[name]
             warnings.warn(
-                "Parameter 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+                f"Property '{name}' is deprecated. Use '{new_name}' instead.",
                 DeprecationWarning,
-                stacklevel=3,
+                stacklevel=2,
             )
-            if maximum_temporal is not None:
-                raise ValueError('Either maximum_operation or maximum_temporal can be specified, but not both.')
-            maximum_temporal = maximum_operation
-
-        # Handle minimum_invest -> minimum_nontemporal
-        minimum_invest = kwargs.pop('minimum_invest', None)
-        if minimum_invest is not None:
-            warnings.warn(
-                "Parameter 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            if minimum_nontemporal is not None:
-                raise ValueError('Either minimum_invest or minimum_nontemporal can be specified, but not both.')
-            minimum_nontemporal = minimum_invest
-
-        # Handle maximum_invest -> maximum_nontemporal
-        maximum_invest = kwargs.pop('maximum_invest', None)
-        if maximum_invest is not None:
-            warnings.warn(
-                "Parameter 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            if maximum_nontemporal is not None:
-                raise ValueError('Either maximum_invest or maximum_nontemporal can be specified, but not both.')
-            maximum_nontemporal = maximum_invest
-
-        # Handle minimum_operation_per_hour -> minimum_temporal_per_hour
-        minimum_operation_per_hour = kwargs.pop('minimum_operation_per_hour', None)
-        if minimum_operation_per_hour is not None:
-            warnings.warn(
-                "Parameter 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            if minimum_temporal_per_hour is not None:
-                raise ValueError(
-                    'Either minimum_operation_per_hour or minimum_temporal_per_hour can be specified, but not both.'
-                )
-            minimum_temporal_per_hour = minimum_operation_per_hour
-
-        # Handle maximum_operation_per_hour -> maximum_temporal_per_hour
-        maximum_operation_per_hour = kwargs.pop('maximum_operation_per_hour', None)
-        if maximum_operation_per_hour is not None:
-            warnings.warn(
-                "Parameter 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            if maximum_temporal_per_hour is not None:
-                raise ValueError(
-                    'Either maximum_operation_per_hour or maximum_temporal_per_hour can be specified, but not both.'
-                )
-            maximum_temporal_per_hour = maximum_operation_per_hour
-
-        return (
-            minimum_temporal,
-            maximum_temporal,
-            minimum_nontemporal,
-            maximum_nontemporal,
-            minimum_temporal_per_hour,
-            maximum_temporal_per_hour,
-        )
-
-    # Backwards compatible properties (deprecated)
-    @property
-    def minimum_operation(self):
-        """DEPRECATED: Use 'minimum_temporal' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.minimum_temporal
-
-    @minimum_operation.setter
-    def minimum_operation(self, value):
-        """DEPRECATED: Use 'minimum_temporal' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.minimum_temporal = value
-
-    @property
-    def maximum_operation(self):
-        """DEPRECATED: Use 'maximum_temporal' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.maximum_temporal
-
-    @maximum_operation.setter
-    def maximum_operation(self, value):
-        """DEPRECATED: Use 'maximum_temporal' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.maximum_temporal = value
-
-    @property
-    def minimum_invest(self):
-        """DEPRECATED: Use 'minimum_nontemporal' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.minimum_nontemporal
-
-    @minimum_invest.setter
-    def minimum_invest(self, value):
-        """DEPRECATED: Use 'minimum_nontemporal' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.minimum_nontemporal = value
-
-    @property
-    def maximum_invest(self):
-        """DEPRECATED: Use 'maximum_nontemporal' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.maximum_nontemporal
-
-    @maximum_invest.setter
-    def maximum_invest(self, value):
-        """DEPRECATED: Use 'maximum_nontemporal' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.maximum_nontemporal = value
-
-    @property
-    def minimum_operation_per_hour(self):
-        """DEPRECATED: Use 'minimum_temporal_per_hour' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.minimum_temporal_per_hour
-
-    @minimum_operation_per_hour.setter
-    def minimum_operation_per_hour(self, value):
-        """DEPRECATED: Use 'minimum_temporal_per_hour' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.minimum_temporal_per_hour = value
-
-    @property
-    def maximum_operation_per_hour(self):
-        """DEPRECATED: Use 'maximum_temporal_per_hour' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.maximum_temporal_per_hour
-
-    @maximum_operation_per_hour.setter
-    def maximum_operation_per_hour(self, value):
-        """DEPRECATED: Use 'maximum_temporal_per_hour' property instead."""
-        import warnings
-
-        warnings.warn(
-            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.maximum_temporal_per_hour = value
+            setattr(self, new_name, value)
+            return
+        super().__setattr__(name, value)
 
     def transform_data(self, flow_system: FlowSystem):
         self.minimum_temporal_per_hour = flow_system.create_time_series(
