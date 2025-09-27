@@ -115,37 +115,6 @@ class Interface:
     This class is used to collect arguments about a Model. Its the base class for all Elements and Models in flixopt.
     """
 
-    _DEPRECATED_PROPERTIES = {}
-
-    def __getattr__(self, name):
-        # Handle deprecated properties
-        if name in self._DEPRECATED_PROPERTIES:
-            import warnings
-
-            new_name = self._DEPRECATED_PROPERTIES[name]
-            warnings.warn(
-                f"Property '{name}' is deprecated. Use '{new_name}' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return getattr(self, new_name)
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-
-    def __setattr__(self, name, value):
-        # Handle deprecated properties
-        if name in getattr(self, '_DEPRECATED_PROPERTIES', {}):
-            import warnings
-
-            new_name = self._DEPRECATED_PROPERTIES[name]
-            warnings.warn(
-                f"Property '{name}' is deprecated. Use '{new_name}' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            setattr(self, new_name, value)
-            return
-        super().__setattr__(name, value)
-
     def transform_data(self, flow_system: FlowSystem):
         """Transforms the data of the interface to match the FlowSystem's dimensions"""
         raise NotImplementedError('Every Interface needs a transform_data() method')

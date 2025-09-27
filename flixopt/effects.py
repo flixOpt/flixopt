@@ -227,7 +227,7 @@ class Effect(Element):
         # Process each deprecated parameter
         results = []
         for old_name, new_name, current_value in deprecated_mappings:
-            new_value = handle_deprecated_param(kwargs, old_name, new_name, current_value)
+            new_value = self._handle_deprecated_param(kwargs, old_name, new_name, current_value)
             results.append(new_value)
 
         return tuple(results)
@@ -240,6 +240,35 @@ class Effect(Element):
         'minimum_operation_per_hour': 'minimum_temporal_per_hour',
         'maximum_operation_per_hour': 'maximum_temporal_per_hour',
     }
+
+    def __getattr__(self, name):
+        # Handle deprecated properties
+        if name in self._DEPRECATED_PROPERTIES:
+            import warnings
+
+            new_name = self._DEPRECATED_PROPERTIES[name]
+            warnings.warn(
+                f"Property '{name}' is deprecated. Use '{new_name}' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return getattr(self, new_name)
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+    def __setattr__(self, name, value):
+        # Handle deprecated properties
+        if name in getattr(self, '_DEPRECATED_PROPERTIES', {}):
+            import warnings
+
+            new_name = self._DEPRECATED_PROPERTIES[name]
+            warnings.warn(
+                f"Property '{name}' is deprecated. Use '{new_name}' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            setattr(self, new_name, value)
+            return
+        super().__setattr__(name, value)
 
     def transform_data(self, flow_system: FlowSystem):
         self.minimum_temporal_per_hour = flow_system.create_time_series(
