@@ -398,16 +398,16 @@ class Effect(Element):
             f'{prefix}|operation->', self.specific_share_to_other_effects_operation, 'temporal'
         )
 
-        self.minimum_operation = flow_system.fit_to_model_coords(
+        self.minimum_temporal = flow_system.fit_to_model_coords(
             f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['year', 'scenario']
         )
-        self.maximum_operation = flow_system.fit_to_model_coords(
+        self.maximum_temporal = flow_system.fit_to_model_coords(
             f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['year', 'scenario']
         )
-        self.minimum_invest = flow_system.fit_to_model_coords(
+        self.minimum_nontemporal = flow_system.fit_to_model_coords(
             f'{prefix}|minimum_nontemporal', self.minimum_nontemporal, dims=['year', 'scenario']
         )
-        self.maximum_invest = flow_system.fit_to_model_coords(
+        self.minimum_nontemporal = flow_system.fit_to_model_coords(
             f'{prefix}|maximum_nontemporal', self.maximum_nontemporal, dims=['year', 'scenario']
         )
         self.minimum_total = flow_system.fit_to_model_coords(
