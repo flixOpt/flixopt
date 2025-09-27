@@ -39,46 +39,19 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 ---
 
-## [Unreleased] - ????-??-??
-
-### ✨ Added
-
-### 💥 Breaking Changes
-
-### ♻️ Changed
-
-### 🗑️ Deprecated
-
-### 🔥 Removed
-
-### 🐛 Fixed
-
-### 🔒 Security
-
-### 📦 Dependencies
-
-### 📝 Docs
-- Improved CHANGELOG.md formatting by adding better categories and formating by Gitmoji.
-- Added a script to extract the release notes from the CHANGELOG.md file for better organized documentation.
-
-### 👷 Development
-
-### 🚧 Known Issues
-
-Until here -->
----
 
 ## [Unreleased] - ????-??-??
 This release brings multi-year investments and stochastic modeling to flixopt.
 Furthermore, I/O methods were improved, and resampling and selection of parts of the FlowSystem are now possible.
 Several internal improvements were made to the codebase.
 
+### ✨ Added
 
-### Multi-year investments
+**Multi-year investments:**
 A flixopt model might be modeled with a "year" dimension.
 This enables modeling transformation pathways over multiple years with several investment decisions
 
-### Stochastic modeling
+**Stochastic modeling:**
 A flixopt model can be modeled with a scenario dimension.
 Scenarios can be weighted and variables can be equated across scenarios. This enables modeling uncertainties in the flow system, such as:
 * Different demand profiles
@@ -91,7 +64,7 @@ Common use cases are:
 
 The weighted sum of the total objective effect of each scenario is used as the objective of the optimization.
 
-#### Improved Data handling: I/O, resampling and more through xarray
+**Improved Data handling: I/O, resampling and more through xarray:**
 * IO for all Interfaces and the FlowSystem with round-trip serialization support
     * NetCDF export/import capabilities for all Interface objects and FlowSystem
     * JSON export for documentation purposes
@@ -101,13 +74,11 @@ The weighted sum of the total objective effect of each scenario is used as the o
    * `resample()` method for temporal resampling
    * `copy()` method to create a copy of a FlowSystem, including all underlying Elements and their data
    * `__eq__()` method for FlowSystem comparison
-
 * Core data handling improvements
    * `get_dataarray_stats()` function for statistical summaries
    * Enhanced `DataConverter` class with better TimeSeriesData support
 
-
-### Added
+**Other additions:**
 * FlowSystem restoring: The used FlowSystem is now accessible directly from the results without manual restoring (lazily). All parameters can be safely accessed anytime after the solve.
 * FlowResults added as a new class to store the results of Flows. They can now be accessed directly.
 * Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
@@ -117,11 +88,13 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * Added Example for 2-stage Investment decisions leveraging the resampling of a FlowSystem
 * New Storage Parameter: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameter for final state control. Default to last value of `relative_minimum_charge_state` and `relative_maximum_charge_state`, which will prevent change of behaviour for most users.
 
-### Changed
-* **BREAKING**: `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
-* **BREAKING**: Renamed class `SystemModel` to `FlowSystemModel`
-* **BREAKING**: Renamed class `Model` to `Submodel`
-* **BREAKING**: Renamed `mode` parameter in plotting methods to `style`
+### 💥 Breaking Changes
+* `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
+* Renamed class `SystemModel` to `FlowSystemModel`
+* Renamed class `Model` to `Submodel`
+* Renamed `mode` parameter in plotting methods to `style`
+
+### ♻️ Changed
 * FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
 * Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
 * Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
@@ -130,23 +103,22 @@ The weighted sum of the total objective effect of each scenario is used as the o
   * Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
   * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler access and clearer code.
 
-### Deprecated
+### 🗑️ Deprecated
 * The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
 * The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
 
-### Removed
 
-### Fixed
+### 🐛 Fixed
 * Enhanced NetCDF I/O with proper attribute preservation for DataArrays
 * Improved error handling and validation in serialization processes
 * Better type consistency across all framework components
 
-### Known issues
+### 🚧 Known Issues
 * IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
 
-### *Development*
+### 👷 Development
 * **BREAKING**: Calculation.do_modeling() now returns the Calculation object instead of its linopy.Model
 * FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
 * Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
@@ -159,6 +131,9 @@ The weighted sum of the total objective effect of each scenario is used as the o
    * `fit_effects_to_model_coords()` method for effect data processing
    * `connect_and_transform()` method replacing several operations
 
+
+Until here -->
+---
 
 ## [2.1.9] - 2025-09-23
 
