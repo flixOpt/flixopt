@@ -212,12 +212,14 @@ class Bus(Element):
         )
 
     def _plausibility_checks(self) -> None:
-        if self.excess_penalty_per_flow_hour is not None:
-            zero_penalty = np.all(np.equal(self.excess_penalty_per_flow_hour, 0))
+        if self.penalty_of_output_deficit is not None:
+            zero_penalty = np.all(np.equal(self.penalty_of_output_deficit, 0))
             if zero_penalty:
-                logger.warning(
-                    f'In Bus {self.label}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
-                )
+                logger.warning(f'In Bus {self.label}, "the penalty_of_output_deficit" is 0. Use "None" or a value > 0.')
+        if self.penalty_of_input_deficit is not None:
+            zero_penalty = np.all(np.equal(self.penalty_of_input_deficit, 0))
+            if zero_penalty:
+                logger.warning(f'In Bus {self.label}, the "penalty_of_input_deficit" is 0. Use "None" or a value > 0.')
 
     @property
     def with_excess(self) -> bool:
