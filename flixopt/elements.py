@@ -128,9 +128,10 @@ class Bus(Element):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        excess_penalty_per_flow_hour: Penalty costs for bus balance violations.
-            When None, no excess/deficit is allowed (hard constraint). When set to a
-            value > 0, allows bus imbalances at penalty cost. Default is 1e5 (high penalty).
+        penalty_for_input_deficit: Penalty costs for bus balance violations. Per flow hour of not extra input.
+            When None, no input deficit is allowed (hard constraint).
+        penalty_for_output_deficit: Penalty costs for bus balance violations. Per flow hour of extra output.
+            When None, no output deficit is allowed (hard constraint).
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -177,13 +178,25 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
-        excess_penalty_per_flow_hour: NumericData | NumericDataTS | None = 1e5,
+        excess_penalty_per_flow_hour: NumericData | NumericDataTS | None = None,
+        penalty_for_input_deficit: NumericData | NumericDataTS | None = 1e5,
+        penalty_for_output_deficit: NumericData | NumericDataTS | None = 1e5,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
+
+        if excess_penalty_per_flow_hour is not None:
+            if penalty_for_input_deficit is not None or penalty_for_output_deficit is not None:
+                raise ValueError(
+                    'Deprectated "excess_penalty_per_flow_hour" cannnot be used together with replacement '
+                    '"penalty_for_input_deficit" and "penalty_for_output_deficit" parameters'
+                )
+            self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
+        else:
+            self.penalty_for_input_deficit = penalty_for_input_deficit
+            self.penalty_for_output_deficit = penalty_for_output_deficit
 
     def create_model(self, model: SystemModel) -> BusModel:
         self._plausibility_checks()
@@ -191,8 +204,11 @@ class Bus(Element):
         return self.model
 
     def transform_data(self, flow_system: FlowSystem):
-        self.excess_penalty_per_flow_hour = flow_system.create_time_series(
-            f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
+        self.penalty_for_input_deficit = flow_system.create_time_series(
+            f'{self.label_full}|penalty_for_input_deficit', self.penalty_for_input_deficit
+        )
+        self.penalty_for_output_deficit = flow_system.create_time_series(
+            f'{self.label_full}|penalty_for_output_deficit', self.penalty_for_output_deficit
         )
 
     def _plausibility_checks(self) -> None:
@@ -206,6 +222,25 @@ class Bus(Element):
     @property
     def with_excess(self) -> bool:
         return False if self.excess_penalty_per_flow_hour is None else True
+
+    @property
+    def excess_penalty_per_flow_hour(self):
+        warnings.warn(
+            'The property "excess_penalty_per_flow_hour" is deprecated. Use "penalty_per_flow_hour_excess" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.penalty_for_input_deficit
+
+    @excess_penalty_per_flow_hour.setter
+    def excess_penalty_per_flow_hour(self, value):
+        warnings.warn(
+            'The property "excess_penalty_per_flow_hour" is deprecated. Use "penalty_per_flow_hour_excess" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.penalty_for_input_deficit = value
+        self.penalty_for_output_deficit = value
 
 
 @register_class_for_io
@@ -670,8 +705,8 @@ class BusModel(ElementModel):
     def __init__(self, model: SystemModel, element: Bus):
         super().__init__(model, element)
         self.element: Bus = element
-        self.excess_input: linopy.Variable | None = None
-        self.excess_output: linopy.Variable | None = None
+        self.input_deficit: linopy.Variable | None = None
+        self.output_deficit: linopy.Variable | None = None
 
     def do_modeling(self) -> None:
         # inputs == outputs
@@ -682,30 +717,41 @@ class BusModel(ElementModel):
         eq_bus_balance = self.add(self._model.add_constraints(inputs == outputs, name=f'{self.label_full}|balance'))
 
         # Fehlerplus/-minus:
-        if self.element.with_excess:
-            excess_penalty = np.multiply(
-                self._model.hours_per_step, self.element.excess_penalty_per_flow_hour.active_data
+        if self.element.penalty_for_input_deficit is not None:
+            input_deficit_penalty = np.multiply(
+                self._model.hours_per_step, self.element.penalty_for_input_deficit.active_data
             )
-            self.excess_input = self.add(
-                self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_input'),
-                'excess_input',
+            self.input_deficit = self.add(
+                self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|input_deficit'),
+                'input_deficit',
             )
-            self.excess_output = self.add(
-                self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|excess_output'),
-                'excess_output',
-            )
-            eq_bus_balance.lhs -= -self.excess_input + self.excess_output
 
-            self._model.effects.add_share_to_penalty(self.label_of_element, (self.excess_input * excess_penalty).sum())
-            self._model.effects.add_share_to_penalty(self.label_of_element, (self.excess_output * excess_penalty).sum())
+            eq_bus_balance.lhs += self.input_deficit
+            self._model.effects.add_share_to_penalty(
+                self.label_of_element, (self.input_deficit * input_deficit_penalty).sum()
+            )
+
+        if self.element.penalty_for_output_deficit is not None:
+            output_deficit_penalty = np.multiply(
+                self._model.hours_per_step, self.element.penalty_for_output_deficit.active_data
+            )
+            self.output_deficit = self.add(
+                self._model.add_variables(lower=0, coords=self._model.coords, name=f'{self.label_full}|output_deficit'),
+                'output_deficit',
+            )
+
+            eq_bus_balance.lhs -= self.output_deficit
+            self._model.effects.add_share_to_penalty(
+                self.label_of_element, (self.output_deficit * output_deficit_penalty).sum()
+            )
 
     def results_structure(self):
         inputs = [flow.model.flow_rate.name for flow in self.element.inputs]
         outputs = [flow.model.flow_rate.name for flow in self.element.outputs]
-        if self.excess_input is not None:
-            inputs.append(self.excess_input.name)
-        if self.excess_output is not None:
-            outputs.append(self.excess_output.name)
+        if self.input_deficit is not None:
+            inputs.append(self.input_deficit.name)
+        if self.output_deficit is not None:
+            outputs.append(self.output_deficit.name)
         return {**super().results_structure(), 'inputs': inputs, 'outputs': outputs}
 
 
