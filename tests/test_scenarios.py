@@ -124,8 +124,8 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     )
     # Define the components and flow_system
     flow_system.add_elements(
-        fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True),
-        fx.Effect('CO2', 'kg', 'CO2_e-Emissionen', specific_share_to_other_effects_operation={'costs': 0.2}),
+        fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True, share_from_temporal={'CO2': 0.2}),
+        fx.Effect('CO2', 'kg', 'CO2_e-Emissionen'),
         fx.Effect('PE', 'kWh_PE', 'Primärenergie', maximum_total=3.5e3),
         fx.Bus('Strom'),
         fx.Bus('Fernwärme'),

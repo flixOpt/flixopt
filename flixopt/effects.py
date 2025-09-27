@@ -50,10 +50,10 @@ class Effect(Element):
             without effect dictionaries. Used for simplified effect specification (and less boilerplate code).
         is_objective: If True, this effect serves as the optimization objective function.
             Only one effect can be marked as objective per optimization.
-        specific_share_to_other_effects_operation: Operational cross-effect contributions.
-            Maps this effect's operational values to contributions to other effects
-        specific_share_to_other_effects_invest: Investment cross-effect contributions.
-            Maps this effect's investment values to contributions to other effects.
+        share_from_temporal: Temporal cross-effect contributions.
+            Maps temporal contributions from other effects to this effect
+        share_from_nontemporal: Nontemporal cross-effect contributions.
+            Maps nontemporal contributions from other effects to this effect.
         minimum_temporal: Minimum allowed total contribution across all timesteps.
         maximum_temporal: Maximum allowed total contribution across all timesteps.
         minimum_per_hour: Minimum allowed contribution per hour.
@@ -77,17 +77,21 @@ class Effect(Element):
         Basic cost objective:
 
         ```python
-        cost_effect = Effect(label='system_costs', unit='€', description='Total system costs', is_objective=True)
+        cost_effect = Effect(
+            label='system_costs',
+            unit='€',
+            description='Total system costs',
+            is_objective=True,
+        )
         ```
 
-        CO2 emissions with carbon pricing:
+        CO2 emissions:
 
         ```python
         co2_effect = Effect(
-            label='co2_emissions',
+            label='CO2',
             unit='kg_CO2',
             description='Carbon dioxide emissions',
-            specific_share_to_other_effects_operation={'costs': 50},  # €50/t_CO2
             maximum_total=1_000_000,  # 1000 t CO2 annual limit
         )
         ```
@@ -110,7 +114,21 @@ class Effect(Element):
             label='primary_energy',
             unit='kWh_primary',
             description='Primary energy consumption',
-            specific_share_to_other_effects_operation={'costs': 0.08},  # €0.08/kWh
+        )
+        ```
+
+       Cost objective with carbon and primary energy pricing:
+
+        ```python
+        cost_effect = Effect(
+            label='system_costs',
+            unit='€',
+            description='Total system costs',
+            is_objective=True,
+            share_from_temporal={
+                'primary_energy': 0.08,  # 0.08 €/kWh_primary
+                'CO2': 0.2,  # Carbon pricing: 0.2 €/kg_CO2 into costs if used on a cost effect
+            },
         )
         ```
 
@@ -137,8 +155,7 @@ class Effect(Element):
         across all contributions to each effect manually.
 
         Effects are accumulated as:
-        - Total = Σ(operational contributions) + Σ(investment contributions)
-        - Cross-effects add to target effects based on specific_share ratios
+        - Total = Σ(temporal contributions) + Σ(nontemporal contributions)
 
     """
 
@@ -150,8 +167,8 @@ class Effect(Element):
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        specific_share_to_other_effects_operation: TemporalEffectsUser | None = None,
-        specific_share_to_other_effects_invest: NonTemporalEffectsUser | None = None,
+        share_from_temporal: TemporalEffectsUser | None = None,
+        share_from_nontemporal: NonTemporalEffectsUser | None = None,
         minimum_temporal: NonTemporalEffectsUser | None = None,
         maximum_temporal: NonTemporalEffectsUser | None = None,
         minimum_nontemporal: NonTemporalEffectsUser | None = None,
@@ -167,11 +184,9 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.specific_share_to_other_effects_operation: TemporalEffectsUser = (
-            specific_share_to_other_effects_operation if specific_share_to_other_effects_operation is not None else {}
-        )
-        self.specific_share_to_other_effects_invest: NonTemporalEffectsUser = (
-            specific_share_to_other_effects_invest if specific_share_to_other_effects_invest is not None else {}
+        self.share_from_temporal: TemporalEffectsUser = share_from_temporal if share_from_temporal is not None else {}
+        self.share_from_nontemporal: NonTemporalEffectsUser = (
+            share_from_nontemporal if share_from_nontemporal is not None else {}
         )
 
         # Handle backwards compatibility for deprecated parameters
@@ -393,8 +408,17 @@ class Effect(Element):
 
         self.maximum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
 
-        self.specific_share_to_other_effects_operation = flow_system.fit_effects_to_model_coords(
-            f'{prefix}|operation->', self.specific_share_to_other_effects_operation, 'temporal'
+        self.share_from_temporal = flow_system.fit_effects_to_model_coords(
+            label_prefix=None,
+            effect_values=self.share_from_temporal,
+            label_suffix=f'(temporal)->{prefix}(temporal)',
+            dims=['time', 'year', 'scenario'],
+        )
+        self.share_from_nontemporal = flow_system.fit_effects_to_model_coords(
+            label_prefix=None,
+            effect_values=self.share_from_nontemporal,
+            label_suffix=f'(nontemporal)->{prefix}(nontemporal)',
+            dims=['year', 'scenario'],
         )
 
         self.minimum_temporal = flow_system.fit_to_model_coords(
@@ -416,12 +440,6 @@ class Effect(Element):
         )
         self.maximum_total = flow_system.fit_to_model_coords(
             f'{prefix}|maximum_total', self.maximum_total, dims=['year', 'scenario']
-        )
-        self.specific_share_to_other_effects_invest = flow_system.fit_effects_to_model_coords(
-            f'{prefix}|operation->',
-            self.specific_share_to_other_effects_invest,
-            'operation',
-            dims=['year', 'scenario'],
         )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
@@ -569,6 +587,11 @@ class EffectCollection:
         # Check circular loops in effects:
         temporal, nontemporal = self.calculate_effect_share_factors()
 
+        # Validate all referenced sources exist
+        unknown = {src for src, _ in list(temporal.keys()) + list(nontemporal.keys()) if src not in self.effects}
+        if unknown:
+            raise KeyError(f'Unknown effects used in in effect share mappings: {sorted(unknown)}')
+
         temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
         nontemporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in nontemporal]))
 
@@ -656,18 +679,20 @@ class EffectCollection:
     ]:
         shares_nontemporal = {}
         for name, effect in self.effects.items():
-            if effect.specific_share_to_other_effects_invest:
-                shares_nontemporal[name] = {
-                    target: data for target, data in effect.specific_share_to_other_effects_invest.items()
-                }
+            if effect.share_from_nontemporal:
+                for source, data in effect.share_from_nontemporal.items():
+                    if source not in shares_nontemporal:
+                        shares_nontemporal[source] = {}
+                    shares_nontemporal[source][name] = data
         shares_nontemporal = calculate_all_conversion_paths(shares_nontemporal)
 
         shares_temporal = {}
         for name, effect in self.effects.items():
-            if effect.specific_share_to_other_effects_operation:
-                shares_temporal[name] = {
-                    target: data for target, data in effect.specific_share_to_other_effects_operation.items()
-                }
+            if effect.share_from_temporal:
+                for source, data in effect.share_from_temporal.items():
+                    if source not in shares_temporal:
+                        shares_temporal[source] = {}
+                    shares_temporal[source][name] = data
         shares_temporal = calculate_all_conversion_paths(shares_temporal)
 
         return shares_temporal, shares_nontemporal
@@ -726,19 +751,19 @@ class EffectCollectionModel(Submodel):
         )
 
     def _add_share_between_effects(self):
-        for origin_effect in self.effects:
-            # 1. temporal: -> hier sind es Zeitreihen (share_TS)
-            for target_effect, time_series in origin_effect.specific_share_to_other_effects_operation.items():
-                self.effects[target_effect].submodel.temporal.add_share(
-                    origin_effect.submodel.temporal.label_full,
-                    origin_effect.submodel.temporal.total_per_timestep * time_series,
+        for target_effect in self.effects:
+            # 1. temporal: <- receiving temporal shares from other effects
+            for source_effect, time_series in target_effect.share_from_temporal.items():
+                target_effect.submodel.temporal.add_share(
+                    self.effects[source_effect].submodel.temporal.label_full,
+                    self.effects[source_effect].submodel.temporal.total_per_timestep * time_series,
                     dims=('time', 'year', 'scenario'),
                 )
-            # 2. nontemporal:    -> hier ist es Scalar (share)
-            for target_effect, factor in origin_effect.specific_share_to_other_effects_invest.items():
-                self.effects[target_effect].submodel.nontemporal.add_share(
-                    origin_effect.submodel.nontemporal.label_full,
-                    origin_effect.submodel.nontemporal.total * factor,
+            # 2. nontemporal: <- receiving nontemporal shares from other effects
+            for source_effect, factor in target_effect.share_from_nontemporal.items():
+                target_effect.submodel.nontemporal.add_share(
+                    self.effects[source_effect].submodel.nontemporal.label_full,
+                    self.effects[source_effect].submodel.nontemporal.total * factor,
                     dims=('year', 'scenario'),
                 )
 
