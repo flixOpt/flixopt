@@ -252,6 +252,17 @@ class Effect(Element):
                 )
             maximum_temporal_per_hour = maximum_operation_per_hour
 
+        # Check for any remaining unexpected kwargs using inspect module
+        import inspect
+
+        sig = inspect.signature(self.__init__)
+        known_params = set(sig.parameters.keys()) - {'self', 'kwargs'}
+        # Also filter out 'kwargs' itself which can appear during deserialization
+        extra_kwargs = {k: v for k, v in kwargs.items() if k not in known_params and k != 'kwargs'}
+        if extra_kwargs:
+            unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
+            raise TypeError(f'Effect.__init__() got unexpected keyword argument(s): {unexpected_params}')
+
         # Set attributes directly
         self.minimum_temporal = minimum_temporal
         self.maximum_temporal = maximum_temporal
