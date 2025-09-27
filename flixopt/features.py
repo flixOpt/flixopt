@@ -484,7 +484,7 @@ class PiecewiseEffectsModel(Submodel):
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
-            target='invest',
+            target='nontemporal',
         )
 
 

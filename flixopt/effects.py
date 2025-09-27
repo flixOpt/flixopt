@@ -395,7 +395,7 @@ class Effect(Element):
         self.maximum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
 
         self.specific_share_to_other_effects_operation = flow_system.fit_effects_to_model_coords(
-            f'{prefix}|operation->', self.specific_share_to_other_effects_operation, 'operation'
+            f'{prefix}|operation->', self.specific_share_to_other_effects_operation, 'temporal'
         )
 
         self.minimum_operation = flow_system.fit_to_model_coords(
@@ -573,18 +573,18 @@ class EffectCollection:
 
     def _plausibility_checks(self) -> None:
         # Check circular loops in effects:
-        operation, invest = self.calculate_effect_share_factors()
+        temporal, nontemporal = self.calculate_effect_share_factors()
 
-        operation_cycles = detect_cycles(tuples_to_adjacency_list([key for key in operation]))
-        invest_cycles = detect_cycles(tuples_to_adjacency_list([key for key in invest]))
+        temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
+        nontemporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in nontemporal]))
 
-        if operation_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in operation_cycles])
-            raise ValueError(f'Error: circular operation-shares detected:\n{cycle_str}')
+        if temporal_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in temporal_cycles])
+            raise ValueError(f'Error: circular temporal-shares detected:\n{cycle_str}')
 
-        if invest_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in invest_cycles])
-            raise ValueError(f'Error: circular invest-shares detected:\n{cycle_str}')
+        if nontemporal_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in nontemporal_cycles])
+            raise ValueError(f'Error: circular nontemporal-shares detected:\n{cycle_str}')
 
     def __getitem__(self, effect: str | Effect | None) -> Effect:
         """
@@ -657,23 +657,23 @@ class EffectCollection:
         dict[tuple[str, str], xr.DataArray],
         dict[tuple[str, str], xr.DataArray],
     ]:
-        shares_invest = {}
+        shares_nontemporal = {}
         for name, effect in self.effects.items():
             if effect.specific_share_to_other_effects_invest:
-                shares_invest[name] = {
+                shares_nontemporal[name] = {
                     target: data for target, data in effect.specific_share_to_other_effects_invest.items()
                 }
-        shares_invest = calculate_all_conversion_paths(shares_invest)
+        shares_nontemporal = calculate_all_conversion_paths(shares_nontemporal)
 
-        shares_operation = {}
+        shares_temporal = {}
         for name, effect in self.effects.items():
             if effect.specific_share_to_other_effects_operation:
-                shares_operation[name] = {
+                shares_temporal[name] = {
                     target: data for target, data in effect.specific_share_to_other_effects_operation.items()
                 }
-        shares_operation = calculate_all_conversion_paths(shares_operation)
+        shares_temporal = calculate_all_conversion_paths(shares_temporal)
 
-        return shares_operation, shares_invest
+        return shares_temporal, shares_nontemporal
 
 
 class EffectCollectionModel(Submodel):

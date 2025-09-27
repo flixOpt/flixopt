@@ -241,7 +241,7 @@ class TestEffectResults:
         results = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 60), 'Sim1').results
 
         effect_share_factors = {
-            'operation': {
+            'temporal': {
                 ('costs', 'Effect1'): 0.5,
                 ('costs', 'Effect2'): 0.5 * 1.1,
                 ('costs', 'Effect3'): 0.5 * 1.1 * 5 + 0.5 * 1.2,  # This is where the issue lies
@@ -249,75 +249,75 @@ class TestEffectResults:
                 ('Effect1', 'Effect3'): 1.2 + 1.1 * 5,
                 ('Effect2', 'Effect3'): 5,
             },
-            'invest': {
+            'nontemporal': {
                 ('Effect1', 'Effect2'): 2.1,
                 ('Effect1', 'Effect3'): 2.2,
             },
         }
-        for key, value in effect_share_factors['operation'].items():
-            np.testing.assert_allclose(results.effect_share_factors['operation'][key].values, value)
+        for key, value in effect_share_factors['temporal'].items():
+            np.testing.assert_allclose(results.effect_share_factors['temporal'][key].values, value)
 
-        for key, value in effect_share_factors['invest'].items():
-            np.testing.assert_allclose(results.effect_share_factors['invest'][key].values, value)
+        for key, value in effect_share_factors['nontemporal'].items():
+            np.testing.assert_allclose(results.effect_share_factors['nontemporal'][key].values, value)
 
         xr.testing.assert_allclose(
-            results.effects_per_component['operation'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(temporal)|total_per_timestep'].fillna(0),
+            results.effects_per_component['temporal'].sum('component').sel(effect='costs', drop=True),
+            results.solution['costs(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['operation'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(temporal)|total_per_timestep'].fillna(0),
+            results.effects_per_component['temporal'].sum('component').sel(effect='Effect1', drop=True),
+            results.solution['Effect1(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['operation'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(temporal)|total_per_timestep'].fillna(0),
+            results.effects_per_component['temporal'].sum('component').sel(effect='Effect2', drop=True),
+            results.solution['Effect2(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['operation'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(temporal)|total_per_timestep'].fillna(0),
+            results.effects_per_component['temporal'].sum('component').sel(effect='Effect3', drop=True),
+            results.solution['Effect3(temporal)|per_timestep'].fillna(0),
         )
 
-        # Invest mode checks
+        # nontemporal mode checks
         xr.testing.assert_allclose(
-            results.effects_per_component['invest'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(nontemporal)|total'],
-        )
-
-        xr.testing.assert_allclose(
-            results.effects_per_component['invest'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(nontemporal)|total'],
+            results.effects_per_component['nontemporal'].sum('component').sel(effect='costs', drop=True),
+            results.solution['costs(nontemporal)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['invest'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(nontemporal)|total'],
+            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect1', drop=True),
+            results.solution['Effect1(nontemporal)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['invest'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(nontemporal)|total'],
+            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect2', drop=True),
+            results.solution['Effect2(nontemporal)'],
+        )
+
+        xr.testing.assert_allclose(
+            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect3', drop=True),
+            results.solution['Effect3(nontemporal)'],
         )
 
         # Total mode checks
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs|total'],
+            results.solution['costs'],
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1|total'],
+            results.solution['Effect1'],
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2|total'],
+            results.solution['Effect2'],
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3|total'],
+            results.solution['Effect3'],
         )

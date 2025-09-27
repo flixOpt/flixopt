@@ -145,9 +145,9 @@ if __name__ == '__main__':
     comparison_main = comparison[
         [
             'Duration [s]',
-            'costs|total',
-            'costs(nontemporal)|total',
-            'costs(temporal)|total',
+            'costs',
+            'costs(nontemporal)',
+            'costs(temporal)',
             'BHKW2(Q_fu)|size',
             'Kessel(Q_fu)|size',
             'Speicher|size',
