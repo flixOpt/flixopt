@@ -660,20 +660,3 @@ def get_str_representation(data: Any, array_threshold: int = 50, decimals: int =
         console = Console(file=output_buffer, width=1000)  # Adjust width as needed
         console.print(Pretty(formatted_data, expand_all=True, indent_guides=True))
         return output_buffer.getvalue()
-
-
-def handle_deprecated_param(kwargs, old_name, new_name, current_value):
-    """Helper to handle a single deprecated parameter."""
-    import warnings
-
-    old_value = kwargs.pop(old_name, None)
-    if old_value is not None:
-        warnings.warn(
-            f"Parameter '{old_name}' is deprecated. Use '{new_name}' instead.",
-            DeprecationWarning,
-            stacklevel=4,  # Adjusted for call stack depth
-        )
-        if current_value is not None:
-            raise ValueError(f'Either {old_name} or {new_name} can be specified, but not both.')
-        return old_value
-    return current_value
