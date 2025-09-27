@@ -393,12 +393,16 @@ class Effect(Element):
         self.maximum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
 
         self.share_from_temporal = flow_system.fit_effects_to_model_coords(
-            label_prefix=None, effect_values=self.share_from_temporal, label_suffix=f'(temporal)->{prefix}(temporal)'
+            label_prefix=None,
+            effect_values=self.share_from_temporal,
+            label_suffix=f'(temporal)->{prefix}(temporal)',
+            dims=['time', 'year', 'scenario'],
         )
         self.share_from_nontemporal = flow_system.fit_effects_to_model_coords(
             label_prefix=None,
             effect_values=self.share_from_nontemporal,
             label_suffix=f'(nontemporal)->{prefix}(nontemporal)',
+            dims=['year', 'scenario'],
         )
 
         self.minimum_temporal = flow_system.fit_to_model_coords(
