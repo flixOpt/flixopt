@@ -668,8 +668,8 @@ class CalculationResults:
 
         # For now include a test to ensure correctness
         suffix = {
-            'operation': '(operation)|total_per_timestep',
-            'invest': '(invest)|total',
+            'operation': '(temporal)|total_per_timestep',
+            'invest': '(nontemporal)|total',
             'total': '|total',
         }
         for effect in self.effects:

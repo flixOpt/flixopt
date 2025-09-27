@@ -473,7 +473,7 @@ class EffectModel(ElementModel):
             lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
             upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
             coords=self._model.get_coords(['year', 'scenario']),
-            short_name='total',
+            name=self.label_full,
         )
 
         self.add_constraints(

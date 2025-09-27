@@ -619,8 +619,8 @@ class TestFlowOnModel:
             msg='Incorrect constraints',
         )
 
-        assert 'Sink(Wärme)->costs(operation)' in set(costs.submodel.constraints)
-        assert 'Sink(Wärme)->CO2(operation)' in set(co2.submodel.constraints)
+        assert 'Sink(Wärme)->costs(temporal)' in set(costs.submodel.constraints)
+        assert 'Sink(Wärme)->CO2(temporal)' in set(co2.submodel.constraints)
 
         costs_per_running_hour = flow.on_off_parameters.effects_per_running_hour['costs']
         co2_per_running_hour = flow.on_off_parameters.effects_per_running_hour['CO2']

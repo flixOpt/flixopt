@@ -146,8 +146,8 @@ if __name__ == '__main__':
         [
             'Duration [s]',
             'costs|total',
-            'costs(invest)|total',
-            'costs(operation)|total',
+            'costs(nontemporal)|total',
+            'costs(temporal)|total',
             'BHKW2(Q_fu)|size',
             'Kessel(Q_fu)|size',
             'Speicher|size',
