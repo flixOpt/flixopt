@@ -975,7 +975,7 @@ class SourceAndSink(Component):
         prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
         if source is not None:
             warnings.warn(
-                'The use of the source argument is deprecated. Use the outputs argument instead.',
+                'The use of the "source" argument is deprecated. Use the "outputs" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -985,7 +985,7 @@ class SourceAndSink(Component):
 
         if sink is not None:
             warnings.warn(
-                'The use of the sink argument is deprecated. Use the inputs argument instead.',
+                'The use of the "sink" argument is deprecated. Use the "inputs" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -995,7 +995,7 @@ class SourceAndSink(Component):
 
         if prevent_simultaneous_sink_and_source is not None:
             warnings.warn(
-                'The use of the prevent_simultaneous_sink_and_source argument is deprecated. Use the prevent_simultaneous_flow_rates argument instead.',
+                'The use of the "prevent_simultaneous_sink_and_source" argument is deprecated. Use the "prevent_simultaneous_flow_rates" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1128,7 +1128,7 @@ class Source(Component):
         source = kwargs.pop('source', None)
         if source is not None:
             warnings.warn(
-                'The use of the source argument is deprecated. Use the outputs argument instead.',
+                'The use of the "source" argument is deprecated. Use the "outputs" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1259,7 +1259,7 @@ class Sink(Component):
         sink = kwargs.pop('sink', None)
         if sink is not None:
             warnings.warn(
-                'The use of the sink argument is deprecated. Use the inputs argument instead.',
+                'The use of the "sink" argument is deprecated. Use the "inputs" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
