@@ -163,7 +163,6 @@ class Effect(Element):
         **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.label = label
         self.unit = unit
         self.description = description
         self.is_standard = is_standard
@@ -564,11 +563,6 @@ class EffectCollection:
             return None
         if isinstance(effect_values_user, dict):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
-        if self.standard_effect is None:
-            raise KeyError(
-                'Scalar effect value provided but no standard effect is configured. '
-                'Either set an effect as is_standard=True or provide a mapping {effect_label: value}.'
-            )
         return {self.standard_effect.label: effect_values_user}
 
     def _plausibility_checks(self) -> None:
@@ -630,7 +624,10 @@ class EffectCollection:
     @property
     def standard_effect(self) -> Effect:
         if self._standard_effect is None:
-            raise KeyError('No standard-effect specified!')
+            raise KeyError(
+                'No standard-effect specified! Either set an effect through is_standard=True '
+                'or pass a mapping when specifying effect values: {effect_label: value}.'
+            )
         return self._standard_effect
 
     @standard_effect.setter

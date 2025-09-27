@@ -377,7 +377,7 @@ class AggregatedCalculation(FullCalculation):
     def calculate_aggregation_weights(cls, ds: xr.Dataset) -> dict[str, float]:
         """Calculate weights for all datavars in the dataset. Weights are pulled from the attrs of the datavars."""
 
-        groups = [da.attrs['aggregation_group'] for da in ds.values() if 'aggregation_group' in da.attrs]
+        groups = [da.attrs['aggregation_group'] for da in ds.data_vars.values() if 'aggregation_group' in da.attrs]
         group_counts = Counter(groups)
 
         # Calculate weight for each group (1/count)

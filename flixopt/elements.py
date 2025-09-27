@@ -451,7 +451,7 @@ class Flow(Element):
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
-        if np.any(self.relative_minimum > self.relative_maximum):
+        if (self.relative_minimum > self.relative_maximum).any():
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if not isinstance(self.size, InvestParameters) and (
