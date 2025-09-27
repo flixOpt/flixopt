@@ -232,6 +232,49 @@ class Interface:
             unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
             raise TypeError(f'{class_name}.__init__() got unexpected keyword argument(s): {unexpected_params}')
 
+    def _handle_deprecated_params(self, kwargs: dict, deprecated_mappings: dict) -> dict:
+        """
+        Handle deprecated parameters by extracting them from kwargs and issuing warnings.
+
+        This method centralizes the deprecated parameter handling pattern used across classes.
+        It extracts deprecated parameters, issues deprecation warnings, checks for conflicts,
+        and returns the updated parameter values.
+
+        Args:
+            kwargs: Dictionary of keyword arguments that may contain deprecated parameters
+            deprecated_mappings: Dictionary mapping deprecated parameter names to new parameter names
+                                 Format: {'deprecated_name': 'new_name'}
+
+        Returns:
+            Dictionary with new parameter names as keys and their values
+
+        Raises:
+            ValueError: If both deprecated and new parameters are specified simultaneously
+        """
+        import warnings
+
+        updated_params = {}
+
+        for deprecated_name, new_name in deprecated_mappings.items():
+            deprecated_value = kwargs.pop(deprecated_name, None)
+
+            if deprecated_value is not None:
+                # Issue deprecation warning
+                warnings.warn(
+                    f"Parameter '{deprecated_name}' is deprecated. Use '{new_name}' instead.",
+                    DeprecationWarning,
+                    stacklevel=3,  # Skip this method and the calling method to point to user code
+                )
+
+                # Check if the new parameter is already set
+                current_value = getattr(self, new_name, None)
+                if current_value is not None:
+                    raise ValueError(f"Either '{deprecated_name}' or '{new_name}' can be specified, but not both.")
+
+                updated_params[new_name] = deprecated_value
+
+        return updated_params
+
     @classmethod
     def _deserialize_dict(cls, data: dict) -> dict | Interface:
         if '__class__' in data:
