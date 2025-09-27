@@ -40,8 +40,8 @@ if __name__ == '__main__':
 
     # --- Define Effects ---
     # Specify effects related to costs, CO2 emissions, and primary energy consumption
-    Costs = fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True)
-    CO2 = fx.Effect('CO2', 'kg', 'CO2_e-Emissionen', specific_share_to_other_effects_operation={Costs.label: 0.2})
+    Costs = fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True, share_from_temporal={'CO2': 0.2})
+    CO2 = fx.Effect('CO2', 'kg', 'CO2_e-Emissionen')
     PE = fx.Effect('PE', 'kWh_PE', 'Primärenergie', maximum_total=3.5e3)
 
     # --- Define Components ---

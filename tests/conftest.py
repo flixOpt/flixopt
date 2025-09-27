@@ -109,7 +109,6 @@ class Effects:
             'CO2',
             'kg',
             'CO2_e-Emissionen',
-            specific_share_to_other_effects_operation={'costs': 0.2},
         )
 
     @staticmethod
@@ -471,7 +470,7 @@ def flow_system_complex() -> fx.FlowSystem:
     # Define the components and flow_system
     costs = Effects.costs()
     co2 = Effects.co2()
-    co2.specific_share_to_other_effects_operation = {'costs': 0.2}
+    costs.share_from_temporal = {'CO2': 0.2}
     pe = Effects.primary_energy()
     pe.maximum_total = 3.5e3
 

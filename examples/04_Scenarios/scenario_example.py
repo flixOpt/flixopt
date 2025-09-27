@@ -35,6 +35,7 @@ if __name__ == '__main__':
         description='Kosten',
         is_standard=True,  # standard effect: no explicit value needed for costs
         is_objective=True,  # Minimizing costs as the optimization objective
+        share_from_temporal={'CO2': 0.2},
     )
 
     # CO2 emissions effect with an associated cost impact
@@ -42,7 +43,6 @@ if __name__ == '__main__':
         label='CO2',
         unit='kg',
         description='CO2_e-Emissionen',
-        specific_share_to_other_effects_operation={costs.label: 0.2},
         maximum_operation_per_hour=1000,  # Max CO2 emissions per hour
     )
 
