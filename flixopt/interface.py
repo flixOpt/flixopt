@@ -6,7 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Optional
 
 from .config import CONFIG
 from .structure import Interface, register_class_for_io
@@ -14,8 +14,8 @@ from .structure import Interface, register_class_for_io
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .core import NumericData
-    from .effects import EffectValuesUser, EffectValuesUserScalar
+    from .core import NonTemporalData, NonTemporalDataUser, Scalar, TemporalDataUser
+    from .effects import NonTemporalEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
 
 
@@ -68,21 +68,21 @@ class Piece(Interface):
 
     """
 
-    def __init__(self, start: NumericData, end: NumericData):
+    def __init__(self, start: TemporalDataUser, end: TemporalDataUser):
         self.start = start
         self.end = end
+        self.has_time_dim = False
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
-        self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
-        self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        dims = None if self.has_time_dim else ['year', 'scenario']
+        self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, dims=dims)
+        self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, dims=dims)
 
 
 @register_class_for_io
 class Piecewise(Interface):
-    """Define a piecewise linear function by combining multiple `Piece`s together.
-
-    This class creates complex non-linear relationships by combining multiple
-    Piece objects into a single piecewise linear function.
+    """
+    Define a Piecewise, consisting of a list of Pieces.
 
     Args:
         pieces: list of Piece objects defining the linear segments. The arrangement
@@ -192,6 +192,17 @@ class Piecewise(Interface):
 
     def __init__(self, pieces: list[Piece]):
         self.pieces = pieces
+        self._has_time_dim = False
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        for piece in self.pieces:
+            piece.has_time_dim = value
 
     def __len__(self):
         """
@@ -208,7 +219,7 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         for i, piece in enumerate(self.pieces):
             piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
 
@@ -408,6 +419,18 @@ class PiecewiseConversion(Interface):
 
     def __init__(self, piecewises: dict[str, Piecewise]):
         self.piecewises = piecewises
+        self._has_time_dim = True
+        self.has_time_dim = True  # Initial propagation
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        for piecewise in self.piecewises.values():
+            piecewise.has_time_dim = value
 
     def items(self):
         """
@@ -418,7 +441,7 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         for name, piecewise in self.piecewises.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
@@ -616,12 +639,24 @@ class PiecewiseEffects(Interface):
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: dict[str, Piecewise]):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
+        self._has_time_dim = False
+        self.has_time_dim = False  # Initial propagation
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
-        raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
-        # self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
-        # for name, piecewise in self.piecewise_shares.items():
-        #    piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{name}')
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        self.piecewise_origin.has_time_dim = value
+        for piecewise in self.piecewise_shares.values():
+            piecewise.has_time_dim = value
+
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
+        for effect, piecewise in self.piecewise_shares.items():
+            piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
 
 
 @register_class_for_io
@@ -818,36 +853,65 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: int | float | None = None,
-        minimum_size: int | float | None = None,
-        maximum_size: int | float | None = None,
+        fixed_size: NonTemporalDataUser | None = None,
+        minimum_size: NonTemporalDataUser | None = None,
+        maximum_size: NonTemporalDataUser | None = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: EffectValuesUserScalar | None = None,
-        specific_effects: EffectValuesUserScalar | None = None,  # costs per Flow-Unit/Storage-Size/...
+        fix_effects: NonTemporalEffectsUser | None = None,
+        specific_effects: NonTemporalEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: PiecewiseEffects | None = None,
-        divest_effects: EffectValuesUserScalar | None = None,
+        divest_effects: NonTemporalEffectsUser | None = None,
     ):
-        self.fix_effects: EffectValuesUserScalar = fix_effects or {}
-        self.divest_effects: EffectValuesUserScalar = divest_effects or {}
+        self.fix_effects: NonTemporalEffectsUser = fix_effects or {}
+        self.divest_effects: NonTemporalEffectsUser = divest_effects or {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: EffectValuesUserScalar = specific_effects or {}
+        self.specific_effects: NonTemporalEffectsUser = specific_effects if specific_effects is not None else {}
         self.piecewise_effects = piecewise_effects
-        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
-        self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
-    def transform_data(self, flow_system: FlowSystem):
-        self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)
-        self.divest_effects = flow_system.effects.create_effect_values_dict(self.divest_effects)
-        self.specific_effects = flow_system.effects.create_effect_values_dict(self.specific_effects)
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        self.fix_effects = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.fix_effects,
+            label_suffix='fix_effects',
+            dims=['year', 'scenario'],
+        )
+        self.divest_effects = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.divest_effects,
+            label_suffix='divest_effects',
+            dims=['year', 'scenario'],
+        )
+        self.specific_effects = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.specific_effects,
+            label_suffix='specific_effects',
+            dims=['year', 'scenario'],
+        )
+        if self.piecewise_effects is not None:
+            self.piecewise_effects.has_time_dim = False
+            self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
+
+        self.minimum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_size', self.minimum_size, dims=['year', 'scenario']
+        )
+        self.maximum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_size', self.maximum_size, dims=['year', 'scenario']
+        )
+        if self.fixed_size is not None:
+            self.fixed_size = flow_system.fit_to_model_coords(
+                f'{name_prefix}|fixed_size', self.fixed_size, dims=['year', 'scenario']
+            )
 
     @property
-    def minimum_size(self):
-        return self.fixed_size or self._minimum_size
+    def minimum_or_fixed_size(self) -> NonTemporalData:
+        return self.fixed_size if self.fixed_size is not None else self.minimum_size
 
     @property
-    def maximum_size(self):
-        return self.fixed_size or self._maximum_size
+    def maximum_or_fixed_size(self) -> NonTemporalData:
+        return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
 
 @register_class_for_io
@@ -1030,46 +1094,59 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: EffectValuesUser | None = None,
-        effects_per_running_hour: EffectValuesUser | None = None,
+        effects_per_switch_on: TemporalEffectsUser | None = None,
+        effects_per_running_hour: TemporalEffectsUser | None = None,
         on_hours_total_min: int | None = None,
         on_hours_total_max: int | None = None,
-        consecutive_on_hours_min: NumericData | None = None,
-        consecutive_on_hours_max: NumericData | None = None,
-        consecutive_off_hours_min: NumericData | None = None,
-        consecutive_off_hours_max: NumericData | None = None,
+        consecutive_on_hours_min: TemporalDataUser | None = None,
+        consecutive_on_hours_max: TemporalDataUser | None = None,
+        consecutive_off_hours_min: TemporalDataUser | None = None,
+        consecutive_off_hours_max: TemporalDataUser | None = None,
         switch_on_total_max: int | None = None,
         force_switch_on: bool = False,
     ):
-        self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}
-        self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}
-        self.on_hours_total_min = on_hours_total_min
-        self.on_hours_total_max = on_hours_total_max
-        self.consecutive_on_hours_min = consecutive_on_hours_min
-        self.consecutive_on_hours_max = consecutive_on_hours_max
-        self.consecutive_off_hours_min = consecutive_off_hours_min
-        self.consecutive_off_hours_max = consecutive_off_hours_max
-        self.switch_on_total_max = switch_on_total_max
+        self.effects_per_switch_on: TemporalEffectsUser = (
+            effects_per_switch_on if effects_per_switch_on is not None else {}
+        )
+        self.effects_per_running_hour: TemporalEffectsUser = (
+            effects_per_running_hour if effects_per_running_hour is not None else {}
+        )
+        self.on_hours_total_min: Scalar = on_hours_total_min
+        self.on_hours_total_max: Scalar = on_hours_total_max
+        self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min
+        self.consecutive_on_hours_max: TemporalDataUser = consecutive_on_hours_max
+        self.consecutive_off_hours_min: TemporalDataUser = consecutive_off_hours_min
+        self.consecutive_off_hours_max: TemporalDataUser = consecutive_off_hours_max
+        self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
-        self.effects_per_switch_on = flow_system.create_effect_time_series(
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        self.effects_per_switch_on = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_switch_on, 'per_switch_on'
         )
-        self.effects_per_running_hour = flow_system.create_effect_time_series(
+        self.effects_per_running_hour = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_running_hour, 'per_running_hour'
         )
-        self.consecutive_on_hours_min = flow_system.create_time_series(
+        self.consecutive_on_hours_min = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
         )
-        self.consecutive_on_hours_max = flow_system.create_time_series(
+        self.consecutive_on_hours_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_on_hours_max', self.consecutive_on_hours_max
         )
-        self.consecutive_off_hours_min = flow_system.create_time_series(
+        self.consecutive_off_hours_min = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_off_hours_min', self.consecutive_off_hours_min
         )
-        self.consecutive_off_hours_max = flow_system.create_time_series(
+        self.consecutive_off_hours_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
+        )
+        self.on_hours_total_max = flow_system.fit_to_model_coords(
+            f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, dims=['year', 'scenario']
+        )
+        self.on_hours_total_min = flow_system.fit_to_model_coords(
+            f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, dims=['year', 'scenario']
+        )
+        self.switch_on_total_max = flow_system.fit_to_model_coords(
+            f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, dims=['year', 'scenario']
         )
 
     @property
@@ -1089,16 +1166,14 @@ class OnOffParameters(Interface):
 
     @property
     def use_switch_on(self) -> bool:
-        """Determines whether a Variable for SWITCH-ON is needed or not"""
-        return (
-            any(
-                param not in (None, {})
-                for param in [
-                    self.effects_per_switch_on,
-                    self.switch_on_total_max,
-                    self.on_hours_total_min,
-                    self.on_hours_total_max,
-                ]
-            )
-            or self.force_switch_on
+        """Determines whether a variable for switch_on is needed or not"""
+        if self.force_switch_on:
+            return True
+
+        return any(
+            param is not None and param != {}
+            for param in [
+                self.effects_per_switch_on,
+                self.switch_on_total_max,
+            ]
         )
