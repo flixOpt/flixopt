@@ -239,9 +239,7 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
     flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     np.testing.assert_allclose(model.weights.values, weights)
-    assert_linequal(
-        model.objective.expression, (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total']
-    )
+    assert_linequal(model.objective.expression, (model.variables['costs'] * weights).sum() + model.variables['Penalty'])
     assert np.isclose(model.weights.sum().item(), 2.25)
 
 
@@ -252,9 +250,7 @@ def test_weights_io(flow_system_piecewise_conversion_scenarios):
     flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     np.testing.assert_allclose(model.weights.values, weights)
-    assert_linequal(
-        model.objective.expression, (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total']
-    )
+    assert_linequal(model.objective.expression, (model.variables['costs'] * weights).sum() + model.variables['Penalty'])
     assert np.isclose(model.weights.sum().item(), 1.0)
 
 
@@ -329,9 +325,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     np.testing.assert_allclose(
         calc.results.objective,
-        (
-            (calc.results.solution['costs|total'] * flow_system.weights).sum() + calc.results.solution['Penalty|total']
-        ).item(),
+        ((calc.results.solution['costs'] * flow_system.weights).sum() + calc.results.solution['Penalty']).item(),
     )  ## Acount for rounding errors
 
     assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])

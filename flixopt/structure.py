@@ -367,6 +367,36 @@ class Interface:
         else:
             return self._serialize_to_basic_types(obj), extracted_arrays
 
+    def _validate_kwargs(self, kwargs: dict, class_name: str = None) -> None:
+        """
+        Validate that no unexpected keyword arguments are present in kwargs.
+
+        This method uses inspect to get the actual function signature and filters out
+        any parameters that are not defined in the __init__ method, while also
+        handling the special case of 'kwargs' itself which can appear during deserialization.
+
+        Args:
+            kwargs: Dictionary of keyword arguments to validate
+            class_name: Optional class name for error messages. If None, uses self.__class__.__name__
+
+        Raises:
+            TypeError: If unexpected keyword arguments are found
+        """
+        if not kwargs:
+            return
+
+        import inspect
+
+        sig = inspect.signature(self.__init__)
+        known_params = set(sig.parameters.keys()) - {'self', 'kwargs'}
+        # Also filter out 'kwargs' itself which can appear during deserialization
+        extra_kwargs = {k: v for k, v in kwargs.items() if k not in known_params and k != 'kwargs'}
+
+        if extra_kwargs:
+            class_name = class_name or self.__class__.__name__
+            unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
+            raise TypeError(f'{class_name}.__init__() got unexpected keyword argument(s): {unexpected_params}')
+
     @classmethod
     def _resolve_dataarray_reference(
         cls, reference: str, arrays_dict: dict[str, xr.DataArray]

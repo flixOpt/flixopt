@@ -97,7 +97,7 @@ class InvestmentModel(Submodel):
                     effect: self.is_invested * factor if self.is_invested is not None else factor
                     for effect, factor in self.parameters.fix_effects.items()
                 },
-                target='invest',
+                target='nontemporal',
             )
 
         if self.parameters.divest_effects and self.parameters.optional:
@@ -107,14 +107,14 @@ class InvestmentModel(Submodel):
                     effect: -self.is_invested * factor + factor
                     for effect, factor in self.parameters.divest_effects.items()
                 },
-                target='invest',
+                target='nontemporal',
             )
 
         if self.parameters.specific_effects:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
-                target='invest',
+                target='nontemporal',
             )
 
     @property
@@ -240,7 +240,7 @@ class OnOffModel(Submodel):
                     effect: self.on * factor * self._model.hours_per_step
                     for effect, factor in self.parameters.effects_per_running_hour.items()
                 },
-                target='operation',
+                target='temporal',
             )
 
         if self.parameters.effects_per_switch_on:
@@ -249,7 +249,7 @@ class OnOffModel(Submodel):
                 expressions={
                     effect: self.switch_on * factor for effect, factor in self.parameters.effects_per_switch_on.items()
                 },
-                target='operation',
+                target='temporal',
             )
 
     # Properties access variables from Submodel's tracking system
@@ -484,7 +484,7 @@ class PiecewiseEffectsModel(Submodel):
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
-            target='invest',
+            target='nontemporal',
         )
 
 
@@ -526,22 +526,21 @@ class ShareAllocationModel(Submodel):
             lower=self._total_min,
             upper=self._total_max,
             coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
+            name=self.label_full,
             short_name='total',
         )
         # eq: sum = sum(share_i) # skalar
-        self._eq_total = self.add_constraints(self.total == 0, short_name='total')
+        self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
 
         if 'time' in self._dims:
             self.total_per_timestep = self.add_variables(
                 lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.hours_per_step,
                 upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.hours_per_step,
                 coords=self._model.get_coords(self._dims),
-                short_name='total_per_timestep',
+                short_name='per_timestep',
             )
 
-            self._eq_total_per_timestep = self.add_constraints(
-                self.total_per_timestep == 0, short_name='total_per_timestep'
-            )
+            self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
             # Add it to the total
             self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')

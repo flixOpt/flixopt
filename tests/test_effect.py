@@ -25,10 +25,10 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect.submodel.variables),
             {
-                'Effect1(invest)|total',
-                'Effect1(operation)|total',
-                'Effect1(operation)|total_per_timestep',
-                'Effect1|total',
+                'Effect1(nontemporal)',
+                'Effect1(temporal)',
+                'Effect1(temporal)|per_timestep',
+                'Effect1',
             },
             msg='Incorrect variables',
         )
@@ -36,42 +36,39 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect.submodel.constraints),
             {
-                'Effect1(invest)|total',
-                'Effect1(operation)|total',
-                'Effect1(operation)|total_per_timestep',
-                'Effect1|total',
+                'Effect1(nontemporal)',
+                'Effect1(temporal)',
+                'Effect1(temporal)|per_timestep',
+                'Effect1',
             },
             msg='Incorrect constraints',
         )
 
+        assert_var_equal(model.variables['Effect1'], model.add_variables(coords=model.get_coords(['year', 'scenario'])))
         assert_var_equal(
-            model.variables['Effect1|total'], model.add_variables(coords=model.get_coords(['year', 'scenario']))
+            model.variables['Effect1(nontemporal)'], model.add_variables(coords=model.get_coords(['year', 'scenario']))
         )
         assert_var_equal(
-            model.variables['Effect1(invest)|total'], model.add_variables(coords=model.get_coords(['year', 'scenario']))
-        )
-        assert_var_equal(
-            model.variables['Effect1(operation)|total'],
+            model.variables['Effect1(temporal)'],
             model.add_variables(coords=model.get_coords(['year', 'scenario'])),
         )
         assert_var_equal(
-            model.variables['Effect1(operation)|total_per_timestep'], model.add_variables(coords=model.get_coords())
+            model.variables['Effect1(temporal)|per_timestep'], model.add_variables(coords=model.get_coords())
         )
 
         assert_conequal(
-            model.constraints['Effect1|total'],
-            model.variables['Effect1|total']
-            == model.variables['Effect1(operation)|total'] + model.variables['Effect1(invest)|total'],
+            model.constraints['Effect1'],
+            model.variables['Effect1']
+            == model.variables['Effect1(temporal)'] + model.variables['Effect1(nontemporal)'],
         )
-        assert_conequal(model.constraints['Effect1(invest)|total'], model.variables['Effect1(invest)|total'] == 0)
+        assert_conequal(model.constraints['Effect1(nontemporal)'], model.variables['Effect1(nontemporal)'] == 0)
         assert_conequal(
-            model.constraints['Effect1(operation)|total'],
-            model.variables['Effect1(operation)|total']
-            == model.variables['Effect1(operation)|total_per_timestep'].sum('time'),
+            model.constraints['Effect1(temporal)'],
+            model.variables['Effect1(temporal)'] == model.variables['Effect1(temporal)|per_timestep'].sum('time'),
         )
         assert_conequal(
-            model.constraints['Effect1(operation)|total_per_timestep'],
-            model.variables['Effect1(operation)|total_per_timestep'] == 0,
+            model.constraints['Effect1(temporal)|per_timestep'],
+            model.variables['Effect1(temporal)|per_timestep'] == 0,
         )
 
     def test_bounds(self, basic_flow_system_linopy_coords, coords_config):
@@ -80,14 +77,14 @@ class TestEffectModel:
             'Effect1',
             '€',
             'Testing Effect',
-            minimum_operation=1.0,
-            maximum_operation=1.1,
-            minimum_invest=2.0,
-            maximum_invest=2.1,
+            minimum_temporal=1.0,
+            maximum_temporal=1.1,
+            minimum_nontemporal=2.0,
+            maximum_nontemporal=2.1,
             minimum_total=3.0,
             maximum_total=3.1,
-            minimum_operation_per_hour=4.0,
-            maximum_operation_per_hour=4.1,
+            minimum_per_hour=4.0,
+            maximum_per_hour=4.1,
         )
 
         flow_system.add_elements(effect)
@@ -96,10 +93,10 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect.submodel.variables),
             {
-                'Effect1(invest)|total',
-                'Effect1(operation)|total',
-                'Effect1(operation)|total_per_timestep',
-                'Effect1|total',
+                'Effect1(nontemporal)',
+                'Effect1(temporal)',
+                'Effect1(temporal)|per_timestep',
+                'Effect1',
             },
             msg='Incorrect variables',
         )
@@ -107,28 +104,28 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect.submodel.constraints),
             {
-                'Effect1(invest)|total',
-                'Effect1(operation)|total',
-                'Effect1(operation)|total_per_timestep',
-                'Effect1|total',
+                'Effect1(nontemporal)',
+                'Effect1(temporal)',
+                'Effect1(temporal)|per_timestep',
+                'Effect1',
             },
             msg='Incorrect constraints',
         )
 
         assert_var_equal(
-            model.variables['Effect1|total'],
+            model.variables['Effect1'],
             model.add_variables(lower=3.0, upper=3.1, coords=model.get_coords(['year', 'scenario'])),
         )
         assert_var_equal(
-            model.variables['Effect1(invest)|total'],
+            model.variables['Effect1(nontemporal)'],
             model.add_variables(lower=2.0, upper=2.1, coords=model.get_coords(['year', 'scenario'])),
         )
         assert_var_equal(
-            model.variables['Effect1(operation)|total'],
+            model.variables['Effect1(temporal)'],
             model.add_variables(lower=1.0, upper=1.1, coords=model.get_coords(['year', 'scenario'])),
         )
         assert_var_equal(
-            model.variables['Effect1(operation)|total_per_timestep'],
+            model.variables['Effect1(temporal)|per_timestep'],
             model.add_variables(
                 lower=4.0 * model.hours_per_step,
                 upper=4.1 * model.hours_per_step,
@@ -137,19 +134,18 @@ class TestEffectModel:
         )
 
         assert_conequal(
-            model.constraints['Effect1|total'],
-            model.variables['Effect1|total']
-            == model.variables['Effect1(operation)|total'] + model.variables['Effect1(invest)|total'],
+            model.constraints['Effect1'],
+            model.variables['Effect1']
+            == model.variables['Effect1(temporal)'] + model.variables['Effect1(nontemporal)'],
         )
-        assert_conequal(model.constraints['Effect1(invest)|total'], model.variables['Effect1(invest)|total'] == 0)
+        assert_conequal(model.constraints['Effect1(nontemporal)'], model.variables['Effect1(nontemporal)'] == 0)
         assert_conequal(
-            model.constraints['Effect1(operation)|total'],
-            model.variables['Effect1(operation)|total']
-            == model.variables['Effect1(operation)|total_per_timestep'].sum('time'),
+            model.constraints['Effect1(temporal)'],
+            model.variables['Effect1(temporal)'] == model.variables['Effect1(temporal)|per_timestep'].sum('time'),
         )
         assert_conequal(
-            model.constraints['Effect1(operation)|total_per_timestep'],
-            model.variables['Effect1(operation)|total_per_timestep'] == 0,
+            model.constraints['Effect1(temporal)|per_timestep'],
+            model.variables['Effect1(temporal)|per_timestep'] == 0,
         )
 
     def test_shares(self, basic_flow_system_linopy_coords, coords_config):
@@ -169,12 +165,12 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect2.submodel.variables),
             {
-                'Effect2(invest)|total',
-                'Effect2(operation)|total',
-                'Effect2(operation)|total_per_timestep',
-                'Effect2|total',
-                'Effect1(invest)->Effect2(invest)',
-                'Effect1(operation)->Effect2(operation)',
+                'Effect2(nontemporal)',
+                'Effect2(temporal)',
+                'Effect2(temporal)|per_timestep',
+                'Effect2',
+                'Effect1(nontemporal)->Effect2(nontemporal)',
+                'Effect1(temporal)->Effect2(temporal)',
             },
             msg='Incorrect variables for effect2',
         )
@@ -182,36 +178,37 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect2.submodel.constraints),
             {
-                'Effect2(invest)|total',
-                'Effect2(operation)|total',
-                'Effect2(operation)|total_per_timestep',
-                'Effect2|total',
-                'Effect1(invest)->Effect2(invest)',
-                'Effect1(operation)->Effect2(operation)',
+                'Effect2(nontemporal)',
+                'Effect2(temporal)',
+                'Effect2(temporal)|per_timestep',
+                'Effect2',
+                'Effect1(nontemporal)->Effect2(nontemporal)',
+                'Effect1(temporal)->Effect2(temporal)',
             },
             msg='Incorrect constraints for effect2',
         )
 
         assert_conequal(
-            model.constraints['Effect2(invest)|total'],
-            model.variables['Effect2(invest)|total'] == model.variables['Effect1(invest)->Effect2(invest)'],
+            model.constraints['Effect2(nontemporal)'],
+            model.variables['Effect2(nontemporal)'] == model.variables['Effect1(nontemporal)->Effect2(nontemporal)'],
         )
 
         assert_conequal(
-            model.constraints['Effect2(operation)|total_per_timestep'],
-            model.variables['Effect2(operation)|total_per_timestep']
-            == model.variables['Effect1(operation)->Effect2(operation)'],
+            model.constraints['Effect2(temporal)|per_timestep'],
+            model.variables['Effect2(temporal)|per_timestep']
+            == model.variables['Effect1(temporal)->Effect2(temporal)'],
         )
 
         assert_conequal(
-            model.constraints['Effect1(operation)->Effect2(operation)'],
-            model.variables['Effect1(operation)->Effect2(operation)']
-            == model.variables['Effect1(operation)|total_per_timestep'] * 1.1,
+            model.constraints['Effect1(temporal)->Effect2(temporal)'],
+            model.variables['Effect1(temporal)->Effect2(temporal)']
+            == model.variables['Effect1(temporal)|per_timestep'] * 1.1,
         )
 
         assert_conequal(
-            model.constraints['Effect1(invest)->Effect2(invest)'],
-            model.variables['Effect1(invest)->Effect2(invest)'] == model.variables['Effect1(invest)|total'] * 2.1,
+            model.constraints['Effect1(nontemporal)->Effect2(nontemporal)'],
+            model.variables['Effect1(nontemporal)->Effect2(nontemporal)']
+            == model.variables['Effect1(nontemporal)'] * 2.1,
         )
 
 
@@ -244,7 +241,7 @@ class TestEffectResults:
         results = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 60), 'Sim1').results
 
         effect_share_factors = {
-            'operation': {
+            'temporal': {
                 ('costs', 'Effect1'): 0.5,
                 ('costs', 'Effect2'): 0.5 * 1.1,
                 ('costs', 'Effect3'): 0.5 * 1.1 * 5 + 0.5 * 1.2,  # This is where the issue lies
@@ -252,75 +249,75 @@ class TestEffectResults:
                 ('Effect1', 'Effect3'): 1.2 + 1.1 * 5,
                 ('Effect2', 'Effect3'): 5,
             },
-            'invest': {
+            'nontemporal': {
                 ('Effect1', 'Effect2'): 2.1,
                 ('Effect1', 'Effect3'): 2.2,
             },
         }
-        for key, value in effect_share_factors['operation'].items():
-            np.testing.assert_allclose(results.effect_share_factors['operation'][key].values, value)
+        for key, value in effect_share_factors['temporal'].items():
+            np.testing.assert_allclose(results.effect_share_factors['temporal'][key].values, value)
 
-        for key, value in effect_share_factors['invest'].items():
-            np.testing.assert_allclose(results.effect_share_factors['invest'][key].values, value)
+        for key, value in effect_share_factors['nontemporal'].items():
+            np.testing.assert_allclose(results.effect_share_factors['nontemporal'][key].values, value)
 
         xr.testing.assert_allclose(
-            results.effects_per_component['operation'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(operation)|total_per_timestep'].fillna(0),
+            results.effects_per_component['temporal'].sum('component').sel(effect='costs', drop=True),
+            results.solution['costs(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['operation'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(operation)|total_per_timestep'].fillna(0),
+            results.effects_per_component['temporal'].sum('component').sel(effect='Effect1', drop=True),
+            results.solution['Effect1(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['operation'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(operation)|total_per_timestep'].fillna(0),
+            results.effects_per_component['temporal'].sum('component').sel(effect='Effect2', drop=True),
+            results.solution['Effect2(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['operation'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(operation)|total_per_timestep'].fillna(0),
+            results.effects_per_component['temporal'].sum('component').sel(effect='Effect3', drop=True),
+            results.solution['Effect3(temporal)|per_timestep'].fillna(0),
         )
 
-        # Invest mode checks
+        # nontemporal mode checks
         xr.testing.assert_allclose(
-            results.effects_per_component['invest'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(invest)|total'],
-        )
-
-        xr.testing.assert_allclose(
-            results.effects_per_component['invest'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(invest)|total'],
+            results.effects_per_component['nontemporal'].sum('component').sel(effect='costs', drop=True),
+            results.solution['costs(nontemporal)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['invest'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(invest)|total'],
+            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect1', drop=True),
+            results.solution['Effect1(nontemporal)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['invest'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(invest)|total'],
+            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect2', drop=True),
+            results.solution['Effect2(nontemporal)'],
+        )
+
+        xr.testing.assert_allclose(
+            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect3', drop=True),
+            results.solution['Effect3(nontemporal)'],
         )
 
         # Total mode checks
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs|total'],
+            results.solution['costs'],
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1|total'],
+            results.solution['Effect1'],
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2|total'],
+            results.solution['Effect2'],
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3|total'],
+            results.solution['Effect3'],
         )

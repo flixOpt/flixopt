@@ -107,8 +107,8 @@ class Calculation:
             'Penalty': self.model.effects.penalty.total.solution.values,
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
-                    'operation': effect.submodel.operation.total.solution.values,
-                    'invest': effect.submodel.invest.total.solution.values,
+                    'temporal': effect.submodel.temporal.total.solution.values,
+                    'nontemporal': effect.submodel.nontemporal.total.solution.values,
                     'total': effect.submodel.total.solution.values,
                 }
                 for effect in self.flow_system.effects

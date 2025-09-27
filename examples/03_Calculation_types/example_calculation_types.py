@@ -207,14 +207,14 @@ if __name__ == '__main__':
     ).write_html('results/BHKW2 Thermal Power.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'costs(operation)|total_per_timestep').to_dataframe(),
+        get_solutions(calculations, 'costs(temporal)|per_timestep').to_dataframe(),
         style='line',
         title='Operation Cost Comparison',
         ylabel='Costs [€]',
     ).write_html('results/Operation Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame(get_solutions(calculations, 'costs(operation)|total_per_timestep').to_dataframe().sum()).T,
+        pd.DataFrame(get_solutions(calculations, 'costs(temporal)|per_timestep').to_dataframe().sum()).T,
         style='stacked_bar',
         title='Total Cost Comparison',
         ylabel='Costs [€]',

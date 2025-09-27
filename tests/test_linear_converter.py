@@ -184,11 +184,10 @@ class TestLinearConverterModel:
         )
 
         # Check on_off effects
-        assert 'Converter->costs(operation)' in model.constraints
+        assert 'Converter->costs(temporal)' in model.constraints
         assert_conequal(
-            model.constraints['Converter->costs(operation)'],
-            model.variables['Converter->costs(operation)']
-            == model.variables['Converter|on'] * model.hours_per_step * 5,
+            model.constraints['Converter->costs(temporal)'],
+            model.variables['Converter->costs(temporal)'] == model.variables['Converter|on'] * model.hours_per_step * 5,
         )
 
     def test_linear_converter_multidimensional(self, basic_flow_system_linopy_coords, coords_config):
@@ -489,11 +488,10 @@ class TestLinearConverterModel:
         )
 
         # Verify that the costs effect is applied
-        assert 'Converter->costs(operation)' in model.constraints
+        assert 'Converter->costs(temporal)' in model.constraints
         assert_conequal(
-            model.constraints['Converter->costs(operation)'],
-            model.variables['Converter->costs(operation)']
-            == model.variables['Converter|on'] * model.hours_per_step * 5,
+            model.constraints['Converter->costs(temporal)'],
+            model.variables['Converter->costs(temporal)'] == model.variables['Converter|on'] * model.hours_per_step * 5,
         )
 
 

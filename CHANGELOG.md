@@ -108,6 +108,13 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
+- Renamed `Effect` parameters:
+  - `minimum_investment` → `minimum_nontemporal`
+  - `maximum_investment` → `maximum_nontemporal`
+  - `minimum_operation` → `minimum_temporal`
+  - `maximum_operation` → `maximum_temporal`
+  - `minimum_operation_per_hour` → `minimum_per_hour`
+  - `maximum_operation_per_hour` → `maximum_per_hour`
 
 
 ### 🐛 Fixed

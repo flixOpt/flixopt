@@ -283,7 +283,7 @@ class CalculationResults:
     def effect_share_factors(self):
         if self._effect_share_factors is None:
             effect_share_factors = self.flow_system.effects.calculate_effect_share_factors()
-            self._effect_share_factors = {'operation': effect_share_factors[0], 'invest': effect_share_factors[1]}
+            self._effect_share_factors = {'temporal': effect_share_factors[0], 'nontemporal': effect_share_factors[1]}
         return self._effect_share_factors
 
     @property
@@ -356,7 +356,7 @@ class CalculationResults:
             self._effects_per_component = xr.Dataset(
                 {
                     mode: self._create_effects_dataset(mode).to_dataarray('effect', name=mode)
-                    for mode in ['operation', 'invest', 'total']
+                    for mode in ['temporal', 'nontemporal', 'total']
                 }
             )
             dim_order = ['time', 'year', 'scenario', 'component', 'effect']
@@ -477,22 +477,22 @@ class CalculationResults:
         self,
         element: str,
         effect: str,
-        mode: Literal['operation', 'invest'] | None = None,
+        mode: Literal['temporal', 'nontemporal'] | None = None,
         include_flows: bool = False,
     ) -> xr.Dataset:
         """Retrieves individual effect shares for a specific element and effect.
-        Either for operation, investment, or both modes combined.
+        Either for temporal, investment, or both modes combined.
         Only includes the direct shares.
 
         Args:
             element: The element identifier for which to retrieve effect shares.
             effect: The effect identifier for which to retrieve shares.
-            mode: Optional. The mode to retrieve shares for. Can be 'operation', 'invest',
+            mode: Optional. The mode to retrieve shares for. Can be 'temporal', 'nontemporal',
                 or None to retrieve both. Defaults to None.
 
         Returns:
             An xarray Dataset containing the requested effect shares. If mode is None,
-            returns a merged Dataset containing both operation and investment shares.
+            returns a merged Dataset containing both temporal and investment shares.
 
         Raises:
             ValueError: If the specified effect is not available or if mode is invalid.
@@ -504,14 +504,16 @@ class CalculationResults:
             return xr.merge(
                 [
                     self.get_effect_shares(
-                        element=element, effect=effect, mode='operation', include_flows=include_flows
+                        element=element, effect=effect, mode='temporal', include_flows=include_flows
                     ),
-                    self.get_effect_shares(element=element, effect=effect, mode='invest', include_flows=include_flows),
+                    self.get_effect_shares(
+                        element=element, effect=effect, mode='nontemporal', include_flows=include_flows
+                    ),
                 ]
             )
 
-        if mode not in ['operation', 'invest']:
-            raise ValueError(f'Mode {mode} is not available. Choose between "operation" and "invest".')
+        if mode not in ['temporal', 'nontemporal']:
+            raise ValueError(f'Mode {mode} is not available. Choose between "temporal" and "nontemporal".')
 
         ds = xr.Dataset()
 
@@ -539,7 +541,7 @@ class CalculationResults:
         self,
         element: str,
         effect: str,
-        mode: Literal['operation', 'invest', 'total'] = 'total',
+        mode: Literal['temporal', 'nontemporal', 'total'] = 'total',
         include_flows: bool = False,
     ) -> xr.DataArray:
         """Calculates the total effect for a specific element and effect.
@@ -551,10 +553,9 @@ class CalculationResults:
             element: The element identifier for which to calculate total effects.
             effect: The effect identifier to calculate.
             mode: The calculation mode. Options are:
-                'operation': Returns operation-specific effects.
-                'invest': Returns investment-specific effects.
-                'total': Returns the sum of operation effects (across all timesteps)
-                    and investment effects. Defaults to 'total'.
+                'temporal': Returns temporal effects.
+                'nontemporal': Returns investment-specific effects.
+                'total': Returns the sum of temporal effects and non-temporal effects. Defaults to 'total'.
             include_flows: Whether to include effects from flows connected to this element.
 
         Returns:
@@ -569,22 +570,22 @@ class CalculationResults:
             raise ValueError(f'Effect {effect} is not available.')
 
         if mode == 'total':
-            operation = self._compute_effect_total(
-                element=element, effect=effect, mode='operation', include_flows=include_flows
+            temporal = self._compute_effect_total(
+                element=element, effect=effect, mode='temporal', include_flows=include_flows
             )
-            invest = self._compute_effect_total(
-                element=element, effect=effect, mode='invest', include_flows=include_flows
+            nontemporal = self._compute_effect_total(
+                element=element, effect=effect, mode='nontemporal', include_flows=include_flows
             )
-            if invest.isnull().all() and operation.isnull().all():
+            if nontemporal.isnull().all() and temporal.isnull().all():
                 return xr.DataArray(np.nan)
-            if operation.isnull().all():
-                return invest.rename(f'{element}->{effect}')
-            operation = operation.sum('time')
-            if invest.isnull().all():
-                return operation.rename(f'{element}->{effect}')
-            if 'time' in operation.indexes:
-                operation = operation.sum('time')
-            return invest + operation
+            if temporal.isnull().all():
+                return nontemporal.rename(f'{element}->{effect}')
+            temporal = temporal.sum('time')
+            if nontemporal.isnull().all():
+                return temporal.rename(f'{element}->{effect}')
+            if 'time' in temporal.indexes:
+                temporal = temporal.sum('time')
+            return nontemporal + temporal
 
         total = xr.DataArray(0)
         share_exists = False
@@ -617,12 +618,12 @@ class CalculationResults:
             total = xr.DataArray(np.nan)
         return total.rename(f'{element}->{effect}({mode})')
 
-    def _create_effects_dataset(self, mode: Literal['operation', 'invest', 'total']) -> xr.Dataset:
+    def _create_effects_dataset(self, mode: Literal['temporal', 'nontemporal', 'total']) -> xr.Dataset:
         """Creates a dataset containing effect totals for all components (including their flows).
         The dataset does contain the direct as well as the indirect effects of each component.
 
         Args:
-            mode: The calculation mode ('operation', 'invest', or 'total').
+            mode: The calculation mode ('temporal', 'nontemporal', or 'total').
 
         Returns:
             An xarray Dataset with components as dimension and effects as variables.
@@ -668,9 +669,9 @@ class CalculationResults:
 
         # For now include a test to ensure correctness
         suffix = {
-            'operation': '(operation)|total_per_timestep',
-            'invest': '(invest)|total',
-            'total': '|total',
+            'temporal': '(temporal)|per_timestep',
+            'nontemporal': '(nontemporal)',
+            'total': '',
         }
         for effect in self.effects:
             label = f'{effect}{suffix[mode]}'

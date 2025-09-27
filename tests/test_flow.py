@@ -122,18 +122,18 @@ class TestFlowModel:
         )
         assert_sets_equal(set(flow.submodel.constraints), {'Sink(Wärme)|total_flow_hours'}, msg='Incorrect constraints')
 
-        assert 'Sink(Wärme)->costs(operation)' in set(costs.submodel.constraints)
-        assert 'Sink(Wärme)->CO2(operation)' in set(co2.submodel.constraints)
+        assert 'Sink(Wärme)->costs(temporal)' in set(costs.submodel.constraints)
+        assert 'Sink(Wärme)->CO2(temporal)' in set(co2.submodel.constraints)
 
         assert_conequal(
-            model.constraints['Sink(Wärme)->costs(operation)'],
-            model.variables['Sink(Wärme)->costs(operation)']
+            model.constraints['Sink(Wärme)->costs(temporal)'],
+            model.variables['Sink(Wärme)->costs(temporal)']
             == flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step * costs_per_flow_hour,
         )
 
         assert_conequal(
-            model.constraints['Sink(Wärme)->CO2(operation)'],
-            model.variables['Sink(Wärme)->CO2(operation)']
+            model.constraints['Sink(Wärme)->CO2(temporal)'],
+            model.variables['Sink(Wärme)->CO2(temporal)']
             == flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step * co2_per_flow_hour,
         )
 
@@ -467,20 +467,20 @@ class TestFlowInvestModel:
         model = create_linopy_model(flow_system)
 
         # Check investment effects
-        assert 'Sink(Wärme)->costs(invest)' in model.variables
-        assert 'Sink(Wärme)->CO2(invest)' in model.variables
+        assert 'Sink(Wärme)->costs(nontemporal)' in model.variables
+        assert 'Sink(Wärme)->CO2(nontemporal)' in model.variables
 
         # Check fix effects (applied only when is_invested=1)
         assert_conequal(
-            model.constraints['Sink(Wärme)->costs(invest)'],
-            model.variables['Sink(Wärme)->costs(invest)']
+            model.constraints['Sink(Wärme)->costs(nontemporal)'],
+            model.variables['Sink(Wärme)->costs(nontemporal)']
             == flow.submodel.variables['Sink(Wärme)|is_invested'] * 1000
             + flow.submodel.variables['Sink(Wärme)|size'] * 500,
         )
 
         assert_conequal(
-            model.constraints['Sink(Wärme)->CO2(invest)'],
-            model.variables['Sink(Wärme)->CO2(invest)']
+            model.constraints['Sink(Wärme)->CO2(nontemporal)'],
+            model.variables['Sink(Wärme)->CO2(nontemporal)']
             == flow.submodel.variables['Sink(Wärme)|is_invested'] * 5
             + flow.submodel.variables['Sink(Wärme)|size'] * 0.1,
         )
@@ -504,11 +504,12 @@ class TestFlowInvestModel:
         model = create_linopy_model(flow_system)
 
         # Check divestment effects
-        assert 'Sink(Wärme)->costs(invest)' in model.constraints
+        assert 'Sink(Wärme)->costs(nontemporal)' in model.constraints
 
         assert_conequal(
-            model.constraints['Sink(Wärme)->costs(invest)'],
-            model.variables['Sink(Wärme)->costs(invest)'] + (model.variables['Sink(Wärme)|is_invested'] - 1) * 500 == 0,
+            model.constraints['Sink(Wärme)->costs(nontemporal)'],
+            model.variables['Sink(Wärme)->costs(nontemporal)'] + (model.variables['Sink(Wärme)|is_invested'] - 1) * 500
+            == 0,
         )
 
 
@@ -618,8 +619,8 @@ class TestFlowOnModel:
             msg='Incorrect constraints',
         )
 
-        assert 'Sink(Wärme)->costs(operation)' in set(costs.submodel.constraints)
-        assert 'Sink(Wärme)->CO2(operation)' in set(co2.submodel.constraints)
+        assert 'Sink(Wärme)->costs(temporal)' in set(costs.submodel.constraints)
+        assert 'Sink(Wärme)->CO2(temporal)' in set(co2.submodel.constraints)
 
         costs_per_running_hour = flow.on_off_parameters.effects_per_running_hour['costs']
         co2_per_running_hour = flow.on_off_parameters.effects_per_running_hour['CO2']
@@ -628,14 +629,14 @@ class TestFlowOnModel:
         assert co2_per_running_hour.dims == tuple(model.get_coords())
 
         assert_conequal(
-            model.constraints['Sink(Wärme)->costs(operation)'],
-            model.variables['Sink(Wärme)->costs(operation)']
+            model.constraints['Sink(Wärme)->costs(temporal)'],
+            model.variables['Sink(Wärme)->costs(temporal)']
             == flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step * costs_per_running_hour,
         )
 
         assert_conequal(
-            model.constraints['Sink(Wärme)->CO2(operation)'],
-            model.variables['Sink(Wärme)->CO2(operation)']
+            model.constraints['Sink(Wärme)->CO2(temporal)'],
+            model.variables['Sink(Wärme)->CO2(temporal)']
             == flow.submodel.variables['Sink(Wärme)|on'] * model.hours_per_step * co2_per_running_hour,
         )
 
@@ -1021,12 +1022,12 @@ class TestFlowOnModel:
         )
 
         # Check that startup cost effect constraint exists
-        assert 'Sink(Wärme)->costs(operation)' in model.constraints
+        assert 'Sink(Wärme)->costs(temporal)' in model.constraints
 
         # Verify the startup cost effect constraint
         assert_conequal(
-            model.constraints['Sink(Wärme)->costs(operation)'],
-            model.variables['Sink(Wärme)->costs(operation)'] == flow.submodel.variables['Sink(Wärme)|switch|on'] * 100,
+            model.constraints['Sink(Wärme)->costs(temporal)'],
+            model.variables['Sink(Wärme)->costs(temporal)'] == flow.submodel.variables['Sink(Wärme)|switch|on'] * 100,
         )
 
     def test_on_hours_limits(self, basic_flow_system_linopy_coords, coords_config):
