@@ -52,16 +52,24 @@ class Effect(Element):
             Maps this effect's operational values to contributions to other effects
         specific_share_to_other_effects_invest: Investment cross-effect contributions.
             Maps this effect's investment values to contributions to other effects.
-        minimum_operation: Minimum allowed total operational contribution across all timesteps.
-        maximum_operation: Maximum allowed total operational contribution across all timesteps.
-        minimum_operation_per_hour: Minimum allowed operational contribution per timestep.
-        maximum_operation_per_hour: Maximum allowed operational contribution per timestep.
-        minimum_invest: Minimum allowed total investment contribution.
-        maximum_invest: Maximum allowed total investment contribution.
-        minimum_total: Minimum allowed total effect (operation + investment combined).
-        maximum_total: Maximum allowed total effect (operation + investment combined).
+        minimum_temporal: Minimum allowed total contribution across all timesteps.
+        maximum_temporal: Maximum allowed total contribution across all timesteps.
+        minimum_per_hour: Minimum allowed contribution per hour.
+        maximum_per_hour: Maximum allowed contribution per hour.
+        minimum_nontemporal: Minimum allowed total nontemporal contribution.
+        maximum_nontemporal: Maximum allowed total nontemporal contribution.
+        minimum_total: Minimum allowed total effect (temporal + nontemporal combined).
+        maximum_total: Maximum allowed total effect (temporal + nontemporal combined).
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
+
+    **Deprecated Parameters** (for backwards compatibility):
+        minimum_operation: Use `minimum_temporal` instead.
+        maximum_operation: Use `maximum_temporal` instead.
+        minimum_invest: Use `minimum_nontemporal` instead.
+        maximum_invest: Use `maximum_nontemporal` instead.
+        minimum_operation_per_hour: Use `minimum_per_hour` instead.
+        maximum_operation_per_hour: Use `maximum_per_hour` instead.
 
     Examples:
         Basic cost objective:
@@ -111,8 +119,8 @@ class Effect(Element):
             label='water_consumption',
             unit='m³',
             description='Industrial water usage',
-            minimum_operation_per_hour=10,  # Minimum 10 m³/h for process stability
-            maximum_operation_per_hour=500,  # Maximum 500 m³/h capacity limit
+            minimum_per_hour=10,  # Minimum 10 m³/h for process stability
+            maximum_per_hour=500,  # Maximum 500 m³/h capacity limit
             maximum_total=100_000,  # Annual permit limit: 100,000 m³
         )
         ```
@@ -142,14 +150,15 @@ class Effect(Element):
         is_objective: bool = False,
         specific_share_to_other_effects_operation: EffectValuesUser | None = None,
         specific_share_to_other_effects_invest: EffectValuesUser | None = None,
-        minimum_operation: Scalar | None = None,
-        maximum_operation: Scalar | None = None,
-        minimum_invest: Scalar | None = None,
-        maximum_invest: Scalar | None = None,
-        minimum_operation_per_hour: NumericDataTS | None = None,
-        maximum_operation_per_hour: NumericDataTS | None = None,
+        minimum_temporal: Scalar | None = None,
+        maximum_temporal: Scalar | None = None,
+        minimum_nontemporal: Scalar | None = None,
+        maximum_nontemporal: Scalar | None = None,
+        minimum_per_hour: NumericDataTS | None = None,
+        maximum_per_hour: NumericDataTS | None = None,
         minimum_total: Scalar | None = None,
         maximum_total: Scalar | None = None,
+        **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
         self.label = label
@@ -161,22 +170,227 @@ class Effect(Element):
             specific_share_to_other_effects_operation or {}
         )
         self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
-        self.minimum_operation = minimum_operation
-        self.maximum_operation = maximum_operation
-        self.minimum_operation_per_hour = minimum_operation_per_hour
-        self.maximum_operation_per_hour = maximum_operation_per_hour
-        self.minimum_invest = minimum_invest
-        self.maximum_invest = maximum_invest
+
+        # Handle backwards compatibility for deprecated parameters
+        # Extract deprecated parameters from kwargs
+        minimum_operation = kwargs.pop('minimum_operation', None)
+        maximum_operation = kwargs.pop('maximum_operation', None)
+        minimum_invest = kwargs.pop('minimum_invest', None)
+        maximum_invest = kwargs.pop('maximum_invest', None)
+        minimum_operation_per_hour = kwargs.pop('minimum_operation_per_hour', None)
+        maximum_operation_per_hour = kwargs.pop('maximum_operation_per_hour', None)
+
+        # Handle minimum_temporal
+        if minimum_operation is not None:
+            warnings.warn(
+                "Parameter 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if minimum_temporal is not None:
+                raise ValueError('Either minimum_operation or minimum_temporal can be specified, but not both.')
+            minimum_temporal = minimum_operation
+
+        # Handle maximum_temporal
+        if maximum_operation is not None:
+            warnings.warn(
+                "Parameter 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if maximum_temporal is not None:
+                raise ValueError('Either maximum_operation or maximum_temporal can be specified, but not both.')
+            maximum_temporal = maximum_operation
+
+        # Handle minimum_nontemporal
+        if minimum_invest is not None:
+            warnings.warn(
+                "Parameter 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if minimum_nontemporal is not None:
+                raise ValueError('Either minimum_invest or minimum_nontemporal can be specified, but not both.')
+            minimum_nontemporal = minimum_invest
+
+        # Handle maximum_nontemporal
+        if maximum_invest is not None:
+            warnings.warn(
+                "Parameter 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if maximum_nontemporal is not None:
+                raise ValueError('Either maximum_invest or maximum_nontemporal can be specified, but not both.')
+            maximum_nontemporal = maximum_invest
+
+        # Handle minimum_per_hour
+        if minimum_operation_per_hour is not None:
+            warnings.warn(
+                "Parameter 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if minimum_per_hour is not None:
+                raise ValueError(
+                    'Either minimum_operation_per_hour or minimum_per_hour can be specified, but not both.'
+                )
+            minimum_per_hour = minimum_operation_per_hour
+
+        # Handle maximum_per_hour
+        if maximum_operation_per_hour is not None:
+            warnings.warn(
+                "Parameter 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if maximum_per_hour is not None:
+                raise ValueError(
+                    'Either maximum_operation_per_hour or maximum_per_hour can be specified, but not both.'
+                )
+            maximum_per_hour = maximum_operation_per_hour
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
+
+        # Set attributes directly
+        self.minimum_temporal = minimum_temporal
+        self.maximum_temporal = maximum_temporal
+        self.minimum_nontemporal = minimum_nontemporal
+        self.maximum_nontemporal = maximum_nontemporal
+        self.minimum_per_hour = minimum_per_hour
+        self.maximum_per_hour = maximum_per_hour
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
-    def transform_data(self, flow_system: FlowSystem):
-        self.minimum_operation_per_hour = flow_system.create_time_series(
-            f'{self.label_full}|minimum_operation_per_hour', self.minimum_operation_per_hour
+    # Backwards compatible properties (deprecated)
+    @property
+    def minimum_operation(self):
+        """DEPRECATED: Use 'minimum_temporal' property instead."""
+        warnings.warn(
+            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
-        self.maximum_operation_per_hour = flow_system.create_time_series(
-            f'{self.label_full}|maximum_operation_per_hour',
-            self.maximum_operation_per_hour,
+        return self.minimum_temporal
+
+    @minimum_operation.setter
+    def minimum_operation(self, value):
+        """DEPRECATED: Use 'minimum_temporal' property instead."""
+        warnings.warn(
+            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.minimum_temporal = value
+
+    @property
+    def maximum_operation(self):
+        """DEPRECATED: Use 'maximum_temporal' property instead."""
+        warnings.warn(
+            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.maximum_temporal
+
+    @maximum_operation.setter
+    def maximum_operation(self, value):
+        """DEPRECATED: Use 'maximum_temporal' property instead."""
+        warnings.warn(
+            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.maximum_temporal = value
+
+    @property
+    def minimum_invest(self):
+        """DEPRECATED: Use 'minimum_nontemporal' property instead."""
+        warnings.warn(
+            "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.minimum_nontemporal
+
+    @minimum_invest.setter
+    def minimum_invest(self, value):
+        """DEPRECATED: Use 'minimum_nontemporal' property instead."""
+        warnings.warn(
+            "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.minimum_nontemporal = value
+
+    @property
+    def maximum_invest(self):
+        """DEPRECATED: Use 'maximum_nontemporal' property instead."""
+        warnings.warn(
+            "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.maximum_nontemporal
+
+    @maximum_invest.setter
+    def maximum_invest(self, value):
+        """DEPRECATED: Use 'maximum_nontemporal' property instead."""
+        warnings.warn(
+            "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.maximum_nontemporal = value
+
+    @property
+    def minimum_operation_per_hour(self):
+        """DEPRECATED: Use 'minimum_per_hour' property instead."""
+        warnings.warn(
+            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.minimum_per_hour
+
+    @minimum_operation_per_hour.setter
+    def minimum_operation_per_hour(self, value):
+        """DEPRECATED: Use 'minimum_per_hour' property instead."""
+        warnings.warn(
+            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.minimum_per_hour = value
+
+    @property
+    def maximum_operation_per_hour(self):
+        """DEPRECATED: Use 'maximum_per_hour' property instead."""
+        warnings.warn(
+            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.maximum_per_hour
+
+    @maximum_operation_per_hour.setter
+    def maximum_operation_per_hour(self, value):
+        """DEPRECATED: Use 'maximum_per_hour' property instead."""
+        warnings.warn(
+            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.maximum_per_hour = value
+
+    def transform_data(self, flow_system: FlowSystem):
+        self.minimum_per_hour = flow_system.create_time_series(
+            f'{self.label_full}|minimum_per_hour', self.minimum_per_hour
+        )
+        self.maximum_per_hour = flow_system.create_time_series(
+            f'{self.label_full}|maximum_per_hour',
+            self.maximum_per_hour,
         )
 
         self.specific_share_to_other_effects_operation = flow_system.create_effect_time_series(
@@ -198,32 +412,32 @@ class EffectModel(ElementModel):
         super().__init__(model, element)
         self.element: Effect = element
         self.total: linopy.Variable | None = None
-        self.invest: ShareAllocationModel = self.add(
+        self.nontemporal: ShareAllocationModel = self.add(
             ShareAllocationModel(
                 self._model,
                 False,
                 self.label_of_element,
-                'invest',
-                label_full=f'{self.label_full}(invest)',
-                total_max=self.element.maximum_invest,
-                total_min=self.element.minimum_invest,
+                'nontemporal',
+                label_full=f'{self.label_full}(nontemporal)',
+                total_max=self.element.maximum_nontemporal,
+                total_min=self.element.minimum_nontemporal,
             )
         )
 
-        self.operation: ShareAllocationModel = self.add(
+        self.temporal: ShareAllocationModel = self.add(
             ShareAllocationModel(
                 self._model,
                 True,
                 self.label_of_element,
-                'operation',
-                label_full=f'{self.label_full}(operation)',
-                total_max=self.element.maximum_operation,
-                total_min=self.element.minimum_operation,
-                min_per_hour=self.element.minimum_operation_per_hour.active_data
-                if self.element.minimum_operation_per_hour is not None
+                'temporal',
+                label_full=f'{self.label_full}(temporal)',
+                total_max=self.element.maximum_temporal,
+                total_min=self.element.minimum_temporal,
+                min_per_hour=self.element.minimum_per_hour.active_data
+                if self.element.minimum_per_hour is not None
                 else None,
-                max_per_hour=self.element.maximum_operation_per_hour.active_data
-                if self.element.maximum_operation_per_hour is not None
+                max_per_hour=self.element.maximum_per_hour.active_data
+                if self.element.maximum_per_hour is not None
                 else None,
             )
         )
@@ -237,14 +451,14 @@ class EffectModel(ElementModel):
                 lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
                 upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
                 coords=None,
-                name=f'{self.label_full}|total',
+                name=f'{self.label_full}',
             ),
             'total',
         )
 
         self.add(
             self._model.add_constraints(
-                self.total == self.operation.total.sum() + self.invest.total.sum(), name=f'{self.label_full}|total'
+                self.total == self.temporal.total.sum() + self.nontemporal.total.sum(), name=f'{self.label_full}'
             ),
             'total',
         )
@@ -424,13 +638,13 @@ class EffectCollectionModel(Model):
         self,
         name: str,
         expressions: EffectValuesExpr,
-        target: Literal['operation', 'invest'],
+        target: Literal['temporal', 'nontemporal'],
     ) -> None:
         for effect, expression in expressions.items():
-            if target == 'operation':
-                self.effects[effect].model.operation.add_share(name, expression)
-            elif target == 'invest':
-                self.effects[effect].model.invest.add_share(name, expression)
+            if target == 'temporal':
+                self.effects[effect].model.temporal.add_share(name, expression)
+            elif target == 'nontemporal':
+                self.effects[effect].model.nontemporal.add_share(name, expression)
             else:
                 raise ValueError(f'Target {target} not supported!')
 
@@ -454,15 +668,15 @@ class EffectCollectionModel(Model):
 
     def _add_share_between_effects(self):
         for origin_effect in self.effects:
-            # 1. operation: -> hier sind es Zeitreihen (share_TS)
+            # 1. temporal: -> hier sind es Zeitreihen (share_TS)
             for target_effect, time_series in origin_effect.specific_share_to_other_effects_operation.items():
-                self.effects[target_effect].model.operation.add_share(
-                    origin_effect.model.operation.label_full,
-                    origin_effect.model.operation.total_per_timestep * time_series.active_data,
+                self.effects[target_effect].model.temporal.add_share(
+                    origin_effect.model.temporal.label_full,
+                    origin_effect.model.temporal.total_per_timestep * time_series.active_data,
                 )
-            # 2. invest:    -> hier ist es Scalar (share)
+            # 2. nontemporal:    -> hier ist es Scalar (share)
             for target_effect, factor in origin_effect.specific_share_to_other_effects_invest.items():
-                self.effects[target_effect].model.invest.add_share(
-                    origin_effect.model.invest.label_full,
-                    origin_effect.model.invest.total * factor,
+                self.effects[target_effect].model.nontemporal.add_share(
+                    origin_effect.model.nontemporal.label_full,
+                    origin_effect.model.nontemporal.total * factor,
                 )

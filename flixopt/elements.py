@@ -575,7 +575,7 @@ class FlowModel(ElementModel):
                     effect: self.flow_rate * self._model.hours_per_step * factor.active_data
                     for effect, factor in self.element.effects_per_flow_hour.items()
                 },
-                target='operation',
+                target='temporal',
             )
 
     def _create_bounds_for_load_factor(self):

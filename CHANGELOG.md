@@ -48,6 +48,13 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### ♻️ Changed
 
 ### 🗑️ Deprecated
+- Renamed `Effect` parameters:
+  - `minimum_investment` → `minimum_nontemporal`
+  - `maximum_investment` → `maximum_nontemporal`
+  - `minimum_operation` → `minimum_temporal`
+  - `maximum_operation` → `maximum_temporal`
+  - `minimum_operation_per_hour` → `minimum_per_hour`
+  - `maximum_operation_per_hour` → `maximum_per_hour`
 
 ### 🔥 Removed
 

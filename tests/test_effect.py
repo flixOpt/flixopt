@@ -15,39 +15,36 @@ class TestBusModel:
         model = create_linopy_model(flow_system)
 
         assert set(effect.model.variables) == {
-            'Effect1(invest)|total',
-            'Effect1(operation)|total',
-            'Effect1(operation)|total_per_timestep',
-            'Effect1|total',
+            'Effect1(nontemporal)',
+            'Effect1(temporal)',
+            'Effect1(temporal)|per_timestep',
+            'Effect1',
         }
         assert set(effect.model.constraints) == {
-            'Effect1(invest)|total',
-            'Effect1(operation)|total',
-            'Effect1(operation)|total_per_timestep',
-            'Effect1|total',
+            'Effect1(nontemporal)',
+            'Effect1(temporal)',
+            'Effect1(temporal)|per_timestep',
+            'Effect1',
         }
 
-        assert_var_equal(model.variables['Effect1|total'], model.add_variables())
-        assert_var_equal(model.variables['Effect1(invest)|total'], model.add_variables())
-        assert_var_equal(model.variables['Effect1(operation)|total'], model.add_variables())
-        assert_var_equal(
-            model.variables['Effect1(operation)|total_per_timestep'], model.add_variables(coords=(timesteps,))
-        )
+        assert_var_equal(model.variables['Effect1'], model.add_variables())
+        assert_var_equal(model.variables['Effect1(nontemporal)'], model.add_variables())
+        assert_var_equal(model.variables['Effect1(temporal)'], model.add_variables())
+        assert_var_equal(model.variables['Effect1(temporal)|per_timestep'], model.add_variables(coords=(timesteps,)))
 
         assert_conequal(
-            model.constraints['Effect1|total'],
-            model.variables['Effect1|total']
-            == model.variables['Effect1(operation)|total'] + model.variables['Effect1(invest)|total'],
+            model.constraints['Effect1'],
+            model.variables['Effect1']
+            == model.variables['Effect1(temporal)'] + model.variables['Effect1(nontemporal)'],
         )
-        assert_conequal(model.constraints['Effect1(invest)|total'], model.variables['Effect1(invest)|total'] == 0)
+        assert_conequal(model.constraints['Effect1(nontemporal)'], model.variables['Effect1(nontemporal)'] == 0)
         assert_conequal(
-            model.constraints['Effect1(operation)|total'],
-            model.variables['Effect1(operation)|total']
-            == model.variables['Effect1(operation)|total_per_timestep'].sum(),
+            model.constraints['Effect1(temporal)'],
+            model.variables['Effect1(temporal)'] == model.variables['Effect1(temporal)|per_timestep'].sum(),
         )
         assert_conequal(
-            model.constraints['Effect1(operation)|total_per_timestep'],
-            model.variables['Effect1(operation)|total_per_timestep'] == 0,
+            model.constraints['Effect1(temporal)|per_timestep'],
+            model.variables['Effect1(temporal)|per_timestep'] == 0,
         )
 
     def test_bounds(self, basic_flow_system_linopy):
@@ -57,56 +54,55 @@ class TestBusModel:
             'Effect1',
             '€',
             'Testing Effect',
-            minimum_operation=1.0,
-            maximum_operation=1.1,
-            minimum_invest=2.0,
-            maximum_invest=2.1,
+            minimum_temporal=1.0,
+            maximum_temporal=1.1,
+            minimum_nontemporal=2.0,
+            maximum_nontemporal=2.1,
             minimum_total=3.0,
             maximum_total=3.1,
-            minimum_operation_per_hour=4.0,
-            maximum_operation_per_hour=4.1,
+            minimum_per_hour=4.0,
+            maximum_per_hour=4.1,
         )
 
         flow_system.add_elements(effect)
         model = create_linopy_model(flow_system)
 
         assert set(effect.model.variables) == {
-            'Effect1(invest)|total',
-            'Effect1(operation)|total',
-            'Effect1(operation)|total_per_timestep',
-            'Effect1|total',
+            'Effect1(nontemporal)',
+            'Effect1(temporal)',
+            'Effect1(temporal)|per_timestep',
+            'Effect1',
         }
         assert set(effect.model.constraints) == {
-            'Effect1(invest)|total',
-            'Effect1(operation)|total',
-            'Effect1(operation)|total_per_timestep',
-            'Effect1|total',
+            'Effect1(nontemporal)',
+            'Effect1(temporal)',
+            'Effect1(temporal)|per_timestep',
+            'Effect1',
         }
 
-        assert_var_equal(model.variables['Effect1|total'], model.add_variables(lower=3.0, upper=3.1))
-        assert_var_equal(model.variables['Effect1(invest)|total'], model.add_variables(lower=2.0, upper=2.1))
-        assert_var_equal(model.variables['Effect1(operation)|total'], model.add_variables(lower=1.0, upper=1.1))
+        assert_var_equal(model.variables['Effect1'], model.add_variables(lower=3.0, upper=3.1))
+        assert_var_equal(model.variables['Effect1(nontemporal)'], model.add_variables(lower=2.0, upper=2.1))
+        assert_var_equal(model.variables['Effect1(temporal)'], model.add_variables(lower=1.0, upper=1.1))
         assert_var_equal(
-            model.variables['Effect1(operation)|total_per_timestep'],
+            model.variables['Effect1(temporal)|per_timestep'],
             model.add_variables(
                 lower=4.0 * model.hours_per_step, upper=4.1 * model.hours_per_step, coords=(timesteps,)
             ),
         )
 
         assert_conequal(
-            model.constraints['Effect1|total'],
-            model.variables['Effect1|total']
-            == model.variables['Effect1(operation)|total'] + model.variables['Effect1(invest)|total'],
+            model.constraints['Effect1'],
+            model.variables['Effect1']
+            == model.variables['Effect1(temporal)'] + model.variables['Effect1(nontemporal)'],
         )
-        assert_conequal(model.constraints['Effect1(invest)|total'], model.variables['Effect1(invest)|total'] == 0)
+        assert_conequal(model.constraints['Effect1(nontemporal)'], model.variables['Effect1(nontemporal)'] == 0)
         assert_conequal(
-            model.constraints['Effect1(operation)|total'],
-            model.variables['Effect1(operation)|total']
-            == model.variables['Effect1(operation)|total_per_timestep'].sum(),
+            model.constraints['Effect1(temporal)'],
+            model.variables['Effect1(temporal)'] == model.variables['Effect1(temporal)|per_timestep'].sum(),
         )
         assert_conequal(
-            model.constraints['Effect1(operation)|total_per_timestep'],
-            model.variables['Effect1(operation)|total_per_timestep'] == 0,
+            model.constraints['Effect1(temporal)|per_timestep'],
+            model.variables['Effect1(temporal)|per_timestep'] == 0,
         )
 
     def test_shares(self, basic_flow_system_linopy):
@@ -124,40 +120,41 @@ class TestBusModel:
         model = create_linopy_model(flow_system)
 
         assert set(effect2.model.variables) == {
-            'Effect2(invest)|total',
-            'Effect2(operation)|total',
-            'Effect2(operation)|total_per_timestep',
-            'Effect2|total',
-            'Effect1(invest)->Effect2(invest)',
-            'Effect1(operation)->Effect2(operation)',
+            'Effect2(nontemporal)',
+            'Effect2(temporal)',
+            'Effect2(temporal)|per_timestep',
+            'Effect2',
+            'Effect1(nontemporal)->Effect2(nontemporal)',
+            'Effect1(temporal)->Effect2(temporal)',
         }
         assert set(effect2.model.constraints) == {
-            'Effect2(invest)|total',
-            'Effect2(operation)|total',
-            'Effect2(operation)|total_per_timestep',
-            'Effect2|total',
-            'Effect1(invest)->Effect2(invest)',
-            'Effect1(operation)->Effect2(operation)',
+            'Effect2(nontemporal)',
+            'Effect2(temporal)',
+            'Effect2(temporal)|per_timestep',
+            'Effect2',
+            'Effect1(nontemporal)->Effect2(nontemporal)',
+            'Effect1(temporal)->Effect2(temporal)',
         }
 
         assert_conequal(
-            model.constraints['Effect2(invest)|total'],
-            model.variables['Effect2(invest)|total'] == model.variables['Effect1(invest)->Effect2(invest)'],
+            model.constraints['Effect2(nontemporal)'],
+            model.variables['Effect2(nontemporal)'] == model.variables['Effect1(nontemporal)->Effect2(nontemporal)'],
         )
 
         assert_conequal(
-            model.constraints['Effect2(operation)|total_per_timestep'],
-            model.variables['Effect2(operation)|total_per_timestep']
-            == model.variables['Effect1(operation)->Effect2(operation)'],
+            model.constraints['Effect2(temporal)|per_timestep'],
+            model.variables['Effect2(temporal)|per_timestep']
+            == model.variables['Effect1(temporal)->Effect2(temporal)'],
         )
 
         assert_conequal(
-            model.constraints['Effect1(operation)->Effect2(operation)'],
-            model.variables['Effect1(operation)->Effect2(operation)']
-            == model.variables['Effect1(operation)|total_per_timestep'] * 1.1,
+            model.constraints['Effect1(temporal)->Effect2(temporal)'],
+            model.variables['Effect1(temporal)->Effect2(temporal)']
+            == model.variables['Effect1(temporal)|per_timestep'] * 1.1,
         )
 
         assert_conequal(
-            model.constraints['Effect1(invest)->Effect2(invest)'],
-            model.variables['Effect1(invest)->Effect2(invest)'] == model.variables['Effect1(invest)|total'] * 2.1,
+            model.constraints['Effect1(nontemporal)->Effect2(nontemporal)'],
+            model.variables['Effect1(nontemporal)->Effect2(nontemporal)']
+            == model.variables['Effect1(nontemporal)'] * 2.1,
         )

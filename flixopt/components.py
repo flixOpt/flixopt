@@ -975,7 +975,7 @@ class SourceAndSink(Component):
         prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
         if source is not None:
             warnings.warn(
-                'The use of the source argument is deprecated. Use the outputs argument instead.',
+                'The use of the "source" argument is deprecated. Use the "outputs" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -985,7 +985,7 @@ class SourceAndSink(Component):
 
         if sink is not None:
             warnings.warn(
-                'The use of the sink argument is deprecated. Use the inputs argument instead.',
+                'The use of the "sink" argument is deprecated. Use the "inputs" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -995,11 +995,14 @@ class SourceAndSink(Component):
 
         if prevent_simultaneous_sink_and_source is not None:
             warnings.warn(
-                'The use of the prevent_simultaneous_sink_and_source argument is deprecated. Use the prevent_simultaneous_flow_rates argument instead.',
+                'The use of the "prevent_simultaneous_sink_and_source" argument is deprecated. Use the "prevent_simultaneous_flow_rates" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
             prevent_simultaneous_flow_rates = prevent_simultaneous_sink_and_source
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
@@ -1125,13 +1128,16 @@ class Source(Component):
         source = kwargs.pop('source', None)
         if source is not None:
             warnings.warn(
-                'The use of the source argument is deprecated. Use the outputs argument instead.',
+                'The use of the "source" argument is deprecated. Use the "outputs" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
             if outputs is not None:
                 raise ValueError('Either source or outputs can be specified, but not both.')
             outputs = [source]
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
@@ -1253,13 +1259,16 @@ class Sink(Component):
         sink = kwargs.pop('sink', None)
         if sink is not None:
             warnings.warn(
-                'The use of the sink argument is deprecated. Use the inputs argument instead.',
+                'The use of the "sink" argument is deprecated. Use the "inputs" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
             if inputs is not None:
                 raise ValueError('Either sink or inputs can be specified, but not both.')
             inputs = [sink]
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
