@@ -60,8 +60,8 @@ class TestBusModel:
             maximum_nontemporal=2.1,
             minimum_total=3.0,
             maximum_total=3.1,
-            minimum_temporal_per_hour=4.0,
-            maximum_temporal_per_hour=4.1,
+            minimum_per_hour=4.0,
+            maximum_per_hour=4.1,
         )
 
         flow_system.add_elements(effect)

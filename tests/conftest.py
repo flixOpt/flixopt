@@ -62,7 +62,7 @@ def simple_flow_system() -> fx.FlowSystem:
         'kg',
         'CO2_e-Emissionen',
         specific_share_to_other_effects_operation={costs.label: 0.2},
-        maximum_temporal_per_hour=1000,
+        maximum_per_hour=1000,
     )
 
     # Create components

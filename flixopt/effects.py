@@ -54,8 +54,8 @@ class Effect(Element):
             Maps this effect's investment values to contributions to other effects.
         minimum_temporal: Minimum allowed total contribution across all timesteps.
         maximum_temporal: Maximum allowed total contribution across all timesteps.
-        minimum_temporal_per_hour: Minimum allowed contribution per hour.
-        maximum_temporal_per_hour: Maximum allowed contribution per hour.
+        minimum_per_hour: Minimum allowed contribution per hour.
+        maximum_per_hour: Maximum allowed contribution per hour.
         minimum_nontemporal: Minimum allowed total nontemporal contribution.
         maximum_nontemporal: Maximum allowed total nontemporal contribution.
         minimum_total: Minimum allowed total effect (temporal + nontemporal combined).
@@ -68,8 +68,8 @@ class Effect(Element):
         maximum_operation: Use `maximum_temporal` instead.
         minimum_invest: Use `minimum_nontemporal` instead.
         maximum_invest: Use `maximum_nontemporal` instead.
-        minimum_operation_per_hour: Use `minimum_temporal_per_hour` instead.
-        maximum_operation_per_hour: Use `maximum_temporal_per_hour` instead.
+        minimum_operation_per_hour: Use `minimum_per_hour` instead.
+        maximum_operation_per_hour: Use `maximum_per_hour` instead.
 
     Examples:
         Basic cost objective:
@@ -119,8 +119,8 @@ class Effect(Element):
             label='water_consumption',
             unit='m³',
             description='Industrial water usage',
-            minimum_temporal_per_hour=10,  # Minimum 10 m³/h for process stability
-            maximum_temporal_per_hour=500,  # Maximum 500 m³/h capacity limit
+            minimum_per_hour=10,  # Minimum 10 m³/h for process stability
+            maximum_per_hour=500,  # Maximum 500 m³/h capacity limit
             maximum_total=100_000,  # Annual permit limit: 100,000 m³
         )
         ```
@@ -154,8 +154,8 @@ class Effect(Element):
         maximum_temporal: Scalar | None = None,
         minimum_nontemporal: Scalar | None = None,
         maximum_nontemporal: Scalar | None = None,
-        minimum_temporal_per_hour: NumericDataTS | None = None,
-        maximum_temporal_per_hour: NumericDataTS | None = None,
+        minimum_per_hour: NumericDataTS | None = None,
+        maximum_per_hour: NumericDataTS | None = None,
         minimum_total: Scalar | None = None,
         maximum_total: Scalar | None = None,
         **kwargs,
@@ -226,31 +226,31 @@ class Effect(Element):
                 raise ValueError('Either maximum_invest or maximum_nontemporal can be specified, but not both.')
             maximum_nontemporal = maximum_invest
 
-        # Handle minimum_temporal_per_hour
+        # Handle minimum_per_hour
         if minimum_operation_per_hour is not None:
             warnings.warn(
-                "Parameter 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
+                "Parameter 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if minimum_temporal_per_hour is not None:
+            if minimum_per_hour is not None:
                 raise ValueError(
-                    'Either minimum_operation_per_hour or minimum_temporal_per_hour can be specified, but not both.'
+                    'Either minimum_operation_per_hour or minimum_per_hour can be specified, but not both.'
                 )
-            minimum_temporal_per_hour = minimum_operation_per_hour
+            minimum_per_hour = minimum_operation_per_hour
 
-        # Handle maximum_temporal_per_hour
+        # Handle maximum_per_hour
         if maximum_operation_per_hour is not None:
             warnings.warn(
-                "Parameter 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
+                "Parameter 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if maximum_temporal_per_hour is not None:
+            if maximum_per_hour is not None:
                 raise ValueError(
-                    'Either maximum_operation_per_hour or maximum_temporal_per_hour can be specified, but not both.'
+                    'Either maximum_operation_per_hour or maximum_per_hour can be specified, but not both.'
                 )
-            maximum_temporal_per_hour = maximum_operation_per_hour
+            maximum_per_hour = maximum_operation_per_hour
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
@@ -260,8 +260,8 @@ class Effect(Element):
         self.maximum_temporal = maximum_temporal
         self.minimum_nontemporal = minimum_nontemporal
         self.maximum_nontemporal = maximum_nontemporal
-        self.minimum_temporal_per_hour = minimum_temporal_per_hour
-        self.maximum_temporal_per_hour = maximum_temporal_per_hour
+        self.minimum_per_hour = minimum_per_hour
+        self.maximum_per_hour = maximum_per_hour
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
 
@@ -364,59 +364,59 @@ class Effect(Element):
 
     @property
     def minimum_operation_per_hour(self):
-        """DEPRECATED: Use 'minimum_temporal_per_hour' property instead."""
+        """DEPRECATED: Use 'minimum_per_hour' property instead."""
         import warnings
 
         warnings.warn(
-            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
+            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.minimum_temporal_per_hour
+        return self.minimum_per_hour
 
     @minimum_operation_per_hour.setter
     def minimum_operation_per_hour(self, value):
-        """DEPRECATED: Use 'minimum_temporal_per_hour' property instead."""
+        """DEPRECATED: Use 'minimum_per_hour' property instead."""
         import warnings
 
         warnings.warn(
-            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_temporal_per_hour' instead.",
+            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        self.minimum_temporal_per_hour = value
+        self.minimum_per_hour = value
 
     @property
     def maximum_operation_per_hour(self):
-        """DEPRECATED: Use 'maximum_temporal_per_hour' property instead."""
+        """DEPRECATED: Use 'maximum_per_hour' property instead."""
         import warnings
 
         warnings.warn(
-            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
+            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.maximum_temporal_per_hour
+        return self.maximum_per_hour
 
     @maximum_operation_per_hour.setter
     def maximum_operation_per_hour(self, value):
-        """DEPRECATED: Use 'maximum_temporal_per_hour' property instead."""
+        """DEPRECATED: Use 'maximum_per_hour' property instead."""
         import warnings
 
         warnings.warn(
-            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_temporal_per_hour' instead.",
+            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        self.maximum_temporal_per_hour = value
+        self.maximum_per_hour = value
 
     def transform_data(self, flow_system: FlowSystem):
-        self.minimum_temporal_per_hour = flow_system.create_time_series(
-            f'{self.label_full}|minimum_temporal_per_hour', self.minimum_temporal_per_hour
+        self.minimum_per_hour = flow_system.create_time_series(
+            f'{self.label_full}|minimum_per_hour', self.minimum_per_hour
         )
-        self.maximum_temporal_per_hour = flow_system.create_time_series(
-            f'{self.label_full}|maximum_temporal_per_hour',
-            self.maximum_temporal_per_hour,
+        self.maximum_per_hour = flow_system.create_time_series(
+            f'{self.label_full}|maximum_per_hour',
+            self.maximum_per_hour,
         )
 
         self.specific_share_to_other_effects_operation = flow_system.create_effect_time_series(
@@ -459,11 +459,11 @@ class EffectModel(ElementModel):
                 label_full=f'{self.label_full}(temporal)',
                 total_max=self.element.maximum_temporal,
                 total_min=self.element.minimum_temporal,
-                min_per_hour=self.element.minimum_temporal_per_hour.active_data
-                if self.element.minimum_temporal_per_hour is not None
+                min_per_hour=self.element.minimum_per_hour.active_data
+                if self.element.minimum_per_hour is not None
                 else None,
-                max_per_hour=self.element.maximum_temporal_per_hour.active_data
-                if self.element.maximum_temporal_per_hour is not None
+                max_per_hour=self.element.maximum_per_hour.active_data
+                if self.element.maximum_per_hour is not None
                 else None,
             )
         )
