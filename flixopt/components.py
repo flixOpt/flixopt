@@ -970,39 +970,36 @@ class SourceAndSink(Component):
         meta_data: dict | None = None,
         **kwargs,
     ):
-        # Handle backwards compatibility for deprecated parameters
-        deprecated_mappings = {
-            'source': 'outputs',
-            'sink': 'inputs',
-            'prevent_simultaneous_sink_and_source': 'prevent_simultaneous_flow_rates',
-        }
-
-        # Set attribute values to allow conflict checking
-        self._temp_outputs = outputs
-        self._temp_inputs = inputs
-        self._temp_prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
-
-        # Handle deprecated parameters using centralized method
-        updated_params = self._handle_deprecated_params(kwargs, deprecated_mappings)
-
-        # Update parameters with deprecated values if provided, with special handling for list parameters
-        if 'outputs' in updated_params:
+        source = kwargs.pop('source', None)
+        sink = kwargs.pop('sink', None)
+        prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
+        if source is not None:
+            warnings.warn(
+                'The use of the source argument is deprecated. Use the outputs argument instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
             if outputs is not None:
                 raise ValueError('Either source or outputs can be specified, but not both.')
-            outputs = [updated_params['outputs']]
+            outputs = [source]
 
-        if 'inputs' in updated_params:
+        if sink is not None:
+            warnings.warn(
+                'The use of the sink argument is deprecated. Use the inputs argument instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
             if inputs is not None:
                 raise ValueError('Either sink or inputs can be specified, but not both.')
-            inputs = [updated_params['inputs']]
+            inputs = [sink]
 
-        if 'prevent_simultaneous_flow_rates' in updated_params:
-            prevent_simultaneous_flow_rates = updated_params['prevent_simultaneous_flow_rates']
-
-        # Clean up temporary attributes
-        delattr(self, '_temp_outputs')
-        delattr(self, '_temp_inputs')
-        delattr(self, '_temp_prevent_simultaneous_flow_rates')
+        if prevent_simultaneous_sink_and_source is not None:
+            warnings.warn(
+                'The use of the prevent_simultaneous_sink_and_source argument is deprecated. Use the prevent_simultaneous_flow_rates argument instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            prevent_simultaneous_flow_rates = prevent_simultaneous_sink_and_source
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
@@ -1128,23 +1125,16 @@ class Source(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
-        # Handle backwards compatibility for deprecated parameters
-        deprecated_mappings = {'source': 'outputs'}
-
-        # Set attribute to allow conflict checking
-        self._temp_outputs = outputs
-
-        # Handle deprecated parameters using centralized method
-        updated_params = self._handle_deprecated_params(kwargs, deprecated_mappings)
-
-        # Update parameters with deprecated values if provided
-        if 'outputs' in updated_params:
+        source = kwargs.pop('source', None)
+        if source is not None:
+            warnings.warn(
+                'The use of the source argument is deprecated. Use the outputs argument instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
             if outputs is not None:
                 raise ValueError('Either source or outputs can be specified, but not both.')
-            outputs = [updated_params['outputs']]
-
-        # Clean up temporary attribute
-        delattr(self, '_temp_outputs')
+            outputs = [source]
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
@@ -1266,23 +1256,16 @@ class Sink(Component):
         Note:
             The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
         """
-        # Handle backwards compatibility for deprecated parameters
-        deprecated_mappings = {'sink': 'inputs'}
-
-        # Set attribute to allow conflict checking
-        self._temp_inputs = inputs
-
-        # Handle deprecated parameters using centralized method
-        updated_params = self._handle_deprecated_params(kwargs, deprecated_mappings)
-
-        # Update parameters with deprecated values if provided
-        if 'inputs' in updated_params:
+        sink = kwargs.pop('sink', None)
+        if sink is not None:
+            warnings.warn(
+                'The use of the sink argument is deprecated. Use the inputs argument instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
             if inputs is not None:
                 raise ValueError('Either sink or inputs can be specified, but not both.')
-            inputs = [updated_params['inputs']]
-
-        # Clean up temporary attribute
-        delattr(self, '_temp_inputs')
+            inputs = [sink]
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
