@@ -342,7 +342,7 @@ jobs:
 
           # Wait and retry while PyPI indexes the package
           INSTALL_SUCCESS=false
-          for d in 10 20 40 80 120; do
+          for d in 10 20 40 80 120 240 480; do
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
 
@@ -392,10 +392,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Sync changelog to docs
+      - name: Extract changelog to docs
         run: |
-          cp CHANGELOG.md docs/changelog.md
-          echo "✅ Synced changelog to docs"
+          # Install packaging dependency for changelog extraction
+          uv pip install --system packaging
+
+          # Extract individual release files
+          python scripts/extract_changelog.py
+
+          echo "✅ Extracted changelog to docs/changelog/"
 
       - name: Install documentation dependencies
         run: |

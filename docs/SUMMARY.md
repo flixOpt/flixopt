@@ -4,4 +4,4 @@
 - [Examples](examples/)
 - [Contribute](contribute.md)
 - [API Reference](api-reference/)
-- [Release Notes](changelog.md)
+- [Release Notes](changelog/)
