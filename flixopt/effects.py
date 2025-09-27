@@ -172,8 +172,6 @@ class Effect(Element):
         self.specific_share_to_other_effects_invest: EffectValuesUser = specific_share_to_other_effects_invest or {}
 
         # Handle backwards compatibility for deprecated parameters
-        import warnings
-
         # Extract deprecated parameters from kwargs
         minimum_operation = kwargs.pop('minimum_operation', None)
         maximum_operation = kwargs.pop('maximum_operation', None)
@@ -269,8 +267,6 @@ class Effect(Element):
     @property
     def minimum_operation(self):
         """DEPRECATED: Use 'minimum_temporal' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
             DeprecationWarning,
@@ -281,8 +277,6 @@ class Effect(Element):
     @minimum_operation.setter
     def minimum_operation(self, value):
         """DEPRECATED: Use 'minimum_temporal' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
             DeprecationWarning,
@@ -293,8 +287,6 @@ class Effect(Element):
     @property
     def maximum_operation(self):
         """DEPRECATED: Use 'maximum_temporal' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
             DeprecationWarning,
@@ -305,8 +297,6 @@ class Effect(Element):
     @maximum_operation.setter
     def maximum_operation(self, value):
         """DEPRECATED: Use 'maximum_temporal' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
             DeprecationWarning,
@@ -317,8 +307,6 @@ class Effect(Element):
     @property
     def minimum_invest(self):
         """DEPRECATED: Use 'minimum_nontemporal' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
             DeprecationWarning,
@@ -329,8 +317,6 @@ class Effect(Element):
     @minimum_invest.setter
     def minimum_invest(self, value):
         """DEPRECATED: Use 'minimum_nontemporal' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
             DeprecationWarning,
@@ -341,8 +327,6 @@ class Effect(Element):
     @property
     def maximum_invest(self):
         """DEPRECATED: Use 'maximum_nontemporal' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
             DeprecationWarning,
@@ -353,8 +337,6 @@ class Effect(Element):
     @maximum_invest.setter
     def maximum_invest(self, value):
         """DEPRECATED: Use 'maximum_nontemporal' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
             DeprecationWarning,
@@ -365,8 +347,6 @@ class Effect(Element):
     @property
     def minimum_operation_per_hour(self):
         """DEPRECATED: Use 'minimum_per_hour' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
             DeprecationWarning,
@@ -377,8 +357,6 @@ class Effect(Element):
     @minimum_operation_per_hour.setter
     def minimum_operation_per_hour(self, value):
         """DEPRECATED: Use 'minimum_per_hour' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
             DeprecationWarning,
@@ -389,8 +367,6 @@ class Effect(Element):
     @property
     def maximum_operation_per_hour(self):
         """DEPRECATED: Use 'maximum_per_hour' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
             DeprecationWarning,
@@ -401,8 +377,6 @@ class Effect(Element):
     @maximum_operation_per_hour.setter
     def maximum_operation_per_hour(self, value):
         """DEPRECATED: Use 'maximum_per_hour' property instead."""
-        import warnings
-
         warnings.warn(
             "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
             DeprecationWarning,
