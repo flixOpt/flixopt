@@ -55,7 +55,7 @@ costs = fx.Effect(
     'costs', '€', 'Total costs',
     is_standard=True, is_objective=True,
     share_from_temporal={'CO2': 0.2, 'energy': 0.05},  # Costs receive contributions from other effects
-    share_from_nontemporal={'land': 100}  # €100 per m² land use
+    share_from_periodic={'land': 100}  # €100 per m² land use
 )
 ```
 This replaces the less intuitive `specific_share_to_other_effects_*` parameters and makes it clearer where effect contributions are coming from, rather than where they are going to.
@@ -122,8 +122,8 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
 - Renamed `Effect` parameters:
-  - `minimum_investment` → `minimum_nontemporal`
-  - `maximum_investment` → `maximum_nontemporal`
+  - `minimum_investment` → `minimum_periodic`
+  - `maximum_investment` → `maximum_periodic`
   - `minimum_operation` → `minimum_temporal`
   - `maximum_operation` → `maximum_temporal`
   - `minimum_operation_per_hour` → `minimum_per_hour`
@@ -132,7 +132,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 ### 🔥 Removed
 * **Effect share parameters**: The old `specific_share_to_other_effects_*` parameters were replaced WITHOUT DEPRECATION
   - `specific_share_to_other_effects_operation` → `share_from_temporal` (with inverted direction)
-  - `specific_share_to_other_effects_invest` → `share_from_nontemporal` (with inverted direction)
+  - `specific_share_to_other_effects_invest` → `share_from_periodic` (with inverted direction)
 
 ### 🐛 Fixed
 * Enhanced NetCDF I/O with proper attribute preservation for DataArrays
