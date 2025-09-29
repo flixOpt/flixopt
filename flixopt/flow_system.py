@@ -448,6 +448,12 @@ class FlowSystem(Interface):
                 )
 
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
+        """
+        Create a linopy model from the FlowSystem.
+
+        Args:
+            normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        """
         if not self.connected_and_transformed:
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
