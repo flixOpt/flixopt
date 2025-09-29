@@ -56,12 +56,14 @@ class Calculation:
             'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
         ] = None,
         folder: pathlib.Path | None = None,
+        normalize_weights: bool = True,
     ):
         """
         Args:
             name: name of calculation
             flow_system: flow_system which should be calculated
             folder: folder where results should be saved. If None, then the current working directory is used.
+            normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
             active_timesteps: Deprecated. Use FLowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
         """
         self.name = name
@@ -82,6 +84,7 @@ class Calculation:
             )
             flow_system = flow_system.sel(time=active_timesteps)
         self._active_timesteps = active_timesteps  # deprecated
+        self.normalize_weights = normalize_weights
 
         flow_system._used_in_calculation = True
 
@@ -183,7 +186,7 @@ class FullCalculation(Calculation):
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
-        self.model = self.flow_system.create_model()
+        self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
@@ -306,7 +309,7 @@ class AggregatedCalculation(FullCalculation):
         self._perform_aggregation()
 
         # Model the System
-        self.model = self.flow_system.create_model()
+        self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
         # Add Aggregation Submodel after modeling the rest
         self.aggregation = AggregationModel(

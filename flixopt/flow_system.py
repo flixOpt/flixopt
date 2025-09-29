@@ -415,13 +415,6 @@ class FlowSystem(Interface):
             return
 
         self.weights = self.fit_to_model_coords('weights', self.weights, dims=['period', 'scenario'])
-        if self.weights is not None:
-            total = float(self.weights.sum().item())
-            if not np.isclose(total, 1.0, atol=1e-12):
-                logger.warning(
-                    'Scenario weights are not normalized to 1. Normalizing to 1 is recommended for a better scaled model. '
-                    f'Sum of weights={total}'
-                )
 
         self._connect_network()
         for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
@@ -454,12 +447,12 @@ class FlowSystem(Interface):
                     f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
                 )
 
-    def create_model(self) -> FlowSystemModel:
+    def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         if not self.connected_and_transformed:
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
             )
-        self.model = FlowSystemModel(self)
+        self.model = FlowSystemModel(self, normalize_weights)
         return self.model
 
     def plot_network(

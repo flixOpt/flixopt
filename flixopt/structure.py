@@ -83,15 +83,16 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     """
     The FlowSystemModel is the linopy Model that is used to create the mathematical model of the flow_system.
     It is used to create and store the variables and constraints for the flow_system.
+
+    Args:
+        flow_system: The flow_system that is used to create the model.
+        normalize_weights: Whether to automatically normalize the weights to sum up to 1 when solving.
     """
 
-    def __init__(self, flow_system: FlowSystem):
-        """
-        Args:
-            flow_system: The flow_system that is used to create the model.
-        """
+    def __init__(self, flow_system: FlowSystem, normalize_weights: bool):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
+        self.normalize_weights = normalize_weights
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
 
@@ -169,11 +170,15 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def weights(self) -> int | xr.DataArray:
-        """Returns the scenario weights of the FlowSystem. If None, return weights that are normalized to 1 (one)"""
+        """Returns the weights of the FlowSystem. Normalizes to 1 if normalize_weights is True"""
         if self.flow_system.weights is not None:
-            return self.flow_system.weights
+            weights = self.flow_system.weights
+        else:
+            weights = self.flow_system.fit_to_model_coords('weights', 1, dims=['period', 'scenario'])
 
-        weights = self.flow_system.fit_to_model_coords('weights', 1, dims=['period', 'scenario'])
+        if not self.normalize_weights:
+            return weights
+
         return weights / weights.sum()
 
     def __repr__(self) -> str:
