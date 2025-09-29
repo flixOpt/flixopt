@@ -274,7 +274,6 @@ class FlowSystem(Interface):
             timesteps=ds.indexes['time'],
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
-            periods_of_last_period=reference_structure.get('periods_of_last_period'),
             weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
             if 'weights' in reference_structure
             else None,
