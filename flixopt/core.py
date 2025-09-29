@@ -21,7 +21,7 @@ PeriodicDataUser = int | float | np.integer | np.floating | np.ndarray | pd.Seri
 """User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension."""
 
 PeriodicData = xr.DataArray
-"""Internally used datatypes for periodic data. Can be a Scalar or an xr.DataArray."""
+"""Internally used datatypes for periodic data."""
 
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""

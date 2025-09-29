@@ -787,7 +787,7 @@ class LinearConverterModel(ComponentModel):
                     label_of_model=f'{self.label_of_element}',
                     piecewise_variables=piecewise_conversion,
                     zero_point=self.on_off.on if self.on_off is not None else False,
-                    as_time_series=True,
+                    dims=('time', 'period', 'scenario'),
                 ),
                 short_name='PiecewiseConversion',
             )
