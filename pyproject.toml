@@ -116,10 +116,47 @@ documentation = "https://flixopt.github.io/flixopt/"
 
 [tool.setuptools.packages.find]
 where = ["."]
-exclude = ["tests", "docs", "examples", "examples.*", "Tutorials", ".git", ".vscode", "build", ".venv", "venv/"]
+include = ["flixopt*"]
+exclude = [
+    "tests*",
+    "docs*",
+    "examples*",
+    "Tutorials*",
+    "scripts*",
+    "pics*",
+    "results*",
+    "lib*",
+    ".git*",
+    ".github*",
+    ".vscode*",
+    ".idea*",
+    "build*",
+    "dist*",
+    ".venv*",
+    "venv*",
+    "*.egg-info*",
+    "__pycache__*",
+    ".pytest_cache*",
+    ".ruff_cache*"
+]
 
 [tool.setuptools.package-data]
 "flixopt" = ["config.yaml"]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.exclude-package-data]
+"*" = [
+    "*.log",
+    "*.html",
+    "*.json",
+    "*.DS_Store",
+    "temp-*",
+    "*.pyc",
+    "*.pyo",
+    "__pycache__"
+]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
