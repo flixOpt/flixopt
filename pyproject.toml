@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Vector based energy and material flow optimization framework in Python."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT License" }
+license = "MIT"
 authors = [
     { name = "Chair of Building Energy Systems and Heat Supply, TU Dresden", email = "peter.stange@tu-dresden.de" },
     { name = "Felix Bumann", email = "felixbumann387@gmail.com" },
@@ -22,7 +22,6 @@ maintainers = [
 keywords = ["optimization", "energy systems", "numerical analysis"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -30,7 +29,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
-    "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
     # Core scientific computing
@@ -117,46 +115,16 @@ documentation = "https://flixopt.github.io/flixopt/"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["flixopt*"]
-exclude = [
-    "tests*",
-    "docs*",
-    "examples*",
-    "Tutorials*",
-    "scripts*",
-    "pics*",
-    "results*",
-    "lib*",
-    ".git*",
-    ".github*",
-    ".vscode*",
-    ".idea*",
-    "build*",
-    "dist*",
-    ".venv*",
-    "venv*",
-    "*.egg-info*",
-    "__pycache__*",
-    ".pytest_cache*",
-    ".ruff_cache*"
-]
+exclude = ["tests*", "docs*", "examples*", "Tutorials*"]
 
 [tool.setuptools.package-data]
 "flixopt" = ["config.yaml"]
 
 [tool.setuptools]
-include-package-data = false
+include-package-data = true
 
 [tool.setuptools.exclude-package-data]
-"*" = [
-    "*.log",
-    "*.html",
-    "*.json",
-    "*.DS_Store",
-    "temp-*",
-    "*.pyc",
-    "*.pyo",
-    "__pycache__"
-]
+"*" = ["*.md", ".git*", "*.ipynb", "renovate.json"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
