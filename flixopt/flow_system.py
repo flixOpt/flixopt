@@ -176,17 +176,6 @@ class FlowSystem(Interface):
         )
 
     @staticmethod
-    def calculate_periods_per_period(periods: pd.Index, periods_of_last_period: int | None = None) -> xr.DataArray:
-        """Calculate duration of each timestep as a 1D DataArray."""
-        periods_per_period = np.diff(periods)
-        return xr.DataArray(
-            np.append(periods_per_period, periods_of_last_period or periods_per_period[-1]),
-            coords={'period': periods},
-            dims='period',
-            name='periods_per_period',
-        )
-
-    @staticmethod
     def _calculate_hours_of_previous_timesteps(
         timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: float | np.ndarray | None
     ) -> float | np.ndarray:
