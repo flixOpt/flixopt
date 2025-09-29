@@ -380,7 +380,7 @@ class AggregationModel(Submodel):
             # Begrenzung der Korrektur-Anzahl:
             # eq: sum(K) <= n_Corr_max
             self.add_constraints(
-                sum(var_k0) + sum(var_k1)
+                var_k0.sum() + var_k1.sum()
                 <= round(self.aggregation_parameters.percentage_of_period_freedom / 100 * length),
                 short_name=f'limit_corrections|{variable.name}',
             )

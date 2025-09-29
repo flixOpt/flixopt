@@ -78,7 +78,7 @@ class ModelingUtilitiesAbstract:
             return float(binary_values.item())
 
         # Check if final state is off
-        if np.isclose(binary_values.isel({dim: -1}).item(), 0, atol=epsilon).all():
+        if np.isclose(binary_values.isel({dim: -1}), 0, atol=epsilon).all():
             return 0.0
 
         # Find consecutive 'on' period from the end
