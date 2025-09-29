@@ -142,12 +142,12 @@ class TimeSeriesData(xr.DataArray):
     @property
     def agg_group(self):
         warnings.warn('agg_group is deprecated, use aggregation_group instead', DeprecationWarning, stacklevel=2)
-        return self._aggregation_group
+        return self.aggregation_group
 
     @property
     def agg_weight(self):
         warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
-        return self._aggregation_weight
+        return self.aggregation_weight
 
 
 TemporalDataUser = (
