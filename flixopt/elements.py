@@ -316,7 +316,7 @@ class Flow(Element):
                 effects_per_switch_on={'startup_cost': 100, 'wear': 0.1},
                 consecutive_on_hours_min=2,  # Must run at least 2 hours
                 consecutive_off_hours_min=1,  # Must stay off at least 1 hour
-                switch_on_total_max=200,  # Maximum 200 starts per year
+                switch_on_total_max=200,  # Maximum 200 starts per period
             ),
         )
         ```
@@ -430,16 +430,16 @@ class Flow(Element):
             prefix, self.effects_per_flow_hour, 'per_flow_hour'
         )
         self.flow_hours_total_max = flow_system.fit_to_model_coords(
-            f'{prefix}|flow_hours_total_max', self.flow_hours_total_max, dims=['year', 'scenario']
+            f'{prefix}|flow_hours_total_max', self.flow_hours_total_max, dims=['period', 'scenario']
         )
         self.flow_hours_total_min = flow_system.fit_to_model_coords(
-            f'{prefix}|flow_hours_total_min', self.flow_hours_total_min, dims=['year', 'scenario']
+            f'{prefix}|flow_hours_total_min', self.flow_hours_total_min, dims=['period', 'scenario']
         )
         self.load_factor_max = flow_system.fit_to_model_coords(
-            f'{prefix}|load_factor_max', self.load_factor_max, dims=['year', 'scenario']
+            f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
         )
         self.load_factor_min = flow_system.fit_to_model_coords(
-            f'{prefix}|load_factor_min', self.load_factor_min, dims=['year', 'scenario']
+            f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
         if self.on_off_parameters is not None:
@@ -447,7 +447,7 @@ class Flow(Element):
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system, prefix)
         else:
-            self.size = flow_system.fit_to_model_coords(f'{prefix}|size', self.size, dims=['year', 'scenario'])
+            self.size = flow_system.fit_to_model_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
@@ -485,7 +485,7 @@ class Flow(Element):
             ):
                 raise TypeError(
                     f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}. '
-                    f'Different values in different years or scenarios are not yet supported.'
+                    f'Different values in different periods or scenarios are not yet supported.'
                 )
 
     @property
@@ -530,7 +530,7 @@ class FlowModel(ElementModel):
                 self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else 0,
                 self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else None,
             ),
-            coords=['year', 'scenario'],
+            coords=['period', 'scenario'],
             short_name='total_flow_hours',
         )
 

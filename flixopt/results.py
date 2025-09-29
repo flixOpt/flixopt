@@ -283,7 +283,7 @@ class CalculationResults:
     def effect_share_factors(self):
         if self._effect_share_factors is None:
             effect_share_factors = self.flow_system.effects.calculate_effect_share_factors()
-            self._effect_share_factors = {'temporal': effect_share_factors[0], 'nontemporal': effect_share_factors[1]}
+            self._effect_share_factors = {'temporal': effect_share_factors[0], 'periodic': effect_share_factors[1]}
         return self._effect_share_factors
 
     @property
@@ -356,10 +356,10 @@ class CalculationResults:
             self._effects_per_component = xr.Dataset(
                 {
                     mode: self._create_effects_dataset(mode).to_dataarray('effect', name=mode)
-                    for mode in ['temporal', 'nontemporal', 'total']
+                    for mode in ['temporal', 'periodic', 'total']
                 }
             )
-            dim_order = ['time', 'year', 'scenario', 'component', 'effect']
+            dim_order = ['time', 'period', 'scenario', 'component', 'effect']
             self._effects_per_component = self._effects_per_component.transpose(*dim_order, missing_dims='ignore')
 
         return self._effects_per_component
@@ -477,7 +477,7 @@ class CalculationResults:
         self,
         element: str,
         effect: str,
-        mode: Literal['temporal', 'nontemporal'] | None = None,
+        mode: Literal['temporal', 'periodic'] | None = None,
         include_flows: bool = False,
     ) -> xr.Dataset:
         """Retrieves individual effect shares for a specific element and effect.
@@ -487,7 +487,7 @@ class CalculationResults:
         Args:
             element: The element identifier for which to retrieve effect shares.
             effect: The effect identifier for which to retrieve shares.
-            mode: Optional. The mode to retrieve shares for. Can be 'temporal', 'nontemporal',
+            mode: Optional. The mode to retrieve shares for. Can be 'temporal', 'periodic',
                 or None to retrieve both. Defaults to None.
 
         Returns:
@@ -507,13 +507,13 @@ class CalculationResults:
                         element=element, effect=effect, mode='temporal', include_flows=include_flows
                     ),
                     self.get_effect_shares(
-                        element=element, effect=effect, mode='nontemporal', include_flows=include_flows
+                        element=element, effect=effect, mode='periodic', include_flows=include_flows
                     ),
                 ]
             )
 
-        if mode not in ['temporal', 'nontemporal']:
-            raise ValueError(f'Mode {mode} is not available. Choose between "temporal" and "nontemporal".')
+        if mode not in ['temporal', 'periodic']:
+            raise ValueError(f'Mode {mode} is not available. Choose between "temporal" and "periodic".')
 
         ds = xr.Dataset()
 
@@ -541,7 +541,7 @@ class CalculationResults:
         self,
         element: str,
         effect: str,
-        mode: Literal['temporal', 'nontemporal', 'total'] = 'total',
+        mode: Literal['temporal', 'periodic', 'total'] = 'total',
         include_flows: bool = False,
     ) -> xr.DataArray:
         """Calculates the total effect for a specific element and effect.
@@ -554,8 +554,8 @@ class CalculationResults:
             effect: The effect identifier to calculate.
             mode: The calculation mode. Options are:
                 'temporal': Returns temporal effects.
-                'nontemporal': Returns investment-specific effects.
-                'total': Returns the sum of temporal effects and non-temporal effects. Defaults to 'total'.
+                'periodic': Returns investment-specific effects.
+                'total': Returns the sum of temporal effects and periodic effects. Defaults to 'total'.
             include_flows: Whether to include effects from flows connected to this element.
 
         Returns:
@@ -573,19 +573,19 @@ class CalculationResults:
             temporal = self._compute_effect_total(
                 element=element, effect=effect, mode='temporal', include_flows=include_flows
             )
-            nontemporal = self._compute_effect_total(
-                element=element, effect=effect, mode='nontemporal', include_flows=include_flows
+            periodic = self._compute_effect_total(
+                element=element, effect=effect, mode='periodic', include_flows=include_flows
             )
-            if nontemporal.isnull().all() and temporal.isnull().all():
+            if periodic.isnull().all() and temporal.isnull().all():
                 return xr.DataArray(np.nan)
             if temporal.isnull().all():
-                return nontemporal.rename(f'{element}->{effect}')
+                return periodic.rename(f'{element}->{effect}')
             temporal = temporal.sum('time')
-            if nontemporal.isnull().all():
+            if periodic.isnull().all():
                 return temporal.rename(f'{element}->{effect}')
             if 'time' in temporal.indexes:
                 temporal = temporal.sum('time')
-            return nontemporal + temporal
+            return periodic + temporal
 
         total = xr.DataArray(0)
         share_exists = False
@@ -618,12 +618,12 @@ class CalculationResults:
             total = xr.DataArray(np.nan)
         return total.rename(f'{element}->{effect}({mode})')
 
-    def _create_effects_dataset(self, mode: Literal['temporal', 'nontemporal', 'total']) -> xr.Dataset:
+    def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
         """Creates a dataset containing effect totals for all components (including their flows).
         The dataset does contain the direct as well as the indirect effects of each component.
 
         Args:
-            mode: The calculation mode ('temporal', 'nontemporal', or 'total').
+            mode: The calculation mode ('temporal', 'periodic', or 'total').
 
         Returns:
             An xarray Dataset with components as dimension and effects as variables.
@@ -665,12 +665,12 @@ class CalculationResults:
 
                 component_arrays.append(arr.expand_dims(component=[component]))
 
-            ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal')
+            ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal').rename(effect)
 
         # For now include a test to ensure correctness
         suffix = {
             'temporal': '(temporal)|per_timestep',
-            'nontemporal': '(nontemporal)',
+            'periodic': '(periodic)',
             'total': '',
         }
         for effect in self.effects:
@@ -706,18 +706,18 @@ class CalculationResults:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
 
         Examples:
-            Basic usage (uses first scenario, first year, all time):
+            Basic usage (uses first scenario, first period, all time):
 
             >>> results.plot_heatmap('Battery|charge_state')
 
-            Select specific scenario and year:
+            Select specific scenario and period:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={'scenario': 'base', 'year': 2024})
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={'scenario': 'base', 'period': 2024})
 
             Time filtering (summer months only):
 
@@ -931,7 +931,7 @@ class _NodeResults(_ElementResults):
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
                  If None, uses first value for each dimension (except time).
                  If empty dict {}, uses all values.
             style: The style to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
@@ -992,7 +992,7 @@ class _NodeResults(_ElementResults):
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine ('plotly' or 'matplotlib').
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
         """
@@ -1077,7 +1077,7 @@ class _NodeResults(_ElementResults):
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             drop_suffix: Whether to drop the suffix from the variable names.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
         """
@@ -1147,7 +1147,7 @@ class ComponentResults(_NodeResults):
             colors: Color scheme. Also see plotly.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             style: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
 
@@ -1378,7 +1378,7 @@ class SegmentedCalculationResults:
         identify potential issues from segmentation approach.
 
     Common Use Cases:
-        - **Large-Scale Analysis**: Annual or multi-year optimization results
+        - **Large-Scale Analysis**: Annual or multi-period optimization results
         - **Memory-Constrained Systems**: Results from systems exceeding hardware limits
         - **Segment Validation**: Verifying segmentation approach effectiveness
         - **Performance Monitoring**: Comparing segmented vs. full-horizon solutions
@@ -1555,7 +1555,7 @@ def plot_heatmap(
         save: Whether to save plot.
         show: Whether to display plot.
         engine: Plotting engine.
-        indexer: Optional selection dict, e.g., {'scenario': 'base', 'year': 2024}.
+        indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
              If None, uses first value for each dimension.
              If empty dict {}, uses all values.
     """

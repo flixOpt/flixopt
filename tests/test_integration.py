@@ -129,13 +129,13 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Kessel(Q_th)->costs(nontemporal)'].solution.values,
+            calculation.results.model['Kessel(Q_th)->costs(periodic)'].solution.values,
             1000 + 500,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Speicher->costs(nontemporal)'].solution.values,
+            calculation.results.model['Speicher->costs(periodic)'].solution.values,
             800 + 1,
             'costs doesnt match expected value',
         )
@@ -146,7 +146,7 @@ class TestComplex:
             'CO2 doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            calculation.results.model['CO2(nontemporal)'].solution.values,
+            calculation.results.model['CO2(periodic)'].solution.values,
             0.9999999999999994,
             'CO2 doesnt match expected value',
         )

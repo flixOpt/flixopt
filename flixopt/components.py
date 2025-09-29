@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import xarray as xr
 
-from .core import NonTemporalDataUser, PlausibilityError, TemporalData, TemporalDataUser
+from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -376,14 +376,14 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: NonTemporalDataUser | InvestParameters,
+        capacity_in_flow_hours: PeriodicDataUser | InvestParameters,
         relative_minimum_charge_state: TemporalDataUser = 0,
         relative_maximum_charge_state: TemporalDataUser = 1,
-        initial_charge_state: NonTemporalDataUser | Literal['lastValueOfSim'] = 0,
-        minimal_final_charge_state: NonTemporalDataUser | None = None,
-        maximal_final_charge_state: NonTemporalDataUser | None = None,
-        relative_minimum_final_charge_state: NonTemporalDataUser | None = None,
-        relative_maximum_final_charge_state: NonTemporalDataUser | None = None,
+        initial_charge_state: PeriodicDataUser | Literal['lastValueOfSim'] = 0,
+        minimal_final_charge_state: PeriodicDataUser | None = None,
+        maximal_final_charge_state: PeriodicDataUser | None = None,
+        relative_minimum_final_charge_state: PeriodicDataUser | None = None,
+        relative_maximum_final_charge_state: PeriodicDataUser | None = None,
         eta_charge: TemporalDataUser = 1,
         eta_discharge: TemporalDataUser = 1,
         relative_loss_per_hour: TemporalDataUser = 0,
@@ -442,29 +442,29 @@ class Storage(Component):
         )
         if not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = flow_system.fit_to_model_coords(
-                f'{prefix}|initial_charge_state', self.initial_charge_state, dims=['year', 'scenario']
+                f'{prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
             )
         self.minimal_final_charge_state = flow_system.fit_to_model_coords(
-            f'{prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['year', 'scenario']
+            f'{prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
         )
         self.maximal_final_charge_state = flow_system.fit_to_model_coords(
-            f'{prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['year', 'scenario']
+            f'{prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
         )
         self.relative_minimum_final_charge_state = flow_system.fit_to_model_coords(
             f'{prefix}|relative_minimum_final_charge_state',
             self.relative_minimum_final_charge_state,
-            dims=['year', 'scenario'],
+            dims=['period', 'scenario'],
         )
         self.relative_maximum_final_charge_state = flow_system.fit_to_model_coords(
             f'{prefix}|relative_maximum_final_charge_state',
             self.relative_maximum_final_charge_state,
-            dims=['year', 'scenario'],
+            dims=['period', 'scenario'],
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
             self.capacity_in_flow_hours.transform_data(flow_system, f'{prefix}|InvestParameters')
         else:
             self.capacity_in_flow_hours = flow_system.fit_to_model_coords(
-                f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['year', 'scenario']
+                f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
             )
 
     def _plausibility_checks(self) -> None:
@@ -787,7 +787,7 @@ class LinearConverterModel(ComponentModel):
                     label_of_model=f'{self.label_of_element}',
                     piecewise_variables=piecewise_conversion,
                     zero_point=self.on_off.on if self.on_off is not None else False,
-                    as_time_series=True,
+                    dims=('time', 'period', 'scenario'),
                 ),
                 short_name='PiecewiseConversion',
             )

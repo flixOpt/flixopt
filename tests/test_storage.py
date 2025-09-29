@@ -288,11 +288,11 @@ class TestStorageModel:
         # Check variable properties
         assert_var_equal(
             model['InvestStorage|size'],
-            model.add_variables(lower=0, upper=100, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_var_equal(
             model['InvestStorage|is_invested'],
-            model.add_variables(binary=True, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_conequal(
             model.constraints['InvestStorage|size|ub'],

@@ -668,7 +668,7 @@ class BoundingPatterns:
         name: str,
         max_change: float | xr.DataArray,
         initial_level: float | xr.DataArray = 0.0,
-        coord: str = 'year',
+        coord: str = 'period',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
         Link changes to level evolution with binary control and mutual exclusivity.

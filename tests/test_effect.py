@@ -25,7 +25,7 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect.submodel.variables),
             {
-                'Effect1(nontemporal)',
+                'Effect1(periodic)',
                 'Effect1(temporal)',
                 'Effect1(temporal)|per_timestep',
                 'Effect1',
@@ -36,7 +36,7 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect.submodel.constraints),
             {
-                'Effect1(nontemporal)',
+                'Effect1(periodic)',
                 'Effect1(temporal)',
                 'Effect1(temporal)|per_timestep',
                 'Effect1',
@@ -44,13 +44,15 @@ class TestEffectModel:
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(model.variables['Effect1'], model.add_variables(coords=model.get_coords(['year', 'scenario'])))
         assert_var_equal(
-            model.variables['Effect1(nontemporal)'], model.add_variables(coords=model.get_coords(['year', 'scenario']))
+            model.variables['Effect1'], model.add_variables(coords=model.get_coords(['period', 'scenario']))
+        )
+        assert_var_equal(
+            model.variables['Effect1(periodic)'], model.add_variables(coords=model.get_coords(['period', 'scenario']))
         )
         assert_var_equal(
             model.variables['Effect1(temporal)'],
-            model.add_variables(coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(coords=model.get_coords(['period', 'scenario'])),
         )
         assert_var_equal(
             model.variables['Effect1(temporal)|per_timestep'], model.add_variables(coords=model.get_coords())
@@ -58,10 +60,10 @@ class TestEffectModel:
 
         assert_conequal(
             model.constraints['Effect1'],
-            model.variables['Effect1']
-            == model.variables['Effect1(temporal)'] + model.variables['Effect1(nontemporal)'],
+            model.variables['Effect1'] == model.variables['Effect1(temporal)'] + model.variables['Effect1(periodic)'],
         )
-        assert_conequal(model.constraints['Effect1(nontemporal)'], model.variables['Effect1(nontemporal)'] == 0)
+        # In minimal/bounds tests with no contributing components, periodic totals should be zero
+        assert_conequal(model.constraints['Effect1(periodic)'], model.variables['Effect1(periodic)'] == 0)
         assert_conequal(
             model.constraints['Effect1(temporal)'],
             model.variables['Effect1(temporal)'] == model.variables['Effect1(temporal)|per_timestep'].sum('time'),
@@ -79,8 +81,8 @@ class TestEffectModel:
             'Testing Effect',
             minimum_temporal=1.0,
             maximum_temporal=1.1,
-            minimum_nontemporal=2.0,
-            maximum_nontemporal=2.1,
+            minimum_periodic=2.0,
+            maximum_periodic=2.1,
             minimum_total=3.0,
             maximum_total=3.1,
             minimum_per_hour=4.0,
@@ -93,7 +95,7 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect.submodel.variables),
             {
-                'Effect1(nontemporal)',
+                'Effect1(periodic)',
                 'Effect1(temporal)',
                 'Effect1(temporal)|per_timestep',
                 'Effect1',
@@ -104,7 +106,7 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect.submodel.constraints),
             {
-                'Effect1(nontemporal)',
+                'Effect1(periodic)',
                 'Effect1(temporal)',
                 'Effect1(temporal)|per_timestep',
                 'Effect1',
@@ -114,31 +116,31 @@ class TestEffectModel:
 
         assert_var_equal(
             model.variables['Effect1'],
-            model.add_variables(lower=3.0, upper=3.1, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=3.0, upper=3.1, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_var_equal(
-            model.variables['Effect1(nontemporal)'],
-            model.add_variables(lower=2.0, upper=2.1, coords=model.get_coords(['year', 'scenario'])),
+            model.variables['Effect1(periodic)'],
+            model.add_variables(lower=2.0, upper=2.1, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_var_equal(
             model.variables['Effect1(temporal)'],
-            model.add_variables(lower=1.0, upper=1.1, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=1.0, upper=1.1, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_var_equal(
             model.variables['Effect1(temporal)|per_timestep'],
             model.add_variables(
                 lower=4.0 * model.hours_per_step,
                 upper=4.1 * model.hours_per_step,
-                coords=model.get_coords(['time', 'year', 'scenario']),
+                coords=model.get_coords(['time', 'period', 'scenario']),
             ),
         )
 
         assert_conequal(
             model.constraints['Effect1'],
-            model.variables['Effect1']
-            == model.variables['Effect1(temporal)'] + model.variables['Effect1(nontemporal)'],
+            model.variables['Effect1'] == model.variables['Effect1(temporal)'] + model.variables['Effect1(periodic)'],
         )
-        assert_conequal(model.constraints['Effect1(nontemporal)'], model.variables['Effect1(nontemporal)'] == 0)
+        # In minimal/bounds tests with no contributing components, periodic totals should be zero
+        assert_conequal(model.constraints['Effect1(periodic)'], model.variables['Effect1(periodic)'] == 0)
         assert_conequal(
             model.constraints['Effect1(temporal)'],
             model.variables['Effect1(temporal)'] == model.variables['Effect1(temporal)|per_timestep'].sum('time'),
@@ -160,14 +162,14 @@ class TestEffectModel:
             '€',
             'Testing Effect',
             share_from_temporal={'Effect1': 1.1},
-            share_from_nontemporal={'Effect1': 2.1},
+            share_from_periodic={'Effect1': 2.1},
         )
         effect3 = fx.Effect(
             'Effect3',
             '€',
             'Testing Effect',
             share_from_temporal={'Effect1': 1.2},
-            share_from_nontemporal={'Effect1': 2.2},
+            share_from_periodic={'Effect1': 2.2},
         )
         flow_system.add_elements(effect1, effect2, effect3)
         model = create_linopy_model(flow_system)
@@ -175,11 +177,11 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect2.submodel.variables),
             {
-                'Effect2(nontemporal)',
+                'Effect2(periodic)',
                 'Effect2(temporal)',
                 'Effect2(temporal)|per_timestep',
                 'Effect2',
-                'Effect1(nontemporal)->Effect2(nontemporal)',
+                'Effect1(periodic)->Effect2(periodic)',
                 'Effect1(temporal)->Effect2(temporal)',
             },
             msg='Incorrect variables for effect2',
@@ -188,19 +190,19 @@ class TestEffectModel:
         assert_sets_equal(
             set(effect2.submodel.constraints),
             {
-                'Effect2(nontemporal)',
+                'Effect2(periodic)',
                 'Effect2(temporal)',
                 'Effect2(temporal)|per_timestep',
                 'Effect2',
-                'Effect1(nontemporal)->Effect2(nontemporal)',
+                'Effect1(periodic)->Effect2(periodic)',
                 'Effect1(temporal)->Effect2(temporal)',
             },
             msg='Incorrect constraints for effect2',
         )
 
         assert_conequal(
-            model.constraints['Effect2(nontemporal)'],
-            model.variables['Effect2(nontemporal)'] == model.variables['Effect1(nontemporal)->Effect2(nontemporal)'],
+            model.constraints['Effect2(periodic)'],
+            model.variables['Effect2(periodic)'] == model.variables['Effect1(periodic)->Effect2(periodic)'],
         )
 
         assert_conequal(
@@ -216,9 +218,8 @@ class TestEffectModel:
         )
 
         assert_conequal(
-            model.constraints['Effect1(nontemporal)->Effect2(nontemporal)'],
-            model.variables['Effect1(nontemporal)->Effect2(nontemporal)']
-            == model.variables['Effect1(nontemporal)'] * 2.1,
+            model.constraints['Effect1(periodic)->Effect2(periodic)'],
+            model.variables['Effect1(periodic)->Effect2(periodic)'] == model.variables['Effect1(periodic)'] * 2.1,
         )
 
 
@@ -231,14 +232,14 @@ class TestEffectResults:
             '€',
             'Testing Effect',
             share_from_temporal={'Effect1': 1.1},
-            share_from_nontemporal={'Effect1': 2.1},
+            share_from_periodic={'Effect1': 2.1},
         )
         effect3 = fx.Effect(
             'Effect3',
             '€',
             'Testing Effect',
             share_from_temporal={'Effect1': 1.2, 'Effect2': 5},
-            share_from_nontemporal={'Effect1': 2.2},
+            share_from_periodic={'Effect1': 2.2},
         )
         flow_system.add_elements(
             effect1,
@@ -267,7 +268,7 @@ class TestEffectResults:
                 ('Effect1', 'Effect3'): 1.2 + 1.1 * 5,
                 ('Effect2', 'Effect3'): 5,
             },
-            'nontemporal': {
+            'periodic': {
                 ('Effect1', 'Effect2'): 2.1,
                 ('Effect1', 'Effect3'): 2.2,
             },
@@ -275,8 +276,8 @@ class TestEffectResults:
         for key, value in effect_share_factors['temporal'].items():
             np.testing.assert_allclose(results.effect_share_factors['temporal'][key].values, value)
 
-        for key, value in effect_share_factors['nontemporal'].items():
-            np.testing.assert_allclose(results.effect_share_factors['nontemporal'][key].values, value)
+        for key, value in effect_share_factors['periodic'].items():
+            np.testing.assert_allclose(results.effect_share_factors['periodic'][key].values, value)
 
         xr.testing.assert_allclose(
             results.effects_per_component['temporal'].sum('component').sel(effect='costs', drop=True),
@@ -298,25 +299,25 @@ class TestEffectResults:
             results.solution['Effect3(temporal)|per_timestep'].fillna(0),
         )
 
-        # nontemporal mode checks
+        # periodic mode checks
         xr.testing.assert_allclose(
-            results.effects_per_component['nontemporal'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(nontemporal)'],
+            results.effects_per_component['periodic'].sum('component').sel(effect='costs', drop=True),
+            results.solution['costs(periodic)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(nontemporal)'],
+            results.effects_per_component['periodic'].sum('component').sel(effect='Effect1', drop=True),
+            results.solution['Effect1(periodic)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(nontemporal)'],
+            results.effects_per_component['periodic'].sum('component').sel(effect='Effect2', drop=True),
+            results.solution['Effect2(periodic)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['nontemporal'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(nontemporal)'],
+            results.effects_per_component['periodic'].sum('component').sel(effect='Effect3', drop=True),
+            results.solution['Effect3(periodic)'],
         )
 
         # Total mode checks

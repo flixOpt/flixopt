@@ -146,7 +146,7 @@ if __name__ == '__main__':
         [
             'Duration [s]',
             'costs',
-            'costs(nontemporal)',
+            'costs(periodic)',
             'costs(temporal)',
             'BHKW2(Q_fu)|size',
             'Kessel(Q_fu)|size',

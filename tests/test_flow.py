@@ -27,7 +27,8 @@ class TestFlowModel:
         )
         assert_var_equal(flow.submodel.flow_rate, model.add_variables(lower=0, upper=100, coords=model.get_coords()))
         assert_var_equal(
-            flow.submodel.total_flow_hours, model.add_variables(lower=0, coords=model.get_coords(['year', 'scenario']))
+            flow.submodel.total_flow_hours,
+            model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
         )
 
         assert_sets_equal(
@@ -65,7 +66,7 @@ class TestFlowModel:
 
         assert_var_equal(
             flow.submodel.total_flow_hours,
-            model.add_variables(lower=10, upper=1000, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=10, upper=1000, coords=model.get_coords(['period', 'scenario'])),
         )
 
         assert flow.relative_minimum.dims == tuple(model.get_coords())
@@ -178,7 +179,7 @@ class TestFlowInvestModel:
         # size
         assert_var_equal(
             model['Sink(Wärme)|size'],
-            model.add_variables(lower=20, upper=100, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=20, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
         assert flow.relative_minimum.dims == tuple(model.get_coords())
@@ -238,12 +239,12 @@ class TestFlowInvestModel:
 
         assert_var_equal(
             model['Sink(Wärme)|size'],
-            model.add_variables(lower=0, upper=100, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
         assert_var_equal(
             model['Sink(Wärme)|is_invested'],
-            model.add_variables(binary=True, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
 
         assert flow.relative_minimum.dims == tuple(model.get_coords())
@@ -313,12 +314,12 @@ class TestFlowInvestModel:
 
         assert_var_equal(
             model['Sink(Wärme)|size'],
-            model.add_variables(lower=0, upper=100, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
         assert_var_equal(
             model['Sink(Wärme)|is_invested'],
-            model.add_variables(binary=True, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
 
         assert flow.relative_minimum.dims == tuple(model.get_coords())
@@ -386,7 +387,7 @@ class TestFlowInvestModel:
 
         assert_var_equal(
             model['Sink(Wärme)|size'],
-            model.add_variables(lower=1e-5, upper=100, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=1e-5, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
         assert flow.relative_minimum.dims == tuple(model.get_coords())
@@ -436,7 +437,7 @@ class TestFlowInvestModel:
         # Check that size is fixed to 75
         assert_var_equal(
             flow.submodel.variables['Sink(Wärme)|size'],
-            model.add_variables(lower=75, upper=75, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=75, upper=75, coords=model.get_coords(['period', 'scenario'])),
         )
 
         # Check flow rate bounds
@@ -467,20 +468,20 @@ class TestFlowInvestModel:
         model = create_linopy_model(flow_system)
 
         # Check investment effects
-        assert 'Sink(Wärme)->costs(nontemporal)' in model.variables
-        assert 'Sink(Wärme)->CO2(nontemporal)' in model.variables
+        assert 'Sink(Wärme)->costs(periodic)' in model.variables
+        assert 'Sink(Wärme)->CO2(periodic)' in model.variables
 
         # Check fix effects (applied only when is_invested=1)
         assert_conequal(
-            model.constraints['Sink(Wärme)->costs(nontemporal)'],
-            model.variables['Sink(Wärme)->costs(nontemporal)']
+            model.constraints['Sink(Wärme)->costs(periodic)'],
+            model.variables['Sink(Wärme)->costs(periodic)']
             == flow.submodel.variables['Sink(Wärme)|is_invested'] * 1000
             + flow.submodel.variables['Sink(Wärme)|size'] * 500,
         )
 
         assert_conequal(
-            model.constraints['Sink(Wärme)->CO2(nontemporal)'],
-            model.variables['Sink(Wärme)->CO2(nontemporal)']
+            model.constraints['Sink(Wärme)->CO2(periodic)'],
+            model.variables['Sink(Wärme)->CO2(periodic)']
             == flow.submodel.variables['Sink(Wärme)|is_invested'] * 5
             + flow.submodel.variables['Sink(Wärme)|size'] * 0.1,
         )
@@ -504,11 +505,11 @@ class TestFlowInvestModel:
         model = create_linopy_model(flow_system)
 
         # Check divestment effects
-        assert 'Sink(Wärme)->costs(nontemporal)' in model.constraints
+        assert 'Sink(Wärme)->costs(periodic)' in model.constraints
 
         assert_conequal(
-            model.constraints['Sink(Wärme)->costs(nontemporal)'],
-            model.variables['Sink(Wärme)->costs(nontemporal)'] + (model.variables['Sink(Wärme)|is_invested'] - 1) * 500
+            model.constraints['Sink(Wärme)->costs(periodic)'],
+            model.variables['Sink(Wärme)->costs(periodic)'] + (model.variables['Sink(Wärme)|is_invested'] - 1) * 500
             == 0,
         )
 
@@ -563,7 +564,7 @@ class TestFlowOnModel:
         )
         assert_var_equal(
             model.variables['Sink(Wärme)|on_hours_total'],
-            model.add_variables(lower=0, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb'],
@@ -1011,7 +1012,7 @@ class TestFlowOnModel:
         # Check switch_on_nr variable bounds
         assert_var_equal(
             flow.submodel.variables['Sink(Wärme)|switch|count'],
-            model.add_variables(lower=0, upper=5, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, upper=5, coords=model.get_coords(['period', 'scenario'])),
         )
 
         # Verify switch_on_nr constraint (limits number of startups)
@@ -1056,7 +1057,7 @@ class TestFlowOnModel:
         # Check on_hours_total variable bounds
         assert_var_equal(
             flow.submodel.variables['Sink(Wärme)|on_hours_total'],
-            model.add_variables(lower=20, upper=100, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=20, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
         # Check on_hours_total constraint
@@ -1128,7 +1129,7 @@ class TestFlowOnInvestModel:
         )
         assert_var_equal(
             model.variables['Sink(Wärme)|on_hours_total'],
-            model.add_variables(lower=0, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|size|lb'],
@@ -1155,7 +1156,7 @@ class TestFlowOnInvestModel:
         # Investment
         assert_var_equal(
             model['Sink(Wärme)|size'],
-            model.add_variables(lower=0, upper=200, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, upper=200, coords=model.get_coords(['period', 'scenario'])),
         )
 
         mega = 0.2 * 200  # Relative minimum * maximum size
@@ -1226,7 +1227,7 @@ class TestFlowOnInvestModel:
         )
         assert_var_equal(
             model.variables['Sink(Wärme)|on_hours_total'],
-            model.add_variables(lower=0, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb1'],
@@ -1245,7 +1246,7 @@ class TestFlowOnInvestModel:
         # Investment
         assert_var_equal(
             model['Sink(Wärme)|size'],
-            model.add_variables(lower=20, upper=200, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=20, upper=200, coords=model.get_coords(['period', 'scenario'])),
         )
 
         mega = 0.2 * 200  # Relative minimum * maximum size

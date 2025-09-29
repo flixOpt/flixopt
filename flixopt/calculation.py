@@ -45,6 +45,13 @@ logger = logging.getLogger('flixopt')
 class Calculation:
     """
     class for defined way of solving a flow_system optimization
+
+    Args:
+        name: name of calculation
+        flow_system: flow_system which should be calculated
+        folder: folder where results should be saved. If None, then the current working directory is used.
+        normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
 
     def __init__(
@@ -56,14 +63,8 @@ class Calculation:
             'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
         ] = None,
         folder: pathlib.Path | None = None,
+        normalize_weights: bool = True,
     ):
-        """
-        Args:
-            name: name of calculation
-            flow_system: flow_system which should be calculated
-            folder: folder where results should be saved. If None, then the current working directory is used.
-            active_timesteps: Deprecated. Use FLowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
-        """
         self.name = name
         if flow_system.used_in_calculation:
             logger.warning(
@@ -82,6 +83,7 @@ class Calculation:
             )
             flow_system = flow_system.sel(time=active_timesteps)
         self._active_timesteps = active_timesteps  # deprecated
+        self.normalize_weights = normalize_weights
 
         flow_system._used_in_calculation = True
 
@@ -108,7 +110,7 @@ class Calculation:
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
                     'temporal': effect.submodel.temporal.total.solution.values,
-                    'nontemporal': effect.submodel.nontemporal.total.solution.values,
+                    'periodic': effect.submodel.periodic.total.solution.values,
                     'total': effect.submodel.total.solution.values,
                 }
                 for effect in self.flow_system.effects
@@ -177,13 +179,20 @@ class FullCalculation(Calculation):
 
     This is the most comprehensive calculation type that considers every time step
     in the optimization, providing the most accurate but computationally intensive solution.
+
+    Args:
+        name: name of calculation
+        flow_system: flow_system which should be calculated
+        folder: folder where results should be saved. If None, then the current working directory is used.
+        normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
 
     def do_modeling(self) -> FullCalculation:
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
-        self.model = self.flow_system.create_model()
+        self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
@@ -306,7 +315,7 @@ class AggregatedCalculation(FullCalculation):
         self._perform_aggregation()
 
         # Model the System
-        self.model = self.flow_system.create_model()
+        self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
         # Add Aggregation Submodel after modeling the rest
         self.aggregation = AggregationModel(

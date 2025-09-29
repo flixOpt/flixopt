@@ -16,7 +16,7 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .core import NonTemporalDataUser, Scalar, TemporalData, TemporalDataUser
+from .core import PeriodicDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 
@@ -52,24 +52,24 @@ class Effect(Element):
             Only one effect can be marked as objective per optimization.
         share_from_temporal: Temporal cross-effect contributions.
             Maps temporal contributions from other effects to this effect
-        share_from_nontemporal: Nontemporal cross-effect contributions.
-            Maps nontemporal contributions from other effects to this effect.
+        share_from_periodic: Periodic cross-effect contributions.
+            Maps periodic contributions from other effects to this effect.
         minimum_temporal: Minimum allowed total contribution across all timesteps.
         maximum_temporal: Maximum allowed total contribution across all timesteps.
         minimum_per_hour: Minimum allowed contribution per hour.
         maximum_per_hour: Maximum allowed contribution per hour.
-        minimum_nontemporal: Minimum allowed total nontemporal contribution.
-        maximum_nontemporal: Maximum allowed total nontemporal contribution.
-        minimum_total: Minimum allowed total effect (temporal + nontemporal combined).
-        maximum_total: Maximum allowed total effect (temporal + nontemporal combined).
+        minimum_periodic: Minimum allowed total periodic contribution.
+        maximum_periodic: Maximum allowed total periodic contribution.
+        minimum_total: Minimum allowed total effect (temporal + periodic combined).
+        maximum_total: Maximum allowed total effect (temporal + periodic combined).
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
     **Deprecated Parameters** (for backwards compatibility):
         minimum_operation: Use `minimum_temporal` instead.
         maximum_operation: Use `maximum_temporal` instead.
-        minimum_invest: Use `minimum_nontemporal` instead.
-        maximum_invest: Use `maximum_nontemporal` instead.
+        minimum_invest: Use `minimum_periodic` instead.
+        maximum_invest: Use `maximum_periodic` instead.
         minimum_operation_per_hour: Use `minimum_per_hour` instead.
         maximum_operation_per_hour: Use `maximum_per_hour` instead.
 
@@ -155,7 +155,7 @@ class Effect(Element):
         across all contributions to each effect manually.
 
         Effects are accumulated as:
-        - Total = Σ(temporal contributions) + Σ(nontemporal contributions)
+        - Total = Σ(temporal contributions) + Σ(periodic contributions)
 
     """
 
@@ -168,11 +168,11 @@ class Effect(Element):
         is_standard: bool = False,
         is_objective: bool = False,
         share_from_temporal: TemporalEffectsUser | None = None,
-        share_from_nontemporal: NonTemporalEffectsUser | None = None,
-        minimum_temporal: NonTemporalEffectsUser | None = None,
-        maximum_temporal: NonTemporalEffectsUser | None = None,
-        minimum_nontemporal: NonTemporalEffectsUser | None = None,
-        maximum_nontemporal: NonTemporalEffectsUser | None = None,
+        share_from_periodic: PeriodicEffectsUser | None = None,
+        minimum_temporal: PeriodicEffectsUser | None = None,
+        maximum_temporal: PeriodicEffectsUser | None = None,
+        minimum_periodic: PeriodicEffectsUser | None = None,
+        maximum_periodic: PeriodicEffectsUser | None = None,
         minimum_per_hour: TemporalDataUser | None = None,
         maximum_per_hour: TemporalDataUser | None = None,
         minimum_total: Scalar | None = None,
@@ -185,9 +185,7 @@ class Effect(Element):
         self.is_standard = is_standard
         self.is_objective = is_objective
         self.share_from_temporal: TemporalEffectsUser = share_from_temporal if share_from_temporal is not None else {}
-        self.share_from_nontemporal: NonTemporalEffectsUser = (
-            share_from_nontemporal if share_from_nontemporal is not None else {}
-        )
+        self.share_from_periodic: PeriodicEffectsUser = share_from_periodic if share_from_periodic is not None else {}
 
         # Handle backwards compatibility for deprecated parameters
         # Extract deprecated parameters from kwargs
@@ -220,27 +218,27 @@ class Effect(Element):
                 raise ValueError('Either maximum_operation or maximum_temporal can be specified, but not both.')
             maximum_temporal = maximum_operation
 
-        # Handle minimum_nontemporal
+        # Handle minimum_periodic
         if minimum_invest is not None:
             warnings.warn(
-                "Parameter 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+                "Parameter 'minimum_invest' is deprecated. Use 'minimum_periodic' instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if minimum_nontemporal is not None:
-                raise ValueError('Either minimum_invest or minimum_nontemporal can be specified, but not both.')
-            minimum_nontemporal = minimum_invest
+            if minimum_periodic is not None:
+                raise ValueError('Either minimum_invest or minimum_periodic can be specified, but not both.')
+            minimum_periodic = minimum_invest
 
-        # Handle maximum_nontemporal
+        # Handle maximum_periodic
         if maximum_invest is not None:
             warnings.warn(
-                "Parameter 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+                "Parameter 'maximum_invest' is deprecated. Use 'maximum_periodic' instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if maximum_nontemporal is not None:
-                raise ValueError('Either maximum_invest or maximum_nontemporal can be specified, but not both.')
-            maximum_nontemporal = maximum_invest
+            if maximum_periodic is not None:
+                raise ValueError('Either maximum_invest or maximum_periodic can be specified, but not both.')
+            maximum_periodic = maximum_invest
 
         # Handle minimum_per_hour
         if minimum_operation_per_hour is not None:
@@ -274,8 +272,8 @@ class Effect(Element):
         # Set attributes directly
         self.minimum_temporal = minimum_temporal
         self.maximum_temporal = maximum_temporal
-        self.minimum_nontemporal = minimum_nontemporal
-        self.maximum_nontemporal = maximum_nontemporal
+        self.minimum_periodic = minimum_periodic
+        self.maximum_periodic = maximum_periodic
         self.minimum_per_hour = minimum_per_hour
         self.maximum_per_hour = maximum_per_hour
         self.minimum_total = minimum_total
@@ -324,43 +322,43 @@ class Effect(Element):
 
     @property
     def minimum_invest(self):
-        """DEPRECATED: Use 'minimum_nontemporal' property instead."""
+        """DEPRECATED: Use 'minimum_periodic' property instead."""
         warnings.warn(
-            "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+            "Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.minimum_nontemporal
+        return self.minimum_periodic
 
     @minimum_invest.setter
     def minimum_invest(self, value):
-        """DEPRECATED: Use 'minimum_nontemporal' property instead."""
+        """DEPRECATED: Use 'minimum_periodic' property instead."""
         warnings.warn(
-            "Property 'minimum_invest' is deprecated. Use 'minimum_nontemporal' instead.",
+            "Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        self.minimum_nontemporal = value
+        self.minimum_periodic = value
 
     @property
     def maximum_invest(self):
-        """DEPRECATED: Use 'maximum_nontemporal' property instead."""
+        """DEPRECATED: Use 'maximum_periodic' property instead."""
         warnings.warn(
-            "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+            "Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.maximum_nontemporal
+        return self.maximum_periodic
 
     @maximum_invest.setter
     def maximum_invest(self, value):
-        """DEPRECATED: Use 'maximum_nontemporal' property instead."""
+        """DEPRECATED: Use 'maximum_periodic' property instead."""
         warnings.warn(
-            "Property 'maximum_invest' is deprecated. Use 'maximum_nontemporal' instead.",
+            "Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        self.maximum_nontemporal = value
+        self.maximum_periodic = value
 
     @property
     def minimum_operation_per_hour(self):
@@ -412,34 +410,34 @@ class Effect(Element):
             label_prefix=None,
             effect_values=self.share_from_temporal,
             label_suffix=f'(temporal)->{prefix}(temporal)',
-            dims=['time', 'year', 'scenario'],
+            dims=['time', 'period', 'scenario'],
         )
-        self.share_from_nontemporal = flow_system.fit_effects_to_model_coords(
+        self.share_from_periodic = flow_system.fit_effects_to_model_coords(
             label_prefix=None,
-            effect_values=self.share_from_nontemporal,
-            label_suffix=f'(nontemporal)->{prefix}(nontemporal)',
-            dims=['year', 'scenario'],
+            effect_values=self.share_from_periodic,
+            label_suffix=f'(periodic)->{prefix}(periodic)',
+            dims=['period', 'scenario'],
         )
 
         self.minimum_temporal = flow_system.fit_to_model_coords(
-            f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['year', 'scenario']
+            f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
         )
         self.maximum_temporal = flow_system.fit_to_model_coords(
-            f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['year', 'scenario']
+            f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
         )
-        self.minimum_nontemporal = flow_system.fit_to_model_coords(
-            f'{prefix}|minimum_nontemporal', self.minimum_nontemporal, dims=['year', 'scenario']
+        self.minimum_periodic = flow_system.fit_to_model_coords(
+            f'{prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
         )
-        self.maximum_nontemporal = flow_system.fit_to_model_coords(
-            f'{prefix}|maximum_nontemporal', self.maximum_nontemporal, dims=['year', 'scenario']
+        self.maximum_periodic = flow_system.fit_to_model_coords(
+            f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
         self.minimum_total = flow_system.fit_to_model_coords(
             f'{prefix}|minimum_total',
             self.minimum_total,
-            dims=['year', 'scenario'],
+            dims=['period', 'scenario'],
         )
         self.maximum_total = flow_system.fit_to_model_coords(
-            f'{prefix}|maximum_total', self.maximum_total, dims=['year', 'scenario']
+            f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
         )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
@@ -460,22 +458,22 @@ class EffectModel(ElementModel):
 
     def _do_modeling(self):
         self.total: linopy.Variable | None = None
-        self.nontemporal: ShareAllocationModel = self.add_submodels(
+        self.periodic: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
                 model=self._model,
-                dims=('year', 'scenario'),
+                dims=('period', 'scenario'),
                 label_of_element=self.label_of_element,
-                label_of_model=f'{self.label_of_model}(nontemporal)',
-                total_max=self.element.maximum_nontemporal,
-                total_min=self.element.minimum_nontemporal,
+                label_of_model=f'{self.label_of_model}(periodic)',
+                total_max=self.element.maximum_periodic,
+                total_min=self.element.minimum_periodic,
             ),
-            short_name='nontemporal',
+            short_name='periodic',
         )
 
         self.temporal: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
                 model=self._model,
-                dims=('time', 'year', 'scenario'),
+                dims=('time', 'period', 'scenario'),
                 label_of_element=self.label_of_element,
                 label_of_model=f'{self.label_of_model}(temporal)',
                 total_max=self.element.maximum_temporal,
@@ -489,25 +487,25 @@ class EffectModel(ElementModel):
         self.total = self.add_variables(
             lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
             upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
-            coords=self._model.get_coords(['year', 'scenario']),
+            coords=self._model.get_coords(['period', 'scenario']),
             name=self.label_full,
         )
 
         self.add_constraints(
-            self.total == self.temporal.total + self.nontemporal.total, name=self.label_full, short_name='total'
+            self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
         )
 
 
 TemporalEffectsUser = TemporalDataUser | dict[str, TemporalDataUser]  # User-specified Shares to Effects
 """ This datatype is used to define a temporal share to an effect by a certain attribute. """
 
-NonTemporalEffectsUser = NonTemporalDataUser | dict[str, NonTemporalDataUser]  # User-specified Shares to Effects
+PeriodicEffectsUser = PeriodicDataUser | dict[str, PeriodicDataUser]  # User-specified Shares to Effects
 """ This datatype is used to define a scalar share to an effect by a certain attribute. """
 
 TemporalEffects = dict[str, TemporalData]  # User-specified Shares to Effects
 """ This datatype is used internally to handle temporal shares to an effect. """
 
-NonTemporalEffects = dict[str, Scalar]
+PeriodicEffects = dict[str, Scalar]
 """ This datatype is used internally to handle scalar shares to an effect. """
 
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
@@ -543,7 +541,7 @@ class EffectCollection:
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
-        self, effect_values_user: NonTemporalEffectsUser | TemporalEffectsUser
+        self, effect_values_user: PeriodicEffectsUser | TemporalEffectsUser
     ) -> dict[str, Scalar | TemporalDataUser] | None:
         """
         Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
@@ -585,23 +583,23 @@ class EffectCollection:
 
     def _plausibility_checks(self) -> None:
         # Check circular loops in effects:
-        temporal, nontemporal = self.calculate_effect_share_factors()
+        temporal, periodic = self.calculate_effect_share_factors()
 
         # Validate all referenced sources exist
-        unknown = {src for src, _ in list(temporal.keys()) + list(nontemporal.keys()) if src not in self.effects}
+        unknown = {src for src, _ in list(temporal.keys()) + list(periodic.keys()) if src not in self.effects}
         if unknown:
             raise KeyError(f'Unknown effects used in in effect share mappings: {sorted(unknown)}')
 
         temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
-        nontemporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in nontemporal]))
+        periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))
 
         if temporal_cycles:
             cycle_str = '\n'.join([' -> '.join(cycle) for cycle in temporal_cycles])
             raise ValueError(f'Error: circular temporal-shares detected:\n{cycle_str}')
 
-        if nontemporal_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in nontemporal_cycles])
-            raise ValueError(f'Error: circular nontemporal-shares detected:\n{cycle_str}')
+        if periodic_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in periodic_cycles])
+            raise ValueError(f'Error: circular periodic-shares detected:\n{cycle_str}')
 
     def __getitem__(self, effect: str | Effect | None) -> Effect:
         """
@@ -677,14 +675,14 @@ class EffectCollection:
         dict[tuple[str, str], xr.DataArray],
         dict[tuple[str, str], xr.DataArray],
     ]:
-        shares_nontemporal = {}
+        shares_periodic = {}
         for name, effect in self.effects.items():
-            if effect.share_from_nontemporal:
-                for source, data in effect.share_from_nontemporal.items():
-                    if source not in shares_nontemporal:
-                        shares_nontemporal[source] = {}
-                    shares_nontemporal[source][name] = data
-        shares_nontemporal = calculate_all_conversion_paths(shares_nontemporal)
+            if effect.share_from_periodic:
+                for source, data in effect.share_from_periodic.items():
+                    if source not in shares_periodic:
+                        shares_periodic[source] = {}
+                    shares_periodic[source][name] = data
+        shares_periodic = calculate_all_conversion_paths(shares_periodic)
 
         shares_temporal = {}
         for name, effect in self.effects.items():
@@ -695,7 +693,7 @@ class EffectCollection:
                     shares_temporal[source][name] = data
         shares_temporal = calculate_all_conversion_paths(shares_temporal)
 
-        return shares_temporal, shares_nontemporal
+        return shares_temporal, shares_periodic
 
 
 class EffectCollectionModel(Submodel):
@@ -712,20 +710,20 @@ class EffectCollectionModel(Submodel):
         self,
         name: str,
         expressions: EffectExpr,
-        target: Literal['temporal', 'nontemporal'],
+        target: Literal['temporal', 'periodic'],
     ) -> None:
         for effect, expression in expressions.items():
             if target == 'temporal':
                 self.effects[effect].submodel.temporal.add_share(
                     name,
                     expression,
-                    dims=('time', 'year', 'scenario'),
+                    dims=('time', 'period', 'scenario'),
                 )
-            elif target == 'nontemporal':
-                self.effects[effect].submodel.nontemporal.add_share(
+            elif target == 'periodic':
+                self.effects[effect].submodel.periodic.add_share(
                     name,
                     expression,
-                    dims=('year', 'scenario'),
+                    dims=('period', 'scenario'),
                 )
             else:
                 raise ValueError(f'Target {target} not supported!')
@@ -757,14 +755,14 @@ class EffectCollectionModel(Submodel):
                 target_effect.submodel.temporal.add_share(
                     self.effects[source_effect].submodel.temporal.label_full,
                     self.effects[source_effect].submodel.temporal.total_per_timestep * time_series,
-                    dims=('time', 'year', 'scenario'),
+                    dims=('time', 'period', 'scenario'),
                 )
-            # 2. nontemporal: <- receiving nontemporal shares from other effects
-            for source_effect, factor in target_effect.share_from_nontemporal.items():
-                target_effect.submodel.nontemporal.add_share(
-                    self.effects[source_effect].submodel.nontemporal.label_full,
-                    self.effects[source_effect].submodel.nontemporal.total * factor,
-                    dims=('year', 'scenario'),
+            # 2. periodic: <- receiving periodic shares from other effects
+            for source_effect, factor in target_effect.share_from_periodic.items():
+                target_effect.submodel.periodic.add_share(
+                    self.effects[source_effect].submodel.periodic.label_full,
+                    self.effects[source_effect].submodel.periodic.total * factor,
+                    dims=('period', 'scenario'),
                 )
 
 
@@ -911,3 +909,8 @@ def tuples_to_adjacency_list(edges: list[tuple[str, str]]) -> dict[str, list[str
             graph[target] = []
 
     return graph
+
+
+# Backward compatibility aliases
+NonTemporalEffectsUser = PeriodicEffectsUser
+NonTemporalEffects = PeriodicEffects

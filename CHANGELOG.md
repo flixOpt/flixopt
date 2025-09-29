@@ -42,7 +42,7 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 
 ## [Unreleased] - ????-??-??
-This release brings multi-year investments and stochastic modeling to flixopt.
+This release brings multi-period investments and stochastic modeling to flixopt.
 Furthermore, I/O methods were improved, and resampling and selection of parts of the FlowSystem are now possible.
 Several internal improvements were made to the codebase.
 
@@ -55,14 +55,14 @@ costs = fx.Effect(
     'costs', '€', 'Total costs',
     is_standard=True, is_objective=True,
     share_from_temporal={'CO2': 0.2, 'energy': 0.05},  # Costs receive contributions from other effects
-    share_from_nontemporal={'land': 100}  # €100 per m² land use
+    share_from_periodic={'land': 100}  # €100 per m² land use
 )
 ```
 This replaces the less intuitive `specific_share_to_other_effects_*` parameters and makes it clearer where effect contributions are coming from, rather than where they are going to.
 
-**Multi-year investments:**
-A flixopt model might be modeled with a "year" dimension.
-This enables modeling transformation pathways over multiple years with several investment decisions
+**Multi-period investments:**
+A flixopt model might be modeled with a "period" dimension.
+This enables modeling transformation pathways over multiple periods with several distinct investment decisions in each period.
 
 **Stochastic modeling:**
 A flixopt model can be modeled with a scenario dimension.
@@ -121,9 +121,9 @@ The weighted sum of the total objective effect of each scenario is used as the o
 * The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
 * The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 * The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
-- Renamed `Effect` parameters:
-  - `minimum_investment` → `minimum_nontemporal`
-  - `maximum_investment` → `maximum_nontemporal`
+* Effect parameters renamed:
+  - `minimum_investment` → `minimum_periodic`
+  - `maximum_investment` → `maximum_periodic`
   - `minimum_operation` → `minimum_temporal`
   - `maximum_operation` → `maximum_temporal`
   - `minimum_operation_per_hour` → `minimum_per_hour`
@@ -132,7 +132,7 @@ The weighted sum of the total objective effect of each scenario is used as the o
 ### 🔥 Removed
 * **Effect share parameters**: The old `specific_share_to_other_effects_*` parameters were replaced WITHOUT DEPRECATION
   - `specific_share_to_other_effects_operation` → `share_from_temporal` (with inverted direction)
-  - `specific_share_to_other_effects_invest` → `share_from_nontemporal` (with inverted direction)
+  - `specific_share_to_other_effects_invest` → `share_from_periodic` (with inverted direction)
 
 ### 🐛 Fixed
 * Enhanced NetCDF I/O with proper attribute preservation for DataArrays

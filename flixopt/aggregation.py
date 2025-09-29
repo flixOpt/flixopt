@@ -286,7 +286,7 @@ class AggregationParameters:
 
 
 class AggregationModel(Submodel):
-    """The AggregationModel holds equations and variables related to the Aggregation of a FLowSystem.
+    """The AggregationModel holds equations and variables related to the Aggregation of a FlowSystem.
     It creates Equations that equates indices of variables, and introduces penalties related to binary variables, that
     escape the equation to their related binaries in other periods"""
 

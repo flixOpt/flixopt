@@ -58,13 +58,13 @@ class InvestmentModel(Submodel):
             short_name='size',
             lower=0 if self.parameters.optional else size_min,
             upper=size_max,
-            coords=self._model.get_coords(['year', 'scenario']),
+            coords=self._model.get_coords(['period', 'scenario']),
         )
 
         if self.parameters.optional:
             self.add_variables(
                 binary=True,
-                coords=self._model.get_coords(['year', 'scenario']),
+                coords=self._model.get_coords(['period', 'scenario']),
                 short_name='is_invested',
             )
 
@@ -97,7 +97,7 @@ class InvestmentModel(Submodel):
                     effect: self.is_invested * factor if self.is_invested is not None else factor
                     for effect, factor in self.parameters.fix_effects.items()
                 },
-                target='nontemporal',
+                target='periodic',
             )
 
         if self.parameters.divest_effects and self.parameters.optional:
@@ -107,14 +107,14 @@ class InvestmentModel(Submodel):
                     effect: -self.is_invested * factor + factor
                     for effect, factor in self.parameters.divest_effects.items()
                 },
-                target='nontemporal',
+                target='periodic',
             )
 
         if self.parameters.specific_effects:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
-                target='nontemporal',
+                target='periodic',
             )
 
     @property
@@ -175,7 +175,7 @@ class OnOffModel(Submodel):
                 self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
             ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
             short_name='on_hours_total',
-            coords=['year', 'scenario'],
+            coords=['period', 'scenario'],
         )
 
         # 4. Switch tracking using existing pattern
@@ -197,7 +197,7 @@ class OnOffModel(Submodel):
                 count = self.add_variables(
                     lower=0,
                     upper=self.parameters.switch_on_total_max,
-                    coords=self._model.get_coords(('year', 'scenario')),
+                    coords=self._model.get_coords(('period', 'scenario')),
                     short_name='switch|count',
                 )
                 self.add_constraints(count == self.switch_on.sum('time'), short_name='switch|count')
@@ -314,35 +314,34 @@ class PieceModel(Submodel):
         model: FlowSystemModel,
         label_of_element: str,
         label_of_model: str,
-        as_time_series: bool = True,
+        dims: FlowSystemDimensions | None,
     ):
         self.inside_piece: linopy.Variable | None = None
         self.lambda0: linopy.Variable | None = None
         self.lambda1: linopy.Variable | None = None
-        self._as_time_series = as_time_series
+        self.dims = dims
 
         super().__init__(model, label_of_element, label_of_model)
 
     def _do_modeling(self):
         super()._do_modeling()
-        dims = ('time', 'year', 'scenario') if self._as_time_series else ('year', 'scenario')
         self.inside_piece = self.add_variables(
             binary=True,
             short_name='inside_piece',
-            coords=self._model.get_coords(dims=dims),
+            coords=self._model.get_coords(dims=self.dims),
         )
         self.lambda0 = self.add_variables(
             lower=0,
             upper=1,
             short_name='lambda0',
-            coords=self._model.get_coords(dims=dims),
+            coords=self._model.get_coords(dims=self.dims),
         )
 
         self.lambda1 = self.add_variables(
             lower=0,
             upper=1,
             short_name='lambda1',
-            coords=self._model.get_coords(dims=dims),
+            coords=self._model.get_coords(dims=self.dims),
         )
 
         # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
@@ -357,7 +356,7 @@ class PiecewiseModel(Submodel):
         label_of_model: str,
         piecewise_variables: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
-        as_time_series: bool,
+        dims: FlowSystemDimensions | None,
     ):
         """
         Modeling a Piecewise relation between miultiple variables.
@@ -367,14 +366,14 @@ class PiecewiseModel(Submodel):
         Args:
             model: The FlowSystemModel that is used to create the model.
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            label: The label of the model. Used to construct the full label of the model.
+            label_of_model: The label of the model. Used to construct the full label of the model.
             piecewise_variables: The variables to which the Pieces are assigned.
             zero_point: A variable that can be used to define a zero point for the Piecewise relation. If None or False, no zero point is defined.
-            as_time_series: Whether the Piecewise relation is defined for a TimeSeries or a single variable.
+            dims: The dimensions used for variable creation. If None, all dimensions are used.
         """
         self._piecewise_variables = piecewise_variables
         self._zero_point = zero_point
-        self._as_time_series = as_time_series
+        self.dims = dims
 
         self.pieces: list[PieceModel] = []
         self.zero_point: linopy.Variable | None = None
@@ -388,7 +387,7 @@ class PiecewiseModel(Submodel):
                     model=self._model,
                     label_of_element=self.label_of_element,
                     label_of_model=f'{self.label_of_element}|Piece_{i}',
-                    as_time_series=self._as_time_series,
+                    dims=self.dims,
                 ),
                 short_name=f'Piece_{i}',
             )
@@ -417,7 +416,7 @@ class PiecewiseModel(Submodel):
                 rhs = self.zero_point
             elif self._zero_point is True:
                 self.zero_point = self.add_variables(
-                    coords=self._model.get_coords(('year', 'scenario') if self._as_time_series else None),
+                    coords=self._model.get_coords(self.dims),
                     binary=True,
                     short_name='zero_point',
                 )
@@ -456,7 +455,7 @@ class PiecewiseEffectsModel(Submodel):
 
     def _do_modeling(self):
         self.shares = {
-            effect: self.add_variables(coords=self._model.get_coords(['year', 'scenario']), short_name=effect)
+            effect: self.add_variables(coords=self._model.get_coords(['period', 'scenario']), short_name=effect)
             for effect in self._piecewise_shares
         }
 
@@ -474,7 +473,7 @@ class PiecewiseEffectsModel(Submodel):
                 label_of_element=self.label_of_element,
                 piecewise_variables=piecewise_variables,
                 zero_point=self._zero_point,
-                as_time_series=False,
+                dims=('period', 'scenario'),
                 label_of_model=f'{self.label_of_element}|PiecewiseEffects',
             ),
             short_name='PiecewiseEffects',
@@ -484,7 +483,7 @@ class PiecewiseEffectsModel(Submodel):
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
-            target='nontemporal',
+            target='periodic',
         )
 
 
@@ -567,8 +566,8 @@ class ShareAllocationModel(Submodel):
         else:
             if 'time' in dims and 'time' not in self._dims:
                 raise ValueError('Cannot add share with time-dim to a model without time-dim')
-            if 'year' in dims and 'year' not in self._dims:
-                raise ValueError('Cannot add share with year-dim to a model without year-dim')
+            if 'period' in dims and 'period' not in self._dims:
+                raise ValueError('Cannot add share with period-dim to a model without period-dim')
             if 'scenario' in dims and 'scenario' not in self._dims:
                 raise ValueError('Cannot add share with scenario-dim to a model without scenario-dim')
 
