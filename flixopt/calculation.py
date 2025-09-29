@@ -556,7 +556,7 @@ class SegmentedCalculation(Calculation):
         for i, (segment_name, timesteps_of_segment) in enumerate(
             zip(self.segment_names, self._timesteps_per_segment, strict=True)
         ):
-            calc = FullCalculation(f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment))
+            calc = FullCalculation(f'{self.name}-{segment_name}', self.flow_system.sel(time=timesteps_of_segment))
             calc.flow_system._connect_network()  # Connect to have Correct names of Flows!
 
             self.sub_calculations.append(calc)
