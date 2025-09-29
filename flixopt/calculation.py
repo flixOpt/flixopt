@@ -45,6 +45,13 @@ logger = logging.getLogger('flixopt')
 class Calculation:
     """
     class for defined way of solving a flow_system optimization
+
+    Args:
+        name: name of calculation
+        flow_system: flow_system which should be calculated
+        folder: folder where results should be saved. If None, then the current working directory is used.
+        normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
 
     def __init__(
@@ -58,14 +65,6 @@ class Calculation:
         folder: pathlib.Path | None = None,
         normalize_weights: bool = True,
     ):
-        """
-        Args:
-            name: name of calculation
-            flow_system: flow_system which should be calculated
-            folder: folder where results should be saved. If None, then the current working directory is used.
-            normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
-            active_timesteps: Deprecated. Use FLowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
-        """
         self.name = name
         if flow_system.used_in_calculation:
             logger.warning(
@@ -180,6 +179,13 @@ class FullCalculation(Calculation):
 
     This is the most comprehensive calculation type that considers every time step
     in the optimization, providing the most accurate but computationally intensive solution.
+
+    Args:
+        name: name of calculation
+        flow_system: flow_system which should be calculated
+        folder: folder where results should be saved. If None, then the current working directory is used.
+        normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
 
     def do_modeling(self) -> FullCalculation:
