@@ -62,6 +62,7 @@ class TestEffectModel:
             model.constraints['Effect1'],
             model.variables['Effect1'] == model.variables['Effect1(temporal)'] + model.variables['Effect1(periodic)'],
         )
+        # In minimal/bounds tests with no contributing components, periodic totals should be zero
         assert_conequal(model.constraints['Effect1(periodic)'], model.variables['Effect1(periodic)'] == 0)
         assert_conequal(
             model.constraints['Effect1(temporal)'],
@@ -138,6 +139,7 @@ class TestEffectModel:
             model.constraints['Effect1'],
             model.variables['Effect1'] == model.variables['Effect1(temporal)'] + model.variables['Effect1(periodic)'],
         )
+        # In minimal/bounds tests with no contributing components, periodic totals should be zero
         assert_conequal(model.constraints['Effect1(periodic)'], model.variables['Effect1(periodic)'] == 0)
         assert_conequal(
             model.constraints['Effect1(temporal)'],

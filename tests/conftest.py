@@ -50,6 +50,11 @@ def solver_fixture(request):
         },
         {
             'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'),
+            'periods': None,
+            'scenarios': pd.Index(['A', 'B'], name='scenario'),
+        },
+        {
+            'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'),
             'periods': pd.Index([2020, 2030, 2040], name='period'),
             'scenarios': None,
         },
@@ -59,7 +64,7 @@ def solver_fixture(request):
             'scenarios': pd.Index(['A', 'B'], name='scenario'),
         },
     ],
-    ids=['time_only', 'time+periods', 'time+periods+scenarios'],
+    ids=['time_only', 'time+scenarios', 'time+periods', 'time+periods+scenarios'],
 )
 def coords_config(request):
     """Coordinate configurations for parametrized testing."""
