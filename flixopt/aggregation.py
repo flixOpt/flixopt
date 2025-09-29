@@ -370,8 +370,8 @@ class AggregationModel(Submodel):
             con.lhs += 1 * var_k1 - 1 * var_k0
 
             # interlock var_k1 and var_K2:
-            # eq: var_k0(t)+var_k1(t) <= 1.1
-            self.add_constraints(var_k0 + var_k1 <= 1.1, short_name=f'lock_k0_and_k1|{variable.name}')
+            # eq: var_k0(t)+var_k1(t) <= 1
+            self.add_constraints(var_k0 + var_k1 <= 1, short_name=f'lock_k0_and_k1|{variable.name}')
 
             # Begrenzung der Korrektur-Anzahl:
             # eq: sum(K) <= n_Corr_max
