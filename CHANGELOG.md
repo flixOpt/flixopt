@@ -42,64 +42,35 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 
 ## [Unreleased] - ????-??-??
-This release brings multi-period investments and stochastic modeling to flixopt.
-Furthermore, I/O methods were improved, and resampling and selection of parts of the FlowSystem are now possible.
-Several internal improvements were made to the codebase.
+This release introduces new model dimensions (periods and scenarios) for multi-period investments and stochastic modeling, along with a redesigned effect sharing system and enhanced I/O capabilities.
 
 ### ✨ Added
 
-**Intuitive effect share syntax:**
-Effects now support an intuitive `share_from_*` syntax for cross-effect relationships:
+**New model dimensions:**
+* **Period dimension**: Enables multi-period investment modeling with distinct decisions in each period for transformation pathway optimization
+* **Scenario dimension**: Supports stochastic modeling with weighted scenarios for robust decision-making under uncertainty (demand, prices, weather)
+
+**Redesigned effect sharing system:**
+Effects now use intuitive `share_from_*` syntax that clearly shows contribution sources:
 ```python
-costs = fx.Effect(
-    'costs', '€', 'Total costs',
-    is_standard=True, is_objective=True,
-    share_from_temporal={'CO2': 0.2, 'energy': 0.05},  # Costs receive contributions from other effects
-    share_from_periodic={'land': 100}  # €100 per m² land use
-)
+costs = fx.Effect('costs', '€', 'Total costs',
+    share_from_temporal={'CO2': 0.2},      # From temporal effects
+    share_from_periodic={'land': 100})     # From periodic effects
 ```
-This replaces the less intuitive `specific_share_to_other_effects_*` parameters and makes it clearer where effect contributions are coming from, rather than where they are going to.
+This replaces `specific_share_to_other_effects_*` parameters and inverts the direction for clearer relationships.
 
-**Multi-period investments:**
-A flixopt model might be modeled with a "period" dimension.
-This enables modeling transformation pathways over multiple periods with several distinct investment decisions in each period.
-
-**Stochastic modeling:**
-A flixopt model can be modeled with a scenario dimension.
-Scenarios can be weighted and variables can be equated across scenarios. This enables modeling uncertainties in the flow system, such as:
-* Different demand profiles
-* Different price forecasts
-* Different weather conditions
-
-Common use cases are:
-* Find the best overall investment decision for possible scenarios (robust decision-making)
-* Find the best dispatch for the most important assets under uncertain price and weather conditions
-
-The weighted sum of the total objective effect of each scenario is used as the objective of the optimization.
-
-**Improved Data handling: I/O, resampling and more through xarray:**
-* IO for all Interfaces and the FlowSystem with round-trip serialization support
-    * NetCDF export/import capabilities for all Interface objects and FlowSystem
-    * JSON export for documentation purposes
-    * Recursive handling of nested Interface objects
-* FlowSystem data manipulation methods
-   * `sel()` and `isel()` methods for temporal data selection
-   * `resample()` method for temporal resampling
-   * `copy()` method to create a copy of a FlowSystem, including all underlying Elements and their data
-   * `__eq__()` method for FlowSystem comparison
-* Core data handling improvements
-   * `get_dataarray_stats()` function for statistical summaries
-   * Enhanced `DataConverter` class with better TimeSeriesData support
+**Enhanced I/O and data handling:**
+* NetCDF/JSON serialization for all Interface objects and FlowSystem with round-trip support
+* FlowSystem manipulation: `sel()`, `isel()`, `resample()`, `copy()`, `__eq__()` methods
+* Direct access to FlowSystem from results without manual restoring (lazily loaded)
+* New `FlowResults` class and precomputed DataArrays for sizes/flow_rates/flow_hours
+* `effects_per_component()` dataset for component impact evaluation, including all indirect effects through effect shares
 
 **Other additions:**
-* FlowSystem restoring: The used FlowSystem is now accessible directly from the results without manual restoring (lazily). All parameters can be safely accessed anytime after the solve.
-* FlowResults added as a new class to store the results of Flows. They can now be accessed directly.
-* Added precomputed DataArrays for `size`s, `flow_rate`s and `flow_hour`s.
-* Added `effects_per_component()`-Dataset to Results that stores the direct (and indirect) effects of each component. This greatly improves the evaluation of the impact of individual Components, even with many and complex effects.
-* Improved filter methods in `results.py`
-* Balanced storage - Storage charging and discharging sizes can now be forced to be equal when optimizing their size by the `balanced` parameter.
-* Added Example for 2-stage Investment decisions leveraging the resampling of a FlowSystem
-* New Storage Parameter: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameter for final state control. Default to last value of `relative_minimum_charge_state` and `relative_maximum_charge_state`, which will prevent change of behaviour for most users.
+* Balanced storage - charging and discharging sizes can be forced equal via `balanced` parameter
+* New Storage parameters: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` for final state control
+* Improved filter methods in results
+* Example for 2-stage investment decisions leveraging FlowSystem resampling
 
 ### 💥 Breaking Changes
 * `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
