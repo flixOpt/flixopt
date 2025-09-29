@@ -315,8 +315,10 @@ class AggregationModel(Submodel):
 
         indices = self.aggregation_data.get_equation_indices(skip_first_index_of_period=True)
 
-        time_variables: set[str] = {k for k, v in self._model.variables.data.items() if 'time' in v.indexes}
-        binary_variables: set[str] = {k for k, v in self._model.variables.data.items() if k in self._model.binaries}
+        time_variables: set[str] = {
+            name for name in self._model.variables if 'time' in self._model.variables[name].dims
+        }
+        binary_variables: set[str] = set(self._model.variables.binaries)
         binary_time_variables: set[str] = time_variables & binary_variables
 
         for component in components:
@@ -353,17 +355,11 @@ class AggregationModel(Submodel):
             variable.name in self._model.variables.binaries
             and self.aggregation_parameters.percentage_of_period_freedom > 0
         ):
-            var_k1 = self.add_variables(
-                binary=True,
-                coords={'time': variable.isel(time=indices[0]).indexes['time']},
-                short_name=f'correction1|{variable.name}',
-            )
+            sel = variable.isel(time=indices[0])
+            coords = {d: sel.indexes[d] for d in sel.dims}
+            var_k1 = self.add_variables(binary=True, coords=coords, short_name=f'correction1|{variable.name}')
 
-            var_k0 = self.add_variables(
-                binary=True,
-                coords={'time': variable.isel(time=indices[0]).indexes['time']},
-                short_name=f'correction0|{variable.name}',
-            )
+            var_k0 = self.add_variables(binary=True, coords=coords, short_name=f'correction0|{variable.name}')
 
             # equation extends ...
             # --> On(p3) can be 0/1 independent of On(p1,t)!
@@ -379,8 +375,8 @@ class AggregationModel(Submodel):
 
             # Begrenzung der Korrektur-Anzahl:
             # eq: sum(K) <= n_Corr_max
+            limit = int(np.floor(self.aggregation_parameters.percentage_of_period_freedom / 100 * length))
             self.add_constraints(
-                var_k0.sum() + var_k1.sum()
-                <= round(self.aggregation_parameters.percentage_of_period_freedom / 100 * length),
+                var_k0.sum(dim='time') + var_k1.sum(dim='time') <= limit,
                 short_name=f'limit_corrections|{variable.name}',
             )
