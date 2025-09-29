@@ -42,7 +42,7 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 
 ## [Unreleased] - ????-??-??
-This release brings multi-year investments and stochastic modeling to flixopt.
+This release brings multi-period investments and stochastic modeling to flixopt.
 Furthermore, I/O methods were improved, and resampling and selection of parts of the FlowSystem are now possible.
 Several internal improvements were made to the codebase.
 
@@ -60,9 +60,9 @@ costs = fx.Effect(
 ```
 This replaces the less intuitive `specific_share_to_other_effects_*` parameters and makes it clearer where effect contributions are coming from, rather than where they are going to.
 
-**Multi-year investments:**
-A flixopt model might be modeled with a "year" dimension.
-This enables modeling transformation pathways over multiple years with several investment decisions
+**Multi-period investments:**
+A flixopt model might be modeled with a "period" dimension.
+This enables modeling transformation pathways over multiple periods with several distinct investment decisions in each period.
 
 **Stochastic modeling:**
 A flixopt model can be modeled with a scenario dimension.
