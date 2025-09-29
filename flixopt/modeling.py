@@ -55,47 +55,58 @@ class ModelingUtilitiesAbstract:
     def count_consecutive_states(
         binary_values: xr.DataArray,
         dim: str = 'time',
-        epsilon: float = None,
+        epsilon: float | None = None,
     ) -> float:
-        """
-        Counts the number of consecutive states in a binary time series.
+        """Count consecutive steps in the final active state of a binary time series.
+
+        This function counts how many consecutive time steps the series remains "on"
+        (non-zero) at the end of the time series. If the final state is "off", returns 0.
 
         Args:
-            binary_values: Binary DataArray
-            dim: Dimension to count consecutive states over
-            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
+            binary_values: Binary DataArray with values close to 0 (off) or 1 (on).
+            dim: Dimension along which to count consecutive states.
+            epsilon: Tolerance for zero detection. Uses CONFIG.modeling.EPSILON if None.
 
         Returns:
-            The consecutive number of steps spent in the final state of the timeseries
+            Sum of values in the final consecutive "on" period. Returns 0.0 if the
+            final state is "off".
+
+        Examples:
+            >>> arr = xr.DataArray([0, 0, 1, 1, 1, 0, 1, 1], dims=['time'])
+            >>> count_consecutive_states(arr)
+            2.0  # Two consecutive 1s at the end
         """
-        if epsilon is None:
-            epsilon = CONFIG.modeling.EPSILON
+        epsilon = epsilon or CONFIG.modeling.EPSILON
 
-        binary_values = binary_values.any(dim=[d for d in binary_values.dims if d != dim])
+        # Reduce to target dimension by taking any() over other dimensions
+        other_dims = [d for d in binary_values.dims if d != dim]
+        if other_dims:
+            binary_values = binary_values.any(dim=other_dims)
 
-        # Handle scalar case
-        if binary_values.ndim == 0:
-            return float(binary_values.item())
+        # Convert to numpy array
+        arr = binary_values.values if hasattr(binary_values, 'values') else np.asarray(binary_values)
 
-        # Check if final state is off
-        if np.isclose(binary_values.isel({dim: -1}), 0, atol=epsilon).all():
+        # Flatten to 1D if needed
+        arr = arr.ravel() if arr.ndim > 1 else arr
+
+        # Handle edge cases
+        if arr.size == 0:
+            return 0.0
+        if arr.size == 1:
+            return float(arr[0]) if not np.isclose(arr[0], 0, atol=epsilon) else 0.0
+
+        # Return 0 if final state is off
+        if np.isclose(arr[-1], 0, atol=epsilon):
             return 0.0
 
-        # Find consecutive 'on' period from the end
-        is_zero = np.isclose(binary_values, 0, atol=epsilon)
-
-        # Find the last zero, then sum everything after it
+        # Find the last zero position
+        is_zero = np.isclose(arr, 0, atol=epsilon)
         zero_indices = np.where(is_zero)[0]
-        if len(zero_indices) == 0:
-            # All 'on' - sum everything
-            start_idx = 0
-        else:
-            # Start after last zero
-            start_idx = zero_indices[-1] + 1
 
-        consecutive_values = binary_values.isel({dim: slice(start_idx, None)})
+        # Calculate sum from last zero to end
+        start_idx = zero_indices[-1] + 1 if zero_indices.size > 0 else 0
 
-        return float(consecutive_values.sum().item())  # TODO: Som only over one dim?
+        return float(np.sum(arr[start_idx:]))
 
 
 class ModelingUtilities:
@@ -308,7 +319,13 @@ class ModelingPrimitives:
             )
 
             # Handle initial condition for minimum duration
-            if previous_duration > 0 and previous_duration < minimum_duration.isel({duration_dim: 0}).max():
+            prev = (
+                float(previous_duration)
+                if not isinstance(previous_duration, xr.DataArray)
+                else float(previous_duration.max().item())
+            )
+            min0 = float(minimum_duration.isel(time=0).max().item())
+            if prev > 0 and prev < min0:
                 constraints['initial_lb'] = model.add_constraints(
                     state_variable.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
                 )
@@ -435,7 +452,7 @@ class BoundingPatterns:
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
-        if np.all(lower_bound - upper_bound) < 1e-10:
+        if np.all(np.isclose(lower_bound, upper_bound, atol=1e-10)):
             fix_constraint = model.add_constraints(variable == variable_state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
@@ -481,7 +498,7 @@ class BoundingPatterns:
         rel_lower, rel_upper = relative_bounds
         name = name or f'{variable.name}'
 
-        if np.abs(rel_lower - rel_upper).all() < 10e-10:
+        if np.all(np.isclose(rel_lower, rel_upper, atol=1e-10)):
             return [model.add_constraints(variable == scaling_variable * rel_lower, name=f'{name}|fixed')]
 
         upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub')
