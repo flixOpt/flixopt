@@ -665,7 +665,7 @@ class CalculationResults:
 
                 component_arrays.append(arr.expand_dims(component=[component]))
 
-            ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal')
+            ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal').rename(effect)
 
         # For now include a test to ensure correctness
         suffix = {
