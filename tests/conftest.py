@@ -28,10 +28,11 @@ def highs_solver():
 
 @pytest.fixture()
 def gurobi_solver():
+    pytest.importorskip('gurobipy', reason='Gurobi not available in this environment')
     return fx.solvers.GurobiSolver(mip_gap=0, time_limit_seconds=300)
 
 
-@pytest.fixture(params=[highs_solver, gurobi_solver])
+@pytest.fixture(params=[highs_solver, gurobi_solver], ids=['highs', 'gurobi'])
 def solver_fixture(request):
     return request.getfixturevalue(request.param.__name__)
 
@@ -632,7 +633,7 @@ def flow_system_long():
     }
 
 
-@pytest.fixture(params=['h', '3h'])
+@pytest.fixture(params=['h', '3h'], ids=['hourly', '3-hourly'])
 def timesteps_linopy(request):
     return pd.date_range('2020-01-01', periods=10, freq=request.param, name='time')
 
@@ -642,8 +643,9 @@ def basic_flow_system_linopy(timesteps_linopy) -> fx.FlowSystem:
     """Create basic elements for component testing"""
     flow_system = fx.FlowSystem(timesteps_linopy)
 
-    thermal_load = LoadProfiles.random_thermal(10)
-    p_el = LoadProfiles.random_electrical(10)
+    n = len(flow_system.timesteps)
+    thermal_load = LoadProfiles.random_thermal(n)
+    p_el = LoadProfiles.random_electrical(n)
 
     costs = Effects.costs()
     heat_load = Sinks.heat_load(thermal_load)
@@ -783,9 +785,9 @@ def assert_sets_equal(set1: Iterable, set2: Iterable, msg=''):
     if extra or missing:
         parts = []
         if extra:
-            parts.append(f'Extra: {sorted(extra)}')
+            parts.append(f'Extra: {sorted(extra, key=repr)}')
         if missing:
-            parts.append(f'Missing: {sorted(missing)}')
+            parts.append(f'Missing: {sorted(missing, key=repr)}')
 
         error_msg = ', '.join(parts)
         if msg:
