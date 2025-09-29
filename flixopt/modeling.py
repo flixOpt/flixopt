@@ -254,7 +254,7 @@ class ModelingPrimitives:
             constraints: {'ub': constraint, 'forward': constraint, 'backward': constraint, ...}
         """
         if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
+            raise ValueError('ModelingPrimitives.consecutive_duration_tracking() can only be used with a Submodel')
 
         mega = duration_per_step.sum(duration_dim) + previous_duration  # Big-M value
 
@@ -346,7 +346,7 @@ class ModelingPrimitives:
             AssertionError: If fewer than 2 variables provided or variables aren't binary
         """
         if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
+            raise ValueError('ModelingPrimitives.mutual_exclusivity_constraint() can only be used with a Submodel')
 
         assert len(binary_variables) >= 2, (
             f'Mutual exclusivity requires at least 2 variables, got {len(binary_variables)}'
@@ -570,7 +570,7 @@ class BoundingPatterns:
             constraints: {'transition': constraint, 'initial': constraint, 'mutex': constraint}
         """
         if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.state_transition_variables() can only be used with a Submodel')
+            raise ValueError('ModelingPrimitives.state_transition_bounds() can only be used with a Submodel')
 
         # State transition constraints for t > 0
         transition = model.add_constraints(
