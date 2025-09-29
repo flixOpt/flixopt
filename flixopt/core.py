@@ -606,19 +606,35 @@ def get_dataarray_stats(arr: xr.DataArray) -> dict:
     return stats
 
 
-def drop_constant_arrays(ds: xr.Dataset, dim='time', drop_arrays_without_dim: bool = True):
-    """Drop variables with very low variance (near-constant)."""
+def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True) -> xr.Dataset:
+    """Drop variables with constant values along a dimension.
+
+    Args:
+        ds: Input dataset to filter.
+        dim: Dimension along which to check for constant values.
+        drop_arrays_without_dim: If True, also drop variables that don't have the specified dimension.
+
+    Returns:
+        Dataset with constant variables removed.
+    """
     drop_vars = []
 
     for name, da in ds.data_vars.items():
-        if dim in da.dims:
-            if da.max(dim) == da.min(dim):
+        # Skip variables without the dimension
+        if dim not in da.dims:
+            if drop_arrays_without_dim:
                 drop_vars.append(name)
             continue
-        elif drop_arrays_without_dim:
+
+        # Check if variable is constant along the dimension
+        if (da.max(dim) == da.min(dim)).all():
             drop_vars.append(name)
 
-    logger.debug(f'Dropping {len(drop_vars)} arrays with constant values')
+    if drop_vars:
+        logger.debug(
+            f'Dropping {len(drop_vars)} constant/dimension-less arrays: {drop_vars[:5]}{"..." if len(drop_vars) > 5 else ""}'
+        )
+
     return ds.drop_vars(drop_vars)
 
 
