@@ -472,17 +472,19 @@ class Storage(Component):
         Check for infeasible or uncommon combinations of parameters
         """
         super()._plausibility_checks()
+
+        # Validate string values and set flag
+        initial_is_last = False
         if isinstance(self.initial_charge_state, str):
-            if self.initial_charge_state != 'lastValueOfSim':
-                raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
-            return
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            if self.capacity_in_flow_hours.fixed_size is None:
-                maximum_capacity = self.capacity_in_flow_hours.maximum_size
-                minimum_capacity = self.capacity_in_flow_hours.minimum_size
+            if self.initial_charge_state == 'lastValueOfSim':
+                initial_is_last = True
             else:
-                maximum_capacity = self.capacity_in_flow_hours.fixed_size
-                minimum_capacity = self.capacity_in_flow_hours.fixed_size
+                raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
+
+        # Use new InvestParameters methods to get capacity bounds
+        if isinstance(self.capacity_in_flow_hours, InvestParameters):
+            minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
+            maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
         else:
             maximum_capacity = self.capacity_in_flow_hours
             minimum_capacity = self.capacity_in_flow_hours
@@ -492,16 +494,18 @@ class Storage(Component):
         # initial capacity <= allowed max for minimum_size:
         maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
-        if (self.initial_charge_state > maximum_initial_capacity).any():
-            raise ValueError(
-                f'{self.label_full}: {self.initial_charge_state=} '
-                f'is above allowed maximum charge_state {maximum_initial_capacity}'
-            )
-        if (self.initial_charge_state < minimum_initial_capacity).any():
-            raise ValueError(
-                f'{self.label_full}: {self.initial_charge_state=} '
-                f'is below allowed minimum charge_state {minimum_initial_capacity}'
-            )
+        # Only perform numeric comparisons if not using 'lastValueOfSim'
+        if not initial_is_last:
+            if (self.initial_charge_state > maximum_initial_capacity).any():
+                raise PlausibilityError(
+                    f'{self.label_full}: {self.initial_charge_state=} '
+                    f'is above allowed maximum charge_state {maximum_initial_capacity}'
+                )
+            if (self.initial_charge_state < minimum_initial_capacity).any():
+                raise PlausibilityError(
+                    f'{self.label_full}: {self.initial_charge_state=} '
+                    f'is below allowed minimum charge_state {minimum_initial_capacity}'
+                )
 
         if self.balanced:
             if not isinstance(self.charging.size, InvestParameters) or not isinstance(
