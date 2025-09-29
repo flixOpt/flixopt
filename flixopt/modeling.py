@@ -637,7 +637,7 @@ class BoundingPatterns:
         )
 
         transition_lower = model.add_constraints(
-            continuous_variable.isel({coord: slice(None, -1)}) - continuous_variable.isel({coord: slice(1, None)})
+            -(continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)}))
             <= max_change * (switch_on.isel({coord: slice(1, None)}) + switch_off.isel({coord: slice(1, None)})),
             name=f'{name}|transition_lb',
         )
