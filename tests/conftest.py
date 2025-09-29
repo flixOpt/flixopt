@@ -253,15 +253,19 @@ class Storage:
     """Energy storage components"""
 
     @staticmethod
-    def simple():
+    def simple(timesteps_length=9):
         """Simple storage from simple_flow_system"""
+        # Create pattern [80.0, 70.0, 80.0] and repeat/slice to match timesteps_length
+        pattern = [80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80]
+        charge_state_values = (pattern * ((timesteps_length // len(pattern)) + 1))[:timesteps_length]
+
         return fx.Storage(
             'Speicher',
             charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
             discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
             capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
             initial_charge_state=0,
-            relative_maximum_charge_state=1 / 100 * np.array([80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80]),
+            relative_maximum_charge_state=1 / 100 * np.array(charge_state_values),
             relative_maximum_final_charge_state=0.8,
             eta_charge=0.9,
             eta_discharge=1,
@@ -304,24 +308,29 @@ class LoadProfiles:
     """Standard load and price profiles"""
 
     @staticmethod
-    def thermal_simple():
-        return np.array([30.0, 0.0, 90.0, 110, 110, 20, 20, 20, 20])
+    def thermal_simple(timesteps_length=9):
+        # Create pattern and repeat/slice to match timesteps_length
+        pattern = [30.0, 0.0, 90.0, 110, 110, 20, 20, 20, 20]
+        values = (pattern * ((timesteps_length // len(pattern)) + 1))[:timesteps_length]
+        return np.array(values)
 
     @staticmethod
     def thermal_complex():
         return np.array([30, 0, 90, 110, 110, 20, 20, 20, 20])
 
     @staticmethod
-    def electrical_simple():
-        return 1 / 1000 * np.array([80.0, 80.0, 80.0, 80, 80, 80, 80, 80, 80])
+    def electrical_simple(timesteps_length=9):
+        # Create array of 80.0 repeated to match timesteps_length
+        return np.array([80.0 / 1000] * timesteps_length)
 
     @staticmethod
     def electrical_scenario():
         return np.array([0.08, 0.1, 0.15])
 
     @staticmethod
-    def electrical_complex():
-        return np.array([40, 40, 40, 40, 40, 40, 40, 40, 40])
+    def electrical_complex(timesteps_length=9):
+        # Create array of 40 repeated to match timesteps_length
+        return np.array([40] * timesteps_length)
 
     @staticmethod
     def random_thermal(length=10, seed=42):
@@ -387,9 +396,10 @@ def simple_flow_system() -> fx.FlowSystem:
     """
     Create a simple energy system for testing
     """
-    base_thermal_load = LoadProfiles.thermal_simple()
-    base_electrical_price = LoadProfiles.electrical_simple()
     base_timesteps = pd.date_range('2020-01-01', periods=9, freq='h', name='time')
+    timesteps_length = len(base_timesteps)
+    base_thermal_load = LoadProfiles.thermal_simple(timesteps_length)
+    base_electrical_price = LoadProfiles.electrical_simple(timesteps_length)
 
     # Define effects
     costs = Effects.costs_with_co2_share()
@@ -399,7 +409,7 @@ def simple_flow_system() -> fx.FlowSystem:
     # Create components
     boiler = Converters.Boilers.simple()
     chp = Converters.CHPs.simple()
-    storage = Storage.simple()
+    storage = Storage.simple(timesteps_length)
     heat_load = Sinks.heat_load(base_thermal_load)
     gas_tariff = Sources.gas_with_costs_and_co2()
     electricity_feed_in = Sinks.electricity_feed_in(base_electrical_price)
@@ -417,9 +427,10 @@ def simple_flow_system_scenarios() -> fx.FlowSystem:
     """
     Create a simple energy system for testing
     """
-    base_thermal_load = LoadProfiles.thermal_simple()
-    base_electrical_price = LoadProfiles.electrical_scenario()
     base_timesteps = pd.date_range('2020-01-01', periods=9, freq='h', name='time')
+    timesteps_length = len(base_timesteps)
+    base_thermal_load = LoadProfiles.thermal_simple(timesteps_length)
+    base_electrical_price = LoadProfiles.electrical_scenario()
 
     # Define effects
     costs = Effects.costs_with_co2_share()
@@ -429,7 +440,7 @@ def simple_flow_system_scenarios() -> fx.FlowSystem:
     # Create components
     boiler = Converters.Boilers.simple()
     chp = Converters.CHPs.simple()
-    storage = Storage.simple()
+    storage = Storage.simple(timesteps_length)
     heat_load = Sinks.heat_load(base_thermal_load)
     gas_tariff = Sources.gas_with_costs_and_co2()
     electricity_feed_in = Sinks.electricity_feed_in(base_electrical_price)
