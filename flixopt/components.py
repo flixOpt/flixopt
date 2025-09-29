@@ -740,8 +740,9 @@ class TransmissionModel(ComponentModel):
     def create_transmission_equation(self, name: str, in_flow: Flow, out_flow: Flow) -> linopy.Constraint:
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
+        rel_losses = 0 if self.element.relative_losses is None else self.element.relative_losses
         con_transmission = self.add_constraints(
-            out_flow.submodel.flow_rate == -in_flow.submodel.flow_rate * (self.element.relative_losses - 1),
+            out_flow.submodel.flow_rate == in_flow.submodel.flow_rate * (1 - rel_losses),
             short_name=name,
         )
 
