@@ -58,12 +58,13 @@ class FlowSystem(Interface):
             If None, the first time increment of time_series is used.
             This is needed to calculate previous durations (for example consecutive_on_hours).
             If you use an array, take care that its long enough to cover all previous values!
-        periods_of_last_period: The duration of the last period. Uses the last period interval if not specified
-        weights: The weights of each period and scenario. If None, all scenarios have the same weight, while the periods have the weight of their represented period (all normalized to 1). Its recommended to scale the weights to sum up to 1.
+        weights: The weights of each period and scenario. If None, all scenarios have the same weight (normalized to 1).
+            Its recommended to normalize the weights to sum up to 1.
 
     Notes:
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
-        - The instance starts disconnected (self._connected == False) and will be connected automatically when trying to solve a calculation.
+        - The instance starts disconnected (self._connected_and_transformed == False) and will be
+        connected_and_transformed automatically when trying to solve a calculation.
     """
 
     def __init__(
@@ -73,7 +74,6 @@ class FlowSystem(Interface):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        periods_of_last_period: int | None = None,
         weights: PeriodicDataUser | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
@@ -82,13 +82,7 @@ class FlowSystem(Interface):
             self.timesteps, hours_of_previous_timesteps
         )
 
-        self.periods_of_last_period = periods_of_last_period
-        if periods is None:
-            self.periods, self.periods_per_period = None, None
-        else:
-            self.periods = self._validate_periods(periods)
-            self.periods_per_period = self.calculate_periods_per_period(self.periods, periods_of_last_period)
-
+        self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
         self.weights = weights
