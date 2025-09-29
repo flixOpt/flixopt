@@ -14,10 +14,18 @@
   "automerge": false,
   "labels": ["dependencies"],
   "rangeStrategy": "widen",
+  "minimumReleaseAge": "7 days",
   "packageRules": [
     {
-      "matchDepTypes": ["dev-dependencies", "devDependencies"],
-      "rangeStrategy": "pin"
+      "matchDepTypes": ["dev", "docs"],
+      "rangeStrategy": "pin",
+      "minimumReleaseAge": "14 days"
+    },
+    {
+      "matchUpdateTypes": ["patch"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true,
+      "automergeType": "pr"
     }
   ]
 }
