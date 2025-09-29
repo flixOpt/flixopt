@@ -108,7 +108,7 @@ class Calculation:
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
                     'temporal': effect.submodel.temporal.total.solution.values,
-                    'nontemporal': effect.submodel.nontemporal.total.solution.values,
+                    'periodic': effect.submodel.periodic.total.solution.values,
                     'total': effect.submodel.total.solution.values,
                 }
                 for effect in self.flow_system.effects

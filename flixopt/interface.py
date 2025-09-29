@@ -14,8 +14,8 @@ from .structure import Interface, register_class_for_io
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .core import NonTemporalData, NonTemporalDataUser, Scalar, TemporalDataUser
-    from .effects import NonTemporalEffectsUser, TemporalEffectsUser
+    from .core import PeriodicData, PeriodicDataUser, Scalar, TemporalDataUser
+    from .effects import PeriodicEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
 
 
@@ -74,7 +74,7 @@ class Piece(Interface):
         self.has_time_dim = False
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        dims = None if self.has_time_dim else ['year', 'scenario']
+        dims = None if self.has_time_dim else ['period', 'scenario']
         self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, dims=dims)
         self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, dims=dims)
 
@@ -853,20 +853,20 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: NonTemporalDataUser | None = None,
-        minimum_size: NonTemporalDataUser | None = None,
-        maximum_size: NonTemporalDataUser | None = None,
+        fixed_size: PeriodicDataUser | None = None,
+        minimum_size: PeriodicDataUser | None = None,
+        maximum_size: PeriodicDataUser | None = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: NonTemporalEffectsUser | None = None,
-        specific_effects: NonTemporalEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
+        fix_effects: PeriodicEffectsUser | None = None,
+        specific_effects: PeriodicEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: PiecewiseEffects | None = None,
-        divest_effects: NonTemporalEffectsUser | None = None,
+        divest_effects: PeriodicEffectsUser | None = None,
     ):
-        self.fix_effects: NonTemporalEffectsUser = fix_effects or {}
-        self.divest_effects: NonTemporalEffectsUser = divest_effects or {}
+        self.fix_effects: PeriodicEffectsUser = fix_effects or {}
+        self.divest_effects: PeriodicEffectsUser = divest_effects or {}
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: NonTemporalEffectsUser = specific_effects if specific_effects is not None else {}
+        self.specific_effects: PeriodicEffectsUser = specific_effects if specific_effects is not None else {}
         self.piecewise_effects = piecewise_effects
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
@@ -876,41 +876,41 @@ class InvestParameters(Interface):
             label_prefix=name_prefix,
             effect_values=self.fix_effects,
             label_suffix='fix_effects',
-            dims=['year', 'scenario'],
+            dims=['period', 'scenario'],
         )
         self.divest_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.divest_effects,
             label_suffix='divest_effects',
-            dims=['year', 'scenario'],
+            dims=['period', 'scenario'],
         )
         self.specific_effects = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
             effect_values=self.specific_effects,
             label_suffix='specific_effects',
-            dims=['year', 'scenario'],
+            dims=['period', 'scenario'],
         )
         if self.piecewise_effects is not None:
             self.piecewise_effects.has_time_dim = False
             self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
         self.minimum_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|minimum_size', self.minimum_size, dims=['year', 'scenario']
+            f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
         )
         self.maximum_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|maximum_size', self.maximum_size, dims=['year', 'scenario']
+            f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
         )
         if self.fixed_size is not None:
             self.fixed_size = flow_system.fit_to_model_coords(
-                f'{name_prefix}|fixed_size', self.fixed_size, dims=['year', 'scenario']
+                f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
             )
 
     @property
-    def minimum_or_fixed_size(self) -> NonTemporalData:
+    def minimum_or_fixed_size(self) -> PeriodicData:
         return self.fixed_size if self.fixed_size is not None else self.minimum_size
 
     @property
-    def maximum_or_fixed_size(self) -> NonTemporalData:
+    def maximum_or_fixed_size(self) -> PeriodicData:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
 
@@ -1014,7 +1014,7 @@ class OnOffParameters(Interface):
             consecutive_on_hours_min=12,  # Minimum batch size (12 hours)
             consecutive_on_hours_max=24,  # Maximum batch size (24 hours)
             consecutive_off_hours_min=6,  # Cleaning and setup time
-            switch_on_total_max=200,  # Maximum 200 batches per year
+            switch_on_total_max=200,  # Maximum 200 batches per period
             on_hours_total_max=4000,  # Maximum production time
         )
         ```
@@ -1140,13 +1140,13 @@ class OnOffParameters(Interface):
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
         )
         self.on_hours_total_max = flow_system.fit_to_model_coords(
-            f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, dims=['year', 'scenario']
+            f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, dims=['period', 'scenario']
         )
         self.on_hours_total_min = flow_system.fit_to_model_coords(
-            f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, dims=['year', 'scenario']
+            f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, dims=['period', 'scenario']
         )
         self.switch_on_total_max = flow_system.fit_to_model_coords(
-            f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, dims=['year', 'scenario']
+            f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, dims=['period', 'scenario']
         )
 
     @property

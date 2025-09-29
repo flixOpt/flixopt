@@ -17,13 +17,13 @@ logger = logging.getLogger('flixopt')
 Scalar = int | float
 """A single number, either integer or float."""
 
-NonTemporalDataUser = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+PeriodicDataUser = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension."""
 
-NonTemporalData = xr.DataArray
-"""Internally used datatypes for non-temporal data. Can be a Scalar or an xr.DataArray."""
+PeriodicData = xr.DataArray
+"""Internally used datatypes for periodic data. Can be a Scalar or an xr.DataArray."""
 
-FlowSystemDimensions = Literal['time', 'year', 'scenario']
+FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
 
 
@@ -620,3 +620,9 @@ def drop_constant_arrays(ds: xr.Dataset, dim='time', drop_arrays_without_dim: bo
 
     logger.debug(f'Dropping {len(drop_vars)} arrays with constant values')
     return ds.drop_vars(drop_vars)
+
+
+# Backward compatibility aliases
+# TODO: Needed?
+NonTemporalDataUser = PeriodicDataUser
+NonTemporalData = PeriodicData

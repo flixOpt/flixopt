@@ -17,8 +17,8 @@ from .core import (
     ConversionError,
     DataConverter,
     FlowSystemDimensions,
-    NonTemporalData,
-    NonTemporalDataUser,
+    PeriodicData,
+    PeriodicDataUser,
     TemporalData,
     TemporalDataUser,
     TimeSeriesData,
@@ -26,8 +26,8 @@ from .core import (
 from .effects import (
     Effect,
     EffectCollection,
-    NonTemporalEffects,
-    NonTemporalEffectsUser,
+    PeriodicEffects,
+    PeriodicEffectsUser,
     TemporalEffects,
     TemporalEffectsUser,
 )
@@ -51,15 +51,15 @@ class FlowSystem(Interface):
 
     Args:
         timesteps: The timesteps of the model.
-        years: The years of the model.
+        periods: The periods of the model.
         scenarios: The scenarios of the model.
         hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
         hours_of_previous_timesteps: The duration of previous timesteps.
             If None, the first time increment of time_series is used.
             This is needed to calculate previous durations (for example consecutive_on_hours).
             If you use an array, take care that its long enough to cover all previous values!
-        years_of_last_year: The duration of the last year. Uses the last year interval if not specified
-        weights: The weights of each year and scenario. If None, all scenarios have the same weight, while the years have the weight of their represented year (all normalized to 1). Its recommended to scale the weights to sum up to 1.
+        periods_of_last_period: The duration of the last period. Uses the last period interval if not specified
+        weights: The weights of each period and scenario. If None, all scenarios have the same weight, while the periods have the weight of their represented period (all normalized to 1). Its recommended to scale the weights to sum up to 1.
 
     Notes:
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
@@ -69,12 +69,12 @@ class FlowSystem(Interface):
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
-        years: pd.Index | None = None,
+        periods: pd.Index | None = None,
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        years_of_last_year: int | None = None,
-        weights: NonTemporalDataUser | None = None,
+        periods_of_last_period: int | None = None,
+        weights: PeriodicDataUser | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
         self.timesteps_extra = self._create_timesteps_with_extra(self.timesteps, hours_of_last_timestep)
@@ -82,12 +82,12 @@ class FlowSystem(Interface):
             self.timesteps, hours_of_previous_timesteps
         )
 
-        self.years_of_last_year = years_of_last_year
-        if years is None:
-            self.years, self.years_per_year = None, None
+        self.periods_of_last_period = periods_of_last_period
+        if periods is None:
+            self.periods, self.periods_per_period = None, None
         else:
-            self.years = self._validate_years(years)
-            self.years_per_year = self.calculate_years_per_year(self.years, years_of_last_year)
+            self.periods = self._validate_periods(periods)
+            self.periods_per_period = self.calculate_periods_per_period(self.periods, periods_of_last_period)
 
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
@@ -140,27 +140,27 @@ class FlowSystem(Interface):
         return scenarios
 
     @staticmethod
-    def _validate_years(years: pd.Index) -> pd.Index:
+    def _validate_periods(periods: pd.Index) -> pd.Index:
         """
-        Validate and prepare year index.
+        Validate and prepare period index.
 
         Args:
-            years: The year index to validate
+            periods: The period index to validate
         """
-        if not isinstance(years, pd.Index) or len(years) == 0:
-            raise ConversionError(f'Years must be a non-empty Index. Got {years}')
+        if not isinstance(periods, pd.Index) or len(periods) == 0:
+            raise ConversionError(f'Periods must be a non-empty Index. Got {periods}')
 
         if not (
-            years.dtype.kind == 'i'  # integer dtype
-            and years.is_monotonic_increasing  # rising
-            and years.is_unique
+            periods.dtype.kind == 'i'  # integer dtype
+            and periods.is_monotonic_increasing  # rising
+            and periods.is_unique
         ):
-            raise ConversionError(f'Years must be a monotonically increasing and unique Index. Got {years}')
+            raise ConversionError(f'Periods must be a monotonically increasing and unique Index. Got {periods}')
 
-        if years.name != 'year':
-            years = years.rename('year')
+        if periods.name != 'period':
+            periods = periods.rename('period')
 
-        return years
+        return periods
 
     @staticmethod
     def _create_timesteps_with_extra(
@@ -182,14 +182,14 @@ class FlowSystem(Interface):
         )
 
     @staticmethod
-    def calculate_years_per_year(years: pd.Index, years_of_last_year: int | None = None) -> xr.DataArray:
+    def calculate_periods_per_period(periods: pd.Index, periods_of_last_period: int | None = None) -> xr.DataArray:
         """Calculate duration of each timestep as a 1D DataArray."""
-        years_per_year = np.diff(years)
+        periods_per_period = np.diff(periods)
         return xr.DataArray(
-            np.append(years_per_year, years_of_last_year or years_per_year[-1]),
-            coords={'year': years},
-            dims='year',
-            name='years_per_year',
+            np.append(periods_per_period, periods_of_last_period or periods_per_period[-1]),
+            coords={'period': periods},
+            dims='period',
+            name='periods_per_period',
         )
 
     @staticmethod
@@ -278,9 +278,9 @@ class FlowSystem(Interface):
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
             timesteps=ds.indexes['time'],
-            years=ds.indexes.get('year'),
+            periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
-            years_of_last_year=reference_structure.get('years_of_last_year'),
+            periods_of_last_period=reference_structure.get('periods_of_last_period'),
             weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
             if 'weights' in reference_structure
             else None,
@@ -364,9 +364,9 @@ class FlowSystem(Interface):
     def fit_to_model_coords(
         self,
         name: str,
-        data: TemporalDataUser | NonTemporalDataUser | None,
+        data: TemporalDataUser | PeriodicDataUser | None,
         dims: Collection[FlowSystemDimensions] | None = None,
-    ) -> TemporalData | NonTemporalData | None:
+    ) -> TemporalData | PeriodicData | None:
         """
         Fit data to model coordinate system (currently time, but extensible).
 
@@ -404,11 +404,11 @@ class FlowSystem(Interface):
     def fit_effects_to_model_coords(
         self,
         label_prefix: str | None,
-        effect_values: TemporalEffectsUser | NonTemporalEffectsUser | None,
+        effect_values: TemporalEffectsUser | PeriodicEffectsUser | None,
         label_suffix: str | None = None,
         dims: Collection[FlowSystemDimensions] | None = None,
         delimiter: str = '|',
-    ) -> TemporalEffects | NonTemporalEffects | None:
+    ) -> TemporalEffects | PeriodicEffects | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """
@@ -432,7 +432,7 @@ class FlowSystem(Interface):
             logger.debug('FlowSystem already connected and transformed')
             return
 
-        self.weights = self.fit_to_model_coords('weights', self.weights, dims=['year', 'scenario'])
+        self.weights = self.fit_to_model_coords('weights', self.weights, dims=['period', 'scenario'])
         if self.weights is not None:
             total = float(self.weights.sum().item())
             if not np.isclose(total, 1.0, atol=1e-12):
@@ -750,8 +750,8 @@ class FlowSystem(Interface):
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
         active_coords = {'time': self.timesteps}
-        if self.years is not None:
-            active_coords['year'] = self.years
+        if self.periods is not None:
+            active_coords['period'] = self.periods
         if self.scenarios is not None:
             active_coords['scenario'] = self.scenarios
         return active_coords
@@ -763,7 +763,7 @@ class FlowSystem(Interface):
     def sel(
         self,
         time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
-        year: int | slice | list[int] | pd.Index | None = None,
+        period: int | slice | list[int] | pd.Index | None = None,
         scenario: str | slice | list[str] | pd.Index | None = None,
     ) -> FlowSystem:
         """
@@ -771,7 +771,7 @@ class FlowSystem(Interface):
 
         Args:
             time: Time selection (e.g., slice('2023-01-01', '2023-12-31'), '2023-06-15', or list of times)
-            year: Year selection (e.g., slice(2023, 2024), or list of years)
+            period: Period selection (e.g., slice(2023, 2024), or list of periods)
             scenario: Scenario selection (e.g., slice('scenario1', 'scenario2'), or list of scenarios)
 
         Returns:
@@ -786,8 +786,8 @@ class FlowSystem(Interface):
         indexers = {}
         if time is not None:
             indexers['time'] = time
-        if year is not None:
-            indexers['year'] = year
+        if period is not None:
+            indexers['period'] = period
         if scenario is not None:
             indexers['scenario'] = scenario
 
@@ -800,7 +800,7 @@ class FlowSystem(Interface):
     def isel(
         self,
         time: int | slice | list[int] | None = None,
-        year: int | slice | list[int] | None = None,
+        period: int | slice | list[int] | None = None,
         scenario: int | slice | list[int] | None = None,
     ) -> FlowSystem:
         """
@@ -808,7 +808,7 @@ class FlowSystem(Interface):
 
         Args:
             time: Time selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
-            year: Year selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
+            period: Period selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
             scenario: Scenario selection by integer index (e.g., slice(0, 3), 50, or [0, 5, 10])
 
         Returns:
@@ -823,8 +823,8 @@ class FlowSystem(Interface):
         indexers = {}
         if time is not None:
             indexers['time'] = time
-        if year is not None:
-            indexers['year'] = year
+        if period is not None:
+            indexers['period'] = period
         if scenario is not None:
             indexers['scenario'] = scenario
 
