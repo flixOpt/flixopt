@@ -68,6 +68,19 @@ Please keep the format of the changelog consistent with the other releases, so t
 Until here -->
 ---
 
+## [2.1.10] - 2025-09-29
+**Summary:** This release is a Documentation and Development release.
+
+### 📝 Docs
+- Improved CHANGELOG.md formatting by adding better categories and formating by Gitmoji.
+- Added a script to extract the release notes from the CHANGELOG.md file for better organized documentation.
+
+### 👷 Development
+- Improved `renovate.config`
+- Sped up CI by not running examples in every run and using `pytest-xdist`
+
+---
+
 ## [2.1.9] - 2025-09-23
 
 **Summary:** Small bugfix release addressing network visualization error handling.
@@ -149,6 +162,9 @@ Until here -->
 
 ### 🐛 Fixed
 - Fixed testing issue with new `linopy` version 0.5.6
+
+### 👷 Development
+- Added dependency "nbformat>=4.2.0" to dev dependencies to resolve issue with plotly CI
 
 ---
 
