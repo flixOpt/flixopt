@@ -130,11 +130,11 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
         fx.Bus('Strom'),
         fx.Bus('Fernwärme'),
         fx.Bus('Gas'),
-        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)),
+        fx.Sink('Wärmelast', inputs=[fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)]),
         fx.Source(
-            'Gastarif', source=fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})
+            'Gastarif', outputs=[fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})]
         ),
-        fx.Sink('Einspeisung', sink=fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)),
+        fx.Sink('Einspeisung', inputs=[fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)]),
     )
 
     boiler = fx.linear_converters.Boiler(
