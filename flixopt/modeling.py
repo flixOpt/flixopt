@@ -53,7 +53,7 @@ class ModelingUtilitiesAbstract:
 
     @staticmethod
     def count_consecutive_states(
-        binary_values: xr.DataArray,
+        binary_values: xr.DataArray | np.ndarray | list[int, float],
         dim: str = 'time',
         epsilon: float | None = None,
     ) -> float:
@@ -73,21 +73,23 @@ class ModelingUtilitiesAbstract:
 
         Examples:
             >>> arr = xr.DataArray([0, 0, 1, 1, 1, 0, 1, 1], dims=['time'])
-            >>> count_consecutive_states(arr)
-            2.0  # Two consecutive 1s at the end
+            >>> ModelingUtilitiesAbstract.count_consecutive_states(arr)
+            2.0
+
+            >>> arr = [0, 0, 1, 0, 1, 1, 1, 1]
+            >>> ModelingUtilitiesAbstract.count_consecutive_states(arr)
+            4.0
         """
         epsilon = epsilon or CONFIG.modeling.EPSILON
 
-        # Check if input is an xarray DataArray
-        if hasattr(binary_values, 'dims'):
-            # Reduce to target dimension by taking any() over other dimensions
+        if isinstance(binary_values, xr.DataArray):
+            # xarray path
             other_dims = [d for d in binary_values.dims if d != dim]
             if other_dims:
                 binary_values = binary_values.any(dim=other_dims)
-            # Convert xarray to numpy
             arr = binary_values.values
         else:
-            # Convert non-xarray input directly to numpy array
+            # numpy/array-like path
             arr = np.asarray(binary_values)
 
         # Flatten to 1D if needed
@@ -103,7 +105,8 @@ class ModelingUtilitiesAbstract:
         if np.isclose(arr[-1], 0, atol=epsilon):
             return 0.0
 
-        # Find the last zero position
+        # Find the last zero position (treat NaNs as off)
+        arr = np.nan_to_num(arr, nan=0.0)
         is_zero = np.isclose(arr, 0, atol=epsilon)
         zero_indices = np.where(is_zero)[0]
 
@@ -328,7 +331,7 @@ class ModelingPrimitives:
                 if not isinstance(previous_duration, xr.DataArray)
                 else float(previous_duration.max().item())
             )
-            min0 = float(minimum_duration.isel(time=0).max().item())
+            min0 = float(minimum_duration.isel({duration_dim: 0}).max().item())
             if prev > 0 and prev < min0:
                 constraints['initial_lb'] = model.add_constraints(
                     state_variable.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
@@ -456,7 +459,7 @@ class BoundingPatterns:
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
-        if np.all(np.isclose(lower_bound, upper_bound, atol=1e-10)):
+        if np.allclose(lower_bound, upper_bound, atol=1e-10, equal_nan=True):
             fix_constraint = model.add_constraints(variable == variable_state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
@@ -502,7 +505,7 @@ class BoundingPatterns:
         rel_lower, rel_upper = relative_bounds
         name = name or f'{variable.name}'
 
-        if np.all(np.isclose(rel_lower, rel_upper, atol=1e-10)):
+        if np.allclose(rel_lower, rel_upper, atol=1e-10, equal_nan=True):
             return [model.add_constraints(variable == scaling_variable * rel_lower, name=f'{name}|fixed')]
 
         upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub')
