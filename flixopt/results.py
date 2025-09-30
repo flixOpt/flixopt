@@ -811,7 +811,7 @@ class CalculationResults:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             else:
-                self.model.to_netcdf(paths.linopy_model)
+                self.model.to_netcdf(paths.linopy_model, engine='h5netcdf')
 
         if document_model:
             if self.model is None:

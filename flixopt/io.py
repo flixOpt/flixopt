@@ -243,6 +243,7 @@ def save_dataset_to_netcdf(
         encoding=None
         if not apply_encoding
         else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
+        engine='h5netcdf',
     )
 
 
