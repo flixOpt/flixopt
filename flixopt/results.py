@@ -291,8 +291,8 @@ class CalculationResults:
         """The restored flow_system that was used to create the calculation.
         Contains all input parameters."""
         if self._flow_system is None:
-            current_logger_level = logger.getEffectiveLevel()
-            logger.setLevel(logging.CRITICAL)
+            old_level = logger.level
+            logger.level = logging.CRITICAL
             try:
                 self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
                 self._flow_system._connect_network()
@@ -302,7 +302,7 @@ class CalculationResults:
                 )
                 raise _FlowSystemRestorationError(f'Not able to restore FlowSystem from dataset. {e}') from e
             finally:
-                logger.setLevel(current_logger_level)
+                logger.level = old_level
         return self._flow_system
 
     def filter_solution(

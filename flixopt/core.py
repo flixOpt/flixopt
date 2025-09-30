@@ -627,10 +627,11 @@ def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_
             continue
 
         # Check if variable is constant along the dimension
-        if (da.max(dim) == da.min(dim)).all():
+        if (da.max(dim, skipna=True) == da.min(dim, skipna=True)).all().item():
             drop_vars.append(name)
 
     if drop_vars:
+        drop_vars = sorted(drop_vars)
         logger.debug(
             f'Dropping {len(drop_vars)} constant/dimension-less arrays: {drop_vars[:5]}{"..." if len(drop_vars) > 5 else ""}'
         )
