@@ -4,21 +4,12 @@ Manual test script for plots
 
 import unittest
 
-import matplotlib
-
-matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import plotly.io as pio
 import pytest
 
 from flixopt import plotting
-
-# Configure plotly to use a renderer that doesn't leave sockets open
-# 'browser' opens system browser but may leave connections open
-# Using 'json' for tests to avoid ResourceWarnings
-pio.renderers.default = 'json'
 
 
 @pytest.mark.slow

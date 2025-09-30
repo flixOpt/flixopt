@@ -1454,12 +1454,25 @@ def export_figure(
             filename = filename.with_suffix('.html')
 
         try:
-            if show and not save:
-                fig.show()
-            elif save and show:
-                plotly.offline.plot(fig, filename=str(filename))
-            elif save and not show:
-                fig.write_html(str(filename))
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+
+            if is_test_env:
+                # Test environment: never open browser, only save if requested
+                if save:
+                    fig.write_html(str(filename))
+                # Ignore show flag in tests
+            else:
+                # Production environment: respect show and save flags
+                if save and show:
+                    # Save and auto-open in browser
+                    plotly.offline.plot(fig, filename=str(filename))
+                elif save and not show:
+                    # Save without opening
+                    fig.write_html(str(filename))
+                elif show and not save:
+                    # Show interactively without saving
+                    fig.show()
+                # If neither save nor show: do nothing
         finally:
             # Cleanup to prevent socket warnings
             if hasattr(fig, '_renderer'):
@@ -1471,12 +1484,8 @@ def export_figure(
         fig, ax = figure_like
         if show:
             # Only show if using interactive backend and not in test environment
-            import os
-
-            import matplotlib
-
             backend = matplotlib.get_backend().lower()
-            is_interactive = backend not in ['agg', 'pdf', 'ps', 'svg', 'template']
+            is_interactive = backend not in {'agg', 'pdf', 'ps', 'svg', 'template'}
             is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
 
             if is_interactive and not is_test_env:
