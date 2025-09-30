@@ -187,7 +187,7 @@ markers = [
     "slow: marks tests as slow",
     "examples: marks example tests (run only on releases)",
 ]
-addopts = "-m 'not examples'"  # Skip examples by default
+addopts = '-m "not examples"'  # Skip examples by default
 
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load
