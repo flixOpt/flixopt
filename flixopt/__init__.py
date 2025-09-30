@@ -48,3 +48,7 @@ warnings.filterwarnings(
 )
 warnings.filterwarnings('ignore', message='Specify future_stack=True to adopt the new implementation', module='tsam')
 warnings.filterwarnings('ignore', message='Coordinates across variables not equal', module='linopy')
+warnings.filterwarnings('ignore', message='numpy.ndarray size changed', category=RuntimeWarning)
+warnings.filterwarnings(
+    'ignore', message="default value for join will change from join='outer' to join='exact'.", module='linopy'
+)
