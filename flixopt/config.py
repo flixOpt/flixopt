@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-import os
 import types
+from pathlib import Path
 from typing import Literal
 
 import yaml
@@ -47,27 +47,19 @@ class CONFIG:
     config_name: str = 'flixopt'
 
     @classmethod
-    def load_config(cls, user_config_file: str | None = None):
-        """Load configuration from YAML file."""
-        # Load default config
-        default_config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
-
-        with open(default_config_path) as file:
-            config_dict = yaml.safe_load(file)
-
-        # Merge with user config if provided
+    def load_config(cls, user_config_file: str | Path | None = None):
+        """Load configuration from YAML file (optional - uses class defaults if not provided)."""
+        # If user config is provided, load and apply it
         if user_config_file:
-            if not os.path.exists(user_config_file):
+            user_config_path = Path(user_config_file)
+            if not user_config_path.exists():
                 raise FileNotFoundError(f'Config file not found: {user_config_file}')
 
-            with open(user_config_file) as user_file:
-                user_config = yaml.safe_load(user_file)
-                config_dict = merge_configs(config_dict, user_config)
+            with user_config_path.open() as user_file:
+                config_dict = yaml.safe_load(user_file)
+                cls._apply_config_dict(config_dict)
 
-        # Apply config to class attributes
-        cls._apply_config_dict(config_dict)
-
-        # Setup logging with new config
+        # Setup logging with current config (defaults or overridden)
         setup_logging(default_level=cls.Logging.level, log_file=cls.Logging.file, use_rich_handler=cls.Logging.rich)
 
     @classmethod
