@@ -23,7 +23,8 @@
       "rangeStrategy": "pin",
       "minimumReleaseAge": "14 days",
       "automerge": true,
-      "automergeType": "pr"
+      "automergeType": "pr",
+      "separateMinorPatch": false
     },
     {
       "matchUpdateTypes": ["patch"],
