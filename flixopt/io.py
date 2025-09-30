@@ -208,6 +208,7 @@ def save_dataset_to_netcdf(
     ds: xr.Dataset,
     path: str | pathlib.Path,
     compression: int = 0,
+    engine: str = 'h5netcdf',
 ) -> None:
     """
     Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.
@@ -240,6 +241,7 @@ def save_dataset_to_netcdf(
         encoding=None
         if not apply_encoding
         else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
+        engine='h5netcdf',
     )
 
 
