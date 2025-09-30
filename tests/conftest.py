@@ -825,9 +825,15 @@ def set_test_environment():
 
     This fixture runs once per test session to:
     - Set matplotlib to use non-interactive 'Agg' backend
+    - Set plotly to use non-interactive 'json' renderer
     - Prevent GUI windows from opening during tests
     """
     import matplotlib
 
     matplotlib.use('Agg')  # Use non-interactive backend
+
+    import plotly.io as pio
+
+    pio.renderers.default = 'json'  # Use non-interactive renderer
+
     yield
