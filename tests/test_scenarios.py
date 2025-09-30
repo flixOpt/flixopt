@@ -56,7 +56,7 @@ def test_system():
 
     # Create a demand sink with scenario-dependent profiles
     demand = Flow(label='Demand', bus=electricity_bus.label_full, fixed_relative_profile=demand_profiles)
-    demand_sink = Sink('Demand', sink=demand)
+    demand_sink = Sink('Demand', inputs=[demand])
 
     # Create a power source with investment option
     power_gen = Flow(
@@ -69,7 +69,7 @@ def test_system():
         ),
         effects_per_flow_hour={'costs': 20},  # €/MWh
     )
-    generator = Source('Generator', source=power_gen)
+    generator = Source('Generator', outputs=[power_gen])
 
     # Create a storage for electricity
     storage_charge = Flow(label='Charge', bus=electricity_bus.label_full, size=10)
@@ -130,11 +130,11 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
         fx.Bus('Strom'),
         fx.Bus('Fernwärme'),
         fx.Bus('Gas'),
-        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)),
+        fx.Sink('Wärmelast', inputs=[fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)]),
         fx.Source(
-            'Gastarif', source=fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})
+            'Gastarif', outputs=[fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})]
         ),
-        fx.Sink('Einspeisung', sink=fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)),
+        fx.Sink('Einspeisung', inputs=[fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)]),
     )
 
     boiler = fx.linear_converters.Boiler(

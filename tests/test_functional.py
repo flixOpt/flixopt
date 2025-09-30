@@ -73,9 +73,9 @@ def flow_system_base(timesteps: pd.DatetimeIndex) -> fx.FlowSystem:
     flow_system.add_elements(
         fx.Sink(
             label='Wärmelast',
-            sink=fx.Flow(label='Wärme', bus='Fernwärme', fixed_relative_profile=data.thermal_demand, size=1),
+            inputs=[fx.Flow(label='Wärme', bus='Fernwärme', fixed_relative_profile=data.thermal_demand, size=1)],
         ),
-        fx.Source(label='Gastarif', source=fx.Flow(label='Gas', bus='Gas', effects_per_flow_hour=1)),
+        fx.Source(label='Gastarif', outputs=[fx.Flow(label='Gas', bus='Gas', effects_per_flow_hour=1)]),
     )
     return flow_system
 
@@ -551,7 +551,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
             ),
         ),
     )
-    flow_system.all_elements['Wärmelast'].sink.fixed_relative_profile = np.array(
+    flow_system.all_elements['Wärmelast'].inputs[0].fixed_relative_profile = np.array(
         [0, 10, 20, 0, 12]
     )  # Else its non deterministic
 
@@ -620,7 +620,7 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
             Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100),
         ),
     )
-    flow_system.all_elements['Wärmelast'].sink.fixed_relative_profile = np.array([5, 10, 20, 18, 12])
+    flow_system.all_elements['Wärmelast'].inputs[0].fixed_relative_profile = np.array([5, 10, 20, 18, 12])
     # Else its non deterministic
 
     solve_and_load(flow_system, solver_fixture)
@@ -682,7 +682,7 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
             ),
         ),
     )
-    flow_system.all_elements['Wärmelast'].sink.fixed_relative_profile = np.array(
+    flow_system.all_elements['Wärmelast'].inputs[0].fixed_relative_profile = np.array(
         [5, 0, 20, 18, 12]
     )  # Else its non deterministic
 
