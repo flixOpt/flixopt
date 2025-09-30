@@ -212,7 +212,6 @@ class FlowSystem:
         return ds
 
     def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, constants_in_dataset: bool = True) -> None:
-
         """
         Saves the FlowSystem to a netCDF file.
 
