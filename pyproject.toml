@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Vector based energy and material flow optimization framework in Python."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT License" }
+license = "MIT"
 authors = [
     { name = "Chair of Building Energy Systems and Heat Supply, TU Dresden", email = "peter.stange@tu-dresden.de" },
     { name = "Felix Bumann", email = "felixbumann387@gmail.com" },
@@ -22,7 +22,6 @@ maintainers = [
 keywords = ["optimization", "energy systems", "numerical analysis"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -30,7 +29,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
-    "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
     # Core scientific computing
@@ -39,7 +37,7 @@ dependencies = [
     "xarray >= 2024.2.0, < 2026.0",  # CalVer: allow through next calendar year
     # Optimization and data handling
     "linopy >= 0.5.1, < 0.6",  # Widened from patch pin to minor range
-    "netcdf4 >= 1.6.1, < 2",
+    "h5netcdf>=1.0.0, < 2",
     # Utilities
     "pyyaml >= 6.0.0, < 7",
     "rich >= 13.0.0, < 15",
@@ -116,10 +114,17 @@ documentation = "https://flixopt.github.io/flixopt/"
 
 [tool.setuptools.packages.find]
 where = ["."]
-exclude = ["tests", "docs", "examples", "examples.*", "Tutorials", ".git", ".vscode", "build", ".venv", "venv/"]
+include = ["flixopt*"]
+exclude = ["tests*", "docs*", "examples*", "Tutorials*"]
 
 [tool.setuptools.package-data]
 "flixopt" = ["config.yaml"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.md", ".git*", "*.ipynb", "renovate.json"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
@@ -182,7 +187,7 @@ markers = [
     "slow: marks tests as slow",
     "examples: marks example tests (run only on releases)",
 ]
-addopts = "-m 'not examples'"  # Skip examples by default
+addopts = '-m "not examples"'  # Skip examples by default
 
 # Warning filter configuration for pytest
 # Filters are processed in order; first match wins

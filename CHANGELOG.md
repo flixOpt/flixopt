@@ -18,7 +18,6 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### ✨ Added
 
 ### 💥 Breaking Changes
-* `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`.
 
 ### ♻️ Changed
 
@@ -77,6 +76,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 * Renamed class `SystemModel` to `FlowSystemModel`
 * Renamed class `Model` to `Submodel`
 * Renamed `mode` parameter in plotting methods to `style`
+* `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`.
 
 ### ♻️ Changed
 * FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
@@ -127,6 +127,19 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 
 Until here -->
+---
+
+## [2.1.10] - 2025-09-29
+**Summary:** This release is a Documentation and Development release.
+
+### 📝 Docs
+- Improved CHANGELOG.md formatting by adding better categories and formating by Gitmoji.
+- Added a script to extract the release notes from the CHANGELOG.md file for better organized documentation.
+
+### 👷 Development
+- Improved `renovate.config`
+- Sped up CI by not running examples in every run and using `pytest-xdist`
+
 ---
 
 ## [2.1.9] - 2025-09-23
@@ -210,6 +223,9 @@ Until here -->
 
 ### 🐛 Fixed
 - Fixed testing issue with new `linopy` version 0.5.6
+
+### 👷 Development
+- Added dependency "nbformat>=4.2.0" to dev dependencies to resolve issue with plotly CI
 
 ---
 

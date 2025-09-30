@@ -122,6 +122,7 @@ if __name__ == '__main__':
     calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_sizing = timeit.default_timer() - start
 
+    start = timeit.default_timer()
     calculation_dispatch = fx.FullCalculation('Sizing', flow_system)
     calculation_dispatch.do_modeling()
     calculation_dispatch.fix_sizes(calculation_sizing.results.solution)

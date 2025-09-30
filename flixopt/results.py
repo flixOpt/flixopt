@@ -291,17 +291,18 @@ class CalculationResults:
         """The restored flow_system that was used to create the calculation.
         Contains all input parameters."""
         if self._flow_system is None:
+            old_level = logger.level
+            logger.level = logging.CRITICAL
             try:
-                current_logger_level = logger.getEffectiveLevel()
-                logger.setLevel(logging.CRITICAL)
                 self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
                 self._flow_system._connect_network()
-                logger.setLevel(current_logger_level)
             except Exception as e:
                 logger.critical(
                     f'Not able to restore FlowSystem from dataset. Some functionality is not availlable. {e}'
                 )
                 raise _FlowSystemRestorationError(f'Not able to restore FlowSystem from dataset. {e}') from e
+            finally:
+                logger.level = old_level
         return self._flow_system
 
     def filter_solution(
@@ -811,7 +812,7 @@ class CalculationResults:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             else:
-                self.model.to_netcdf(paths.linopy_model)
+                self.model.to_netcdf(paths.linopy_model, engine='h5netcdf')
 
         if document_model:
             if self.model is None:

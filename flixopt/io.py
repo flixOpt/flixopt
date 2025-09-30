@@ -217,12 +217,12 @@ def save_dataset_to_netcdf(
 
     apply_encoding = False
     if compression != 0:
-        if importlib.util.find_spec('netCDF4') is not None:
+        if importlib.util.find_spec('h5netcdf') is not None:
             apply_encoding = True
         else:
             logger.warning(
-                'Dataset was exported without compression due to missing dependency "netcdf4".'
-                'Install netcdf4 via `pip install netcdf4`.'
+                'Dataset was exported without compression due to missing dependency "h5netcdf".'
+                'Install h5netcdf via `pip install h5netcdf`.'
             )
 
     ds = ds.copy(deep=True)
@@ -243,6 +243,7 @@ def save_dataset_to_netcdf(
         encoding=None
         if not apply_encoding
         else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
+        engine='h5netcdf',
     )
 
 
@@ -256,7 +257,7 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     Returns:
         Dataset: Loaded dataset with restored attrs.
     """
-    ds = xr.load_dataset(path)
+    ds = xr.load_dataset(str(path), engine='h5netcdf')
 
     # Restore Dataset attrs
     if 'attrs' in ds.attrs:
