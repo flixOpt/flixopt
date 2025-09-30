@@ -910,7 +910,7 @@ class TestAdvancedBroadcasting:
         """Complex real-world scenario with multi-D array and broadcasting."""
         # Energy system data: time x technology, broadcast to regions
         coords = {
-            'time': pd.date_range('2024-01-01', periods=24, freq='H', name='time'),  # 24 hours
+            'time': pd.date_range('2024-01-01', periods=24, freq='h', name='time'),  # 24 hours
             'technology': pd.Index(['solar', 'wind', 'gas', 'coal'], name='technology'),  # 4 technologies
             'region': pd.Index(['north', 'south', 'east'], name='region'),  # 3 regions
         }
