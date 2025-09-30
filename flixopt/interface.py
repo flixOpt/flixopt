@@ -650,10 +650,10 @@ class InvestParameters(Interface):
         fixed_size: When specified, creates a binary investment decision at exactly
             this size. When None, allows continuous sizing between minimum and maximum bounds.
         minimum_size: Lower bound for continuous sizing decisions. Defaults to a small
-            positive value (CONFIG.modeling.EPSILON) to avoid numerical issues.
+            positive value (CONFIG.Modeling.epsilon) to avoid numerical issues.
             Ignored when fixed_size is specified.
         maximum_size: Upper bound for continuous sizing decisions. Defaults to a large
-            value (CONFIG.modeling.BIG) representing unlimited capacity.
+            value (CONFIG.Modeling.big) representing unlimited capacity.
             Ignored when fixed_size is specified.
         optional: Controls whether investment is required. When True (default),
             optimization can choose not to invest. When False, forces investment
@@ -833,8 +833,8 @@ class InvestParameters(Interface):
         self.optional = optional
         self.specific_effects: EffectValuesUserScalar = specific_effects or {}
         self.piecewise_effects = piecewise_effects
-        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
-        self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
+        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
+        self._maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
 
     def transform_data(self, flow_system: FlowSystem):
         self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)

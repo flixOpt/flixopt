@@ -3,8 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import types
-from dataclasses import dataclass, fields, is_dataclass
-from typing import Annotated, Literal, get_type_hints
+from typing import Literal
 
 import yaml
 from rich.console import Console
@@ -32,110 +31,63 @@ def merge_configs(defaults: dict, overrides: dict) -> dict:
     return defaults
 
 
-def dataclass_from_dict_with_validation(cls, data: dict):
-    """
-    Recursively initialize a dataclass from a dictionary.
-    """
-    if not is_dataclass(cls):
-        raise TypeError(f'{cls} must be a dataclass')
-
-    # Get resolved type hints to handle postponed evaluation
-    type_hints = get_type_hints(cls)
-
-    # Build kwargs for the dataclass constructor
-    kwargs = {}
-    for field in fields(cls):
-        field_name = field.name
-        # Use resolved type from get_type_hints instead of field.type
-        field_type = type_hints.get(field_name, field.type)
-        field_value = data.get(field_name)
-
-        # If the field type is a dataclass and the value is a dict, recursively initialize
-        if is_dataclass(field_type) and isinstance(field_value, dict):
-            kwargs[field_name] = dataclass_from_dict_with_validation(field_type, field_value)
-        else:
-            kwargs[field_name] = field_value  # Pass as-is if no special handling is needed
-
-    return cls(**kwargs)
-
-
-@dataclass()
-class ValidatedConfig:
-    def __setattr__(self, name, value):
-        if field := self.__dataclass_fields__.get(name):
-            # Get resolved type hints to handle postponed evaluation
-            type_hints = get_type_hints(self.__class__, include_extras=True)
-            field_type = type_hints.get(name, field.type)
-            if metadata := getattr(field_type, '__metadata__', None):
-                assert metadata[0](value), f'Invalid value passed to {name!r}: {value=}'
-        super().__setattr__(name, value)
-
-
-@dataclass
-class LoggingConfig(ValidatedConfig):
-    level: Annotated[
-        Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-        lambda level: level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-    ]
-    file: Annotated[str, lambda file: isinstance(file, str)]
-    rich: Annotated[bool, lambda rich: isinstance(rich, bool)]
-
-
-@dataclass
-class ModelingConfig(ValidatedConfig):
-    BIG: Annotated[int, lambda x: isinstance(x, int)]
-    EPSILON: Annotated[float, lambda x: isinstance(x, float)]
-    BIG_BINARY_BOUND: Annotated[int, lambda x: isinstance(x, int)]
-
-
-@dataclass
-class ConfigSchema(ValidatedConfig):
-    config_name: Annotated[str, lambda x: isinstance(x, str)]
-    logging: LoggingConfig
-    modeling: ModelingConfig
-
-
 class CONFIG:
-    """
-    A configuration class that stores global configuration values as class attributes.
-    """
+    """Configuration using simple nested classes."""
 
-    config_name: str = None
-    modeling: ModelingConfig = None
-    logging: LoggingConfig = None
+    class Logging:
+        level: str = 'INFO'
+        file: str = 'flixopt.log'
+        rich: bool = False
+
+    class Modeling:
+        big: int = 10_000_000
+        epsilon: float = 1e-5
+        big_binary_bound: int = 100_000
+
+    config_name: str = 'flixopt'
 
     @classmethod
     def load_config(cls, user_config_file: str | None = None):
-        """
-        Initialize configuration using defaults or user-specified file.
-        """
-        # Default config file
+        """Load configuration from YAML file."""
+        # Load default config
         default_config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
 
-        if user_config_file is None:
-            with open(default_config_path) as file:
-                new_config = yaml.safe_load(file)
-        elif not os.path.exists(user_config_file):
-            raise FileNotFoundError(f'Config file not found: {user_config_file}')
-        else:
+        with open(default_config_path) as file:
+            config_dict = yaml.safe_load(file)
+
+        # Merge with user config if provided
+        if user_config_file:
+            if not os.path.exists(user_config_file):
+                raise FileNotFoundError(f'Config file not found: {user_config_file}')
+
             with open(user_config_file) as user_file:
-                new_config = yaml.safe_load(user_file)
+                user_config = yaml.safe_load(user_file)
+                config_dict = merge_configs(config_dict, user_config)
 
-        # Convert the merged config to ConfigSchema
-        config_data = dataclass_from_dict_with_validation(ConfigSchema, new_config)
+        # Apply config to class attributes
+        cls._apply_config_dict(config_dict)
 
-        # Store the configuration in the class as class attributes
-        cls.logging = config_data.logging
-        cls.modeling = config_data.modeling
-        cls.config_name = config_data.config_name
+        # Setup logging with new config
+        setup_logging(default_level=cls.Logging.level, log_file=cls.Logging.file, use_rich_handler=cls.Logging.rich)
 
-        setup_logging(default_level=cls.logging.level, log_file=cls.logging.file, use_rich_handler=cls.logging.rich)
+    @classmethod
+    def _apply_config_dict(cls, config_dict: dict):
+        """Apply configuration dictionary to class attributes."""
+        for key, value in config_dict.items():
+            if hasattr(cls, key):
+                target = getattr(cls, key)
+                if hasattr(target, '__dict__') and isinstance(value, dict):
+                    # It's a nested class, apply recursively
+                    for nested_key, nested_value in value.items():
+                        setattr(target, nested_key, nested_value)
+                else:
+                    # Simple attribute
+                    setattr(cls, key, value)
 
     @classmethod
     def to_dict(cls):
         """
         Convert the configuration class into a dictionary for JSON serialization.
-        Handles dataclasses and simple types like str, int, etc.
         """
         config_dict = {}
         for attribute, value in cls.__dict__.items():
@@ -145,9 +97,20 @@ class CONFIG:
                 and not isinstance(value, (types.FunctionType, types.MethodType))
                 and not isinstance(value, classmethod)
             ):
-                if is_dataclass(value):
-                    config_dict[attribute] = value.__dict__
-                else:  # Assuming only basic types here!
+                if hasattr(value, '__dict__') and not isinstance(value, type):
+                    # It's a nested class instance
+                    config_dict[attribute] = {
+                        k: v for k, v in value.__dict__.items() if not k.startswith('_') and not callable(v)
+                    }
+                elif isinstance(value, type):
+                    # It's a nested class definition
+                    config_dict[attribute] = {
+                        k: v
+                        for k, v in value.__dict__.items()
+                        if not k.startswith('_') and not callable(v) and not isinstance(v, classmethod)
+                    }
+                else:
+                    # Simple attribute
                     config_dict[attribute] = value
 
         return config_dict

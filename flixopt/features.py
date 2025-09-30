@@ -143,7 +143,7 @@ class InvestmentModel(Model):
             # eq2: P_invest >= isInvested * max(epsilon, investSize_min)
             self.add(
                 self._model.add_constraints(
-                    self.size >= self.is_invested * np.maximum(CONFIG.modeling.EPSILON, self.parameters.minimum_size),
+                    self.size >= self.is_invested * np.maximum(CONFIG.Modeling.epsilon, self.parameters.minimum_size),
                     name=f'{self.label_full}|is_invested_lb',
                 ),
                 'is_invested_lb',
@@ -304,7 +304,7 @@ class StateModel(Model):
             # Constraint: on * lower_bound <= def_var
             self.add(
                 self._model.add_constraints(
-                    self.on * np.maximum(CONFIG.modeling.EPSILON, lb) <= def_var, name=f'{self.label_full}|on_con1'
+                    self.on * np.maximum(CONFIG.Modeling.epsilon, lb) <= def_var, name=f'{self.label_full}|on_con1'
                 ),
                 'on_con1',
             )
@@ -314,7 +314,7 @@ class StateModel(Model):
         else:
             # Case for multiple defining variables
             ub = sum(bound[1] for bound in self._defining_bounds) / nr_of_def_vars
-            lb = CONFIG.modeling.EPSILON  # TODO: Can this be a bigger value? (maybe the smallest bound?)
+            lb = CONFIG.Modeling.epsilon  # TODO: Can this be a bigger value? (maybe the smallest bound?)
 
             # Constraint: on * epsilon <= sum(all_defining_variables)
             self.add(
@@ -337,7 +337,7 @@ class StateModel(Model):
     @property
     def previous_states(self) -> np.ndarray:
         """Computes the previous states {0, 1} of defining variables as a binary array from their previous values."""
-        return StateModel.compute_previous_states(self._previous_values, epsilon=CONFIG.modeling.EPSILON)
+        return StateModel.compute_previous_states(self._previous_values, epsilon=CONFIG.Modeling.epsilon)
 
     @property
     def previous_on_states(self) -> np.ndarray:
@@ -603,14 +603,14 @@ class ConsecutiveStateModel(Model):
         elif np.isscalar(binary_values) and not np.isscalar(hours_per_timestep):
             return binary_values * hours_per_timestep[-1]
 
-        if np.isclose(binary_values[-1], 0, atol=CONFIG.modeling.EPSILON):
+        if np.isclose(binary_values[-1], 0, atol=CONFIG.Modeling.epsilon):
             return 0
 
         if np.isscalar(hours_per_timestep):
             hours_per_timestep = np.ones(len(binary_values)) * hours_per_timestep
         hours_per_timestep: np.ndarray
 
-        indexes_with_zero_values = np.where(np.isclose(binary_values, 0, atol=CONFIG.modeling.EPSILON))[0]
+        indexes_with_zero_values = np.where(np.isclose(binary_values, 0, atol=CONFIG.Modeling.epsilon))[0]
         if len(indexes_with_zero_values) == 0:
             nr_of_indexes_with_consecutive_ones = len(binary_values)
         else:

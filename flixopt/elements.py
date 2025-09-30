@@ -248,7 +248,7 @@ class Flow(Element):
         size: Flow capacity or nominal rating. Can be:
             - Scalar value for fixed capacity
             - InvestParameters for investment-based sizing decisions
-            - None to use large default value (CONFIG.modeling.BIG)
+            - None to use large default value (CONFIG.Modeling.big)
         relative_minimum: Minimum flow rate as fraction of size.
             Example: 0.2 means flow cannot go below 20% of rated capacity.
         relative_maximum: Maximum flow rate as fraction of size (typically 1.0).
@@ -356,7 +356,7 @@ class Flow(Element):
         `relative_maximum` for upper bounds on optimization variables.
 
     Notes:
-        - Default size (CONFIG.modeling.BIG) is used when size=None
+        - Default size (CONFIG.Modeling.big) is used when size=None
         - list inputs for previous_flow_rate are converted to NumPy arrays
         - Flow direction is determined by component input/output designation
 
@@ -383,7 +383,7 @@ class Flow(Element):
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.size = CONFIG.modeling.BIG if size is None else size
+        self.size = CONFIG.Modeling.big if size is None else size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
@@ -455,11 +455,11 @@ class Flow(Element):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if (
-            self.size == CONFIG.modeling.BIG and self.fixed_relative_profile is not None
+            self.size == CONFIG.Modeling.big and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
                 f'Flow "{self.label}" has no size assigned, but a "fixed_relative_profile". '
-                f'The default size is {CONFIG.modeling.BIG}. As "flow_rate = size * fixed_relative_profile", '
+                f'The default size is {CONFIG.Modeling.big}. As "flow_rate = size * fixed_relative_profile", '
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
             )
 
