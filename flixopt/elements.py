@@ -13,9 +13,9 @@ import xarray as xr
 
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
-from .features import InvestmentModel, ModelingPrimitives, OnOffModel
+from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
-from .modeling import BoundingPatterns, ModelingUtilitiesAbstract
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:

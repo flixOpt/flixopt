@@ -422,8 +422,9 @@ class Interface:
 
         # Handle null values with warning
         if array.isnull().any():
-            logger.warning(f"DataArray '{array_name}' contains null values. Dropping them.")
-            array = array.dropna(dim='time', how='all')
+            logger.warning(f"DataArray '{array_name}' contains null values. Dropping all-null along present dims.")
+            if 'time' in array.dims:
+                array = array.dropna(dim='time', how='all')
 
         # Check if this should be restored as TimeSeriesData
         if TimeSeriesData.is_timeseries_data(array):
