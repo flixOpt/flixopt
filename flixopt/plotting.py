@@ -1461,7 +1461,12 @@ def export_figure(
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
         if show:
-            fig.show()
+            # Only show if using interactive backend to avoid warnings in tests
+            import matplotlib
+
+            backend = matplotlib.get_backend().lower()
+            if backend not in ['agg', 'pdf', 'ps', 'svg', 'template']:
+                fig.show()
         if save:
             fig.savefig(str(filename), dpi=300)
         return fig, ax

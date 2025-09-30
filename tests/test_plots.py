@@ -15,14 +15,24 @@ import pytest
 
 from flixopt import plotting
 
-# Configure plotly to render in browser instead of external windows
-pio.renderers.default = 'browser'
+# Configure plotly to use a renderer that doesn't leave sockets open
+# 'browser' opens system browser but may leave connections open
+# Using 'json' for tests to avoid ResourceWarnings
+pio.renderers.default = 'json'
 
 
 @pytest.mark.slow
 class TestPlots(unittest.TestCase):
     def setUp(self):
         np.random.seed(72)
+
+    def tearDown(self):
+        """Cleanup matplotlib and plotly resources"""
+        plt.close('all')
+        # Force garbage collection to cleanup any lingering resources
+        import gc
+
+        gc.collect()
 
     @staticmethod
     def get_sample_data(
@@ -57,7 +67,8 @@ class TestPlots(unittest.TestCase):
 
     def test_bar_plots(self):
         data = self.get_sample_data(nr_of_columns=10, nr_of_periods=1, time_steps_per_period=24)
-        plotting.with_plotly(data, 'stacked_bar').show()
+        # Create plotly figure (json renderer doesn't need .show())
+        _ = plotting.with_plotly(data, 'stacked_bar')
         plotting.with_matplotlib(data, 'stacked_bar')
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
@@ -65,14 +76,15 @@ class TestPlots(unittest.TestCase):
         data = self.get_sample_data(
             nr_of_columns=10, nr_of_periods=5, time_steps_per_period=24, drop_fraction_of_indices=0.3
         )
-        plotting.with_plotly(data, 'stacked_bar').show()
+        # Create plotly figure (json renderer doesn't need .show())
+        _ = plotting.with_plotly(data, 'stacked_bar')
         plotting.with_matplotlib(data, 'stacked_bar')
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
 
     def test_line_plots(self):
         data = self.get_sample_data(nr_of_columns=10, nr_of_periods=1, time_steps_per_period=24)
-        plotting.with_plotly(data, 'line').show()
+        _ = plotting.with_plotly(data, 'line')
         plotting.with_matplotlib(data, 'line')
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
@@ -80,19 +92,19 @@ class TestPlots(unittest.TestCase):
         data = self.get_sample_data(
             nr_of_columns=10, nr_of_periods=5, time_steps_per_period=24, drop_fraction_of_indices=0.3
         )
-        plotting.with_plotly(data, 'line').show()
+        _ = plotting.with_plotly(data, 'line')
         plotting.with_matplotlib(data, 'line')
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
 
     def test_stacked_line_plots(self):
         data = self.get_sample_data(nr_of_columns=10, nr_of_periods=1, time_steps_per_period=24)
-        plotting.with_plotly(data, 'area').show()
+        _ = plotting.with_plotly(data, 'area')
 
         data = self.get_sample_data(
             nr_of_columns=10, nr_of_periods=5, time_steps_per_period=24, drop_fraction_of_indices=0.3
         )
-        plotting.with_plotly(data, 'area').show()
+        _ = plotting.with_plotly(data, 'area')
 
     def test_heat_map_plots(self):
         # Generate single-column data with datetime index for heatmap
@@ -101,7 +113,7 @@ class TestPlots(unittest.TestCase):
         # Convert data for heatmap plotting using 'day' as period and 'hour' steps
         heatmap_data = plotting.reshape_to_2d(data.iloc[:, 0].values.flatten(), 24)
         # Plotting heatmaps with Plotly and Matplotlib
-        plotting.heat_map_plotly(pd.DataFrame(heatmap_data)).show()
+        _ = plotting.heat_map_plotly(pd.DataFrame(heatmap_data))
         plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
@@ -124,21 +136,21 @@ class TestPlots(unittest.TestCase):
         data = df_irregular
         # Convert data for heatmap plotting using 'day' as period and 'hour' steps
         heatmap_data = plotting.heat_map_data_from_df(data, 'MS', 'D')
-        plotting.heat_map_plotly(heatmap_data).show()
+        _ = plotting.heat_map_plotly(heatmap_data)
         plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
 
         heatmap_data = plotting.heat_map_data_from_df(data, 'W', 'h', fill='ffill')
         # Plotting heatmaps with Plotly and Matplotlib
-        plotting.heat_map_plotly(pd.DataFrame(heatmap_data)).show()
+        _ = plotting.heat_map_plotly(pd.DataFrame(heatmap_data))
         plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
 
         heatmap_data = plotting.heat_map_data_from_df(data, 'D', 'h', fill='ffill')
         # Plotting heatmaps with Plotly and Matplotlib
-        plotting.heat_map_plotly(pd.DataFrame(heatmap_data)).show()
+        _ = plotting.heat_map_plotly(pd.DataFrame(heatmap_data))
         plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
