@@ -208,6 +208,7 @@ def save_dataset_to_netcdf(
     ds: xr.Dataset,
     path: str | pathlib.Path,
     compression: int = 0,
+    engine: str = 'h5netcdf',
 ) -> None:
     """
     Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.

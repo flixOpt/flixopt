@@ -212,6 +212,7 @@ class FlowSystem:
         return ds
 
     def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, constants_in_dataset: bool = True) -> None:
+
         """
         Saves the FlowSystem to a netCDF file.
 
@@ -221,7 +222,7 @@ class FlowSystem:
             constants_in_dataset: If True, constants are included as Dataset variables.
         """
         ds = self.as_dataset(constants_in_dataset=constants_in_dataset)
-        fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
+        fx_io.save_dataset_to_netcdf(ds, path, compression=compression, engine='h5netcdf')
         logger.info(f'Saved FlowSystem to {path}')
 
     def plot_network(
