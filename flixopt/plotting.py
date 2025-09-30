@@ -1471,12 +1471,9 @@ def export_figure(
         fig, ax = figure_like
         if show:
             # Only show if using interactive backend and not in test environment
-            import os
-
-            import matplotlib
-
             backend = matplotlib.get_backend().lower()
-            is_interactive = backend not in ['agg', 'pdf', 'ps', 'svg', 'template']
+            non_interactove_backends = {'agg', 'pdf', 'ps', 'svg', 'template'}
+            is_interactive = backend not in non_interactove_backends
             is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
 
             if is_interactive and not is_test_env:

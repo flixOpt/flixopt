@@ -806,21 +806,16 @@ def assert_sets_equal(set1: Iterable, set2: Iterable, msg=''):
 @pytest.fixture(autouse=True)
 def cleanup_figures():
     """
-    Cleanup matplotlib and plotly figures after each test.
+    Cleanup matplotlib figures after each test.
 
     This fixture runs automatically after every test to:
     - Close all matplotlib figures to prevent memory leaks
-    - Reset plotly renderer to non-interactive mode
     """
     yield
     # Close all matplotlib figures
     import matplotlib.pyplot as plt
 
     plt.close('all')
-    # Set plotly to non-interactive renderer for tests
-    import plotly.io as pio
-
-    pio.renderers.default = 'json'
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -830,9 +825,15 @@ def set_test_environment():
 
     This fixture runs once per test session to:
     - Set matplotlib to use non-interactive 'Agg' backend
+    - Set plotly to use non-interactive 'json' renderer
     - Prevent GUI windows from opening during tests
     """
     import matplotlib
 
     matplotlib.use('Agg')  # Use non-interactive backend
+
+    import plotly.io as pio
+
+    pio.renderers.default = 'json'  # Use non-interactive renderer
+
     yield
