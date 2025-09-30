@@ -56,7 +56,7 @@ def test_system():
 
     # Create a demand sink with scenario-dependent profiles
     demand = Flow(label='Demand', bus=electricity_bus.label_full, fixed_relative_profile=demand_profiles)
-    demand_sink = Sink('Demand', sink=demand)
+    demand_sink = Sink('Demand', inputs=[demand])
 
     # Create a power source with investment option
     power_gen = Flow(
@@ -69,7 +69,7 @@ def test_system():
         ),
         effects_per_flow_hour={'costs': 20},  # €/MWh
     )
-    generator = Source('Generator', source=power_gen)
+    generator = Source('Generator', outputs=[power_gen])
 
     # Create a storage for electricity
     storage_charge = Flow(label='Charge', bus=electricity_bus.label_full, size=10)
