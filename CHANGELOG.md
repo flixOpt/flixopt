@@ -57,10 +57,9 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 🔒 Security
 
 ### 📦 Dependencies
+- Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
 
 ### 📝 Docs
-- Improved CHANGELOG.md formatting by adding better categories and formating by Gitmoji.
-- Added a script to extract the release notes from the CHANGELOG.md file for better organized documentation.
 
 ### 👷 Development
 

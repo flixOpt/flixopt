@@ -26,6 +26,15 @@
       "matchCurrentVersion": "!/^0/",
       "automerge": true,
       "automergeType": "pr"
+    },
+    {
+      "description": "CalVer packages (xarray, dask) can have breaking changes in any release - never automerge, longer release age",
+      "matchPackageNames": ["xarray", "dask"],
+      "automerge": false,
+      "minimumReleaseAge": "14 days",
+      "schedule": ["* * * * *"],
+      "labels": ["calver", "breaking-change-risk", "dependencies"],
+      "prPriority": 10
     }
   ]
 }
