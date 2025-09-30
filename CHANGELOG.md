@@ -46,6 +46,7 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+- Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
 
 ### 🗑️ Deprecated
 
