@@ -95,7 +95,7 @@ dev = [
 
 # Documentation building
 docs = [
-    "mkdocs-material==9.6.19",
+    "mkdocs-material==9.6.20",
     "mkdocstrings-python==1.18.2",
     "mkdocs-table-reader-plugin==3.1.0",
     "mkdocs-gen-files==0.5.0",
