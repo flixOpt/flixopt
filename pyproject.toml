@@ -184,21 +184,24 @@ markers = [
 ]
 addopts = "-m 'not examples'"  # Skip examples by default
 
-# Warning filter configuration
+# Warning filter configuration. Matching __init__.py
 filterwarnings = [
-    # Default: Show all warnings (don't treat as errors by default)
     "default",
 
-    # === Treat OUR code warnings as errors (catch issues early) ===
+    # === Treat OUR code warnings as errors ===
     "error::DeprecationWarning:flixopt",
     "error::FutureWarning:flixopt",
     "error::UserWarning:flixopt",
 
-    # === Expected/informational warnings ===
-    # Network visualization experimental warning
-    "ignore:.*network visualization is still experimental.*:UserWarning",
+    # === Third-party warnings (specific messages) ===
+    "ignore:A value is trying to be set on a copy of a DataFrame or Series through chained assignment:FutureWarning:tsam",
+    "ignore:Specify future_stack=True to adopt the new implementation:FutureWarning:tsam",
+    "ignore:Coordinates across variables not equal:UserWarning:linopy",
+    "ignore:numpy.ndarray size changed:RuntimeWarning",
+    "ignore:.*default value for join will change from join='outer' to join='exact'.*:FutureWarning:linopy",
 
-    # tsam aggregation warnings (expected in certain scenarios)
+    # === Expected/informational warnings ===
+    "ignore:.*network visualization is still experimental.*:UserWarning",
     "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
 ]
 
