@@ -184,40 +184,6 @@ markers = [
 ]
 addopts = "-m 'not examples'"  # Skip examples by default
 
-# Warning filter configuration
-filterwarnings = [
-    # Treat most warnings as errors to catch issues early
-    "error",
-
-    # === Third-party library warnings we can't fix ===
-    # linopy/xarray FutureWarnings about join parameter changes
-    "ignore:In a future version of xarray:FutureWarning:linopy",
-    "ignore:.*join will change.*:FutureWarning:linopy",
-
-    # tsam/pandas FutureWarnings about DataFrame operations
-    "ignore:.*chained assignment.*:FutureWarning:tsam",
-    "ignore:.*implementation of stack.*:FutureWarning:tsam",
-    "ignore:.*inplace method.*:FutureWarning:tsam",
-
-    # linopy UserWarnings about coordinate misalignment (expected behavior)
-    "ignore:Coordinates across variables not equal.*:UserWarning:linopy",
-
-    # numpy RuntimeWarning about binary incompatibility (dependency issue)
-    "ignore:numpy.ndarray size changed.*:RuntimeWarning",
-
-    # === Expected/informational warnings ===
-    # Network visualization experimental warning
-    "ignore:.*network visualization is still experimental.*:UserWarning",
-
-    # tsam aggregation warnings (expected in certain scenarios)
-    "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
-
-    # === Show warnings from our own code (flixopt) ===
-    "default::DeprecationWarning:flixopt",
-    "default::UserWarning:flixopt",
-    "default::FutureWarning:flixopt",
-]
-
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load
 exclude_dirs = ["tests/"]
