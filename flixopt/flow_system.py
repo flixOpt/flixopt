@@ -211,14 +211,10 @@ class FlowSystem:
         ds.attrs = self.as_dict(data_mode='name')
         return ds
 
-    def to_netcdf(
-        self,
-        path: str | pathlib.Path,
-        compression: int = 0,
-        constants_in_dataset: bool = True,
-    ):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, constants_in_dataset: bool = True) -> None:
         """
         Saves the FlowSystem to a netCDF file.
+
         Args:
             path: The path to the netCDF file.
             compression: The compression level to use when saving the file.
