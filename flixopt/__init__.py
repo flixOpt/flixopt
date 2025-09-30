@@ -41,14 +41,11 @@ CONFIG.load_config()
 
 
 # Suppress noisy third-party warnings that users can't fix
+warnings.filterwarnings('ignore', category=FutureWarning, module='tsam')
 warnings.filterwarnings(
-    'ignore',
-    message='A value is trying to be set on a copy of a DataFrame or Series through chained assignment',
-    module='tsam',
+    'ignore', category=UserWarning, message='Coordinates across variables not equal', module='linopy'
 )
-warnings.filterwarnings('ignore', message='Specify future_stack=True to adopt the new implementation', module='tsam')
-warnings.filterwarnings('ignore', message='Coordinates across variables not equal', module='linopy')
-warnings.filterwarnings('ignore', message='numpy.ndarray size changed', category=RuntimeWarning)
 warnings.filterwarnings(
     'ignore', message="default value for join will change from join='outer' to join='exact'.", module='linopy'
 )
+warnings.filterwarnings('ignore', message='numpy.ndarray size changed', category=RuntimeWarning)

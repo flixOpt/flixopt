@@ -193,12 +193,11 @@ filterwarnings = [
     "error::FutureWarning:flixopt",
     "error::UserWarning:flixopt",
 
-    # === Third-party warnings (specific messages) ===
-    "ignore:A value is trying to be set on a copy of a DataFrame or Series through chained assignment:FutureWarning:tsam",
-    "ignore:Specify future_stack=True to adopt the new implementation:FutureWarning:tsam",
+    # === Third-party warnings (mirrored from __init__.py) ===
+    "ignore::FutureWarning:tsam",
     "ignore:Coordinates across variables not equal:UserWarning:linopy",
-    "ignore:numpy.ndarray size changed:RuntimeWarning",
     "ignore:.*default value for join will change from join='outer' to join='exact'.*:FutureWarning:linopy",
+    "ignore:numpy.ndarray size changed:RuntimeWarning",
 
     # === Expected/informational warnings ===
     "ignore:.*network visualization is still experimental.*:UserWarning",
