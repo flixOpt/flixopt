@@ -27,9 +27,11 @@ from __future__ import annotations
 
 import itertools
 import logging
+import os
 import pathlib
 from typing import TYPE_CHECKING, Any, Literal
 
+import matplotlib
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -1450,25 +1452,40 @@ def export_figure(
         if filename.suffix != '.html':
             logger.warning(f'To save a Plotly figure, using .html. Adjusting suffix for {filename}')
             filename = filename.with_suffix('.html')
-        if show and not save:
-            fig.show()
-        elif save and show:
-            plotly.offline.plot(fig, filename=str(filename))
-        elif save and not show:
-            fig.write_html(str(filename))
+
+        try:
+            if show and not save:
+                fig.show()
+            elif save and show:
+                plotly.offline.plot(fig, filename=str(filename))
+            elif save and not show:
+                fig.write_html(str(filename))
+        finally:
+            # Cleanup to prevent socket warnings
+            if hasattr(fig, '_renderer'):
+                fig._renderer = None
+
         return figure_like
 
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
         if show:
-            # Only show if using interactive backend to avoid warnings in tests
+            # Only show if using interactive backend and not in test environment
+            import os
+
             import matplotlib
 
             backend = matplotlib.get_backend().lower()
-            if backend not in ['agg', 'pdf', 'ps', 'svg', 'template']:
-                fig.show()
+            is_interactive = backend not in ['agg', 'pdf', 'ps', 'svg', 'template']
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+
+            if is_interactive and not is_test_env:
+                plt.show()
+
         if save:
             fig.savefig(str(filename), dpi=300)
+            plt.close(fig)  # Close figure to free memory
+
         return fig, ax
 
     raise TypeError(f'Figure type not supported: {type(figure_like)}')

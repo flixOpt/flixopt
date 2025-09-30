@@ -796,3 +796,43 @@ def assert_sets_equal(set1: Iterable, set2: Iterable, msg=''):
             error_msg = f'{msg}: {error_msg}'
 
         raise AssertionError(error_msg)
+
+
+# ============================================================================
+# PLOTTING CLEANUP FIXTURES
+# ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def cleanup_figures():
+    """
+    Cleanup matplotlib and plotly figures after each test.
+
+    This fixture runs automatically after every test to:
+    - Close all matplotlib figures to prevent memory leaks
+    - Reset plotly renderer to non-interactive mode
+    """
+    yield
+    # Close all matplotlib figures
+    import matplotlib.pyplot as plt
+
+    plt.close('all')
+    # Set plotly to non-interactive renderer for tests
+    import plotly.io as pio
+
+    pio.renderers.default = 'json'
+
+
+@pytest.fixture(scope='session', autouse=True)
+def set_test_environment():
+    """
+    Configure plotting for test environment.
+
+    This fixture runs once per test session to:
+    - Set matplotlib to use non-interactive 'Agg' backend
+    - Prevent GUI windows from opening during tests
+    """
+    import matplotlib
+
+    matplotlib.use('Agg')  # Use non-interactive backend
+    yield
