@@ -78,13 +78,17 @@ class ModelingUtilitiesAbstract:
         """
         epsilon = epsilon or CONFIG.modeling.EPSILON
 
-        # Reduce to target dimension by taking any() over other dimensions
-        other_dims = [d for d in binary_values.dims if d != dim]
-        if other_dims:
-            binary_values = binary_values.any(dim=other_dims)
-
-        # Convert to numpy array
-        arr = binary_values.values if hasattr(binary_values, 'values') else np.asarray(binary_values)
+        # Check if input is an xarray DataArray
+        if hasattr(binary_values, 'dims'):
+            # Reduce to target dimension by taking any() over other dimensions
+            other_dims = [d for d in binary_values.dims if d != dim]
+            if other_dims:
+                binary_values = binary_values.any(dim=other_dims)
+            # Convert xarray to numpy
+            arr = binary_values.values
+        else:
+            # Convert non-xarray input directly to numpy array
+            arr = np.asarray(binary_values)
 
         # Flatten to 1D if needed
         arr = arr.ravel() if arr.ndim > 1 else arr
