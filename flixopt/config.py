@@ -226,3 +226,7 @@ def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'
     logger.setLevel(log_level)
     for handler in logger.handlers:
         handler.setLevel(log_level)
+
+
+# Initialize logging with default (silent) configuration
+CONFIG.apply()

@@ -35,6 +35,3 @@ from .commons import (
     results,
     solvers,
 )
-
-# Initialize logging with default (silent) configuration
-CONFIG.apply()
