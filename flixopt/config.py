@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import types
-from contextlib import contextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Literal
@@ -11,26 +9,9 @@ import yaml
 from rich.console import Console
 from rich.logging import RichHandler
 
+__all__ = ['CONFIG']
+
 logger = logging.getLogger('flixopt')
-
-
-def merge_configs(defaults: dict, overrides: dict) -> dict:
-    """
-    Merge the default configuration with user-provided overrides.
-    Args:
-        defaults: Default configuration dictionary.
-        overrides: User configuration dictionary.
-    Returns:
-        Merged configuration dictionary.
-    """
-    for key, value in overrides.items():
-        if isinstance(value, dict) and key in defaults and isinstance(defaults[key], dict):
-            # Recursively merge nested dictionaries
-            defaults[key] = merge_configs(defaults[key], value)
-        else:
-            # Override the default value
-            defaults[key] = value
-    return defaults
 
 
 class CONFIG:
@@ -65,7 +46,7 @@ class CONFIG:
     @classmethod
     def apply(cls):
         """Apply current configuration to logging system."""
-        setup_logging(
+        _setup_logging(
             default_level=cls.Logging.level,
             log_file=cls.Logging.file,
             use_rich_handler=cls.Logging.rich,
@@ -90,7 +71,7 @@ class CONFIG:
         """Apply configuration dictionary to class attributes."""
         for key, value in config_dict.items():
             if key == 'logging' and isinstance(value, dict):
-                # Apply logging config (triggers auto-setup via properties)
+                # Apply logging config
                 for nested_key, nested_value in value.items():
                     setattr(cls.Logging, nested_key, nested_value)
             elif key == 'modeling' and isinstance(value, dict):
@@ -192,13 +173,13 @@ def _create_file_handler(log_file: str) -> RotatingFileHandler:
     return handler
 
 
-def setup_logging(
+def _setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
     log_file: str | None = None,
     use_rich_handler: bool = False,
     console: bool = False,
 ):
-    """Setup logging - silent by default for library use."""
+    """Internal function to setup logging - use CONFIG.apply() instead."""
     logger = logging.getLogger('flixopt')
     logger.setLevel(getattr(logging, default_level.upper()))
     logger.propagate = False  # Prevent duplicate logs
