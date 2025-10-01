@@ -28,6 +28,9 @@ class CONFIG:
 
         # Load from YAML file (auto-applies)
         CONFIG.load_from_file('config.yaml')
+
+        # Reset to defaults
+        CONFIG.reset()
     """
 
     class Logging:
@@ -42,6 +45,26 @@ class CONFIG:
         big_binary_bound: int = 100_000
 
     config_name: str = 'flixopt'
+
+    @classmethod
+    def reset(cls):
+        """Reset all configuration values to defaults."""
+        # Reset Logging config
+        cls.Logging.level = 'INFO'
+        cls.Logging.file = None
+        cls.Logging.rich = False
+        cls.Logging.console = False
+
+        # Reset Modeling config
+        cls.Modeling.big = 10_000_000
+        cls.Modeling.epsilon = 1e-5
+        cls.Modeling.big_binary_bound = 100_000
+
+        # Reset config name
+        cls.config_name = 'flixopt'
+
+        # Apply the reset configuration
+        cls.apply()
 
     @classmethod
     def apply(cls):

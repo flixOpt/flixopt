@@ -14,39 +14,11 @@ class TestConfigModule:
 
     def setup_method(self):
         """Reset CONFIG to defaults before each test."""
-        # Reset Logging config
-        CONFIG.Logging.level = 'INFO'
-        CONFIG.Logging.file = None
-        CONFIG.Logging.rich = False
-        CONFIG.Logging.console = False
-
-        # Reset Modeling config to defaults
-        CONFIG.Modeling.big = 10_000_000
-        CONFIG.Modeling.epsilon = 1e-5
-        CONFIG.Modeling.big_binary_bound = 100_000
-
-        # Clear and reset logger completely
-        logger = logging.getLogger('flixopt')
-        logger.handlers.clear()
-        logger.setLevel(logging.INFO)
-        logger.propagate = False
-
-        # Apply clean state
-        CONFIG.apply()
+        CONFIG.reset()
 
     def teardown_method(self):
         """Clean up after each test to prevent state leakage."""
-        # Reset to absolute defaults
-        CONFIG.Logging.level = 'INFO'
-        CONFIG.Logging.file = None
-        CONFIG.Logging.rich = False
-        CONFIG.Logging.console = False
-
-        CONFIG.Modeling.big = 10_000_000
-        CONFIG.Modeling.epsilon = 1e-5
-        CONFIG.Modeling.big_binary_bound = 100_000
-
-        CONFIG.apply()
+        CONFIG.reset()
 
     def test_config_defaults(self):
         """Test that CONFIG has correct default values."""
@@ -434,6 +406,32 @@ modeling:
         assert CONFIG.Modeling.big == 99999999
         assert CONFIG.Modeling.epsilon == 1e-8
 
-        # Reset for other tests
-        CONFIG.Modeling.big = 10_000_000
-        CONFIG.Modeling.epsilon = 1e-5
+    def test_config_reset(self):
+        """Test that CONFIG.reset() restores all defaults."""
+        # Modify all config values
+        CONFIG.Logging.level = 'DEBUG'
+        CONFIG.Logging.console = True
+        CONFIG.Logging.rich = True
+        CONFIG.Logging.file = '/tmp/test.log'
+        CONFIG.Modeling.big = 99999999
+        CONFIG.Modeling.epsilon = 1e-8
+        CONFIG.Modeling.big_binary_bound = 500000
+        CONFIG.config_name = 'test_config'
+
+        # Reset should restore all defaults
+        CONFIG.reset()
+
+        # Verify all values are back to defaults
+        assert CONFIG.Logging.level == 'INFO'
+        assert CONFIG.Logging.console is False
+        assert CONFIG.Logging.rich is False
+        assert CONFIG.Logging.file is None
+        assert CONFIG.Modeling.big == 10_000_000
+        assert CONFIG.Modeling.epsilon == 1e-5
+        assert CONFIG.Modeling.big_binary_bound == 100_000
+        assert CONFIG.config_name == 'flixopt'
+
+        # Verify logging was also reset
+        logger = logging.getLogger('flixopt')
+        assert logger.level == logging.INFO
+        assert any(isinstance(h, logging.NullHandler) for h in logger.handlers)
