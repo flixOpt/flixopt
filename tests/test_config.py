@@ -14,10 +14,16 @@ class TestConfigModule:
 
     def setup_method(self):
         """Reset CONFIG to defaults before each test."""
+        # Reset Logging config
         CONFIG.Logging.level = 'INFO'
         CONFIG.Logging.file = None
         CONFIG.Logging.rich = False
         CONFIG.Logging.console = False
+
+        # Reset Modeling config to defaults
+        CONFIG.Modeling.big = 10_000_000
+        CONFIG.Modeling.epsilon = 1e-5
+        CONFIG.Modeling.big_binary_bound = 100_000
 
         # Clear and reset logger completely
         logger = logging.getLogger('flixopt')
@@ -26,6 +32,20 @@ class TestConfigModule:
         logger.propagate = False
 
         # Apply clean state
+        CONFIG.apply()
+
+    def teardown_method(self):
+        """Clean up after each test to prevent state leakage."""
+        # Reset to absolute defaults
+        CONFIG.Logging.level = 'INFO'
+        CONFIG.Logging.file = None
+        CONFIG.Logging.rich = False
+        CONFIG.Logging.console = False
+
+        CONFIG.Modeling.big = 10_000_000
+        CONFIG.Modeling.epsilon = 1e-5
+        CONFIG.Modeling.big_binary_bound = 100_000
+
         CONFIG.apply()
 
     def test_config_defaults(self):
