@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import types
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -49,24 +50,35 @@ class CONFIG:
     config_name: str = 'flixopt'
 
     @classmethod
-    def load_config(cls, user_config_file: str | Path | None = None):
-        """Load configuration from YAML file (optional - uses class defaults if not provided)."""
-        # If user config is provided, load and apply it
-        if user_config_file:
-            user_config_path = Path(user_config_file)
-            if not user_config_path.exists():
-                raise FileNotFoundError(f'Config file not found: {user_config_file}')
+    def load_from_file(cls, config_file: str | Path):
+        """Load and apply configuration from YAML file."""
+        config_path = Path(config_file)
+        if not config_path.exists():
+            raise FileNotFoundError(f'Config file not found: {config_file}')
 
-            with user_config_path.open() as user_file:
-                config_dict = yaml.safe_load(user_file)
-                cls._apply_config_dict(config_dict)
+        with config_path.open() as file:
+            config_dict = yaml.safe_load(file)
+            cls._apply_config_dict(config_dict)
 
-        # Setup logging with current config (defaults or overridden)
+        # Re-setup logging with new config
+        cls._setup_logging()
+
+    @classmethod
+    def _setup_logging(cls):
+        """Setup logging based on current configuration."""
+        # Auto-enable console logging for examples and scripts
+        console_enabled = cls.Logging.console
+        if not console_enabled and hasattr(sys, 'argv') and len(sys.argv) > 0:
+            script_path = Path(sys.argv[0]).resolve()
+            # Enable console if running from examples directory
+            if 'examples' in script_path.parts:
+                console_enabled = True
+
         setup_logging(
             default_level=cls.Logging.level,
             log_file=cls.Logging.file,
             use_rich_handler=cls.Logging.rich,
-            console=cls.Logging.console,
+            console=console_enabled,
         )
 
     @classmethod

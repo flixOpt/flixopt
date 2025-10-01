@@ -36,4 +36,5 @@ from .commons import (
     solvers,
 )
 
-CONFIG.load_config()
+# Setup logging with default configuration
+CONFIG._setup_logging()
