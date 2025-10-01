@@ -9,6 +9,8 @@ import pytest
 from flixopt.config import _DEFAULTS, CONFIG, _setup_logging
 
 
+# All tests in this class will run in the same worker to prevent issues with global config altering
+@pytest.mark.xdist_group(name='config_tests')
 class TestConfigModule:
     """Test the CONFIG class and logging setup."""
 
