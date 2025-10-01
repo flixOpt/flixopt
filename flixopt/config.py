@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 import types
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -66,19 +65,11 @@ class CONFIG:
     @classmethod
     def _setup_logging(cls):
         """Setup logging based on current configuration."""
-        # Auto-enable console logging for examples and scripts
-        console_enabled = cls.Logging.console
-        if not console_enabled and hasattr(sys, 'argv') and len(sys.argv) > 0:
-            script_path = Path(sys.argv[0]).resolve()
-            # Enable console if running from examples directory
-            if 'examples' in script_path.parts:
-                console_enabled = True
-
         setup_logging(
             default_level=cls.Logging.level,
             log_file=cls.Logging.file,
             use_rich_handler=cls.Logging.rich,
-            console=console_enabled,
+            console=cls.Logging.console,
         )
 
     @classmethod

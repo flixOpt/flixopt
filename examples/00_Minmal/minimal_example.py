@@ -9,6 +9,9 @@ from rich.pretty import pprint
 import flixopt as fx
 
 if __name__ == '__main__':
+    # Enable console logging to see what's happening
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG._setup_logging()
     # --- Define the Flow System, that will hold all elements, and the time steps you want to model ---
     timesteps = pd.date_range('2020-01-01', periods=3, freq='h')
     flow_system = fx.FlowSystem(timesteps)
