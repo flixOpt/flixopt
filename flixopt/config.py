@@ -32,20 +32,65 @@ def merge_configs(defaults: dict, overrides: dict) -> dict:
     return defaults
 
 
+class _LoggingConfig:
+    """Logging configuration that auto-updates when changed."""
+
+    def __init__(self):
+        self._level: str = 'INFO'
+        self._file: str | None = None
+        self._rich: bool = False
+        self._console: bool = False
+
+    @property
+    def level(self) -> str:
+        return self._level
+
+    @level.setter
+    def level(self, value: str):
+        self._level = value
+        CONFIG._setup_logging()
+
+    @property
+    def file(self) -> str | None:
+        return self._file
+
+    @file.setter
+    def file(self, value: str | None):
+        self._file = value
+        CONFIG._setup_logging()
+
+    @property
+    def rich(self) -> bool:
+        return self._rich
+
+    @rich.setter
+    def rich(self, value: bool):
+        self._rich = value
+        CONFIG._setup_logging()
+
+    @property
+    def console(self) -> bool:
+        return self._console
+
+    @console.setter
+    def console(self, value: bool):
+        self._console = value
+        CONFIG._setup_logging()
+
+
+class _ModelingConfig:
+    """Modeling configuration with constants."""
+
+    big: int = 10_000_000
+    epsilon: float = 1e-5
+    big_binary_bound: int = 100_000
+
+
 class CONFIG:
     """Configuration using simple nested classes."""
 
-    class Logging:
-        level: str = 'INFO'
-        file: str | None = None
-        rich: bool = False
-        console: bool = False  # Libraries should be silent by default
-
-    class Modeling:
-        big: int = 10_000_000
-        epsilon: float = 1e-5
-        big_binary_bound: int = 100_000
-
+    Logging = _LoggingConfig()
+    Modeling = _ModelingConfig()
     config_name: str = 'flixopt'
 
     @classmethod
@@ -58,9 +103,6 @@ class CONFIG:
         with config_path.open() as file:
             config_dict = yaml.safe_load(file)
             cls._apply_config_dict(config_dict)
-
-        # Re-setup logging with new config
-        cls._setup_logging()
 
     @classmethod
     def _setup_logging(cls):
@@ -76,46 +118,35 @@ class CONFIG:
     def _apply_config_dict(cls, config_dict: dict):
         """Apply configuration dictionary to class attributes."""
         for key, value in config_dict.items():
-            if hasattr(cls, key):
-                target = getattr(cls, key)
-                if hasattr(target, '__dict__') and isinstance(value, dict):
-                    # It's a nested class, apply recursively
-                    for nested_key, nested_value in value.items():
-                        setattr(target, nested_key, nested_value)
-                else:
-                    # Simple attribute
-                    setattr(cls, key, value)
+            if key == 'logging' and isinstance(value, dict):
+                # Apply logging config (triggers auto-setup via properties)
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Logging, nested_key, nested_value)
+            elif key == 'modeling' and isinstance(value, dict):
+                # Apply modeling config
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Modeling, nested_key, nested_value)
+            elif hasattr(cls, key):
+                # Simple attribute
+                setattr(cls, key, value)
 
     @classmethod
     def to_dict(cls):
-        """
-        Convert the configuration class into a dictionary for JSON serialization.
-        """
-        config_dict = {}
-        for attribute, value in cls.__dict__.items():
-            # Only consider attributes (not methods, etc.)
-            if (
-                not attribute.startswith('_')
-                and not isinstance(value, (types.FunctionType, types.MethodType))
-                and not isinstance(value, classmethod)
-            ):
-                if hasattr(value, '__dict__') and not isinstance(value, type):
-                    # It's a nested class instance
-                    config_dict[attribute] = {
-                        k: v for k, v in value.__dict__.items() if not k.startswith('_') and not callable(v)
-                    }
-                elif isinstance(value, type):
-                    # It's a nested class definition
-                    config_dict[attribute] = {
-                        k: v
-                        for k, v in value.__dict__.items()
-                        if not k.startswith('_') and not callable(v) and not isinstance(v, classmethod)
-                    }
-                else:
-                    # Simple attribute
-                    config_dict[attribute] = value
-
-        return config_dict
+        """Convert the configuration class into a dictionary for JSON serialization."""
+        return {
+            'config_name': cls.config_name,
+            'logging': {
+                'level': cls.Logging.level,
+                'file': cls.Logging.file,
+                'rich': cls.Logging.rich,
+                'console': cls.Logging.console,
+            },
+            'modeling': {
+                'big': cls.Modeling.big,
+                'epsilon': cls.Modeling.epsilon,
+                'big_binary_bound': cls.Modeling.big_binary_bound,
+            },
+        }
 
 
 class MultilineFormater(logging.Formatter):

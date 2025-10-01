@@ -10,7 +10,6 @@ import flixopt as fx
 if __name__ == '__main__':
     # Enable console logging to see what's happening
     fx.CONFIG.Logging.console = True
-    fx.CONFIG._setup_logging()
     # --- Create Time Series Data ---
     # Heat demand profile (e.g., kW) over time and corresponding power prices
     heat_demand_per_h = np.array([30, 0, 90, 110, 110, 20, 20, 20, 20])
