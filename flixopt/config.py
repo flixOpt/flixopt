@@ -219,14 +219,5 @@ def setup_logging(
     return logger
 
 
-def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
-    """Change the logging level for the flixopt logger and all its handlers."""
-    logger = logging.getLogger('flixopt')
-    log_level = getattr(logging, level_name.upper())
-    logger.setLevel(log_level)
-    for handler in logger.handlers:
-        handler.setLevel(log_level)
-
-
-# Initialize logging with default (silent) configuration
+# Initialize default config
 CONFIG.apply()
