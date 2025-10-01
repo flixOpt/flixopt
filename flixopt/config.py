@@ -150,74 +150,55 @@ class ColoredMultilineFormater(MultilineFormater):
         return '\n'.join(formatted_lines)
 
 
-def _get_logging_handler(log_file: str | None = None, use_rich_handler: bool = False) -> logging.Handler:
-    """Returns a logging handler for the given log file."""
-    if use_rich_handler and log_file is None:
-        # RichHandler for console output
+def _create_console_handler(use_rich: bool = False) -> logging.Handler:
+    """Create a console (stdout) logging handler."""
+    if use_rich:
         console = Console(width=120)
-        rich_handler = RichHandler(
+        handler = RichHandler(
             console=console,
             rich_tracebacks=True,
             omit_repeated_times=True,
             show_path=False,
             log_time_format='%Y-%m-%d %H:%M:%S',
         )
-        rich_handler.setFormatter(logging.Formatter('%(message)s'))  # Simplified formatting
-
-        return rich_handler
-    elif log_file is None:
-        # Regular Logger with custom formating enabled
-        file_handler = logging.StreamHandler()
-        file_handler.setFormatter(
-            ColoredMultilineFormater(
-                fmt='%(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-            )
-        )
-        return file_handler
+        handler.setFormatter(logging.Formatter('%(message)s'))
     else:
-        # FileHandler for file output
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(
-            MultilineFormater(
-                fmt='%(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-            )
-        )
-        return file_handler
+        handler = logging.StreamHandler()
+        handler.setFormatter(ColoredMultilineFormater(fmt='%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+    return handler
+
+
+def _create_file_handler(log_file: str) -> logging.FileHandler:
+    """Create a file logging handler."""
+    handler = logging.FileHandler(log_file)
+    handler.setFormatter(MultilineFormater(fmt='%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+    return handler
 
 
 def setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
-    log_file: str | None = 'flixopt.log',
+    log_file: str | None = None,
     use_rich_handler: bool = False,
 ):
-    """Setup logging configuration"""
-    logger = logging.getLogger('flixopt')  # Use a specific logger name for your package
-    logger.setLevel(get_logging_level_by_name(default_level))
-    # Clear existing handlers
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    """Setup logging configuration with console and optional file output."""
+    logger = logging.getLogger('flixopt')
+    logger.setLevel(getattr(logging, default_level.upper()))
+    logger.handlers.clear()
 
-    logger.addHandler(_get_logging_handler(use_rich_handler=use_rich_handler))
-    if log_file is not None:
-        logger.addHandler(_get_logging_handler(log_file, use_rich_handler=False))
+    # Always add console handler
+    logger.addHandler(_create_console_handler(use_rich=use_rich_handler))
+
+    # Optionally add file handler
+    if log_file:
+        logger.addHandler(_create_file_handler(log_file))
 
     return logger
 
 
-def get_logging_level_by_name(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']) -> int:
-    possible_logging_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-    if level_name.upper() not in possible_logging_levels:
-        raise ValueError(f'Invalid logging level {level_name}')
-    else:
-        logging_level = getattr(logging, level_name.upper(), logging.WARNING)
-        return logging_level
-
-
 def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
+    """Change the logging level for the flixopt logger and all its handlers."""
     logger = logging.getLogger('flixopt')
-    logging_level = get_logging_level_by_name(level_name)
-    logger.setLevel(logging_level)
+    log_level = getattr(logging, level_name.upper())
+    logger.setLevel(log_level)
     for handler in logger.handlers:
-        handler.setLevel(logging_level)
+        handler.setLevel(log_level)
