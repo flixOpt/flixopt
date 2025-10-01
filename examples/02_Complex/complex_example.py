@@ -11,6 +11,7 @@ import flixopt as fx
 if __name__ == '__main__':
     # Enable console logging to see what's happening
     fx.CONFIG.Logging.console = True
+    fx.CONFIG.apply()
 
     # --- Experiment Options ---
     # Configure options for testing various parameters and behaviors

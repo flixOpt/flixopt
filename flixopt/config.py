@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import types
+from contextlib import contextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Literal
@@ -32,70 +33,48 @@ def merge_configs(defaults: dict, overrides: dict) -> dict:
     return defaults
 
 
-class _LoggingConfig:
-    """Logging configuration that auto-updates when changed."""
-
-    def __init__(self):
-        self._level: str = 'INFO'
-        self._file: str | None = None
-        self._rich: bool = False
-        self._console: bool = False
-
-    @property
-    def level(self) -> str:
-        return self._level
-
-    @level.setter
-    def level(self, value: str):
-        self._level = value
-        CONFIG._setup_logging()
-
-    @property
-    def file(self) -> str | None:
-        return self._file
-
-    @file.setter
-    def file(self, value: str | None):
-        self._file = value
-        CONFIG._setup_logging()
-
-    @property
-    def rich(self) -> bool:
-        return self._rich
-
-    @rich.setter
-    def rich(self, value: bool):
-        self._rich = value
-        CONFIG._setup_logging()
-
-    @property
-    def console(self) -> bool:
-        return self._console
-
-    @console.setter
-    def console(self, value: bool):
-        self._console = value
-        CONFIG._setup_logging()
-
-
-class _ModelingConfig:
-    """Modeling configuration with constants."""
-
-    big: int = 10_000_000
-    epsilon: float = 1e-5
-    big_binary_bound: int = 100_000
-
-
 class CONFIG:
-    """Configuration using simple nested classes."""
+    """
+    Configuration for flixopt library.
 
-    Logging = _LoggingConfig()
-    Modeling = _ModelingConfig()
+    Library is SILENT by default (best practice for libraries).
+
+    Usage:
+        # Change config and apply
+        CONFIG.Logging.console = True
+        CONFIG.Logging.level = 'DEBUG'
+        CONFIG.apply()
+
+        # Load from YAML file (auto-applies)
+        CONFIG.load_from_file('config.yaml')
+    """
+
+    class Logging:
+        level: str = 'INFO'
+        file: str | None = None
+        rich: bool = False
+        console: bool = False
+
+    class Modeling:
+        big: int = 10_000_000
+        epsilon: float = 1e-5
+        big_binary_bound: int = 100_000
+
     config_name: str = 'flixopt'
 
     @classmethod
+    def apply(cls):
+        """Apply current configuration to logging system."""
+        setup_logging(
+            default_level=cls.Logging.level,
+            log_file=cls.Logging.file,
+            use_rich_handler=cls.Logging.rich,
+            console=cls.Logging.console,
+        )
+
+    @classmethod
     def load_from_file(cls, config_file: str | Path):
-        """Load and apply configuration from YAML file."""
+        """Load configuration from YAML file and apply it."""
         config_path = Path(config_file)
         if not config_path.exists():
             raise FileNotFoundError(f'Config file not found: {config_file}')
@@ -104,15 +83,7 @@ class CONFIG:
             config_dict = yaml.safe_load(file)
             cls._apply_config_dict(config_dict)
 
-    @classmethod
-    def _setup_logging(cls):
-        """Setup logging based on current configuration."""
-        setup_logging(
-            default_level=cls.Logging.level,
-            log_file=cls.Logging.file,
-            use_rich_handler=cls.Logging.rich,
-            console=cls.Logging.console,
-        )
+        cls.apply()
 
     @classmethod
     def _apply_config_dict(cls, config_dict: dict):

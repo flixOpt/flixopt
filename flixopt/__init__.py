@@ -36,5 +36,5 @@ from .commons import (
     solvers,
 )
 
-# Setup logging with default configuration
-CONFIG._setup_logging()
+# Initialize logging with default (silent) configuration
+CONFIG.apply()
