@@ -22,7 +22,7 @@ _DEFAULTS = MappingProxyType(
         'logging': MappingProxyType(
             {
                 'level': 'INFO',
-                'file': None,
+                'file': 'flixopt.log',
                 'rich': False,
                 'console': False,
             }
