@@ -18,9 +18,15 @@ class TestConfigModule:
         CONFIG.Logging.file = None
         CONFIG.Logging.rich = False
         CONFIG.Logging.console = False
-        # Clear any existing handlers
+
+        # Clear and reset logger completely
         logger = logging.getLogger('flixopt')
         logger.handlers.clear()
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+
+        # Apply clean state
+        CONFIG.apply()
 
     def test_config_defaults(self):
         """Test that CONFIG has correct default values."""
@@ -137,7 +143,7 @@ modeling:
             CONFIG.load_from_file('nonexistent_config.yaml')
 
     def test_config_load_from_file_partial(self, tmp_path):
-        """Test loading partial configuration (should merge with defaults)."""
+        """Test loading partial configuration (should keep unspecified settings)."""
         config_file = tmp_path / 'partial_config.yaml'
         config_content = """
 logging:
@@ -153,6 +159,8 @@ logging:
 
         # Should update level but keep other settings
         assert CONFIG.Logging.level == 'ERROR'
+        # Verify console setting is preserved (not in YAML)
+        assert CONFIG.Logging.console is True
 
     def test_setup_logging_silent_default(self):
         """Test that _setup_logging creates silent logger by default."""
@@ -187,7 +195,7 @@ logging:
 
     def test_change_logging_level_removed(self):
         """Test that change_logging_level function no longer exists."""
-        # This function was removed as part of the cleanup
+        # This function was removed - users should use CONFIG.apply() instead
         import flixopt
 
         assert not hasattr(flixopt, 'change_logging_level')
@@ -391,3 +399,21 @@ modeling:
         assert log_file.exists()
         log_content = log_file.read_text()
         assert test_message in log_content
+
+    def test_modeling_config_persistence(self):
+        """Test that Modeling config is independent of Logging config."""
+        # Set custom modeling values
+        CONFIG.Modeling.big = 99999999
+        CONFIG.Modeling.epsilon = 1e-8
+
+        # Change and apply logging config
+        CONFIG.Logging.console = True
+        CONFIG.apply()
+
+        # Modeling values should be unchanged
+        assert CONFIG.Modeling.big == 99999999
+        assert CONFIG.Modeling.epsilon == 1e-8
+
+        # Reset for other tests
+        CONFIG.Modeling.big = 10_000_000
+        CONFIG.Modeling.epsilon = 1e-5
