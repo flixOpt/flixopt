@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import types
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Literal
 
@@ -36,8 +37,9 @@ class CONFIG:
 
     class Logging:
         level: str = 'INFO'
-        file: str = 'flixopt.log'
+        file: str | None = None
         rich: bool = False
+        console: bool = False  # Libraries should be silent by default
 
     class Modeling:
         big: int = 10_000_000
@@ -60,7 +62,12 @@ class CONFIG:
                 cls._apply_config_dict(config_dict)
 
         # Setup logging with current config (defaults or overridden)
-        setup_logging(default_level=cls.Logging.level, log_file=cls.Logging.file, use_rich_handler=cls.Logging.rich)
+        setup_logging(
+            default_level=cls.Logging.level,
+            log_file=cls.Logging.file,
+            use_rich_handler=cls.Logging.rich,
+            console=cls.Logging.console,
+        )
 
     @classmethod
     def _apply_config_dict(cls, config_dict: dict):
@@ -168,9 +175,14 @@ def _create_console_handler(use_rich: bool = False) -> logging.Handler:
     return handler
 
 
-def _create_file_handler(log_file: str) -> logging.FileHandler:
-    """Create a file logging handler."""
-    handler = logging.FileHandler(log_file)
+def _create_file_handler(log_file: str) -> RotatingFileHandler:
+    """Create a rotating file handler to prevent huge log files."""
+    handler = RotatingFileHandler(
+        log_file,
+        maxBytes=10_485_760,  # 10MB max file size
+        backupCount=5,  # Keep 5 backup files
+        encoding='utf-8',
+    )
     handler.setFormatter(MultilineFormater(fmt='%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
     return handler
 
@@ -179,18 +191,25 @@ def setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
     log_file: str | None = None,
     use_rich_handler: bool = False,
+    console: bool = False,
 ):
-    """Setup logging configuration with console and optional file output."""
+    """Setup logging - silent by default for library use."""
     logger = logging.getLogger('flixopt')
     logger.setLevel(getattr(logging, default_level.upper()))
+    logger.propagate = False  # Prevent duplicate logs
     logger.handlers.clear()
 
-    # Always add console handler
-    logger.addHandler(_create_console_handler(use_rich=use_rich_handler))
+    # Only log to console if explicitly requested
+    if console:
+        logger.addHandler(_create_console_handler(use_rich=use_rich_handler))
 
-    # Optionally add file handler
+    # Add file handler if specified
     if log_file:
         logger.addHandler(_create_file_handler(log_file))
+
+    # IMPORTANT: If no handlers, use NullHandler (library best practice)
+    if not logger.handlers:
+        logger.addHandler(logging.NullHandler())
 
     return logger
 
