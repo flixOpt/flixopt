@@ -14,6 +14,19 @@ __all__ = ['CONFIG']
 logger = logging.getLogger('flixopt')
 
 
+# Default configuration values
+_DEFAULTS = {
+    'LOGGING_LEVEL': 'INFO',
+    'LOGGING_FILE': None,
+    'LOGGING_RICH': False,
+    'LOGGING_CONSOLE': False,
+    'MODELING_BIG': 10_000_000,
+    'MODELING_EPSILON': 1e-5,
+    'MODELING_BIG_BINARY_BOUND': 100_000,
+    'CONFIG_NAME': 'flixopt',
+}
+
+
 class CONFIG:
     """
     Configuration for flixopt library.
@@ -34,34 +47,34 @@ class CONFIG:
     """
 
     class Logging:
-        level: str = 'INFO'
-        file: str | None = None
-        rich: bool = False
-        console: bool = False
+        level: str = _DEFAULTS['LOGGING_LEVEL']
+        file: str | None = _DEFAULTS['LOGGING_FILE']
+        rich: bool = _DEFAULTS['LOGGING_RICH']
+        console: bool = _DEFAULTS['LOGGING_CONSOLE']
 
     class Modeling:
-        big: int = 10_000_000
-        epsilon: float = 1e-5
-        big_binary_bound: int = 100_000
+        big: int = _DEFAULTS['MODELING_BIG']
+        epsilon: float = _DEFAULTS['MODELING_EPSILON']
+        big_binary_bound: int = _DEFAULTS['MODELING_BIG_BINARY_BOUND']
 
-    config_name: str = 'flixopt'
+    config_name: str = _DEFAULTS['CONFIG_NAME']
 
     @classmethod
     def reset(cls):
         """Reset all configuration values to defaults."""
         # Reset Logging config
-        cls.Logging.level = 'INFO'
-        cls.Logging.file = None
-        cls.Logging.rich = False
-        cls.Logging.console = False
+        cls.Logging.level = _DEFAULTS['LOGGING_LEVEL']
+        cls.Logging.file = _DEFAULTS['LOGGING_FILE']
+        cls.Logging.rich = _DEFAULTS['LOGGING_RICH']
+        cls.Logging.console = _DEFAULTS['LOGGING_CONSOLE']
 
         # Reset Modeling config
-        cls.Modeling.big = 10_000_000
-        cls.Modeling.epsilon = 1e-5
-        cls.Modeling.big_binary_bound = 100_000
+        cls.Modeling.big = _DEFAULTS['MODELING_BIG']
+        cls.Modeling.epsilon = _DEFAULTS['MODELING_EPSILON']
+        cls.Modeling.big_binary_bound = _DEFAULTS['MODELING_BIG_BINARY_BOUND']
 
         # Reset config name
-        cls.config_name = 'flixopt'
+        cls.config_name = _DEFAULTS['CONFIG_NAME']
 
         # Apply the reset configuration
         cls.apply()

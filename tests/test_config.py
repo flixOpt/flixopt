@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from flixopt.config import CONFIG, _setup_logging
+from flixopt.config import _DEFAULTS, CONFIG, _setup_logging
 
 
 class TestConfigModule:
@@ -435,3 +435,36 @@ modeling:
         logger = logging.getLogger('flixopt')
         assert logger.level == logging.INFO
         assert any(isinstance(h, logging.NullHandler) for h in logger.handlers)
+
+    def test_reset_matches_class_defaults(self):
+        """Test that reset() values match the _DEFAULTS constants.
+
+        This ensures the reset() method and class attribute defaults
+        stay synchronized by using the same source of truth (_DEFAULTS).
+        """
+        # Modify all values to something different
+        CONFIG.Logging.level = 'CRITICAL'
+        CONFIG.Logging.file = '/tmp/test.log'
+        CONFIG.Logging.rich = True
+        CONFIG.Logging.console = True
+        CONFIG.Modeling.big = 999999
+        CONFIG.Modeling.epsilon = 1e-10
+        CONFIG.Modeling.big_binary_bound = 999999
+        CONFIG.config_name = 'modified'
+
+        # Verify values are actually different from defaults
+        assert CONFIG.Logging.level != _DEFAULTS['LOGGING_LEVEL']
+        assert CONFIG.Modeling.big != _DEFAULTS['MODELING_BIG']
+
+        # Now reset
+        CONFIG.reset()
+
+        # Verify reset() restored exactly the _DEFAULTS values
+        assert CONFIG.Logging.level == _DEFAULTS['LOGGING_LEVEL']
+        assert CONFIG.Logging.file == _DEFAULTS['LOGGING_FILE']
+        assert CONFIG.Logging.rich == _DEFAULTS['LOGGING_RICH']
+        assert CONFIG.Logging.console == _DEFAULTS['LOGGING_CONSOLE']
+        assert CONFIG.Modeling.big == _DEFAULTS['MODELING_BIG']
+        assert CONFIG.Modeling.epsilon == _DEFAULTS['MODELING_EPSILON']
+        assert CONFIG.Modeling.big_binary_bound == _DEFAULTS['MODELING_BIG_BINARY_BOUND']
+        assert CONFIG.config_name == _DEFAULTS['CONFIG_NAME']
