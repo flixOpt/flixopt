@@ -239,3 +239,155 @@ logging:
         # Check rotation settings
         assert handler.maxBytes == 10_485_760  # 10MB
         assert handler.backupCount == 5
+
+    def test_custom_config_yaml_complete(self, tmp_path):
+        """Test loading a complete custom configuration."""
+        config_file = tmp_path / 'custom_config.yaml'
+        config_content = """
+config_name: my_custom_config
+logging:
+  level: CRITICAL
+  console: true
+  rich: true
+  file: /tmp/custom.log
+modeling:
+  big: 50000000
+  epsilon: 1e-4
+  big_binary_bound: 200000
+"""
+        config_file.write_text(config_content)
+
+        CONFIG.load_from_file(config_file)
+
+        # Check all settings were applied
+        assert CONFIG.config_name == 'my_custom_config'
+        assert CONFIG.Logging.level == 'CRITICAL'
+        assert CONFIG.Logging.console is True
+        assert CONFIG.Logging.rich is True
+        assert CONFIG.Logging.file == '/tmp/custom.log'
+        assert CONFIG.Modeling.big == 50000000
+        assert float(CONFIG.Modeling.epsilon) == 1e-4
+        assert CONFIG.Modeling.big_binary_bound == 200000
+
+        # Verify logging was applied
+        logger = logging.getLogger('flixopt')
+        assert logger.level == logging.CRITICAL
+
+    def test_config_file_with_console_and_file(self, tmp_path):
+        """Test configuration with both console and file logging enabled."""
+        log_file = tmp_path / 'test.log'
+        config_file = tmp_path / 'config.yaml'
+        config_content = f"""
+logging:
+  level: INFO
+  console: true
+  rich: false
+  file: {log_file}
+"""
+        config_file.write_text(config_content)
+
+        CONFIG.load_from_file(config_file)
+
+        logger = logging.getLogger('flixopt')
+        # Should have both StreamHandler and RotatingFileHandler
+        from logging.handlers import RotatingFileHandler
+
+        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+        assert any(isinstance(h, RotatingFileHandler) for h in logger.handlers)
+        # Should NOT have NullHandler when console/file are enabled
+        assert not any(isinstance(h, logging.NullHandler) for h in logger.handlers)
+
+    def test_config_to_dict_roundtrip(self, tmp_path):
+        """Test that config can be saved to dict, modified, and restored."""
+        # Set custom values
+        CONFIG.Logging.level = 'WARNING'
+        CONFIG.Logging.console = True
+        CONFIG.Modeling.big = 99999999
+
+        # Save to dict
+        config_dict = CONFIG.to_dict()
+
+        # Verify dict structure
+        assert config_dict['logging']['level'] == 'WARNING'
+        assert config_dict['logging']['console'] is True
+        assert config_dict['modeling']['big'] == 99999999
+
+        # Could be written to YAML and loaded back
+        yaml_file = tmp_path / 'saved_config.yaml'
+        import yaml
+
+        with open(yaml_file, 'w') as f:
+            yaml.dump(config_dict, f)
+
+        # Reset config
+        CONFIG.Logging.level = 'INFO'
+        CONFIG.Logging.console = False
+        CONFIG.Modeling.big = 10_000_000
+
+        # Load back from file
+        CONFIG.load_from_file(yaml_file)
+
+        # Should match original values
+        assert CONFIG.Logging.level == 'WARNING'
+        assert CONFIG.Logging.console is True
+        assert CONFIG.Modeling.big == 99999999
+
+    def test_config_file_with_only_modeling(self, tmp_path):
+        """Test config file that only sets modeling parameters."""
+        config_file = tmp_path / 'modeling_only.yaml'
+        config_content = """
+modeling:
+  big: 999999
+  epsilon: 0.001
+"""
+        config_file.write_text(config_content)
+
+        # Set logging config before loading
+        original_level = CONFIG.Logging.level
+        CONFIG.load_from_file(config_file)
+
+        # Modeling should be updated
+        assert CONFIG.Modeling.big == 999999
+        assert float(CONFIG.Modeling.epsilon) == 0.001
+
+        # Logging should keep default/previous values
+        assert CONFIG.Logging.level == original_level
+
+    def test_config_attribute_modification(self):
+        """Test that config attributes can be modified directly."""
+        # Store original values
+        original_big = CONFIG.Modeling.big
+        original_level = CONFIG.Logging.level
+
+        # Modify attributes
+        CONFIG.Modeling.big = 12345678
+        CONFIG.Modeling.epsilon = 1e-8
+        CONFIG.Logging.level = 'DEBUG'
+        CONFIG.Logging.console = True
+
+        # Verify modifications
+        assert CONFIG.Modeling.big == 12345678
+        assert CONFIG.Modeling.epsilon == 1e-8
+        assert CONFIG.Logging.level == 'DEBUG'
+        assert CONFIG.Logging.console is True
+
+        # Reset
+        CONFIG.Modeling.big = original_big
+        CONFIG.Logging.level = original_level
+        CONFIG.Logging.console = False
+
+    def test_logger_actually_logs(self, tmp_path):
+        """Test that the logger actually writes log messages."""
+        log_file = tmp_path / 'actual_test.log'
+        CONFIG.Logging.file = str(log_file)
+        CONFIG.Logging.level = 'DEBUG'
+        CONFIG.apply()
+
+        logger = logging.getLogger('flixopt')
+        test_message = 'Test log message from config test'
+        logger.debug(test_message)
+
+        # Check that file was created and contains the message
+        assert log_file.exists()
+        log_content = log_file.read_text()
+        assert test_message in log_content
