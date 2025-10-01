@@ -453,18 +453,18 @@ modeling:
         CONFIG.config_name = 'modified'
 
         # Verify values are actually different from defaults
-        assert CONFIG.Logging.level != _DEFAULTS['LOGGING_LEVEL']
-        assert CONFIG.Modeling.big != _DEFAULTS['MODELING_BIG']
+        assert CONFIG.Logging.level != _DEFAULTS['logging']['level']
+        assert CONFIG.Modeling.big != _DEFAULTS['modeling']['big']
 
         # Now reset
         CONFIG.reset()
 
         # Verify reset() restored exactly the _DEFAULTS values
-        assert CONFIG.Logging.level == _DEFAULTS['LOGGING_LEVEL']
-        assert CONFIG.Logging.file == _DEFAULTS['LOGGING_FILE']
-        assert CONFIG.Logging.rich == _DEFAULTS['LOGGING_RICH']
-        assert CONFIG.Logging.console == _DEFAULTS['LOGGING_CONSOLE']
-        assert CONFIG.Modeling.big == _DEFAULTS['MODELING_BIG']
-        assert CONFIG.Modeling.epsilon == _DEFAULTS['MODELING_EPSILON']
-        assert CONFIG.Modeling.big_binary_bound == _DEFAULTS['MODELING_BIG_BINARY_BOUND']
-        assert CONFIG.config_name == _DEFAULTS['CONFIG_NAME']
+        assert CONFIG.Logging.level == _DEFAULTS['logging']['level']
+        assert CONFIG.Logging.file == _DEFAULTS['logging']['file']
+        assert CONFIG.Logging.rich == _DEFAULTS['logging']['rich']
+        assert CONFIG.Logging.console == _DEFAULTS['logging']['console']
+        assert CONFIG.Modeling.big == _DEFAULTS['modeling']['big']
+        assert CONFIG.Modeling.epsilon == _DEFAULTS['modeling']['epsilon']
+        assert CONFIG.Modeling.big_binary_bound == _DEFAULTS['modeling']['big_binary_bound']
+        assert CONFIG.config_name == _DEFAULTS['config_name']

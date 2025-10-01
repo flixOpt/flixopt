@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 
 import yaml
@@ -14,17 +15,27 @@ __all__ = ['CONFIG']
 logger = logging.getLogger('flixopt')
 
 
-# Default configuration values
-_DEFAULTS = {
-    'LOGGING_LEVEL': 'INFO',
-    'LOGGING_FILE': None,
-    'LOGGING_RICH': False,
-    'LOGGING_CONSOLE': False,
-    'MODELING_BIG': 10_000_000,
-    'MODELING_EPSILON': 1e-5,
-    'MODELING_BIG_BINARY_BOUND': 100_000,
-    'CONFIG_NAME': 'flixopt',
-}
+# SINGLE SOURCE OF TRUTH - immutable to prevent accidental modification
+_DEFAULTS = MappingProxyType(
+    {
+        'config_name': 'flixopt',
+        'logging': MappingProxyType(
+            {
+                'level': 'INFO',
+                'file': None,
+                'rich': False,
+                'console': False,
+            }
+        ),
+        'modeling': MappingProxyType(
+            {
+                'big': 10_000_000,
+                'epsilon': 1e-5,
+                'big_binary_bound': 100_000,
+            }
+        ),
+    }
+)
 
 
 class CONFIG:
@@ -47,34 +58,29 @@ class CONFIG:
     """
 
     class Logging:
-        level: str = _DEFAULTS['LOGGING_LEVEL']
-        file: str | None = _DEFAULTS['LOGGING_FILE']
-        rich: bool = _DEFAULTS['LOGGING_RICH']
-        console: bool = _DEFAULTS['LOGGING_CONSOLE']
+        level: str = _DEFAULTS['logging']['level']
+        file: str | None = _DEFAULTS['logging']['file']
+        rich: bool = _DEFAULTS['logging']['rich']
+        console: bool = _DEFAULTS['logging']['console']
 
     class Modeling:
-        big: int = _DEFAULTS['MODELING_BIG']
-        epsilon: float = _DEFAULTS['MODELING_EPSILON']
-        big_binary_bound: int = _DEFAULTS['MODELING_BIG_BINARY_BOUND']
+        big: int = _DEFAULTS['modeling']['big']
+        epsilon: float = _DEFAULTS['modeling']['epsilon']
+        big_binary_bound: int = _DEFAULTS['modeling']['big_binary_bound']
 
-    config_name: str = _DEFAULTS['CONFIG_NAME']
+    config_name: str = _DEFAULTS['config_name']
 
     @classmethod
     def reset(cls):
         """Reset all configuration values to defaults."""
-        # Reset Logging config
-        cls.Logging.level = _DEFAULTS['LOGGING_LEVEL']
-        cls.Logging.file = _DEFAULTS['LOGGING_FILE']
-        cls.Logging.rich = _DEFAULTS['LOGGING_RICH']
-        cls.Logging.console = _DEFAULTS['LOGGING_CONSOLE']
+        # Dynamically reset from _DEFAULTS - no repetition!
+        for key, value in _DEFAULTS['logging'].items():
+            setattr(cls.Logging, key, value)
 
-        # Reset Modeling config
-        cls.Modeling.big = _DEFAULTS['MODELING_BIG']
-        cls.Modeling.epsilon = _DEFAULTS['MODELING_EPSILON']
-        cls.Modeling.big_binary_bound = _DEFAULTS['MODELING_BIG_BINARY_BOUND']
+        for key, value in _DEFAULTS['modeling'].items():
+            setattr(cls.Modeling, key, value)
 
-        # Reset config name
-        cls.config_name = _DEFAULTS['CONFIG_NAME']
+        cls.config_name = _DEFAULTS['config_name']
 
         # Apply the reset configuration
         cls.apply()
