@@ -44,10 +44,13 @@ Optional modeling capabilities:
 - [Effects, Penalty & Objective](effects-penalty-objective.md) - Cost allocation and objective function
 
 ### Modeling Patterns
-Reusable mathematical building blocks:
-- [Bounds and States](modeling-patterns/bounds-and-states.md) - Variable bounding patterns
-- [Duration Tracking](modeling-patterns/duration-tracking.md) - Consecutive time period tracking
-- [State Transitions](modeling-patterns/state-transitions.md) - State change modeling
+**Low-level mathematical building blocks** - These patterns are internal implementation details used exclusively within the high-level interfaces (Elements and Features). **Users do not interact with these patterns directly**; they are automatically applied when using Elements and Features:
+
+- [Bounds and States](modeling-patterns/bounds-and-states.md) - Variable bounding patterns (used internally)
+- [Duration Tracking](modeling-patterns/duration-tracking.md) - Consecutive time period tracking (used internally)
+- [State Transitions](modeling-patterns/state-transitions.md) - State change modeling (used internally)
+
+**Note:** These patterns are documented for developers and advanced users who want to understand the underlying mathematical formulations. Normal users should focus on the Elements and Features sections above.
 
 ---
 
