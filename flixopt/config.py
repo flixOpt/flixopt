@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import MappingProxyType
@@ -10,7 +11,7 @@ import yaml
 from rich.console import Console
 from rich.logging import RichHandler
 
-__all__ = ['CONFIG']
+__all__ = ['CONFIG', 'change_logging_level']
 
 logger = logging.getLogger('flixopt')
 
@@ -240,6 +241,39 @@ def _setup_logging(
         logger.addHandler(logging.NullHandler())
 
     return logger
+
+
+def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
+    """
+    Change the logging level for the flixopt logger and all its handlers.
+
+    .. deprecated:: 2.1.11
+        Use ``CONFIG.Logging.level = level_name`` and ``CONFIG.apply()`` instead.
+        This function will be removed in version 3.0.0.
+
+    Parameters
+    ----------
+    level_name : {'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'}
+        The logging level to set.
+
+    Examples
+    --------
+    >>> change_logging_level('DEBUG')  # deprecated
+    >>> # Use this instead:
+    >>> CONFIG.Logging.level = 'DEBUG'
+    >>> CONFIG.apply()
+    """
+    warnings.warn(
+        'change_logging_level is deprecated and will be removed in version 3.0.0. '
+        'Use CONFIG.Logging.level = level_name and CONFIG.apply() instead.',
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    logger = logging.getLogger('flixopt')
+    logging_level = getattr(logging, level_name.upper())
+    logger.setLevel(logging_level)
+    for handler in logger.handlers:
+        handler.setLevel(logging_level)
 
 
 # Initialize default config

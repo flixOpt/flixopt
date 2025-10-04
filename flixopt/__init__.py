@@ -29,6 +29,7 @@ from .commons import (
     Storage,
     TimeSeriesData,
     Transmission,
+    change_logging_level,
     linear_converters,
     plotting,
     results,

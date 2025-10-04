@@ -45,16 +45,15 @@ Please keep the format of the changelog consistent with the other releases, so t
 - Added `CONFIG.reset()` method to restore configuration to default values
 
 ### 💥 Breaking Changes
-- Remove change_logging_level
 
 ### ♻️ Changed
 - Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
 - Logging and Configuration management changed
 
 ### 🗑️ Deprecated
+- `change_logging_level()` function is now deprecated in favor of `CONFIG.Logging.level` and `CONFIG.apply()`. Will be removed in version 3.0.0.
 
 ### 🔥 Removed
-- Removed unused `change_logging_level` import and export
 - Removed unused `merge_configs` function from configuration module
 
 

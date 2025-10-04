@@ -13,7 +13,7 @@ from .components import (
     Storage,
     Transmission,
 )
-from .config import CONFIG
+from .config import CONFIG, change_logging_level
 from .core import TimeSeriesData
 from .effects import Effect
 from .elements import Bus, Flow
@@ -23,6 +23,7 @@ from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, Piec
 __all__ = [
     'TimeSeriesData',
     'CONFIG',
+    'change_logging_level',
     'Flow',
     'Bus',
     'Effect',
