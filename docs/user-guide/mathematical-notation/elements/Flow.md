@@ -21,8 +21,8 @@ $$
 $$
 
 
-This mathematical formulation can be extended by using [OnOffParameters](./OnOffParameters.md)
-to define the on/off state of the Flow, or by using [InvestParameters](./InvestParameters.md)
+This mathematical formulation can be extended by using [OnOffParameters](../features/OnOffParameters.md)
+to define the on/off state of the Flow, or by using [InvestParameters](../features/InvestParameters.md)
 to change the size of the Flow from a constant to an optimization variable.
 
 ---
@@ -39,27 +39,16 @@ Flow formulation uses the following modeling patterns:
 
 ## Implementation
 
-**Class:** [`Flow`][flixopt.elements.Flow]
+**Python Class:** [`Flow`][flixopt.elements.Flow]
 
-**Location:** `flixopt/elements.py:175`
-
-**Model Class:** [`FlowModel`][flixopt.elements.FlowModel]
-
-**Location:** `flixopt/elements.py:350`
-
-**Key Constraints:**
-- Flow rate bounds (eq. $\eqref{eq:flow_rate}$): Created in `FlowModel._do_modeling()`
-
-**Variables Created:**
-- `flow_rate`: Flow rate variable $p(\text{t}_i)$
-- Additional variables when using [OnOffParameters](../features/OnOffParameters.md) or [InvestParameters](../features/InvestParameters.md)
-
-**Parameters:**
+**Key Parameters:**
 - `size`: Flow size $\text{P}$ (can be fixed or variable with InvestParameters)
 - `relative_minimum`, `relative_maximum`: Relative bounds $\text{p}^{\text{L}}_{\text{rel}}, \text{p}^{\text{U}}_{\text{rel}}$
 - `effects_per_flow_hour`: Operational effects (costs, emissions, etc.)
 - `invest_parameters`: Optional investment modeling (see [InvestParameters](../features/InvestParameters.md))
 - `on_off_parameters`: Optional on/off operation (see [OnOffParameters](../features/OnOffParameters.md))
+
+See the [`Flow`][flixopt.elements.Flow] API documentation for complete parameter list and usage examples.
 
 ---
 

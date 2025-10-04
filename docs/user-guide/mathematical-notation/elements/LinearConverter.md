@@ -25,16 +25,7 @@ The conversion efficiency can be defined as a piecewise linear approximation. Se
 
 ## Implementation
 
-**Class:** [`LinearConverter`][flixopt.components.LinearConverter]
-
-**Location:** `flixopt/components.py:37`
-
-**Key Constraints:**
-- Linear conversion equation (eq. $\eqref{eq:Linear-Transformer-Ratio}$): Created in component-specific modeling methods
-
-**Parameters:**
-- Conversion factors $\text{a}_{f_\text{in}}$ and $\text{b}_{f_\text{out}}$ are defined through flow connections
-- For simple converters with one input and one output, efficiency $\text{a}$ is specified
+**Python Class:** [`LinearConverter`][flixopt.components.LinearConverter]
 
 **Specialized Linear Converters:**
 
@@ -46,6 +37,8 @@ FlixOpt provides specialized linear converter classes for common applications:
 - **[`Boiler`][flixopt.linear_converters.Boiler]** - Fuel to heat conversion
 
 These classes handle the mathematical formulation automatically based on physical relationships.
+
+See the API documentation for implementation details and usage examples.
 
 ---
 

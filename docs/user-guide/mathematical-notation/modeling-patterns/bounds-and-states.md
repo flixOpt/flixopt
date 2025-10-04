@@ -15,10 +15,10 @@ With:
 - $\text{lower}$ being the lower bound (constant or time-dependent)
 - $\text{upper}$ being the upper bound (constant or time-dependent)
 
-**Implementation:** [`BoundingPatterns.basic_bounds()`][flixopt.modeling.BoundingPatterns.basic_bounds] in `flixopt/modeling.py:393`
+**Implementation:** [`BoundingPatterns.basic_bounds()`][flixopt.modeling.BoundingPatterns.basic_bounds]
 
 **Used in:**
-- Storage charge state bounds (see [Storage](../Storage.md))
+- Storage charge state bounds (see [Storage](../elements/Storage.md))
 - Flow rate absolute bounds
 
 ---
@@ -42,7 +42,7 @@ With:
 - When $s = 0$: variable is forced to zero ($0 \leq v \leq 0$)
 - When $s = 1$: variable can take values in $[\text{lower}, \text{upper}]$
 
-**Implementation:** [`BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state] in `flixopt/modeling.py:427`
+**Implementation:** [`BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state]
 
 **Used in:**
 - Flow rates with on/off operation (see [OnOffParameters](../features/OnOffParameters.md))
@@ -66,13 +66,13 @@ With:
 
 **Example:** Flow rate bounds
 - If $v_\text{scale} = P$ (flow size) and $\text{rel}_\text{upper} = 1$
-- Then: $0 \leq p(t_i) \leq P$ (see [Flow](../Flow.md))
+- Then: $0 \leq p(t_i) \leq P$ (see [Flow](../elements/Flow.md))
 
-**Implementation:** [`BoundingPatterns.scaled_bounds()`][flixopt.modeling.BoundingPatterns.scaled_bounds] in `flixopt/modeling.py:473`
+**Implementation:** [`BoundingPatterns.scaled_bounds()`][flixopt.modeling.BoundingPatterns.scaled_bounds]
 
 **Used in:**
-- Flow rate constraints (see [Flow](../Flow.md) equation 1)
-- Storage charge state constraints (see [Storage](../Storage.md) equation 1)
+- Flow rate constraints (see [Flow](../elements/Flow.md) equation 1)
+- Storage charge state constraints (see [Storage](../elements/Storage.md) equation 1)
 
 ---
 
@@ -104,7 +104,7 @@ Where $v_\text{scale,max}$ and $v_\text{scale,min}$ are the maximum and minimum 
 - When $s = 0$: variable is forced to zero
 - When $s = 1$: variable follows scaled bounds $v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \text{rel}_\text{upper}$
 
-**Implementation:** [`BoundingPatterns.scaled_bounds_with_state()`][flixopt.modeling.BoundingPatterns.scaled_bounds_with_state] in `flixopt/modeling.py:516`
+**Implementation:** [`BoundingPatterns.scaled_bounds_with_state()`][flixopt.modeling.BoundingPatterns.scaled_bounds_with_state]
 
 **Used in:**
 - Flow rates with on/off operation and investment sizing
@@ -136,7 +136,7 @@ With:
 - Bounding intermediate results
 - Simplifying constraint formulations
 
-**Implementation:** [`ModelingPrimitives.expression_tracking_variable()`][flixopt.modeling.ModelingPrimitives.expression_tracking_variable] in `flixopt/modeling.py:201`
+**Implementation:** [`ModelingPrimitives.expression_tracking_variable()`][flixopt.modeling.ModelingPrimitives.expression_tracking_variable]
 
 ---
 
@@ -158,7 +158,7 @@ With:
 - Mutual exclusion of operation and maintenance states
 - Enforcing single-choice decisions
 
-**Implementation:** [`ModelingPrimitives.mutual_exclusivity_constraint()`][flixopt.modeling.ModelingPrimitives.mutual_exclusivity_constraint] in `flixopt/modeling.py:345`
+**Implementation:** [`ModelingPrimitives.mutual_exclusivity_constraint()`][flixopt.modeling.ModelingPrimitives.mutual_exclusivity_constraint]
 
 **Used in:**
 - Operating mode selection

@@ -102,17 +102,7 @@ With:
 
 **Function:** [`ModelingPrimitives.consecutive_duration_tracking()`][flixopt.modeling.ModelingPrimitives.consecutive_duration_tracking]
 
-**Location:** `flixopt/modeling.py:240`
-
-**Parameters:**
-- `state_variable`: Binary state variable $s(t)$
-- `duration_per_step`: Duration increment per time step $\Delta d(t)$
-- `previous_duration`: Initial duration from before optimization period $d_\text{prev}$
-- `minimum_duration` (optional): Minimum required duration $d_\text{min}(t)$
-
-**Returns:**
-- Duration variable $d(t)$
-- Created constraints
+See the API documentation for complete parameter list and usage details.
 
 ---
 

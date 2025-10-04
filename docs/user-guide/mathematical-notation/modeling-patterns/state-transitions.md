@@ -61,7 +61,7 @@ s^\text{on}(t), s^\text{off}(t) &\in \{0, 1\} && \forall t \label{eq:transition_
 \end{align}
 $$
 
-**Implementation:** [`BoundingPatterns.state_transition_bounds()`][flixopt.modeling.BoundingPatterns.state_transition_bounds] in `flixopt/modeling.py:573`
+**Implementation:** [`BoundingPatterns.state_transition_bounds()`][flixopt.modeling.BoundingPatterns.state_transition_bounds]
 
 ---
 
@@ -89,7 +89,7 @@ With:
 - When $s^\text{on}(t) = 0$ and $s^\text{off}(t) = 0$: forces $v(t) = v(t-1)$ (no change)
 - When $s^\text{on}(t) = 1$ or $s^\text{off}(t) = 1$: allows change up to $\pm \Delta v^\text{max}$
 
-**Implementation:** [`BoundingPatterns.continuous_transition_bounds()`][flixopt.modeling.BoundingPatterns.continuous_transition_bounds] in `flixopt/modeling.py:618`
+**Implementation:** [`BoundingPatterns.continuous_transition_bounds()`][flixopt.modeling.BoundingPatterns.continuous_transition_bounds]
 
 ---
 
@@ -162,7 +162,7 @@ b^\text{inc}(t), b^\text{dec}(t) &\in \{0, 1\} && \forall t \label{eq:level_comp
 \end{align}
 $$
 
-**Implementation:** [`BoundingPatterns.link_changes_to_level_with_binaries()`][flixopt.modeling.BoundingPatterns.link_changes_to_level_with_binaries] in `flixopt/modeling.py:684`
+**Implementation:** [`BoundingPatterns.link_changes_to_level_with_binaries()`][flixopt.modeling.BoundingPatterns.link_changes_to_level_with_binaries]
 
 ---
 

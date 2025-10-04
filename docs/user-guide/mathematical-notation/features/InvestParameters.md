@@ -168,7 +168,7 @@ $$\label{eq:invest_total_effects}
 E_{e,\text{invest}} = E_{e,\text{fix}} + E_{e,\text{spec}} + E_{e,\text{pw}} + E_{e,\text{divest}}
 $$
 
-Effects integrate into the overall system effects as described in [Effects, Penalty & Objective](Effects,%20Penalty%20&%20Objective.md).
+Effects integrate into the overall system effects as described in [Effects, Penalty & Objective](../effects-penalty-objective.md).
 
 ---
 
@@ -222,9 +222,7 @@ $$
 
 ## Implementation
 
-**Class:** [`InvestParameters`][flixopt.interface.InvestParameters]
-
-**Location:** `flixopt/interface.py:663`
+**Python Class:** [`InvestParameters`][flixopt.interface.InvestParameters]
 
 **Key Parameters:**
 - `fixed_size`: For binary investments (mutually exclusive with continuous sizing)
@@ -234,6 +232,8 @@ $$
 - `specific_effects`: Per-unit costs dictionary
 - `piecewise_effects`: Non-linear cost modeling
 - `divest_effects`: Costs for not investing
+
+See the [`InvestParameters`][flixopt.interface.InvestParameters] API documentation for complete parameter list and usage examples.
 
 **Used in:**
 - [`Flow`][flixopt.elements.Flow] - Flexible capacity decisions

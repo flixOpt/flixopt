@@ -232,9 +232,7 @@ For equipment with OnOffParameters, the complete constraint system includes:
 
 ## Implementation
 
-**Class:** [`OnOffParameters`][flixopt.interface.OnOffParameters]
-
-**Location:** `flixopt/interface.py:918`
+**Python Class:** [`OnOffParameters`][flixopt.interface.OnOffParameters]
 
 **Key Parameters:**
 - `effects_per_switch_on`: Costs per startup event
@@ -244,6 +242,8 @@ For equipment with OnOffParameters, the complete constraint system includes:
 - `consecutive_off_hours_min`, `consecutive_off_hours_max`: Consecutive shutdown bounds
 - `switch_on_total_max`: Maximum number of startups
 - `force_switch_on`: Create switch variables even without limits (for tracking)
+
+See the [`OnOffParameters`][flixopt.interface.OnOffParameters] API documentation for complete parameter list and usage examples.
 
 **Mathematical Patterns Used:**
 - [State Transitions](../modeling-patterns/state-transitions.md#binary-state-transitions) - Switch tracking

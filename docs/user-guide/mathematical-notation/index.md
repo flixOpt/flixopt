@@ -76,39 +76,39 @@ Mathematical formulations for optional features (corresponding to parameters in 
 
 ### Components Cross-Reference
 
-| Concept | Documentation | Equations | Implementation | Location |
-|---------|---------------|-----------|----------------|----------|
-| **Flow rate bounds** | [Flow](elements/Flow.md) | eq. (1) | `FlowModel._do_modeling()` | `elements.py:350+` |
-| **Bus balance** | [Bus](elements/Bus.md) | eq. (1), (2) | `BusModel._do_modeling()` | `elements.py:751` |
-| **Storage balance** | [Storage](elements/Storage.md) | eq. (3) | `StorageModel._do_modeling()` | `components.py:838-842` |
-| **Linear conversion** | [LinearConverter](elements/LinearConverter.md) | eq. (1), (2) | Component-specific | `components.py:37+` |
+| Concept | Documentation | Python Class |
+|---------|---------------|--------------|
+| **Flow rate bounds** | [Flow](elements/Flow.md) | [`Flow`][flixopt.elements.Flow] |
+| **Bus balance** | [Bus](elements/Bus.md) | [`Bus`][flixopt.elements.Bus] |
+| **Storage balance** | [Storage](elements/Storage.md) | [`Storage`][flixopt.components.Storage] |
+| **Linear conversion** | [LinearConverter](elements/LinearConverter.md) | [`LinearConverter`][flixopt.components.LinearConverter] |
 
 ### Features Cross-Reference
 
-| Concept | Documentation | Equations | Implementation |
-|---------|---------------|-----------|----------------|
-| **Binary investment** | [InvestParameters](features/InvestParameters.md) | eq. (1) | `InvestParametersFeature` |
-| **On/off operation** | [OnOffParameters](features/OnOffParameters.md) | eq. (1)-(11) | `OnOffFeature` |
-| **Piecewise segments** | [Piecewise](features/Piecewise.md) | eq. (1)-(4) | `PiecewiseModel` |
+| Concept | Documentation | Python Class |
+|---------|---------------|--------------|
+| **Binary investment** | [InvestParameters](features/InvestParameters.md) | [`InvestParameters`][flixopt.interface.InvestParameters] |
+| **On/off operation** | [OnOffParameters](features/OnOffParameters.md) | [`OnOffParameters`][flixopt.interface.OnOffParameters] |
+| **Piecewise segments** | [Piecewise](features/Piecewise.md) | [`Piecewise`][flixopt.interface.Piecewise] |
 
 ### Modeling Patterns Cross-Reference
 
 | Pattern | Documentation | Implementation |
 |---------|---------------|----------------|
-| **Basic bounds** | [bounds-and-states](modeling-patterns/bounds-and-states.md#basic-bounds) | `BoundingPatterns.basic_bounds()` |
-| **Bounds with state** | [bounds-and-states](modeling-patterns/bounds-and-states.md#bounds-with-state) | `BoundingPatterns.bounds_with_state()` |
-| **Scaled bounds** | [bounds-and-states](modeling-patterns/bounds-and-states.md#scaled-bounds) | `BoundingPatterns.scaled_bounds()` |
-| **Duration tracking** | [duration-tracking](modeling-patterns/duration-tracking.md) | `ModelingPrimitives.consecutive_duration_tracking()` |
-| **State transitions** | [state-transitions](modeling-patterns/state-transitions.md) | `BoundingPatterns.state_transition_bounds()` |
+| **Basic bounds** | [bounds-and-states](modeling-patterns/bounds-and-states.md#basic-bounds) | [`BoundingPatterns.basic_bounds()`][flixopt.modeling.BoundingPatterns.basic_bounds] |
+| **Bounds with state** | [bounds-and-states](modeling-patterns/bounds-and-states.md#bounds-with-state) | [`BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state] |
+| **Scaled bounds** | [bounds-and-states](modeling-patterns/bounds-and-states.md#scaled-bounds) | [`BoundingPatterns.scaled_bounds()`][flixopt.modeling.BoundingPatterns.scaled_bounds] |
+| **Duration tracking** | [duration-tracking](modeling-patterns/duration-tracking.md) | [`ModelingPrimitives.consecutive_duration_tracking()`][flixopt.modeling.ModelingPrimitives.consecutive_duration_tracking] |
+| **State transitions** | [state-transitions](modeling-patterns/state-transitions.md) | [`BoundingPatterns.state_transition_bounds()`][flixopt.modeling.BoundingPatterns.state_transition_bounds] |
 
 ### Python Class Lookup
 
-| Class | Documentation | Location |
-|-------|---------------|----------|
-| `Flow` | [Flow](elements/Flow.md) | `flixopt/elements.py:175` |
-| `Bus` | [Bus](elements/Bus.md) | `flixopt/elements.py:120` |
-| `Storage` | [Storage](elements/Storage.md) | `flixopt/components.py:237` |
-| `LinearConverter` | [LinearConverter](elements/LinearConverter.md) | `flixopt/components.py:37` |
-| `InvestParameters` | [InvestParameters](features/InvestParameters.md) | `flixopt/interface.py:663` |
-| `OnOffParameters` | [OnOffParameters](features/OnOffParameters.md) | `flixopt/interface.py:918` |
-| `Piecewise` | [Piecewise](features/Piecewise.md) | `flixopt/interface.py:83` |
+| Class | Documentation | API Reference |
+|-------|---------------|---------------|
+| `Flow` | [Flow](elements/Flow.md) | [`Flow`][flixopt.elements.Flow] |
+| `Bus` | [Bus](elements/Bus.md) | [`Bus`][flixopt.elements.Bus] |
+| `Storage` | [Storage](elements/Storage.md) | [`Storage`][flixopt.components.Storage] |
+| `LinearConverter` | [LinearConverter](elements/LinearConverter.md) | [`LinearConverter`][flixopt.components.LinearConverter] |
+| `InvestParameters` | [InvestParameters](features/InvestParameters.md) | [`InvestParameters`][flixopt.interface.InvestParameters] |
+| `OnOffParameters` | [OnOffParameters](features/OnOffParameters.md) | [`OnOffParameters`][flixopt.interface.OnOffParameters] |
+| `Piecewise` | [Piecewise](features/Piecewise.md) | [`Piecewise`][flixopt.interface.Piecewise] |
