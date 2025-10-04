@@ -42,15 +42,21 @@ Please keep the format of the changelog consistent with the other releases, so t
 ## [Unreleased] - ????-??-??
 
 ### ✨ Added
+- Added `CONFIG.reset()` method to restore configuration to default values
 
 ### 💥 Breaking Changes
+- Remove change_logging_level
 
 ### ♻️ Changed
 - Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
+- Logging and Configuration management changed
 
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
+- Removed unused `change_logging_level` import and export
+- Removed unused `merge_configs` function from configuration module
+
 
 ### 🐛 Fixed
 
@@ -58,12 +64,12 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 ### 📦 Dependencies
 - Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
-
-### 📝 Docs
+- Updated packaging configuration
 
 ### 👷 Development
-
-### 🚧 Known Issues
+- Greatly expanded test coverage for `config.py` module
+- Added `@pytest.mark.xdist_group` to `TestConfigModule` tests to prevent global config interference
+- Improved Renovate configuration with automerge for dev dependencies and better CalVer handling
 
 Until here -->
 ---
