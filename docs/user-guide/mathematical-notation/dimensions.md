@@ -7,22 +7,20 @@ FlixOpt's `FlowSystem` supports multiple dimensions for modeling optimization pr
 FlixOpt models can have up to three dimensions:
 
 1. **Time (`time`)** - **MANDATORY**
-   - Represents the temporal evolution of the system
-   - Defined via `pd.DatetimeIndex`
-   - Must contain at least 2 timesteps
-   - All optimization variables and constraints evolve over time
-
+     * Represents the temporal evolution of the system
+     * Defined via `pd.DatetimeIndex`
+     * Must contain at least 2 timesteps
+     * All optimization variables and constraints evolve over time
 2. **Period (`period`)** - **OPTIONAL**
-   - Represents independent planning periods (e.g., years 2020, 2021, 2022)
-   - Defined via `pd.Index` with integer values
-   - Used for multi-period optimization such as investment planning across years
-   - Each period is independent with its own time series
-
+     * Represents independent planning periods (e.g., years 2020, 2021, 2022)
+     * Defined via `pd.Index` with integer values
+     * Used for multi-period optimization such as investment planning across years
+     * Each period is independent with its own time series
 3. **Scenario (`scenario`)** - **OPTIONAL**
-   - Represents alternative futures or uncertainty realizations (e.g., "Base Case", "High Demand")
-   - Defined via `pd.Index` with any labels
-   - Scenarios within the same period share the same time dimension
-   - Used for stochastic optimization or scenario comparison
+     * Represents alternative futures or uncertainty realizations (e.g., "Base Case", "High Demand")
+     * Defined via `pd.Index` with any labels
+     * Scenarios within the same period share the same time dimension
+     * Used for stochastic optimization or scenario comparison
 
 ---
 
@@ -43,6 +41,7 @@ coords = {
 **Example:**
 ```python
 import pandas as pd
+import numpy as np
 import flixopt as fx
 
 timesteps = pd.date_range('2020-01-01', periods=24, freq='h')
@@ -53,15 +52,15 @@ flow_system = fx.FlowSystem(
     timesteps=timesteps,
     periods=periods,
     scenarios=scenarios,
-    weights=[0.5, 0.5]  # Scenario weights
+    weights=np.array([0.5, 0.5])  # Scenario weights
 )
 ```
 
 This creates a system with:
-- 24 time steps per scenario per period
-- 2 scenarios with equal weights (0.5 each)
-- 3 periods (years)
-- **Total decision space:** 24 × 2 × 3 = 144 time-scenario-period combinations
+* 24 time steps per scenario per period
+* 2 scenarios with equal weights (0.5 each)
+* 3 periods (years)
+* **Total decision space:** 24 × 2 × 3 = 144 time-scenario-period combinations
 
 ---
 
