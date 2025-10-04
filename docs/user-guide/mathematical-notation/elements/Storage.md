@@ -1,5 +1,5 @@
 # Storages
-**Storages** have one incoming and one outgoing **[Flow](Flow.md)** with a charging and discharging efficiency.
+**Storages** have one incoming and one outgoing **[Flow](../elements/Flow.md)** with a charging and discharging efficiency.
 A storage has a state of charge $c(\text{t}_i)$ which is limited by its `size` $\text C$ and relative bounds $\eqref{eq:Storage_Bounds}$.
 
 $$ \label{eq:Storage_Bounds}
@@ -49,11 +49,11 @@ Where:
 
 Storage formulation uses the following modeling patterns:
 
-- **[Basic Bounds](modeling-patterns/bounds-and-states.md#basic-bounds)** - For charge state bounds (equation $\eqref{eq:Storage_Bounds}$)
-- **[Scaled Bounds](modeling-patterns/bounds-and-states.md#scaled-bounds)** - For flow rate bounds relative to storage size
+- **[Basic Bounds](../modeling-patterns/bounds-and-states.md#basic-bounds)** - For charge state bounds (equation $\eqref{eq:Storage_Bounds}$)
+- **[Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)** - For flow rate bounds relative to storage size
 
 When combined with investment parameters, storage can use:
-- **[Bounds with State](modeling-patterns/bounds-and-states.md#bounds-with-state)** - Investment decisions (see [InvestParameters](InvestParameters.md))
+- **[Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state)** - Investment decisions (see [InvestParameters](../features/InvestParameters.md))
 
 ---
 
@@ -87,6 +87,6 @@ When combined with investment parameters, storage can use:
 
 ## See Also
 
-- [Flow](Flow.md) - Input and output flow definitions
-- [InvestParameters](InvestParameters.md) - Variable storage sizing
-- [Modeling Patterns](modeling-patterns/index.md) - Mathematical building blocks
+- [Flow](../elements/Flow.md) - Input and output flow definitions
+- [InvestParameters](../features/InvestParameters.md) - Variable storage sizing
+- [Modeling Patterns](../modeling-patterns/index.md) - Mathematical building blocks

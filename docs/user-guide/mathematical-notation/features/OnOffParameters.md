@@ -14,13 +14,13 @@ With:
 - $s(t) = 1$: equipment is operating (on state)
 - $s(t) = 0$: equipment is shutdown (off state)
 
-This state variable controls the equipment's operational constraints and modifies flow bounds using the **bounds with state** pattern from [Bounds and States](modeling-patterns/bounds-and-states.md#bounds-with-state).
+This state variable controls the equipment's operational constraints and modifies flow bounds using the **bounds with state** pattern from [Bounds and States](../modeling-patterns/bounds-and-states.md#bounds-with-state).
 
 ---
 
 ## State Transitions and Switching
 
-State transitions are tracked using switch variables (see [State Transitions](modeling-patterns/state-transitions.md#binary-state-transitions)):
+State transitions are tracked using switch variables (see [State Transitions](../modeling-patterns/state-transitions.md#binary-state-transitions)):
 
 $$\label{eq:onoff_transitions}
 s^\text{on}(t) - s^\text{off}(t) = s(t) - s(t-1) \quad \forall t > 0
@@ -106,7 +106,7 @@ With:
 
 **Minimum Consecutive On-Time:**
 
-Enforces minimum runtime once started using duration tracking (see [Duration Tracking](modeling-patterns/duration-tracking.md#minimum-duration-constraints)):
+Enforces minimum runtime once started using duration tracking (see [Duration Tracking](../modeling-patterns/duration-tracking.md#minimum-duration-constraints)):
 
 $$\label{eq:onoff_min_on_duration}
 d^\text{on}(t) \geq (s(t-1) - s(t)) \cdot h^\text{on}_\text{min} \quad \forall t > 0
@@ -202,7 +202,7 @@ $$
 s(t) \cdot P \cdot \max(\varepsilon, \text{rel}_\text{lower}) \leq p(t) \leq s(t) \cdot P \cdot \text{rel}_\text{upper}
 $$
 
-Using the **bounds with state** pattern from [Bounds and States](modeling-patterns/bounds-and-states.md#bounds-with-state).
+Using the **bounds with state** pattern from [Bounds and States](../modeling-patterns/bounds-and-states.md#bounds-with-state).
 
 **Behavior:**
 - When $s(t) = 0$: flow is forced to zero
@@ -246,9 +246,9 @@ For equipment with OnOffParameters, the complete constraint system includes:
 - `force_switch_on`: Create switch variables even without limits (for tracking)
 
 **Mathematical Patterns Used:**
-- [State Transitions](modeling-patterns/state-transitions.md#binary-state-transitions) - Switch tracking
-- [Duration Tracking](modeling-patterns/duration-tracking.md) - Consecutive time constraints
-- [Bounds with State](modeling-patterns/bounds-and-states.md#bounds-with-state) - Flow control
+- [State Transitions](../modeling-patterns/state-transitions.md#binary-state-transitions) - Switch tracking
+- [Duration Tracking](../modeling-patterns/duration-tracking.md) - Consecutive time constraints
+- [Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state) - Flow control
 
 **Used in:**
 - [`Flow`][flixopt.elements.Flow] - On/off operation for flows

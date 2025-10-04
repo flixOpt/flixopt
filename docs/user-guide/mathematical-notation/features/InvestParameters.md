@@ -43,7 +43,7 @@ With:
 - $s_\text{invest} = 0$: no investment ($v_\text{invest} = 0$)
 - $s_\text{invest} = 1$: invest with size in $[\text{size}_\text{min}, \text{size}_\text{max}]$
 
-This uses the **bounds with state** pattern described in [Bounds and States](modeling-patterns/bounds-and-states.md#bounds-with-state).
+This uses the **bounds with state** pattern described in [Bounds and States](../modeling-patterns/bounds-and-states.md#bounds-with-state).
 
 ---
 
@@ -124,7 +124,7 @@ $$
 
 With:
 - $E_{e,\text{pw}}$ being the piecewise contribution to effect $e$
-- $\lambda_k$ being the piecewise lambda variables (see [Piecewise](Piecewise.md))
+- $\lambda_k$ being the piecewise lambda variables (see [Piecewise](../features/Piecewise.md))
 - $r_{e,k}$ being the effect rate at piece $k$
 - $v_k$ being the size points defining the pieces
 
@@ -133,7 +133,7 @@ With:
 - Technology learning curves
 - Threshold effects (capacity tiers with different costs)
 
-See [Piecewise](Piecewise.md) for detailed mathematical formulation.
+See [Piecewise](../features/Piecewise.md) for detailed mathematical formulation.
 
 ---
 
@@ -194,7 +194,7 @@ $$
 v_\text{invest} \cdot \text{rel}_\text{lower} \leq p(t) \leq v_\text{invest} \cdot \text{rel}_\text{upper}
 $$
 
-Using the **scaled bounds** pattern from [Bounds and States](modeling-patterns/bounds-and-states.md#scaled-bounds).
+Using the **scaled bounds** pattern from [Bounds and States](../modeling-patterns/bounds-and-states.md#scaled-bounds).
 
 ---
 

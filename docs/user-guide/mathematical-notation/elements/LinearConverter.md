@@ -1,4 +1,4 @@
-[`LinearConverters`][flixopt.components.LinearConverter] define a ratio between incoming and outgoing [Flows](Flow.md).
+[`LinearConverters`][flixopt.components.LinearConverter] define a ratio between incoming and outgoing [Flows](../elements/Flow.md).
 
 $$ \label{eq:Linear-Transformer-Ratio}
     \sum_{f_{\text{in}} \in \mathcal F_{in}} \text a_{f_{\text{in}}}(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = \sum_{f_{\text{out}} \in \mathcal F_{out}}  \text b_{f_\text{out}}(\text{t}_i) \cdot p_{f_\text{out}}(\text{t}_i)
@@ -19,7 +19,7 @@ $$
 where $\text a$ can be interpreted as the conversion efficiency of the **LinearConverter**.
 
 #### Piecewise Conversion factors
-The conversion efficiency can be defined as a piecewise linear approximation. See [Piecewise](Piecewise.md) for more details.
+The conversion efficiency can be defined as a piecewise linear approximation. See [Piecewise](../features/Piecewise.md) for more details.
 
 ---
 
@@ -51,7 +51,7 @@ These classes handle the mathematical formulation automatically based on physica
 
 ## See Also
 
-- [Flow](Flow.md) - Definition of flow rates
-- [Piecewise](Piecewise.md) - Non-linear conversion efficiency modeling
-- [InvestParameters](InvestParameters.md) - Variable converter sizing
-- [Modeling Patterns](modeling-patterns/index.md) - Mathematical building blocks
+- [Flow](../elements/Flow.md) - Definition of flow rates
+- [Piecewise](../features/Piecewise.md) - Non-linear conversion efficiency modeling
+- [InvestParameters](../features/InvestParameters.md) - Variable converter sizing
+- [Modeling Patterns](../modeling-patterns/index.md) - Mathematical building blocks

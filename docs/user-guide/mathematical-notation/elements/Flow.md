@@ -31,9 +31,9 @@ to change the size of the Flow from a constant to an optimization variable.
 
 Flow formulation uses the following modeling patterns:
 
-- **[Scaled Bounds](modeling-patterns/bounds-and-states.md#scaled-bounds)** - Basic flow rate bounds (equation $\eqref{eq:flow_rate}$)
-- **[Scaled Bounds with State](modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)** - When combined with [OnOffParameters](OnOffParameters.md)
-- **[Bounds with State](modeling-patterns/bounds-and-states.md#bounds-with-state)** - Investment decisions with [InvestParameters](InvestParameters.md)
+- **[Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)** - Basic flow rate bounds (equation $\eqref{eq:flow_rate}$)
+- **[Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)** - When combined with [OnOffParameters](../features/OnOffParameters.md)
+- **[Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state)** - Investment decisions with [InvestParameters](../features/InvestParameters.md)
 
 ---
 
@@ -52,22 +52,22 @@ Flow formulation uses the following modeling patterns:
 
 **Variables Created:**
 - `flow_rate`: Flow rate variable $p(\text{t}_i)$
-- Additional variables when using [OnOffParameters](OnOffParameters.md) or [InvestParameters](InvestParameters.md)
+- Additional variables when using [OnOffParameters](../features/OnOffParameters.md) or [InvestParameters](../features/InvestParameters.md)
 
 **Parameters:**
 - `size`: Flow size $\text{P}$ (can be fixed or variable with InvestParameters)
 - `relative_minimum`, `relative_maximum`: Relative bounds $\text{p}^{\text{L}}_{\text{rel}}, \text{p}^{\text{U}}_{\text{rel}}$
 - `effects_per_flow_hour`: Operational effects (costs, emissions, etc.)
-- `invest_parameters`: Optional investment modeling (see [InvestParameters](InvestParameters.md))
-- `on_off_parameters`: Optional on/off operation (see [OnOffParameters](OnOffParameters.md))
+- `invest_parameters`: Optional investment modeling (see [InvestParameters](../features/InvestParameters.md))
+- `on_off_parameters`: Optional on/off operation (see [OnOffParameters](../features/OnOffParameters.md))
 
 ---
 
 ## See Also
 
-- [OnOffParameters](OnOffParameters.md) - Binary on/off operation
-- [InvestParameters](InvestParameters.md) - Variable flow sizing
-- [Bus](Bus.md) - Flow balance constraints
-- [LinearConverter](LinearConverter.md) - Flow ratio constraints
-- [Storage](Storage.md) - Flow integration over time
-- [Modeling Patterns](modeling-patterns/index.md) - Mathematical building blocks
+- [OnOffParameters](../features/OnOffParameters.md) - Binary on/off operation
+- [InvestParameters](../features/InvestParameters.md) - Variable flow sizing
+- [Bus](../elements/Bus.md) - Flow balance constraints
+- [LinearConverter](../elements/LinearConverter.md) - Flow ratio constraints
+- [Storage](../elements/Storage.md) - Flow integration over time
+- [Modeling Patterns](../modeling-patterns/index.md) - Mathematical building blocks

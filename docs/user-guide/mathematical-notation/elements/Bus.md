@@ -62,6 +62,6 @@ When excess is allowed, the penalty term $s_{b \rightarrow \Phi}(\text{t}_i)$ co
 
 ## See Also
 
-- [Flow](Flow.md) - Definition of flow rates in the balance
+- [Flow](../elements/Flow.md) - Definition of flow rates in the balance
 - [Effects, Penalty & Objective](Effects,%20Penalty%20&%20Objective.md) - How penalties are included in the objective function
-- [Modeling Patterns](modeling-patterns/index.md) - Mathematical building blocks
+- [Modeling Patterns](../modeling-patterns/index.md) - Mathematical building blocks

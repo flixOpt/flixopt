@@ -1,6 +1,6 @@
 ## Effects
 [`Effects`][flixopt.effects.Effect] are used to allocate things like costs, emissions, or other "effects" occurring in the system.
-These arise from so called **Shares**, which originate from **Elements** like [Flows](Flow.md).
+These arise from so called **Shares**, which originate from **Elements** like [Flows](../elements/Flow.md).
 
 **Example:**
 
@@ -113,7 +113,7 @@ With:
 - $\mathcal{T}$ being the set of all timesteps
 - $s_{l \rightarrow \Phi}$ being the share of element $l$ to the penalty
 
-At the moment, penalties only occur in [Buses](Bus.md)
+At the moment, penalties only occur in [Buses](../elements/Bus.md)
 
 ## Objective
 
