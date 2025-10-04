@@ -17,5 +17,41 @@ $$ \label{eq:Linear-Transformer-Ratio-simple}
 $$
 
 where $\text a$ can be interpreted as the conversion efficiency of the **LinearConverter**.
+
 #### Piecewise Conversion factors
 The conversion efficiency can be defined as a piecewise linear approximation. See [Piecewise](Piecewise.md) for more details.
+
+---
+
+## Implementation
+
+**Class:** [`LinearConverter`][flixopt.components.LinearConverter]
+
+**Location:** `flixopt/components.py:37`
+
+**Key Constraints:**
+- Linear conversion equation (eq. $\eqref{eq:Linear-Transformer-Ratio}$): Created in component-specific modeling methods
+
+**Parameters:**
+- Conversion factors $\text{a}_{f_\text{in}}$ and $\text{b}_{f_\text{out}}$ are defined through flow connections
+- For simple converters with one input and one output, efficiency $\text{a}$ is specified
+
+**Specialized Linear Converters:**
+
+FlixOpt provides specialized linear converter classes for common applications:
+
+- **[`HeatPump`][flixopt.linear_converters.HeatPump]** - Coefficient of Performance (COP) based conversion
+- **[`Power2Heat`][flixopt.linear_converters.Power2Heat]** - Electric heating with efficiency ≤ 1
+- **[`CHP`][flixopt.linear_converters.CHP]** - Combined heat and power generation
+- **[`Boiler`][flixopt.linear_converters.Boiler]** - Fuel to heat conversion
+
+These classes handle the mathematical formulation automatically based on physical relationships.
+
+---
+
+## See Also
+
+- [Flow](Flow.md) - Definition of flow rates
+- [Piecewise](Piecewise.md) - Non-linear conversion efficiency modeling
+- [InvestParameters](InvestParameters.md) - Variable converter sizing
+- [Modeling Patterns](modeling-patterns/index.md) - Mathematical building blocks

@@ -247,6 +247,20 @@ class Storage(Component):
     final state constraints, and time-varying parameters. It supports both fixed-size
     and investment-optimized storage systems with comprehensive techno-economic modeling.
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        `Storage.md <docs/user-guide/Mathematical Notation/Storage.md>`_
+
+        - Equation (1): Charge state bounds
+        - Equation (3): Storage balance (charge state evolution)
+
+        Variable Mapping:
+            - ``capacity_in_flow_hours`` → C (storage capacity)
+            - ``charge_state`` → c(t_i) (state of charge at time t_i)
+            - ``relative_loss_per_hour`` → ċ_rel,loss (self-discharge rate)
+            - ``eta_charge`` → η_in (charging efficiency)
+            - ``eta_discharge`` → η_out (discharging efficiency)
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         charging: Incoming flow for loading the storage. Represents energy or material

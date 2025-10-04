@@ -42,3 +42,51 @@ Where:
 - $\eta_\text{in}(\text{t}_i)$ is the charging efficiency at time $\text{t}_i$
 - $p_{f_\text{out}}(\text{t}_i)$ is the output flow rate at time $\text{t}_i$
 - $\eta_\text{out}(\text{t}_i)$ is the discharging efficiency at time $\text{t}_i$
+
+---
+
+## Mathematical Patterns Used
+
+Storage formulation uses the following modeling patterns:
+
+- **[Basic Bounds](modeling-patterns/bounds-and-states.md#basic-bounds)** - For charge state bounds (equation $\eqref{eq:Storage_Bounds}$)
+- **[Scaled Bounds](modeling-patterns/bounds-and-states.md#scaled-bounds)** - For flow rate bounds relative to storage size
+
+When combined with investment parameters, storage can use:
+- **[Bounds with State](modeling-patterns/bounds-and-states.md#bounds-with-state)** - Investment decisions (see [InvestParameters](InvestParameters.md))
+
+---
+
+## Implementation
+
+**Class:** [`Storage`][flixopt.components.Storage]
+
+**Location:** `flixopt/components.py:237`
+
+**Model Class:** [`StorageModel`][flixopt.components.StorageModel]
+
+**Location:** `flixopt/components.py:800`
+
+**Key Constraints:**
+- Charge state bounds: `flixopt/components.py:~820`
+- Storage balance equation (eq. 3): `flixopt/components.py:838-842`
+
+**Variables Created:**
+- `charge_state`: State of charge $c(\text{t}_i)$
+- `charge_flow`: Input flow rate $p_{f_\text{in}}(\text{t}_i)$
+- `discharge_flow`: Output flow rate $p_{f_\text{out}}(\text{t}_i)$
+
+**Parameters:**
+- `size`: Storage capacity $\text{C}$
+- `relative_loss_per_hour`: Self-discharge rate $\dot{\text{c}}_\text{rel,loss}$
+- `charge_state_start`: Initial charge $c(\text{t}_0)$
+- `charge_state_end`: Final charge target $c(\text{t}_\text{end})$ (optional)
+- `eta_charge`, `eta_discharge`: Charging/discharging efficiencies $\eta_\text{in}, \eta_\text{out}$
+
+---
+
+## See Also
+
+- [Flow](Flow.md) - Input and output flow definitions
+- [InvestParameters](InvestParameters.md) - Variable storage sizing
+- [Modeling Patterns](modeling-patterns/index.md) - Mathematical building blocks

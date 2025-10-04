@@ -31,3 +31,37 @@ With:
 - $\text{t}_i$ being the time step
 - $s_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty term
 - $\text a_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty coefficient (`excess_penalty_per_flow_hour`)
+
+---
+
+## Implementation
+
+**Class:** [`Bus`][flixopt.elements.Bus]
+
+**Location:** `flixopt/elements.py:120`
+
+**Model Class:** [`BusModel`][flixopt.elements.BusModel]
+
+**Location:** `flixopt/elements.py:736`
+
+**Key Constraints:**
+- Bus balance equation (eq. $\eqref{eq:bus_balance}$ or $\eqref{eq:bus_balance-excess}$): `flixopt/elements.py:751`
+- Excess/deficit bounds (when applicable): `flixopt/elements.py:763`
+
+**Variables Created:**
+- No additional variables for strict balance
+- `excess_input`, `excess_output`: Excess/deficit variables $\phi_\text{in}(\text{t}_i), \phi_\text{out}(\text{t}_i)$ (when penalty is specified)
+
+**Parameters:**
+- `excess_penalty_per_flow_hour`: Penalty coefficient $\text{a}_{b \rightarrow \Phi}$ for balance violations
+
+**Penalty Contribution:**
+When excess is allowed, the penalty term $s_{b \rightarrow \Phi}(\text{t}_i)$ contributes to the overall system penalty $\Phi$ as described in [Effects, Penalty & Objective](Effects,%20Penalty%20&%20Objective.md#penalty).
+
+---
+
+## See Also
+
+- [Flow](Flow.md) - Definition of flow rates in the balance
+- [Effects, Penalty & Objective](Effects,%20Penalty%20&%20Objective.md) - How penalties are included in the objective function
+- [Modeling Patterns](modeling-patterns/index.md) - Mathematical building blocks
