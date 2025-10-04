@@ -1,6 +1,12 @@
 
 # Mathematical Notation
 
+This section provides the **mathematical formulations** underlying FlixOpt's optimization models. It is intended as **reference documentation** for users who want to understand the mathematical details behind the high-level FlixOpt API described in the [FlixOpt Concepts](../index.md) guide.
+
+**For typical usage**, refer to the [FlixOpt Concepts](../index.md) guide, [Examples](../../examples/), and [API Reference](../../api-reference/) - you don't need to understand these mathematical formulations to use FlixOpt effectively.
+
+---
+
 ## Naming Conventions
 
 FlixOpt uses the following naming conventions:
@@ -25,32 +31,44 @@ Non-equidistant time steps are also supported.
 
 ## Documentation Structure
 
-This mathematical notation guide is organized into the following sections:
+This reference is organized to match the FlixOpt API structure:
 
 ### Elements
-Core building blocks of energy system models:
+Mathematical formulations for core FlixOpt elements (corresponding to [`flixopt.elements`][flixopt.elements]):
+
 - [Flow](elements/Flow.md) - Flow rate constraints and bounds
 - [Bus](elements/Bus.md) - Nodal balance equations
 - [Storage](elements/Storage.md) - Storage balance and charge state evolution
 - [LinearConverter](elements/LinearConverter.md) - Linear conversion relationships
 
+**User API:** When you create a `Flow`, `Bus`, `Storage`, or `LinearConverter` in your FlixOpt model, these mathematical formulations are automatically applied.
+
 ### Features
-Optional modeling capabilities:
+Mathematical formulations for optional features (corresponding to parameters in FlixOpt classes):
+
 - [InvestParameters](features/InvestParameters.md) - Investment decision modeling
 - [OnOffParameters](features/OnOffParameters.md) - Binary on/off operation
 - [Piecewise](features/Piecewise.md) - Piecewise linear approximations
 
+**User API:** When you pass `invest_parameters` or `on_off_parameters` to a `Flow` or component, these formulations are applied.
+
 ### System-Level
 - [Effects, Penalty & Objective](effects-penalty-objective.md) - Cost allocation and objective function
 
-### Modeling Patterns
-**Low-level mathematical building blocks** - These patterns are internal implementation details used exclusively within the high-level interfaces (Elements and Features). **Users do not interact with these patterns directly**; they are automatically applied when using Elements and Features:
+**User API:** When you create [`Effect`][flixopt.effects.Effect] objects and set `effects_per_flow_hour`, these formulations govern how costs are calculated.
 
-- [Bounds and States](modeling-patterns/bounds-and-states.md) - Variable bounding patterns (used internally)
-- [Duration Tracking](modeling-patterns/duration-tracking.md) - Consecutive time period tracking (used internally)
-- [State Transitions](modeling-patterns/state-transitions.md) - State change modeling (used internally)
+### Modeling Patterns (Advanced)
+**Internal implementation details** - These low-level patterns are used internally by Elements and Features. They are documented here for:
 
-**Note:** These patterns are documented for developers and advanced users who want to understand the underlying mathematical formulations. Normal users should focus on the Elements and Features sections above.
+- Developers extending FlixOpt
+- Advanced users debugging models or understanding solver behavior
+- Researchers comparing mathematical formulations
+
+**Normal users do not need to read this section** - the patterns are automatically applied when you use Elements and Features:
+
+- [Bounds and States](modeling-patterns/bounds-and-states.md) - Variable bounding patterns
+- [Duration Tracking](modeling-patterns/duration-tracking.md) - Consecutive time period tracking
+- [State Transitions](modeling-patterns/state-transitions.md) - State change modeling
 
 ---
 
