@@ -31,3 +31,19 @@ With:
 - $\text{t}_i$ being the time step
 - $s_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty term
 - $\text a_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty coefficient (`excess_penalty_per_flow_hour`)
+
+---
+
+## Implementation
+
+**Python Class:** [`Bus`][flixopt.elements.Bus]
+
+See the API documentation for implementation details and usage examples.
+
+---
+
+## See Also
+
+- [Flow](../elements/Flow.md) - Definition of flow rates in the balance
+- [Effects, Penalty & Objective](../effects-penalty-objective.md) - How penalties are included in the objective function
+- [Modeling Patterns](../modeling-patterns/index.md) - Mathematical building blocks
