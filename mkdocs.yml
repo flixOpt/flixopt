@@ -15,6 +15,7 @@ nav:
     - user-guide/index.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
+      - Dimensions: user-guide/mathematical-notation/dimensions.md
       - Elements:
         - Flow: user-guide/mathematical-notation/elements/Flow.md
         - Bus: user-guide/mathematical-notation/elements/Bus.md

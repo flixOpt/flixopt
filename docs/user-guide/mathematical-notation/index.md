@@ -18,7 +18,16 @@ FlixOpt uses the following naming conventions:
 - The letter $i$ is used to denote an index (e.g., $i=1,\dots,\text n$)
 - All time steps are denoted by the letter $\text{t}$ (e.g., $\text{t}_0$, $\text{t}_1$, $\text{t}_i$)
 
-## Timesteps
+## Dimensions and Time Steps
+
+FlixOpt supports multi-dimensional optimization with up to three dimensions: **time** (mandatory), **period** (optional), and **scenario** (optional).
+
+**All mathematical formulations in this documentation are independent of whether periods or scenarios are present.** The equations shown are written with time index $\text{t}_i$ only, but automatically expand to additional dimensions when periods/scenarios are added.
+
+For complete details on dimensions, their relationships, and influence on formulations, see **[Dimensions](dimensions.md)**.
+
+### Time Steps
+
 Time steps are defined as a sequence of discrete time steps $\text{t}_i \in \mathcal{T} \quad \text{for} \quad i \in \{1, 2, \dots, \text{n}\}$ (left-aligned in its timespan).
 From this sequence, the corresponding time intervals $\Delta \text{t}_i \in \Delta \mathcal{T}$ are derived as
 
