@@ -130,11 +130,11 @@ $$
 \min \quad \sum_{y \in \mathcal{Y}} w_y \cdot \text{Objective}_y
 $$
 
-### Investment Decisions: The Exception
+### Shared Periodic Decisions: The Exception
 
-**Within a period, investment decisions are shared across all scenarios:**
+**Within a period, periodic (investment) decisions are shared across all scenarios:**
 
-If a period has multiple scenarios, investment variables (e.g., component size) are **scenario-independent** but **operational variables are scenario-specific**.
+If a period has multiple scenarios, periodic variables (e.g., component size) are **scenario-independent** but **temporal variables are scenario-specific**.
 
 **Example - Flow with investment:**
 
@@ -147,11 +147,11 @@ p(\text{t}_i, y, s) \leq v_\text{invest}(y) \cdot \text{rel}_\text{upper} \quad 
 $$
 
 **Interpretation:**
-- "We decide once in period $y$ how much capacity to build"
-- "This capacity is then operated differently in each scenario $s$ within period $y$"
-- "Investment costs are incurred once per period, operational costs are weighted across scenarios"
+- "We decide once in period $y$ how much capacity to build" (periodic decision)
+- "This capacity is then operated differently in each scenario $s$ within period $y$" (temporal decisions)
+- "Periodic effects (investment) are incurred once per period, temporal effects (operational) are weighted across scenarios"
 
-This reflects real-world investment under uncertainty: you build capacity once (investment decision), but it operates under different conditions (scenarios).
+This reflects real-world investment under uncertainty: you build capacity once (periodic/investment decision), but it operates under different conditions (temporal/operational decisions per scenario).
 
 ---
 
@@ -187,7 +187,10 @@ Where:
 - $s_{e}(\cdots)$ are the effect contributions (costs, emissions, etc.)
 - $w_s, w_y, w_{y,s}$ are the dimension weights
 
-**See [Effects, Penalty & Objective](effects-penalty-objective.md) for complete objective function formulation.**
+**See [Effects, Penalty & Objective](effects-penalty-objective.md) for complete formulations including:**
+- How temporal and periodic effects expand with dimensions
+- Detailed objective function for each dimensional case
+- Periodic (investment) vs temporal (operational) effect handling
 
 ---
 

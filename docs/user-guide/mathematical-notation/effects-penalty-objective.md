@@ -1,132 +1,286 @@
+# Effects, Penalty & Objective
+
 ## Effects
-[`Effects`][flixopt.effects.Effect] are used to allocate things like costs, emissions, or other "effects" occurring in the system.
-These arise from so called **Shares**, which originate from **Elements** like [Flows](elements/Flow.md).
+
+[`Effects`][flixopt.effects.Effect] are used to quantify system-wide impacts like costs, emissions, or resource consumption. These arise from **shares** contributed by **Elements** such as [Flows](elements/Flow.md), [Storage](elements/Storage.md), and other components.
 
 **Example:**
 
-[`Flows`][flixopt.elements.Flow] have an attribute called `effects_per_flow_hour`, defining the effect amount of per flow hour.
-Associated effects could be:
-- costs - given in [€/kWh]...
-- ...or emissions - given in [kg/kWh].
--
-Effects are allocated separately for investments and operation.
+[`Flows`][flixopt.elements.Flow] have an attribute `effects_per_flow_hour` that defines the effect contribution per flow-hour:
+- Costs (€/kWh)
+- Emissions (kg CO₂/kWh)
+- Primary energy consumption (kWh_primary/kWh)
 
-### Shares to Effects
+Effects are categorized into two domains:
 
-$$ \label{eq:Share_invest}
-s_{l \rightarrow e, \text{inv}} = \sum_{v \in \mathcal{V}_{l, \text{inv}}} v \cdot \text a_{v \rightarrow e}
+1. **Temporal effects** - Time-dependent contributions (e.g., operational costs, hourly emissions)
+2. **Periodic effects** - Time-independent contributions (e.g., investment costs, fixed annual fees)
+
+### Multi-Dimensional Effects
+
+**The formulations below are written with time index $\text{t}_i$ only, but automatically expand when periods and/or scenarios are present.**
+
+When the FlowSystem has additional dimensions (see [Dimensions](dimensions.md)):
+
+- **Temporal effects** are indexed by all present dimensions: $E_{e,\text{temp}}(\text{t}_i, y, s)$
+- **Periodic effects** are indexed by period only (scenario-independent within a period): $E_{e,\text{per}}(y)$
+- Effects are aggregated with dimension weights in the objective function
+
+For complete details on how dimensions affect effects and the objective, see [Dimensions](dimensions.md).
+
+---
+
+## Effect Formulation
+
+### Shares from Elements
+
+Each element $l$ contributes shares to effect $e$ in both temporal and periodic domains:
+
+**Periodic shares** (time-independent):
+$$ \label{eq:Share_periodic}
+s_{l \rightarrow e, \text{per}} = \sum_{v \in \mathcal{V}_{l, \text{per}}} v \cdot \text{a}_{v \rightarrow e}
 $$
 
-$$ \label{eq:Share_operation}
-s_{l \rightarrow e, \text{op}}(\text{t}_i) = \sum_{v \in \mathcal{V}_{l,\text{op}}} v(\text{t}_i) \cdot \text a_{v \rightarrow e}(\text{t}_i)
+**Temporal shares** (time-dependent):
+$$ \label{eq:Share_temporal}
+s_{l \rightarrow e, \text{temp}}(\text{t}_i) = \sum_{v \in \mathcal{V}_{l,\text{temp}}} v(\text{t}_i) \cdot \text{a}_{v \rightarrow e}(\text{t}_i)
 $$
 
-With:
+Where:
 
-- $\text{t}_i$ being the time step
-- $\mathcal{V_l}$ being the set of all optimization variables of element $e$
-- $\mathcal{V}_{l, \text{inv}}$ being the set of all optimization variables of element $e$ related to investment
-- $\mathcal{V}_{l, \text{op}}$ being the set of all optimization variables of element $e$ related to operation
-- $v$ being an optimization variable of the element $l$
-- $v(\text{t}_i)$ being an optimization variable of the element $l$ at timestep $\text{t}_i$
-- $\text a_{v \rightarrow e}$ being the factor between the optimization variable $v$ to effect $e$
-- $\text a_{v \rightarrow e}(\text{t}_i)$ being the factor between the optimization variable $v$ to effect $e$ for timestep $\text{t}_i$
-- $s_{l \rightarrow e, \text{inv}}$ being the share of element $l$ to the investment part of effect $e$
-- $s_{l \rightarrow e, \text{op}}(\text{t}_i)$ being the share of element $l$ to the operation part of effect $e$
+- $\text{t}_i$ is the time step
+- $\mathcal{V}_l$ is the set of all optimization variables of element $l$
+- $\mathcal{V}_{l, \text{per}}$ is the subset of periodic (investment-related) variables
+- $\mathcal{V}_{l, \text{temp}}$ is the subset of temporal (operational) variables
+- $v$ is an optimization variable
+- $v(\text{t}_i)$ is the variable value at timestep $\text{t}_i$
+- $\text{a}_{v \rightarrow e}$ is the effect factor (e.g., €/kW for investment, €/kWh for operation)
+- $s_{l \rightarrow e, \text{per}}$ is the periodic share of element $l$ to effect $e$
+- $s_{l \rightarrow e, \text{temp}}(\text{t}_i)$ is the temporal share of element $l$ to effect $e$
 
-### Shares between different Effects
+**Examples:**
+- **Periodic share**: Investment cost = $\text{size} \cdot \text{specific\_cost}$ (€/kW)
+- **Temporal share**: Operational cost = $\text{flow\_rate}(\text{t}_i) \cdot \text{price}(\text{t}_i)$ (€/kWh)
 
-Furthermore, the Effect $x$ can contribute a share to another Effect ${e} \in \mathcal{E}\backslash x$.
-This share is defined by the factor $\text r_{x \rightarrow e}$.
+---
 
-For example, the Effect "CO$_2$ emissions" (unit: kg)
-can cause an additional share to Effect "monetary costs" (unit: €).
-In this case, the factor $\text a_{x \rightarrow e}$ is the specific CO$_2$ price in €/kg. However, circular references have to be avoided.
+### Cross-Effect Contributions
 
-The overall sum of investment shares of an Effect $e$ is given by $\eqref{eq:Effect_invest}$
+Effects can contribute shares to other effects, enabling relationships like carbon pricing or resource accounting.
 
-$$ \label{eq:Effect_invest}
-E_{e, \text{inv}} =
-\sum_{l \in \mathcal{L}} s_{l \rightarrow e,\text{inv}} +
-\sum_{x \in \mathcal{E}\backslash e} E_{x, \text{inv}}  \cdot \text{r}_{x \rightarrow  e,\text{inv}}
+An effect $x$ can contribute to another effect $e \in \mathcal{E}\backslash x$ via conversion factors:
+
+**Example:** CO₂ emissions (kg) → Monetary costs (€)
+- Effect $x$: "CO₂ emissions" (unit: kg)
+- Effect $e$: "costs" (unit: €)
+- Factor $\text{r}_{x \rightarrow e}$: CO₂ price (€/kg)
+
+**Note:** Circular references must be avoided.
+
+### Total Effect Calculation
+
+**Periodic effects** aggregate element shares and cross-effect contributions:
+
+$$ \label{eq:Effect_periodic}
+E_{e, \text{per}} =
+\sum_{l \in \mathcal{L}} s_{l \rightarrow e,\text{per}} +
+\sum_{x \in \mathcal{E}\backslash e} E_{x, \text{per}}  \cdot \text{r}_{x \rightarrow  e,\text{per}}
 $$
 
-The overall sum of operation shares is given by $\eqref{eq:Effect_Operation}$
+**Temporal effects** at each timestep:
 
-$$ \label{eq:Effect_Operation}
-E_{e, \text{op}}(\text{t}_{i}) =
-\sum_{l \in \mathcal{L}} s_{l \rightarrow e, \text{op}}(\text{t}_i) +
-\sum_{x \in \mathcal{E}\backslash e} E_{x, \text{op}}(\text{t}_i) \cdot \text{r}_{x \rightarrow {e},\text{op}}(\text{t}_i)
+$$ \label{eq:Effect_temporal}
+E_{e, \text{temp}}(\text{t}_{i}) =
+\sum_{l \in \mathcal{L}} s_{l \rightarrow e, \text{temp}}(\text{t}_i) +
+\sum_{x \in \mathcal{E}\backslash e} E_{x, \text{temp}}(\text{t}_i) \cdot \text{r}_{x \rightarrow {e},\text{temp}}(\text{t}_i)
 $$
 
-and totals to $\eqref{eq:Effect_Operation_total}$
-$$\label{eq:Effect_Operation_total}
-E_{e,\text{op},\text{tot}} = \sum_{i=1}^n  E_{e,\text{op}}(\text{t}_{i})
+**Total temporal effects** (sum over all timesteps):
+
+$$\label{eq:Effect_temporal_total}
+E_{e,\text{temp},\text{tot}} = \sum_{i=1}^n  E_{e,\text{temp}}(\text{t}_{i})
 $$
 
-With:
-
-- $\mathcal{L}$ being the set of all elements in the FlowSystem
-- $\mathcal{E}$ being the set of all effects in the FlowSystem
-- $\text r_{x \rightarrow e, \text{inv}}$ being the factor between the invest part of Effect $x$ and Effect $e$
-- $\text r_{x \rightarrow e, \text{op}}(\text{t}_i)$ being the factor between the operation part of Effect $x$ and Effect $e$
-
-- $\text{t}_i$ being the time step
-- $s_{l \rightarrow e, \text{inv}}$ being the share of element $l$ to the investment part of effect $e$
-- $s_{l \rightarrow e, \text{op}}(\text{t}_i)$ being the share of element $l$ to the operation part of effect $e$
-
-
-The total of an effect $E_{e}$ is given as $\eqref{eq:Effect_Total}$
+**Total effect** (combining both domains):
 
 $$ \label{eq:Effect_Total}
-E_{e} = E_{\text{inv},e} +E_{\text{op},\text{tot},e}
+E_{e} = E_{e,\text{per}} + E_{e,\text{temp},\text{tot}}
 $$
+
+Where:
+
+- $\mathcal{L}$ is the set of all elements in the FlowSystem
+- $\mathcal{E}$ is the set of all effects
+- $\text{r}_{x \rightarrow e, \text{per}}$ is the periodic conversion factor from effect $x$ to effect $e$
+- $\text{r}_{x \rightarrow e, \text{temp}}(\text{t}_i)$ is the temporal conversion factor
+
+---
 
 ### Constraining Effects
 
-For each variable $v \in \{ E_{e,\text{inv}}, E_{e,\text{op},\text{tot}}, E_e\}$, a lower bound $v^\text{L}$ and upper bound $v^\text{U}$ can be defined as
+Effects can be bounded to enforce limits on costs, emissions, or other impacts:
 
-$$ \label{eq:Bounds_Single}
-\text v^\text{L} \leq v \leq \text v^\text{U}
+**Total bounds** (apply to $E_{e,\text{per}}$, $E_{e,\text{temp},\text{tot}}$, or $E_e$):
+
+$$ \label{eq:Bounds_Total}
+E^\text{L} \leq E \leq E^\text{U}
 $$
 
-Furthermore, bounds for the operational shares can be set for each time step
+**Temporal bounds per timestep:**
 
-$$ \label{eq:Bounds_Time_Steps}
-\text E_{e,\text{op}}^\text{L}(\text{t}_i) \leq E_{e,\text{op}}(\text{t}_i) \leq \text E_{e,\text{op}}^\text{U}(\text{t}_i)
+$$ \label{eq:Bounds_Timestep}
+E_{e,\text{temp}}^\text{L}(\text{t}_i) \leq E_{e,\text{temp}}(\text{t}_i) \leq E_{e,\text{temp}}^\text{U}(\text{t}_i)
 $$
+
+**Implementation:** See [`Effect`][flixopt.effects.Effect] parameters:
+- `minimum_temporal`, `maximum_temporal` - Total temporal bounds
+- `minimum_per_hour`, `maximum_per_hour` - Hourly temporal bounds
+- `minimum_periodic`, `maximum_periodic` - Periodic bounds
+- `minimum_total`, `maximum_total` - Combined total bounds
+
+---
 
 ## Penalty
 
-Additionally to the user defined [Effects](#effects), a Penalty $\Phi$ is part of every FlixOpt Model.
-Its used to prevent unsolvable problems and simplify troubleshooting.
-Shares to the penalty can originate from every Element and are constructed similarly to
-$\eqref{Share_invest}$ and  $\eqref{Share_operation}$.
+In addition to user-defined [Effects](#effects), every FlixOpt model includes a **Penalty** term $\Phi$ to:
+- Prevent infeasible problems
+- Simplify troubleshooting by allowing constraint violations with high cost
+
+Penalty shares originate from elements, similar to effect shares:
 
 $$ \label{eq:Penalty}
 \Phi = \sum_{l \in \mathcal{L}} \left( s_{l \rightarrow \Phi}  +\sum_{\text{t}_i \in \mathcal{T}} s_{l \rightarrow \Phi}(\text{t}_{i}) \right)
 $$
 
-With:
+Where:
 
-- $\mathcal{L}$ being the set of all elements in the FlowSystem
-- $\mathcal{T}$ being the set of all timesteps
-- $s_{l \rightarrow \Phi}$ being the share of element $l$ to the penalty
+- $\mathcal{L}$ is the set of all elements
+- $\mathcal{T}$ is the set of all timesteps
+- $s_{l \rightarrow \Phi}$ is the penalty share from element $l$
 
-At the moment, penalties only occur in [Buses](elements/Bus.md)
+**Current usage:** Penalties primarily occur in [Buses](elements/Bus.md) via the `excess_penalty_per_flow_hour` parameter, which allows nodal imbalances at a high cost.
 
-## Objective
+---
 
-The optimization objective of a FlixOpt Model is defined as $\eqref{eq:Objective}$
+## Objective Function
+
+The optimization objective minimizes the chosen effect plus any penalties:
+
 $$ \label{eq:Objective}
-\min(E_{\Omega} + \Phi)
+\min \left( E_{\Omega} + \Phi \right)
 $$
 
-With:
+Where:
 
-- $\Omega$ being the chosen **Objective [Effect](#effects)** (see $\eqref{eq:Effect_Total}$)
-- $\Phi$ being the [Penalty](#penalty)
+- $E_{\Omega}$ is the chosen **objective effect** (see $\eqref{eq:Effect_Total}$)
+- $\Phi$ is the [penalty](#penalty) term
 
-This approach allows for a multi-criteria optimization using both...
- - ... the **Weighted Sum** method, as the chosen **Objective Effect** can incorporate other Effects.
- - ... the ($\epsilon$-constraint method) by constraining effects.
+One effect must be designated as the objective via `is_objective=True`.
+
+### Multi-Criteria Optimization
+
+This formulation supports multiple optimization approaches:
+
+**1. Weighted Sum Method**
+- The objective effect can incorporate other effects via cross-effect factors
+- Example: Minimize costs while including carbon pricing: $\text{CO}_2 \rightarrow \text{costs}$
+
+**2. ε-Constraint Method**
+- Optimize one effect while constraining others
+- Example: Minimize costs subject to $\text{CO}_2 \leq 1000$ kg
+
+---
+
+## Objective with Multiple Dimensions
+
+When the FlowSystem includes **periods** and/or **scenarios** (see [Dimensions](dimensions.md)), the objective aggregates effects across all dimensions using weights.
+
+### Time Only (Base Case)
+
+$$
+\min \quad E_{\Omega} + \Phi = \sum_{\text{t}_i \in \mathcal{T}} E_{\Omega,\text{temp}}(\text{t}_i) + E_{\Omega,\text{per}} + \Phi
+$$
+
+Where:
+- Temporal effects sum over time: $\sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i)$
+- Periodic effects are constant: $E_{\Omega,\text{per}}$
+- Penalty sums over time: $\Phi = \sum_{\text{t}_i} \Phi(\text{t}_i)$
+
+---
+
+### Time + Scenario
+
+$$
+\min \quad \sum_{s \in \mathcal{S}} w_s \cdot \left( E_{\Omega}(s) + \Phi(s) \right)
+$$
+
+Where:
+- $\mathcal{S}$ is the set of scenarios
+- $w_s$ is the weight for scenario $s$ (typically scenario probability)
+- Periodic effects are **shared across scenarios**: $E_{\Omega,\text{per}}$ (same for all $s$)
+- Temporal effects are **scenario-specific**: $E_{\Omega,\text{temp}}(s) = \sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i, s)$
+- Penalties are **scenario-specific**: $\Phi(s) = \sum_{\text{t}_i} \Phi(\text{t}_i, s)$
+
+**Interpretation:**
+- Investment decisions (periodic) made once, used across all scenarios
+- Operations (temporal) differ by scenario
+- Objective balances expected value across scenarios
+
+---
+
+### Time + Period
+
+$$
+\min \quad \sum_{y \in \mathcal{Y}} w_y \cdot \left( E_{\Omega}(y) + \Phi(y) \right)
+$$
+
+Where:
+- $\mathcal{Y}$ is the set of periods (e.g., years)
+- $w_y$ is the weight for period $y$ (typically annual discount factor)
+- Each period $y$ has **independent** periodic and temporal effects
+- Each period $y$ has **independent** investment and operational decisions
+
+---
+
+### Time + Period + Scenario (Full Multi-Dimensional)
+
+$$
+\min \quad \sum_{y \in \mathcal{Y}} \left[ w_y \cdot E_{\Omega,\text{per}}(y) + \sum_{s \in \mathcal{S}} w_{y,s} \cdot \left( E_{\Omega,\text{temp}}(y,s) + \Phi(y,s) \right) \right]
+$$
+
+Where:
+- $\mathcal{S}$ is the set of scenarios
+- $\mathcal{Y}$ is the set of periods
+- $w_y$ is the period weight (for periodic effects)
+- $w_{y,s}$ is the combined period-scenario weight (for temporal effects)
+- **Periodic effects** $E_{\Omega,\text{per}}(y)$ are period-specific but **scenario-independent**
+- **Temporal effects** $E_{\Omega,\text{temp}}(y,s) = \sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i, y, s)$ are **fully indexed**
+- **Penalties** $\Phi(y,s)$ are **fully indexed**
+
+**Key Principle:**
+- Scenarios and periods are **operationally independent** (no energy/resource exchange)
+- Coupled **only through the weighted objective function**
+- **Periodic effects within a period are shared across all scenarios** (investment made once per period)
+- **Temporal effects are independent per scenario** (different operations under different conditions)
+
+---
+
+## Summary
+
+| Concept | Formulation | Time Dependency | Dimension Indexing |
+|---------|-------------|-----------------|-------------------|
+| **Temporal share** | $s_{l \rightarrow e, \text{temp}}(\text{t}_i)$ | Time-dependent | $(t, y, s)$ when present |
+| **Periodic share** | $s_{l \rightarrow e, \text{per}}$ | Time-independent | $(y)$ when periods present |
+| **Total temporal effect** | $E_{e,\text{temp},\text{tot}} = \sum_{\text{t}_i} E_{e,\text{temp}}(\text{t}_i)$ | Sum over time | Depends on dimensions |
+| **Total periodic effect** | $E_{e,\text{per}}$ | Constant | $(y)$ when periods present |
+| **Total effect** | $E_e = E_{e,\text{per}} + E_{e,\text{temp},\text{tot}}$ | Combined | Depends on dimensions |
+| **Objective** | $\min(E_{\Omega} + \Phi)$ | With weights when multi-dimensional | See formulations above |
+
+---
+
+## See Also
+
+- [Dimensions](dimensions.md) - Complete explanation of multi-dimensional modeling
+- [Flow](elements/Flow.md) - Temporal effect contributions via `effects_per_flow_hour`
+- [InvestParameters](features/InvestParameters.md) - Periodic effect contributions via investment
+- [Effect API][flixopt.effects.Effect] - Implementation details and parameters
