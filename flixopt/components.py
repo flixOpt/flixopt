@@ -249,7 +249,7 @@ class Storage(Component):
 
     Mathematical Formulation:
         See the complete mathematical model in the documentation:
-        `Storage.md <docs/user-guide/Mathematical Notation/Storage.md>`_
+        [Storage.md](docs/user-guide/mathematical-notation/elements/Storage.md)
 
         - Equation (1): Charge state bounds
         - Equation (3): Storage balance (charge state evolution)

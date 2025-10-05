@@ -33,7 +33,28 @@ nav:
         - State Transitions: user-guide/mathematical-notation/modeling-patterns/state-transitions.md
   - Examples: examples/
   - Contribute: contribute.md
-  - API Reference: api-reference/
+  - API Reference:
+    - api-reference/index.md
+    - Aggregation: api-reference/aggregation.md
+    - Calculation: api-reference/calculation.md
+    - Commons: api-reference/commons.md
+    - Components: api-reference/components.md
+    - Config: api-reference/config.md
+    - Core: api-reference/core.md
+    - Effects: api-reference/effects.md
+    - Elements: api-reference/elements.md
+    - Features: api-reference/features.md
+    - Flow System: api-reference/flow_system.md
+    - Interface: api-reference/interface.md
+    - IO: api-reference/io.md
+    - Linear Converters: api-reference/linear_converters.md
+    - Modeling: api-reference/modeling.md
+    - Network App: api-reference/network_app.md
+    - Plotting: api-reference/plotting.md
+    - Results: api-reference/results.md
+    - Solvers: api-reference/solvers.md
+    - Structure: api-reference/structure.md
+    - Utils: api-reference/utils.md
   - Release Notes: changelog/
 
 
