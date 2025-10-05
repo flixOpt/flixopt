@@ -126,6 +126,10 @@ class Bus(Element):
     physical or logical connection points for energy carriers (electricity, heat, gas)
     or material flows between different Components.
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Bus](../user-guide/mathematical-notation/elements/Bus.md)
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         excess_penalty_per_flow_hour: Penalty costs for bus balance violations.
@@ -241,6 +245,10 @@ class Flow(Element):
     Integration with Parameter Classes:
         - **InvestParameters**: Used for `size` when flow Size is an investment decision
         - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
+
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Flow](../user-guide/mathematical-notation/elements/Flow.md)
 
     Args:
         label: Unique identifier for the flow within its component.

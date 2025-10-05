@@ -239,6 +239,10 @@ class PiecewiseConversion(Interface):
         When the equipment operates at a given point, ALL flows scale proportionally
         within their respective pieces.
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Piecewise](../user-guide/mathematical-notation/features/Piecewise.md)
+
     Args:
         piecewises: Dictionary mapping flow labels to their Piecewise functions.
             Keys are flow identifiers (e.g., 'electricity_in', 'heat_out', 'fuel_consumed').
@@ -681,6 +685,10 @@ class InvestParameters(Interface):
         - **Piecewise Effects**: Non-linear relationships (bulk discounts, learning curves)
         - **Divestment Effects**: Penalties for not investing (demolition, opportunity costs)
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [InvestParameters](../user-guide/mathematical-notation/features/InvestParameters.md)
+
     Args:
         fixed_size: When specified, creates a binary investment decision at exactly
             this size. When None, allows continuous sizing between minimum and maximum bounds.
@@ -935,6 +943,10 @@ class OnOffParameters(Interface):
         - **HVAC Systems**: Chillers, boilers with minimum run times
         - **Backup Equipment**: Emergency generators, standby systems
         - **Process Equipment**: Compressors, pumps with operational constraints
+
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [OnOffParameters](../user-guide/mathematical-notation/features/OnOffParameters.md)
 
     Args:
         effects_per_switch_on: Costs or impacts incurred for each transition from

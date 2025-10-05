@@ -40,6 +40,10 @@ class LinearConverter(Component):
     straightforward linear relationships, or piecewise conversion for complex non-linear
     behavior approximated through piecewise linear segments.
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [LinearConverter](../user-guide/mathematical-notation/elements/LinearConverter.md)
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         inputs: list of input Flows that feed into the converter.
@@ -249,7 +253,7 @@ class Storage(Component):
 
     Mathematical Formulation:
         See the complete mathematical model in the documentation:
-        [Storage.md](docs/user-guide/mathematical-notation/elements/Storage.md)
+        [Storage](../user-guide/mathematical-notation/elements/Storage.md)
 
         - Equation (1): Charge state bounds
         - Equation (3): Storage balance (charge state evolution)
