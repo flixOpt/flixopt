@@ -40,7 +40,7 @@ Until here -->
 ### Removed
 
 ### Fixed
-- Fix `eta_discharge` Constraint in `Storage` leading to incorrect losses in discharge and therefore incorrect charge states and discharge values.
+- Fix `charge_state` Constraint in `Storage` leading to incorrect losses in discharge and therefore incorrect charge states and discharge values.
 
 ### Known issues
 
