@@ -68,7 +68,7 @@ Until here -->
 ---
 
 ## [v2.1.11] - 2025-10-05
-Important bugfix in `Storage` leading to wrong results due to incorrect discharge losses.
+**Summary:** Important bugfix in `Storage` leading to wrong results due to incorrect discharge losses.
 
 ### ♻️ Changed
 - Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
