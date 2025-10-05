@@ -57,7 +57,6 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 🔒 Security
 
 ### 📦 Dependencies
-- Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
 
 ### 📝 Docs
 
@@ -66,6 +65,20 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 🚧 Known Issues
 
 Until here -->
+---
+
+## [v2.1.11] - 2025-10-05
+Important bugfix in `Storage` leading to wrong results due to incorrect discharge losses.
+
+### ♻️ Changed
+- Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
+
+### 🐛 Fixed
+- Fix `charge_state` Constraint in `Storage` leading to incorrect losses in discharge and therefore incorrect charge states and discharge values.
+
+### 📦 Dependencies
+- Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
+
 ---
 
 ## [2.1.10] - 2025-09-29
@@ -89,24 +102,6 @@ Until here -->
 - Fix error handling in network visualization if `networkx` is not installed
 
 ---
-
-## [Unreleased] - ????-??-??
-
-### Added
-
-### Changed
-
-### Deprecated
-
-### Removed
-
-### Fixed
-- Fix `charge_state` Constraint in `Storage` leading to incorrect losses in discharge and therefore incorrect charge states and discharge values.
-
-### Known issues
-
-### *Development*
-
 
 ## [2.1.8] - 2025-09-22
 
