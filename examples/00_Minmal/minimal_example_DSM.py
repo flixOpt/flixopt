@@ -6,10 +6,7 @@ import numpy as np
 import pandas as pd
 from rich.pretty import pprint
 
-import sys
-sys.path.append("C:/Florian/Studium/RES/2025SoSe/Studienarbeit/code/flixopt")
 import flixopt as fx
-
 if __name__ == '__main__':
     # --- Define the Flow System, that will hold all elements, and the time steps you want to model ---
     timesteps = pd.date_range('2020-01-01', periods=24, freq='h')
