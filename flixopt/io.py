@@ -208,7 +208,7 @@ def save_dataset_to_netcdf(
     ds: xr.Dataset,
     path: str | pathlib.Path,
     compression: int = 0,
-    engine: str = 'h5netcdf',
+    engine: Literal['netcdf4', 'scipy', 'h5netcdf'] = 'h5netcdf',
 ) -> None:
     """
     Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.
@@ -227,12 +227,12 @@ def save_dataset_to_netcdf(
 
     apply_encoding = False
     if compression != 0:
-        if importlib.util.find_spec('h5netcdf') is not None:
+        if importlib.util.find_spec(engine) is not None:
             apply_encoding = True
         else:
             logger.warning(
-                'Dataset was exported without compression due to missing dependency "h5netcdf".'
-                'Install h5netcdf via `pip install h5netcdf`.'
+                f'Dataset was exported without compression due to missing dependency "{engine}".'
+                f'Install {engine} via `pip install {engine}`.'
             )
     ds = ds.copy(deep=True)
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
@@ -241,7 +241,7 @@ def save_dataset_to_netcdf(
         encoding=None
         if not apply_encoding
         else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
-        engine='h5netcdf',
+        engine=engine,
     )
 
 

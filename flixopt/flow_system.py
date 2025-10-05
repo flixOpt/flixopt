@@ -221,7 +221,7 @@ class FlowSystem:
             constants_in_dataset: If True, constants are included as Dataset variables.
         """
         ds = self.as_dataset(constants_in_dataset=constants_in_dataset)
-        fx_io.save_dataset_to_netcdf(ds, path, compression=compression, engine='h5netcdf')
+        fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
         logger.info(f'Saved FlowSystem to {path}')
 
     def plot_network(
