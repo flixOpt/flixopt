@@ -62,10 +62,10 @@ When combined with investment parameters, storage can use:
 **Python Class:** [`Storage`][flixopt.components.Storage]
 
 **Key Parameters:**
-- `size`: Storage capacity $\text{C}$
+- `capacity_in_flow_hours`: Storage capacity $\text{C}$
 - `relative_loss_per_hour`: Self-discharge rate $\dot{\text{c}}_\text{rel,loss}$
-- `charge_state_start`: Initial charge $c(\text{t}_0)$
-- `charge_state_end`: Final charge target $c(\text{t}_\text{end})$ (optional)
+- `initial_charge_state`: Initial charge $c(\text{t}_0)$
+- `minimal_final_charge_state`, `maximal_final_charge_state`: Final charge bounds $c(\text{t}_\text{end})$ (optional)
 - `eta_charge`, `eta_discharge`: Charging/discharging efficiencies $\eta_\text{in}, \eta_\text{out}$
 
 See the [`Storage`][flixopt.components.Storage] API documentation for complete parameter list and usage examples.
