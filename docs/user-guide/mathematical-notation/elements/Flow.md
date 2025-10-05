@@ -1,3 +1,5 @@
+# Flow
+
 The flow_rate is the main optimization variable of the Flow. It's limited by the size of the Flow and relative bounds \eqref{eq:flow_rate}.
 
 $$ \label{eq:flow_rate}

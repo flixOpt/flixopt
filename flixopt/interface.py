@@ -690,29 +690,21 @@ class InvestParameters(Interface):
         [InvestParameters](../user-guide/mathematical-notation/features/InvestParameters.md)
 
     Args:
-        fixed_size: When specified, creates a binary investment decision at exactly
-            this size. When None, allows continuous sizing between minimum and maximum bounds.
-        minimum_size: Lower bound for continuous sizing decisions. Defaults to a small
-            positive value (CONFIG.modeling.EPSILON) to avoid numerical issues.
-            Ignored when fixed_size is specified.
-        maximum_size: Upper bound for continuous sizing decisions. Defaults to a large
-            value (CONFIG.modeling.BIG) representing unlimited capacity.
-            Ignored when fixed_size is specified.
-        optional: Controls whether investment is required. When True (default),
-            optimization can choose not to invest. When False, forces investment
-            to occur (useful for mandatory upgrades or replacement decisions).
-        fix_effects: Fixed costs incurred once if investment is made, regardless
-            of size. Dictionary mapping effect names to values
-            (e.g., {'cost': 10000, 'CO2_construction': 500}).
-        specific_effects: Variable costs proportional to investment size, representing
-            per-unit costs (€/kW, €/m²). Dictionary mapping effect names to unit values
-            (e.g., {'cost': 1200, 'steel_required': 0.5}).
-        piecewise_effects: Non-linear cost relationships using PiecewiseEffects for
-            economies of scale, learning curves, or threshold effects. Can be combined
-            with fix_effects and specific_effects.
-        divest_effects: Costs incurred if the investment is NOT made, such as
-            demolition of existing equipment, contractual penalties, or lost opportunities.
-            Dictionary mapping effect names to values.
+        fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
+        minimum_size: Lower bound for continuous sizing. Default: CONFIG.modeling.EPSILON.
+            Ignored if fixed_size is specified.
+        maximum_size: Upper bound for continuous sizing. Default: CONFIG.modeling.BIG.
+            Ignored if fixed_size is specified.
+        optional: If True, can choose not to invest. If False, investment is mandatory.
+            Default: True.
+        fix_effects: Fixed costs if investment is made, regardless of size.
+            Dict: {'effect_name': value} (e.g., {'cost': 10000}).
+        specific_effects: Variable costs proportional to size (per-unit costs).
+            Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
+        piecewise_effects: Non-linear costs using PiecewiseEffects.
+            Combinable with fix_effects and specific_effects.
+        divest_effects: Costs incurred if NOT investing (demolition, penalties).
+            Dict: {'effect_name': value}.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
