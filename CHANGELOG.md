@@ -67,7 +67,7 @@ Please keep the format of the changelog consistent with the other releases, so t
 Until here -->
 ---
 
-## [v2.1.11] - 2025-10-05
+## [2.1.11] - 2025-10-05
 **Summary:** Important bugfix in `Storage` leading to wrong results due to incorrect discharge losses.
 
 ### ♻️ Changed
