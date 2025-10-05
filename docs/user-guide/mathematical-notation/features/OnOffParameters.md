@@ -109,11 +109,11 @@ With:
 Enforces minimum runtime once started using duration tracking (see [Duration Tracking](../modeling-patterns/duration-tracking.md#minimum-duration-constraints)):
 
 $$\label{eq:onoff_min_on_duration}
-d^\text{on}(t-1) \geq (s(t-1) - s(t)) \cdot h^\text{on}_\text{min} \quad \forall t > 0
+d^\text{on}(t) \geq (s(t-1) - s(t)) \cdot h^\text{on}_\text{min} \quad \forall t > 0
 $$
 
 With:
-- $d^\text{on}(t-1)$ being the consecutive on-time duration accumulated before time $t$
+- $d^\text{on}(t)$ being the consecutive on-time duration at time $t$
 - $h^\text{on}_\text{min}$ being the minimum required on-time
 
 **Behavior:**
@@ -142,11 +142,11 @@ $$
 Enforces minimum shutdown duration before restarting:
 
 $$\label{eq:onoff_min_off_duration}
-d^\text{off}(t-1) \geq (s(t) - s(t-1)) \cdot h^\text{off}_\text{min} \quad \forall t > 0
+d^\text{off}(t) \geq (s(t) - s(t-1)) \cdot h^\text{off}_\text{min} \quad \forall t > 0
 $$
 
 With:
-- $d^\text{off}(t-1)$ being the consecutive off-time duration accumulated before time $t$
+- $d^\text{off}(t)$ being the consecutive off-time duration at time $t$
 - $h^\text{off}_\text{min}$ being the minimum required off-time
 
 **Use cases:**
