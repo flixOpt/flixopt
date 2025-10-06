@@ -1,24 +1,77 @@
 # FlixOpt
 
-**FlixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
+## 🎯 Vision
 
-It borrows concepts from both [FINE](https://github.com/FZJ-IEK3-VSA/FINE) and [oemof.solph](https://github.com/oemof/oemof-solph).
+**FlixOpt aims to be the most accessible and flexible Python framework for energy and material flow optimization.**
 
-## Why FlixOpt?
+We believe that optimization modeling should be **approachable for beginners** yet **powerful for experts**. Too often, frameworks force you to choose between ease of use and flexibility. FlixOpt refuses this compromise.
 
-FlixOpt is designed as a general-purpose optimization framework to get your model running quickly, without sacrificing flexibility down the road:
+### Where We're Going
 
-- **Easy to Use API**: FlixOpt provides a Pythonic, object-oriented interface that makes mathematical optimization more accessible to Python developers.
+**Short-term goals:**
 
-- **Approachable Learning Curve**: Designed to be accessible from the start, with options for more detailed models down the road.
+- **Multi-dimensional modeling**: Full support for multi-period investments and scenario-based stochastic optimization
+- **Enhanced component library**: More pre-built components for common use cases (sector coupling, hydrogen systems, thermal networks)
+- **Better debugging tools**: Clear error messages, infeasibility diagnostics, and model inspection capabilities
 
-- **Domain Independence**: While frameworks like oemof and FINE excel at energy system modeling with domain-specific components, FlixOpt offers a more general mathematical approach that can be applied across different fields.
+**Long-term vision:**
 
-- **Extensibility**: Easily add custom constraints or variables to any FlixOpt Model using [linopy](https://github.com/PyPSA/linopy). Tailor any FlixOpt model to your specific needs without loosing the convenience of the framework.
+- **Showcase universal applicability**: FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
+- **Seamless integration**: First-class support for coupling with simulation tools, databases, and existing energy system models
+- **Scale independence**: From single buildings to national energy systems, with smart algorithms that adapt to problem size
+- **Community-driven development**: A rich ecosystem of user-contributed components, examples, and extensions across all application domains
 
-- **Solver Agnostic**: Work with different solvers through a consistent interface.
+### Why FlixOpt Exists
 
-- **Results File I/O**: Built to analyze results independent of running the optimization.
+FlixOpt is a **general-purpose framework for modeling any system involving flows and conversions** - energy, materials, fluids, goods, or data. While energy systems are our primary focus, the same mathematical foundation applies to supply chains, water networks, production lines, and more.
+
+We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) for long-term planning and low-level dispatch tools for operations. FlixOpt is the **sweet spot** for:
+
+- **Researchers** who need to prototype quickly but may require deep customization later
+- **Engineers** who want reliable, tested components without black-box abstractions
+- **Students** learning optimization who benefit from clear, Pythonic interfaces
+- **Practitioners** who need to move from model to production-ready results
+- **Domain experts** from any field where things flow, transform, and need optimizing
+
+Built on modern foundations ([linopy](https://github.com/PyPSA/linopy/) and [xarray](https://github.com/pydata/xarray)), FlixOpt delivers both **performance** and **transparency**. You can inspect everything, extend anything, and trust that your model does exactly what you designed.
+
+Originally developed at [TU Dresden](https://github.com/gewv-tu-dresden) for the SMARTBIOGRID project (funded by the German Federal Ministry for Economic Affairs and Energy, FKZ: 03KB159B), FlixOpt has evolved from the Matlab-based flixOptMat framework while incorporating the best ideas from [oemof/solph](https://github.com/oemof/oemof-solph).
+
+---
+
+## What Makes FlixOpt Different
+
+### Start Simple, Scale Complex
+Define a working model in minutes with high-level components, then drill down to fine-grained control when needed. No rewriting, no framework switching.
+
+```python
+import flixopt as fx
+
+# Simple start
+boiler = fx.Boiler("Boiler", eta=0.9, ...)
+
+# Advanced control when needed - extend with native linopy
+boiler.model.add_constraints(custom_constraint, name="my_constraint")
+```
+
+### Multi-Criteria Optimization Done Right
+Model costs, emissions, resource use, and any custom metric simultaneously as **Effects**. Optimize any single Effect, use weighted combinations, or apply ε-constraints:
+
+```python
+costs = fx.Effect('costs', '€', 'Total costs',
+                  share_from_temporal={'CO2': 180})  # 180 €/tCO2
+co2 = fx.Effect('CO2', 'kg', 'Emissions', maximum_periodic=50000)
+```
+
+### Performance at Any Scale
+Choose the right calculation mode for your problem:
+
+- **Full** - Maximum accuracy for smaller problems
+- **Segmented** - Rolling horizon for large time series
+- **Aggregated** - Typical periods using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam) for massive models
+
+### Built for Reproducibility
+Every result file is self-contained with complete model information. Load it months later and know exactly what you optimized. Export to NetCDF, share with colleagues, archive for compliance.
 
 <figure markdown>
   ![FlixOpt Conceptual Usage](./images/architecture_flixOpt.png)
