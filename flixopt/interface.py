@@ -8,6 +8,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Literal, Optional
 
+import numpy as np
+import pandas as pd
+import xarray as xr
+
 from .config import CONFIG
 from .structure import Interface, register_class_for_io
 
@@ -705,6 +709,7 @@ class InvestParameters(Interface):
         divest_effects: Costs incurred if the investment is NOT made, such as
             demolition of existing equipment, contractual penalties, or lost opportunities.
             Dictionary mapping effect names to values.
+        linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -861,6 +866,7 @@ class InvestParameters(Interface):
         specific_effects: PeriodicEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
         piecewise_effects: PiecewiseEffects | None = None,
         divest_effects: PeriodicEffectsUser | None = None,
+        linked_periods: PeriodicDataUser | tuple[int, int] | None = None,
     ):
         self.fix_effects: PeriodicEffectsUser = fix_effects or {}
         self.divest_effects: PeriodicEffectsUser = divest_effects or {}
@@ -870,6 +876,7 @@ class InvestParameters(Interface):
         self.piecewise_effects = piecewise_effects
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
+        self.linked_periods = linked_periods
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.fix_effects = flow_system.fit_effects_to_model_coords(
@@ -900,9 +907,12 @@ class InvestParameters(Interface):
         self.maximum_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
         )
+        self.linked_periods = flow_system.fit_to_model_coords(
+            f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
+        )
         if self.fixed_size is not None:
             self.fixed_size = flow_system.fit_to_model_coords(
-                f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
+                f'{name_prefix}|fixed_size', self.fixed_size, dims=['scenario']
             )
 
     @property
@@ -912,6 +922,17 @@ class InvestParameters(Interface):
     @property
     def maximum_or_fixed_size(self) -> PeriodicData:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
+
+    @staticmethod
+    def compute_linked_periods(first_period: int, last_period: int, periods: pd.Index | list[int]) -> xr.DataArray:
+        return xr.DataArray(
+            xr.where(
+                (first_period <= np.array(periods)) & (np.array(periods) <= last_period),
+                1,
+                0,
+            ),
+            coords=(pd.Index(periods, name='period'),),
+        ).rename('linked_periods')
 
 
 @register_class_for_io

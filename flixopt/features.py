@@ -54,6 +54,9 @@ class InvestmentModel(Submodel):
 
     def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
+        if self.parameters.linked_periods is not None:
+            size_min = size_min * self.parameters.linked_periods
+
         self.add_variables(
             short_name='size',
             lower=0 if self.parameters.optional else size_min,
@@ -73,6 +76,29 @@ class InvestmentModel(Submodel):
         )
         if not self.parameters.optional:
             self.add_constraints(self._variables['invested'] == 1, 'invest|fix')
+
+        self.add_variables(
+            short_name='invested',
+            lower=0,
+            upper=1,
+            coords=self._model.get_coords(['scenario']),
+        )
+        self.add_constraints(self._variables['is_invested'] <= self._variables['invested'], 'invest|lb')
+        self.add_constraints(
+            self._variables['invested']
+            <= self._variables['is_invested'].sum('period' if self._model.flow_system.periods is not None else None),
+            short_name='invest|ub',
+        )
+        if self.parameters.linked_periods is not None:
+            self.add_constraints(
+                self.size.where(self.parameters.linked_periods == 1, drop=True).isel(period=slice(None, -1))
+                == self.size.where(self.parameters.linked_periods == 1, drop=True).isel(period=slice(1, None)),
+                short_name='linked_periods',
+            )
+            self.add_constraints(
+                self.size.where(self.parameters.linked_periods == 0, drop=True) == 0,
+                short_name='zeroed_periods',
+            )
 
     def _add_effects(self):
         """Add investment effects"""
