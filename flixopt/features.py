@@ -60,33 +60,19 @@ class InvestmentModel(Submodel):
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
         )
-
-        if self.parameters.optional:
-            self.add_variables(
-                binary=True,
-                coords=self._model.get_coords(['period', 'scenario']),
-                short_name='is_invested',
-            )
-
-            BoundingPatterns.bounds_with_state(
-                self,
-                variable=self.size,
-                variable_state=self.is_invested,
-                bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-            )
-
-        if self.parameters.piecewise_effects:
-            self.piecewise_effects = self.add_submodels(
-                PiecewiseEffectsModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
-                    zero_point=self.is_invested,
-                ),
-                short_name='segments',
-            )
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['period', 'scenario']),
+            short_name='is_invested',
+        )
+        BoundingPatterns.bounds_with_state(
+            self,
+            variable=self.size,
+            variable_state=self.is_invested,
+            bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+        )
+        if not self.parameters.optional:
+            self.add_constraints(self._variables['invested'] == 1, 'invest|fix')
 
     def _add_effects(self):
         """Add investment effects"""
@@ -115,6 +101,19 @@ class InvestmentModel(Submodel):
                 name=self.label_of_element,
                 expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
                 target='periodic',
+            )
+
+        if self.parameters.piecewise_effects:
+            self.piecewise_effects = self.add_submodels(
+                PiecewiseEffectsModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
+                    zero_point=self.is_invested,
+                ),
+                short_name='segments',
             )
 
     @property
