@@ -22,19 +22,22 @@ We believe that optimization modeling should be **approachable for beginners** y
 - **Better debugging tools**: Clear error messages, infeasibility diagnostics, and model inspection capabilities
 
 **Long-term vision:**
-- **Universal flow modeling**: Apply FlixOpt beyond energy systems to supply chains, water networks, production planning, and any domain involving flows and conversions
+- **Showcase universal applicability**: FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
 - **Seamless integration**: First-class support for coupling with simulation tools, databases, and existing energy system models
 - **Scale independence**: From single buildings to national energy systems, with smart algorithms that adapt to problem size
-- **Community-driven development**: A rich ecosystem of user-contributed components, examples, and extensions
+- **Community-driven development**: A rich ecosystem of user-contributed components, examples, and extensions across all application domains
 
 ### Why FlixOpt Exists
 
-FlixOpt bridges a critical gap: between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) used for long-term planning and low-level dispatch tools for operational decisions. We provide the **sweet spot** for:
+FlixOpt is a **general-purpose framework for modeling any system involving flows and conversions** - energy, materials, fluids, goods, or data. While energy systems are our primary focus, the same mathematical foundation applies to supply chains, water networks, production lines, and more.
+
+We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) for long-term planning and low-level dispatch tools for operations. FlixOpt is the **sweet spot** for:
 
 - **Researchers** who need to prototype quickly but may require deep customization later
 - **Engineers** who want reliable, tested components without black-box abstractions
 - **Students** learning optimization who benefit from clear, Pythonic interfaces
 - **Practitioners** who need to move from model to production-ready results
+- **Domain experts** from any field where things flow, transform, and need optimizing
 
 Built on modern foundations ([linopy](https://github.com/PyPSA/linopy/) and [xarray](https://github.com/pydata/xarray)), FlixOpt delivers both **performance** and **transparency**. You can inspect everything, extend anything, and trust that your model does exactly what you designed.
 
