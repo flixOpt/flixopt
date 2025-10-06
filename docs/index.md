@@ -12,13 +12,11 @@ We believe that optimization modeling should be **approachable for beginners** y
 
 - **Multi-dimensional modeling**: Full support for multi-period investments and scenario-based stochastic optimization
 - **Enhanced component library**: More pre-built components for common use cases (sector coupling, hydrogen systems, thermal networks)
-- **Better debugging tools**: Clear error messages, infeasibility diagnostics, and model inspection capabilities
 
 **Long-term vision:**
 
 - **Showcase universal applicability**: FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
-- **Seamless integration**: First-class support for coupling with simulation tools, databases, and existing energy system models
-- **Scale independence**: From single buildings to national energy systems, with smart algorithms that adapt to problem size
+- **Modeling to generate alternatives (MGA)**: Build in support to generate alternative result to produce more robust results.
 - **Community-driven development**: A rich ecosystem of user-contributed components, examples, and extensions across all application domains
 
 ### Why FlixOpt Exists
