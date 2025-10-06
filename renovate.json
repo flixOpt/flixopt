@@ -39,6 +39,13 @@
       "schedule": ["* * * * *"],
       "labels": ["calver", "breaking-change-risk", "dependencies"],
       "prPriority": 10
+    },
+    {
+      "description": "Automerge ruff patches despite 0.x version",
+      "matchPackageNames": ["ruff"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr"
     }
   ]
 }
