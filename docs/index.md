@@ -10,14 +10,23 @@ We believe that optimization modeling should be **approachable for beginners** y
 
 **Short-term goals:**
 
-- **Multi-dimensional modeling**: Full support for multi-period investments and scenario-based stochastic optimization
-- **Enhanced component library**: More pre-built components for common use cases (sector coupling, hydrogen systems, thermal networks)
+- **Multi-dimensional modeling**: Full support for multi-period investments and scenario-based stochastic optimization (periods and scenarios are in active development)
+- **Enhanced component library**: More pre-built, domain-specific components (sector coupling, hydrogen systems, thermal networks, demand-side management)
+
+**Medium-term vision:**
+
+- **Modeling to generate alternatives (MGA)**: Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty
+- **Interactive tutorials**: Browser-based, reactive tutorials for learning FlixOpt without local installation (marimo)
+- **Standardized cost calculations**: Align with industry standards (VDI 2067) for CAPEX/OPEX calculations
+- **Advanced result analysis**: Time-series aggregation, automated reporting, and rich visualization options
 
 **Long-term vision:**
 
 - **Showcase universal applicability**: FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
-- **Modeling to generate alternatives (MGA)**: Build in support to generate alternative result to produce more robust results.
-- **Community-driven development**: A rich ecosystem of user-contributed components, examples, and extensions across all application domains
+- **Seamless integration**: First-class support for coupling with simulation tools, databases, existing energy system models, and GIS data
+- **Robust optimization**: Built-in uncertainty quantification and stochastic programming capabilities
+- **Community ecosystem**: Rich library of user-contributed components, examples, and domain-specific extensions
+- **Model validation tools**: Automated checks for physical plausibility, data consistency, and common modeling errors
 
 ### Why FlixOpt Exists
 
