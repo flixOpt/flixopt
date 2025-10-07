@@ -911,8 +911,7 @@ class InvestParameters(Interface):
         if isinstance(self.linked_periods, (tuple, list)):
             if len(self.linked_periods) != 2:
                 raise TypeError(
-                    f'If you provide a tuple to "linked_periods", it needs to ben len=2. '
-                    f'Got {len(self.linked_periods)=}'
+                    f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
                 )
             logger.info(f'Computing linked_periods from {self.linked_periods}')
             start, end = self.linked_periods
