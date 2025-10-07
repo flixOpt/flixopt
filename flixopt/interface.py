@@ -907,13 +907,31 @@ class InvestParameters(Interface):
         self.maximum_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
         )
+        # Convert tuple (first_period, last_period) to DataArray if needed
+        if isinstance(self.linked_periods, (tuple, list)):
+            if len(self.linked_periods) != 2:
+                raise TypeError(
+                    f'If you provide a tuple to "linked_periods", it needs to ben len=2. '
+                    f'Got {len(self.linked_periods)=}'
+                )
+            logger.info(f'Computing linked_periods from {self.linked_periods}')
+            start, end = self.linked_periods
+            if start not in flow_system.periods.values:
+                logger.warning(
+                    f'Start of linked periods ({start} not found in periods directly: {flow_system.periods.values}'
+                )
+            if end not in flow_system.periods.values:
+                logger.warning(
+                    f'Start of linked periods ({end} not found in periods directly: {flow_system.periods.values}'
+                )
+            self.linked_periods = self.compute_linked_periods(start, end, flow_system.periods)
+
         self.linked_periods = flow_system.fit_to_model_coords(
             f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
-        if self.fixed_size is not None:
-            self.fixed_size = flow_system.fit_to_model_coords(
-                f'{name_prefix}|fixed_size', self.fixed_size, dims=['scenario']
-            )
+        self.fixed_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|fixed_size', self.fixed_size, dims=['scenario']
+        )
 
     @property
     def minimum_or_fixed_size(self) -> PeriodicData:
