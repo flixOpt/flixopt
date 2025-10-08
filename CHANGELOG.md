@@ -112,39 +112,12 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### 📝 Docs
 
-**Major Documentation Overhaul:**
-
-- **Reorganized Mathematical Notation Documentation**
-  - Moved from `docs/user-guide/Mathematical Notation/` to `docs/user-guide/mathematical-notation/` (lowercase, kebab-case)
-  - Created clearer structure with subdirectories:
-    - `elements/` - Bus, Flow, LinearConverter, Storage
-    - `features/` - InvestParameters, OnOffParameters, Piecewise
-    - `modeling-patterns/` - Reusable mathematical building blocks (bounds-and-states, duration-tracking, state-transitions)
-  - Added comprehensive new pages:
-    - `dimensions.md` - Complete explanation of time/period/scenario dimensions
-    - `effects-penalty-objective.md` - Detailed effect formulations and objective function
-
-- **Enhanced Mathematical Documentation**
-  - All element pages now include implementation details, cross-references, and "See Also" sections
-  - Expanded effect formulations to cover multi-dimensional cases (periods and scenarios)
-  - Added modeling patterns documentation showing reusable mathematical building blocks
-  - Improved cross-linking between related concepts
-
-- **Improved README and Landing Page**
-  - Completely rewritten with clearer vision and value proposition
-  - Added "Where We're Going" section with short/medium/long-term goals
-  - Emphasized universal applicability beyond energy systems
-  - Better quick start and contribution guidance
-
-- **Updated Documentation Structure**
-  - Removed deprecated `docs/SUMMARY.md` in favor of `mkdocs.yml` navigation
-  - Updated `mkdocs.yml` to reflect new documentation structure
-  - Enhanced user guide index with cross-domain examples
-
-- **Code Documentation Improvements**
-  - Tightened docstrings across `flixopt/components.py`, `flixopt/elements.py`, and `flixopt/interface.py`
-  - Enhanced `scripts/gen_ref_pages.py` for better API reference generation
-  - Used links in docstrings for better cross-referencing
+- Reorganized mathematical notation docs: moved to lowercase `mathematical-notation/` with subdirectories (`elements/`, `features/`, `modeling-patterns/`)
+- Added comprehensive documentation pages: `dimensions.md` (time/period/scenario), `effects-penalty-objective.md`, modeling patterns
+- Enhanced all element pages with implementation details, cross-references, and "See Also" sections
+- Rewrote README and landing page with clearer vision, roadmap, and universal applicability emphasis
+- Removed deprecated `docs/SUMMARY.md`, updated `mkdocs.yml` for new structure
+- Tightened docstrings in core modules with better cross-referencing
 
 ### 🚧 Known Issues
 * IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
