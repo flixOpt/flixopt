@@ -95,7 +95,7 @@ if __name__ == '__main__':
             },
             # linked_periods: Once invested in an early period, available in later periods
             # This creates a binary investment variable that is shared across periods
-            linked_periods=(2020, 1),  # Links all periods together (1D array with single link group)
+            linked_periods=(2020, 2029),  # Links all periods together (1D array with single link group)
         ),
         initial_charge_state=0,
         eta_charge=0.95,
@@ -183,7 +183,7 @@ if __name__ == '__main__':
 
     # Access investment variables directly from the solution
     solar_var = 'Solar(P_solar)|size'
-    battery_var = 'Battery|capacity_in_flow_hours|size'
+    battery_var = 'Battery|size'
     chp_var = 'CHP(P_el)|size'
 
     if solar_var in calculation.results.solution.data_vars:

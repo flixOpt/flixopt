@@ -921,7 +921,7 @@ class InvestParameters(Interface):
                 )
             if end not in flow_system.periods.values:
                 logger.warning(
-                    f'Start of linked periods ({end} not found in periods directly: {flow_system.periods.values}'
+                    f'End of linked periods ({end} not found in periods directly: {flow_system.periods.values}'
                 )
             self.linked_periods = self.compute_linked_periods(start, end, flow_system.periods)
 

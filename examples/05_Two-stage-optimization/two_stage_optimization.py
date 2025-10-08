@@ -119,7 +119,7 @@ if __name__ == '__main__':
     timer_sizing = timeit.default_timer() - start
 
     start = timeit.default_timer()
-    calculation_dispatch = fx.FullCalculation('Sizing', flow_system)
+    calculation_dispatch = fx.FullCalculation('Dispatch', flow_system)
     calculation_dispatch.do_modeling()
     calculation_dispatch.fix_sizes(calculation_sizing.results.solution)
     calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
     # Optimization of both flow sizes and dispatch together
     start = timeit.default_timer()
-    calculation_combined = fx.FullCalculation('Sizing', flow_system)
+    calculation_combined = fx.FullCalculation('Combined', flow_system)
     calculation_combined.do_modeling()
     calculation_combined.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_combined = timeit.default_timer() - start
