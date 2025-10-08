@@ -46,90 +46,113 @@ This release introduces new model dimensions (periods and scenarios) for multi-p
 ### ✨ Added
 
 **New model dimensions:**
-* **Period dimension**: Enables multi-period investment modeling with distinct decisions in each period for transformation pathway optimization
-* **Scenario dimension**: Supports stochastic modeling with weighted scenarios for robust decision-making under uncertainty (demand, prices, weather)
+
+- **Period dimension**: Enables multi-period investment modeling with distinct decisions in each period for transformation pathway optimization
+- **Scenario dimension**: Supports stochastic modeling with weighted scenarios for robust decision-making under uncertainty (demand, prices, weather)
 
 **Redesigned effect sharing system:**
+
 Effects now use intuitive `share_from_*` syntax that clearly shows contribution sources:
+
 ```python
 costs = fx.Effect('costs', '€', 'Total costs',
     share_from_temporal={'CO2': 0.2},      # From temporal effects
     share_from_periodic={'land': 100})     # From periodic effects
 ```
+
 This replaces `specific_share_to_other_effects_*` parameters and inverts the direction for clearer relationships.
 
 **Enhanced I/O and data handling:**
-* NetCDF/JSON serialization for all Interface objects and FlowSystem with round-trip support
-* FlowSystem manipulation: `sel()`, `isel()`, `resample()`, `copy()`, `__eq__()` methods
-* Direct access to FlowSystem from results without manual restoring (lazily loaded)
-* New `FlowResults` class and precomputed DataArrays for sizes/flow_rates/flow_hours
-* `effects_per_component()` dataset for component impact evaluation, including all indirect effects through effect shares
+
+- NetCDF/JSON serialization for all Interface objects and FlowSystem with round-trip support
+- FlowSystem manipulation: `sel()`, `isel()`, `resample()`, `copy()`, `__eq__()` methods
+- Direct access to FlowSystem from results without manual restoring (lazily loaded)
+- New `FlowResults` class and precomputed DataArrays for sizes/flow_rates/flow_hours
+- `effects_per_component()` dataset for component impact evaluation, including all indirect effects through effect shares
 
 **Other additions:**
-* Balanced storage - charging and discharging sizes can be forced equal via `balanced` parameter
-* New Storage parameters: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` for final state control
-* Improved filter methods in results
-* Example for 2-stage investment decisions leveraging FlowSystem resampling
+
+- Balanced storage - charging and discharging sizes can be forced equal via `balanced` parameter
+- New Storage parameters: `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` for final state control
+- Improved filter methods in results
+- Example for 2-stage investment decisions leveraging FlowSystem resampling
 
 ### 💥 Breaking Changes
-* `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
-* Renamed class `SystemModel` to `FlowSystemModel`
-* Renamed class `Model` to `Submodel`
-* Renamed `mode` parameter in plotting methods to `style`
-* `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`.
+
+- `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
+- Renamed class `SystemModel` to `FlowSystemModel`
+- Renamed class `Model` to `Submodel`
+- Renamed `mode` parameter in plotting methods to `style`
+- `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`.
 
 ### ♻️ Changed
-* FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
-* Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
-* Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
-* Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
-* Improved Model Structure - Views and organisation is now divided into:
-  * Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
-  * Submodel: The base class for all submodels. Each is a subset of the Model, for simpler access and clearer code.
+
+- FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
+- Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
+- Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
+- Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
+- Improved Model Structure - Views and organisation is now divided into:
+    - Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
+    - Submodel: The base class for all submodels. Each is a subset of the Model, for simpler access and clearer code.
 
 ### 🗑️ Deprecated
-* The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
-* The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
-* The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
-* The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
-* Effect parameters renamed:
-  - `minimum_investment` → `minimum_periodic`
-  - `maximum_investment` → `maximum_periodic`
-  - `minimum_operation` → `minimum_temporal`
-  - `maximum_operation` → `maximum_temporal`
-  - `minimum_operation_per_hour` → `minimum_per_hour`
-  - `maximum_operation_per_hour` → `maximum_per_hour`
+
+- The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
+- The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
+- The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
+- The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
+- Effect parameters renamed:
+    - `minimum_investment` → `minimum_periodic`
+    - `maximum_investment` → `maximum_periodic`
+    - `minimum_operation` → `minimum_temporal`
+    - `maximum_operation` → `maximum_temporal`
+    - `minimum_operation_per_hour` → `minimum_per_hour`
+    - `maximum_operation_per_hour` → `maximum_per_hour`
 
 ### 🔥 Removed
-* **Effect share parameters**: The old `specific_share_to_other_effects_*` parameters were replaced WITHOUT DEPRECATION
-  - `specific_share_to_other_effects_operation` → `share_from_temporal` (with inverted direction)
-  - `specific_share_to_other_effects_invest` → `share_from_periodic` (with inverted direction)
+
+- **Effect share parameters**: The old `specific_share_to_other_effects_*` parameters were replaced WITHOUT DEPRECATION
+    - `specific_share_to_other_effects_operation` → `share_from_temporal` (with inverted direction)
+    - `specific_share_to_other_effects_invest` → `share_from_periodic` (with inverted direction)
 
 ### 🐛 Fixed
-* Enhanced NetCDF I/O with proper attribute preservation for DataArrays
-* Improved error handling and validation in serialization processes
-* Better type consistency across all framework components
+
+- Enhanced NetCDF I/O with proper attribute preservation for DataArrays
+- Improved error handling and validation in serialization processes
+- Better type consistency across all framework components
+
+### 📝 Docs
+
+- Reorganized mathematical notation docs: moved to lowercase `mathematical-notation/` with subdirectories (`elements/`, `features/`, `modeling-patterns/`)
+- Added comprehensive documentation pages: `dimensions.md` (time/period/scenario), `effects-penalty-objective.md`, modeling patterns
+- Enhanced all element pages with implementation details, cross-references, and "See Also" sections
+- Rewrote README and landing page with clearer vision, roadmap, and universal applicability emphasis
+- Removed deprecated `docs/SUMMARY.md`, updated `mkdocs.yml` for new structure
+- Tightened docstrings in core modules with better cross-referencing
+- Added recipies section to docs
 
 ### 🚧 Known Issues
-* IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
+
+- IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
 
 ### 👷 Development
-* FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
-* Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
-* Added new module `.modeling` that contains Modelling primitives and utilities
-* Clearer separation between the main Model and "Submodels"
-* Improved access to the Submodels and their variables, constraints and submodels
-* Added `__repr__()` for Submodels to easily inspect its content
-* Enhanced data handling methods
-   * `fit_to_model_coords()` method for data alignment
-   * `fit_effects_to_model_coords()` method for effect data processing
-   * `connect_and_transform()` method replacing several operations
-* **Testing improvements**: Eliminated warnings during test execution
-  * Updated deprecated code patterns in tests and examples (e.g., `sink`/`source` → `inputs`/`outputs`, `'H'` → `'h'` frequency)
-  * Refactored plotting logic to handle test environments explicitly with non-interactive backends
-  * Added comprehensive warning filters in `__init__.py` and `pyproject.toml` to suppress third-party library warnings
-  * Improved test fixtures with proper figure cleanup to prevent memory leaks
-  * Enhanced backend detection and handling in `plotting.py` for both Matplotlib and Plotly
+
+- FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
+- Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
+- Added new module `.modeling` that contains Modelling primitives and utilities
+- Clearer separation between the main Model and "Submodels"
+- Improved access to the Submodels and their variables, constraints and submodels
+- Added `__repr__()` for Submodels to easily inspect its content
+- Enhanced data handling methods
+    - `fit_to_model_coords()` method for data alignment
+    - `fit_effects_to_model_coords()` method for effect data processing
+    - `connect_and_transform()` method replacing several operations
+- **Testing improvements**: Eliminated warnings during test execution
+  - Updated deprecated code patterns in tests and examples (e.g., `sink`/`source` → `inputs`/`outputs`, `'H'` → `'h'` frequency)
+  - Refactored plotting logic to handle test environments explicitly with non-interactive backends
+  - Added comprehensive warning filters in `__init__.py` and `pyproject.toml` to suppress third-party library warnings
+  - Improved test fixtures with proper figure cleanup to prevent memory leaks
+  - Enhanced backend detection and handling in `plotting.py` for both Matplotlib and Plotly
 
 
 Until here -->
