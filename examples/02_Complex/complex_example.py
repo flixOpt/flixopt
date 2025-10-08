@@ -147,33 +147,39 @@ if __name__ == '__main__':
     # 5.a) Heat demand profile
     Waermelast = fx.Sink(
         'Wärmelast',
-        sink=fx.Flow(
-            'Q_th_Last',  # Heat sink
-            bus='Fernwärme',  # Linked bus
-            size=1,
-            fixed_relative_profile=heat_demand,  # Fixed demand profile
-        ),
+        inputs=[
+            fx.Flow(
+                'Q_th_Last',  # Heat sink
+                bus='Fernwärme',  # Linked bus
+                size=1,
+                fixed_relative_profile=heat_demand,  # Fixed demand profile
+            )
+        ],
     )
 
     # 5.b) Gas tariff
     Gasbezug = fx.Source(
         'Gastarif',
-        source=fx.Flow(
-            'Q_Gas',
-            bus='Gas',  # Gas source
-            size=1000,  # Nominal size
-            effects_per_flow_hour={Costs.label: 0.04, CO2.label: 0.3},
-        ),
+        outputs=[
+            fx.Flow(
+                'Q_Gas',
+                bus='Gas',  # Gas source
+                size=1000,  # Nominal size
+                effects_per_flow_hour={Costs.label: 0.04, CO2.label: 0.3},
+            )
+        ],
     )
 
     # 5.c) Feed-in of electricity
     Stromverkauf = fx.Sink(
         'Einspeisung',
-        sink=fx.Flow(
-            'P_el',
-            bus='Strom',  # Feed-in tariff for electricity
-            effects_per_flow_hour=-1 * electricity_price,  # Negative price for feed-in
-        ),
+        inputs=[
+            fx.Flow(
+                'P_el',
+                bus='Strom',  # Feed-in tariff for electricity
+                effects_per_flow_hour=-1 * electricity_price,  # Negative price for feed-in
+            )
+        ],
     )
 
     # --- Build FlowSystem ---
