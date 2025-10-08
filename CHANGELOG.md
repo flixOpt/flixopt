@@ -124,6 +124,12 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
    * `fit_to_model_coords()` method for data alignment
    * `fit_effects_to_model_coords()` method for effect data processing
    * `connect_and_transform()` method replacing several operations
+* **Testing improvements**: Eliminated warnings during test execution
+  * Updated deprecated code patterns in tests and examples (e.g., `sink`/`source` → `inputs`/`outputs`, `'H'` → `'h'` frequency)
+  * Refactored plotting logic to handle test environments explicitly with non-interactive backends
+  * Added comprehensive warning filters in `__init__.py` and `pyproject.toml` to suppress third-party library warnings
+  * Improved test fixtures with proper figure cleanup to prevent memory leaks
+  * Enhanced backend detection and handling in `plotting.py` for both Matplotlib and Plotly
 
 
 Until here -->
