@@ -84,30 +84,34 @@ if __name__ == '__main__':
             charging=fx.Flow('Q_th_load', size=137, bus='Fernwärme'),
             discharging=fx.Flow('Q_th_unload', size=158, bus='Fernwärme'),
         ),
-        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)),
+        fx.Sink(
+            'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)]
+        ),
         fx.Source(
             'Gastarif',
-            source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
         ),
         fx.Source(
             'Kohletarif',
-            source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
         ),
         fx.Source(
             'Einspeisung',
-            source=fx.Flow(
-                'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3}
-            ),
+            outputs=[
+                fx.Flow(
+                    'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3}
+                )
+            ],
         ),
         fx.Sink(
             'Stromlast',
-            sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electricity_demand),
+            inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electricity_demand)],
         ),
         fx.Source(
             'Stromtarif',
-            source=fx.Flow(
-                'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price, 'CO2': 0.3}
-            ),
+            outputs=[
+                fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price, 'CO2': 0.3})
+            ],
         ),
     )
 

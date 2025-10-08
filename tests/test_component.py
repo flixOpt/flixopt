@@ -462,13 +462,15 @@ class TestTransmissionModel:
 
         last2 = fx.Sink(
             'Wärmelast2',
-            sink=fx.Flow(
-                'Q_th_Last',
-                bus='Wärme lokal',
-                size=1,
-                fixed_relative_profile=flow_system.components['Wärmelast'].sink.fixed_relative_profile
-                * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
-            ),
+            inputs=[
+                fx.Flow(
+                    'Q_th_Last',
+                    bus='Wärme lokal',
+                    size=1,
+                    fixed_relative_profile=flow_system.components['Wärmelast'].inputs[0].fixed_relative_profile
+                    * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
+                )
+            ],
         )
 
         transmission = fx.Transmission(
@@ -530,13 +532,15 @@ class TestTransmissionModel:
 
         last2 = fx.Sink(
             'Wärmelast2',
-            sink=fx.Flow(
-                'Q_th_Last',
-                bus='Wärme lokal',
-                size=1,
-                fixed_relative_profile=flow_system.components['Wärmelast'].sink.fixed_relative_profile
-                * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
-            ),
+            inputs=[
+                fx.Flow(
+                    'Q_th_Last',
+                    bus='Wärme lokal',
+                    size=1,
+                    fixed_relative_profile=flow_system.components['Wärmelast'].inputs[0].fixed_relative_profile
+                    * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
+                )
+            ],
         )
 
         transmission = fx.Transmission(

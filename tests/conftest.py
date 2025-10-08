@@ -351,21 +351,21 @@ class Sinks:
     def heat_load(thermal_profile):
         """Create thermal heat load sink"""
         return fx.Sink(
-            'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_profile)
+            'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_profile)]
         )
 
     @staticmethod
     def electricity_feed_in(electrical_price_profile):
         """Create electricity feed-in sink"""
         return fx.Sink(
-            'Einspeisung', sink=fx.Flow('P_el', bus='Strom', effects_per_flow_hour=-1 * electrical_price_profile)
+            'Einspeisung', inputs=[fx.Flow('P_el', bus='Strom', effects_per_flow_hour=-1 * electrical_price_profile)]
         )
 
     @staticmethod
     def electricity_load(electrical_profile):
         """Create electrical load sink (for flow_system_long)"""
         return fx.Sink(
-            'Stromlast', sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_profile)
+            'Stromlast', inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_profile)]
         )
 
 
@@ -376,14 +376,14 @@ class Sources:
     def gas_with_costs_and_co2():
         """Standard gas tariff with CO2 emissions"""
         source = Sources.gas_with_costs()
-        source.source.effects_per_flow_hour = {'costs': 0.04, 'CO2': 0.3}
+        source.outputs[0].effects_per_flow_hour = {'costs': 0.04, 'CO2': 0.3}
         return source
 
     @staticmethod
     def gas_with_costs():
         """Simple gas tariff without CO2"""
         return fx.Source(
-            'Gastarif', source=fx.Flow(label='Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': 0.04})
+            'Gastarif', outputs=[fx.Flow(label='Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': 0.04})]
         )
 
 
@@ -405,7 +405,7 @@ def simple_flow_system() -> fx.FlowSystem:
     # Define effects
     costs = Effects.costs_with_co2_share()
     co2 = Effects.co2()
-    co2.maximum_operation_per_hour = 1000
+    co2.maximum_per_hour = 1000
 
     # Create components
     boiler = Converters.Boilers.simple()
@@ -436,7 +436,7 @@ def simple_flow_system_scenarios() -> fx.FlowSystem:
     # Define effects
     costs = Effects.costs_with_co2_share()
     co2 = Effects.co2()
-    co2.maximum_operation_per_hour = 1000
+    co2.maximum_per_hour = 1000
 
     # Create components
     boiler = Converters.Boilers.simple()
@@ -570,21 +570,23 @@ def flow_system_long():
         Effects.co2(),
         Effects.primary_energy(),
         fx.Sink(
-            'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_load_ts)
+            'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_load_ts)]
         ),
-        fx.Sink('Stromlast', sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_load_ts)),
+        fx.Sink(
+            'Stromlast', inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_load_ts)]
+        ),
         fx.Source(
             'Kohletarif',
-            source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
         ),
         fx.Source(
             'Gastarif',
-            source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
         ),
-        fx.Sink('Einspeisung', sink=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=p_feed_in)),
+        fx.Sink('Einspeisung', inputs=[fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=p_feed_in)]),
         fx.Source(
             'Stromtarif',
-            source=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3}),
+            outputs=[fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3})],
         ),
     )
 
@@ -794,3 +796,44 @@ def assert_sets_equal(set1: Iterable, set2: Iterable, msg=''):
             error_msg = f'{msg}: {error_msg}'
 
         raise AssertionError(error_msg)
+
+
+# ============================================================================
+# PLOTTING CLEANUP FIXTURES
+# ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def cleanup_figures():
+    """
+    Cleanup matplotlib figures after each test.
+
+    This fixture runs automatically after every test to:
+    - Close all matplotlib figures to prevent memory leaks
+    """
+    yield
+    # Close all matplotlib figures
+    import matplotlib.pyplot as plt
+
+    plt.close('all')
+
+
+@pytest.fixture(scope='session', autouse=True)
+def set_test_environment():
+    """
+    Configure plotting for test environment.
+
+    This fixture runs once per test session to:
+    - Set matplotlib to use non-interactive 'Agg' backend
+    - Set plotly to use non-interactive 'json' renderer
+    - Prevent GUI windows from opening during tests
+    """
+    import matplotlib
+
+    matplotlib.use('Agg')  # Use non-interactive backend
+
+    import plotly.io as pio
+
+    pio.renderers.default = 'json'  # Use non-interactive renderer
+
+    yield

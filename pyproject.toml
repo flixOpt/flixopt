@@ -189,6 +189,28 @@ markers = [
 ]
 addopts = '-m "not examples"'  # Skip examples by default
 
+# Warning filter configuration for pytest
+# Filters are processed in order; first match wins
+# Format: "action:message:category:module"
+filterwarnings = [
+    # === Default behavior: show all warnings ===
+    "default",
+
+    # === Treat flixopt warnings as errors (strict mode for our code) ===
+    # This ensures we catch deprecations, future changes, and user warnings in our own code
+    "error::DeprecationWarning:flixopt",
+    "error::FutureWarning:flixopt",
+    "error::UserWarning:flixopt",
+
+    # === Third-party warnings (mirrored from __init__.py) ===
+    "ignore::FutureWarning:tsam",
+    "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
+    "ignore:Coordinates across variables not equal:UserWarning:linopy",
+    "ignore:default value for join will change from join='outer' to join='exact':FutureWarning:linopy",
+    "ignore:numpy\\.ndarray size changed:RuntimeWarning",
+    "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
+]
+
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load
 exclude_dirs = ["tests/"]
