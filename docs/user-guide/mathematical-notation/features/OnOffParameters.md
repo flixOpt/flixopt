@@ -218,8 +218,8 @@ For equipment with OnOffParameters, the complete constraint system includes:
 2. **Switch tracking:** $s^\text{on}(t) - s^\text{off}(t) = s(t) - s(t-1)$
 3. **Switch exclusivity:** $s^\text{on}(t) + s^\text{off}(t) \leq 1$
 4. **Duration tracking:**
-   - On-duration: $d^\text{on}(t)$ following duration tracking pattern
-   - Off-duration: $d^\text{off}(t)$ following duration tracking pattern
+    - On-duration: $d^\text{on}(t)$ following duration tracking pattern
+    - Off-duration: $d^\text{off}(t)$ following duration tracking pattern
 5. **Minimum on-time:** $d^\text{on}(t) \geq (s(t-1) - s(t)) \cdot h^\text{on}_\text{min}$
 6. **Maximum on-time:** $d^\text{on}(t) \leq h^\text{on}_\text{max}$
 7. **Minimum off-time:** $d^\text{off}(t) \geq (s(t) - s(t-1)) \cdot h^\text{off}_\text{min}$

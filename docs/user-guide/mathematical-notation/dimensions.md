@@ -7,20 +7,20 @@ FlixOpt's `FlowSystem` supports multiple dimensions for modeling optimization pr
 FlixOpt models can have up to three dimensions:
 
 1. **Time (`time`)** - **MANDATORY**
-     * Represents the temporal evolution of the system
-     * Defined via `pd.DatetimeIndex`
-     * Must contain at least 2 timesteps
-     * All optimization variables and constraints evolve over time
+    - Represents the temporal evolution of the system
+    - Defined via `pd.DatetimeIndex`
+    - Must contain at least 2 timesteps
+    - All optimization variables and constraints evolve over time
 2. **Period (`period`)** - **OPTIONAL**
-     * Represents independent planning periods (e.g., years 2020, 2021, 2022)
-     * Defined via `pd.Index` with integer values
-     * Used for multi-period optimization such as investment planning across years
-     * Each period is independent with its own time series
+    - Represents independent planning periods (e.g., years 2020, 2021, 2022)
+    - Defined via `pd.Index` with integer values
+    - Used for multi-period optimization such as investment planning across years
+    - Each period is independent with its own time series
 3. **Scenario (`scenario`)** - **OPTIONAL**
-     * Represents alternative futures or uncertainty realizations (e.g., "Base Case", "High Demand")
-     * Defined via `pd.Index` with any labels
-     * Scenarios within the same period share the same time dimension
-     * Used for stochastic optimization or scenario comparison
+    - Represents alternative futures or uncertainty realizations (e.g., "Base Case", "High Demand")
+    - Defined via `pd.Index` with any labels
+    - Scenarios within the same period share the same time dimension
+    - Used for stochastic optimization or scenario comparison
 
 ---
 
