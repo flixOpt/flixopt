@@ -57,10 +57,10 @@ flow_system = fx.FlowSystem(
 ```
 
 This creates a system with:
-* 24 time steps per scenario per period
-* 2 scenarios with equal weights (0.5 each)
-* 3 periods (years)
-* **Total decision space:** 24 × 2 × 3 = 144 time-scenario-period combinations
+- 24 time steps per scenario per period
+- 2 scenarios with equal weights (0.5 each)
+- 3 periods (years)
+- **Total decision space:** 24 × 2 × 3 = 144 time-scenario-period combinations
 
 ---
 
