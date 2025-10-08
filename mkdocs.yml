@@ -13,6 +13,7 @@ nav:
   - Getting Started: getting-started.md
   - User Guide:
     - user-guide/index.md
+    - Recipes: user-guide/recipies/index.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
       - Dimensions: user-guide/mathematical-notation/dimensions.md

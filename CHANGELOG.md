@@ -118,6 +118,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Rewrote README and landing page with clearer vision, roadmap, and universal applicability emphasis
 - Removed deprecated `docs/SUMMARY.md`, updated `mkdocs.yml` for new structure
 - Tightened docstrings in core modules with better cross-referencing
+- Added recipies section to docs
 
 ### 🚧 Known Issues
 * IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
