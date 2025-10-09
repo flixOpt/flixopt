@@ -25,6 +25,8 @@ class TestConfigModule:
     def test_config_defaults(self):
         """Test that CONFIG has correct default values."""
         assert CONFIG.Logging.level == 'INFO'
+        assert CONFIG.Logging.console_level is None
+        assert CONFIG.Logging.file_level is None
         assert CONFIG.Logging.file == 'flixopt.log'
         assert CONFIG.Logging.rich is False
         assert CONFIG.Logging.console is True
@@ -478,3 +480,92 @@ modeling:
         assert CONFIG.Modeling.epsilon == _DEFAULTS['modeling']['epsilon']
         assert CONFIG.Modeling.big_binary_bound == _DEFAULTS['modeling']['big_binary_bound']
         assert CONFIG.config_name == _DEFAULTS['config_name']
+
+    def test_individual_handler_levels(self, tmp_path):
+        """Test that console and file handlers can have different log levels."""
+        log_file = tmp_path / 'test_levels.log'
+
+        # Set console to DEBUG, file to WARNING
+        CONFIG.Logging.level = 'INFO'  # Default level
+        CONFIG.Logging.console = True
+        CONFIG.Logging.console_level = 'DEBUG'
+        CONFIG.Logging.file = str(log_file)
+        CONFIG.Logging.file_level = 'WARNING'
+        CONFIG.apply()
+
+        logger = logging.getLogger('flixopt')
+
+        # Logger should be set to DEBUG (most permissive)
+        assert logger.level == logging.DEBUG
+
+        # Check handler levels
+        from logging.handlers import RotatingFileHandler
+
+        console_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+        ]
+        file_handlers = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
+
+        assert len(console_handlers) == 1
+        assert len(file_handlers) == 1
+
+        # Console handler should be at DEBUG level
+        assert console_handlers[0].level == logging.DEBUG
+
+        # File handler should be at WARNING level
+        assert file_handlers[0].level == logging.WARNING
+
+        # Test actual logging behavior
+        logger.debug('DEBUG message')
+        logger.info('INFO message')
+        logger.warning('WARNING message')
+        logger.error('ERROR message')
+
+        # File should only contain WARNING and ERROR
+        log_content = log_file.read_text()
+        assert 'DEBUG message' not in log_content
+        assert 'INFO message' not in log_content
+        assert 'WARNING message' in log_content
+        assert 'ERROR message' in log_content
+
+    def test_console_level_defaults_to_level(self):
+        """Test that console_level defaults to level when not specified."""
+        CONFIG.Logging.level = 'ERROR'
+        CONFIG.Logging.console = True
+        CONFIG.Logging.console_level = None  # Explicitly None
+        CONFIG.apply()
+
+        logger = logging.getLogger('flixopt')
+
+        # Find console handler
+        from logging.handlers import RotatingFileHandler
+
+        console_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+        ]
+
+        assert len(console_handlers) == 1
+        assert console_handlers[0].level == logging.ERROR
+
+    def test_file_level_defaults_to_level(self, tmp_path):
+        """Test that file_level defaults to level when not specified."""
+        log_file = tmp_path / 'test.log'
+
+        CONFIG.Logging.level = 'CRITICAL'
+        CONFIG.Logging.file = str(log_file)
+        CONFIG.Logging.file_level = None  # Explicitly None
+        CONFIG.apply()
+
+        logger = logging.getLogger('flixopt')
+
+        # Find file handler
+        from logging.handlers import RotatingFileHandler
+
+        file_handlers = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
+
+        assert len(file_handlers) == 1
+        assert file_handlers[0].level == logging.CRITICAL

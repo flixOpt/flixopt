@@ -47,6 +47,7 @@ Please keep the format of the changelog consistent with the other releases, so t
 - Added configurable log format settings: `CONFIG.Logging.date_format` and `CONFIG.Logging.format`
 - Added configurable console settings: `CONFIG.Logging.console_width` and `CONFIG.Logging.show_path`
 - Added `CONFIG.Logging.Colors` nested class for customizable log level colors using ANSI escape codes (works with both standard and Rich handlers)
+- Added individual log level control: `CONFIG.Logging.console_level` and `CONFIG.Logging.file_level` to set different logging levels for console and file handlers independently
 
 ### 💥 Breaking Changes
 
