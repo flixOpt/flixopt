@@ -67,7 +67,7 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 Until here -->
 
-## [v2.2.0] - 2025-10-11
+## [2.2.0] - 2025-10-11
 **Summary:** This release is a Configuration and Logging management release.
 
 ### ✨ Added
