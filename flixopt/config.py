@@ -34,15 +34,15 @@ _DEFAULTS = MappingProxyType(
                 'format': '%(message)s',
                 'console_width': 120,
                 'show_path': False,
-            }
-        ),
-        'colors': MappingProxyType(
-            {
-                'DEBUG': '\033[32m',  # Green
-                'INFO': '\033[34m',  # Blue
-                'WARNING': '\033[33m',  # Yellow
-                'ERROR': '\033[31m',  # Red
-                'CRITICAL': '\033[1m\033[31m',  # Bold Red
+                'colors': MappingProxyType(
+                    {
+                        'DEBUG': '\033[32m',  # Green
+                        'INFO': '\033[34m',  # Blue
+                        'WARNING': '\033[33m',  # Yellow
+                        'ERROR': '\033[31m',  # Red
+                        'CRITICAL': '\033[1m\033[31m',  # Bold Red
+                    }
+                ),
             }
         ),
         'modeling': MappingProxyType(
@@ -209,11 +209,11 @@ class CONFIG:
         show_path: bool = _DEFAULTS['logging']['show_path']
 
         class Colors:
-            DEBUG: str = _DEFAULTS['colors']['DEBUG']
-            INFO: str = _DEFAULTS['colors']['INFO']
-            WARNING: str = _DEFAULTS['colors']['WARNING']
-            ERROR: str = _DEFAULTS['colors']['ERROR']
-            CRITICAL: str = _DEFAULTS['colors']['CRITICAL']
+            DEBUG: str = _DEFAULTS['logging']['colors']['DEBUG']
+            INFO: str = _DEFAULTS['logging']['colors']['INFO']
+            WARNING: str = _DEFAULTS['logging']['colors']['WARNING']
+            ERROR: str = _DEFAULTS['logging']['colors']['ERROR']
+            CRITICAL: str = _DEFAULTS['logging']['colors']['CRITICAL']
 
     class Modeling:
         big: int = _DEFAULTS['modeling']['big']
@@ -226,10 +226,12 @@ class CONFIG:
     def reset(cls):
         """Reset all configuration values to defaults."""
         for key, value in _DEFAULTS['logging'].items():
-            setattr(cls.Logging, key, value)
-
-        for key, value in _DEFAULTS['colors'].items():
-            setattr(cls.Logging.Colors, key, value)
+            if key == 'colors':
+                # Reset nested Colors class
+                for color_key, color_value in value.items():
+                    setattr(cls.Logging.Colors, color_key, color_value)
+            else:
+                setattr(cls.Logging, key, value)
 
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
@@ -282,10 +284,12 @@ class CONFIG:
         for key, value in config_dict.items():
             if key == 'logging' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
-                    setattr(cls.Logging, nested_key, nested_value)
-            elif key == 'colors' and isinstance(value, dict):
-                for nested_key, nested_value in value.items():
-                    setattr(cls.Logging.Colors, nested_key, nested_value)
+                    if nested_key == 'colors' and isinstance(nested_value, dict):
+                        # Handle nested colors under logging
+                        for color_key, color_value in nested_value.items():
+                            setattr(cls.Logging.Colors, color_key, color_value)
+                    else:
+                        setattr(cls.Logging, nested_key, nested_value)
             elif key == 'modeling' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     setattr(cls.Modeling, nested_key, nested_value)
@@ -308,13 +312,13 @@ class CONFIG:
                 'format': cls.Logging.format,
                 'console_width': cls.Logging.console_width,
                 'show_path': cls.Logging.show_path,
-            },
-            'colors': {
-                'DEBUG': cls.Logging.Colors.DEBUG,
-                'INFO': cls.Logging.Colors.INFO,
-                'WARNING': cls.Logging.Colors.WARNING,
-                'ERROR': cls.Logging.Colors.ERROR,
-                'CRITICAL': cls.Logging.Colors.CRITICAL,
+                'colors': {
+                    'DEBUG': cls.Logging.Colors.DEBUG,
+                    'INFO': cls.Logging.Colors.INFO,
+                    'WARNING': cls.Logging.Colors.WARNING,
+                    'ERROR': cls.Logging.Colors.ERROR,
+                    'CRITICAL': cls.Logging.Colors.CRITICAL,
+                },
             },
             'modeling': {
                 'big': cls.Modeling.big,
