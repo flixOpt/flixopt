@@ -55,126 +55,120 @@ _DEFAULTS = MappingProxyType(
 
 
 class CONFIG:
-    """
-    Configuration for flixopt library.
+    """Configuration for flixopt library.
 
     Library is SILENT by default (best practice for libraries).
 
-    Configuration Structure
-    -----------------------
-    CONFIG.Logging - Logging configuration options
-    CONFIG.Modeling - Optimization modeling parameters
+    The CONFIG class provides centralized configuration for logging and modeling parameters.
+    All changes require calling ``CONFIG.apply()`` to take effect.
 
-    Logging Options
-    ---------------
-    level : str
-        Logging level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL' (default: 'INFO')
-    file : str | None
-        Log file path (default: 'flixopt.log'). Set to None to disable file logging.
-    console : bool
-        Enable console (stdout) logging (default: False)
-    rich : bool
-        Use Rich library for enhanced console output (default: False)
-    max_file_size : int
-        Maximum log file size in bytes before rotation (default: 10485760 = 10MB)
-    backup_count : int
-        Number of backup log files to keep (default: 5)
-    date_format : str
-        Date/time format for log messages (default: '%Y-%m-%d %H:%M:%S')
-    message_format : str
-        Log message format string (default: '%(message)s')
-    console_width : int
-        Console width for Rich handler (default: 120)
-    show_path : bool
-        Show file paths in log messages (default: False)
-    colors : dict[str, str]
-        ANSI color codes for each log level. Keys: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
-        Default colors:
-            - DEBUG: green ('\033[32m')
-            - INFO: blue ('\033[34m')
-            - WARNING: yellow ('\033[33m')
-            - ERROR: red ('\033[31m')
-            - CRITICAL: bold red ('\033[1m\033[31m')
+    Attributes:
+        Logging: Nested class containing all logging configuration options.
+        Modeling: Nested class containing optimization modeling parameters.
+        config_name (str): Name of the configuration (default: 'flixopt').
 
-    Modeling Options
-    ----------------
-    big : int
-        Large number for optimization constraints (default: 10000000)
-    epsilon : float
-        Small tolerance value (default: 1e-5)
-    big_binary_bound : int
-        Upper bound for binary variable constraints (default: 100000)
+    Logging Attributes:
+        level (str): Logging level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
+            Default: 'INFO'
+        file (str | None): Log file path. Default: 'flixopt.log'.
+            Set to None to disable file logging.
+        console (bool): Enable console (stdout) logging. Default: False
+        rich (bool): Use Rich library for enhanced console output. Default: False
+        max_file_size (int): Maximum log file size in bytes before rotation.
+            Default: 10485760 (10MB)
+        backup_count (int): Number of backup log files to keep. Default: 5
+        date_format (str): Date/time format for log messages.
+            Default: '%Y-%m-%d %H:%M:%S'
+        message_format (str): Log message format string. Default: '%(message)s'
+        console_width (int): Console width for Rich handler. Default: 120
+        show_path (bool): Show file paths in log messages. Default: False
+        colors (dict[str, str]): ANSI color codes for each log level.
+            Keys: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
+            Default colors:
 
-    Examples
-    --------
-    Basic configuration:
+            - DEBUG: green ('\\033[32m')
+            - INFO: blue ('\\033[34m')
+            - WARNING: yellow ('\\033[33m')
+            - ERROR: red ('\\033[31m')
+            - CRITICAL: bold red ('\\033[1m\\033[31m')
 
-    >>> from flixopt import CONFIG
-    >>> CONFIG.Logging.console = True
-    >>> CONFIG.Logging.level = 'DEBUG'
-    >>> CONFIG.apply()
+    Modeling Attributes:
+        big (int): Large number for optimization constraints. Default: 10000000
+        epsilon (float): Small tolerance value. Default: 1e-5
+        big_binary_bound (int): Upper bound for binary variable constraints.
+            Default: 100000
 
-    Configure log file rotation:
+    Examples:
+        Basic configuration::
 
-    >>> CONFIG.Logging.file = 'myapp.log'
-    >>> CONFIG.Logging.max_file_size = 5_242_880  # 5 MB
-    >>> CONFIG.Logging.backup_count = 3
-    >>> CONFIG.apply()
+            from flixopt import CONFIG
 
-    Customize log colors:
+            CONFIG.Logging.console = True
+            CONFIG.Logging.level = 'DEBUG'
+            CONFIG.apply()
 
-    >>> CONFIG.Logging.colors['INFO'] = '\033[35m'  # Magenta
-    >>> CONFIG.Logging.colors['DEBUG'] = '\033[36m'  # Cyan
-    >>> CONFIG.apply()
+        Configure log file rotation::
 
-    Use Rich handler with custom width:
+            CONFIG.Logging.file = 'myapp.log'
+            CONFIG.Logging.max_file_size = 5_242_880  # 5 MB
+            CONFIG.Logging.backup_count = 3
+            CONFIG.apply()
 
-    >>> CONFIG.Logging.console = True
-    >>> CONFIG.Logging.rich = True
-    >>> CONFIG.Logging.console_width = 100
-    >>> CONFIG.Logging.show_path = True
-    >>> CONFIG.apply()
+        Customize log colors::
 
-    Load from YAML file:
+            CONFIG.Logging.colors['INFO'] = '\\033[35m'  # Magenta
+            CONFIG.Logging.colors['DEBUG'] = '\\033[36m'  # Cyan
+            CONFIG.apply()
 
-    >>> CONFIG.load_from_file('config.yaml')
+        Use Rich handler with custom width::
 
-    Example YAML config file:
+            CONFIG.Logging.console = True
+            CONFIG.Logging.rich = True
+            CONFIG.Logging.console_width = 100
+            CONFIG.Logging.show_path = True
+            CONFIG.apply()
 
-    .. code-block:: yaml
+        Load from YAML file::
 
-        logging:
-          level: DEBUG
-          console: true
-          file: app.log
-          rich: false
-          max_file_size: 5242880  # 5MB
-          backup_count: 3
-          date_format: '%H:%M:%S'
-          console_width: 100
-          show_path: true
-          colors:
-            DEBUG: "\\033[36m"    # Cyan
-            INFO: "\\033[32m"     # Green
-            WARNING: "\\033[33m"
-            ERROR: "\\033[31m"
-            CRITICAL: "\\033[1m\\033[31m"
+            CONFIG.load_from_file('config.yaml')
 
-        modeling:
-          big: 20000000
-          epsilon: 1e-6
-          big_binary_bound: 200000
+        Example YAML config file:
 
-    Reset to defaults:
+        .. code-block:: yaml
 
-    >>> CONFIG.reset()
+            logging:
+              level: DEBUG
+              console: true
+              file: app.log
+              rich: false
+              max_file_size: 5242880  # 5MB
+              backup_count: 3
+              date_format: '%H:%M:%S'
+              console_width: 100
+              show_path: true
+              colors:
+                DEBUG: "\\033[36m"    # Cyan
+                INFO: "\\033[32m"     # Green
+                WARNING: "\\033[33m"
+                ERROR: "\\033[31m"
+                CRITICAL: "\\033[1m\\033[31m"
 
-    Export current configuration:
+            modeling:
+              big: 20000000
+              epsilon: 1e-6
+              big_binary_bound: 200000
 
-    >>> config_dict = CONFIG.to_dict()
-    >>> import yaml
-    >>> with open('my_config.yaml', 'w') as f:
-    ...     yaml.dump(config_dict, f)
+        Reset to defaults::
+
+            CONFIG.reset()
+
+        Export current configuration::
+
+            config_dict = CONFIG.to_dict()
+            import yaml
+
+            with open('my_config.yaml', 'w') as f:
+                yaml.dump(config_dict, f)
     """
 
     class Logging:
