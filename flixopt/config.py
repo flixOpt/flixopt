@@ -10,22 +10,12 @@ from typing import Literal
 import yaml
 from rich.console import Console
 from rich.logging import RichHandler
+from rich.style import Style
 from rich.theme import Theme
 
 __all__ = ['CONFIG', 'change_logging_level']
 
 logger = logging.getLogger('flixopt')
-
-# Default Rich theme for log levels
-DEFAULT_THEME = Theme(
-    {
-        'logging.level.debug': 'green',
-        'logging.level.info': 'blue',
-        'logging.level.warning': 'yellow',
-        'logging.level.error': 'red',
-        'logging.level.critical': 'bold red',
-    }
-)
 
 
 # SINGLE SOURCE OF TRUTH - immutable to prevent accidental modification
@@ -95,7 +85,10 @@ class CONFIG:
         console_width (int): Console width for Rich handler. Default: 120
         show_path (bool): Show file paths in log messages. Default: False
         colors (dict[str, str]): ANSI color codes for each log level.
+            Works with both Rich and standard console handlers.
             Keys: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
+            Values: ANSI escape sequences
+
             Default colors:
 
             - DEBUG: green ('\\033[32m')
@@ -103,6 +96,25 @@ class CONFIG:
             - WARNING: yellow ('\\033[33m')
             - ERROR: red ('\\033[31m')
             - CRITICAL: bold red ('\\033[1m\\033[31m')
+
+            Common ANSI codes:
+
+            - '\\033[30m' - Black
+            - '\\033[31m' - Red
+            - '\\033[32m' - Green
+            - '\\033[33m' - Yellow
+            - '\\033[34m' - Blue
+            - '\\033[35m' - Magenta
+            - '\\033[36m' - Cyan
+            - '\\033[37m' - White
+            - '\\033[1m\\033[3Xm' - Bold color (replace X with color code 0-7)
+            - '\\033[2m\\033[3Xm' - Dim color (replace X with color code 0-7)
+
+            Examples:
+
+            - Magenta: '\\033[35m'
+            - Bold cyan: '\\033[1m\\033[36m'
+            - Dim green: '\\033[2m\\033[32m'
 
     Modeling Attributes:
         big (int): Large number for optimization constraints. Default: 10000000
@@ -130,14 +142,16 @@ class CONFIG:
 
             CONFIG.Logging.colors['INFO'] = '\\033[35m'  # Magenta
             CONFIG.Logging.colors['DEBUG'] = '\\033[36m'  # Cyan
+            CONFIG.Logging.colors['ERROR'] = '\\033[1m\\033[31m'  # Bold red
             CONFIG.apply()
 
-        Use Rich handler with custom width::
+        Use Rich handler with custom colors::
 
             CONFIG.Logging.console = True
             CONFIG.Logging.rich = True
             CONFIG.Logging.console_width = 100
             CONFIG.Logging.show_path = True
+            CONFIG.Logging.colors['INFO'] = '\\033[36m'  # Cyan
             CONFIG.apply()
 
         Load from YAML file::
@@ -152,18 +166,18 @@ class CONFIG:
               level: DEBUG
               console: true
               file: app.log
-              rich: false
+              rich: true
               max_file_size: 5242880  # 5MB
               backup_count: 3
               date_format: '%H:%M:%S'
               console_width: 100
               show_path: true
               colors:
-                DEBUG: "\\033[36m"    # Cyan
-                INFO: "\\033[32m"     # Green
-                WARNING: "\\033[33m"
-                ERROR: "\\033[31m"
-                CRITICAL: "\\033[1m\\033[31m"
+                DEBUG: "\\033[36m"              # Cyan
+                INFO: "\\033[32m"               # Green
+                WARNING: "\\033[33m"            # Yellow
+                ERROR: "\\033[31m"              # Red
+                CRITICAL: "\\033[1m\\033[31m"   # Bold red
 
             modeling:
               big: 20000000
@@ -206,16 +220,16 @@ class CONFIG:
     @classmethod
     def reset(cls):
         """Reset all configuration values to defaults."""
-        # Dynamically reset from _DEFAULTS - no repetition!
         for key, value in _DEFAULTS['logging'].items():
-            setattr(cls.Logging, key, value)
+            if key == 'colors':
+                cls.Logging.colors = dict(value)
+            else:
+                setattr(cls.Logging, key, value)
 
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
 
         cls.config_name = _DEFAULTS['config_name']
-
-        # Apply the reset configuration
         cls.apply()
 
     @classmethod
@@ -253,15 +267,12 @@ class CONFIG:
         """Apply configuration dictionary to class attributes."""
         for key, value in config_dict.items():
             if key == 'logging' and isinstance(value, dict):
-                # Apply logging config
                 for nested_key, nested_value in value.items():
                     setattr(cls.Logging, nested_key, nested_value)
             elif key == 'modeling' and isinstance(value, dict):
-                # Apply modeling config
                 for nested_key, nested_value in value.items():
                     setattr(cls.Modeling, nested_key, nested_value)
             elif hasattr(cls, key):
-                # Simple attribute
                 setattr(cls, key, value)
 
     @classmethod
@@ -280,7 +291,7 @@ class CONFIG:
                 'format': cls.Logging.format,
                 'console_width': cls.Logging.console_width,
                 'show_path': cls.Logging.show_path,
-                'colors': dict(cls.Logging.colors),  # Ensure it's a regular dict
+                'colors': dict(cls.Logging.colors),
             },
             'modeling': {
                 'big': cls.Modeling.big,
@@ -291,18 +302,17 @@ class CONFIG:
 
 
 class MultilineFormater(logging.Formatter):
+    """Formatter that handles multi-line messages with consistent prefixes."""
+
     def __init__(self, fmt=None, datefmt=None):
         super().__init__(fmt=fmt, datefmt=datefmt)
 
     def format(self, record):
         message_lines = record.getMessage().split('\n')
-
-        # Prepare the log prefix (timestamp + log level)
         timestamp = self.formatTime(record, self.datefmt)
-        log_level = record.levelname.ljust(8)  # Align log levels for consistency
+        log_level = record.levelname.ljust(8)
         log_prefix = f'{timestamp} | {log_level} |'
 
-        # Format all lines
         first_line = [f'{log_prefix} {message_lines[0]}']
         if len(message_lines) > 1:
             lines = first_line + [f'{log_prefix} {line}' for line in message_lines[1:]]
@@ -313,59 +323,29 @@ class MultilineFormater(logging.Formatter):
 
 
 class ColoredMultilineFormater(MultilineFormater):
+    """Formatter that adds ANSI colors to multi-line log messages."""
+
     RESET = '\033[0m'
 
     def __init__(self, fmt=None, datefmt=None, colors=None):
         super().__init__(fmt=fmt, datefmt=datefmt)
-        # Use provided colors or fall back to defaults
         self.COLORS = (
             colors
             if colors is not None
             else {
-                'DEBUG': '\033[32m',  # Green
-                'INFO': '\033[34m',  # Blue
-                'WARNING': '\033[33m',  # Yellow
-                'ERROR': '\033[31m',  # Red
-                'CRITICAL': '\033[1m\033[31m',  # Bold Red
+                'DEBUG': '\033[32m',
+                'INFO': '\033[34m',
+                'WARNING': '\033[33m',
+                'ERROR': '\033[31m',
+                'CRITICAL': '\033[1m\033[31m',
             }
         )
 
     def format(self, record):
         lines = super().format(record).splitlines()
         log_color = self.COLORS.get(record.levelname, self.RESET)
-
-        # Create a formatted message for each line separately
-        formatted_lines = []
-        for line in lines:
-            formatted_lines.append(f'{log_color}{line}{self.RESET}')
-
+        formatted_lines = [f'{log_color}{line}{self.RESET}' for line in lines]
         return '\n'.join(formatted_lines)
-
-
-def _ansi_to_rich_style(ansi_code: str) -> str:
-    """Convert ANSI color codes to Rich style strings.
-
-    Args:
-        ansi_code: ANSI escape sequence (e.g., '\\033[32m')
-
-    Returns:
-        Rich style string (e.g., 'green')
-    """
-    ansi_to_rich_map = {
-        '\033[32m': 'green',
-        '\033[34m': 'blue',
-        '\033[33m': 'yellow',
-        '\033[31m': 'red',
-        '\033[35m': 'magenta',
-        '\033[36m': 'cyan',
-        '\033[1m\033[31m': 'bold red',
-        '\033[1m\033[32m': 'bold green',
-        '\033[1m\033[33m': 'bold yellow',
-        '\033[1m\033[34m': 'bold blue',
-        '\033[1m\033[35m': 'bold magenta',
-        '\033[1m\033[36m': 'bold cyan',
-    }
-    return ansi_to_rich_map.get(ansi_code, 'default')
 
 
 def _create_console_handler(
@@ -376,17 +356,35 @@ def _create_console_handler(
     format: str = '%(message)s',
     colors: dict[str, str] | None = None,
 ) -> logging.Handler:
-    """Create a console (stdout) logging handler."""
+    """Create a console (stdout) logging handler.
+
+    Args:
+        use_rich: If True, use RichHandler with color support.
+        console_width: Width of the console for Rich handler.
+        show_path: Show file paths in log messages (Rich only).
+        date_format: Date/time format string.
+        format: Log message format string.
+        colors: Dictionary of ANSI color codes for each log level.
+
+    Returns:
+        Configured logging handler (RichHandler or StreamHandler).
+    """
     if use_rich:
-        # Create custom theme from ANSI colors if provided
+        # Convert ANSI codes to Rich theme
         if colors:
             theme_dict = {}
             for level, ansi_code in colors.items():
-                rich_style = _ansi_to_rich_style(ansi_code)
-                theme_dict[f'logging.level.{level.lower()}'] = rich_style
-            theme = Theme(theme_dict)
+                # Rich can parse ANSI codes directly!
+                try:
+                    style = Style.from_ansi(ansi_code)
+                    theme_dict[f'logging.level.{level.lower()}'] = style
+                except Exception:
+                    # Fallback to default if parsing fails
+                    pass
+
+            theme = Theme(theme_dict) if theme_dict else None
         else:
-            theme = DEFAULT_THEME
+            theme = None
 
         console = Console(width=console_width, theme=theme)
         handler = RichHandler(
@@ -400,6 +398,7 @@ def _create_console_handler(
     else:
         handler = logging.StreamHandler()
         handler.setFormatter(ColoredMultilineFormater(fmt=format, datefmt=date_format, colors=colors))
+
     return handler
 
 
@@ -410,7 +409,18 @@ def _create_file_handler(
     date_format: str = '%Y-%m-%d %H:%M:%S',
     format: str = '%(message)s',
 ) -> RotatingFileHandler:
-    """Create a rotating file handler to prevent huge log files."""
+    """Create a rotating file handler to prevent huge log files.
+
+    Args:
+        log_file: Path to the log file.
+        max_file_size: Maximum size in bytes before rotation.
+        backup_count: Number of backup files to keep.
+        date_format: Date/time format string.
+        format: Log message format string.
+
+    Returns:
+        Configured RotatingFileHandler (without colors).
+    """
     handler = RotatingFileHandler(
         log_file,
         maxBytes=max_file_size,
@@ -434,13 +444,29 @@ def _setup_logging(
     show_path: bool = False,
     colors: dict[str, str] | None = None,
 ):
-    """Internal function to setup logging - use CONFIG.apply() instead."""
+    """Internal function to setup logging - use CONFIG.apply() instead.
+
+    Configures the flixopt logger with console and/or file handlers.
+    If no handlers are configured, adds NullHandler (library best practice).
+
+    Args:
+        default_level: Logging level for the logger.
+        log_file: Path to log file (None to disable file logging).
+        use_rich_handler: Use Rich for enhanced console output.
+        console: Enable console logging.
+        max_file_size: Maximum log file size before rotation.
+        backup_count: Number of backup log files to keep.
+        date_format: Date/time format for log messages.
+        format: Log message format string.
+        console_width: Console width for Rich handler.
+        show_path: Show file paths in log messages (Rich only).
+        colors: ANSI color codes for each log level.
+    """
     logger = logging.getLogger('flixopt')
     logger.setLevel(getattr(logging, default_level.upper()))
     logger.propagate = False  # Prevent duplicate logs
     logger.handlers.clear()
 
-    # Only log to console if explicitly requested
     if console:
         logger.addHandler(
             _create_console_handler(
@@ -453,7 +479,6 @@ def _setup_logging(
             )
         )
 
-    # Add file handler if specified
     if log_file:
         logger.addHandler(
             _create_file_handler(
@@ -465,7 +490,7 @@ def _setup_logging(
             )
         )
 
-    # IMPORTANT: If no handlers, use NullHandler (library best practice)
+    # Library best practice: NullHandler if no handlers configured
     if not logger.handlers:
         logger.addHandler(logging.NullHandler())
 
