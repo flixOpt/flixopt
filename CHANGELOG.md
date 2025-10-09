@@ -47,14 +47,13 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
-- Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
 - Logging and Configuration management changed
 
 ### 🗑️ Deprecated
 - `change_logging_level()` function is now deprecated in favor of `CONFIG.Logging.level` and `CONFIG.apply()`. Will be removed in version 3.0.0.
 
 ### 🔥 Removed
-- Removed unused `merge_configs` function from configuration module
+- Removed unused `config.merge_configs` function from configuration module
 
 
 ### 🐛 Fixed
@@ -62,15 +61,32 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 🔒 Security
 
 ### 📦 Dependencies
-- Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
-- Updated packaging configuration
+
+### 📝 Docs
 
 ### 👷 Development
 - Greatly expanded test coverage for `config.py` module
 - Added `@pytest.mark.xdist_group` to `TestConfigModule` tests to prevent global config interference
 - Improved Renovate configuration with automerge for dev dependencies and better CalVer handling
 
+### 🚧 Known Issues
+
 Until here -->
+---
+
+## [2.1.11] - 2025-10-05
+**Summary:** Important bugfix in `Storage` leading to wrong results due to incorrect discharge losses.
+
+### ♻️ Changed
+- Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
+
+### 🐛 Fixed
+- Fix `charge_state` Constraint in `Storage` leading to incorrect losses in discharge and therefore incorrect charge states and discharge values.
+
+### 📦 Dependencies
+- Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
+- Updated packaging configuration
+
 ---
 
 ## [2.1.10] - 2025-09-29

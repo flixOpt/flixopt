@@ -164,7 +164,7 @@ class FullCalculation(Calculation):
             from .io import document_linopy_model
 
             document_linopy_model(self.model, paths.model_documentation)
-            self.flow_system.to_netcdf(paths.flow_system, engine='h5netcdf')
+            self.flow_system.to_netcdf(paths.flow_system)
             raise RuntimeError(
                 f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.'
             )

@@ -328,8 +328,8 @@ class CalculationResults:
 
         paths = fx_io.CalculationResultsPaths(folder, name)
 
-        fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression, engine='h5netcdf')
-        fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression, engine='h5netcdf')
+        fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
+        fx_io.save_dataset_to_netcdf(self.flow_system, paths.flow_system, compression=compression)
 
         with open(paths.summary, 'w', encoding='utf-8') as f:
             yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
