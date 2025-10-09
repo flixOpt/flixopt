@@ -71,7 +71,6 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 👷 Development
 - Greatly expanded test coverage for `config.py` module
 - Added `@pytest.mark.xdist_group` to `TestConfigModule` tests to prevent global config interference
-- Improved Renovate configuration with automerge for dev dependencies and better CalVer handling
 
 ### 🚧 Known Issues
 
