@@ -34,15 +34,15 @@ _DEFAULTS = MappingProxyType(
                 'format': '%(message)s',
                 'console_width': 120,
                 'show_path': False,
-                'colors': MappingProxyType(
-                    {
-                        'DEBUG': '\033[32m',  # Green
-                        'INFO': '\033[34m',  # Blue
-                        'WARNING': '\033[33m',  # Yellow
-                        'ERROR': '\033[31m',  # Red
-                        'CRITICAL': '\033[1m\033[31m',  # Bold Red
-                    }
-                ),
+            }
+        ),
+        'colors': MappingProxyType(
+            {
+                'DEBUG': '\033[32m',  # Green
+                'INFO': '\033[34m',  # Blue
+                'WARNING': '\033[33m',  # Yellow
+                'ERROR': '\033[31m',  # Red
+                'CRITICAL': '\033[1m\033[31m',  # Bold Red
             }
         ),
         'modeling': MappingProxyType(
@@ -66,6 +66,7 @@ class CONFIG:
 
     Attributes:
         Logging: Nested class containing all logging configuration options.
+            Colors: Nested subclass under Logging containing ANSI color codes for log levels.
         Modeling: Nested class containing optimization modeling parameters.
         config_name (str): Name of the configuration (default: 'flixopt').
 
@@ -84,37 +85,35 @@ class CONFIG:
         format (str): Log message format string. Default: '%(message)s'
         console_width (int): Console width for Rich handler. Default: 120
         show_path (bool): Show file paths in log messages. Default: False
-        colors (dict[str, str]): ANSI color codes for each log level.
-            Works with both Rich and standard console handlers.
-            Keys: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
-            Values: ANSI escape sequences
 
-            Default colors:
+    Colors Attributes:
+        DEBUG (str): ANSI color code for DEBUG level. Default: '\\033[32m' (green)
+        INFO (str): ANSI color code for INFO level. Default: '\\033[34m' (blue)
+        WARNING (str): ANSI color code for WARNING level. Default: '\\033[33m' (yellow)
+        ERROR (str): ANSI color code for ERROR level. Default: '\\033[31m' (red)
+        CRITICAL (str): ANSI color code for CRITICAL level. Default: '\\033[1m\\033[31m' (bold red)
 
-            - DEBUG: green ('\\033[32m')
-            - INFO: blue ('\\033[34m')
-            - WARNING: yellow ('\\033[33m')
-            - ERROR: red ('\\033[31m')
-            - CRITICAL: bold red ('\\033[1m\\033[31m')
+        Works with both Rich and standard console handlers.
+        Rich automatically converts ANSI codes using Style.from_ansi().
 
-            Common ANSI codes:
+        Common ANSI codes:
 
-            - '\\033[30m' - Black
-            - '\\033[31m' - Red
-            - '\\033[32m' - Green
-            - '\\033[33m' - Yellow
-            - '\\033[34m' - Blue
-            - '\\033[35m' - Magenta
-            - '\\033[36m' - Cyan
-            - '\\033[37m' - White
-            - '\\033[1m\\033[3Xm' - Bold color (replace X with color code 0-7)
-            - '\\033[2m\\033[3Xm' - Dim color (replace X with color code 0-7)
+        - '\\033[30m' - Black
+        - '\\033[31m' - Red
+        - '\\033[32m' - Green
+        - '\\033[33m' - Yellow
+        - '\\033[34m' - Blue
+        - '\\033[35m' - Magenta
+        - '\\033[36m' - Cyan
+        - '\\033[37m' - White
+        - '\\033[1m\\033[3Xm' - Bold color (replace X with color code 0-7)
+        - '\\033[2m\\033[3Xm' - Dim color (replace X with color code 0-7)
 
-            Examples:
+        Examples:
 
-            - Magenta: '\\033[35m'
-            - Bold cyan: '\\033[1m\\033[36m'
-            - Dim green: '\\033[2m\\033[32m'
+        - Magenta: '\\033[35m'
+        - Bold cyan: '\\033[1m\\033[36m'
+        - Dim green: '\\033[2m\\033[32m'
 
     Modeling Attributes:
         big (int): Large number for optimization constraints. Default: 10000000
@@ -140,9 +139,9 @@ class CONFIG:
 
         Customize log colors::
 
-            CONFIG.Logging.colors['INFO'] = '\\033[35m'  # Magenta
-            CONFIG.Logging.colors['DEBUG'] = '\\033[36m'  # Cyan
-            CONFIG.Logging.colors['ERROR'] = '\\033[1m\\033[31m'  # Bold red
+            CONFIG.Logging.Colors.INFO = '\\033[35m'  # Magenta
+            CONFIG.Logging.Colors.DEBUG = '\\033[36m'  # Cyan
+            CONFIG.Logging.Colors.ERROR = '\\033[1m\\033[31m'  # Bold red
             CONFIG.apply()
 
         Use Rich handler with custom colors::
@@ -151,7 +150,7 @@ class CONFIG:
             CONFIG.Logging.rich = True
             CONFIG.Logging.console_width = 100
             CONFIG.Logging.show_path = True
-            CONFIG.Logging.colors['INFO'] = '\\033[36m'  # Cyan
+            CONFIG.Logging.Colors.INFO = '\\033[36m'  # Cyan
             CONFIG.apply()
 
         Load from YAML file::
@@ -208,7 +207,13 @@ class CONFIG:
         format: str = _DEFAULTS['logging']['format']
         console_width: int = _DEFAULTS['logging']['console_width']
         show_path: bool = _DEFAULTS['logging']['show_path']
-        colors: dict[str, str] = dict(_DEFAULTS['logging']['colors'])
+
+        class Colors:
+            DEBUG: str = _DEFAULTS['colors']['DEBUG']
+            INFO: str = _DEFAULTS['colors']['INFO']
+            WARNING: str = _DEFAULTS['colors']['WARNING']
+            ERROR: str = _DEFAULTS['colors']['ERROR']
+            CRITICAL: str = _DEFAULTS['colors']['CRITICAL']
 
     class Modeling:
         big: int = _DEFAULTS['modeling']['big']
@@ -221,10 +226,10 @@ class CONFIG:
     def reset(cls):
         """Reset all configuration values to defaults."""
         for key, value in _DEFAULTS['logging'].items():
-            if key == 'colors':
-                cls.Logging.colors = dict(value)
-            else:
-                setattr(cls.Logging, key, value)
+            setattr(cls.Logging, key, value)
+
+        for key, value in _DEFAULTS['colors'].items():
+            setattr(cls.Logging.Colors, key, value)
 
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
@@ -235,6 +240,15 @@ class CONFIG:
     @classmethod
     def apply(cls):
         """Apply current configuration to logging system."""
+        # Convert Colors class attributes to dict
+        colors_dict = {
+            'DEBUG': cls.Logging.Colors.DEBUG,
+            'INFO': cls.Logging.Colors.INFO,
+            'WARNING': cls.Logging.Colors.WARNING,
+            'ERROR': cls.Logging.Colors.ERROR,
+            'CRITICAL': cls.Logging.Colors.CRITICAL,
+        }
+
         _setup_logging(
             default_level=cls.Logging.level,
             log_file=cls.Logging.file,
@@ -246,7 +260,7 @@ class CONFIG:
             format=cls.Logging.format,
             console_width=cls.Logging.console_width,
             show_path=cls.Logging.show_path,
-            colors=cls.Logging.colors,
+            colors=colors_dict,
         )
 
     @classmethod
@@ -269,6 +283,9 @@ class CONFIG:
             if key == 'logging' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     setattr(cls.Logging, nested_key, nested_value)
+            elif key == 'colors' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Logging.Colors, nested_key, nested_value)
             elif key == 'modeling' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     setattr(cls.Modeling, nested_key, nested_value)
@@ -291,7 +308,13 @@ class CONFIG:
                 'format': cls.Logging.format,
                 'console_width': cls.Logging.console_width,
                 'show_path': cls.Logging.show_path,
-                'colors': dict(cls.Logging.colors),
+            },
+            'colors': {
+                'DEBUG': cls.Logging.Colors.DEBUG,
+                'INFO': cls.Logging.Colors.INFO,
+                'WARNING': cls.Logging.Colors.WARNING,
+                'ERROR': cls.Logging.Colors.ERROR,
+                'CRITICAL': cls.Logging.Colors.CRITICAL,
             },
             'modeling': {
                 'big': cls.Modeling.big,
