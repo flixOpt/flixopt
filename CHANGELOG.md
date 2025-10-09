@@ -46,9 +46,7 @@ Please keep the format of the changelog consistent with the other releases, so t
 - Added configurable log file rotation settings: `CONFIG.Logging.max_file_size` and `CONFIG.Logging.backup_count`
 - Added configurable log format settings: `CONFIG.Logging.date_format` and `CONFIG.Logging.format`
 - Added configurable console settings: `CONFIG.Logging.console_width` and `CONFIG.Logging.show_path`
-- Added customizable log level colors via `CONFIG.Logging.colors` (works with both standard and Rich handlers)
-- Added Rich theme integration with automatic ANSI-to-Rich color conversion via `DEFAULT_THEME`
-- Added comprehensive Google-style docstring to `CONFIG` class with all configuration options and examples
+- Added customizable log level colors via `CONFIG.Logging.colors` using ANSI escape codes (works with both standard and Rich handlers)
 
 ### 💥 Breaking Changes
 
