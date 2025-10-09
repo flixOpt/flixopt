@@ -42,15 +42,23 @@ Please keep the format of the changelog consistent with the other releases, so t
 ## [Unreleased] - ????-??-??
 
 ### ✨ Added
+- Added `CONFIG.reset()` method to restore configuration to default values
+- Added configurable log file rotation settings: `CONFIG.Logging.max_file_size` and `CONFIG.Logging.backup_count`
+- Added configurable log format settings: `CONFIG.Logging.date_format` and `CONFIG.Logging.format`
+- Added configurable console settings: `CONFIG.Logging.console_width` and `CONFIG.Logging.show_path`
+- Added `CONFIG.Logging.Colors` nested class for customizable log level colors using ANSI escape codes (works with both standard and Rich handlers)
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
-- Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
+- Logging and Configuration management changed
 
 ### 🗑️ Deprecated
+- `change_logging_level()` function is now deprecated in favor of `CONFIG.Logging.level` and `CONFIG.apply()`. Will be removed in version 3.0.0.
 
 ### 🔥 Removed
+- Removed unused `config.merge_configs` function from configuration module
+
 
 ### 🐛 Fixed
 
@@ -61,6 +69,8 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 📝 Docs
 
 ### 👷 Development
+- Greatly expanded test coverage for `config.py` module
+- Added `@pytest.mark.xdist_group` to `TestConfigModule` tests to prevent global config interference
 
 ### 🚧 Known Issues
 
@@ -78,6 +88,7 @@ Until here -->
 
 ### 📦 Dependencies
 - Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
+- Updated packaging configuration
 
 ---
 

@@ -35,5 +35,3 @@ from .commons import (
     results,
     solvers,
 )
-
-CONFIG.load_config()
