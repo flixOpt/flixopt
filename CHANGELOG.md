@@ -62,6 +62,7 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 📝 Docs
 
 ### 👷 Development
+- Enable blank issues
 
 ### 🚧 Known Issues
 
