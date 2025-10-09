@@ -29,7 +29,7 @@ _DEFAULTS = MappingProxyType(
                 'max_file_size': 10_485_760,  # 10MB
                 'backup_count': 5,
                 'date_format': '%Y-%m-%d %H:%M:%S',
-                'message_format': '%(message)s',
+                'format': '%(message)s',
                 'console_width': 120,
                 'show_path': False,
                 'colors': MappingProxyType(
@@ -79,7 +79,7 @@ class CONFIG:
         backup_count (int): Number of backup log files to keep. Default: 5
         date_format (str): Date/time format for log messages.
             Default: '%Y-%m-%d %H:%M:%S'
-        message_format (str): Log message format string. Default: '%(message)s'
+        format (str): Log message format string. Default: '%(message)s'
         console_width (int): Console width for Rich handler. Default: 120
         show_path (bool): Show file paths in log messages. Default: False
         colors (dict[str, str]): ANSI color codes for each log level.
@@ -179,7 +179,7 @@ class CONFIG:
         max_file_size: int = _DEFAULTS['logging']['max_file_size']
         backup_count: int = _DEFAULTS['logging']['backup_count']
         date_format: str = _DEFAULTS['logging']['date_format']
-        message_format: str = _DEFAULTS['logging']['message_format']
+        format: str = _DEFAULTS['logging']['format']
         console_width: int = _DEFAULTS['logging']['console_width']
         show_path: bool = _DEFAULTS['logging']['show_path']
         colors: dict[str, str] = dict(_DEFAULTS['logging']['colors'])
@@ -217,7 +217,7 @@ class CONFIG:
             max_file_size=cls.Logging.max_file_size,
             backup_count=cls.Logging.backup_count,
             date_format=cls.Logging.date_format,
-            message_format=cls.Logging.message_format,
+            format=cls.Logging.format,
             console_width=cls.Logging.console_width,
             show_path=cls.Logging.show_path,
             colors=cls.Logging.colors,
@@ -265,7 +265,7 @@ class CONFIG:
                 'max_file_size': cls.Logging.max_file_size,
                 'backup_count': cls.Logging.backup_count,
                 'date_format': cls.Logging.date_format,
-                'message_format': cls.Logging.message_format,
+                'format': cls.Logging.format,
                 'console_width': cls.Logging.console_width,
                 'show_path': cls.Logging.show_path,
                 'colors': dict(cls.Logging.colors),  # Ensure it's a regular dict
@@ -366,7 +366,7 @@ def _create_console_handler(
     console_width: int = 120,
     show_path: bool = False,
     date_format: str = '%Y-%m-%d %H:%M:%S',
-    message_format: str = '%(message)s',
+    format: str = '%(message)s',
     colors: dict[str, str] | None = None,
 ) -> logging.Handler:
     """Create a console (stdout) logging handler."""
@@ -380,10 +380,10 @@ def _create_console_handler(
             log_time_format=date_format,
             colors=colors,
         )
-        handler.setFormatter(logging.Formatter(message_format))
+        handler.setFormatter(logging.Formatter(format))
     else:
         handler = logging.StreamHandler()
-        handler.setFormatter(ColoredMultilineFormater(fmt=message_format, datefmt=date_format, colors=colors))
+        handler.setFormatter(ColoredMultilineFormater(fmt=format, datefmt=date_format, colors=colors))
     return handler
 
 
@@ -392,7 +392,7 @@ def _create_file_handler(
     max_file_size: int = 10_485_760,
     backup_count: int = 5,
     date_format: str = '%Y-%m-%d %H:%M:%S',
-    message_format: str = '%(message)s',
+    format: str = '%(message)s',
 ) -> RotatingFileHandler:
     """Create a rotating file handler to prevent huge log files."""
     handler = RotatingFileHandler(
@@ -401,7 +401,7 @@ def _create_file_handler(
         backupCount=backup_count,
         encoding='utf-8',
     )
-    handler.setFormatter(MultilineFormater(fmt=message_format, datefmt=date_format))
+    handler.setFormatter(MultilineFormater(fmt=format, datefmt=date_format))
     return handler
 
 
@@ -413,7 +413,7 @@ def _setup_logging(
     max_file_size: int = 10_485_760,
     backup_count: int = 5,
     date_format: str = '%Y-%m-%d %H:%M:%S',
-    message_format: str = '%(message)s',
+    format: str = '%(message)s',
     console_width: int = 120,
     show_path: bool = False,
     colors: dict[str, str] | None = None,
@@ -432,7 +432,7 @@ def _setup_logging(
                 console_width=console_width,
                 show_path=show_path,
                 date_format=date_format,
-                message_format=message_format,
+                format=format,
                 colors=colors,
             )
         )
@@ -445,7 +445,7 @@ def _setup_logging(
                 max_file_size=max_file_size,
                 backup_count=backup_count,
                 date_format=date_format,
-                message_format=message_format,
+                format=format,
             )
         )
 
