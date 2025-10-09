@@ -159,7 +159,10 @@ class Converters:
                     relative_maximum=1,
                     previous_flow_rate=50,
                     size=fx.InvestParameters(
-                        fix_effects=1000, fixed_size=50, optional=False, specific_effects={'costs': 10, 'PE': 2}
+                        effects_of_investment=1000,
+                        fixed_size=50,
+                        optional=False,
+                        effects_of_investment_per_size={'costs': 10, 'PE': 2},
                     ),
                     on_off_parameters=fx.OnOffParameters(
                         on_hours_total_min=0,
@@ -264,7 +267,7 @@ class Storage:
             'Speicher',
             charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
             discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
-            capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
+            capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, optional=False),
             initial_charge_state=0,
             relative_maximum_charge_state=1 / 100 * np.array(charge_state_values),
             relative_maximum_final_charge_state=0.8,
@@ -278,8 +281,8 @@ class Storage:
     def complex():
         """Complex storage with piecewise investment from flow_system_complex"""
         invest_speicher = fx.InvestParameters(
-            fix_effects=0,
-            piecewise_effects=fx.PiecewiseEffects(
+            effects_of_investment=0,
+            piecewise_effects_of_investment=fx.PiecewiseEffects(
                 piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
                 piecewise_shares={
                     'costs': fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),
@@ -287,7 +290,7 @@ class Storage:
                 },
             ),
             optional=False,
-            specific_effects={'costs': 0.01, 'CO2': 0.01},
+            effects_of_investment_per_size={'costs': 0.01, 'CO2': 0.01},
             minimum_size=0,
             maximum_size=1000,
         )
