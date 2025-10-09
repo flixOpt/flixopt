@@ -43,6 +43,10 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 ### ✨ Added
 - Added `CONFIG.reset()` method to restore configuration to default values
+- Added configurable log file rotation settings: `CONFIG.Logging.max_file_size` and `CONFIG.Logging.backup_count`
+- Added configurable log format settings: `CONFIG.Logging.date_format` and `CONFIG.Logging.message_format`
+- Added configurable console settings: `CONFIG.Logging.console_width` and `CONFIG.Logging.show_path`
+- Added customizable log level colors via `CONFIG.Logging.colors` (works with both standard and Rich handlers)
 
 ### 💥 Breaking Changes
 

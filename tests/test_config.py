@@ -25,7 +25,7 @@ class TestConfigModule:
     def test_config_defaults(self):
         """Test that CONFIG has correct default values."""
         assert CONFIG.Logging.level == 'INFO'
-        assert CONFIG.Logging.file is None
+        assert CONFIG.Logging.file == 'flixopt.log'
         assert CONFIG.Logging.rich is False
         assert CONFIG.Logging.console is False
         assert CONFIG.Modeling.big == 10_000_000
@@ -38,10 +38,10 @@ class TestConfigModule:
         # Apply config to ensure handlers are initialized
         CONFIG.apply()
         logger = logging.getLogger('flixopt')
-        # Should have at least one handler (NullHandler by default)
+        # Should have at least one handler (file handler by default)
         assert len(logger.handlers) >= 1
-        # Should have NullHandler when no console/file output is configured
-        assert any(isinstance(h, logging.NullHandler) for h in logger.handlers)
+        # Should have a file handler with default settings
+        assert any(isinstance(h, logging.handlers.RotatingFileHandler) for h in logger.handlers)
 
     def test_config_apply_console(self):
         """Test applying config with console logging enabled."""
@@ -102,7 +102,7 @@ class TestConfigModule:
         assert config_dict['config_name'] == 'flixopt'
         assert config_dict['logging']['level'] == 'DEBUG'
         assert config_dict['logging']['console'] is True
-        assert config_dict['logging']['file'] is None
+        assert config_dict['logging']['file'] == 'flixopt.log'
         assert config_dict['logging']['rich'] is False
         assert 'modeling' in config_dict
         assert config_dict['modeling']['big'] == 10_000_000
@@ -188,18 +188,26 @@ logging:
         assert dummy_handler not in logger.handlers
 
     def test_change_logging_level_removed(self):
-        """Test that change_logging_level function no longer exists."""
-        # This function was removed - users should use CONFIG.apply() instead
+        """Test that change_logging_level function is deprecated but still exists."""
+        # This function is deprecated - users should use CONFIG.apply() instead
         import flixopt
 
-        assert not hasattr(flixopt, 'change_logging_level')
+        # Function should still exist but be deprecated
+        assert hasattr(flixopt, 'change_logging_level')
+
+        # Should emit deprecation warning when called
+        with pytest.warns(DeprecationWarning, match='change_logging_level is deprecated'):
+            flixopt.change_logging_level('DEBUG')
 
     def test_public_api(self):
-        """Test that only CONFIG is exported from config module."""
+        """Test that CONFIG and change_logging_level are exported from config module."""
         from flixopt import config
 
         # CONFIG should be accessible
         assert hasattr(config, 'CONFIG')
+
+        # change_logging_level should be accessible (but deprecated)
+        assert hasattr(config, 'change_logging_level')
 
         # _setup_logging should exist but be marked as private
         assert hasattr(config, '_setup_logging')
@@ -427,7 +435,7 @@ modeling:
         assert CONFIG.Logging.level == 'INFO'
         assert CONFIG.Logging.console is False
         assert CONFIG.Logging.rich is False
-        assert CONFIG.Logging.file is None
+        assert CONFIG.Logging.file == 'flixopt.log'
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
         assert CONFIG.Modeling.big_binary_bound == 100_000
@@ -436,7 +444,7 @@ modeling:
         # Verify logging was also reset
         logger = logging.getLogger('flixopt')
         assert logger.level == logging.INFO
-        assert any(isinstance(h, logging.NullHandler) for h in logger.handlers)
+        assert any(isinstance(h, logging.handlers.RotatingFileHandler) for h in logger.handlers)
 
     def test_reset_matches_class_defaults(self):
         """Test that reset() values match the _DEFAULTS constants.

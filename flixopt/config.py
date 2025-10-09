@@ -26,6 +26,21 @@ _DEFAULTS = MappingProxyType(
                 'file': 'flixopt.log',
                 'rich': False,
                 'console': False,
+                'max_file_size': 10_485_760,  # 10MB
+                'backup_count': 5,
+                'date_format': '%Y-%m-%d %H:%M:%S',
+                'message_format': '%(message)s',
+                'console_width': 120,
+                'show_path': False,
+                'colors': MappingProxyType(
+                    {
+                        'DEBUG': '\033[32m',  # Green
+                        'INFO': '\033[34m',  # Blue
+                        'WARNING': '\033[33m',  # Yellow
+                        'ERROR': '\033[31m',  # Red
+                        'CRITICAL': '\033[1m\033[31m',  # Bold Red
+                    }
+                ),
             }
         ),
         'modeling': MappingProxyType(
@@ -63,6 +78,13 @@ class CONFIG:
         file: str | None = _DEFAULTS['logging']['file']
         rich: bool = _DEFAULTS['logging']['rich']
         console: bool = _DEFAULTS['logging']['console']
+        max_file_size: int = _DEFAULTS['logging']['max_file_size']
+        backup_count: int = _DEFAULTS['logging']['backup_count']
+        date_format: str = _DEFAULTS['logging']['date_format']
+        message_format: str = _DEFAULTS['logging']['message_format']
+        console_width: int = _DEFAULTS['logging']['console_width']
+        show_path: bool = _DEFAULTS['logging']['show_path']
+        colors: dict[str, str] = dict(_DEFAULTS['logging']['colors'])
 
     class Modeling:
         big: int = _DEFAULTS['modeling']['big']
@@ -94,6 +116,13 @@ class CONFIG:
             log_file=cls.Logging.file,
             use_rich_handler=cls.Logging.rich,
             console=cls.Logging.console,
+            max_file_size=cls.Logging.max_file_size,
+            backup_count=cls.Logging.backup_count,
+            date_format=cls.Logging.date_format,
+            message_format=cls.Logging.message_format,
+            console_width=cls.Logging.console_width,
+            show_path=cls.Logging.show_path,
+            colors=cls.Logging.colors,
         )
 
     @classmethod
@@ -135,6 +164,13 @@ class CONFIG:
                 'file': cls.Logging.file,
                 'rich': cls.Logging.rich,
                 'console': cls.Logging.console,
+                'max_file_size': cls.Logging.max_file_size,
+                'backup_count': cls.Logging.backup_count,
+                'date_format': cls.Logging.date_format,
+                'message_format': cls.Logging.message_format,
+                'console_width': cls.Logging.console_width,
+                'show_path': cls.Logging.show_path,
+                'colors': dict(cls.Logging.colors),  # Ensure it's a regular dict
             },
             'modeling': {
                 'big': cls.Modeling.big,
@@ -145,6 +181,9 @@ class CONFIG:
 
 
 class MultilineFormater(logging.Formatter):
+    def __init__(self, fmt=None, datefmt=None):
+        super().__init__(fmt=fmt, datefmt=datefmt)
+
     def format(self, record):
         message_lines = record.getMessage().split('\n')
 
@@ -164,15 +203,22 @@ class MultilineFormater(logging.Formatter):
 
 
 class ColoredMultilineFormater(MultilineFormater):
-    # ANSI escape codes for colors
-    COLORS = {
-        'DEBUG': '\033[32m',  # Green
-        'INFO': '\033[34m',  # Blue
-        'WARNING': '\033[33m',  # Yellow
-        'ERROR': '\033[31m',  # Red
-        'CRITICAL': '\033[1m\033[31m',  # Bold Red
-    }
     RESET = '\033[0m'
+
+    def __init__(self, fmt=None, datefmt=None, colors=None):
+        super().__init__(fmt=fmt, datefmt=datefmt)
+        # Use provided colors or fall back to defaults
+        self.COLORS = (
+            colors
+            if colors is not None
+            else {
+                'DEBUG': '\033[32m',  # Green
+                'INFO': '\033[34m',  # Blue
+                'WARNING': '\033[33m',  # Yellow
+                'ERROR': '\033[31m',  # Red
+                'CRITICAL': '\033[1m\033[31m',  # Bold Red
+            }
+        )
 
     def format(self, record):
         lines = super().format(record).splitlines()
@@ -186,33 +232,78 @@ class ColoredMultilineFormater(MultilineFormater):
         return '\n'.join(formatted_lines)
 
 
-def _create_console_handler(use_rich: bool = False) -> logging.Handler:
+class ColoredRichHandler(RichHandler):
+    """RichHandler with custom color support."""
+
+    # ANSI to Rich color mapping
+    _ANSI_TO_RICH = {
+        '\033[32m': 'green',
+        '\033[34m': 'blue',
+        '\033[33m': 'yellow',
+        '\033[31m': 'red',
+        '\033[1m\033[31m': 'bold red',
+    }
+
+    def __init__(self, *args, colors: dict[str, str] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if colors:
+            # Convert ANSI colors to Rich styles
+            from rich.logging import LogRender
+
+            self.colors = {level: self._ANSI_TO_RICH.get(code, 'default') for level, code in colors.items()}
+        else:
+            self.colors = None
+
+    def get_level_text(self, record):
+        """Override to apply custom colors to level text."""
+        from rich.text import Text
+
+        level_name = record.levelname
+        level_text = Text.styled(level_name.ljust(8), self.colors.get(level_name, 'default') if self.colors else None)
+        return level_text
+
+
+def _create_console_handler(
+    use_rich: bool = False,
+    console_width: int = 120,
+    show_path: bool = False,
+    date_format: str = '%Y-%m-%d %H:%M:%S',
+    message_format: str = '%(message)s',
+    colors: dict[str, str] | None = None,
+) -> logging.Handler:
     """Create a console (stdout) logging handler."""
     if use_rich:
-        console = Console(width=120)
-        handler = RichHandler(
+        console = Console(width=console_width)
+        handler = ColoredRichHandler(
             console=console,
             rich_tracebacks=True,
             omit_repeated_times=True,
-            show_path=False,
-            log_time_format='%Y-%m-%d %H:%M:%S',
+            show_path=show_path,
+            log_time_format=date_format,
+            colors=colors,
         )
-        handler.setFormatter(logging.Formatter('%(message)s'))
+        handler.setFormatter(logging.Formatter(message_format))
     else:
         handler = logging.StreamHandler()
-        handler.setFormatter(ColoredMultilineFormater(fmt='%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+        handler.setFormatter(ColoredMultilineFormater(fmt=message_format, datefmt=date_format, colors=colors))
     return handler
 
 
-def _create_file_handler(log_file: str) -> RotatingFileHandler:
+def _create_file_handler(
+    log_file: str,
+    max_file_size: int = 10_485_760,
+    backup_count: int = 5,
+    date_format: str = '%Y-%m-%d %H:%M:%S',
+    message_format: str = '%(message)s',
+) -> RotatingFileHandler:
     """Create a rotating file handler to prevent huge log files."""
     handler = RotatingFileHandler(
         log_file,
-        maxBytes=10_485_760,  # 10MB max file size
-        backupCount=5,  # Keep 5 backup files
+        maxBytes=max_file_size,
+        backupCount=backup_count,
         encoding='utf-8',
     )
-    handler.setFormatter(MultilineFormater(fmt='%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+    handler.setFormatter(MultilineFormater(fmt=message_format, datefmt=date_format))
     return handler
 
 
@@ -221,6 +312,13 @@ def _setup_logging(
     log_file: str | None = None,
     use_rich_handler: bool = False,
     console: bool = False,
+    max_file_size: int = 10_485_760,
+    backup_count: int = 5,
+    date_format: str = '%Y-%m-%d %H:%M:%S',
+    message_format: str = '%(message)s',
+    console_width: int = 120,
+    show_path: bool = False,
+    colors: dict[str, str] | None = None,
 ):
     """Internal function to setup logging - use CONFIG.apply() instead."""
     logger = logging.getLogger('flixopt')
@@ -230,11 +328,28 @@ def _setup_logging(
 
     # Only log to console if explicitly requested
     if console:
-        logger.addHandler(_create_console_handler(use_rich=use_rich_handler))
+        logger.addHandler(
+            _create_console_handler(
+                use_rich=use_rich_handler,
+                console_width=console_width,
+                show_path=show_path,
+                date_format=date_format,
+                message_format=message_format,
+                colors=colors,
+            )
+        )
 
     # Add file handler if specified
     if log_file:
-        logger.addHandler(_create_file_handler(log_file))
+        logger.addHandler(
+            _create_file_handler(
+                log_file=log_file,
+                max_file_size=max_file_size,
+                backup_count=backup_count,
+                date_format=date_format,
+                message_format=message_format,
+            )
+        )
 
     # IMPORTANT: If no handlers, use NullHandler (library best practice)
     if not logger.handlers:
