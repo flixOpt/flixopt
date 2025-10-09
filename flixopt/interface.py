@@ -868,11 +868,6 @@ class InvestParameters(Interface):
         minimum_size: PeriodicDataUser | None = None,
         maximum_size: PeriodicDataUser | None = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: PeriodicEffectsUser | None = None,
-        specific_effects: PeriodicEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
-        piecewise_effects: PiecewiseEffects | None = None,
-        divest_effects: PeriodicEffectsUser | None = None,
-        # New parameter names
         effects_of_investment: PeriodicEffectsUser | None = None,
         effects_of_investment_per_size: PeriodicEffectsUser | None = None,
         effects_of_retirement: PeriodicEffectsUser | None = None,
@@ -880,6 +875,7 @@ class InvestParameters(Interface):
         **kwargs,
     ):
         # Handle deprecated 'fix_effects' parameter
+        fix_effects = kwargs.pop('fix_effects', None)
         if fix_effects is not None:
             warnings.warn(
                 "Parameter 'fix_effects' is deprecated and will be removed in version 4.0. "
@@ -891,6 +887,7 @@ class InvestParameters(Interface):
                 effects_of_investment = fix_effects
 
         # Handle deprecated 'specific_effects' parameter
+        specific_effects = kwargs.pop('specific_effects', None)
         if specific_effects is not None:
             warnings.warn(
                 "Parameter 'specific_effects' is deprecated and will be removed in version 4.0. "
@@ -902,6 +899,7 @@ class InvestParameters(Interface):
                 effects_of_investment_per_size = specific_effects
 
         # Handle deprecated 'divest_effects' parameter
+        divest_effects = kwargs.pop('divest_effects', None)
         if divest_effects is not None:
             warnings.warn(
                 "Parameter 'divest_effects' is deprecated and will be removed in version 4.0. "
@@ -913,6 +911,7 @@ class InvestParameters(Interface):
                 effects_of_retirement = divest_effects
 
         # Handle deprecated 'piecewise_effects' parameter
+        piecewise_effects = kwargs.pop('piecewise_effects', None)
         if piecewise_effects is not None:
             warnings.warn(
                 "Parameter 'piecewise_effects' is deprecated and will be removed in version 4.0. "
@@ -935,12 +934,6 @@ class InvestParameters(Interface):
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
-        # Keep old attribute names for backward compatibility (deprecated)
-        self.fix_effects = self.effects_of_investment
-        self.specific_effects = self.effects_of_investment_per_size
-        self.divest_effects = self.effects_of_retirement
-        self.piecewise_effects = self.piecewise_effects_of_investment
-
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.effects_of_investment = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
@@ -961,12 +954,6 @@ class InvestParameters(Interface):
             dims=['period', 'scenario'],
         )
 
-        # Update deprecated attributes to maintain backward compatibility
-        self.fix_effects = self.effects_of_investment
-        self.divest_effects = self.effects_of_retirement
-        self.specific_effects = self.effects_of_investment_per_size
-        self.piecewise_effects = self.piecewise_effects_of_investment
-
         if self.piecewise_effects_of_investment is not None:
             self.piecewise_effects_of_investment.has_time_dim = False
             self.piecewise_effects_of_investment.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
@@ -981,6 +968,46 @@ class InvestParameters(Interface):
             self.fixed_size = flow_system.fit_to_model_coords(
                 f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
             )
+
+    @property
+    def fix_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_investment instead."""
+        warnings.warn(
+            'The fix_effects property is deprecated. Use effects_of_investment instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_investment
+
+    @property
+    def specific_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_investment_per_size instead."""
+        warnings.warn(
+            'The specific_effects property is deprecated. Use effects_of_investment_per_size instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_investment_per_size
+
+    @property
+    def divest_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_retirement instead."""
+        warnings.warn(
+            'The divest_effects property is deprecated. Use effects_of_retirement instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_retirement
+
+    @property
+    def piecewise_effects(self) -> PiecewiseEffects | None:
+        """Deprecated property. Use piecewise_effects_of_investment instead."""
+        warnings.warn(
+            'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.piecewise_effects_of_investment
 
     @property
     def minimum_or_fixed_size(self) -> PeriodicData:
