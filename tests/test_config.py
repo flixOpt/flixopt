@@ -27,7 +27,7 @@ class TestConfigModule:
         assert CONFIG.Logging.level == 'INFO'
         assert CONFIG.Logging.file == 'flixopt.log'
         assert CONFIG.Logging.rich is False
-        assert CONFIG.Logging.console is False
+        assert CONFIG.Logging.console is True
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
         assert CONFIG.Modeling.big_binary_bound == 100_000
@@ -420,7 +420,7 @@ modeling:
         """Test that CONFIG.reset() restores all defaults."""
         # Modify all config values
         CONFIG.Logging.level = 'DEBUG'
-        CONFIG.Logging.console = True
+        CONFIG.Logging.console = False
         CONFIG.Logging.rich = True
         CONFIG.Logging.file = '/tmp/test.log'
         CONFIG.Modeling.big = 99999999
@@ -433,7 +433,7 @@ modeling:
 
         # Verify all values are back to defaults
         assert CONFIG.Logging.level == 'INFO'
-        assert CONFIG.Logging.console is False
+        assert CONFIG.Logging.console is True
         assert CONFIG.Logging.rich is False
         assert CONFIG.Logging.file == 'flixopt.log'
         assert CONFIG.Modeling.big == 10_000_000
