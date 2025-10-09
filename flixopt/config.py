@@ -33,12 +33,8 @@ _DEFAULTS = MappingProxyType(
                 'format': '%(message)s',
                 'console_width': 120,
                 'show_path': False,
-                'handlers': MappingProxyType(
-                    {
-                        'console_level': 'INFO',
-                        'file_level': 'INFO',
-                    }
-                ),
+                'console_level': 'INFO',
+                'file_level': 'INFO',
                 'colors': MappingProxyType(
                     {
                         'DEBUG': '\033[32m',  # Green
@@ -71,7 +67,6 @@ class CONFIG:
 
     Attributes:
         Logging: Nested class containing all logging configuration options.
-            Handlers: Nested subclass for handler-specific levels
             Colors: Nested subclass for ANSI color codes
         Modeling: Nested class containing optimization modeling parameters.
         config_name (str): Name of the configuration (default: 'flixopt').
@@ -80,6 +75,10 @@ class CONFIG:
         file (str | None): Log file path. Default: 'flixopt.log'.
             Set to None to disable file logging.
         console (bool): Enable console (stdout) logging. Default: False
+        console_level (str): Logging level for console handler.
+            'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Default: 'INFO'
+        file_level (str): Logging level for file handler.
+            'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Default: 'INFO'
         rich (bool): Use Rich library for enhanced console output. Default: False
         max_file_size (int): Maximum log file size in bytes before rotation.
             Default: 10485760 (10MB)
@@ -89,12 +88,6 @@ class CONFIG:
         format (str): Log message format string. Default: '%(message)s'
         console_width (int): Console width for Rich handler. Default: 120
         show_path (bool): Show file paths in log messages. Default: False
-
-    Handlers Attributes:
-        console_level (str): Logging level for console handler.
-            'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Default: 'INFO'
-        file_level (str): Logging level for file handler.
-            'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Default: 'INFO'
 
     Colors Attributes:
         DEBUG (str): ANSI color code for DEBUG level. Default: '\\033[32m' (green)
@@ -141,13 +134,13 @@ class CONFIG:
             from flixopt import CONFIG
 
             CONFIG.Logging.console = True
-            CONFIG.Logging.Handlers.console_level = 'DEBUG'
+            CONFIG.Logging.console_level = 'DEBUG'
             CONFIG.apply()
 
         Use different log levels for console and file::
 
-            CONFIG.Logging.Handlers.console_level = 'DEBUG'  # Console shows DEBUG+
-            CONFIG.Logging.Handlers.file_level = 'WARNING'   # File only logs WARNING+
+            CONFIG.Logging.console_level = 'DEBUG'  # Console shows DEBUG+
+            CONFIG.Logging.file_level = 'WARNING'   # File only logs WARNING+
             CONFIG.apply()
 
         Customize log colors::
@@ -221,12 +214,8 @@ class CONFIG:
         format: str = _DEFAULTS['logging']['format']
         console_width: int = _DEFAULTS['logging']['console_width']
         show_path: bool = _DEFAULTS['logging']['show_path']
-
-        class Handlers:
-            """Handler-specific logging levels."""
-
-            console_level: str = _DEFAULTS['logging']['handlers']['console_level']
-            file_level: str = _DEFAULTS['logging']['handlers']['file_level']
+        console_level: str = _DEFAULTS['logging']['console_level']
+        file_level: str = _DEFAULTS['logging']['file_level']
 
         class Colors:
             """ANSI color codes for each log level.
@@ -254,9 +243,6 @@ class CONFIG:
             if key == 'colors':
                 for color_key, color_value in value.items():
                     setattr(cls.Logging.Colors, color_key, color_value)
-            elif key == 'handlers':
-                for handler_key, handler_value in value.items():
-                    setattr(cls.Logging.Handlers, handler_key, handler_value)
             else:
                 setattr(cls.Logging, key, value)
 
@@ -268,10 +254,9 @@ class CONFIG:
 
     @classmethod
     def apply(cls):
-        """Apply current configuration to logging system."""
         _setup_logging(
-            console_level=cls.Logging.Handlers.console_level,
-            file_level=cls.Logging.Handlers.file_level,
+            console_level=cls.Logging.console_level,
+            file_level=cls.Logging.file_level,
             log_file=cls.Logging.file,
             use_rich_handler=cls.Logging.rich,
             console=cls.Logging.console,
@@ -292,40 +277,33 @@ class CONFIG:
 
     @classmethod
     def load_from_file(cls, config_file: str | Path):
-        """Load configuration from YAML file and apply it."""
         config_path = Path(config_file)
         if not config_path.exists():
             raise FileNotFoundError(f'Config file not found: {config_file}')
-
         with config_path.open() as file:
             config_dict = yaml.safe_load(file)
             cls._apply_config_dict(config_dict)
-
         cls.apply()
 
     @classmethod
     def _apply_config_dict(cls, config_dict: dict):
-        """Apply configuration dictionary to class attributes."""
         for key, value in config_dict.items():
             if key == 'logging' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     if nested_key == 'colors' and isinstance(nested_value, dict):
                         for color_key, color_value in nested_value.items():
                             setattr(cls.Logging.Colors, color_key, color_value)
-                    elif nested_key == 'handlers' and isinstance(nested_value, dict):
-                        for handler_key, handler_value in nested_value.items():
-                            setattr(cls.Logging.Handlers, handler_key, handler_value)
                     elif nested_key == 'level':
                         # DEPRECATED: Handle old 'level' attribute for backward compatibility
                         warnings.warn(
                             "The 'level' attribute in config files is deprecated and will be removed in version 3.0.0. "
-                            "Use 'handlers.console_level' and 'handlers.file_level' instead.",
+                            "Use 'logging.console_level' and 'logging.file_level' instead.",
                             DeprecationWarning,
                             stacklevel=2,
                         )
                         # Apply to both handlers for backward compatibility
-                        cls.Logging.Handlers.console_level = nested_value
-                        cls.Logging.Handlers.file_level = nested_value
+                        cls.Logging.console_level = nested_value
+                        cls.Logging.file_level = nested_value
                     else:
                         setattr(cls.Logging, nested_key, nested_value)
             elif key == 'modeling' and isinstance(value, dict):
@@ -336,7 +314,6 @@ class CONFIG:
 
     @classmethod
     def to_dict(cls):
-        """Convert the configuration class into a dictionary for JSON serialization."""
         return {
             'config_name': cls.config_name,
             'logging': {
@@ -349,10 +326,8 @@ class CONFIG:
                 'format': cls.Logging.format,
                 'console_width': cls.Logging.console_width,
                 'show_path': cls.Logging.show_path,
-                'handlers': {
-                    'console_level': cls.Logging.Handlers.console_level,
-                    'file_level': cls.Logging.Handlers.file_level,
-                },
+                'console_level': cls.Logging.console_level,
+                'file_level': cls.Logging.file_level,
                 'colors': {
                     'DEBUG': cls.Logging.Colors.DEBUG,
                     'INFO': cls.Logging.Colors.INFO,
@@ -369,51 +344,33 @@ class CONFIG:
         }
 
 
-class MultilineFormater(logging.Formatter):
-    """Formatter that handles multi-line messages with consistent prefixes."""
-
-    def __init__(self, fmt=None, datefmt=None):
-        super().__init__(fmt=fmt, datefmt=datefmt)
-
+class MultilineFormatter(logging.Formatter):
     def format(self, record):
         message_lines = record.getMessage().split('\n')
         timestamp = self.formatTime(record, self.datefmt)
         log_level = record.levelname.ljust(8)
-        log_prefix = f'{timestamp} | {log_level} |'
-
-        first_line = [f'{log_prefix} {message_lines[0]}']
-        if len(message_lines) > 1:
-            lines = first_line + [f'{log_prefix} {line}' for line in message_lines[1:]]
-        else:
-            lines = first_line
-
+        prefix = f'{timestamp} | {log_level} |'
+        lines = [f'{prefix} {line}' for line in message_lines]
         return '\n'.join(lines)
 
 
-class ColoredMultilineFormater(MultilineFormater):
-    """Formatter that adds ANSI colors to multi-line log messages."""
-
+class ColoredMultilineFormatter(MultilineFormatter):
     RESET = '\033[0m'
 
     def __init__(self, fmt=None, datefmt=None, colors=None):
         super().__init__(fmt=fmt, datefmt=datefmt)
-        self.COLORS = (
-            colors
-            if colors is not None
-            else {
-                'DEBUG': '\033[32m',
-                'INFO': '\033[34m',
-                'WARNING': '\033[33m',
-                'ERROR': '\033[31m',
-                'CRITICAL': '\033[1m\033[31m',
-            }
-        )
+        self.COLORS = colors or {
+            'DEBUG': '\033[32m',
+            'INFO': '\033[34m',
+            'WARNING': '\033[33m',
+            'ERROR': '\033[31m',
+            'CRITICAL': '\033[1m\033[31m',
+        }
 
     def format(self, record):
         lines = super().format(record).splitlines()
-        log_color = self.COLORS.get(record.levelname, self.RESET)
-        formatted_lines = [f'{log_color}{line}{self.RESET}' for line in lines]
-        return '\n'.join(formatted_lines)
+        color = self.COLORS.get(record.levelname, self.RESET)
+        return '\n'.join(f'{color}{line}{self.RESET}' for line in lines)
 
 
 def _create_console_handler(
@@ -438,21 +395,15 @@ def _create_console_handler(
         Configured logging handler (RichHandler or StreamHandler).
     """
     if use_rich:
-        # Convert ANSI codes to Rich theme
+        theme = None
         if colors:
             theme_dict = {}
             for level, ansi_code in colors.items():
-                # Rich can parse ANSI codes directly!
                 try:
-                    style = Style.from_ansi(ansi_code)
-                    theme_dict[f'logging.level.{level.lower()}'] = style
+                    theme_dict[f'logging.level.{level.lower()}'] = Style.from_ansi(ansi_code)
                 except Exception:
-                    # Fallback to default if parsing fails
                     pass
-
             theme = Theme(theme_dict) if theme_dict else None
-        else:
-            theme = None
 
         console = Console(width=console_width, theme=theme)
         handler = RichHandler(
@@ -465,8 +416,7 @@ def _create_console_handler(
         handler.setFormatter(logging.Formatter(format))
     else:
         handler = logging.StreamHandler()
-        handler.setFormatter(ColoredMultilineFormater(fmt=format, datefmt=date_format, colors=colors))
-
+        handler.setFormatter(ColoredMultilineFormatter(fmt=format, datefmt=date_format, colors=colors))
     return handler
 
 
@@ -489,13 +439,8 @@ def _create_file_handler(
     Returns:
         Configured RotatingFileHandler (without colors).
     """
-    handler = RotatingFileHandler(
-        log_file,
-        maxBytes=max_file_size,
-        backupCount=backup_count,
-        encoding='utf-8',
-    )
-    handler.setFormatter(MultilineFormater(fmt=format, datefmt=date_format))
+    handler = RotatingFileHandler(log_file, maxBytes=max_file_size, backupCount=backup_count, encoding='utf-8')
+    handler.setFormatter(MultilineFormatter(fmt=format, datefmt=date_format))
     return handler
 
 
@@ -534,16 +479,12 @@ def _setup_logging(
         colors: ANSI color codes for each log level.
     """
     logger = logging.getLogger('flixopt')
-
-    # Calculate minimum logger level needed
     levels = []
     if console:
         levels.append(getattr(logging, console_level.upper()))
     if log_file:
         levels.append(getattr(logging, file_level.upper()))
-
-    logger_level = min(levels) if levels else logging.CRITICAL
-    logger.setLevel(logger_level)
+    logger.setLevel(min(levels) if levels else logging.CRITICAL)
     logger.propagate = False
     logger.handlers.clear()
 
@@ -573,7 +514,6 @@ def _setup_logging(
     # Library best practice: NullHandler if no handlers configured
     if not logger.handlers:
         logger.addHandler(logging.NullHandler())
-
     return logger
 
 
@@ -582,7 +522,7 @@ def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'
     Change the logging level for the flixopt logger and all its handlers.
 
     .. deprecated:: 2.1.11
-        Use ``CONFIG.Logging.Handlers.console_level`` and ``CONFIG.Logging.Handlers.file_level`` instead.
+        Use ``CONFIG.Logging.console_level`` and ``CONFIG.Logging.file_level`` instead.
         This function will be removed in version 3.0.0.
 
     Parameters
@@ -594,20 +534,20 @@ def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'
     --------
     >>> change_logging_level('DEBUG')  # deprecated
     >>> # Use this instead:
-    >>> CONFIG.Logging.Handlers.console_level = 'DEBUG'
-    >>> CONFIG.Logging.Handlers.file_level = 'DEBUG'
+    >>> CONFIG.Logging.console_level = 'DEBUG'
+    >>> CONFIG.Logging.file_level = 'DEBUG'
     >>> CONFIG.apply()
     """
     warnings.warn(
         'change_logging_level is deprecated and will be removed in version 3.0.0. '
-        'Use CONFIG.Logging.Handlers.console_level and CONFIG.Logging.Handlers.file_level instead.',
+        'Use CONFIG.Logging.console_level and CONFIG.Logging.file_level instead.',
         DeprecationWarning,
         stacklevel=2,
     )
 
-    # Apply to both handlers for backward compatibility
-    CONFIG.Logging.Handlers.console_level = level_name
-    CONFIG.Logging.Handlers.file_level = level_name
+    # Apply to both for backward compatibility
+    CONFIG.Logging.console_level = level_name
+    CONFIG.Logging.file_level = level_name
     CONFIG.apply()
 
 
