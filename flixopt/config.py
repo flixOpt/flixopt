@@ -25,8 +25,6 @@ _DEFAULTS = MappingProxyType(
         'logging': MappingProxyType(
             {
                 'level': 'INFO',
-                'console_level': None,  # If None, uses 'level'
-                'file_level': None,  # If None, uses 'level'
                 'file': 'flixopt.log',
                 'rich': False,
                 'console': True,
@@ -73,12 +71,8 @@ class CONFIG:
         config_name (str): Name of the configuration (default: 'flixopt').
 
     Logging Attributes:
-        level (str): Default logging level for both console and file: 'DEBUG', 'INFO',
-            'WARNING', 'ERROR', 'CRITICAL'. Default: 'INFO'
-        console_level (str | None): Override logging level for console output.
-            If None, uses 'level'. Default: None
-        file_level (str | None): Override logging level for file output.
-            If None, uses 'level'. Default: None
+        level (str): Logging level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
+            Default: 'INFO'
         file (str | None): Log file path. Default: 'flixopt.log'.
             Set to None to disable file logging.
         console (bool): Enable console (stdout) logging. Default: True
@@ -143,13 +137,6 @@ class CONFIG:
             CONFIG.Logging.backup_count = 3
             CONFIG.apply()
 
-        Use different log levels for console and file::
-
-            CONFIG.Logging.level = 'INFO'  # Default level
-            CONFIG.Logging.console_level = 'DEBUG'  # Console shows DEBUG+
-            CONFIG.Logging.file_level = 'WARNING'  # File only logs WARNING+
-            CONFIG.apply()
-
         Customize log colors::
 
             CONFIG.Logging.Colors.INFO = '\\033[35m'  # Magenta
@@ -176,8 +163,6 @@ class CONFIG:
 
             logging:
               level: DEBUG
-              console_level: INFO      # Override console level
-              file_level: WARNING      # Override file level
               console: true
               file: app.log
               rich: true
@@ -213,8 +198,6 @@ class CONFIG:
 
     class Logging:
         level: str = _DEFAULTS['logging']['level']
-        console_level: str | None = _DEFAULTS['logging']['console_level']
-        file_level: str | None = _DEFAULTS['logging']['file_level']
         file: str | None = _DEFAULTS['logging']['file']
         rich: bool = _DEFAULTS['logging']['rich']
         console: bool = _DEFAULTS['logging']['console']
@@ -270,8 +253,6 @@ class CONFIG:
 
         _setup_logging(
             default_level=cls.Logging.level,
-            console_level=cls.Logging.console_level,
-            file_level=cls.Logging.file_level,
             log_file=cls.Logging.file,
             use_rich_handler=cls.Logging.rich,
             console=cls.Logging.console,
@@ -479,8 +460,6 @@ def _create_file_handler(
 
 def _setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
-    console_level: str | None = None,
-    file_level: str | None = None,
     log_file: str | None = None,
     use_rich_handler: bool = False,
     console: bool = False,
@@ -498,9 +477,7 @@ def _setup_logging(
     If no handlers are configured, adds NullHandler (library best practice).
 
     Args:
-        default_level: Logging level for the logger (used if console_level/file_level not set).
-        console_level: Override logging level for console handler (None uses default_level).
-        file_level: Override logging level for file handler (None uses default_level).
+        default_level: Logging level for the logger.
         log_file: Path to log file (None to disable file logging).
         use_rich_handler: Use Rich for enhanced console output.
         console: Enable console logging.
@@ -513,41 +490,32 @@ def _setup_logging(
         colors: ANSI color codes for each log level.
     """
     logger = logging.getLogger('flixopt')
-    # Set logger to the most permissive level needed
-    effective_console_level = console_level if console_level else default_level
-    effective_file_level = file_level if file_level else default_level
-
-    # Logger needs to be at the lowest level to allow handlers to filter
-    min_level = min(
-        getattr(logging, effective_console_level.upper()) if console else logging.CRITICAL,
-        getattr(logging, effective_file_level.upper()) if log_file else logging.CRITICAL,
-    )
-    logger.setLevel(min_level)
+    logger.setLevel(getattr(logging, default_level.upper()))
     logger.propagate = False  # Prevent duplicate logs
     logger.handlers.clear()
 
     if console:
-        handler = _create_console_handler(
-            use_rich=use_rich_handler,
-            console_width=console_width,
-            show_path=show_path,
-            date_format=date_format,
-            format=format,
-            colors=colors,
+        logger.addHandler(
+            _create_console_handler(
+                use_rich=use_rich_handler,
+                console_width=console_width,
+                show_path=show_path,
+                date_format=date_format,
+                format=format,
+                colors=colors,
+            )
         )
-        handler.setLevel(getattr(logging, effective_console_level.upper()))
-        logger.addHandler(handler)
 
     if log_file:
-        handler = _create_file_handler(
-            log_file=log_file,
-            max_file_size=max_file_size,
-            backup_count=backup_count,
-            date_format=date_format,
-            format=format,
+        logger.addHandler(
+            _create_file_handler(
+                log_file=log_file,
+                max_file_size=max_file_size,
+                backup_count=backup_count,
+                date_format=date_format,
+                format=format,
+            )
         )
-        handler.setLevel(getattr(logging, effective_file_level.upper()))
-        logger.addHandler(handler)
 
     # Library best practice: NullHandler if no handlers configured
     if not logger.handlers:
