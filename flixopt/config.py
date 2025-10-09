@@ -27,7 +27,7 @@ _DEFAULTS = MappingProxyType(
                 'level': 'INFO',
                 'file': 'flixopt.log',
                 'rich': False,
-                'console': False,
+                'console': True,
                 'max_file_size': 10_485_760,  # 10MB
                 'backup_count': 5,
                 'date_format': '%Y-%m-%d %H:%M:%S',
@@ -59,10 +59,10 @@ _DEFAULTS = MappingProxyType(
 class CONFIG:
     """Configuration for flixopt library.
 
-    Library is SILENT by default (best practice for libraries).
-
     The CONFIG class provides centralized configuration for logging and modeling parameters.
     All changes require calling ``CONFIG.apply()`` to take effect.
+
+    By default, logging outputs to both console and file ('flixopt.log').
 
     Attributes:
         Logging: Nested class containing all logging configuration options.
@@ -75,7 +75,7 @@ class CONFIG:
             Default: 'INFO'
         file (str | None): Log file path. Default: 'flixopt.log'.
             Set to None to disable file logging.
-        console (bool): Enable console (stdout) logging. Default: False
+        console (bool): Enable console (stdout) logging. Default: True
         rich (bool): Use Rich library for enhanced console output. Default: False
         max_file_size (int): Maximum log file size in bytes before rotation.
             Default: 10485760 (10MB)
