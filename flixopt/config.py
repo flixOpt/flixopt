@@ -24,7 +24,9 @@ _DEFAULTS = MappingProxyType(
         'config_name': 'flixopt',
         'logging': MappingProxyType(
             {
-                'level': 'INFO',  # Logger level (most permissive needed)
+                'level': 'INFO',
+                'console_level': None,  # If None, uses 'level'
+                'file_level': None,  # If None, uses 'level'
                 'file': 'flixopt.log',
                 'rich': False,
                 'console': True,
@@ -34,12 +36,6 @@ _DEFAULTS = MappingProxyType(
                 'format': '%(message)s',
                 'console_width': 120,
                 'show_path': False,
-                'handlers': MappingProxyType(
-                    {
-                        'console_level': 'INFO',
-                        'file_level': 'INFO',
-                    }
-                ),
                 'colors': MappingProxyType(
                     {
                         'DEBUG': '\033[32m',  # Green
@@ -68,19 +64,21 @@ class CONFIG:
     The CONFIG class provides centralized configuration for logging and modeling parameters.
     All changes require calling ``CONFIG.apply()`` to take effect.
 
-    By default, logging outputs to console at INFO level and to file at INFO level.
+    By default, logging outputs to both console and file ('flixopt.log').
 
     Attributes:
         Logging: Nested class containing all logging configuration options.
-            Handlers: Nested subclass for handler-specific levels
-            Colors: Nested subclass for ANSI color codes
+            Colors: Nested subclass under Logging containing ANSI color codes for log levels.
         Modeling: Nested class containing optimization modeling parameters.
         config_name (str): Name of the configuration (default: 'flixopt').
 
     Logging Attributes:
-        level (str): Logger level - sets the minimum level the logger processes.
-            Should be set to the lowest level needed by any handler.
-            Default: 'INFO'
+        level (str): Default logging level for both console and file: 'DEBUG', 'INFO',
+            'WARNING', 'ERROR', 'CRITICAL'. Default: 'INFO'
+        console_level (str | None): Override logging level for console output.
+            If None, uses 'level'. Default: None
+        file_level (str | None): Override logging level for file output.
+            If None, uses 'level'. Default: None
         file (str | None): Log file path. Default: 'flixopt.log'.
             Set to None to disable file logging.
         console (bool): Enable console (stdout) logging. Default: True
@@ -93,12 +91,6 @@ class CONFIG:
         format (str): Log message format string. Default: '%(message)s'
         console_width (int): Console width for Rich handler. Default: 120
         show_path (bool): Show file paths in log messages. Default: False
-
-    Handlers Attributes:
-        console_level (str): Logging level for console handler.
-            'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Default: 'INFO'
-        file_level (str): Logging level for file handler.
-            'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Default: 'INFO'
 
     Colors Attributes:
         DEBUG (str): ANSI color code for DEBUG level. Default: '\\033[32m' (green)
@@ -123,6 +115,12 @@ class CONFIG:
         - '\\033[1m\\033[3Xm' - Bold color (replace X with color code 0-7)
         - '\\033[2m\\033[3Xm' - Dim color (replace X with color code 0-7)
 
+        Examples:
+
+        - Magenta: '\\033[35m'
+        - Bold cyan: '\\033[1m\\033[36m'
+        - Dim green: '\\033[2m\\033[32m'
+
     Modeling Attributes:
         big (int): Large number for optimization constraints. Default: 10000000
         epsilon (float): Small tolerance value. Default: 1e-5
@@ -138,17 +136,34 @@ class CONFIG:
             CONFIG.Logging.level = 'DEBUG'
             CONFIG.apply()
 
+        Configure log file rotation::
+
+            CONFIG.Logging.file = 'myapp.log'
+            CONFIG.Logging.max_file_size = 5_242_880  # 5 MB
+            CONFIG.Logging.backup_count = 3
+            CONFIG.apply()
+
         Use different log levels for console and file::
 
-            CONFIG.Logging.Handlers.console_level = 'DEBUG'  # Console shows DEBUG+
-            CONFIG.Logging.Handlers.file_level = 'WARNING'  # File only logs WARNING+
-            CONFIG.Logging.level = 'DEBUG'  # Logger must be at lowest level
+            CONFIG.Logging.level = 'INFO'  # Default level
+            CONFIG.Logging.console_level = 'DEBUG'  # Console shows DEBUG+
+            CONFIG.Logging.file_level = 'WARNING'  # File only logs WARNING+
             CONFIG.apply()
 
         Customize log colors::
 
-            CONFIG.Logging.Colors.INFO = '\033[35m'  # Magenta (no 'r' prefix!)
-            CONFIG.Logging.Colors.DEBUG = '\033[36m'  # Cyan
+            CONFIG.Logging.Colors.INFO = '\\033[35m'  # Magenta
+            CONFIG.Logging.Colors.DEBUG = '\\033[36m'  # Cyan
+            CONFIG.Logging.Colors.ERROR = '\\033[1m\\033[31m'  # Bold red
+            CONFIG.apply()
+
+        Use Rich handler with custom colors::
+
+            CONFIG.Logging.console = True
+            CONFIG.Logging.rich = True
+            CONFIG.Logging.console_width = 100
+            CONFIG.Logging.show_path = True
+            CONFIG.Logging.Colors.INFO = '\\033[36m'  # Cyan
             CONFIG.apply()
 
         Load from YAML file::
@@ -161,30 +176,45 @@ class CONFIG:
 
             logging:
               level: DEBUG
+              console_level: INFO      # Override console level
+              file_level: WARNING      # Override file level
               console: true
               file: app.log
               rich: true
-              handlers:
-                console_level: INFO
-                file_level: WARNING
+              max_file_size: 5242880  # 5MB
+              backup_count: 3
+              date_format: '%H:%M:%S'
+              console_width: 100
+              show_path: true
               colors:
-                DEBUG: "\033[36m"
-                INFO: "\033[32m"
-                WARNING: "\033[33m"
-                ERROR: "\033[31m"
-                CRITICAL: "\033[1m\033[31m"
+                DEBUG: "\\033[36m"              # Cyan
+                INFO: "\\033[32m"               # Green
+                WARNING: "\\033[33m"            # Yellow
+                ERROR: "\\033[31m"              # Red
+                CRITICAL: "\\033[1m\\033[31m"   # Bold red
 
             modeling:
               big: 20000000
               epsilon: 1e-6
+              big_binary_bound: 200000
 
         Reset to defaults::
 
             CONFIG.reset()
+
+        Export current configuration::
+
+            config_dict = CONFIG.to_dict()
+            import yaml
+
+            with open('my_config.yaml', 'w') as f:
+                yaml.dump(config_dict, f)
     """
 
     class Logging:
         level: str = _DEFAULTS['logging']['level']
+        console_level: str | None = _DEFAULTS['logging']['console_level']
+        file_level: str | None = _DEFAULTS['logging']['file_level']
         file: str | None = _DEFAULTS['logging']['file']
         rich: bool = _DEFAULTS['logging']['rich']
         console: bool = _DEFAULTS['logging']['console']
@@ -195,15 +225,7 @@ class CONFIG:
         console_width: int = _DEFAULTS['logging']['console_width']
         show_path: bool = _DEFAULTS['logging']['show_path']
 
-        class Handlers:
-            """Handler-specific logging levels."""
-
-            console_level: str = _DEFAULTS['logging']['handlers']['console_level']
-            file_level: str = _DEFAULTS['logging']['handlers']['file_level']
-
         class Colors:
-            """ANSI color codes for each log level."""
-
             DEBUG: str = _DEFAULTS['logging']['colors']['DEBUG']
             INFO: str = _DEFAULTS['logging']['colors']['INFO']
             WARNING: str = _DEFAULTS['logging']['colors']['WARNING']
@@ -222,11 +244,9 @@ class CONFIG:
         """Reset all configuration values to defaults."""
         for key, value in _DEFAULTS['logging'].items():
             if key == 'colors':
+                # Reset nested Colors class
                 for color_key, color_value in value.items():
                     setattr(cls.Logging.Colors, color_key, color_value)
-            elif key == 'handlers':
-                for handler_key, handler_value in value.items():
-                    setattr(cls.Logging.Handlers, handler_key, handler_value)
             else:
                 setattr(cls.Logging, key, value)
 
@@ -239,10 +259,19 @@ class CONFIG:
     @classmethod
     def apply(cls):
         """Apply current configuration to logging system."""
+        # Convert Colors class attributes to dict
+        colors_dict = {
+            'DEBUG': cls.Logging.Colors.DEBUG,
+            'INFO': cls.Logging.Colors.INFO,
+            'WARNING': cls.Logging.Colors.WARNING,
+            'ERROR': cls.Logging.Colors.ERROR,
+            'CRITICAL': cls.Logging.Colors.CRITICAL,
+        }
+
         _setup_logging(
             default_level=cls.Logging.level,
-            console_level=cls.Logging.Handlers.console_level,
-            file_level=cls.Logging.Handlers.file_level,
+            console_level=cls.Logging.console_level,
+            file_level=cls.Logging.file_level,
             log_file=cls.Logging.file,
             use_rich_handler=cls.Logging.rich,
             console=cls.Logging.console,
@@ -252,13 +281,7 @@ class CONFIG:
             format=cls.Logging.format,
             console_width=cls.Logging.console_width,
             show_path=cls.Logging.show_path,
-            colors={
-                'DEBUG': cls.Logging.Colors.DEBUG,
-                'INFO': cls.Logging.Colors.INFO,
-                'WARNING': cls.Logging.Colors.WARNING,
-                'ERROR': cls.Logging.Colors.ERROR,
-                'CRITICAL': cls.Logging.Colors.CRITICAL,
-            },
+            colors=colors_dict,
         )
 
     @classmethod
@@ -281,11 +304,9 @@ class CONFIG:
             if key == 'logging' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     if nested_key == 'colors' and isinstance(nested_value, dict):
+                        # Handle nested colors under logging
                         for color_key, color_value in nested_value.items():
                             setattr(cls.Logging.Colors, color_key, color_value)
-                    elif nested_key == 'handlers' and isinstance(nested_value, dict):
-                        for handler_key, handler_value in nested_value.items():
-                            setattr(cls.Logging.Handlers, handler_key, handler_value)
                     else:
                         setattr(cls.Logging, nested_key, nested_value)
             elif key == 'modeling' and isinstance(value, dict):
@@ -310,10 +331,6 @@ class CONFIG:
                 'format': cls.Logging.format,
                 'console_width': cls.Logging.console_width,
                 'show_path': cls.Logging.show_path,
-                'handlers': {
-                    'console_level': cls.Logging.Handlers.console_level,
-                    'file_level': cls.Logging.Handlers.file_level,
-                },
                 'colors': {
                     'DEBUG': cls.Logging.Colors.DEBUG,
                     'INFO': cls.Logging.Colors.INFO,
@@ -462,8 +479,8 @@ def _create_file_handler(
 
 def _setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
-    console_level: str = 'INFO',
-    file_level: str = 'INFO',
+    console_level: str | None = None,
+    file_level: str | None = None,
     log_file: str | None = None,
     use_rich_handler: bool = False,
     console: bool = False,
@@ -477,10 +494,13 @@ def _setup_logging(
 ):
     """Internal function to setup logging - use CONFIG.apply() instead.
 
+    Configures the flixopt logger with console and/or file handlers.
+    If no handlers are configured, adds NullHandler (library best practice).
+
     Args:
-        default_level: Logger level (should be lowest level needed by any handler).
-        console_level: Logging level for console handler.
-        file_level: Logging level for file handler.
+        default_level: Logging level for the logger (used if console_level/file_level not set).
+        console_level: Override logging level for console handler (None uses default_level).
+        file_level: Override logging level for file handler (None uses default_level).
         log_file: Path to log file (None to disable file logging).
         use_rich_handler: Use Rich for enhanced console output.
         console: Enable console logging.
@@ -493,8 +513,17 @@ def _setup_logging(
         colors: ANSI color codes for each log level.
     """
     logger = logging.getLogger('flixopt')
-    logger.setLevel(getattr(logging, default_level.upper()))
-    logger.propagate = False
+    # Set logger to the most permissive level needed
+    effective_console_level = console_level if console_level else default_level
+    effective_file_level = file_level if file_level else default_level
+
+    # Logger needs to be at the lowest level to allow handlers to filter
+    min_level = min(
+        getattr(logging, effective_console_level.upper()) if console else logging.CRITICAL,
+        getattr(logging, effective_file_level.upper()) if log_file else logging.CRITICAL,
+    )
+    logger.setLevel(min_level)
+    logger.propagate = False  # Prevent duplicate logs
     logger.handlers.clear()
 
     if console:
@@ -506,7 +535,7 @@ def _setup_logging(
             format=format,
             colors=colors,
         )
-        handler.setLevel(getattr(logging, console_level.upper()))
+        handler.setLevel(getattr(logging, effective_console_level.upper()))
         logger.addHandler(handler)
 
     if log_file:
@@ -517,9 +546,10 @@ def _setup_logging(
             date_format=date_format,
             format=format,
         )
-        handler.setLevel(getattr(logging, file_level.upper()))
+        handler.setLevel(getattr(logging, effective_file_level.upper()))
         logger.addHandler(handler)
 
+    # Library best practice: NullHandler if no handlers configured
     if not logger.handlers:
         logger.addHandler(logging.NullHandler())
 
