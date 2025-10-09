@@ -10,10 +10,22 @@ from typing import Literal
 import yaml
 from rich.console import Console
 from rich.logging import RichHandler
+from rich.theme import Theme
 
 __all__ = ['CONFIG', 'change_logging_level']
 
 logger = logging.getLogger('flixopt')
+
+# Default Rich theme for log levels
+DEFAULT_THEME = Theme(
+    {
+        'logging.level.debug': 'green',
+        'logging.level.info': 'blue',
+        'logging.level.warning': 'yellow',
+        'logging.level.error': 'red',
+        'logging.level.critical': 'bold red',
+    }
+)
 
 
 # SINGLE SOURCE OF TRUTH - immutable to prevent accidental modification
@@ -330,35 +342,30 @@ class ColoredMultilineFormater(MultilineFormater):
         return '\n'.join(formatted_lines)
 
 
-class ColoredRichHandler(RichHandler):
-    """RichHandler with custom color support."""
+def _ansi_to_rich_style(ansi_code: str) -> str:
+    """Convert ANSI color codes to Rich style strings.
 
-    # ANSI to Rich color mapping
-    _ANSI_TO_RICH = {
+    Args:
+        ansi_code: ANSI escape sequence (e.g., '\\033[32m')
+
+    Returns:
+        Rich style string (e.g., 'green')
+    """
+    ansi_to_rich_map = {
         '\033[32m': 'green',
         '\033[34m': 'blue',
         '\033[33m': 'yellow',
         '\033[31m': 'red',
+        '\033[35m': 'magenta',
+        '\033[36m': 'cyan',
         '\033[1m\033[31m': 'bold red',
+        '\033[1m\033[32m': 'bold green',
+        '\033[1m\033[33m': 'bold yellow',
+        '\033[1m\033[34m': 'bold blue',
+        '\033[1m\033[35m': 'bold magenta',
+        '\033[1m\033[36m': 'bold cyan',
     }
-
-    def __init__(self, *args, colors: dict[str, str] | None = None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if colors:
-            # Convert ANSI colors to Rich styles
-            from rich.logging import LogRender
-
-            self.colors = {level: self._ANSI_TO_RICH.get(code, 'default') for level, code in colors.items()}
-        else:
-            self.colors = None
-
-    def get_level_text(self, record):
-        """Override to apply custom colors to level text."""
-        from rich.text import Text
-
-        level_name = record.levelname
-        level_text = Text.styled(level_name.ljust(8), self.colors.get(level_name, 'default') if self.colors else None)
-        return level_text
+    return ansi_to_rich_map.get(ansi_code, 'default')
 
 
 def _create_console_handler(
@@ -371,14 +378,23 @@ def _create_console_handler(
 ) -> logging.Handler:
     """Create a console (stdout) logging handler."""
     if use_rich:
-        console = Console(width=console_width)
-        handler = ColoredRichHandler(
+        # Create custom theme from ANSI colors if provided
+        if colors:
+            theme_dict = {}
+            for level, ansi_code in colors.items():
+                rich_style = _ansi_to_rich_style(ansi_code)
+                theme_dict[f'logging.level.{level.lower()}'] = rich_style
+            theme = Theme(theme_dict)
+        else:
+            theme = DEFAULT_THEME
+
+        console = Console(width=console_width, theme=theme)
+        handler = RichHandler(
             console=console,
             rich_tracebacks=True,
             omit_repeated_times=True,
             show_path=show_path,
             log_time_format=date_format,
-            colors=colors,
         )
         handler.setFormatter(logging.Formatter(format))
     else:
