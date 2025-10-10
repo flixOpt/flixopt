@@ -891,7 +891,12 @@ class InvestParameters(Interface):
             kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
         )
         # For mandatory parameter with non-None default, disable conflict checking
-        # (cannot distinguish between explicit mandatory=False and default value)
+        if 'optional' in kwargs:
+            warnings.warn(
+                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" wmanually!',
+                DeprecationWarning,
+                stacklevel=2,
+            )
         mandatory = self._handle_deprecated_kwarg(
             kwargs, 'optional', 'mandatory', mandatory, transform=lambda x: not x, check_conflict=False
         )
