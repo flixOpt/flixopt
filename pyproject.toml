@@ -116,10 +116,6 @@ documentation = "https://flixopt.github.io/flixopt/"
 where = ["."]
 include = ["flixopt*"]
 exclude = ["tests*", "docs*", "examples*", "Tutorials*"]
-
-[tool.setuptools.package-data]
-"flixopt" = ["config.yaml"]
-
 [tool.setuptools]
 include-package-data = true
 
