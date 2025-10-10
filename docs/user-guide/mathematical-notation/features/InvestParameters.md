@@ -49,16 +49,16 @@ This uses the **bounds with state** pattern described in [Bounds and States](../
 
 ### Optional vs. Mandatory Investment
 
-The `optional` parameter controls whether investment is required:
+The `mandatory` parameter controls whether investment is required:
 
-**Optional Investment** (`optional=True`):
+**Optional Investment** (`mandatory=False`, default):
 $$\label{eq:invest_optional}
 s_\text{invest} \in \{0, 1\}
 $$
 
 The optimization can freely choose to invest or not.
 
-**Mandatory Investment** (`optional=False`):
+**Mandatory Investment** (`mandatory=True`):
 $$\label{eq:invest_mandatory}
 s_\text{invest} = 1
 $$
@@ -228,7 +228,7 @@ $$
 **Key Parameters:**
 - `fixed_size`: For binary investments (mutually exclusive with continuous sizing)
 - `minimum_size`, `maximum_size`: For continuous sizing
-- `optional`: Whether investment can be skipped
+- `mandatory`: Whether investment is required (default: `False`)
 - `effects_of_investment`: Fixed effects incurred when investing (replaces deprecated `fix_effects`)
 - `effects_of_investment_per_size`: Per-unit effects proportional to size (replaces deprecated `specific_effects`)
 - `piecewise_effects_of_investment`: Non-linear effect modeling (replaces deprecated `piecewise_effects`)
@@ -250,7 +250,7 @@ See the [`InvestParameters`][flixopt.interface.InvestParameters] API documentati
 ```python
 solar_investment = InvestParameters(
     fixed_size=100,  # 100 kW system
-    optional=True,
+    mandatory=False,  # Optional investment (default)
     effects_of_investment={'cost': 25000},  # Installation costs
     effects_of_investment_per_size={'cost': 1200},  # €1200/kW
 )
@@ -261,7 +261,7 @@ solar_investment = InvestParameters(
 battery_investment = InvestParameters(
     minimum_size=10,  # kWh
     maximum_size=1000,
-    optional=True,
+    mandatory=False,  # Optional investment (default)
     effects_of_investment={'cost': 5000},  # Grid connection
     effects_of_investment_per_size={'cost': 600},  # €600/kWh
 )
@@ -272,7 +272,7 @@ battery_investment = InvestParameters(
 boiler_replacement = InvestParameters(
     minimum_size=50,  # kW
     maximum_size=200,
-    optional=True,
+    mandatory=False,  # Optional investment (default)
     effects_of_investment={'cost': 15000},
     effects_of_investment_per_size={'cost': 400},
     effects_of_retirement={'cost': 8000},  # Demolition if not replaced

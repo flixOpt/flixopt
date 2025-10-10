@@ -157,7 +157,7 @@ class TestStorageModel:
             charge_state.isel(time=slice(1, None))
             == charge_state.isel(time=slice(None, -1)) * (1 - rel_loss) ** hours_per_step
             + charge_rate * eff_charge * hours_per_step
-            - discharge_rate * eff_discharge * hours_per_step,
+            - discharge_rate / eff_discharge * hours_per_step,
         )
 
         # Check initial charge state constraint
@@ -265,7 +265,7 @@ class TestStorageModel:
                 effects_of_investment_per_size=10,
                 minimum_size=20,
                 maximum_size=100,
-                optional=True,
+                mandatory=False,
             ),
             initial_charge_state=0,
             eta_charge=0.9,
@@ -425,19 +425,19 @@ class TestStorageModel:
             )
 
     @pytest.mark.parametrize(
-        'optional,minimum_size,expected_vars,expected_constraints',
+        'mandatory,minimum_size,expected_vars,expected_constraints',
         [
-            (True, None, {'InvestStorage|is_invested'}, {'InvestStorage|size|lb'}),
-            (True, 20, {'InvestStorage|is_invested'}, {'InvestStorage|size|lb'}),
-            (False, None, set(), set()),
-            (False, 20, set(), set()),
+            (False, None, {'InvestStorage|is_invested'}, {'InvestStorage|size|lb'}),
+            (False, 20, {'InvestStorage|is_invested'}, {'InvestStorage|size|lb'}),
+            (True, None, set(), set()),
+            (True, 20, set(), set()),
         ],
     )
     def test_investment_parameters(
         self,
         basic_flow_system_linopy_coords,
         coords_config,
-        optional,
+        mandatory,
         minimum_size,
         expected_vars,
         expected_constraints,
@@ -449,7 +449,7 @@ class TestStorageModel:
         invest_params = {
             'effects_of_investment': 100,
             'effects_of_investment_per_size': 10,
-            'optional': optional,
+            'mandatory': mandatory,
         }
         if minimum_size is not None:
             invest_params['minimum_size'] = minimum_size
@@ -471,20 +471,20 @@ class TestStorageModel:
 
         # Check that expected variables exist
         for var_name in expected_vars:
-            if optional:
+            if not mandatory:  # Optional investment (mandatory=False)
                 assert var_name in model.variables, f'Expected variable {var_name} not found'
 
         # Check that expected constraints exist
         for constraint_name in expected_constraints:
-            if optional:
+            if not mandatory:  # Optional investment (mandatory=False)
                 assert constraint_name in model.constraints, f'Expected constraint {constraint_name} not found'
 
-        # If optional is False, is_invested should be fixed to 1
-        if not optional:
+        # If mandatory is True, is_invested should be fixed to 1
+        if mandatory:
             # Check that the is_invested variable exists and is fixed to 1
             if 'InvestStorage|is_invested' in model.variables:
                 var = model.variables['InvestStorage|is_invested']
                 # Check if the lower and upper bounds are both 1
                 assert var.upper == 1 and var.lower == 1, (
-                    'is_invested variable should be fixed to 1 when optional=False'
+                    'is_invested variable should be fixed to 1 when mandatory=True'
                 )

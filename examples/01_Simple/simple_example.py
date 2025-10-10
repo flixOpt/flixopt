@@ -8,6 +8,9 @@ import pandas as pd
 import flixopt as fx
 
 if __name__ == '__main__':
+    # Enable console logging
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG.apply()
     # --- Create Time Series Data ---
     # Heat demand profile (e.g., kW) over time and corresponding power prices
     heat_demand_per_h = np.array([30, 0, 90, 110, 110, 20, 20, 20, 20])
@@ -64,7 +67,7 @@ if __name__ == '__main__':
         label='Storage',
         charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1000),
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1000),
-        capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, optional=False),
+        capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
         initial_charge_state=0,  # Initial storage state: empty
         relative_maximum_charge_state=1 / 100 * np.array([80, 70, 80, 80, 80, 80, 80, 80, 80]),
         relative_maximum_final_charge_state=0.8,

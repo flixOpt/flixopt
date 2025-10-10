@@ -4,6 +4,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Formatting is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Gitmoji](https://gitmoji.dev).
 For more details regarding the individual PRs and contributors, please refer to our [GitHub releases](https://github.com/flixOpt/flixopt/releases).
 
+---
+
 <!-- This text won't be rendered
 Note: The CI will automatically append a "What's Changed" section to the changelog for github releases.
 This contains all commits, PRs, and contributors.
@@ -160,14 +162,59 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
     - `fit_effects_to_model_coords()` method for effect data processing
     - `connect_and_transform()` method replacing several operations
 - **Testing improvements**: Eliminated warnings during test execution
-  - Updated deprecated code patterns in tests and examples (e.g., `sink`/`source` → `inputs`/`outputs`, `'H'` → `'h'` frequency)
-  - Refactored plotting logic to handle test environments explicitly with non-interactive backends
-  - Added comprehensive warning filters in `__init__.py` and `pyproject.toml` to suppress third-party library warnings
-  - Improved test fixtures with proper figure cleanup to prevent memory leaks
-  - Enhanced backend detection and handling in `plotting.py` for both Matplotlib and Plotly
+    - Updated deprecated code patterns in tests and examples (e.g., `sink`/`source` → `inputs`/`outputs`, `'H'` → `'h'` frequency)
+    - Refactored plotting logic to handle test environments explicitly with non-interactive backends
+    - Added comprehensive warning filters in `__init__.py` and `pyproject.toml` to suppress third-party library warnings
+    - Improved test fixtures with proper figure cleanup to prevent memory leaks
+    - Enhanced backend detection and handling in `plotting.py` for both Matplotlib and Plotly
+    - Always run dependent test in order
 
 
 Until here -->
+
+## [2.2.0] - 2025-10-11
+**Summary:** This release is a Configuration and Logging management release.
+
+### ✨ Added
+- Added `CONFIG.reset()` method to restore configuration to default values
+- Added configurable log file rotation settings: `CONFIG.Logging.max_file_size` and `CONFIG.Logging.backup_count`
+- Added configurable log format settings: `CONFIG.Logging.date_format` and `CONFIG.Logging.format`
+- Added configurable console settings: `CONFIG.Logging.console_width` and `CONFIG.Logging.show_path`
+- Added `CONFIG.Logging.Colors` nested class for customizable log level colors using ANSI escape codes (works with both standard and Rich handlers)
+- All examples now enable console logging to demonstrate proper logging usage
+- Console logging now outputs to `sys.stdout` instead of `sys.stderr` for better compatibility with output redirection
+
+### ♻️ Changed
+- Logging and Configuration management changed
+- **Breaking**: Console logging is now disabled by default (`CONFIG.Logging.console = False`). Enable it explicitly in your scripts with `CONFIG.Logging.console = True` and `CONFIG.apply()`
+- **Breaking**: File logging is now disabled by default (`CONFIG.Logging.file = None`). Set a file path to enable file logging
+- Improved default logging colors: DEBUG is now gray (`\033[90m`) for de-emphasized messages, INFO uses terminal default color (`\033[0m`) for clean output
+
+### 🗑️ Deprecated
+- `change_logging_level()` function is now deprecated in favor of `CONFIG.Logging.level` and `CONFIG.apply()`. Will be removed in version 3.0.0.
+
+### 🔥 Removed
+- Removed unused `config.merge_configs` function from configuration module
+
+### 👷 Development
+- Greatly expanded test coverage for `config.py` module
+- Added `@pytest.mark.xdist_group` to `TestConfigModule` tests to prevent global config interference
+
+---
+
+## [2.1.11] - 2025-10-05
+**Summary:** Important bugfix in `Storage` leading to wrong results due to incorrect discharge losses.
+
+### ♻️ Changed
+- Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
+
+### 🐛 Fixed
+- Fix `charge_state` Constraint in `Storage` leading to incorrect losses in discharge and therefore incorrect charge states and discharge values.
+
+### 📦 Dependencies
+- Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
+- Updated packaging configuration
+
 ---
 
 ## [2.1.10] - 2025-09-29

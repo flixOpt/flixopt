@@ -37,9 +37,6 @@ from .commons import (
     solvers,
 )
 
-CONFIG.load_config()
-
-
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.
 # They are suppressed at runtime to provide a cleaner user experience.
@@ -61,7 +58,7 @@ warnings.filterwarnings(
 warnings.filterwarnings(
     'ignore',
     category=FutureWarning,
-    message="default value for join will change from join='outer' to join='exact'",
+    message="In a future version of xarray the default value for join will change from join='outer' to join='exact'",
     module='linopy',
 )
 

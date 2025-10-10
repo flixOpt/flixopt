@@ -692,12 +692,13 @@ class InvestParameters(Interface):
 
     Args:
         fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
-        minimum_size: Lower bound for continuous sizing. Default: CONFIG.modeling.EPSILON.
+        minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
             Ignored if fixed_size is specified.
-        maximum_size: Upper bound for continuous sizing. Default: CONFIG.modeling.BIG.
+        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
             Ignored if fixed_size is specified.
-        optional: If True, can choose not to invest. If False, investment is mandatory.
-            Default: True.
+        mandatory: Controls whether investment is required. When True, forces investment
+            to occur (useful for mandatory upgrades or replacement decisions).
+            When False (default), optimization can choose not to invest.
         effects_of_investment: Fixed costs if investment is made, regardless of size.
             Dict: {'effect_name': value} (e.g., {'cost': 10000}).
         effects_of_investment_per_size: Variable costs proportional to size (per-unit costs).
@@ -716,6 +717,8 @@ class InvestParameters(Interface):
             Will be removed in version 4.0.
         piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
             Will be removed in version 4.0.
+        optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
+            Will be removed in version 4.0.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -733,7 +736,7 @@ class InvestParameters(Interface):
         ```python
         solar_investment = InvestParameters(
             fixed_size=100,  # 100 kW system (binary decision)
-            optional=True,
+            mandatory=False,  # Investment is optional
             effects_of_investment={
                 'cost': 25000,  # Installation and permitting costs
                 'CO2': -50000,  # Avoided emissions over lifetime
@@ -751,7 +754,7 @@ class InvestParameters(Interface):
         battery_investment = InvestParameters(
             minimum_size=10,  # Minimum viable system size (kWh)
             maximum_size=1000,  # Maximum installable capacity
-            optional=True,
+            mandatory=False,  # Investment is optional
             effects_of_investment={
                 'cost': 5000,  # Grid connection and control system
                 'installation_time': 2,  # Days for fixed components
@@ -783,7 +786,7 @@ class InvestParameters(Interface):
         boiler_replacement = InvestParameters(
             minimum_size=50,
             maximum_size=200,
-            optional=True,  # Can choose not to replace
+            mandatory=False,  # Can choose not to replace
             effects_of_investment={
                 'cost': 15000,  # Installation costs
                 'disruption': 3,  # Days of downtime
@@ -867,7 +870,7 @@ class InvestParameters(Interface):
         fixed_size: PeriodicDataUser | None = None,
         minimum_size: PeriodicDataUser | None = None,
         maximum_size: PeriodicDataUser | None = None,
-        optional: bool = True,  # Investition ist weglassbar
+        mandatory: bool = False,
         effects_of_investment: PeriodicEffectsUser | None = None,
         effects_of_investment_per_size: PeriodicEffectsUser | None = None,
         effects_of_retirement: PeriodicEffectsUser | None = None,
@@ -887,6 +890,16 @@ class InvestParameters(Interface):
         piecewise_effects_of_investment = self._handle_deprecated_kwarg(
             kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
         )
+        # For mandatory parameter with non-None default, disable conflict checking
+        if 'optional' in kwargs:
+            warnings.warn(
+                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually!',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        mandatory = self._handle_deprecated_kwarg(
+            kwargs, 'optional', 'mandatory', mandatory, transform=lambda x: not x, check_conflict=False
+        )
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
@@ -898,13 +911,13 @@ class InvestParameters(Interface):
             effects_of_retirement if effects_of_retirement is not None else {}
         )
         self.fixed_size = fixed_size
-        self.optional = optional
+        self.mandatory = mandatory
         self.effects_of_investment_per_size: PeriodicEffectsUser = (
             effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
         )
         self.piecewise_effects_of_investment = piecewise_effects_of_investment
-        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
-        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.effects_of_investment = flow_system.fit_effects_to_model_coords(
@@ -940,6 +953,20 @@ class InvestParameters(Interface):
             self.fixed_size = flow_system.fit_to_model_coords(
                 f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
             )
+
+    @property
+    def optional(self) -> bool:
+        """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
+        import warnings
+
+        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
+        return not self.mandatory
+
+    @optional.setter
+    def optional(self, value: bool):
+        """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
+        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
+        self.mandatory = not value
 
     @property
     def fix_effects(self) -> PeriodicEffectsUser:
