@@ -37,7 +37,7 @@ _DEFAULTS = MappingProxyType(
                 'colors': MappingProxyType(
                     {
                         'DEBUG': '\033[90m',  # Bright Black/Gray
-                        'INFO': '\033[37m',  # White
+                        'INFO': '\033[0m',  # White
                         'WARNING': '\033[33m',  # Yellow
                         'ERROR': '\033[31m',  # Red
                         'CRITICAL': '\033[1m\033[31m',  # Bold Red
@@ -88,7 +88,7 @@ class CONFIG:
 
     Colors Attributes:
         DEBUG (str): ANSI color code for DEBUG level. Default: '\\033[90m' (bright black/gray)
-        INFO (str): ANSI color code for INFO level. Default: '\\033[37m' (white)
+        INFO (str): ANSI color code for INFO level. Default: '\\033[m' (terminal default)
         WARNING (str): ANSI color code for WARNING level. Default: '\\033[33m' (yellow)
         ERROR (str): ANSI color code for ERROR level. Default: '\\033[31m' (red)
         CRITICAL (str): ANSI color code for CRITICAL level. Default: '\\033[1m\\033[31m' (bold red)
@@ -361,7 +361,7 @@ class ColoredMultilineFormater(MultilineFormater):
             if colors is not None
             else {
                 'DEBUG': '\033[90m',
-                'INFO': '\033[37m',
+                'INFO': '\033[0m',
                 'WARNING': '\033[33m',
                 'ERROR': '\033[31m',
                 'CRITICAL': '\033[1m\033[31m',
