@@ -88,12 +88,12 @@ class CONFIG:
     class Logging:
         """Logging configuration.
 
-        Disabled by default. Enable via ``console=True`` or ``file='path'``.
+        Silent by default. Enable via ``console=True`` or ``file='path'``.
 
         Attributes:
             level: Logging level.
             file: Log file path for file logging.
-            console: Console output (False, True, 'stdout', 'stderr').
+            console: Enable console output.
             rich: Use Rich library for enhanced output.
             max_file_size: Max file size before rotation.
             backup_count: Number of backup files to keep.
@@ -147,8 +147,19 @@ class CONFIG:
                 CONFIG.apply()
                 ```
 
-            Common ANSI codes: \\033[31m (red), \\033[32m (green), \\033[33m (yellow),
-            \\033[1m\\033[31m (bold red), \\033[0m (reset).
+            Common ANSI codes:
+                - '\\033[30m' - Black
+                - '\\033[31m' - Red
+                - '\\033[32m' - Green
+                - '\\033[33m' - Yellow
+                - '\\033[34m' - Blue
+                - '\\033[35m' - Magenta
+                - '\\033[36m' - Cyan
+                - '\\033[37m' - White
+                - '\\033[90m' - Bright Black/Gray
+                - '\\033[0m' - Reset to default
+                - '\\033[1m\\033[3Xm' - Bold (replace X with color code 0-7)
+                - '\\033[2m\\033[3Xm' - Dim (replace X with color code 0-7)
             """
 
             DEBUG: str = _DEFAULTS['logging']['colors']['DEBUG']
