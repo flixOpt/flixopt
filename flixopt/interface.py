@@ -922,9 +922,12 @@ class InvestParameters(Interface):
             if piecewise_effects_of_investment is None:
                 piecewise_effects_of_investment = piecewise_effects
 
-        # Assign to internal attributes using new names
-        self.effects_of_investment: PeriodicEffectsUser = effects_of_investment or {}
-        self.effects_of_retirement: PeriodicEffectsUser = effects_of_retirement or {}
+        self.effects_of_investment: PeriodicEffectsUser = (
+            effects_of_investment if effects_of_investment is not None else {}
+        )
+        self.effects_of_retirement: PeriodicEffectsUser = (
+            effects_of_retirement if effects_of_retirement is not None else {}
+        )
         self.fixed_size = fixed_size
         self.optional = optional
         self.effects_of_investment_per_size: PeriodicEffectsUser = (
