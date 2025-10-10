@@ -137,24 +137,25 @@ See [Piecewise](../features/Piecewise.md) for detailed mathematical formulation.
 
 ---
 
-### Divestment Effects
+### Retirement Effects
 
-Costs incurred if investment is NOT made:
+Effects incurred if investment is NOT made (when retiring/not replacing existing equipment):
 
-$$\label{eq:invest_divest_effects}
-E_{e,\text{divest}} = (1 - s_\text{invest}) \cdot \text{divest}_e
+$$\label{eq:invest_retirement_effects}
+E_{e,\text{retirement}} = (1 - s_\text{invest}) \cdot \text{retirement}_e
 $$
 
 With:
-- $E_{e,\text{divest}}$ being the divestment contribution to effect $e$
-- $\text{divest}_e$ being the divestment effect value
+- $E_{e,\text{retirement}}$ being the retirement contribution to effect $e$
+- $\text{retirement}_e$ being the retirement effect value
 
 **Behavior:**
-- $s_\text{invest} = 0$: divestment effects are incurred
-- $s_\text{invest} = 1$: no divestment effects
+- $s_\text{invest} = 0$: retirement effects are incurred
+- $s_\text{invest} = 1$: no retirement effects
 
 **Examples:**
 - Demolition or disposal costs
+- Decommissioning expenses
 - Contractual penalties for not investing
 - Opportunity costs or lost revenues
 
@@ -165,7 +166,7 @@ With:
 The total contribution to effect $e$ from an investment is:
 
 $$\label{eq:invest_total_effects}
-E_{e,\text{invest}} = E_{e,\text{fix}} + E_{e,\text{spec}} + E_{e,\text{pw}} + E_{e,\text{divest}}
+E_{e,\text{invest}} = E_{e,\text{fix}} + E_{e,\text{spec}} + E_{e,\text{pw}} + E_{e,\text{retirement}}
 $$
 
 Effects integrate into the overall system effects as described in [Effects, Penalty & Objective](../effects-penalty-objective.md).
@@ -228,10 +229,10 @@ $$
 - `fixed_size`: For binary investments (mutually exclusive with continuous sizing)
 - `minimum_size`, `maximum_size`: For continuous sizing
 - `optional`: Whether investment can be skipped
-- `fix_effects`: Fixed costs dictionary
-- `specific_effects`: Per-unit costs dictionary
-- `piecewise_effects`: Non-linear cost modeling
-- `divest_effects`: Costs for not investing
+- `effects_of_investment`: Fixed effects incurred when investing (replaces deprecated `fix_effects`)
+- `effects_of_investment_per_size`: Per-unit effects proportional to size (replaces deprecated `specific_effects`)
+- `piecewise_effects_of_investment`: Non-linear effect modeling (replaces deprecated `piecewise_effects`)
+- `effects_of_retirement`: Effects for not investing (replaces deprecated `divest_effects`)
 
 See the [`InvestParameters`][flixopt.interface.InvestParameters] API documentation for complete parameter list and usage examples.
 
@@ -250,8 +251,8 @@ See the [`InvestParameters`][flixopt.interface.InvestParameters] API documentati
 solar_investment = InvestParameters(
     fixed_size=100,  # 100 kW system
     optional=True,
-    fix_effects={'cost': 25000},  # Installation costs
-    specific_effects={'cost': 1200},  # €1200/kW
+    effects_of_investment={'cost': 25000},  # Installation costs
+    effects_of_investment_per_size={'cost': 1200},  # €1200/kW
 )
 ```
 
@@ -261,20 +262,20 @@ battery_investment = InvestParameters(
     minimum_size=10,  # kWh
     maximum_size=1000,
     optional=True,
-    fix_effects={'cost': 5000},  # Grid connection
-    specific_effects={'cost': 600},  # €600/kWh
+    effects_of_investment={'cost': 5000},  # Grid connection
+    effects_of_investment_per_size={'cost': 600},  # €600/kWh
 )
 ```
 
-### With Divestment Costs (Replacement)
+### With Retirement Costs (Replacement)
 ```python
 boiler_replacement = InvestParameters(
     minimum_size=50,  # kW
     maximum_size=200,
     optional=True,
-    fix_effects={'cost': 15000},
-    specific_effects={'cost': 400},
-    divest_effects={'cost': 8000},  # Demolition if not replaced
+    effects_of_investment={'cost': 15000},
+    effects_of_investment_per_size={'cost': 400},
+    effects_of_retirement={'cost': 8000},  # Demolition if not replaced
 )
 ```
 
@@ -283,7 +284,7 @@ boiler_replacement = InvestParameters(
 battery_investment = InvestParameters(
     minimum_size=10,
     maximum_size=1000,
-    piecewise_effects=PiecewiseEffects(
+    piecewise_effects_of_investment=PiecewiseEffects(
         piecewise_origin=Piecewise([
             Piece(0, 100),    # Small
             Piece(100, 500),  # Medium
