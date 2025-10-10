@@ -202,7 +202,7 @@ class ColorProcessor:
             try:
                 colorscale = px.colors.get_colorscale(colormap_name)
             except PlotlyError as e:
-                logger.warning(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
+                logger.error(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
                 colorscale = px.colors.get_colorscale(self.default_colormap)
 
             # Generate evenly spaced points
@@ -213,9 +213,7 @@ class ColorProcessor:
             try:
                 cmap = plt.get_cmap(colormap_name, num_colors)
             except ValueError as e:
-                logger.warning(
-                    f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}"
-                )
+                logger.error(f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}")
                 cmap = plt.get_cmap(self.default_colormap, num_colors)
 
             return [cmap(i) for i in range(num_colors)]
@@ -232,7 +230,7 @@ class ColorProcessor:
             list of colors matching the number of labels
         """
         if len(colors) == 0:
-            logger.warning(f'Empty color list provided. Using {self.default_colormap} instead.')
+            logger.error(f'Empty color list provided. Using {self.default_colormap} instead.')
             return self._generate_colors_from_colormap(self.default_colormap, num_labels)
 
         if len(colors) < num_labels:
@@ -304,7 +302,7 @@ class ColorProcessor:
             Either a list of colors or a dictionary mapping labels to colors
         """
         if len(labels) == 0:
-            logger.warning('No labels provided for color assignment.')
+            logger.error('No labels provided for color assignment.')
             return {} if return_mapping else []
 
         # Process based on type of colors input
@@ -315,7 +313,7 @@ class ColorProcessor:
         elif isinstance(colors, dict):
             color_list = self._handle_color_dict(colors, labels)
         else:
-            logger.warning(
+            logger.error(
                 f'Unsupported color specification type: {type(colors)}. Using {self.default_colormap} instead.'
             )
             color_list = self._generate_colors_from_colormap(self.default_colormap, len(labels))
@@ -413,7 +411,7 @@ def with_plotly(
         mixed_columns = list(set(data.columns) - set(positive_columns + negative_columns))
 
         if mixed_columns:
-            logger.warning(
+            logger.error(
                 f'Data for plotting stacked lines contains columns with both positive and negative values:'
                 f' {mixed_columns}. These can not be stacked, and are printed as simple lines'
             )
@@ -784,7 +782,7 @@ def heat_map_data_from_df(
     minimum_time_diff_in_min = diffs.min().total_seconds() / 60
     time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
     if time_intervals[steps_per_period] > minimum_time_diff_in_min:
-        logger.warning(
+        logger.error(
             f'To compute the heatmap, the data was aggregated from {minimum_time_diff_in_min:.2f} min to '
             f'{time_intervals[steps_per_period]:.2f} min. Mean values are displayed.'
         )
@@ -894,11 +892,9 @@ def plot_network(
 
             worked = webbrowser.open(f'file://{path.resolve()}', 2)
             if not worked:
-                logger.warning(
-                    f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}'
-                )
+                logger.error(f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}')
         except Exception as e:
-            logger.warning(
+            logger.error(
                 f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}: {e}'
             )
 
@@ -937,7 +933,7 @@ def pie_with_plotly(
 
     """
     if data.empty:
-        logger.warning('Empty DataFrame provided for pie chart. Returning empty figure.')
+        logger.error('Empty DataFrame provided for pie chart. Returning empty figure.')
         return go.Figure()
 
     # Create a copy to avoid modifying the original DataFrame
@@ -945,7 +941,7 @@ def pie_with_plotly(
 
     # Check if any negative values and warn
     if (data_copy < 0).any().any():
-        logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+        logger.error('Negative values detected in data. Using absolute values for pie chart.')
         data_copy = data_copy.abs()
 
     # If data has multiple rows, sum them to get total for each column
@@ -1027,7 +1023,7 @@ def pie_with_matplotlib(
 
     """
     if data.empty:
-        logger.warning('Empty DataFrame provided for pie chart. Returning empty figure.')
+        logger.error('Empty DataFrame provided for pie chart. Returning empty figure.')
         if fig is None or ax is None:
             fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
@@ -1037,7 +1033,7 @@ def pie_with_matplotlib(
 
     # Check if any negative values and warn
     if (data_copy < 0).any().any():
-        logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+        logger.error('Negative values detected in data. Using absolute values for pie chart.')
         data_copy = data_copy.abs()
 
     # If data has multiple rows, sum them to get total for each column
@@ -1142,7 +1138,7 @@ def dual_pie_with_plotly(
 
     # Check for empty data
     if data_left.empty and data_right.empty:
-        logger.warning('Both datasets are empty. Returning empty figure.')
+        logger.error('Both datasets are empty. Returning empty figure.')
         return go.Figure()
 
     # Create a subplot figure
@@ -1165,7 +1161,7 @@ def dual_pie_with_plotly(
         """
         # Handle negative values
         if (series < 0).any():
-            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+            logger.error('Negative values detected in data. Using absolute values for pie chart.')
             series = series.abs()
 
         # Remove zeros
@@ -1293,7 +1289,7 @@ def dual_pie_with_matplotlib(
     """
     # Check for empty data
     if data_left.empty and data_right.empty:
-        logger.warning('Both datasets are empty. Returning empty figure.')
+        logger.error('Both datasets are empty. Returning empty figure.')
         if fig is None:
             fig, axes = plt.subplots(1, 2, figsize=figsize)
         return fig, axes
@@ -1311,7 +1307,7 @@ def dual_pie_with_matplotlib(
         """
         # Handle negative values
         if (series < 0).any():
-            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+            logger.error('Negative values detected in data. Using absolute values for pie chart.')
             series = series.abs()
 
         # Remove zeros
