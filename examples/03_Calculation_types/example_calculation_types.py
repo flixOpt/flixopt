@@ -108,39 +108,43 @@ if __name__ == '__main__':
     # 4. Sinks and Sources
     # Heat Load Profile
     a_waermelast = fx.Sink(
-        'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=TS_heat_demand)
+        'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=TS_heat_demand)]
     )
 
     # Electricity Feed-in
     a_strom_last = fx.Sink(
-        'Stromlast', sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=TS_electricity_demand)
+        'Stromlast', inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=TS_electricity_demand)]
     )
 
     # Gas Tariff
     a_gas_tarif = fx.Source(
         'Gastarif',
-        source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: gas_price, CO2.label: 0.3}),
+        outputs=[
+            fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: gas_price, CO2.label: 0.3})
+        ],
     )
 
     # Coal Tariff
     a_kohle_tarif = fx.Source(
         'Kohletarif',
-        source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={costs.label: 4.6, CO2.label: 0.3}),
+        outputs=[fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={costs.label: 4.6, CO2.label: 0.3})],
     )
 
     # Electricity Tariff and Feed-in
     a_strom_einspeisung = fx.Sink(
-        'Einspeisung', sink=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=TS_electricity_price_sell)
+        'Einspeisung', inputs=[fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=TS_electricity_price_sell)]
     )
 
     a_strom_tarif = fx.Source(
         'Stromtarif',
-        source=fx.Flow(
-            'P_el',
-            bus='Strom',
-            size=1000,
-            effects_per_flow_hour={costs.label: TS_electricity_price_buy, CO2.label: 0.3},
-        ),
+        outputs=[
+            fx.Flow(
+                'P_el',
+                bus='Strom',
+                size=1000,
+                effects_per_flow_hour={costs.label: TS_electricity_price_buy, CO2.label: 0.3},
+            )
+        ],
     )
 
     # Flow System Setup

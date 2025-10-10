@@ -187,84 +187,21 @@ class Effect(Element):
         self.share_from_temporal: TemporalEffectsUser = share_from_temporal if share_from_temporal is not None else {}
         self.share_from_periodic: PeriodicEffectsUser = share_from_periodic if share_from_periodic is not None else {}
 
-        # Handle backwards compatibility for deprecated parameters
-        # Extract deprecated parameters from kwargs
-        minimum_operation = kwargs.pop('minimum_operation', None)
-        maximum_operation = kwargs.pop('maximum_operation', None)
-        minimum_invest = kwargs.pop('minimum_invest', None)
-        maximum_invest = kwargs.pop('maximum_invest', None)
-        minimum_operation_per_hour = kwargs.pop('minimum_operation_per_hour', None)
-        maximum_operation_per_hour = kwargs.pop('maximum_operation_per_hour', None)
-
-        # Handle minimum_temporal
-        if minimum_operation is not None:
-            warnings.warn(
-                "Parameter 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if minimum_temporal is not None:
-                raise ValueError('Either minimum_operation or minimum_temporal can be specified, but not both.')
-            minimum_temporal = minimum_operation
-
-        # Handle maximum_temporal
-        if maximum_operation is not None:
-            warnings.warn(
-                "Parameter 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if maximum_temporal is not None:
-                raise ValueError('Either maximum_operation or maximum_temporal can be specified, but not both.')
-            maximum_temporal = maximum_operation
-
-        # Handle minimum_periodic
-        if minimum_invest is not None:
-            warnings.warn(
-                "Parameter 'minimum_invest' is deprecated. Use 'minimum_periodic' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if minimum_periodic is not None:
-                raise ValueError('Either minimum_invest or minimum_periodic can be specified, but not both.')
-            minimum_periodic = minimum_invest
-
-        # Handle maximum_periodic
-        if maximum_invest is not None:
-            warnings.warn(
-                "Parameter 'maximum_invest' is deprecated. Use 'maximum_periodic' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if maximum_periodic is not None:
-                raise ValueError('Either maximum_invest or maximum_periodic can be specified, but not both.')
-            maximum_periodic = maximum_invest
-
-        # Handle minimum_per_hour
-        if minimum_operation_per_hour is not None:
-            warnings.warn(
-                "Parameter 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if minimum_per_hour is not None:
-                raise ValueError(
-                    'Either minimum_operation_per_hour or minimum_per_hour can be specified, but not both.'
-                )
-            minimum_per_hour = minimum_operation_per_hour
-
-        # Handle maximum_per_hour
-        if maximum_operation_per_hour is not None:
-            warnings.warn(
-                "Parameter 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if maximum_per_hour is not None:
-                raise ValueError(
-                    'Either maximum_operation_per_hour or maximum_per_hour can be specified, but not both.'
-                )
-            maximum_per_hour = maximum_operation_per_hour
+        # Handle backwards compatibility for deprecated parameters using centralized helper
+        minimum_temporal = self._handle_deprecated_kwarg(
+            kwargs, 'minimum_operation', 'minimum_temporal', minimum_temporal
+        )
+        maximum_temporal = self._handle_deprecated_kwarg(
+            kwargs, 'maximum_operation', 'maximum_temporal', maximum_temporal
+        )
+        minimum_periodic = self._handle_deprecated_kwarg(kwargs, 'minimum_invest', 'minimum_periodic', minimum_periodic)
+        maximum_periodic = self._handle_deprecated_kwarg(kwargs, 'maximum_invest', 'maximum_periodic', maximum_periodic)
+        minimum_per_hour = self._handle_deprecated_kwarg(
+            kwargs, 'minimum_operation_per_hour', 'minimum_per_hour', minimum_per_hour
+        )
+        maximum_per_hour = self._handle_deprecated_kwarg(
+            kwargs, 'maximum_operation_per_hour', 'maximum_per_hour', maximum_per_hour
+        )
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)

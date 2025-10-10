@@ -126,6 +126,10 @@ class Bus(Element):
     physical or logical connection points for energy carriers (electricity, heat, gas)
     or material flows between different Components.
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Bus](../user-guide/mathematical-notation/elements/Bus.md)
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         excess_penalty_per_flow_hour: Penalty costs for bus balance violations.
@@ -242,39 +246,27 @@ class Flow(Element):
         - **InvestParameters**: Used for `size` when flow Size is an investment decision
         - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Flow](../user-guide/mathematical-notation/elements/Flow.md)
+
     Args:
-        label: Unique identifier for the flow within its component.
-            The full label combines component and flow labels.
-        bus: Label of the bus this flow connects to. Must match a bus in the FlowSystem.
-        size: Flow capacity or nominal rating. Can be:
-            - Scalar value for fixed capacity
-            - InvestParameters for investment-based sizing decisions
-            - None to use large default value (CONFIG.modeling.BIG)
-        relative_minimum: Minimum flow rate as fraction of size.
-            Example: 0.2 means flow cannot go below 20% of rated capacity.
-        relative_maximum: Maximum flow rate as fraction of size (typically 1.0).
-            Values >1.0 allow temporary overload operation.
-        load_factor_min: Minimum average utilization over the time horizon (0-1).
-            Calculated as total flow hours divided by (size × total time).
-        load_factor_max: Maximum average utilization over the time horizon (0-1).
-            Useful for equipment duty cycle limits or maintenance scheduling.
-        effects_per_flow_hour: Operational costs and impacts per unit of flow-time.
-            Dictionary mapping effect names to unit costs (e.g., fuel costs, emissions).
-        on_off_parameters: Binary operation constraints using OnOffParameters.
-            Enables modeling of startup costs, minimum run times, cycling limits.
-            Only relevant when relative_minimum > 0 or discrete operation is required.
-        flow_hours_total_max: Maximum cumulative flow-hours over time horizon.
-            Alternative to load_factor_max for absolute energy/material limits.
-        flow_hours_total_min: Minimum cumulative flow-hours over time horizon.
-            Alternative to load_factor_min for contractual or operational requirements.
-        fixed_relative_profile: Predetermined flow pattern as fraction of size.
-            When specified, flow rate becomes: size × fixed_relative_profile(t).
-            Used for: demand profiles, renewable generation, fixed schedules.
-        previous_flow_rate: Initial flow state for startup/shutdown dynamics.
-            Used with on_off_parameters to determine initial on/off status.
-            If None, assumes flow was off in previous time period.
-        meta_data: Additional information stored with results but not used in optimization.
-            Must contain only Python native types (dict, list, str, int, float, bool).
+        label: Unique flow identifier within its component.
+        bus: Bus label this flow connects to.
+        size: Flow capacity. Scalar, InvestParameters, or None (uses CONFIG.Modeling.big).
+        relative_minimum: Minimum flow rate as fraction of size (0-1). Default: 0.
+        relative_maximum: Maximum flow rate as fraction of size. Default: 1.
+        load_factor_min: Minimum average utilization (0-1). Default: 0.
+        load_factor_max: Maximum average utilization (0-1). Default: 1.
+        effects_per_flow_hour: Operational costs/impacts per flow-hour.
+            Dict mapping effect names to values (e.g., {'cost': 45, 'CO2': 0.8}).
+        on_off_parameters: Binary operation constraints (OnOffParameters). Default: None.
+        flow_hours_total_max: Maximum cumulative flow-hours. Alternative to load_factor_max.
+        flow_hours_total_min: Minimum cumulative flow-hours. Alternative to load_factor_min.
+        fixed_relative_profile: Predetermined pattern as fraction of size.
+            Flow rate = size × fixed_relative_profile(t).
+        previous_flow_rate: Initial flow state for on/off dynamics. Default: None (off).
+        meta_data: Additional info stored in results. Python native types only.
 
     Examples:
         Basic power flow with fixed capacity:
@@ -357,7 +349,7 @@ class Flow(Element):
         `relative_maximum` for upper bounds on optimization variables.
 
     Notes:
-        - Default size (CONFIG.modeling.BIG) is used when size=None
+        - Default size (CONFIG.Modeling.big) is used when size=None
         - list inputs for previous_flow_rate are converted to NumPy arrays
         - Flow direction is determined by component input/output designation
 
@@ -384,7 +376,7 @@ class Flow(Element):
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.size = CONFIG.modeling.BIG if size is None else size
+        self.size = CONFIG.Modeling.big if size is None else size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
@@ -455,11 +447,11 @@ class Flow(Element):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if not isinstance(self.size, InvestParameters) and (
-            np.any(self.size == CONFIG.modeling.BIG) and self.fixed_relative_profile is not None
+            np.any(self.size == CONFIG.Modeling.big) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
                 f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
-                f'The default size is {CONFIG.modeling.BIG}. As "flow_rate = size * fixed_relative_profile", '
+                f'The default size is {CONFIG.Modeling.big}. As "flow_rate = size * fixed_relative_profile", '
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
             )
 
@@ -496,11 +488,6 @@ class Flow(Element):
     def size_is_fixed(self) -> bool:
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
-
-    @property
-    def invest_is_optional(self) -> bool:
-        # Wenn kein InvestParameters existiert: # Investment ist nicht optional -> Keine Variable --> False
-        return False if (isinstance(self.size, InvestParameters) and not self.size.optional) else True
 
 
 class FlowModel(ElementModel):
@@ -686,8 +673,8 @@ class FlowModel(ElementModel):
             if not self.with_investment:
                 # Basic case without investment and without OnOff
                 lb = lb_relative * self.element.size
-            elif isinstance(self.element.size, InvestParameters) and not self.element.size.optional:
-                # With non-optional Investment
+            elif self.with_investment and self.element.size.mandatory:
+                # With mandatory Investment
                 lb = lb_relative * self.element.size.minimum_or_fixed_size
 
         if self.with_investment:
@@ -728,7 +715,7 @@ class FlowModel(ElementModel):
             values=xr.DataArray(
                 [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
             ),
-            epsilon=CONFIG.modeling.EPSILON,
+            epsilon=CONFIG.Modeling.epsilon,
             dims='time',
         )
 
@@ -811,9 +798,9 @@ class ComponentModel(ElementModel):
             else:
                 flow_ons = [flow.submodel.on_off.on for flow in all_flows]
                 # TODO: Is the EPSILON even necessary?
-                self.add_constraints(on <= sum(flow_ons) + CONFIG.modeling.EPSILON, short_name='on|ub')
+                self.add_constraints(on <= sum(flow_ons) + CONFIG.Modeling.epsilon, short_name='on|ub')
                 self.add_constraints(
-                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.modeling.EPSILON), short_name='on|lb'
+                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.Modeling.epsilon), short_name='on|lb'
                 )
 
             self.on_off = self.add_submodels(

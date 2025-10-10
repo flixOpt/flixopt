@@ -48,7 +48,9 @@ if __name__ == '__main__':
             Q_fu=fx.Flow(
                 label='Q_fu',
                 bus='Gas',
-                size=fx.InvestParameters(specific_effects={'costs': 1_000}, minimum_size=10, maximum_size=500),
+                size=fx.InvestParameters(
+                    effects_of_investment_per_size={'costs': 1_000}, minimum_size=10, maximum_size=500
+                ),
                 relative_minimum=0.2,
                 previous_flow_rate=20,
                 on_off_parameters=fx.OnOffParameters(effects_per_switch_on=300),
@@ -66,7 +68,9 @@ if __name__ == '__main__':
             Q_fu=fx.Flow(
                 'Q_fu',
                 bus='Kohle',
-                size=fx.InvestParameters(specific_effects={'costs': 3_000}, minimum_size=10, maximum_size=500),
+                size=fx.InvestParameters(
+                    effects_of_investment_per_size={'costs': 3_000}, minimum_size=10, maximum_size=500
+                ),
                 relative_minimum=0.3,
                 previous_flow_rate=100,
             ),
@@ -74,7 +78,7 @@ if __name__ == '__main__':
         fx.Storage(
             'Speicher',
             capacity_in_flow_hours=fx.InvestParameters(
-                minimum_size=10, maximum_size=1000, specific_effects={'costs': 60}
+                minimum_size=10, maximum_size=1000, effects_of_investment_per_size={'costs': 60}
             ),
             initial_charge_state='lastValueOfSim',
             eta_charge=1,
@@ -84,30 +88,34 @@ if __name__ == '__main__':
             charging=fx.Flow('Q_th_load', size=137, bus='Fernwärme'),
             discharging=fx.Flow('Q_th_unload', size=158, bus='Fernwärme'),
         ),
-        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)),
+        fx.Sink(
+            'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)]
+        ),
         fx.Source(
             'Gastarif',
-            source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
         ),
         fx.Source(
             'Kohletarif',
-            source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
         ),
         fx.Source(
             'Einspeisung',
-            source=fx.Flow(
-                'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3}
-            ),
+            outputs=[
+                fx.Flow(
+                    'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3}
+                )
+            ],
         ),
         fx.Sink(
             'Stromlast',
-            sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electricity_demand),
+            inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electricity_demand)],
         ),
         fx.Source(
             'Stromtarif',
-            source=fx.Flow(
-                'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price, 'CO2': 0.3}
-            ),
+            outputs=[
+                fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price, 'CO2': 0.3})
+            ],
         ),
     )
 

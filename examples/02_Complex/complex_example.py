@@ -57,10 +57,10 @@ if __name__ == '__main__':
             label='Q_th',  # Thermal output
             bus='Fernwärme',  # Linked bus
             size=fx.InvestParameters(
-                fix_effects=1000,  # Fixed investment costs
+                effects_of_investment=1000,  # Fixed investment costs
                 fixed_size=50,  # Fixed size
-                optional=False,  # Forced investment
-                specific_effects={Costs.label: 10, PE.label: 2},  # Specific costs
+                mandatory=True,  # Forced investment
+                effects_of_investment_per_size={Costs.label: 10, PE.label: 2},  # Specific costs
             ),
             load_factor_max=1.0,  # Maximum load factor (50 kW)
             load_factor_min=0.1,  # Minimum load factor (5 kW)
@@ -130,8 +130,8 @@ if __name__ == '__main__':
         charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
         capacity_in_flow_hours=fx.InvestParameters(
-            piecewise_effects=segmented_investment_effects,  # Investment effects
-            optional=False,  # Forced investment
+            piecewise_effects_of_investment=segmented_investment_effects,  # Investment effects
+            mandatory=True,  # Forced investment
             minimum_size=0,
             maximum_size=1000,  # Optimizing between 0 and 1000 kWh
         ),
@@ -147,33 +147,39 @@ if __name__ == '__main__':
     # 5.a) Heat demand profile
     Waermelast = fx.Sink(
         'Wärmelast',
-        sink=fx.Flow(
-            'Q_th_Last',  # Heat sink
-            bus='Fernwärme',  # Linked bus
-            size=1,
-            fixed_relative_profile=heat_demand,  # Fixed demand profile
-        ),
+        inputs=[
+            fx.Flow(
+                'Q_th_Last',  # Heat sink
+                bus='Fernwärme',  # Linked bus
+                size=1,
+                fixed_relative_profile=heat_demand,  # Fixed demand profile
+            )
+        ],
     )
 
     # 5.b) Gas tariff
     Gasbezug = fx.Source(
         'Gastarif',
-        source=fx.Flow(
-            'Q_Gas',
-            bus='Gas',  # Gas source
-            size=1000,  # Nominal size
-            effects_per_flow_hour={Costs.label: 0.04, CO2.label: 0.3},
-        ),
+        outputs=[
+            fx.Flow(
+                'Q_Gas',
+                bus='Gas',  # Gas source
+                size=1000,  # Nominal size
+                effects_per_flow_hour={Costs.label: 0.04, CO2.label: 0.3},
+            )
+        ],
     )
 
     # 5.c) Feed-in of electricity
     Stromverkauf = fx.Sink(
         'Einspeisung',
-        sink=fx.Flow(
-            'P_el',
-            bus='Strom',  # Feed-in tariff for electricity
-            effects_per_flow_hour=-1 * electricity_price,  # Negative price for feed-in
-        ),
+        inputs=[
+            fx.Flow(
+                'P_el',
+                bus='Strom',  # Feed-in tariff for electricity
+                effects_per_flow_hour=-1 * electricity_price,  # Negative price for feed-in
+            )
+        ],
     )
 
     # --- Build FlowSystem ---

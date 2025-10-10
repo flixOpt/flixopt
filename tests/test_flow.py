@@ -16,7 +16,7 @@ class TestFlowModel:
 
         flow = fx.Flow('Wärme', bus='Fernwärme', size=100)
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
 
         model = create_linopy_model(flow_system)
 
@@ -54,7 +54,7 @@ class TestFlowModel:
             load_factor_max=0.9,
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         # total_flow_hours
@@ -112,7 +112,7 @@ class TestFlowModel:
         flow = fx.Flow(
             'Wärme', bus='Fernwärme', effects_per_flow_hour={'costs': costs_per_flow_hour, 'CO2': co2_per_flow_hour}
         )
-        flow_system.add_elements(fx.Sink('Sink', sink=flow), fx.Effect('CO2', 't', ''))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]), fx.Effect('CO2', 't', ''))
         model = create_linopy_model(flow_system)
         costs, co2 = flow_system.effects['costs'], flow_system.effects['CO2']
 
@@ -149,12 +149,12 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=20, maximum_size=100, optional=False),
+            size=fx.InvestParameters(minimum_size=20, maximum_size=100, mandatory=True),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_sets_equal(
@@ -212,12 +212,12 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=20, maximum_size=100, optional=True),
+            size=fx.InvestParameters(minimum_size=20, maximum_size=100, mandatory=False),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_sets_equal(
@@ -287,12 +287,12 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(maximum_size=100, optional=True),
+            size=fx.InvestParameters(maximum_size=100, mandatory=False),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_sets_equal(
@@ -362,12 +362,12 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(maximum_size=100, optional=False),
+            size=fx.InvestParameters(maximum_size=100, mandatory=True),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_sets_equal(
@@ -420,12 +420,12 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(fixed_size=75, optional=False),
+            size=fx.InvestParameters(fixed_size=75, mandatory=True),
             relative_minimum=0.2,
             relative_maximum=0.9,
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_sets_equal(
@@ -458,13 +458,13 @@ class TestFlowInvestModel:
             size=fx.InvestParameters(
                 minimum_size=20,
                 maximum_size=100,
-                optional=True,
-                fix_effects={'costs': 1000, 'CO2': 5},  # Fixed investment effects
-                specific_effects={'costs': 500, 'CO2': 0.1},  # Specific investment effects
+                mandatory=False,
+                effects_of_investment={'costs': 1000, 'CO2': 5},  # Fixed investment effects
+                effects_of_investment_per_size={'costs': 500, 'CO2': 0.1},  # Specific investment effects
             ),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow), co2)
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]), co2)
         model = create_linopy_model(flow_system)
 
         # Check investment effects
@@ -496,12 +496,12 @@ class TestFlowInvestModel:
             size=fx.InvestParameters(
                 minimum_size=20,
                 maximum_size=100,
-                optional=True,
-                divest_effects={'costs': 500},  # Cost incurred when NOT investing
+                mandatory=False,
+                effects_of_retirement={'costs': 500},  # Cost incurred when NOT investing
             ),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         # Check divestment effects
@@ -528,7 +528,7 @@ class TestFlowOnModel:
             relative_maximum=0.8,
             on_off_parameters=fx.OnOffParameters(),
         )
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_sets_equal(
@@ -595,7 +595,7 @@ class TestFlowOnModel:
                 effects_per_running_hour={'costs': costs_per_running_hour, 'CO2': co2_per_running_hour}
             ),
         )
-        flow_system.add_elements(fx.Sink('Sink', sink=flow), fx.Effect('CO2', 't', ''))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]), fx.Effect('CO2', 't', ''))
         model = create_linopy_model(flow_system)
         costs, co2 = flow_system.effects['costs'], flow_system.effects['CO2']
 
@@ -655,7 +655,7 @@ class TestFlowOnModel:
             ),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert {'Sink(Wärme)|consecutive_on_hours', 'Sink(Wärme)|on'}.issubset(set(flow.submodel.variables))
@@ -738,7 +738,7 @@ class TestFlowOnModel:
             previous_flow_rate=np.array([10, 20, 30, 0, 20, 20, 30]),  # Previously on for 3 steps
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert {'Sink(Wärme)|consecutive_on_hours', 'Sink(Wärme)|on'}.issubset(set(flow.submodel.variables))
@@ -818,7 +818,7 @@ class TestFlowOnModel:
             ),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert {'Sink(Wärme)|consecutive_off_hours', 'Sink(Wärme)|off'}.issubset(set(flow.submodel.variables))
@@ -901,7 +901,7 @@ class TestFlowOnModel:
             previous_flow_rate=np.array([10, 20, 30, 0, 20, 0, 0]),  # Previously off for 2 steps
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert {'Sink(Wärme)|consecutive_off_hours', 'Sink(Wärme)|off'}.issubset(set(flow.submodel.variables))
@@ -983,7 +983,7 @@ class TestFlowOnModel:
             ),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         # Check that variables exist
@@ -1045,7 +1045,7 @@ class TestFlowOnModel:
             ),
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         # Check that variables exist
@@ -1076,12 +1076,12 @@ class TestFlowOnInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=20, maximum_size=200, optional=True),
+            size=fx.InvestParameters(minimum_size=20, maximum_size=200, mandatory=False),
             relative_minimum=0.2,
             relative_maximum=0.8,
             on_off_parameters=fx.OnOffParameters(),
         )
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_sets_equal(
@@ -1177,12 +1177,12 @@ class TestFlowOnInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=20, maximum_size=200, optional=False),
+            size=fx.InvestParameters(minimum_size=20, maximum_size=200, mandatory=True),
             relative_minimum=0.2,
             relative_maximum=0.8,
             on_off_parameters=fx.OnOffParameters(),
         )
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_sets_equal(
@@ -1281,7 +1281,7 @@ class TestFlowWithFixedProfile:
             fixed_relative_profile=profile,
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_var_equal(
@@ -1304,11 +1304,11 @@ class TestFlowWithFixedProfile:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=50, maximum_size=200, optional=True),
+            size=fx.InvestParameters(minimum_size=50, maximum_size=200, mandatory=False),
             fixed_relative_profile=profile,
         )
 
-        flow_system.add_elements(fx.Sink('Sink', sink=flow))
+        flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
         assert_var_equal(

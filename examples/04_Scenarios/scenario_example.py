@@ -43,7 +43,7 @@ if __name__ == '__main__':
         label='CO2',
         unit='kg',
         description='CO2_e-Emissionen',
-        maximum_operation_per_hour=1000,  # Max CO2 emissions per hour
+        maximum_per_hour=1000,  # Max CO2 emissions per hour
     )
 
     # --- Define Flow System Components ---
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         label='Storage',
         charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1000),
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1000),
-        capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
+        capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
         initial_charge_state=0,  # Initial storage state: empty
         relative_maximum_charge_state=np.array([80, 70, 80, 80, 80, 80, 80, 80, 80]) * 0.01,
         relative_maximum_final_charge_state=0.8,
@@ -90,18 +90,20 @@ if __name__ == '__main__':
     # Heat Demand Sink: Represents a fixed heat demand profile
     heat_sink = fx.Sink(
         label='Heat Demand',
-        sink=fx.Flow(label='Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand_per_h),
+        inputs=[fx.Flow(label='Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand_per_h)],
     )
 
     # Gas Source: Gas tariff source with associated costs and CO2 emissions
     gas_source = fx.Source(
         label='Gastarif',
-        source=fx.Flow(label='Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: 0.04, CO2.label: 0.3}),
+        outputs=[
+            fx.Flow(label='Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: 0.04, CO2.label: 0.3})
+        ],
     )
 
     # Power Sink: Represents the export of electricity to the grid
     power_sink = fx.Sink(
-        label='Einspeisung', sink=fx.Flow(label='P_el', bus='Strom', effects_per_flow_hour=-1 * power_prices)
+        label='Einspeisung', inputs=[fx.Flow(label='P_el', bus='Strom', effects_per_flow_hour=-1 * power_prices)]
     )
 
     # --- Build the Flow System ---

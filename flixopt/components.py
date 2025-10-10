@@ -40,6 +40,10 @@ class LinearConverter(Component):
     straightforward linear relationships, or piecewise conversion for complex non-linear
     behavior approximated through piecewise linear segments.
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [LinearConverter](../user-guide/mathematical-notation/elements/LinearConverter.md)
+
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         inputs: list of input Flows that feed into the converter.
@@ -247,39 +251,41 @@ class Storage(Component):
     final state constraints, and time-varying parameters. It supports both fixed-size
     and investment-optimized storage systems with comprehensive techno-economic modeling.
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Storage](../user-guide/mathematical-notation/elements/Storage.md)
+
+        - Equation (1): Charge state bounds
+        - Equation (3): Storage balance (charge state evolution)
+
+        Variable Mapping:
+            - ``capacity_in_flow_hours`` → C (storage capacity)
+            - ``charge_state`` → c(t_i) (state of charge at time t_i)
+            - ``relative_loss_per_hour`` → ċ_rel,loss (self-discharge rate)
+            - ``eta_charge`` → η_in (charging efficiency)
+            - ``eta_discharge`` → η_out (discharging efficiency)
+
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
-        charging: Incoming flow for loading the storage. Represents energy or material
-            flowing into the storage system.
-        discharging: Outgoing flow for unloading the storage. Represents energy or
-            material flowing out of the storage system.
-        capacity_in_flow_hours: Nominal capacity/size of the storage in flow-hours
-            (e.g., kWh for electrical storage, m³ or kg for material storage). Can be a scalar
-            for fixed capacity or InvestParameters for optimization.
-        relative_minimum_charge_state: Minimum relative charge state (0-1 range).
-            Prevents deep discharge that could damage equipment. Default is 0.
-        relative_maximum_charge_state: Maximum relative charge state (0-1 range).
-            Accounts for practical capacity limits, safety margins or temperature impacts. Default is 1.
-        initial_charge_state: Storage charge state at the beginning of the time horizon.
-            Can be numeric value or 'lastValueOfSim', which is recommended for if the initial start state is not known.
-            Default is 0.
-        minimal_final_charge_state: Minimum absolute charge state required at the end of the time horizon.
-        maximal_final_charge_state: Maximum absolute charge state allowed at the end of the time horizon.
-        relative_minimum_final_charge_state: Minimum relative charge state required at the end of the time horizon.
-            Defaults to the last value of the relative_minimum_charge_state.
-        relative_maximum_final_charge_state: Maximum relative charge state allowed at the end of the time horizon.
-            Defaults to the last value of the relative_maximum_charge_state.
-        eta_charge: Charging efficiency factor (0-1 range). Accounts for conversion
-            losses during charging. Default is 1 (perfect efficiency).
-        eta_discharge: Discharging efficiency factor (0-1 range). Accounts for
-            conversion losses during discharging. Default is 1 (perfect efficiency).
-        relative_loss_per_hour: Self-discharge rate per hour (typically 0-0.1 range).
-            Represents standby losses, leakage, or degradation. Default is 0.
-        prevent_simultaneous_charge_and_discharge: If True, prevents charging and
-            discharging simultaneously. Increases binary variables but improves model
-            realism and solution interpretation. Default is True.
-        meta_data: Used to store additional information about the Element. Not used
-            internally, but saved in results. Only use Python native types.
+        label: Element identifier used in the FlowSystem.
+        charging: Incoming flow for loading the storage.
+        discharging: Outgoing flow for unloading the storage.
+        capacity_in_flow_hours: Storage capacity in flow-hours (kWh, m³, kg).
+            Scalar for fixed size or InvestParameters for optimization.
+        relative_minimum_charge_state: Minimum charge state (0-1). Default: 0.
+        relative_maximum_charge_state: Maximum charge state (0-1). Default: 1.
+        initial_charge_state: Charge at start. Numeric or 'lastValueOfSim'. Default: 0.
+        minimal_final_charge_state: Minimum absolute charge required at end (optional).
+        maximal_final_charge_state: Maximum absolute charge allowed at end (optional).
+        relative_minimum_final_charge_state: Minimum relative charge at end.
+            Defaults to last value of relative_minimum_charge_state.
+        relative_maximum_final_charge_state: Maximum relative charge at end.
+            Defaults to last value of relative_maximum_charge_state.
+        eta_charge: Charging efficiency (0-1). Default: 1.
+        eta_discharge: Discharging efficiency (0-1). Default: 1.
+        relative_loss_per_hour: Self-discharge per hour (0-0.1). Default: 0.
+        prevent_simultaneous_charge_and_discharge: Prevent charging and discharging
+            simultaneously. Adds binary variables. Default: True.
+        meta_data: Additional information stored in results. Python native types only.
 
     Examples:
         Battery energy storage system:
@@ -355,20 +361,19 @@ class Storage(Component):
         ```
 
     Note:
-        Charge state evolution follows the equation:
-        charge[t+1] = charge[t] × (1-loss_rate)^hours_per_step +
-                      charge_flow[t] × eta_charge × hours_per_step -
-                      discharge_flow[t] × hours_per_step / eta_discharge
+        **Mathematical formulation**: See [Storage](../user-guide/mathematical-notation/elements/Storage.md)
+        for charge state evolution equations and balance constraints.
 
-        All efficiency parameters (eta_charge, eta_discharge) are dimensionless (0-1 range).
-        The relative_loss_per_hour parameter represents exponential decay per hour.
+        **Efficiency parameters** (eta_charge, eta_discharge) are dimensionless (0-1 range).
+        The relative_loss_per_hour represents exponential decay per hour.
 
-        When prevent_simultaneous_charge_and_discharge is True, binary variables are
-        created to enforce mutual exclusivity, which increases solution time but
-        prevents unrealistic simultaneous charging and discharging.
+        **Binary variables**: When prevent_simultaneous_charge_and_discharge is True, binary
+        variables enforce mutual exclusivity, increasing solution time but preventing unrealistic
+        simultaneous charging and discharging.
 
-        Initial and final charge state constraints use absolute values (not relative),
-        matching the capacity_in_flow_hours units.
+        **Units**: Flow rates and charge states are related by the concept of 'flow hours' (=flow_rate * time).
+        With flow rates in kW, the charge state is therefore (usually) kWh.
+        With flow rates in m3/h, the charge state is therefore in m3.
     """
 
     def __init__(
@@ -838,7 +843,7 @@ class StorageModel(ComponentModel):
             charge_state.isel(time=slice(1, None))
             == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** hours_per_step)
             + charge_rate * eff_charge * hours_per_step
-            - discharge_rate * eff_discharge * hours_per_step,
+            - discharge_rate * hours_per_step / eff_discharge,
             short_name='charge_state',
         )
 
@@ -1055,36 +1060,16 @@ class SourceAndSink(Component):
         meta_data: dict | None = None,
         **kwargs,
     ):
-        source = kwargs.pop('source', None)
-        sink = kwargs.pop('sink', None)
-        prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
-        if source is not None:
-            warnings.warn(
-                'The use of the "source" argument is deprecated. Use the "outputs" argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if outputs is not None:
-                raise ValueError('Either source or outputs can be specified, but not both.')
-            outputs = [source]
-
-        if sink is not None:
-            warnings.warn(
-                'The use of the "sink" argument is deprecated. Use the "inputs" argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if inputs is not None:
-                raise ValueError('Either sink or inputs can be specified, but not both.')
-            inputs = [sink]
-
-        if prevent_simultaneous_sink_and_source is not None:
-            warnings.warn(
-                'The use of the "prevent_simultaneous_sink_and_source" argument is deprecated. Use the "prevent_simultaneous_flow_rates" argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            prevent_simultaneous_flow_rates = prevent_simultaneous_sink_and_source
+        # Handle deprecated parameters using centralized helper
+        outputs = self._handle_deprecated_kwarg(kwargs, 'source', 'outputs', outputs, transform=lambda x: [x])
+        inputs = self._handle_deprecated_kwarg(kwargs, 'sink', 'inputs', inputs, transform=lambda x: [x])
+        prevent_simultaneous_flow_rates = self._handle_deprecated_kwarg(
+            kwargs,
+            'prevent_simultaneous_sink_and_source',
+            'prevent_simultaneous_flow_rates',
+            prevent_simultaneous_flow_rates,
+            check_conflict=False,
+        )
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
@@ -1210,16 +1195,8 @@ class Source(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
-        source = kwargs.pop('source', None)
-        if source is not None:
-            warnings.warn(
-                'The use of the "source" argument is deprecated. Use the "outputs" argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if outputs is not None:
-                raise ValueError('Either source or outputs can be specified, but not both.')
-            outputs = [source]
+        # Handle deprecated parameter using centralized helper
+        outputs = self._handle_deprecated_kwarg(kwargs, 'source', 'outputs', outputs, transform=lambda x: [x])
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
@@ -1341,16 +1318,8 @@ class Sink(Component):
         Note:
             The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
         """
-        sink = kwargs.pop('sink', None)
-        if sink is not None:
-            warnings.warn(
-                'The use of the "sink" argument is deprecated. Use the "inputs" argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if inputs is not None:
-                raise ValueError('Either sink or inputs can be specified, but not both.')
-            inputs = [sink]
+        # Handle deprecated parameter using centralized helper
+        inputs = self._handle_deprecated_kwarg(kwargs, 'sink', 'inputs', inputs, transform=lambda x: [x])
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)

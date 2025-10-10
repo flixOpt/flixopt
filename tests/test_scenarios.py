@@ -56,7 +56,7 @@ def test_system():
 
     # Create a demand sink with scenario-dependent profiles
     demand = Flow(label='Demand', bus=electricity_bus.label_full, fixed_relative_profile=demand_profiles)
-    demand_sink = Sink('Demand', sink=demand)
+    demand_sink = Sink('Demand', inputs=[demand])
 
     # Create a power source with investment option
     power_gen = Flow(
@@ -65,11 +65,11 @@ def test_system():
         size=InvestParameters(
             minimum_size=0,
             maximum_size=20,
-            specific_effects={'costs': 100},  # €/kW
+            effects_of_investment_per_size={'costs': 100},  # €/kW
         ),
         effects_per_flow_hour={'costs': 20},  # €/MWh
     )
-    generator = Source('Generator', source=power_gen)
+    generator = Source('Generator', outputs=[power_gen])
 
     # Create a storage for electricity
     storage_charge = Flow(label='Charge', bus=electricity_bus.label_full, size=10)
@@ -81,7 +81,7 @@ def test_system():
         capacity_in_flow_hours=InvestParameters(
             minimum_size=0,
             maximum_size=50,
-            specific_effects={'costs': 50},  # €/kWh
+            effects_of_investment_per_size={'costs': 50},  # €/kWh
         ),
         eta_charge=0.95,
         eta_discharge=0.95,
@@ -130,11 +130,11 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
         fx.Bus('Strom'),
         fx.Bus('Fernwärme'),
         fx.Bus('Gas'),
-        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)),
+        fx.Sink('Wärmelast', inputs=[fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)]),
         fx.Source(
-            'Gastarif', source=fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})
+            'Gastarif', outputs=[fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})]
         ),
-        fx.Sink('Einspeisung', sink=fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)),
+        fx.Sink('Einspeisung', inputs=[fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)]),
     )
 
     boiler = fx.linear_converters.Boiler(
@@ -150,7 +150,10 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
             relative_maximum=1,
             previous_flow_rate=50,
             size=fx.InvestParameters(
-                fix_effects=1000, fixed_size=50, optional=False, specific_effects={'costs': 10, 'PE': 2}
+                effects_of_investment=1000,
+                fixed_size=50,
+                mandatory=True,
+                effects_of_investment_per_size={'costs': 10, 'PE': 2},
             ),
             on_off_parameters=fx.OnOffParameters(
                 on_hours_total_min=0,
@@ -167,16 +170,16 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     )
 
     invest_speicher = fx.InvestParameters(
-        fix_effects=0,
-        piecewise_effects=fx.PiecewiseEffects(
+        effects_of_investment=0,
+        piecewise_effects_of_investment=fx.PiecewiseEffects(
             piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
             piecewise_shares={
                 'costs': fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),
                 'PE': fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
             },
         ),
-        optional=False,
-        specific_effects={'costs': 0.01, 'CO2': 0.01},
+        mandatory=True,
+        effects_of_investment_per_size={'costs': 0.01, 'CO2': 0.01},
         minimum_size=0,
         maximum_size=1000,
     )

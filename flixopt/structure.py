@@ -367,6 +367,67 @@ class Interface:
         else:
             return self._serialize_to_basic_types(obj), extracted_arrays
 
+    def _handle_deprecated_kwarg(
+        self,
+        kwargs: dict,
+        old_name: str,
+        new_name: str,
+        current_value: Any = None,
+        transform: callable = None,
+        check_conflict: bool = True,
+    ) -> Any:
+        """
+        Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
+
+        This centralizes the deprecation pattern used across multiple classes (Source, Sink, InvestParameters, etc.).
+
+        Args:
+            kwargs: Dictionary of keyword arguments to check and modify
+            old_name: Name of the deprecated parameter
+            new_name: Name of the replacement parameter
+            current_value: Current value of the new parameter (if already set)
+            transform: Optional callable to transform the old value before returning (e.g., lambda x: [x] to wrap in list)
+            check_conflict: Whether to check if both old and new parameters are specified (default: True).
+                Note: For parameters with non-None default values (e.g., bool parameters with default=False),
+                set check_conflict=False since we cannot distinguish between an explicit value and the default.
+
+        Returns:
+            The value to use (either from old parameter or current_value)
+
+        Raises:
+            ValueError: If both old and new parameters are specified and check_conflict is True
+
+        Example:
+            # For parameters where None is the default (conflict checking works):
+            value = self._handle_deprecated_kwarg(kwargs, 'old_param', 'new_param', current_value)
+
+            # For parameters with non-None defaults (disable conflict checking):
+            mandatory = self._handle_deprecated_kwarg(
+                kwargs, 'optional', 'mandatory', mandatory,
+                transform=lambda x: not x,
+                check_conflict=False  # Cannot detect if mandatory was explicitly passed
+            )
+        """
+        import warnings
+
+        old_value = kwargs.pop(old_name, None)
+        if old_value is not None:
+            warnings.warn(
+                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead.',
+                DeprecationWarning,
+                stacklevel=3,  # Stack: this method -> __init__ -> caller
+            )
+            # Check for conflicts: only raise error if both were explicitly provided
+            if check_conflict and current_value is not None:
+                raise ValueError(f'Either {old_name} or {new_name} can be specified, but not both.')
+
+            # Apply transformation if provided
+            if transform is not None:
+                return transform(old_value)
+            return old_value
+
+        return current_value
+
     def _validate_kwargs(self, kwargs: dict, class_name: str = None) -> None:
         """
         Validate that no unexpected keyword arguments are present in kwargs.
