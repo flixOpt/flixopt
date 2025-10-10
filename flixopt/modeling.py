@@ -25,7 +25,7 @@ class ModelingUtilitiesAbstract:
 
         Args:
             values: Input DataArray to convert to binary
-            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
+            epsilon: Tolerance for zero detection (uses CONFIG.Modeling.epsilon if None)
             dims: Dims to keep. Other dimensions are collapsed using .any() -> If any value is 1, all are 1.
 
         Returns:
@@ -35,7 +35,7 @@ class ModelingUtilitiesAbstract:
             values = xr.DataArray(values, dims=['time'], coords={'time': range(len(values))})
 
         if epsilon is None:
-            epsilon = CONFIG.modeling.EPSILON
+            epsilon = CONFIG.Modeling.epsilon
 
         if values.size == 0:
             return xr.DataArray(0) if values.item() < epsilon else xr.DataArray(1)
@@ -65,7 +65,7 @@ class ModelingUtilitiesAbstract:
         Args:
             binary_values: Binary DataArray with values close to 0 (off) or 1 (on).
             dim: Dimension along which to count consecutive states.
-            epsilon: Tolerance for zero detection. Uses CONFIG.modeling.EPSILON if None.
+            epsilon: Tolerance for zero detection. Uses CONFIG.Modeling.epsilon if None.
 
         Returns:
             Sum of values in the final consecutive "on" period. Returns 0.0 if the
@@ -80,7 +80,7 @@ class ModelingUtilitiesAbstract:
             >>> ModelingUtilitiesAbstract.count_consecutive_states(arr)
             4.0
         """
-        epsilon = epsilon or CONFIG.modeling.EPSILON
+        epsilon = epsilon or CONFIG.Modeling.epsilon
 
         if isinstance(binary_values, xr.DataArray):
             # xarray path
@@ -129,7 +129,7 @@ class ModelingUtilities:
         Args:
             binary_values: Binary DataArray with 'time' dim, or scalar/array
             hours_per_timestep: Duration of each timestep in hours
-            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
+            epsilon: Tolerance for zero detection (uses CONFIG.Modeling.epsilon if None)
 
         Returns:
             The duration of the final consecutive 'on' period in hours
@@ -463,7 +463,7 @@ class BoundingPatterns:
             fix_constraint = model.add_constraints(variable == variable_state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
-        epsilon = np.maximum(CONFIG.modeling.EPSILON, lower_bound)
+        epsilon = np.maximum(CONFIG.Modeling.epsilon, lower_bound)
 
         upper_constraint = model.add_constraints(variable <= variable_state * upper_bound, name=f'{name}|ub')
         lower_constraint = model.add_constraints(variable >= variable_state * epsilon, name=f'{name}|lb')
@@ -563,7 +563,7 @@ class BoundingPatterns:
         scaling_upper = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub2')
 
         big_m_upper = rel_upper * scaling_max
-        big_m_lower = np.maximum(CONFIG.modeling.EPSILON, rel_lower * scaling_min)
+        big_m_lower = np.maximum(CONFIG.Modeling.epsilon, rel_lower * scaling_min)
 
         binary_upper = model.add_constraints(variable_state * big_m_upper >= variable, name=f'{name}|ub1')
         binary_lower = model.add_constraints(variable_state * big_m_lower <= variable, name=f'{name}|lb1')

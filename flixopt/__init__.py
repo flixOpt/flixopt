@@ -37,9 +37,6 @@ from .commons import (
     solvers,
 )
 
-CONFIG.load_config()
-
-
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.
 # They are suppressed at runtime to provide a cleaner user experience.

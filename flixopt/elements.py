@@ -253,7 +253,7 @@ class Flow(Element):
     Args:
         label: Unique flow identifier within its component.
         bus: Bus label this flow connects to.
-        size: Flow capacity. Scalar, InvestParameters, or None (uses CONFIG.modeling.BIG).
+        size: Flow capacity. Scalar, InvestParameters, or None (uses CONFIG.Modeling.big).
         relative_minimum: Minimum flow rate as fraction of size (0-1). Default: 0.
         relative_maximum: Maximum flow rate as fraction of size. Default: 1.
         load_factor_min: Minimum average utilization (0-1). Default: 0.
@@ -349,7 +349,7 @@ class Flow(Element):
         `relative_maximum` for upper bounds on optimization variables.
 
     Notes:
-        - Default size (CONFIG.modeling.BIG) is used when size=None
+        - Default size (CONFIG.Modeling.big) is used when size=None
         - list inputs for previous_flow_rate are converted to NumPy arrays
         - Flow direction is determined by component input/output designation
 
@@ -376,7 +376,7 @@ class Flow(Element):
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.size = CONFIG.modeling.BIG if size is None else size
+        self.size = CONFIG.Modeling.big if size is None else size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
@@ -447,11 +447,11 @@ class Flow(Element):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if not isinstance(self.size, InvestParameters) and (
-            np.any(self.size == CONFIG.modeling.BIG) and self.fixed_relative_profile is not None
+            np.any(self.size == CONFIG.Modeling.big) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
                 f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
-                f'The default size is {CONFIG.modeling.BIG}. As "flow_rate = size * fixed_relative_profile", '
+                f'The default size is {CONFIG.Modeling.big}. As "flow_rate = size * fixed_relative_profile", '
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
             )
 
@@ -715,7 +715,7 @@ class FlowModel(ElementModel):
             values=xr.DataArray(
                 [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
             ),
-            epsilon=CONFIG.modeling.EPSILON,
+            epsilon=CONFIG.Modeling.epsilon,
             dims='time',
         )
 
@@ -798,9 +798,9 @@ class ComponentModel(ElementModel):
             else:
                 flow_ons = [flow.submodel.on_off.on for flow in all_flows]
                 # TODO: Is the EPSILON even necessary?
-                self.add_constraints(on <= sum(flow_ons) + CONFIG.modeling.EPSILON, short_name='on|ub')
+                self.add_constraints(on <= sum(flow_ons) + CONFIG.Modeling.epsilon, short_name='on|ub')
                 self.add_constraints(
-                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.modeling.EPSILON), short_name='on|lb'
+                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.Modeling.epsilon), short_name='on|lb'
                 )
 
             self.on_off = self.add_submodels(

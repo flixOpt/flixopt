@@ -80,10 +80,10 @@ dev = [
     "pytest==8.4.2",
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
-    "ruff==0.13.0",
+    "ruff==0.13.2",
     "pre-commit==4.3.0",
     "pyvis==0.3.2",
-    "tsam==2.3.1",
+    "tsam==2.3.9",
     "scipy==1.15.1",
     "gurobipy==12.0.3",
     "dash==3.0.0",
@@ -95,7 +95,7 @@ dev = [
 
 # Documentation building
 docs = [
-    "mkdocs-material==9.6.19",
+    "mkdocs-material==9.6.20",
     "mkdocstrings-python==1.18.2",
     "mkdocs-table-reader-plugin==3.1.0",
     "mkdocs-gen-files==0.5.0",

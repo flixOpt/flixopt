@@ -120,13 +120,13 @@ class Calculation:
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max() >= CONFIG.modeling.EPSILON
+                    if isinstance(model, InvestmentModel) and model.size.solution.max() >= CONFIG.Modeling.epsilon
                 },
                 'Not invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max() < CONFIG.modeling.EPSILON
+                    if isinstance(model, InvestmentModel) and model.size.solution.max() < CONFIG.Modeling.epsilon
                 },
             },
             'Buses with excess': [
