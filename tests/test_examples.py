@@ -9,13 +9,16 @@ import pytest
 EXAMPLES_DIR = Path(__file__).parent.parent / 'examples'
 
 
-DEPENDENT_EXAMPLES = ('complex_example.py', 'complex_example_results.py')
+DEPENDENT_EXAMPLES = (
+    '02_Complex/complex_example.py',
+    '02_Complex/complex_example_results.py',
+)
 
 
 @pytest.mark.parametrize(
     'example_script',
     sorted(
-        [p for p in EXAMPLES_DIR.rglob('*.py') if p.name not in DEPENDENT_EXAMPLES],
+        [p for p in EXAMPLES_DIR.rglob('*.py') if str(p.relative_to(EXAMPLES_DIR)) not in DEPENDENT_EXAMPLES],
         key=lambda path: (str(path.parent), path.name),
     ),
     ids=lambda path: str(path.relative_to(EXAMPLES_DIR)),
@@ -55,21 +58,21 @@ def test_independent_examples(example_script):
 @pytest.mark.examples
 def test_dependent_examples():
     """Test examples that must run in order."""
-    script_dir = EXAMPLES_DIR / '02_Complex'
     original_cwd = os.getcwd()
 
     try:
-        os.chdir(script_dir)
-
         # Iterate in the defined order
-        for script in DEPENDENT_EXAMPLES:
+        for script_path in DEPENDENT_EXAMPLES:
+            os.chdir((EXAMPLES_DIR / script_path).parent)
+
+            script_name = Path(script_path).name
             result = subprocess.run(
-                [sys.executable, script],
+                [sys.executable, script_name],
                 capture_output=True,
                 text=True,
                 timeout=180,
             )
-            assert result.returncode == 0, f'{script} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
+            assert result.returncode == 0, f'{script_path} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
 
     finally:
         os.chdir(original_cwd)
