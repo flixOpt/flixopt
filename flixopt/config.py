@@ -346,12 +346,13 @@ class CONFIG:
 class MultilineFormater(logging.Formatter):
     """Formatter that handles multi-line messages with consistent prefixes."""
 
-    def __init__(self, fmt=None, datefmt=None, show_logger_name=False):
-        super().__init__(datefmt=datefmt)
+    def __init__(self, fmt: str = '%(message)s', datefmt=None, show_logger_name=False):
+        super().__init__(fmt=fmt, datefmt=datefmt)
         self.show_logger_name = show_logger_name
 
     def format(self, record):
-        message_lines = record.getMessage().split('\n')
+        record.message = record.getMessage()
+        message_lines = self._style.format(record).split('\n')
         timestamp = self.formatTime(record, self.datefmt)
         log_level = record.levelname.ljust(8)
 
@@ -377,7 +378,7 @@ class ColoredMultilineFormater(MultilineFormater):
     RESET = '\033[0m'
 
     def __init__(self, fmt=None, datefmt=None, colors=None, show_logger_name=False):
-        super().__init__(datefmt=datefmt, show_logger_name=show_logger_name)
+        super().__init__(fmt=fmt, datefmt=datefmt, show_logger_name=show_logger_name)
         self.COLORS = (
             colors
             if colors is not None
