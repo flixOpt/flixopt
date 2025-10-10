@@ -66,30 +66,29 @@ class InvestmentModel(Submodel):
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['period', 'scenario']),
-            short_name='is_invested',
+            short_name='do_invest',
         )
+        if self.parameters.mandatory:
+            self.add_constraints(
+                (self._variables['do_invest'].sum('period') == 1)
+                if self._model.flow_system.periods is not None
+                else (self._variables['do_invest'] == 1),
+                'single_invest|mandatory',
+            )
+        else:
+            self.add_constraints(
+                (self._variables['do_invest'].sum('period') <= 1)
+                if self._model.flow_system.periods is not None
+                else (self._variables['do_invest'] <= 1),
+                'single_invest',
+            )
+
         BoundingPatterns.bounds_with_state(
             self,
             variable=self.size,
-            variable_state=self.is_invested,
+            variable_state=self._variables['do_invest'],
             bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
         )
-
-        self.add_variables(
-            short_name='invested',
-            lower=0,
-            upper=1,
-            coords=self._model.get_coords(['scenario']),
-        )
-        self.add_constraints(self._variables['is_invested'] <= self._variables['invested'], 'invest|lb')
-        self.add_constraints(
-            self._variables['invested']
-            <= self._variables['is_invested'].sum('period' if self._model.flow_system.periods is not None else None),
-            short_name='invest|ub',
-        )
-
-        if self.parameters.mandatory:
-            self.add_constraints(self._variables['invested'] == 1, 'invest|fix')
 
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
