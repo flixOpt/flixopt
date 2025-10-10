@@ -84,18 +84,18 @@ class CONFIG:
 
         Example YAML config file:
 
-        .. code-block:: yaml
+        ```yaml
+        logging:
+          level: DEBUG
+          console: true
+          file: app.log
+          colors:
+            INFO: "\\033[32m"  # Green
 
-            logging:
-              level: DEBUG
-              console: true
-              file: app.log
-              colors:
-                INFO: "\\033[32m"  # Green
-
-            modeling:
-              big: 20000000
-              epsilon: 1e-6
+        modeling:
+          big: 20000000
+          epsilon: 1e-6
+        ```
     """
 
     class Logging:
