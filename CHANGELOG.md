@@ -181,9 +181,14 @@ Until here -->
 - Added configurable log format settings: `CONFIG.Logging.date_format` and `CONFIG.Logging.format`
 - Added configurable console settings: `CONFIG.Logging.console_width` and `CONFIG.Logging.show_path`
 - Added `CONFIG.Logging.Colors` nested class for customizable log level colors using ANSI escape codes (works with both standard and Rich handlers)
+- All examples now enable console logging to demonstrate proper logging usage
+- Console logging now outputs to `sys.stdout` instead of `sys.stderr` for better compatibility with output redirection
 
 ### ♻️ Changed
 - Logging and Configuration management changed
+- **Breaking**: Console logging is now disabled by default (`CONFIG.Logging.console = False`). Enable it explicitly in your scripts with `CONFIG.Logging.console = True` and `CONFIG.apply()`
+- **Breaking**: File logging is now disabled by default (`CONFIG.Logging.file = None`). Set a file path to enable file logging
+- Improved default logging colors: DEBUG is now gray (`\033[90m`) for de-emphasized messages, INFO uses terminal default color (`\033[0m`) for clean output
 
 ### 🗑️ Deprecated
 - `change_logging_level()` function is now deprecated in favor of `CONFIG.Logging.level` and `CONFIG.apply()`. Will be removed in version 3.0.0.
