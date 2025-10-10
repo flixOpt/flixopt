@@ -111,9 +111,13 @@ class CONFIG:
             CONFIG.Logging.max_file_size = 5_242_880  # 5MB
             CONFIG.apply()
 
-            # Rich handler
-            CONFIG.Logging.console = True
+            # Rich handler with stdout
+            CONFIG.Logging.console = True  # or 'stdout'
             CONFIG.Logging.rich = True
+            CONFIG.apply()
+
+            # Console output to stderr
+            CONFIG.Logging.console = 'stderr'
             CONFIG.apply()
             ```
         """
@@ -391,6 +395,7 @@ class ColoredMultilineFormatter(MultilineFormatter):
 
 def _create_console_handler(
     use_rich: bool = False,
+    stream: Literal['stdout', 'stderr'] = 'stdout',
     console_width: int = 120,
     show_path: bool = False,
     show_logger_name: bool = False,
@@ -398,10 +403,11 @@ def _create_console_handler(
     format: str = '%(message)s',
     colors: dict[str, str] | None = None,
 ) -> logging.Handler:
-    """Create a console (stdout) logging handler.
+    """Create a console logging handler.
 
     Args:
         use_rich: If True, use RichHandler with color support.
+        stream: Output stream
         console_width: Width of the console for Rich handler.
         show_path: Show file paths in log messages (Rich only).
         show_logger_name: Show logger name in log messages.
@@ -412,6 +418,9 @@ def _create_console_handler(
     Returns:
         Configured logging handler (RichHandler or StreamHandler).
     """
+    # Determine the stream object
+    stream_obj = sys.stdout if stream == 'stdout' else sys.stderr
+
     if use_rich:
         # Convert ANSI codes to Rich theme
         if colors:
@@ -429,7 +438,7 @@ def _create_console_handler(
         else:
             theme = None
 
-        console = Console(width=console_width, theme=theme)
+        console = Console(width=console_width, theme=theme, file=stream_obj)
         handler = RichHandler(
             console=console,
             rich_tracebacks=True,
@@ -439,8 +448,7 @@ def _create_console_handler(
         )
         handler.setFormatter(logging.Formatter(format))
     else:
-        # Explicitly use sys.stdout instead of default sys.stderr
-        handler = logging.StreamHandler(stream=sys.stdout)
+        handler = logging.StreamHandler(stream=stream_obj)
         handler.setFormatter(
             ColoredMultilineFormatter(
                 fmt=format,
@@ -509,7 +517,7 @@ def _setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
     log_file: str | None = None,
     use_rich_handler: bool = False,
-    console: bool = False,
+    console: bool | Literal['stdout', 'stderr'] = False,
     max_file_size: int = 10_485_760,
     backup_count: int = 5,
     date_format: str = '%Y-%m-%d %H:%M:%S',
@@ -543,10 +551,14 @@ def _setup_logging(
     logger.propagate = False  # Prevent duplicate logs
     logger.handlers.clear()
 
+    # Handle console parameter: False = disabled, True = stdout, 'stdout' = stdout, 'stderr' = stderr
     if console:
+        # Convert True to 'stdout', keep 'stdout'/'stderr' as-is
+        stream = 'stdout' if console is True else console
         logger.addHandler(
             _create_console_handler(
                 use_rich=use_rich_handler,
+                stream=stream,
                 console_width=console_width,
                 show_path=show_path,
                 show_logger_name=show_logger_name,
