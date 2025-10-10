@@ -61,103 +61,61 @@ _DEFAULTS = MappingProxyType(
 class CONFIG:
     """Configuration for flixopt library.
 
-    All changes require calling ``CONFIG.apply()`` to take effect.
-    By default, logging is silent (no console or file output).
+    Always call ``CONFIG.apply()`` after changes.
 
     Attributes:
-        Logging: Nested class containing all logging configuration options.
-        Modeling: Nested class containing optimization modeling parameters.
-        config_name: Name of the configuration.
-
-    Key Rules:
-        - Always call ``CONFIG.apply()`` after changes
-        - File logging is always without colors
+        Logging: Logging configuration.
+        Modeling: Optimization modeling parameters.
+        config_name: Configuration name.
 
     Examples:
-        Debug mode::
+        ```python
+        CONFIG.Logging.console = True
+        CONFIG.Logging.level = 'DEBUG'
+        CONFIG.apply()
+        ```
 
-            CONFIG.Logging.console = True
-            CONFIG.Logging.level = 'DEBUG'
-            CONFIG.apply()
-
-        File logging with rotation::
-
-            CONFIG.Logging.file = 'app.log'
-            CONFIG.Logging.max_file_size = 5_242_880  # 5MB
-            CONFIG.Logging.backup_count = 3
-            CONFIG.apply()
-
-        Rich handler with colors::
-
-            CONFIG.Logging.console = True
-            CONFIG.Logging.rich = True
-            CONFIG.Logging.show_path = True
-            CONFIG.apply()
-
-        Load from YAML::
-
-            CONFIG.load_from_file('config.yaml')
-
-        Example YAML config file:
+        Load from YAML file:
 
         ```yaml
         logging:
           level: DEBUG
-          console: stderr
+          console: true
           file: app.log
-          rich: false
-          colors:
-            INFO: "\\033[32m"  # Green
-
-        modeling:
-          big: 20000000
-          epsilon: 1e-6
         ```
     """
 
     class Logging:
-        """Logging configuration for flixopt.
+        """Logging configuration.
 
-        All logging is disabled by default. Set ``console=True`` or ``file='path'`` to enable.
+        Disabled by default. Enable via ``console=True`` or ``file='path'``.
 
         Attributes:
             level: Logging level.
-            file: Log file path. Set to enable file logging.
-            console: Enable console (stdout) logging.
-            rich: Use Rich library for enhanced console output.
-            max_file_size: Maximum log file size in bytes before rotation.
-            backup_count: Number of backup log files to keep.
-            date_format: Date/time format for log messages.
+            file: Log file path for file logging.
+            console: Console output (False, True, 'stdout', 'stderr').
+            rich: Use Rich library for enhanced output.
+            max_file_size: Max file size before rotation.
+            backup_count: Number of backup files to keep.
+            date_format: Date/time format string.
             format: Log message format string.
             console_width: Console width for Rich handler.
-            show_path: Show file paths in log messages.
-            show_logger_name: Show logger name in log messages.
-            Colors: ANSI color codes for each log level.
+            show_path: Show file paths in messages.
+            show_logger_name: Show logger name in messages.
+            Colors: ANSI color codes for log levels.
 
         Examples:
-            Debug to stderr (recommended for libraries)::
+            ```python
+            # File logging with rotation
+            CONFIG.Logging.file = 'app.log'
+            CONFIG.Logging.max_file_size = 5_242_880  # 5MB
+            CONFIG.apply()
 
-                CONFIG.Logging.console = 'stderr'
-                CONFIG.Logging.level = 'DEBUG'
-                CONFIG.apply()
-
-            File logging with rotation::
-
-                CONFIG.Logging.file = 'app.log'
-                CONFIG.Logging.max_file_size = 5_242_880  # 5 MB
-                CONFIG.Logging.backup_count = 3
-                CONFIG.apply()
-
-            Rich handler with colors::
-
-                CONFIG.Logging.console = 'stderr'
-                CONFIG.Logging.rich = True
-                CONFIG.Logging.show_path = True
-                CONFIG.apply()
-
-            Load from YAML::
-
-                CONFIG.load_from_file('config.yaml')
+            # Rich handler
+            CONFIG.Logging.console = True
+            CONFIG.Logging.rich = True
+            CONFIG.apply()
+            ```
         """
 
         level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = _DEFAULTS['logging']['level']
@@ -175,9 +133,6 @@ class CONFIG:
         class Colors:
             """ANSI color codes for log levels.
 
-            Works with both Rich and standard console handlers.
-            Rich automatically converts ANSI codes using Style.from_ansi().
-
             Attributes:
                 DEBUG: ANSI color for DEBUG level.
                 INFO: ANSI color for INFO level.
@@ -185,27 +140,15 @@ class CONFIG:
                 ERROR: ANSI color for ERROR level.
                 CRITICAL: ANSI color for CRITICAL level.
 
-            Common ANSI codes:
-                - '\\033[30m' - Black
-                - '\\033[31m' - Red
-                - '\\033[32m' - Green
-                - '\\033[33m' - Yellow
-                - '\\033[34m' - Blue
-                - '\\033[35m' - Magenta
-                - '\\033[36m' - Cyan
-                - '\\033[37m' - White
-                - '\\033[90m' - Bright Black/Gray
-                - '\\033[0m' - Reset to default
-                - '\\033[1m\\033[3Xm' - Bold (replace X with color code 0-7)
-                - '\\033[2m\\033[3Xm' - Dim (replace X with color code 0-7)
-
             Examples:
-                Customize colors::
+                ```python
+                CONFIG.Logging.Colors.INFO = '\\033[32m'  # Green
+                CONFIG.Logging.Colors.ERROR = '\\033[1m\\033[31m'  # Bold red
+                CONFIG.apply()
+                ```
 
-                    CONFIG.Logging.Colors.INFO = '\\033[32m'  # Green
-                    CONFIG.Logging.Colors.DEBUG = '\\033[36m'  # Cyan
-                    CONFIG.Logging.Colors.ERROR = '\\033[1m\\033[31m'  # Bold red
-                    CONFIG.apply()
+            Common ANSI codes: \\033[31m (red), \\033[32m (green), \\033[33m (yellow),
+            \\033[1m\\033[31m (bold red), \\033[0m (reset).
             """
 
             DEBUG: str = _DEFAULTS['logging']['colors']['DEBUG']
@@ -218,16 +161,9 @@ class CONFIG:
         """Optimization modeling parameters.
 
         Attributes:
-            big: Large number used for big-M constraints.
-            epsilon: Small tolerance value for numerical comparisons.
-            big_binary_bound: Upper bound for binary variable constraints.
-
-        Examples:
-            Adjust modeling parameters::
-
-                CONFIG.Modeling.big = 20_000_000
-                CONFIG.Modeling.epsilon = 1e-6
-                CONFIG.apply()
+            big: Large number for big-M constraints.
+            epsilon: Tolerance for numerical comparisons.
+            big_binary_bound: Upper bound for binary constraints.
         """
 
         big: int = _DEFAULTS['modeling']['big']
