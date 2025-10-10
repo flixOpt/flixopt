@@ -67,18 +67,34 @@ class CONFIG:
     Attributes:
         Logging: Nested class containing all logging configuration options.
         Modeling: Nested class containing optimization modeling parameters.
-        config_name: Name of the configuration (default: 'flixopt').
+        config_name: Name of the configuration.
+
+    Key Rules:
+        - Always call ``CONFIG.apply()`` after changes
+        - File logging is always without colors
 
     Examples:
-        Basic configuration::
-
-            from flixopt import CONFIG
+        Debug mode::
 
             CONFIG.Logging.console = True
             CONFIG.Logging.level = 'DEBUG'
             CONFIG.apply()
 
-        Load from YAML file::
+        File logging with rotation::
+
+            CONFIG.Logging.file = 'app.log'
+            CONFIG.Logging.max_file_size = 5_242_880  # 5MB
+            CONFIG.Logging.backup_count = 3
+            CONFIG.apply()
+
+        Rich handler with colors::
+
+            CONFIG.Logging.console = True
+            CONFIG.Logging.rich = True
+            CONFIG.Logging.show_path = True
+            CONFIG.apply()
+
+        Load from YAML::
 
             CONFIG.load_from_file('config.yaml')
 
@@ -87,8 +103,9 @@ class CONFIG:
         ```yaml
         logging:
           level: DEBUG
-          console: true
+          console: stderr
           file: app.log
+          rich: false
           colors:
             INFO: "\\033[32m"  # Green
 
@@ -118,31 +135,35 @@ class CONFIG:
             Colors: ANSI color codes for each log level.
 
         Examples:
-            Enable console logging::
+            Debug to stderr (recommended for libraries)::
 
-                CONFIG.Logging.console = True
+                CONFIG.Logging.console = 'stderr'
                 CONFIG.Logging.level = 'DEBUG'
                 CONFIG.apply()
 
-            Configure file logging with rotation::
+            File logging with rotation::
 
-                CONFIG.Logging.file = 'myapp.log'
+                CONFIG.Logging.file = 'app.log'
                 CONFIG.Logging.max_file_size = 5_242_880  # 5 MB
                 CONFIG.Logging.backup_count = 3
                 CONFIG.apply()
 
-            Use Rich handler::
+            Rich handler with colors::
 
-                CONFIG.Logging.console = True
+                CONFIG.Logging.console = 'stderr'
                 CONFIG.Logging.rich = True
                 CONFIG.Logging.show_path = True
                 CONFIG.apply()
+
+            Load from YAML::
+
+                CONFIG.load_from_file('config.yaml')
         """
 
         level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = _DEFAULTS['logging']['level']
         file: str | None = _DEFAULTS['logging']['file']
         rich: bool = _DEFAULTS['logging']['rich']
-        console: bool = _DEFAULTS['logging']['console']
+        console: bool | Literal['stdout', 'stderr'] = _DEFAULTS['logging']['console']
         max_file_size: int = _DEFAULTS['logging']['max_file_size']
         backup_count: int = _DEFAULTS['logging']['backup_count']
         date_format: str = _DEFAULTS['logging']['date_format']
