@@ -492,12 +492,27 @@ def _create_file_handler(
     Returns:
         Configured RotatingFileHandler (without colors).
     """
-    handler = RotatingFileHandler(
-        log_file,
-        maxBytes=max_file_size,
-        backupCount=backup_count,
-        encoding='utf-8',
-    )
+
+    # Ensure parent directory exists
+    log_path = Path(log_file)
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError as e:
+        raise PermissionError(f"Cannot create log directory '{log_path.parent}': Permission denied") from e
+
+    try:
+        handler = RotatingFileHandler(
+            log_file,
+            maxBytes=max_file_size,
+            backupCount=backup_count,
+            encoding='utf-8',
+        )
+    except PermissionError as e:
+        raise PermissionError(
+            f"Cannot write to log file '{log_file}': Permission denied. "
+            f'Choose a different location or check file permissions.'
+        ) from e
+
     handler.setFormatter(
         MultilineFormater(
             fmt=format,
