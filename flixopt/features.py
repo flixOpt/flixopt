@@ -56,12 +56,13 @@ class InvestmentModel(Submodel):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         self.add_variables(
             short_name='size',
-            lower=0 if self.parameters.optional else size_min,
+            lower=0 if not self.parameters.mandatory else size_min,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
         )
 
-        if self.parameters.optional:
+        # Optional (not mandatory)
+        if not self.parameters.mandatory:
             self.add_variables(
                 binary=True,
                 coords=self._model.get_coords(['period', 'scenario']),
@@ -100,7 +101,7 @@ class InvestmentModel(Submodel):
                 target='periodic',
             )
 
-        if self.parameters.effects_of_retirement and self.parameters.optional:
+        if self.parameters.effects_of_retirement and not self.parameters.mandatory:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={

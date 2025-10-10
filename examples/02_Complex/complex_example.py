@@ -59,7 +59,7 @@ if __name__ == '__main__':
             size=fx.InvestParameters(
                 effects_of_investment=1000,  # Fixed investment costs
                 fixed_size=50,  # Fixed size
-                optional=False,  # Forced investment
+                mandatory=True,  # Forced investment
                 effects_of_investment_per_size={Costs.label: 10, PE.label: 2},  # Specific costs
             ),
             load_factor_max=1.0,  # Maximum load factor (50 kW)
@@ -131,7 +131,7 @@ if __name__ == '__main__':
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
         capacity_in_flow_hours=fx.InvestParameters(
             piecewise_effects_of_investment=segmented_investment_effects,  # Investment effects
-            optional=False,  # Forced investment
+            mandatory=True,  # Forced investment
             minimum_size=0,
             maximum_size=1000,  # Optimizing between 0 and 1000 kWh
         ),

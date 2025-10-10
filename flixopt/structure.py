@@ -387,13 +387,26 @@ class Interface:
             new_name: Name of the replacement parameter
             current_value: Current value of the new parameter (if already set)
             transform: Optional callable to transform the old value before returning (e.g., lambda x: [x] to wrap in list)
-            check_conflict: Whether to check if both old and new parameters are specified (default: True)
+            check_conflict: Whether to check if both old and new parameters are specified (default: True).
+                Note: For parameters with non-None default values (e.g., bool parameters with default=False),
+                set check_conflict=False since we cannot distinguish between an explicit value and the default.
 
         Returns:
             The value to use (either from old parameter or current_value)
 
         Raises:
             ValueError: If both old and new parameters are specified and check_conflict is True
+
+        Example:
+            # For parameters where None is the default (conflict checking works):
+            value = self._handle_deprecated_kwarg(kwargs, 'old_param', 'new_param', current_value)
+
+            # For parameters with non-None defaults (disable conflict checking):
+            mandatory = self._handle_deprecated_kwarg(
+                kwargs, 'optional', 'mandatory', mandatory,
+                transform=lambda x: not x,
+                check_conflict=False  # Cannot detect if mandatory was explicitly passed
+            )
         """
         import warnings
 
@@ -404,6 +417,7 @@ class Interface:
                 DeprecationWarning,
                 stacklevel=3,  # Stack: this method -> __init__ -> caller
             )
+            # Check for conflicts: only raise error if both were explicitly provided
             if check_conflict and current_value is not None:
                 raise ValueError(f'Either {old_name} or {new_name} can be specified, but not both.')
 
@@ -411,6 +425,7 @@ class Interface:
             if transform is not None:
                 return transform(old_value)
             return old_value
+
         return current_value
 
     def _validate_kwargs(self, kwargs: dict, class_name: str = None) -> None:

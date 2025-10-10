@@ -77,7 +77,7 @@ if __name__ == '__main__':
         label='Storage',
         charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1000),
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1000),
-        capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, optional=False),
+        capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
         initial_charge_state=0,  # Initial storage state: empty
         relative_maximum_charge_state=np.array([80, 70, 80, 80, 80, 80, 80, 80, 80]) * 0.01,
         relative_maximum_final_charge_state=0.8,

@@ -281,3 +281,64 @@ class TestInvestParametersDeprecation:
             TypeError, match="InvestParameters.__init__\\(\\) got unexpected keyword argument\\(s\\): 'typo'"
         ):
             InvestParameters(effects_of_investment={'cost': 100}, typo='value')
+
+    def test_optional_parameter_deprecation(self):
+        """Test that optional parameter triggers deprecation warning and maps to mandatory."""
+        # Test optional=True (should map to mandatory=False)
+        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+            params = InvestParameters(optional=True)
+            assert params.mandatory is False
+
+        # Test optional=False (should map to mandatory=True)
+        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+            params = InvestParameters(optional=False)
+            assert params.mandatory is True
+
+    def test_mandatory_parameter_no_warning(self):
+        """Test that mandatory parameter doesn't trigger warnings."""
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', DeprecationWarning)
+            # Test mandatory=True
+            params = InvestParameters(mandatory=True)
+            assert params.mandatory is True
+
+            # Test mandatory=False (explicit)
+            params = InvestParameters(mandatory=False)
+            assert params.mandatory is False
+
+    def test_mandatory_default_value(self):
+        """Test that default value of mandatory is False when neither optional nor mandatory is specified."""
+        params = InvestParameters()
+        assert params.mandatory is False
+
+    def test_both_optional_and_mandatory_no_error(self):
+        """Test that specifying both optional and mandatory doesn't raise error.
+
+        Note: Conflict checking is disabled for mandatory/optional because mandatory has
+        a non-None default value (False), making it impossible to distinguish between
+        an explicit mandatory=False and the default value. The deprecated optional
+        parameter will take precedence when both are specified.
+        """
+        # When both are specified, optional takes precedence (with deprecation warning)
+        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+            params = InvestParameters(optional=True, mandatory=False)
+            # optional=True should result in mandatory=False
+            assert params.mandatory is False
+
+        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+            params = InvestParameters(optional=False, mandatory=True)
+            # optional=False should result in mandatory=True (optional takes precedence)
+            assert params.mandatory is True
+
+    def test_optional_property_deprecation(self):
+        """Test that accessing optional property triggers deprecation warning."""
+        params = InvestParameters(mandatory=True)
+
+        # Reading the property triggers warning
+        with pytest.warns(DeprecationWarning, match="Property 'optional' is deprecated"):
+            assert params.optional is False
+
+        # Setting the property triggers warning
+        with pytest.warns(DeprecationWarning, match="Property 'optional' is deprecated"):
+            params.optional = True
+        assert params.mandatory is False

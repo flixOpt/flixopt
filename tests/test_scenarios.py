@@ -152,7 +152,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
             size=fx.InvestParameters(
                 effects_of_investment=1000,
                 fixed_size=50,
-                optional=False,
+                mandatory=True,
                 effects_of_investment_per_size={'costs': 10, 'PE': 2},
             ),
             on_off_parameters=fx.OnOffParameters(
@@ -178,7 +178,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
                 'PE': fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
             },
         ),
-        optional=False,
+        mandatory=True,
         effects_of_investment_per_size={'costs': 0.01, 'CO2': 0.01},
         minimum_size=0,
         maximum_size=1000,
