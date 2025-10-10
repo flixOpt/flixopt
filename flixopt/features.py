@@ -75,14 +75,14 @@ class InvestmentModel(Submodel):
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
-        if self.parameters.piecewise_effects:
+        if self.parameters.piecewise_effects_of_investment:
             self.piecewise_effects = self.add_submodels(
                 PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects_of_investment.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects_of_investment.piecewise_shares,
                     zero_point=self.is_invested,
                 ),
                 short_name='segments',
@@ -90,30 +90,33 @@ class InvestmentModel(Submodel):
 
     def _add_effects(self):
         """Add investment effects"""
-        if self.parameters.fix_effects:
+        if self.parameters.effects_of_investment:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
                     effect: self.is_invested * factor if self.is_invested is not None else factor
-                    for effect, factor in self.parameters.fix_effects.items()
+                    for effect, factor in self.parameters.effects_of_investment.items()
                 },
                 target='periodic',
             )
 
-        if self.parameters.divest_effects and self.parameters.optional:
+        if self.parameters.effects_of_retirement and self.parameters.optional:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
                     effect: -self.is_invested * factor + factor
-                    for effect, factor in self.parameters.divest_effects.items()
+                    for effect, factor in self.parameters.effects_of_retirement.items()
                 },
                 target='periodic',
             )
 
-        if self.parameters.specific_effects:
+        if self.parameters.effects_of_investment_per_size:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
+                expressions={
+                    effect: self.size * factor
+                    for effect, factor in self.parameters.effects_of_investment_per_size.items()
+                },
                 target='periodic',
             )
 

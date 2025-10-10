@@ -101,13 +101,24 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
 - The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
 - The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
-- Effect parameters renamed:
+- **InvestParameters** parameters renamed for improved clarity around investment and retirement effects:
+    - `fix_effects` → `effects_of_investment`
+    - `specific_effects` → `effects_of_investment_per_size`
+    - `divest_effects` → `effects_of_retirement`
+    - `piecewise_effects` → `piecewise_effects_of_investment`
+- **Effect** parameters renamed:
     - `minimum_investment` → `minimum_periodic`
     - `maximum_investment` → `maximum_periodic`
     - `minimum_operation` → `minimum_temporal`
     - `maximum_operation` → `maximum_temporal`
     - `minimum_operation_per_hour` → `minimum_per_hour`
     - `maximum_operation_per_hour` → `maximum_per_hour`
+- **Component** parameters renamed:
+    - `Source.source` → `Source.outputs`
+    - `Sink.sink` → `Sink.inputs`
+    - `SourceAndSink.source` → `SourceAndSink.outputs`
+    - `SourceAndSink.sink` → `SourceAndSink.inputs`
+    - `SourceAndSink.prevent_simultaneous_sink_and_source` → `SourceAndSink.prevent_simultaneous_flow_rates`
 
 ### 🔥 Removed
 
@@ -137,6 +148,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### 👷 Development
 
+- **Centralized deprecation pattern**: Added `_handle_deprecated_kwarg()` helper method to `Interface` base class that provides reusable deprecation handling with consistent warnings, conflict detection, and optional value transformation. Applied across 5 classes (InvestParameters, Source, Sink, SourceAndSink, Effect) reducing deprecation boilerplate by 72%.
 - FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
 - Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
 - Added new module `.modeling` that contains Modelling primitives and utilities

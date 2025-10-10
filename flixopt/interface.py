@@ -6,6 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import TYPE_CHECKING, Literal, Optional
 
 from .config import CONFIG
@@ -697,14 +698,24 @@ class InvestParameters(Interface):
             Ignored if fixed_size is specified.
         optional: If True, can choose not to invest. If False, investment is mandatory.
             Default: True.
-        fix_effects: Fixed costs if investment is made, regardless of size.
+        effects_of_investment: Fixed costs if investment is made, regardless of size.
             Dict: {'effect_name': value} (e.g., {'cost': 10000}).
-        specific_effects: Variable costs proportional to size (per-unit costs).
+        effects_of_investment_per_size: Variable costs proportional to size (per-unit costs).
             Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
-        piecewise_effects: Non-linear costs using PiecewiseEffects.
-            Combinable with fix_effects and specific_effects.
-        divest_effects: Costs incurred if NOT investing (demolition, penalties).
+        piecewise_effects_of_investment: Non-linear costs using PiecewiseEffects.
+            Combinable with effects_of_investment and effects_of_investment_per_size.
+        effects_of_retirement: Costs incurred if NOT investing (demolition, penalties).
             Dict: {'effect_name': value}.
+
+    Deprecated Args:
+        fix_effects: **Deprecated**. Use `effects_of_investment` instead.
+            Will be removed in version 4.0.
+        specific_effects: **Deprecated**. Use `effects_of_investment_per_size` instead.
+            Will be removed in version 4.0.
+        divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
+            Will be removed in version 4.0.
+        piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
+            Will be removed in version 4.0.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -723,11 +734,11 @@ class InvestParameters(Interface):
         solar_investment = InvestParameters(
             fixed_size=100,  # 100 kW system (binary decision)
             optional=True,
-            fix_effects={
+            effects_of_investment={
                 'cost': 25000,  # Installation and permitting costs
                 'CO2': -50000,  # Avoided emissions over lifetime
             },
-            specific_effects={
+            effects_of_investment_per_size={
                 'cost': 1200,  # €1200/kW for panels (annualized)
                 'CO2': -800,  # kg CO2 avoided per kW annually
             },
@@ -741,11 +752,11 @@ class InvestParameters(Interface):
             minimum_size=10,  # Minimum viable system size (kWh)
             maximum_size=1000,  # Maximum installable capacity
             optional=True,
-            fix_effects={
+            effects_of_investment={
                 'cost': 5000,  # Grid connection and control system
                 'installation_time': 2,  # Days for fixed components
             },
-            piecewise_effects=PiecewiseEffects(
+            piecewise_effects_of_investment=PiecewiseEffects(
                 piecewise_origin=Piecewise(
                     [
                         Piece(0, 100),  # Small systems
@@ -766,22 +777,22 @@ class InvestParameters(Interface):
         )
         ```
 
-        Mandatory replacement with divestment costs:
+        Mandatory replacement with retirement costs:
 
         ```python
         boiler_replacement = InvestParameters(
             minimum_size=50,
             maximum_size=200,
             optional=True,  # Can choose not to replace
-            fix_effects={
+            effects_of_investment={
                 'cost': 15000,  # Installation costs
                 'disruption': 3,  # Days of downtime
             },
-            specific_effects={
+            effects_of_investment_per_size={
                 'cost': 400,  # €400/kW capacity
                 'maintenance': 25,  # Annual maintenance per kW
             },
-            divest_effects={
+            effects_of_retirement={
                 'cost': 8000,  # Demolition if not replaced
                 'environmental': 100,  # Disposal fees
             },
@@ -794,16 +805,16 @@ class InvestParameters(Interface):
         # Gas turbine option
         gas_turbine = InvestParameters(
             fixed_size=50,  # MW
-            fix_effects={'cost': 2500000, 'CO2': 1250000},
-            specific_effects={'fuel_cost': 45, 'maintenance': 12},
+            effects_of_investment={'cost': 2500000, 'CO2': 1250000},
+            effects_of_investment_per_size={'fuel_cost': 45, 'maintenance': 12},
         )
 
         # Wind farm option
         wind_farm = InvestParameters(
             minimum_size=20,
             maximum_size=100,
-            fix_effects={'cost': 1000000, 'CO2': -5000000},
-            specific_effects={'cost': 1800000, 'land_use': 0.5},
+            effects_of_investment={'cost': 1000000, 'CO2': -5000000},
+            effects_of_investment_per_size={'cost': 1800000, 'land_use': 0.5},
         )
         ```
 
@@ -813,7 +824,7 @@ class InvestParameters(Interface):
         hydrogen_electrolyzer = InvestParameters(
             minimum_size=1,
             maximum_size=50,  # MW
-            piecewise_effects=PiecewiseEffects(
+            piecewise_effects_of_investment=PiecewiseEffects(
                 piecewise_origin=Piecewise(
                     [
                         Piece(0, 5),  # Small scale: early adoption
@@ -857,42 +868,67 @@ class InvestParameters(Interface):
         minimum_size: PeriodicDataUser | None = None,
         maximum_size: PeriodicDataUser | None = None,
         optional: bool = True,  # Investition ist weglassbar
-        fix_effects: PeriodicEffectsUser | None = None,
-        specific_effects: PeriodicEffectsUser | None = None,  # costs per Flow-Unit/Storage-Size/...
-        piecewise_effects: PiecewiseEffects | None = None,
-        divest_effects: PeriodicEffectsUser | None = None,
+        effects_of_investment: PeriodicEffectsUser | None = None,
+        effects_of_investment_per_size: PeriodicEffectsUser | None = None,
+        effects_of_retirement: PeriodicEffectsUser | None = None,
+        piecewise_effects_of_investment: PiecewiseEffects | None = None,
+        **kwargs,
     ):
-        self.fix_effects: PeriodicEffectsUser = fix_effects or {}
-        self.divest_effects: PeriodicEffectsUser = divest_effects or {}
+        # Handle deprecated parameters using centralized helper
+        effects_of_investment = self._handle_deprecated_kwarg(
+            kwargs, 'fix_effects', 'effects_of_investment', effects_of_investment
+        )
+        effects_of_investment_per_size = self._handle_deprecated_kwarg(
+            kwargs, 'specific_effects', 'effects_of_investment_per_size', effects_of_investment_per_size
+        )
+        effects_of_retirement = self._handle_deprecated_kwarg(
+            kwargs, 'divest_effects', 'effects_of_retirement', effects_of_retirement
+        )
+        piecewise_effects_of_investment = self._handle_deprecated_kwarg(
+            kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
+        )
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
+
+        self.effects_of_investment: PeriodicEffectsUser = (
+            effects_of_investment if effects_of_investment is not None else {}
+        )
+        self.effects_of_retirement: PeriodicEffectsUser = (
+            effects_of_retirement if effects_of_retirement is not None else {}
+        )
         self.fixed_size = fixed_size
         self.optional = optional
-        self.specific_effects: PeriodicEffectsUser = specific_effects if specific_effects is not None else {}
-        self.piecewise_effects = piecewise_effects
+        self.effects_of_investment_per_size: PeriodicEffectsUser = (
+            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
+        )
+        self.piecewise_effects_of_investment = piecewise_effects_of_investment
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.fix_effects = flow_system.fit_effects_to_model_coords(
+        self.effects_of_investment = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
-            effect_values=self.fix_effects,
-            label_suffix='fix_effects',
+            effect_values=self.effects_of_investment,
+            label_suffix='effects_of_investment',
             dims=['period', 'scenario'],
         )
-        self.divest_effects = flow_system.fit_effects_to_model_coords(
+        self.effects_of_retirement = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
-            effect_values=self.divest_effects,
-            label_suffix='divest_effects',
+            effect_values=self.effects_of_retirement,
+            label_suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
-        self.specific_effects = flow_system.fit_effects_to_model_coords(
+        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
-            effect_values=self.specific_effects,
-            label_suffix='specific_effects',
+            effect_values=self.effects_of_investment_per_size,
+            label_suffix='effects_of_investment_per_size',
             dims=['period', 'scenario'],
         )
-        if self.piecewise_effects is not None:
-            self.piecewise_effects.has_time_dim = False
-            self.piecewise_effects.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
+
+        if self.piecewise_effects_of_investment is not None:
+            self.piecewise_effects_of_investment.has_time_dim = False
+            self.piecewise_effects_of_investment.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
         self.minimum_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
@@ -904,6 +940,46 @@ class InvestParameters(Interface):
             self.fixed_size = flow_system.fit_to_model_coords(
                 f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
             )
+
+    @property
+    def fix_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_investment instead."""
+        warnings.warn(
+            'The fix_effects property is deprecated. Use effects_of_investment instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_investment
+
+    @property
+    def specific_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_investment_per_size instead."""
+        warnings.warn(
+            'The specific_effects property is deprecated. Use effects_of_investment_per_size instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_investment_per_size
+
+    @property
+    def divest_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_retirement instead."""
+        warnings.warn(
+            'The divest_effects property is deprecated. Use effects_of_retirement instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_retirement
+
+    @property
+    def piecewise_effects(self) -> PiecewiseEffects | None:
+        """Deprecated property. Use piecewise_effects_of_investment instead."""
+        warnings.warn(
+            'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.piecewise_effects_of_investment
 
     @property
     def minimum_or_fixed_size(self) -> PeriodicData:
