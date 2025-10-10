@@ -83,7 +83,7 @@ Until here -->
 - Logging and Configuration management changed
 - **Breaking**: Console logging is now disabled by default (`CONFIG.Logging.console = False`). Enable it explicitly in your scripts with `CONFIG.Logging.console = True` and `CONFIG.apply()`
 - **Breaking**: File logging is now disabled by default (`CONFIG.Logging.file = None`). Set a file path to enable file logging
-- Improved default logging colors: DEBUG is now gray (`\033[90m`), INFO is now white (`\033[37m`) for better readability
+- Improved default logging colors: DEBUG is now gray (`\033[90m`), INFO is now white (`\033[0m`) for better readability
 
 ### 🗑️ Deprecated
 - `change_logging_level()` function is now deprecated in favor of `CONFIG.Logging.level` and `CONFIG.apply()`. Will be removed in version 3.0.0.
