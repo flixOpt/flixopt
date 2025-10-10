@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Vector based energy and material flow optimization framework in Python."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT License" }
+license = "MIT"
 authors = [
     { name = "Chair of Building Energy Systems and Heat Supply, TU Dresden", email = "peter.stange@tu-dresden.de" },
     { name = "Felix Bumann", email = "felixbumann387@gmail.com" },
@@ -22,7 +22,6 @@ maintainers = [
 keywords = ["optimization", "energy systems", "numerical analysis"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -30,7 +29,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
-    "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
     # Core scientific computing
@@ -39,7 +37,7 @@ dependencies = [
     "xarray >= 2024.2.0, < 2026.0",  # CalVer: allow through next calendar year
     # Optimization and data handling
     "linopy >= 0.5.1, < 0.6",  # Widened from patch pin to minor range
-    "netcdf4 >= 1.6.1, < 2",
+    "h5netcdf>=1.0.0, < 2",
     # Utilities
     "pyyaml >= 6.0.0, < 7",
     "rich >= 13.0.0, < 15",
@@ -80,6 +78,7 @@ full = [
 # Development tools and testing
 dev = [
     "pytest==8.4.2",
+    "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
     "ruff==0.13.0",
     "pre-commit==4.3.0",
@@ -115,10 +114,17 @@ documentation = "https://flixopt.github.io/flixopt/"
 
 [tool.setuptools.packages.find]
 where = ["."]
-exclude = ["tests", "docs", "examples", "examples.*", "Tutorials", ".git", ".vscode", "build", ".venv", "venv/"]
+include = ["flixopt*"]
+exclude = ["tests*", "docs*", "examples*", "Tutorials*"]
 
 [tool.setuptools.package-data]
 "flixopt" = ["config.yaml"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.md", ".git*", "*.ipynb", "renovate.json"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
@@ -175,6 +181,35 @@ docstring-code-format = true
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = false  # Allow pyupgrade to drop runtime typing; prefer postponed annotations
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow",
+    "examples: marks example tests (run only on releases)",
+]
+addopts = '-m "not examples"'  # Skip examples by default
+
+# Warning filter configuration for pytest
+# Filters are processed in order; first match wins
+# Format: "action:message:category:module"
+filterwarnings = [
+    # === Default behavior: show all warnings ===
+    "default",
+
+    # === Treat flixopt warnings as errors (strict mode for our code) ===
+    # This ensures we catch deprecations, future changes, and user warnings in our own code
+    "error::DeprecationWarning:flixopt",
+    "error::FutureWarning:flixopt",
+    "error::UserWarning:flixopt",
+
+    # === Third-party warnings (mirrored from __init__.py) ===
+    "ignore::FutureWarning:tsam",
+    "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
+    "ignore:Coordinates across variables not equal:UserWarning:linopy",
+    "ignore:default value for join will change from join='outer' to join='exact':FutureWarning:linopy",
+    "ignore:numpy\\.ndarray size changed:RuntimeWarning",
+    "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
+]
 
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load

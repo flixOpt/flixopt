@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Optional
 
 from .config import CONFIG
 from .structure import Interface, register_class_for_io
@@ -15,8 +15,8 @@ from .structure import Interface, register_class_for_io
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .core import NumericData
-    from .effects import EffectValuesUser, EffectValuesUserScalar
+    from .core import PeriodicData, PeriodicDataUser, Scalar, TemporalDataUser
+    from .effects import PeriodicEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
 
 
@@ -69,21 +69,21 @@ class Piece(Interface):
 
     """
 
-    def __init__(self, start: NumericData, end: NumericData):
+    def __init__(self, start: TemporalDataUser, end: TemporalDataUser):
         self.start = start
         self.end = end
+        self.has_time_dim = False
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
-        self.start = flow_system.create_time_series(f'{name_prefix}|start', self.start)
-        self.end = flow_system.create_time_series(f'{name_prefix}|end', self.end)
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        dims = None if self.has_time_dim else ['period', 'scenario']
+        self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, dims=dims)
+        self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, dims=dims)
 
 
 @register_class_for_io
 class Piecewise(Interface):
-    """Define a piecewise linear function by combining multiple `Piece`s together.
-
-    This class creates complex non-linear relationships by combining multiple
-    Piece objects into a single piecewise linear function.
+    """
+    Define a Piecewise, consisting of a list of Pieces.
 
     Args:
         pieces: list of Piece objects defining the linear segments. The arrangement
@@ -193,6 +193,17 @@ class Piecewise(Interface):
 
     def __init__(self, pieces: list[Piece]):
         self.pieces = pieces
+        self._has_time_dim = False
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        for piece in self.pieces:
+            piece.has_time_dim = value
 
     def __len__(self):
         """
@@ -209,7 +220,7 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         for i, piece in enumerate(self.pieces):
             piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
 
@@ -228,6 +239,10 @@ class PiecewiseConversion(Interface):
         of pieces with compatible domains) to ensure synchronized operation.
         When the equipment operates at a given point, ALL flows scale proportionally
         within their respective pieces.
+
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Piecewise](../user-guide/mathematical-notation/features/Piecewise.md)
 
     Args:
         piecewises: Dictionary mapping flow labels to their Piecewise functions.
@@ -409,6 +424,18 @@ class PiecewiseConversion(Interface):
 
     def __init__(self, piecewises: dict[str, Piecewise]):
         self.piecewises = piecewises
+        self._has_time_dim = True
+        self.has_time_dim = True  # Initial propagation
+
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        for piecewise in self.piecewises.values():
+            piecewise.has_time_dim = value
 
     def items(self):
         """
@@ -419,7 +446,7 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         for name, piecewise in self.piecewises.items():
             piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
 
@@ -617,12 +644,24 @@ class PiecewiseEffects(Interface):
     def __init__(self, piecewise_origin: Piecewise, piecewise_shares: dict[str, Piecewise]):
         self.piecewise_origin = piecewise_origin
         self.piecewise_shares = piecewise_shares
+        self._has_time_dim = False
+        self.has_time_dim = False  # Initial propagation
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
-        raise NotImplementedError('PiecewiseEffects is not yet implemented for non scalar shares')
-        # self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
-        # for name, piecewise in self.piecewise_shares.items():
-        #    piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{name}')
+    @property
+    def has_time_dim(self):
+        return self._has_time_dim
+
+    @has_time_dim.setter
+    def has_time_dim(self, value):
+        self._has_time_dim = value
+        self.piecewise_origin.has_time_dim = value
+        for piecewise in self.piecewise_shares.values():
+            piecewise.has_time_dim = value
+
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
+        for effect, piecewise in self.piecewise_shares.items():
+            piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
 
 
 @register_class_for_io
@@ -647,31 +686,39 @@ class InvestParameters(Interface):
         - **Piecewise Effects**: Non-linear relationships (bulk discounts, learning curves)
         - **Divestment Effects**: Penalties for not investing (demolition, opportunity costs)
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [InvestParameters](../user-guide/mathematical-notation/features/InvestParameters.md)
+
     Args:
-        fixed_size: When specified, creates a binary investment decision at exactly
-            this size. When None, allows continuous sizing between minimum and maximum bounds.
-        minimum_size: Lower bound for continuous sizing decisions. Defaults to a small
-            positive value (CONFIG.modeling.EPSILON) to avoid numerical issues.
-            Ignored when fixed_size is specified.
-        maximum_size: Upper bound for continuous sizing decisions. Defaults to a large
-            value (CONFIG.modeling.BIG) representing unlimited capacity.
-            Ignored when fixed_size is specified.
+        fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
+        minimum_size: Lower bound for continuous sizing. Default: CONFIG.modeling.EPSILON.
+            Ignored if fixed_size is specified.
+        maximum_size: Upper bound for continuous sizing. Default: CONFIG.modeling.BIG.
+            Ignored if fixed_size is specified.
         mandatory: Controls whether investment is required. When True, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
             When False (default), optimization can choose not to invest.
+        effects_of_investment: Fixed costs if investment is made, regardless of size.
+            Dict: {'effect_name': value} (e.g., {'cost': 10000}).
+        effects_of_investment_per_size: Variable costs proportional to size (per-unit costs).
+            Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
+        piecewise_effects_of_investment: Non-linear costs using PiecewiseEffects.
+            Combinable with effects_of_investment and effects_of_investment_per_size.
+        effects_of_retirement: Costs incurred if NOT investing (demolition, penalties).
+            Dict: {'effect_name': value}.
+
+    Deprecated Args:
+        fix_effects: **Deprecated**. Use `effects_of_investment` instead.
+            Will be removed in version 4.0.
+        specific_effects: **Deprecated**. Use `effects_of_investment_per_size` instead.
+            Will be removed in version 4.0.
+        divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
+            Will be removed in version 4.0.
+        piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
+            Will be removed in version 4.0.
         optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
-        fix_effects: Fixed costs incurred once if investment is made, regardless
-            of size. Dictionary mapping effect names to values
-            (e.g., {'cost': 10000, 'CO2_construction': 500}).
-        specific_effects: Variable costs proportional to investment size, representing
-            per-unit costs (€/kW, €/m²). Dictionary mapping effect names to unit values
-            (e.g., {'cost': 1200, 'steel_required': 0.5}).
-        piecewise_effects: Non-linear cost relationships using PiecewiseEffects for
-            economies of scale, learning curves, or threshold effects. Can be combined
-            with fix_effects and specific_effects.
-        divest_effects: Costs incurred if the investment is NOT made, such as
-            demolition of existing equipment, contractual penalties, or lost opportunities.
-            Dictionary mapping effect names to values.
+            Will be removed in version 4.0.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -690,11 +737,11 @@ class InvestParameters(Interface):
         solar_investment = InvestParameters(
             fixed_size=100,  # 100 kW system (binary decision)
             mandatory=False,  # Investment is optional
-            fix_effects={
+            effects_of_investment={
                 'cost': 25000,  # Installation and permitting costs
                 'CO2': -50000,  # Avoided emissions over lifetime
             },
-            specific_effects={
+            effects_of_investment_per_size={
                 'cost': 1200,  # €1200/kW for panels (annualized)
                 'CO2': -800,  # kg CO2 avoided per kW annually
             },
@@ -708,11 +755,11 @@ class InvestParameters(Interface):
             minimum_size=10,  # Minimum viable system size (kWh)
             maximum_size=1000,  # Maximum installable capacity
             mandatory=False,  # Investment is optional
-            fix_effects={
+            effects_of_investment={
                 'cost': 5000,  # Grid connection and control system
                 'installation_time': 2,  # Days for fixed components
             },
-            piecewise_effects=PiecewiseEffects(
+            piecewise_effects_of_investment=PiecewiseEffects(
                 piecewise_origin=Piecewise(
                     [
                         Piece(0, 100),  # Small systems
@@ -733,22 +780,22 @@ class InvestParameters(Interface):
         )
         ```
 
-        Mandatory replacement with divestment costs:
+        Mandatory replacement with retirement costs:
 
         ```python
         boiler_replacement = InvestParameters(
             minimum_size=50,
             maximum_size=200,
             mandatory=False,  # Can choose not to replace
-            fix_effects={
+            effects_of_investment={
                 'cost': 15000,  # Installation costs
                 'disruption': 3,  # Days of downtime
             },
-            specific_effects={
+            effects_of_investment_per_size={
                 'cost': 400,  # €400/kW capacity
                 'maintenance': 25,  # Annual maintenance per kW
             },
-            divest_effects={
+            effects_of_retirement={
                 'cost': 8000,  # Demolition if not replaced
                 'environmental': 100,  # Disposal fees
             },
@@ -761,16 +808,16 @@ class InvestParameters(Interface):
         # Gas turbine option
         gas_turbine = InvestParameters(
             fixed_size=50,  # MW
-            fix_effects={'cost': 2500000, 'CO2': 1250000},
-            specific_effects={'fuel_cost': 45, 'maintenance': 12},
+            effects_of_investment={'cost': 2500000, 'CO2': 1250000},
+            effects_of_investment_per_size={'fuel_cost': 45, 'maintenance': 12},
         )
 
         # Wind farm option
         wind_farm = InvestParameters(
             minimum_size=20,
             maximum_size=100,
-            fix_effects={'cost': 1000000, 'CO2': -5000000},
-            specific_effects={'cost': 1800000, 'land_use': 0.5},
+            effects_of_investment={'cost': 1000000, 'CO2': -5000000},
+            effects_of_investment_per_size={'cost': 1800000, 'land_use': 0.5},
         )
         ```
 
@@ -780,7 +827,7 @@ class InvestParameters(Interface):
         hydrogen_electrolyzer = InvestParameters(
             minimum_size=1,
             maximum_size=50,  # MW
-            piecewise_effects=PiecewiseEffects(
+            piecewise_effects_of_investment=PiecewiseEffects(
                 piecewise_origin=Piecewise(
                     [
                         Piece(0, 5),  # Small scale: early adoption
@@ -820,34 +867,83 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: int | float | None = None,
-        minimum_size: int | float | None = None,
-        maximum_size: int | float | None = None,
+        fixed_size: PeriodicDataUser | None = None,
+        minimum_size: PeriodicDataUser | None = None,
+        maximum_size: PeriodicDataUser | None = None,
         mandatory: bool = False,
-        fix_effects: EffectValuesUserScalar | None = None,
-        specific_effects: EffectValuesUserScalar | None = None,  # costs per Flow-Unit/Storage-Size/...
-        piecewise_effects: PiecewiseEffects | None = None,
-        divest_effects: EffectValuesUserScalar | None = None,
-        # Backwards compatibility - deprecated parameter
-        optional: bool | None = None,
+        effects_of_investment: PeriodicEffectsUser | None = None,
+        effects_of_investment_per_size: PeriodicEffectsUser | None = None,
+        effects_of_retirement: PeriodicEffectsUser | None = None,
+        piecewise_effects_of_investment: PiecewiseEffects | None = None,
+        **kwargs,
     ):
-        self.fix_effects: EffectValuesUserScalar = fix_effects or {}
-        self.divest_effects: EffectValuesUserScalar = divest_effects or {}
+        # Handle deprecated parameters using centralized helper
+        effects_of_investment = self._handle_deprecated_kwarg(
+            kwargs, 'fix_effects', 'effects_of_investment', effects_of_investment
+        )
+        effects_of_investment_per_size = self._handle_deprecated_kwarg(
+            kwargs, 'specific_effects', 'effects_of_investment_per_size', effects_of_investment_per_size
+        )
+        effects_of_retirement = self._handle_deprecated_kwarg(
+            kwargs, 'divest_effects', 'effects_of_retirement', effects_of_retirement
+        )
+        piecewise_effects_of_investment = self._handle_deprecated_kwarg(
+            kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
+        )
+        mandatory = self._handle_deprecated_kwarg(kwargs, 'optional', 'mandatory', mandatory, transform=lambda x: not x)
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
+
+        self.effects_of_investment: PeriodicEffectsUser = (
+            effects_of_investment if effects_of_investment is not None else {}
+        )
+        self.effects_of_retirement: PeriodicEffectsUser = (
+            effects_of_retirement if effects_of_retirement is not None else {}
+        )
         self.fixed_size = fixed_size
-        self.specific_effects: EffectValuesUserScalar = specific_effects or {}
-        self.piecewise_effects = piecewise_effects
-        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
-        self._maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
         self.mandatory = mandatory
+        self.effects_of_investment_per_size: PeriodicEffectsUser = (
+            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
+        )
+        self.piecewise_effects_of_investment = piecewise_effects_of_investment
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.modeling.EPSILON
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.modeling.BIG  # default maximum
 
-        # Handle backwards compatibility for optional parameter
-        if optional is not None:
-            self.optional = optional
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        self.effects_of_investment = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_investment,
+            label_suffix='effects_of_investment',
+            dims=['period', 'scenario'],
+        )
+        self.effects_of_retirement = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_retirement,
+            label_suffix='effects_of_retirement',
+            dims=['period', 'scenario'],
+        )
+        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_investment_per_size,
+            label_suffix='effects_of_investment_per_size',
+            dims=['period', 'scenario'],
+        )
 
-    def transform_data(self, flow_system: FlowSystem):
-        self.fix_effects = flow_system.effects.create_effect_values_dict(self.fix_effects)
-        self.divest_effects = flow_system.effects.create_effect_values_dict(self.divest_effects)
-        self.specific_effects = flow_system.effects.create_effect_values_dict(self.specific_effects)
+        if self.piecewise_effects_of_investment is not None:
+            self.piecewise_effects_of_investment.has_time_dim = False
+            self.piecewise_effects_of_investment.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
+
+        self.minimum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
+        )
+        self.maximum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
+        )
+        if self.fixed_size is not None:
+            self.fixed_size = flow_system.fit_to_model_coords(
+                f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
+            )
 
     @property
     def optional(self) -> bool:
@@ -864,12 +960,52 @@ class InvestParameters(Interface):
         self.mandatory = not value
 
     @property
-    def minimum_size(self):
-        return self.fixed_size or self._minimum_size
+    def fix_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_investment instead."""
+        warnings.warn(
+            'The fix_effects property is deprecated. Use effects_of_investment instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_investment
 
     @property
-    def maximum_size(self):
-        return self.fixed_size or self._maximum_size
+    def specific_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_investment_per_size instead."""
+        warnings.warn(
+            'The specific_effects property is deprecated. Use effects_of_investment_per_size instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_investment_per_size
+
+    @property
+    def divest_effects(self) -> PeriodicEffectsUser:
+        """Deprecated property. Use effects_of_retirement instead."""
+        warnings.warn(
+            'The divest_effects property is deprecated. Use effects_of_retirement instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.effects_of_retirement
+
+    @property
+    def piecewise_effects(self) -> PiecewiseEffects | None:
+        """Deprecated property. Use piecewise_effects_of_investment instead."""
+        warnings.warn(
+            'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.piecewise_effects_of_investment
+
+    @property
+    def minimum_or_fixed_size(self) -> PeriodicData:
+        return self.fixed_size if self.fixed_size is not None else self.minimum_size
+
+    @property
+    def maximum_or_fixed_size(self) -> PeriodicData:
+        return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
 
 @register_class_for_io
@@ -893,6 +1029,10 @@ class OnOffParameters(Interface):
         - **HVAC Systems**: Chillers, boilers with minimum run times
         - **Backup Equipment**: Emergency generators, standby systems
         - **Process Equipment**: Compressors, pumps with operational constraints
+
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [OnOffParameters](../user-guide/mathematical-notation/features/OnOffParameters.md)
 
     Args:
         effects_per_switch_on: Costs or impacts incurred for each transition from
@@ -972,7 +1112,7 @@ class OnOffParameters(Interface):
             consecutive_on_hours_min=12,  # Minimum batch size (12 hours)
             consecutive_on_hours_max=24,  # Maximum batch size (24 hours)
             consecutive_off_hours_min=6,  # Cleaning and setup time
-            switch_on_total_max=200,  # Maximum 200 batches per year
+            switch_on_total_max=200,  # Maximum 200 batches per period
             on_hours_total_max=4000,  # Maximum production time
         )
         ```
@@ -1052,46 +1192,59 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: EffectValuesUser | None = None,
-        effects_per_running_hour: EffectValuesUser | None = None,
+        effects_per_switch_on: TemporalEffectsUser | None = None,
+        effects_per_running_hour: TemporalEffectsUser | None = None,
         on_hours_total_min: int | None = None,
         on_hours_total_max: int | None = None,
-        consecutive_on_hours_min: NumericData | None = None,
-        consecutive_on_hours_max: NumericData | None = None,
-        consecutive_off_hours_min: NumericData | None = None,
-        consecutive_off_hours_max: NumericData | None = None,
+        consecutive_on_hours_min: TemporalDataUser | None = None,
+        consecutive_on_hours_max: TemporalDataUser | None = None,
+        consecutive_off_hours_min: TemporalDataUser | None = None,
+        consecutive_off_hours_max: TemporalDataUser | None = None,
         switch_on_total_max: int | None = None,
         force_switch_on: bool = False,
     ):
-        self.effects_per_switch_on: EffectValuesUser = effects_per_switch_on or {}
-        self.effects_per_running_hour: EffectValuesUser = effects_per_running_hour or {}
-        self.on_hours_total_min = on_hours_total_min
-        self.on_hours_total_max = on_hours_total_max
-        self.consecutive_on_hours_min = consecutive_on_hours_min
-        self.consecutive_on_hours_max = consecutive_on_hours_max
-        self.consecutive_off_hours_min = consecutive_off_hours_min
-        self.consecutive_off_hours_max = consecutive_off_hours_max
-        self.switch_on_total_max = switch_on_total_max
+        self.effects_per_switch_on: TemporalEffectsUser = (
+            effects_per_switch_on if effects_per_switch_on is not None else {}
+        )
+        self.effects_per_running_hour: TemporalEffectsUser = (
+            effects_per_running_hour if effects_per_running_hour is not None else {}
+        )
+        self.on_hours_total_min: Scalar = on_hours_total_min
+        self.on_hours_total_max: Scalar = on_hours_total_max
+        self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min
+        self.consecutive_on_hours_max: TemporalDataUser = consecutive_on_hours_max
+        self.consecutive_off_hours_min: TemporalDataUser = consecutive_off_hours_min
+        self.consecutive_off_hours_max: TemporalDataUser = consecutive_off_hours_max
+        self.switch_on_total_max: Scalar = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str):
-        self.effects_per_switch_on = flow_system.create_effect_time_series(
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        self.effects_per_switch_on = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_switch_on, 'per_switch_on'
         )
-        self.effects_per_running_hour = flow_system.create_effect_time_series(
+        self.effects_per_running_hour = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_running_hour, 'per_running_hour'
         )
-        self.consecutive_on_hours_min = flow_system.create_time_series(
+        self.consecutive_on_hours_min = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
         )
-        self.consecutive_on_hours_max = flow_system.create_time_series(
+        self.consecutive_on_hours_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_on_hours_max', self.consecutive_on_hours_max
         )
-        self.consecutive_off_hours_min = flow_system.create_time_series(
+        self.consecutive_off_hours_min = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_off_hours_min', self.consecutive_off_hours_min
         )
-        self.consecutive_off_hours_max = flow_system.create_time_series(
+        self.consecutive_off_hours_max = flow_system.fit_to_model_coords(
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
+        )
+        self.on_hours_total_max = flow_system.fit_to_model_coords(
+            f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, dims=['period', 'scenario']
+        )
+        self.on_hours_total_min = flow_system.fit_to_model_coords(
+            f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, dims=['period', 'scenario']
+        )
+        self.switch_on_total_max = flow_system.fit_to_model_coords(
+            f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, dims=['period', 'scenario']
         )
 
     @property
@@ -1111,16 +1264,14 @@ class OnOffParameters(Interface):
 
     @property
     def use_switch_on(self) -> bool:
-        """Determines whether a Variable for SWITCH-ON is needed or not"""
-        return (
-            any(
-                param not in (None, {})
-                for param in [
-                    self.effects_per_switch_on,
-                    self.switch_on_total_max,
-                    self.on_hours_total_min,
-                    self.on_hours_total_max,
-                ]
-            )
-            or self.force_switch_on
+        """Determines whether a variable for switch_on is needed or not"""
+        if self.force_switch_on:
+            return True
+
+        return any(
+            param is not None and param != {}
+            for param in [
+                self.effects_per_switch_on,
+                self.switch_on_total_max,
+            ]
         )

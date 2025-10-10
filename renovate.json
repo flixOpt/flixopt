@@ -14,10 +14,31 @@
   "automerge": false,
   "labels": ["dependencies"],
   "rangeStrategy": "widen",
+  "minimumReleaseAge": "7 days",
   "packageRules": [
     {
-      "matchDepTypes": ["dev-dependencies", "devDependencies"],
-      "rangeStrategy": "pin"
+      "description": "Group and automerge dev and docs dependencies",
+      "matchDepTypes": ["dev", "docs"],
+      "groupName": "dev dependencies",
+      "rangeStrategy": "pin",
+      "minimumReleaseAge": "14 days",
+      "automerge": true,
+      "automergeType": "pr",
+      "separateMinorPatch": false
+    },
+    {
+      "matchUpdateTypes": ["patch"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "CalVer packages (xarray, dask) can have breaking changes in any release - never automerge, longer release age",
+      "matchPackageNames": ["xarray", "dask"],
+      "minimumReleaseAge": "14 days",
+      "schedule": ["* * * * *"],
+      "labels": ["calver", "breaking-change-risk", "dependencies"],
+      "prPriority": 10
     }
   ]
 }
