@@ -153,7 +153,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
     - Added comprehensive warning filters in `__init__.py` and `pyproject.toml` to suppress third-party library warnings
     - Improved test fixtures with proper figure cleanup to prevent memory leaks
     - Enhanced backend detection and handling in `plotting.py` for both Matplotlib and Plotly
-    - always run dependent test in order
+    - Always run dependent test in order
 
 
 Until here -->
