@@ -58,7 +58,7 @@ warnings.filterwarnings(
 warnings.filterwarnings(
     'ignore',
     category=FutureWarning,
-    message="default value for join will change from join='outer' to join='exact'",
+    message="In a future version of xarray the default value for join will change from join='outer' to join='exact'",
     module='linopy',
 )
 

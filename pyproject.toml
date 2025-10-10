@@ -206,7 +206,7 @@ filterwarnings = [
     "ignore::FutureWarning:tsam",
     "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
     "ignore:Coordinates across variables not equal:UserWarning:linopy",
-    "ignore:default value for join will change from join='outer' to join='exact':FutureWarning:linopy",
+    "ignore:.*join will change from join='outer' to join='exact'.*:FutureWarning:linopy",
     "ignore:numpy\\.ndarray size changed:RuntimeWarning",
     "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
 ]
