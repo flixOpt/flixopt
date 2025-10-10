@@ -92,9 +92,9 @@ class InvestmentModel(Submodel):
             self.add_constraints(self._variables['invested'] == 1, 'invest|fix')
 
         if self.parameters.linked_periods is not None:
+            masked_size = self.size.where(self.parameters.linked_periods, drop=True)
             self.add_constraints(
-                self.size.where(self.parameters.linked_periods == 1, drop=True).isel(period=slice(None, -1))
-                == self.size.where(self.parameters.linked_periods == 1, drop=True).isel(period=slice(1, None)),
+                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
                 short_name='linked_periods',
             )
             self.add_constraints(
