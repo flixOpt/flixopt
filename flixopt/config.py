@@ -347,7 +347,7 @@ class CONFIG:
         }
 
 
-class MultilineFormater(logging.Formatter):
+class MultilineFormatter(logging.Formatter):
     """Formatter that handles multi-line messages with consistent prefixes.
 
     Args:
@@ -382,7 +382,7 @@ class MultilineFormater(logging.Formatter):
         return '\n'.join(lines)
 
 
-class ColoredMultilineFormater(MultilineFormater):
+class ColoredMultilineFormatter(MultilineFormatter):
     """Formatter that adds ANSI colors to multi-line log messages.
 
     Args:
@@ -474,7 +474,7 @@ def _create_console_handler(
         # Explicitly use sys.stdout instead of default sys.stderr
         handler = logging.StreamHandler(stream=sys.stdout)
         handler.setFormatter(
-            ColoredMultilineFormater(
+            ColoredMultilineFormatter(
                 fmt=format,
                 datefmt=date_format,
                 colors=colors,
@@ -528,7 +528,7 @@ def _create_file_handler(
         ) from e
 
     handler.setFormatter(
-        MultilineFormater(
+        MultilineFormatter(
             fmt=format,
             datefmt=date_format,
             show_logger_name=show_logger_name,
