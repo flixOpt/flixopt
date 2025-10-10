@@ -225,3 +225,19 @@ class TestInvestParametersDeprecation:
             assert params.effects_of_investment == {'cost': 25000}
             assert params.effects_of_investment_per_size == {'cost': 1200}
             assert params.effects_of_retirement == {'cost': 5000}
+
+    def test_unexpected_keyword_arguments(self):
+        """Test that unexpected keyword arguments raise TypeError."""
+        # Single unexpected argument
+        with pytest.raises(TypeError, match="InvestParameters\\(\\) got unexpected keyword arguments: 'invalid_param'"):
+            InvestParameters(invalid_param='value')
+
+        # Multiple unexpected arguments
+        with pytest.raises(
+            TypeError, match="InvestParameters\\(\\) got unexpected keyword arguments: 'param1', 'param2'"
+        ):
+            InvestParameters(param1='value1', param2='value2')
+
+        # Mix of valid and invalid arguments
+        with pytest.raises(TypeError, match="InvestParameters\\(\\) got unexpected keyword arguments: 'typo'"):
+            InvestParameters(effects_of_investment={'cost': 100}, typo='value')

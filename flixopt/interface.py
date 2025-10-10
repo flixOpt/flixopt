@@ -922,6 +922,11 @@ class InvestParameters(Interface):
             if piecewise_effects_of_investment is None:
                 piecewise_effects_of_investment = piecewise_effects
 
+        # Check for unexpected keyword arguments
+        if kwargs:
+            unexpected = ', '.join(f"'{k}'" for k in kwargs.keys())
+            raise TypeError(f'InvestParameters() got unexpected keyword arguments: {unexpected}')
+
         self.effects_of_investment: PeriodicEffectsUser = (
             effects_of_investment if effects_of_investment is not None else {}
         )
