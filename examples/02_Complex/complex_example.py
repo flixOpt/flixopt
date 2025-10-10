@@ -9,6 +9,9 @@ from rich.pretty import pprint  # Used for pretty printing
 import flixopt as fx
 
 if __name__ == '__main__':
+    # Enable console logging
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG.apply()
     # --- Experiment Options ---
     # Configure options for testing various parameters and behaviors
     check_penalty = False

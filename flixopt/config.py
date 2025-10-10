@@ -25,9 +25,9 @@ _DEFAULTS = MappingProxyType(
         'logging': MappingProxyType(
             {
                 'level': 'INFO',
-                'file': 'flixopt.log',
+                'file': None,
                 'rich': False,
-                'console': True,
+                'console': False,
                 'max_file_size': 10_485_760,  # 10MB
                 'backup_count': 5,
                 'date_format': '%Y-%m-%d %H:%M:%S',
@@ -36,8 +36,8 @@ _DEFAULTS = MappingProxyType(
                 'show_path': False,
                 'colors': MappingProxyType(
                     {
-                        'DEBUG': '\033[32m',  # Green
-                        'INFO': '\033[34m',  # Blue
+                        'DEBUG': '\033[90m',  # Bright Black/Gray
+                        'INFO': '\033[0m',  # Default/Reset (no color)
                         'WARNING': '\033[33m',  # Yellow
                         'ERROR': '\033[31m',  # Red
                         'CRITICAL': '\033[1m\033[31m',  # Bold Red
@@ -62,7 +62,7 @@ class CONFIG:
     The CONFIG class provides centralized configuration for logging and modeling parameters.
     All changes require calling ``CONFIG.apply()`` to take effect.
 
-    By default, logging outputs to both console and file ('flixopt.log').
+    By default, logging is disabled (no console or file output). Enable logging in your scripts as needed.
 
     Attributes:
         Logging: Nested class containing all logging configuration options.
@@ -73,9 +73,9 @@ class CONFIG:
     Logging Attributes:
         level (str): Logging level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
             Default: 'INFO'
-        file (str | None): Log file path. Default: 'flixopt.log'.
-            Set to None to disable file logging.
-        console (bool): Enable console (stdout) logging. Default: True
+        file (str | None): Log file path. Default: None (file logging disabled).
+            Set to a file path to enable file logging.
+        console (bool): Enable console (stdout) logging. Default: False
         rich (bool): Use Rich library for enhanced console output. Default: False
         max_file_size (int): Maximum log file size in bytes before rotation.
             Default: 10485760 (10MB)
@@ -87,8 +87,8 @@ class CONFIG:
         show_path (bool): Show file paths in log messages. Default: False
 
     Colors Attributes:
-        DEBUG (str): ANSI color code for DEBUG level. Default: '\\033[32m' (green)
-        INFO (str): ANSI color code for INFO level. Default: '\\033[34m' (blue)
+        DEBUG (str): ANSI color code for DEBUG level. Default: '\\033[90m' (bright black/gray)
+        INFO (str): ANSI color code for INFO level. Default: '\\033[0m' (default/no color)
         WARNING (str): ANSI color code for WARNING level. Default: '\\033[33m' (yellow)
         ERROR (str): ANSI color code for ERROR level. Default: '\\033[31m' (red)
         CRITICAL (str): ANSI color code for CRITICAL level. Default: '\\033[1m\\033[31m' (bold red)
@@ -139,7 +139,7 @@ class CONFIG:
 
         Customize log colors::
 
-            CONFIG.Logging.Colors.INFO = '\\033[35m'  # Magenta
+            CONFIG.Logging.Colors.INFO = '\\033[32m'  # Green
             CONFIG.Logging.Colors.DEBUG = '\\033[36m'  # Cyan
             CONFIG.Logging.Colors.ERROR = '\\033[1m\\033[31m'  # Bold red
             CONFIG.apply()
@@ -150,7 +150,7 @@ class CONFIG:
             CONFIG.Logging.rich = True
             CONFIG.Logging.console_width = 100
             CONFIG.Logging.show_path = True
-            CONFIG.Logging.Colors.INFO = '\\033[36m'  # Cyan
+            CONFIG.Logging.Colors.INFO = '\\033[32m'  # Green
             CONFIG.apply()
 
         Load from YAML file::
@@ -172,8 +172,8 @@ class CONFIG:
               console_width: 100
               show_path: true
               colors:
-                DEBUG: "\\033[36m"              # Cyan
-                INFO: "\\033[32m"               # Green
+                DEBUG: "\\033[90m"              # Bright Black/Gray
+                INFO: "\\033[0m"                # Default/No color
                 WARNING: "\\033[33m"            # Yellow
                 ERROR: "\\033[31m"              # Red
                 CRITICAL: "\\033[1m\\033[31m"   # Bold red
@@ -360,8 +360,8 @@ class ColoredMultilineFormater(MultilineFormater):
             colors
             if colors is not None
             else {
-                'DEBUG': '\033[32m',
-                'INFO': '\033[34m',
+                'DEBUG': '\033[90m',
+                'INFO': '\033[0m',
                 'WARNING': '\033[33m',
                 'ERROR': '\033[31m',
                 'CRITICAL': '\033[1m\033[31m',
