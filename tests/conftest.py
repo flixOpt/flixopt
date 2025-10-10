@@ -161,7 +161,7 @@ class Converters:
                     size=fx.InvestParameters(
                         effects_of_investment=1000,
                         fixed_size=50,
-                        optional=False,
+                        mandatory=True,
                         effects_of_investment_per_size={'costs': 10, 'PE': 2},
                     ),
                     on_off_parameters=fx.OnOffParameters(
@@ -267,7 +267,7 @@ class Storage:
             'Speicher',
             charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
             discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
-            capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, optional=False),
+            capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
             initial_charge_state=0,
             relative_maximum_charge_state=1 / 100 * np.array(charge_state_values),
             relative_maximum_final_charge_state=0.8,
@@ -289,7 +289,7 @@ class Storage:
                     'PE': fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
                 },
             ),
-            optional=False,
+            mandatory=True,
             effects_of_investment_per_size={'costs': 0.01, 'CO2': 0.01},
             minimum_size=0,
             maximum_size=1000,

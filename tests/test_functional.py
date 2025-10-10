@@ -270,7 +270,7 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.InvestParameters(
-                    optional=True, minimum_size=40, effects_of_investment=10, effects_of_investment_per_size=1
+                    mandatory=False, minimum_size=40, effects_of_investment=10, effects_of_investment_per_size=1
                 ),
             ),
         ),
@@ -282,7 +282,7 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.InvestParameters(
-                    optional=True, minimum_size=50, effects_of_investment=10, effects_of_investment_per_size=1
+                    mandatory=False, minimum_size=50, effects_of_investment=10, effects_of_investment_per_size=1
                 ),
             ),
         ),

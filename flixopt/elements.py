@@ -673,8 +673,8 @@ class FlowModel(ElementModel):
             if not self.with_investment:
                 # Basic case without investment and without OnOff
                 lb = lb_relative * self.element.size
-            elif isinstance(self.element.size, InvestParameters) and not self.element.size.optional:
-                # With non-optional Investment
+            elif isinstance(self.element.size, InvestParameters) and self.element.size.mandatory:
+                # With mandatory Investment
                 lb = lb_relative * self.element.size.minimum_or_fixed_size
 
         if self.with_investment:
