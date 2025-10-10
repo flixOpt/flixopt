@@ -536,7 +536,7 @@ def _setup_logging(
     show_path: bool = False,
     show_logger_name: bool = False,
     colors: dict[str, str] | None = None,
-):
+) -> None:
     """Internal function to setup logging - use CONFIG.apply() instead.
 
     Configures the flixopt logger with console and/or file handlers.
@@ -589,8 +589,6 @@ def _setup_logging(
     # Library best practice: NullHandler if no handlers configured
     if not logger.handlers:
         logger.addHandler(logging.NullHandler())
-
-    return logger
 
 
 def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
