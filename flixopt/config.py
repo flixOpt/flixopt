@@ -104,17 +104,17 @@ class CONFIG:
         All logging is disabled by default. Set ``console=True`` or ``file='path'`` to enable.
 
         Attributes:
-            level: Logging level ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'). Default: 'INFO'
-            file: Log file path. Set to enable file logging. Default: None (disabled)
-            console: Enable console (stdout) logging. Default: False
-            rich: Use Rich library for enhanced console output. Default: False
-            max_file_size: Maximum log file size in bytes before rotation. Default: 10485760 (10MB)
-            backup_count: Number of backup log files to keep. Default: 5
-            date_format: Date/time format for log messages. Default: '%Y-%m-%d %H:%M:%S'
-            format: Log message format string. Default: '%(message)s'
-            console_width: Console width for Rich handler. Default: 120
-            show_path: Show file paths in log messages. Default: False
-            show_logger_name: Show logger name in log messages. Default: False
+            level: Logging level.
+            file: Log file path. Set to enable file logging.
+            console: Enable console (stdout) logging.
+            rich: Use Rich library for enhanced console output.
+            max_file_size: Maximum log file size in bytes before rotation.
+            backup_count: Number of backup log files to keep.
+            date_format: Date/time format for log messages.
+            format: Log message format string.
+            console_width: Console width for Rich handler.
+            show_path: Show file paths in log messages.
+            show_logger_name: Show logger name in log messages.
             Colors: ANSI color codes for each log level.
 
         Examples:
@@ -158,11 +158,11 @@ class CONFIG:
             Rich automatically converts ANSI codes using Style.from_ansi().
 
             Attributes:
-                DEBUG: ANSI color for DEBUG level. Default: '\\033[90m' (bright black/gray)
-                INFO: ANSI color for INFO level. Default: '\\033[0m' (terminal default)
-                WARNING: ANSI color for WARNING level. Default: '\\033[33m' (yellow)
-                ERROR: ANSI color for ERROR level. Default: '\\033[31m' (red)
-                CRITICAL: ANSI color for CRITICAL level. Default: '\\033[1m\\033[31m' (bold red)
+                DEBUG: ANSI color for DEBUG level.
+                INFO: ANSI color for INFO level.
+                WARNING: ANSI color for WARNING level.
+                ERROR: ANSI color for ERROR level.
+                CRITICAL: ANSI color for CRITICAL level.
 
             Common ANSI codes:
                 - '\\033[30m' - Black
@@ -197,9 +197,9 @@ class CONFIG:
         """Optimization modeling parameters.
 
         Attributes:
-            big: Large number used for big-M constraints. Default: 10000000
-            epsilon: Small tolerance value for numerical comparisons. Default: 1e-5
-            big_binary_bound: Upper bound for binary variable constraints. Default: 100000
+            big: Large number used for big-M constraints.
+            epsilon: Small tolerance value for numerical comparisons.
+            big_binary_bound: Upper bound for binary variable constraints.
 
         Examples:
             Adjust modeling parameters::
@@ -351,9 +351,9 @@ class MultilineFormater(logging.Formatter):
     """Formatter that handles multi-line messages with consistent prefixes.
 
     Args:
-        fmt: Log message format string. Default: '%(message)s'
-        datefmt: Date/time format string. Default: None
-        show_logger_name: Show logger name in log messages. Default: False
+        fmt: Log message format string.
+        datefmt: Date/time format string.
+        show_logger_name: Show logger name in log messages.
     """
 
     def __init__(self, fmt: str = '%(message)s', datefmt: str | None = None, show_logger_name: bool = False):
@@ -386,10 +386,10 @@ class ColoredMultilineFormater(MultilineFormater):
     """Formatter that adds ANSI colors to multi-line log messages.
 
     Args:
-        fmt: Log message format string. Default: '%(message)s'
-        datefmt: Date/time format string. Default: None
-        colors: Dictionary of ANSI color codes for each log level. Default: None (uses default colors)
-        show_logger_name: Show logger name in log messages. Default: False
+        fmt: Log message format string.
+        datefmt: Date/time format string.
+        colors: Dictionary of ANSI color codes for each log level.
+        show_logger_name: Show logger name in log messages.
     """
 
     RESET = '\033[0m'
@@ -613,7 +613,7 @@ def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'
         This function will be removed in version 3.0.0.
 
     Args:
-        level_name: The logging level to set ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL').
+        level_name: The logging level to set.
 
     Examples:
         >>> change_logging_level('DEBUG')  # deprecated
