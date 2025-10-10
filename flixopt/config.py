@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import warnings
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -34,10 +35,11 @@ _DEFAULTS = MappingProxyType(
                 'format': '%(message)s',
                 'console_width': 120,
                 'show_path': False,
+                'show_logger_name': False,
                 'colors': MappingProxyType(
                     {
                         'DEBUG': '\033[90m',  # Bright Black/Gray
-                        'INFO': '\033[0m',  # White
+                        'INFO': '\033[0m',  # Default/White
                         'WARNING': '\033[33m',  # Yellow
                         'ERROR': '\033[31m',  # Red
                         'CRITICAL': '\033[1m\033[31m',  # Bold Red
@@ -85,10 +87,11 @@ class CONFIG:
         format (str): Log message format string. Default: '%(message)s'
         console_width (int): Console width for Rich handler. Default: 120
         show_path (bool): Show file paths in log messages. Default: False
+        show_logger_name (bool): Show logger name in log messages. Default: False
 
     Colors Attributes:
         DEBUG (str): ANSI color code for DEBUG level. Default: '\\033[90m' (bright black/gray)
-        INFO (str): ANSI color code for INFO level. Default: '\\033[m' (terminal default)
+        INFO (str): ANSI color code for INFO level. Default: '\\033[0m' (terminal default)
         WARNING (str): ANSI color code for WARNING level. Default: '\\033[33m' (yellow)
         ERROR (str): ANSI color code for ERROR level. Default: '\\033[31m' (red)
         CRITICAL (str): ANSI color code for CRITICAL level. Default: '\\033[1m\\033[31m' (bold red)
@@ -106,6 +109,8 @@ class CONFIG:
         - '\\033[35m' - Magenta
         - '\\033[36m' - Cyan
         - '\\033[37m' - White
+        - '\\033[90m' - Bright Black/Gray
+        - '\\033[0m' - Reset to default
         - '\\033[1m\\033[3Xm' - Bold color (replace X with color code 0-7)
         - '\\033[2m\\033[3Xm' - Dim color (replace X with color code 0-7)
 
@@ -128,6 +133,12 @@ class CONFIG:
 
             CONFIG.Logging.console = True
             CONFIG.Logging.level = 'DEBUG'
+            CONFIG.apply()
+
+        Show logger names to see which module is logging::
+
+            CONFIG.Logging.console = True
+            CONFIG.Logging.show_logger_name = True
             CONFIG.apply()
 
         Configure log file rotation::
@@ -165,15 +176,16 @@ class CONFIG:
               level: DEBUG
               console: true
               file: app.log
-              rich: true
+              rich: false
+              show_logger_name: true
               max_file_size: 5242880  # 5MB
               backup_count: 3
               date_format: '%H:%M:%S'
               console_width: 100
-              show_path: true
+              show_path: false
               colors:
                 DEBUG: "\\033[90m"              # Bright Black/Gray
-                INFO: "\\033[37m"               # White
+                INFO: "\\033[0m"                # Default
                 WARNING: "\\033[33m"            # Yellow
                 ERROR: "\\033[31m"              # Red
                 CRITICAL: "\\033[1m\\033[31m"   # Bold red
@@ -207,6 +219,7 @@ class CONFIG:
         format: str = _DEFAULTS['logging']['format']
         console_width: int = _DEFAULTS['logging']['console_width']
         show_path: bool = _DEFAULTS['logging']['show_path']
+        show_logger_name: bool = _DEFAULTS['logging']['show_logger_name']
 
         class Colors:
             DEBUG: str = _DEFAULTS['logging']['colors']['DEBUG']
@@ -262,6 +275,7 @@ class CONFIG:
             format=cls.Logging.format,
             console_width=cls.Logging.console_width,
             show_path=cls.Logging.show_path,
+            show_logger_name=cls.Logging.show_logger_name,
             colors=colors_dict,
         )
 
@@ -312,6 +326,7 @@ class CONFIG:
                 'format': cls.Logging.format,
                 'console_width': cls.Logging.console_width,
                 'show_path': cls.Logging.show_path,
+                'show_logger_name': cls.Logging.show_logger_name,
                 'colors': {
                     'DEBUG': cls.Logging.Colors.DEBUG,
                     'INFO': cls.Logging.Colors.INFO,
@@ -331,14 +346,21 @@ class CONFIG:
 class MultilineFormater(logging.Formatter):
     """Formatter that handles multi-line messages with consistent prefixes."""
 
-    def __init__(self, fmt=None, datefmt=None):
-        super().__init__(fmt=fmt, datefmt=datefmt)
+    def __init__(self, fmt=None, datefmt=None, show_logger_name=False):
+        super().__init__(datefmt=datefmt)
+        self.show_logger_name = show_logger_name
 
     def format(self, record):
         message_lines = record.getMessage().split('\n')
         timestamp = self.formatTime(record, self.datefmt)
         log_level = record.levelname.ljust(8)
-        log_prefix = f'{timestamp} | {log_level} |'
+
+        if self.show_logger_name:
+            # Truncate long logger names for readability
+            logger_name = record.name if len(record.name) <= 20 else f'...{record.name[-17:]}'
+            log_prefix = f'{timestamp} | {log_level} | {logger_name.ljust(20)} |'
+        else:
+            log_prefix = f'{timestamp} | {log_level} |'
 
         first_line = [f'{log_prefix} {message_lines[0]}']
         if len(message_lines) > 1:
@@ -354,8 +376,8 @@ class ColoredMultilineFormater(MultilineFormater):
 
     RESET = '\033[0m'
 
-    def __init__(self, fmt=None, datefmt=None, colors=None):
-        super().__init__(fmt=fmt, datefmt=datefmt)
+    def __init__(self, fmt=None, datefmt=None, colors=None, show_logger_name=False):
+        super().__init__(datefmt=datefmt, show_logger_name=show_logger_name)
         self.COLORS = (
             colors
             if colors is not None
@@ -379,6 +401,7 @@ def _create_console_handler(
     use_rich: bool = False,
     console_width: int = 120,
     show_path: bool = False,
+    show_logger_name: bool = False,
     date_format: str = '%Y-%m-%d %H:%M:%S',
     format: str = '%(message)s',
     colors: dict[str, str] | None = None,
@@ -389,6 +412,7 @@ def _create_console_handler(
         use_rich: If True, use RichHandler with color support.
         console_width: Width of the console for Rich handler.
         show_path: Show file paths in log messages (Rich only).
+        show_logger_name: Show logger name in log messages.
         date_format: Date/time format string.
         format: Log message format string.
         colors: Dictionary of ANSI color codes for each log level.
@@ -423,11 +447,16 @@ def _create_console_handler(
         )
         handler.setFormatter(logging.Formatter(format))
     else:
-        import sys
-
         # Explicitly use sys.stdout instead of default sys.stderr
         handler = logging.StreamHandler(stream=sys.stdout)
-        handler.setFormatter(ColoredMultilineFormater(fmt=format, datefmt=date_format, colors=colors))
+        handler.setFormatter(
+            ColoredMultilineFormater(
+                fmt=format,
+                datefmt=date_format,
+                colors=colors,
+                show_logger_name=show_logger_name,
+            )
+        )
 
     return handler
 
@@ -436,6 +465,7 @@ def _create_file_handler(
     log_file: str,
     max_file_size: int = 10_485_760,
     backup_count: int = 5,
+    show_logger_name: bool = False,
     date_format: str = '%Y-%m-%d %H:%M:%S',
     format: str = '%(message)s',
 ) -> RotatingFileHandler:
@@ -445,6 +475,7 @@ def _create_file_handler(
         log_file: Path to the log file.
         max_file_size: Maximum size in bytes before rotation.
         backup_count: Number of backup files to keep.
+        show_logger_name: Show logger name in log messages.
         date_format: Date/time format string.
         format: Log message format string.
 
@@ -457,7 +488,13 @@ def _create_file_handler(
         backupCount=backup_count,
         encoding='utf-8',
     )
-    handler.setFormatter(MultilineFormater(fmt=format, datefmt=date_format))
+    handler.setFormatter(
+        MultilineFormater(
+            fmt=format,
+            datefmt=date_format,
+            show_logger_name=show_logger_name,
+        )
+    )
     return handler
 
 
@@ -472,6 +509,7 @@ def _setup_logging(
     format: str = '%(message)s',
     console_width: int = 120,
     show_path: bool = False,
+    show_logger_name: bool = False,
     colors: dict[str, str] | None = None,
 ):
     """Internal function to setup logging - use CONFIG.apply() instead.
@@ -490,6 +528,7 @@ def _setup_logging(
         format: Log message format string.
         console_width: Console width for Rich handler.
         show_path: Show file paths in log messages (Rich only).
+        show_logger_name: Show logger name in log messages.
         colors: ANSI color codes for each log level.
     """
     logger = logging.getLogger('flixopt')
@@ -503,6 +542,7 @@ def _setup_logging(
                 use_rich=use_rich_handler,
                 console_width=console_width,
                 show_path=show_path,
+                show_logger_name=show_logger_name,
                 date_format=date_format,
                 format=format,
                 colors=colors,
@@ -515,6 +555,7 @@ def _setup_logging(
                 log_file=log_file,
                 max_file_size=max_file_size,
                 backup_count=backup_count,
+                show_logger_name=show_logger_name,
                 date_format=date_format,
                 format=format,
             )
