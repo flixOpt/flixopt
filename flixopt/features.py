@@ -74,8 +74,6 @@ class InvestmentModel(Submodel):
             variable_state=self.is_invested,
             bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
         )
-        if self.parameters.mandatory:
-            self.add_constraints(self._variables['invested'] == 1, 'invest|fix')
 
         self.add_variables(
             short_name='invested',
@@ -89,6 +87,10 @@ class InvestmentModel(Submodel):
             <= self._variables['is_invested'].sum('period' if self._model.flow_system.periods is not None else None),
             short_name='invest|ub',
         )
+
+        if self.parameters.mandatory:
+            self.add_constraints(self._variables['invested'] == 1, 'invest|fix')
+
         if self.parameters.linked_periods is not None:
             self.add_constraints(
                 self.size.where(self.parameters.linked_periods == 1, drop=True).isel(period=slice(None, -1))
