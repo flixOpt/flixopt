@@ -483,7 +483,7 @@ class Interface:
 
         # Handle null values with warning
         if array.isnull().any():
-            logger.warning(f"DataArray '{array_name}' contains null values. Dropping all-null along present dims.")
+            logger.error(f"DataArray '{array_name}' contains null values. Dropping all-null along present dims.")
             if 'time' in array.dims:
                 array = array.dropna(dim='time', how='all')
 
@@ -585,7 +585,7 @@ class Interface:
             return {str(k): self._serialize_to_basic_types(v) for k, v in obj.__dict__.items()}
         else:
             # For any other object, try to convert to string as fallback
-            logger.warning(f'Converting unknown type {type(obj)} to string: {obj}')
+            logger.error(f'Converting unknown type {type(obj)} to string: {obj}')
             return str(obj)
 
     def to_dataset(self) -> xr.Dataset:
@@ -846,7 +846,7 @@ class Element(Interface):
                 f'Use any other symbol instead'
             )
         if label.endswith(' '):
-            logger.warning(f'Label "{label}" ends with a space. This will be removed.')
+            logger.error(f'Label "{label}" ends with a space. This will be removed.')
             return label.rstrip()
         return label
 

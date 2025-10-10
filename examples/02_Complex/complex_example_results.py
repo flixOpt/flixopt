@@ -5,6 +5,9 @@ This script shows how load results of a prior calcualtion and how to analyze the
 import flixopt as fx
 
 if __name__ == '__main__':
+    # Enable console logging
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG.apply()
     # --- Load Results ---
     try:
         results = fx.results.CalculationResults.from_file('results', 'complex example')

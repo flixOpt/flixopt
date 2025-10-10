@@ -25,9 +25,9 @@ class TestConfigModule:
     def test_config_defaults(self):
         """Test that CONFIG has correct default values."""
         assert CONFIG.Logging.level == 'INFO'
-        assert CONFIG.Logging.file == 'flixopt.log'
+        assert CONFIG.Logging.file is None
         assert CONFIG.Logging.rich is False
-        assert CONFIG.Logging.console is True
+        assert CONFIG.Logging.console is False
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
         assert CONFIG.Modeling.big_binary_bound == 100_000
@@ -39,9 +39,9 @@ class TestConfigModule:
         CONFIG.apply()
         logger = logging.getLogger('flixopt')
         # Should have at least one handler (file handler by default)
-        assert len(logger.handlers) >= 1
+        assert len(logger.handlers) == 1
         # Should have a file handler with default settings
-        assert any(isinstance(h, logging.handlers.RotatingFileHandler) for h in logger.handlers)
+        assert isinstance(logger.handlers[0], logging.NullHandler)
 
     def test_config_apply_console(self):
         """Test applying config with console logging enabled."""
@@ -102,7 +102,7 @@ class TestConfigModule:
         assert config_dict['config_name'] == 'flixopt'
         assert config_dict['logging']['level'] == 'DEBUG'
         assert config_dict['logging']['console'] is True
-        assert config_dict['logging']['file'] == 'flixopt.log'
+        assert config_dict['logging']['file'] is None
         assert config_dict['logging']['rich'] is False
         assert 'modeling' in config_dict
         assert config_dict['modeling']['big'] == 10_000_000
@@ -433,9 +433,9 @@ modeling:
 
         # Verify all values are back to defaults
         assert CONFIG.Logging.level == 'INFO'
-        assert CONFIG.Logging.console is True
+        assert CONFIG.Logging.console is False
         assert CONFIG.Logging.rich is False
-        assert CONFIG.Logging.file == 'flixopt.log'
+        assert CONFIG.Logging.file is None
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
         assert CONFIG.Modeling.big_binary_bound == 100_000
@@ -444,7 +444,7 @@ modeling:
         # Verify logging was also reset
         logger = logging.getLogger('flixopt')
         assert logger.level == logging.INFO
-        assert any(isinstance(h, logging.handlers.RotatingFileHandler) for h in logger.handlers)
+        assert isinstance(logger.handlers[0], logging.NullHandler)
 
     def test_reset_matches_class_defaults(self):
         """Test that reset() values match the _DEFAULTS constants.

@@ -643,11 +643,15 @@ class FlowSystem(Interface):
     def __repr__(self) -> str:
         """Compact representation for debugging."""
         status = '✓' if self.connected_and_transformed else '⚠'
-        return (
-            f'FlowSystem({len(self.timesteps)} timesteps '
-            f'[{self.timesteps[0].strftime("%Y-%m-%d")} to {self.timesteps[-1].strftime("%Y-%m-%d")}], '
-            f'{len(self.components)} Components,  {len(self.buses)} Buses, {len(self.effects)} Effects, {status})'
-        )
+
+        # Build dimension info
+        dims = f'{len(self.timesteps)} timesteps [{self.timesteps[0].strftime("%Y-%m-%d")} to {self.timesteps[-1].strftime("%Y-%m-%d")}]'
+        if self.periods is not None:
+            dims += f', {len(self.periods)} periods'
+        if self.scenarios is not None:
+            dims += f', {len(self.scenarios)} scenarios'
+
+        return f'FlowSystem({dims}, {len(self.components)} Components,  {len(self.buses)} Buses, {len(self.effects)} Effects, {status})'
 
     def __str__(self) -> str:
         """Structured summary for users."""
@@ -665,15 +669,32 @@ class FlowSystem(Interface):
         freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
 
         lines = [
-            'FlowSystem Overview:',
-            f'{"─" * 50}',
-            time_period,
-            f'Timesteps:   {len(self.timesteps)} ({freq_str})',
-            format_elements(list(self.components.keys()), 'Components'),
-            format_elements(list(self.buses.keys()), 'Buses'),
-            format_elements(list(self.effects.effects.keys()), 'Effects'),
-            f'Status:      {"Connected & Transformed" if self.connected_and_transformed else "Not connected"}',
+            f'Timesteps:   {len(self.timesteps)} ({freq_str}) [{time_period}]',
         ]
+
+        # Add periods if present
+        if self.periods is not None:
+            period_names = ', '.join(str(p) for p in self.periods[:3])
+            if len(self.periods) > 3:
+                period_names += f' ... (+{len(self.periods) - 3} more)'
+            lines.append(f'Periods:     {len(self.periods)} ({period_names})')
+
+        # Add scenarios if present
+        if self.scenarios is not None:
+            scenario_names = ', '.join(str(s) for s in self.scenarios[:3])
+            if len(self.scenarios) > 3:
+                scenario_names += f' ... (+{len(self.scenarios) - 3} more)'
+            lines.append(f'Scenarios:   {len(self.scenarios)} ({scenario_names})')
+
+        lines.extend(
+            [
+                format_elements(list(self.components.keys()), 'Components'),
+                format_elements(list(self.buses.keys()), 'Buses'),
+                format_elements(list(self.effects.effects.keys()), 'Effects'),
+                f'Status:      {"Connected & Transformed" if self.connected_and_transformed else "Not connected"}',
+            ]
+        )
+        lines = ['FlowSystem:', f'{"─" * max(len(line) for line in lines)}'] + lines
 
         return '\n'.join(lines)
 
