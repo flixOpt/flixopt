@@ -287,7 +287,7 @@ class CONFIG:
             raise FileNotFoundError(f'Config file not found: {config_file}')
 
         with config_path.open() as file:
-            config_dict = yaml.safe_load(file)
+            config_dict = yaml.safe_load(file) or {}
             cls._apply_config_dict(config_dict)
 
         cls.apply()
