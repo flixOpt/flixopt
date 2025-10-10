@@ -423,7 +423,10 @@ def _create_console_handler(
         )
         handler.setFormatter(logging.Formatter(format))
     else:
-        handler = logging.StreamHandler()
+        import sys
+
+        # Explicitly use sys.stdout instead of default sys.stderr
+        handler = logging.StreamHandler(stream=sys.stdout)
         handler.setFormatter(ColoredMultilineFormater(fmt=format, datefmt=date_format, colors=colors))
 
     return handler
