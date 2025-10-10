@@ -878,51 +878,55 @@ class InvestParameters(Interface):
         fix_effects = kwargs.pop('fix_effects', None)
         if fix_effects is not None:
             warnings.warn(
-                "Parameter 'fix_effects' is deprecated and will be removed in version 4.0. "
-                "Use 'effects_of_investment' instead.",
+                'The use of the "fix_effects" argument is deprecated. Use the "effects_of_investment" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if effects_of_investment is None:
-                effects_of_investment = fix_effects
+            if effects_of_investment is not None:
+                raise ValueError('Either fix_effects or effects_of_investment can be specified, but not both.')
+            effects_of_investment = fix_effects
 
         # Handle deprecated 'specific_effects' parameter
         specific_effects = kwargs.pop('specific_effects', None)
         if specific_effects is not None:
             warnings.warn(
-                "Parameter 'specific_effects' is deprecated and will be removed in version 4.0. "
-                "Use 'effects_of_investment_per_size' instead.",
+                'The use of the "specific_effects" argument is deprecated. Use the "effects_of_investment_per_size" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if effects_of_investment_per_size is None:
-                effects_of_investment_per_size = specific_effects
+            if effects_of_investment_per_size is not None:
+                raise ValueError(
+                    'Either specific_effects or effects_of_investment_per_size can be specified, but not both.'
+                )
+            effects_of_investment_per_size = specific_effects
 
         # Handle deprecated 'divest_effects' parameter
         divest_effects = kwargs.pop('divest_effects', None)
         if divest_effects is not None:
             warnings.warn(
-                "Parameter 'divest_effects' is deprecated and will be removed in version 4.0. "
-                "Use 'effects_of_retirement' instead.",
+                'The use of the "divest_effects" argument is deprecated. Use the "effects_of_retirement" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if effects_of_retirement is None:
-                effects_of_retirement = divest_effects
+            if effects_of_retirement is not None:
+                raise ValueError('Either divest_effects or effects_of_retirement can be specified, but not both.')
+            effects_of_retirement = divest_effects
 
         # Handle deprecated 'piecewise_effects' parameter
         piecewise_effects = kwargs.pop('piecewise_effects', None)
         if piecewise_effects is not None:
             warnings.warn(
-                "Parameter 'piecewise_effects' is deprecated and will be removed in version 4.0. "
-                "Use 'piecewise_effects_of_investment' instead.",
+                'The use of the "piecewise_effects" argument is deprecated. Use the "piecewise_effects_of_investment" argument instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if piecewise_effects_of_investment is None:
-                piecewise_effects_of_investment = piecewise_effects
+            if piecewise_effects_of_investment is not None:
+                raise ValueError(
+                    'Either piecewise_effects or piecewise_effects_of_investment can be specified, but not both.'
+                )
+            piecewise_effects_of_investment = piecewise_effects
 
-        # Check for unexpected keyword arguments
+        # Validate any remaining unexpected kwargs
         if kwargs:
             unexpected = ', '.join(f"'{k}'" for k in kwargs.keys())
             raise TypeError(f'InvestParameters() got unexpected keyword arguments: {unexpected}')

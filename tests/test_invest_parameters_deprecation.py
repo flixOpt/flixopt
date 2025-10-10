@@ -119,20 +119,55 @@ class TestInvestParametersDeprecation:
         with pytest.warns(DeprecationWarning):
             assert params.piecewise_effects is test_piecewise
 
-    def test_new_parameters_override_old(self):
-        """Test that new parameters take precedence when both are provided."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always', DeprecationWarning)
-            params = InvestParameters(
-                fix_effects={'cost': 10000},  # Old parameter
-                effects_of_investment={'cost': 25000},  # New parameter (should take precedence)
+    def test_both_old_and_new_raises_error(self):
+        """Test that specifying both old and new parameter names raises ValueError."""
+        # fix_effects + effects_of_investment
+        with pytest.raises(
+            ValueError, match='Either fix_effects or effects_of_investment can be specified, but not both'
+        ):
+            InvestParameters(
+                fix_effects={'cost': 10000},
+                effects_of_investment={'cost': 25000},
             )
 
-            # Should still warn about deprecated parameter
-            assert len([warning for warning in w if issubclass(warning.category, DeprecationWarning)]) == 1
+        # specific_effects + effects_of_investment_per_size
+        with pytest.raises(
+            ValueError,
+            match='Either specific_effects or effects_of_investment_per_size can be specified, but not both',
+        ):
+            InvestParameters(
+                specific_effects={'cost': 1200},
+                effects_of_investment_per_size={'cost': 1500},
+            )
 
-            # New parameter should take precedence
-            assert params.effects_of_investment == {'cost': 25000}
+        # divest_effects + effects_of_retirement
+        with pytest.raises(
+            ValueError, match='Either divest_effects or effects_of_retirement can be specified, but not both'
+        ):
+            InvestParameters(
+                divest_effects={'cost': 5000},
+                effects_of_retirement={'cost': 6000},
+            )
+
+        # piecewise_effects + piecewise_effects_of_investment
+        from flixopt.interface import Piece, Piecewise, PiecewiseEffects
+
+        test_piecewise1 = PiecewiseEffects(
+            piecewise_origin=Piecewise([Piece(0, 100)]),
+            piecewise_shares={'cost': Piecewise([Piece(800, 600)])},
+        )
+        test_piecewise2 = PiecewiseEffects(
+            piecewise_origin=Piecewise([Piece(0, 200)]),
+            piecewise_shares={'cost': Piecewise([Piece(900, 700)])},
+        )
+        with pytest.raises(
+            ValueError,
+            match='Either piecewise_effects or piecewise_effects_of_investment can be specified, but not both',
+        ):
+            InvestParameters(
+                piecewise_effects=test_piecewise1,
+                piecewise_effects_of_investment=test_piecewise2,
+            )
 
     def test_piecewise_effects_of_investment_new_parameter(self):
         """Test that piecewise_effects_of_investment works correctly."""
