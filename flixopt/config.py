@@ -263,6 +263,15 @@ class CONFIG:
             'ERROR': cls.Logging.Colors.ERROR,
             'CRITICAL': cls.Logging.Colors.CRITICAL,
         }
+        valid_levels = list(colors_dict)
+        if cls.Logging.level.upper() not in valid_levels:
+            raise ValueError(f"Invalid log level '{cls.Logging.level}'. Must be one of: {', '.join(valid_levels)}")
+
+        if cls.Logging.max_file_size <= 0:
+            raise ValueError('max_file_size must be positive')
+
+        if cls.Logging.backup_count < 0:
+            raise ValueError('backup_count must be non-negative')
 
         _setup_logging(
             default_level=cls.Logging.level,
