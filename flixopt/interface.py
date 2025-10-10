@@ -893,7 +893,7 @@ class InvestParameters(Interface):
         # For mandatory parameter with non-None default, disable conflict checking
         if 'optional' in kwargs:
             warnings.warn(
-                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" wmanually!',
+                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually!',
                 DeprecationWarning,
                 stacklevel=2,
             )
