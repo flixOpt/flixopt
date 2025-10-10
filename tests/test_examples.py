@@ -9,22 +9,25 @@ import pytest
 EXAMPLES_DIR = Path(__file__).parent.parent / 'examples'
 
 
+DEPENDENT_EXAMPLES = ('complex_example.py', 'complex_example_results.py')
+
+
 @pytest.mark.parametrize(
     'example_script',
     sorted(
-        [p for p in EXAMPLES_DIR.rglob('*.py') if p.name not in ['complex_example.py', 'complex_example_results.py']],
+        [p for p in EXAMPLES_DIR.rglob('*.py') if p.name not in DEPENDENT_EXAMPLES],
         key=lambda path: (str(path.parent), path.name),
     ),
     ids=lambda path: str(path.relative_to(EXAMPLES_DIR)),
 )
 @pytest.mark.examples
-def test_example_scripts(example_script):
+def test_independent_examples(example_script):
     """
     Test independent example scripts.
     Ensures they run without errors.
     Changes the current working directory to the directory of the example script.
     Runs them alphabetically.
-    This imitates behaviour of running the script directly
+    This imitates behaviour of running the script directly.
     """
     script_dir = example_script.parent
     original_cwd = os.getcwd()
@@ -38,8 +41,11 @@ def test_example_scripts(example_script):
             [sys.executable, example_script.name],
             capture_output=True,
             text=True,
+            timeout=180,  # Add timeout to prevent hanging
         )
-        assert result.returncode == 0, f'Script {example_script} failed:\n{result.stderr}'
+        assert result.returncode == 0, (
+            f'Script {example_script} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
+        )
 
     finally:
         # Restore the original working directory
@@ -49,18 +55,21 @@ def test_example_scripts(example_script):
 @pytest.mark.examples
 def test_dependent_examples():
     """Test examples that must run in order."""
-    script_dir = EXAMPLES_DIR / '02_Complex'  # Adjust path
+    script_dir = EXAMPLES_DIR / '02_Complex'
     original_cwd = os.getcwd()
 
     try:
         os.chdir(script_dir)
-        for script in ['complex_example.py', 'complex_example_results.py']:
+
+        # Iterate in the defined order
+        for script in DEPENDENT_EXAMPLES:
             result = subprocess.run(
                 [sys.executable, script],
                 capture_output=True,
                 text=True,
+                timeout=180,
             )
-            assert result.returncode == 0, f's{script} failed:\n{result.stderr}'
+            assert result.returncode == 0, f'{script} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
 
     finally:
         os.chdir(original_cwd)
