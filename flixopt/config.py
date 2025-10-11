@@ -345,7 +345,12 @@ class MultilineFormatter(logging.Formatter):
         else:
             log_prefix = f'{timestamp} | {log_level} |'
 
-        lines = [f'{log_prefix} {line}' for line in message_lines]
+        indent = ' ' * (len(log_prefix) + 1)  # +1 for the space after prefix
+
+        lines = [f'{log_prefix} {message_lines[0]}']
+        if len(message_lines) > 1:
+            lines.extend([f'{indent}{line}' for line in message_lines[1:]])
+
         return '\n'.join(lines)
 
 
