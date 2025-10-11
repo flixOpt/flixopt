@@ -506,6 +506,9 @@ class FlowModel(ElementModel):
             short_name='flow_rate',
         )
 
+        # Add scenario equality constraints for flow_rate if required
+        self._add_scenario_equality_constraints_for_flow_rate()
+
         self._constraint_flow_rate()
 
         # Total flow hours tracking
@@ -551,6 +554,24 @@ class FlowModel(ElementModel):
             ),
             'investment',
         )
+
+    def _add_scenario_equality_constraints_for_flow_rate(self):
+        """Add equality constraints to equalize flow_rate across scenarios if configured."""
+        flow_system = self._model.flow_system
+
+        # Check if this element should have flow_rate equalized across scenarios
+        if not flow_system._should_include_scenario_dim(self.label_full, 'flow_rate'):
+            # Flow rate should be equal across all scenarios
+            if 'scenario' in self.flow_rate.dims and len(self.flow_rate.coords['scenario']) > 1:
+                # Create constraints: flow_rate[time, period, scenario_i] == flow_rate[time, period, scenario_0] for all i > 0
+                scenarios = list(self.flow_rate.coords['scenario'].values)
+                base_scenario = scenarios[0]
+
+                for scenario in scenarios[1:]:
+                    self.add_constraints(
+                        self.flow_rate.sel(scenario=base_scenario) == self.flow_rate.sel(scenario=scenario),
+                        short_name=f'equal_flow_rate_scenario_{scenario}',
+                    )
 
     def _constraint_flow_rate(self):
         if not self.with_investment and not self.with_on_off:

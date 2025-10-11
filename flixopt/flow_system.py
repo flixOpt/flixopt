@@ -60,6 +60,14 @@ class FlowSystem(Interface):
             If you use an array, take care that its long enough to cover all previous values!
         weights: The weights of each period and scenario. If None, all scenarios have the same weight (normalized to 1).
             Its recommended to normalize the weights to sum up to 1.
+        size_per_scenario: Controls whether investment sizes vary by scenario.
+            - False: All sizes are shared across scenarios (default)
+            - True: All sizes are optimized separately per scenario
+            - list[str]: Only specified components (by label_full) vary per scenario
+        flow_rate_per_scenario: Controls whether flow rates vary by scenario.
+            - True: All flow rates are optimized separately per scenario (default)
+            - False: All flow rates are shared across scenarios
+            - list[str]: Only specified flows (by label_full) vary per scenario
 
     Notes:
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
@@ -75,6 +83,8 @@ class FlowSystem(Interface):
         hours_of_last_timestep: float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weights: PeriodicDataUser | None = None,
+        size_per_scenario: bool | list[str] = False,
+        flow_rate_per_scenario: bool | list[str] = True,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
         self.timesteps_extra = self._create_timesteps_with_extra(self.timesteps, hours_of_last_timestep)
@@ -103,6 +113,10 @@ class FlowSystem(Interface):
         self._used_in_calculation = False
 
         self._network_app = None
+
+        # Use properties to validate and store scenario dimension settings
+        self.size_per_scenario = size_per_scenario
+        self.flow_rate_per_scenario = flow_rate_per_scenario
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -185,6 +199,30 @@ class FlowSystem(Interface):
         # Calculate from the first interval
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
+
+    def _should_include_scenario_dim(
+        self, element_label_full: str, parameter_type: Literal['size', 'flow_rate']
+    ) -> bool:
+        """
+        Determine if 'scenario' dimension should be included for this element's parameter.
+
+        Args:
+            element_label_full: The full label of the component or flow
+            parameter_type: Whether checking for 'size' or 'flow_rate'
+
+        Returns:
+            True if scenario dimension should be included, False otherwise
+        """
+        if self.scenarios is None:
+            # No scenarios defined, so no scenario dimension
+            return False
+
+        config = self.size_per_scenario if parameter_type == 'size' else self.flow_rate_per_scenario
+
+        if isinstance(config, bool):
+            return config
+        else:  # list[str]
+            return element_label_full in config
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
@@ -761,6 +799,68 @@ class FlowSystem(Interface):
     @property
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
+
+    @property
+    def size_per_scenario(self) -> bool | list[str]:
+        """
+        Controls whether investment sizes vary by scenario.
+
+        Returns:
+            bool or list[str]: Configuration for scenario-dependent sizing
+        """
+        return self._size_per_scenario
+
+    @size_per_scenario.setter
+    def size_per_scenario(self, value: bool | list[str]) -> None:
+        """
+        Set whether investment sizes should vary by scenario.
+
+        Args:
+            value: False (shared), True (all separate), or list of component label_full strings
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        if isinstance(value, bool):
+            self._size_per_scenario = value
+        elif isinstance(value, list):
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError('size_per_scenario list must contain only strings (component label_full values)')
+            self._size_per_scenario = value
+        else:
+            raise TypeError(f'size_per_scenario must be bool or list[str], got {type(value).__name__}')
+
+    @property
+    def flow_rate_per_scenario(self) -> bool | list[str]:
+        """
+        Controls whether flow rates vary by scenario.
+
+        Returns:
+            bool or list[str]: Configuration for scenario-dependent flow rates
+        """
+        return self._flow_rate_per_scenario
+
+    @flow_rate_per_scenario.setter
+    def flow_rate_per_scenario(self, value: bool | list[str]) -> None:
+        """
+        Set whether flow rates should vary by scenario.
+
+        Args:
+            value: False (shared), True (all separate), or list of flow label_full strings
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        if isinstance(value, bool):
+            self._flow_rate_per_scenario = value
+        elif isinstance(value, list):
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError('flow_rate_per_scenario list must contain only strings (flow label_full values)')
+            self._flow_rate_per_scenario = value
+        else:
+            raise TypeError(f'flow_rate_per_scenario must be bool or list[str], got {type(value).__name__}')
 
     def sel(
         self,
