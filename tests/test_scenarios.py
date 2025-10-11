@@ -337,3 +337,355 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     )  ## Account for rounding errors
 
     assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])
+
+
+def test_size_per_scenario_default():
+    """Test that size_per_scenario defaults to False (sizes shared across scenarios)."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+
+    assert fs.size_per_scenario is False
+    assert fs.flow_rate_per_scenario is True
+
+
+def test_size_per_scenario_bool():
+    """Test size_per_scenario with boolean values."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    # Test False
+    fs1 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, size_per_scenario=False)
+    assert fs1.size_per_scenario is False
+
+    # Test True
+    fs2 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, size_per_scenario=True)
+    assert fs2.size_per_scenario is True
+
+
+def test_size_per_scenario_list():
+    """Test size_per_scenario with list of element labels."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        size_per_scenario=['solar->grid', 'battery->grid'],
+    )
+
+    assert fs.size_per_scenario == ['solar->grid', 'battery->grid']
+    assert fs._should_include_scenario_dim('solar->grid', 'size') is True
+    assert fs._should_include_scenario_dim('battery->grid', 'size') is True
+    assert fs._should_include_scenario_dim('wind->grid', 'size') is False
+
+
+def test_flow_rate_per_scenario_default():
+    """Test that flow_rate_per_scenario defaults to True (flow rates vary by scenario)."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+
+    assert fs.flow_rate_per_scenario is True
+
+
+def test_flow_rate_per_scenario_bool():
+    """Test flow_rate_per_scenario with boolean values."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    # Test False (shared)
+    fs1 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, flow_rate_per_scenario=False)
+    assert fs1.flow_rate_per_scenario is False
+
+    # Test True (per scenario)
+    fs2 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, flow_rate_per_scenario=True)
+    assert fs2.flow_rate_per_scenario is True
+
+
+def test_scenario_parameters_property_setters():
+    """Test that scenario parameters can be changed via property setters."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+
+    # Change size_per_scenario
+    fs.size_per_scenario = True
+    assert fs.size_per_scenario is True
+
+    fs.size_per_scenario = ['component1', 'component2']
+    assert fs.size_per_scenario == ['component1', 'component2']
+
+    # Change flow_rate_per_scenario
+    fs.flow_rate_per_scenario = False
+    assert fs.flow_rate_per_scenario is False
+
+    fs.flow_rate_per_scenario = ['flow1', 'flow2']
+    assert fs.flow_rate_per_scenario == ['flow1', 'flow2']
+
+
+def test_scenario_parameters_validation():
+    """Test that scenario parameters are validated correctly."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+
+    # Test invalid type
+    with pytest.raises(TypeError, match='must be bool or list'):
+        fs.size_per_scenario = 'invalid'
+
+    # Test invalid list content
+    with pytest.raises(ValueError, match='must contain only strings'):
+        fs.size_per_scenario = [1, 2, 3]
+
+
+def test_size_equality_constraints():
+    """Test that size equality constraints are created when size_per_scenario=False."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        size_per_scenario=False,  # Sizes should be equal
+        flow_rate_per_scenario=True,  # Flow rates can vary
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10,
+                    maximum_size=100,
+                    effects_of_investment_per_size={'cost': 100},
+                ),
+            )
+        ],
+    )
+
+    fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    calc = fx.FullCalculation('test', fs)
+    calc.do_modeling()
+
+    # Check that size equality constraint exists
+    constraint_names = [str(c) for c in calc.model.constraints]
+    size_constraints = [c for c in constraint_names if 'scenario_independent' in c and 'size' in c]
+
+    assert len(size_constraints) > 0, 'Size equality constraint should exist'
+
+
+def test_flow_rate_equality_constraints():
+    """Test that flow_rate equality constraints are created when flow_rate_per_scenario=False."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        size_per_scenario=True,  # Sizes can vary
+        flow_rate_per_scenario=False,  # Flow rates should be equal
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10,
+                    maximum_size=100,
+                    effects_of_investment_per_size={'cost': 100},
+                ),
+            )
+        ],
+    )
+
+    fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    calc = fx.FullCalculation('test', fs)
+    calc.do_modeling()
+
+    # Check that flow_rate equality constraint exists
+    constraint_names = [str(c) for c in calc.model.constraints]
+    flow_rate_constraints = [c for c in constraint_names if 'scenario_independent' in c and 'flow_rate' in c]
+
+    assert len(flow_rate_constraints) > 0, 'Flow rate equality constraint should exist'
+
+
+def test_selective_scenario_independence():
+    """Test selective scenario independence with specific element lists."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        size_per_scenario=['solar(out)'],  # Only solar size varies
+        flow_rate_per_scenario=['demand(in)'],  # Only demand flow_rate varies
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
+                ),
+            )
+        ],
+    )
+    sink = fx.Sink(
+        label='demand',
+        inputs=[fx.Flow(label='in', bus='grid', size=50)],
+    )
+
+    fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    calc = fx.FullCalculation('test', fs)
+    calc.do_modeling()
+
+    constraint_names = [str(c) for c in calc.model.constraints]
+
+    # Solar should NOT have size constraints (it's in the list, so varies per scenario)
+    solar_size_constraints = [c for c in constraint_names if 'solar(out)|size' in c and 'scenario_independent' in c]
+    assert len(solar_size_constraints) == 0
+
+    # Solar SHOULD have flow_rate constraints (not in the list, so shared)
+    solar_flow_constraints = [
+        c for c in constraint_names if 'solar(out)|flow_rate' in c and 'scenario_independent' in c
+    ]
+    assert len(solar_flow_constraints) > 0
+
+    # Demand should NOT have flow_rate constraints (it's in the list, so varies per scenario)
+    demand_flow_constraints = [
+        c for c in constraint_names if 'demand(in)|flow_rate' in c and 'scenario_independent' in c
+    ]
+    assert len(demand_flow_constraints) == 0
+
+
+def test_scenario_parameters_io_persistence():
+    """Test that size_per_scenario and flow_rate_per_scenario persist through IO operations."""
+    import shutil
+    import tempfile
+
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    # Create FlowSystem with custom scenario parameters
+    fs_original = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        size_per_scenario=['solar(out)'],
+        flow_rate_per_scenario=False,
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
+                ),
+            )
+        ],
+    )
+
+    fs_original.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    # Save to dataset
+    fs_original.connect_and_transform()
+    ds = fs_original.to_dataset()
+
+    # Load from dataset
+    fs_loaded = fx.FlowSystem.from_dataset(ds)
+
+    # Verify parameters persisted
+    assert fs_loaded.size_per_scenario == fs_original.size_per_scenario
+    assert fs_loaded.flow_rate_per_scenario == fs_original.flow_rate_per_scenario
+
+
+def test_scenario_parameters_io_with_calculation():
+    """Test that scenario parameters persist through full calculation IO."""
+    import shutil
+    import tempfile
+
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        size_per_scenario=False,
+        flow_rate_per_scenario=['demand(in)'],
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
+                ),
+            )
+        ],
+    )
+    sink = fx.Sink(
+        label='demand',
+        inputs=[fx.Flow(label='in', bus='grid', size=50)],
+    )
+
+    fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    # Create temp directory for results
+    temp_dir = tempfile.mkdtemp()
+
+    try:
+        # Solve and save
+        calc = fx.FullCalculation('test_io', fs, folder=temp_dir)
+        calc.do_modeling()
+        calc.solve(fx.solvers.HighsSolver(mip_gap=0.01, time_limit_seconds=60))
+        calc.results.to_file()
+
+        # Load results
+        results = fx.results.CalculationResults.from_file(temp_dir, 'test_io')
+        fs_loaded = fx.FlowSystem.from_dataset(results.flow_system_data)
+
+        # Verify parameters persisted
+        assert fs_loaded.size_per_scenario == fs.size_per_scenario
+        assert fs_loaded.flow_rate_per_scenario == fs.flow_rate_per_scenario
+
+        # Verify constraints are recreated correctly
+        calc2 = fx.FullCalculation('test_io_2', fs_loaded, folder=temp_dir)
+        calc2.do_modeling()
+
+        constraint_names1 = [str(c) for c in calc.model.constraints]
+        constraint_names2 = [str(c) for c in calc2.model.constraints]
+
+        size_constraints1 = [c for c in constraint_names1 if 'scenario_independent' in c and 'size' in c]
+        size_constraints2 = [c for c in constraint_names2 if 'scenario_independent' in c and 'size' in c]
+
+        assert len(size_constraints1) == len(size_constraints2)
+
+    finally:
+        # Clean up
+        shutil.rmtree(temp_dir)
