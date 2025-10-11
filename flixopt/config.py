@@ -225,6 +225,9 @@ class CONFIG:
         if cls.Logging.backup_count < 0:
             raise ValueError('backup_count must be non-negative')
 
+        if cls.Logging.console not in (False, True, 'stdout', 'stderr'):
+            raise ValueError(f"console must be False, True, 'stdout', or 'stderr', got {cls.Logging.console}")
+
         _setup_logging(
             default_level=cls.Logging.level,
             log_file=cls.Logging.file,
