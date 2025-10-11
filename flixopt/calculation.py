@@ -250,9 +250,8 @@ class FullCalculation(Calculation):
 
         # Log the formatted output
         if log_main_results:
-            logger.info(f'{" Main Results ":#^80}')
             logger.info(
-                '\n'
+                f'{" Main Results ":#^80}\n'
                 + yaml.dump(
                     utils.round_nested_floats(self.main_results),
                     default_flow_style=False,
