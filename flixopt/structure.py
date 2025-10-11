@@ -121,7 +121,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 all_flow_vars = [var for var in self.variables if var.endswith('|flow_rate')]
                 allowed_to_vary = {f'{flow}|flow_rate' for flow in self.flow_system.flow_rate_per_scenario}
                 flow_vars = [var for var in all_flow_vars if var not in allowed_to_vary]
+            # Validate that all specified variables exist
+            missing_vars = [v for v in flow_vars if v not in self.variables]
+            if missing_vars:
+                raise ValueError(f'flow_rate_per_scenario contains invalid labels: {missing_vars}')
 
+            logger.debug(f'Adding scenario equality constraints for {len(flow_vars)} flow_rate variables')
             for flow_var in flow_vars:
                 self.add_constraints(
                     self.variables[flow_var].isel(scenario=0) == self.variables[flow_var].isel(scenario=slice(1, None)),
@@ -137,7 +142,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 all_size_vars = [var for var in self.variables if var.endswith('|size')]
                 allowed_to_vary = {f'{element}|size' for element in self.flow_system.size_per_scenario}
                 size_vars = [var for var in all_size_vars if var not in allowed_to_vary]
+            # Validate that all specified variables exist
+            missing_vars = [v for v in size_vars if v not in self.variables]
+            if missing_vars:
+                raise ValueError(f'size_per_scenario contains invalid labels: {missing_vars}')
 
+            logger.debug(f'Adding scenario equality constraints for {len(size_vars)} size variables')
             for size_var in size_vars:
                 self.add_constraints(
                     self.variables[size_var].isel(scenario=0) == self.variables[size_var].isel(scenario=slice(1, None)),
