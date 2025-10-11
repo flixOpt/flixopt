@@ -306,6 +306,8 @@ class FlowSystem(Interface):
             else None,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
+            size_per_scenario=reference_structure.get('size_per_scenario', False),
+            flow_rate_per_scenario=reference_structure.get('flow_rate_per_scenario', True),
         )
 
         # Restore components
