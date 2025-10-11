@@ -332,7 +332,7 @@ class MultilineFormatter(logging.Formatter):
         super().__init__(fmt=fmt, datefmt=datefmt)
         self.show_logger_name = show_logger_name
 
-    def format(self, record):
+    def format(self, record) -> str:
         record.message = record.getMessage()
         message_lines = self._style.format(record).split('\n')
         timestamp = self.formatTime(record, self.datefmt)
@@ -345,12 +345,7 @@ class MultilineFormatter(logging.Formatter):
         else:
             log_prefix = f'{timestamp} | {log_level} |'
 
-        first_line = [f'{log_prefix} {message_lines[0]}']
-        if len(message_lines) > 1:
-            lines = first_line + [f'{log_prefix} {line}' for line in message_lines[1:]]
-        else:
-            lines = first_line
-
+        lines = [f'{log_prefix} {line}' for line in message_lines]
         return '\n'.join(lines)
 
 
