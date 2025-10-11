@@ -5,7 +5,7 @@ include CHANGELOG.md
 include pyproject.toml
 
 # Include package source and data
-recursive-include flixopt *.py *.yaml
+recursive-include flixopt *.py
 
 # Exclude everything else
 global-exclude *.pyc *.pyo __pycache__
