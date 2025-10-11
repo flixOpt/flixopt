@@ -110,34 +110,33 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """Add equality constraints to equalize variables across scenarios based on FlowSystem configuration."""
         # Only proceed if we have scenarios
         if self.flow_system.scenarios is None or len(self.flow_system.scenarios) <= 1:
-            return
+            return None
 
-        scenarios = list(self.flow_system.scenarios.values)
-        base_scenario = scenarios[0]
+        if self.flow_system.flow_rate_per_scenario is not True:
+            if self.flow_system.flow_rate_per_scenario is False:
+                flow_vars = [var for var in self.variables if var.endswith('|flow_rate')]
+            else:
+                flow_vars = [f'{flow}|flow_rate' for flow in self.flow_system.flow_rate_per_scenario]
 
-        # Add size equality constraints for flows and components
-        for flow in self.flow_system.flows.values():
-            # Check if this flow should have size equalized
-            if not self.flow_system._should_include_scenario_dim(flow.label_full, 'size'):
-                # Check if flow has investment
-                if hasattr(flow.submodel, 'investment') and flow.submodel.investment is not None:
-                    size_var = flow.submodel.investment.size
-                    if 'scenario' in size_var.dims:
-                        for scenario in scenarios[1:]:
-                            self.add_constraints(
-                                size_var.sel(scenario=base_scenario) == size_var.sel(scenario=scenario),
-                                name=f'{flow.label_full}|equal_size_scenario_{scenario}',
-                            )
+            for flow_var in flow_vars:
+                self.add_constraints(
+                    self.variables[flow_var].isel(scenario=0) == self.variables[flow_var].isel(scenario=slice(1, None)),
+                    name=f'{flow_var}|scenario_independent',
+                )
 
-            # Check if this flow should have flow_rate equalized
-            if not self.flow_system._should_include_scenario_dim(flow.label_full, 'flow_rate'):
-                flow_rate_var = flow.submodel.flow_rate
-                if 'scenario' in flow_rate_var.dims:
-                    for scenario in scenarios[1:]:
-                        self.add_constraints(
-                            flow_rate_var.sel(scenario=base_scenario) == flow_rate_var.sel(scenario=scenario),
-                            name=f'{flow.label_full}|equal_flow_rate_scenario_{scenario}',
-                        )
+        if self.flow_system.size_per_scenario is not True:
+            if self.flow_system.size_per_scenario is False:
+                size_vars = [var for var in self.variables if var.endswith('|size')]
+            else:
+                size_vars = [f'{element}|size' for element in self.flow_system.size_per_scenario]
+
+            for size_var in size_vars:
+                self.add_constraints(
+                    self.variables[size_var].isel(scenario=0) == self.variables[size_var].isel(scenario=slice(1, None)),
+                    name=f'{size_var}|scenario_independent',
+                )
+
+        return None
 
     @property
     def solution(self):
