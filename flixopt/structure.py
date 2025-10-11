@@ -103,6 +103,42 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         for bus in self.flow_system.buses.values():
             bus.create_model(self)
 
+        # Add scenario equality constraints after all elements are modeled
+        self._add_scenario_equality_constraints()
+
+    def _add_scenario_equality_constraints(self):
+        """Add equality constraints to equalize variables across scenarios based on FlowSystem configuration."""
+        # Only proceed if we have scenarios
+        if self.flow_system.scenarios is None or len(self.flow_system.scenarios) <= 1:
+            return
+
+        scenarios = list(self.flow_system.scenarios.values)
+        base_scenario = scenarios[0]
+
+        # Add size equality constraints for flows and components
+        for flow in self.flow_system.flows.values():
+            # Check if this flow should have size equalized
+            if not self.flow_system._should_include_scenario_dim(flow.label_full, 'size'):
+                # Check if flow has investment
+                if hasattr(flow.submodel, 'investment') and flow.submodel.investment is not None:
+                    size_var = flow.submodel.investment.size
+                    if 'scenario' in size_var.dims:
+                        for scenario in scenarios[1:]:
+                            self.add_constraints(
+                                size_var.sel(scenario=base_scenario) == size_var.sel(scenario=scenario),
+                                name=f'{flow.label_full}|equal_size_scenario_{scenario}',
+                            )
+
+            # Check if this flow should have flow_rate equalized
+            if not self.flow_system._should_include_scenario_dim(flow.label_full, 'flow_rate'):
+                flow_rate_var = flow.submodel.flow_rate
+                if 'scenario' in flow_rate_var.dims:
+                    for scenario in scenarios[1:]:
+                        self.add_constraints(
+                            flow_rate_var.sel(scenario=base_scenario) == flow_rate_var.sel(scenario=scenario),
+                            name=f'{flow.label_full}|equal_flow_rate_scenario_{scenario}',
+                        )
+
     @property
     def solution(self):
         solution = super().solution

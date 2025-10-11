@@ -61,9 +61,6 @@ class InvestmentModel(Submodel):
             coords=self._model.get_coords(['period', 'scenario']),
         )
 
-        # Add scenario equality constraints if required
-        self._add_scenario_equality_constraints_for_size()
-
         # Optional (not mandatory)
         if not self.parameters.mandatory:
             self.add_variables(
@@ -91,24 +88,6 @@ class InvestmentModel(Submodel):
                 ),
                 short_name='segments',
             )
-
-    def _add_scenario_equality_constraints_for_size(self):
-        """Add equality constraints to equalize size across scenarios if configured."""
-        flow_system = self._model.flow_system
-
-        # Check if this element should have size equalized across scenarios
-        if not flow_system._should_include_scenario_dim(self.label_of_element, 'size'):
-            # Size should be equal across all scenarios
-            if 'scenario' in self.size.dims and len(self.size.coords['scenario']) > 1:
-                # Create constraints: size[period, scenario_i] == size[period, scenario_0] for all i > 0
-                scenarios = list(self.size.coords['scenario'].values)
-                base_scenario = scenarios[0]
-
-                for scenario in scenarios[1:]:
-                    self.add_constraints(
-                        self.size.sel(scenario=base_scenario) == self.size.sel(scenario=scenario),
-                        short_name=f'equal_size_scenario_{scenario}',
-                    )
 
     def _add_effects(self):
         """Add investment effects"""
