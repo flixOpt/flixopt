@@ -114,9 +114,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         if self.flow_system.flow_rate_per_scenario is not True:
             if self.flow_system.flow_rate_per_scenario is False:
+                # All flow rates should be scenario-independent
                 flow_vars = [var for var in self.variables if var.endswith('|flow_rate')]
             else:
-                flow_vars = [f'{flow}|flow_rate' for flow in self.flow_system.flow_rate_per_scenario]
+                # Only flow rates NOT in the list should be scenario-independent
+                all_flow_vars = [var for var in self.variables if var.endswith('|flow_rate')]
+                allowed_to_vary = {f'{flow}|flow_rate' for flow in self.flow_system.flow_rate_per_scenario}
+                flow_vars = [var for var in all_flow_vars if var not in allowed_to_vary]
 
             for flow_var in flow_vars:
                 self.add_constraints(
@@ -126,9 +130,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         if self.flow_system.size_per_scenario is not True:
             if self.flow_system.size_per_scenario is False:
+                # All sizes should be scenario-independent
                 size_vars = [var for var in self.variables if var.endswith('|size')]
             else:
-                size_vars = [f'{element}|size' for element in self.flow_system.size_per_scenario]
+                # Only sizes NOT in the list should be scenario-independent
+                all_size_vars = [var for var in self.variables if var.endswith('|size')]
+                allowed_to_vary = {f'{element}|size' for element in self.flow_system.size_per_scenario}
+                size_vars = [var for var in all_size_vars if var not in allowed_to_vary]
 
             for size_var in size_vars:
                 self.add_constraints(
