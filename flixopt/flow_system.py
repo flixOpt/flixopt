@@ -200,32 +200,6 @@ class FlowSystem(Interface):
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
 
-    def _should_include_scenario_dim(
-        self, element_label_full: str, parameter_type: Literal['size', 'flow_rate']
-    ) -> bool:
-        """
-        Determine if 'scenario' dimension should be included for this element's parameter.
-
-        Args:
-            element_label_full: The full label of the component or flow
-            parameter_type: Whether checking for 'size' or 'flow_rate'
-
-        Returns:
-            True if scenario dimension should be included (varies per scenario), False otherwise (equalized)
-        """
-        if self.scenarios is None:
-            # No scenarios defined, so no scenario dimension
-            return False
-
-        config = self.scenario_independent_sizes if parameter_type == 'size' else self.scenario_independent_flow_rates
-
-        if isinstance(config, bool):
-            # True means equalize (no scenario dim), False means vary (include scenario dim)
-            return not config
-        else:  # list[str]
-            # List contains elements to equalize, so if in list -> no scenario dim
-            return element_label_full not in config
-
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.

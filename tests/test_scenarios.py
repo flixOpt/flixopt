@@ -376,9 +376,6 @@ def test_sizes_per_scenario_list():
     )
 
     assert fs.scenario_independent_sizes == ['solar->grid', 'battery->grid']
-    assert fs._should_include_scenario_dim('solar->grid', 'size') is False
-    assert fs._should_include_scenario_dim('battery->grid', 'size') is False
-    assert fs._should_include_scenario_dim('wind->grid', 'size') is True
 
 
 def test_flow_rates_per_scenario_default():
