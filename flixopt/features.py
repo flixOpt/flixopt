@@ -56,37 +56,38 @@ class InvestmentModel(Submodel):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         if self.parameters.linked_periods is not None:
             size_min = size_min * self.parameters.linked_periods
+            size_max = size_max * self.parameters.linked_periods
 
         self.add_variables(
             short_name='size',
-            lower=size_min if self.parameters.mandatory and self.parameters.linked_periods is None else 0,
+            lower=size_min if self.parameters.mandatory else 0,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
         )
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['period', 'scenario']),
-            short_name='do_invest',
+            short_name='unit_installed',
         )
         BoundingPatterns.bounds_with_state(
             self,
             variable=self.size,
-            variable_state=self._variables['do_invest'],
+            variable_state=self._variables['unit_installed'],
             bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
         )
 
         if self.parameters.mandatory:
             self.add_constraints(
-                (self._variables['do_invest'].sum('period') == 1)
+                (self._variables['unit_installed'].sum('period') >= 1)
                 if self._model.flow_system.periods is not None
-                else (self._variables['do_invest'] == 1),
+                else (self._variables['unit_installed'] == 1),
                 'single_invest|mandatory',
             )
         else:
             self.add_constraints(
-                (self._variables['do_invest'].sum('period') <= 1)
+                (self._variables['unit_installed'].sum('period') <= 1)
                 if self._model.flow_system.periods is not None
-                else (self._variables['do_invest'] <= 1),
+                else (self._variables['unit_installed'] <= 1),
                 'single_invest',
             )
 
@@ -95,10 +96,6 @@ class InvestmentModel(Submodel):
             self.add_constraints(
                 masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
                 short_name='linked_periods',
-            )
-            self.add_constraints(
-                self.size.where(self.parameters.linked_periods == 0, drop=True) == 0,
-                short_name='zeroed_periods',
             )
 
     def _add_effects(self):
