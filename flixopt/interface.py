@@ -979,7 +979,7 @@ class InvestParameters(Interface):
             f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
         self.fixed_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|fixed_size', self.fixed_size, dims=['scenario']
+            f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
         )
 
     @property
