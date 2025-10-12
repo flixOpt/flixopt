@@ -59,7 +59,7 @@ class InvestmentModel(Submodel):
 
         self.add_variables(
             short_name='size',
-            lower=0 if not self.parameters.mandatory else size_min,
+            lower=size_min if self.parameters.mandatory else 0,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
         )
