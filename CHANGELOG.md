@@ -51,6 +51,8 @@ This release introduces new model dimensions (periods and scenarios) for multi-p
 
 - **Period dimension**: Enables multi-period investment modeling with distinct decisions in each period for transformation pathway optimization
 - **Scenario dimension**: Supports stochastic modeling with weighted scenarios for robust decision-making under uncertainty (demand, prices, weather)
+    - Control variable independence across scenarios via `scenario_independent_sizes` and `scenario_independent_flow_rates` parameters
+    - By default, investment sizes are shared across scenarios while flow rates vary per scenario
 
 **Redesigned effect sharing system:**
 
@@ -96,6 +98,10 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Improved Model Structure - Views and organisation is now divided into:
     - Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
     - Submodel: The base class for all submodels. Each is a subset of the Model, for simpler access and clearer code.
+- Made docstrings in `config.py` more compact and easier to read
+- Improved format handling in configuration module
+- Enhanced console output to support both `stdout` and `stderr` stream selection
+- Added `show_logger_name` parameter to `CONFIG.Logging` for displaying logger names in messages
 
 ### 🗑️ Deprecated
 
@@ -133,6 +139,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Enhanced NetCDF I/O with proper attribute preservation for DataArrays
 - Improved error handling and validation in serialization processes
 - Better type consistency across all framework components
+- Added extra validation in `config.py` to improve error handling
 
 ### 📝 Docs
 

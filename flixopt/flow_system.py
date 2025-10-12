@@ -60,6 +60,14 @@ class FlowSystem(Interface):
             If you use an array, take care that its long enough to cover all previous values!
         weights: The weights of each period and scenario. If None, all scenarios have the same weight (normalized to 1).
             Its recommended to normalize the weights to sum up to 1.
+        scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
+            - True: All sizes are shared/equalized across scenarios
+            - False: All sizes are optimized separately per scenario
+            - list[str]: Only specified components (by label_full) are equalized across scenarios
+        scenario_independent_flow_rates: Controls whether flow rates are equalized across scenarios.
+            - True: All flow rates are shared/equalized across scenarios
+            - False: All flow rates are optimized separately per scenario
+            - list[str]: Only specified flows (by label_full) are equalized across scenarios
 
     Notes:
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
@@ -75,6 +83,8 @@ class FlowSystem(Interface):
         hours_of_last_timestep: float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weights: PeriodicDataUser | None = None,
+        scenario_independent_sizes: bool | list[str] = True,
+        scenario_independent_flow_rates: bool | list[str] = False,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
         self.timesteps_extra = self._create_timesteps_with_extra(self.timesteps, hours_of_last_timestep)
@@ -103,6 +113,10 @@ class FlowSystem(Interface):
         self._used_in_calculation = False
 
         self._network_app = None
+
+        # Use properties to validate and store scenario dimension settings
+        self.scenario_independent_sizes = scenario_independent_sizes
+        self.scenario_independent_flow_rates = scenario_independent_flow_rates
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -268,6 +282,8 @@ class FlowSystem(Interface):
             else None,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
+            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
+            scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
         )
 
         # Restore components
@@ -761,6 +777,77 @@ class FlowSystem(Interface):
     @property
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
+
+    def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
+        """
+        Validate scenario parameter value.
+
+        Args:
+            value: The value to validate
+            param_name: Name of the parameter (for error messages)
+            element_type: Type of elements expected in list (e.g., 'component label_full', 'flow label_full')
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        if isinstance(value, bool):
+            return  # Valid
+        elif isinstance(value, list):
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError(f'{param_name} list must contain only strings ({element_type} values)')
+        else:
+            raise TypeError(f'{param_name} must be bool or list[str], got {type(value).__name__}')
+
+    @property
+    def scenario_independent_sizes(self) -> bool | list[str]:
+        """
+        Controls whether investment sizes are equalized across scenarios.
+
+        Returns:
+            bool or list[str]: Configuration for scenario-independent sizing
+        """
+        return self._scenario_independent_sizes
+
+    @scenario_independent_sizes.setter
+    def scenario_independent_sizes(self, value: bool | list[str]) -> None:
+        """
+        Set whether investment sizes should be equalized across scenarios.
+
+        Args:
+            value: True (all equalized), False (all vary), or list of component label_full strings to equalize
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        self._validate_scenario_parameter(value, 'scenario_independent_sizes', 'Element.label_full')
+        self._scenario_independent_sizes = value
+
+    @property
+    def scenario_independent_flow_rates(self) -> bool | list[str]:
+        """
+        Controls whether flow rates are equalized across scenarios.
+
+        Returns:
+            bool or list[str]: Configuration for scenario-independent flow rates
+        """
+        return self._scenario_independent_flow_rates
+
+    @scenario_independent_flow_rates.setter
+    def scenario_independent_flow_rates(self, value: bool | list[str]) -> None:
+        """
+        Set whether flow rates should be equalized across scenarios.
+
+        Args:
+            value: True (all equalized), False (all vary), or list of flow label_full strings to equalize
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        self._validate_scenario_parameter(value, 'scenario_independent_flow_rates', 'Flow.label_full')
+        self._scenario_independent_flow_rates = value
 
     def sel(
         self,
