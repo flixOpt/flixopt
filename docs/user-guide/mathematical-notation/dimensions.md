@@ -153,27 +153,21 @@ $$
 
 This reflects real-world investment under uncertainty: you build capacity once (periodic/investment decision), but it operates under different conditions (temporal/operational decisions per scenario).
 
-**Controlling Scenario Independence:**
+**Mathematical Flexibility:**
 
-You can control which variables are shared across scenarios using `FlowSystem` parameters:
+Variables can be either scenario-independent or scenario-specific:
 
-```python
-flow_system = fx.FlowSystem(
-    timesteps=timesteps,
-    scenarios=scenarios,
-    scenario_independent_sizes=True,         # Sizes equalized (default)
-    scenario_independent_flow_rates=False    # Flow rates vary per scenario (default)
-)
-```
+| Variable Type | Scenario-Independent | Scenario-Specific |
+|---------------|---------------------|-------------------|
+| **Sizes** (e.g., $\text{P}$) | $\text{P}(y)$ - Single value per period | $\text{P}(y, s)$ - Different per scenario |
+| **Flow rates** (e.g., $p(\text{t}_i)$) | $p(\text{t}_i, y)$ - Same across scenarios | $p(\text{t}_i, y, s)$ - Different per scenario |
 
-Options:
-- `True`: All variables of this type are equalized across scenarios
-- `False`: All variables of this type vary independently per scenario
-- `['component1', 'component2']`: Only listed components are equalized
+**Use Cases:**
+- **All sizes shared** (default): Hedge investment - build capacity that works across all scenarios
+- **All sizes vary**: Scenario-specific planning where you can adapt investment to each future
+- **Selective sharing**: Critical infrastructure shared, optional or short  capacity varies per scenario
 
-This allows flexible modeling, such as:
-- Scenario-specific capacity planning (set `scenario_independent_sizes=False`)
-- Equalizing only critical infrastructure across scenarios (use selective lists)
+For implementation details on controlling scenario independence, see the [`FlowSystem`][flixopt.flow_system.FlowSystem] API reference.
 
 ---
 
