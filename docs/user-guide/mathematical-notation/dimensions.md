@@ -164,14 +164,14 @@ Variables can be either scenario-independent or scenario-specific:
 
 **Use Cases:**
 
-*Investment problems (with sizes):*
+*Investment problems (with InvestParameters):*
 - **Sizes shared** (default): Investment under uncertainty - build capacity that performs well across all scenarios
-- **Sizes vary**: Scenario-specific capacity expansion where investment can be adapted to each future
-- **Selected sizes shared**: Critical infrastructure shared, optional or short-lived capacity varies per scenario
+- **Sizes vary**: Scenario-specific capacity planning where different investments can be made for each future
+- **Selected sizes shared**: Mix of shared critical infrastructure and scenario-specific optional/flexible capacity
 
-*Dispatch problems (without investments):*
-- **Flow rates shared**: Find robust operational strategy that works across all scenarios (e.g., day-ahead commitment with uncertain forecasts)
-- **Flow rates vary** (default): Adapt operations to scenario-specific conditions (demand, weather, prices)
+*Dispatch problems (fixed sizes, no investments):*
+- **Flow rates shared**: Robust dispatch - find a single operational strategy that works across all forecast scenarios (e.g., day-ahead unit commitment under demand/weather uncertainty)
+- **Flow rates vary** (default): Scenario-adaptive dispatch - optimize operations for each scenario's specific conditions (demand, weather, prices)
 
 For implementation details on controlling scenario independence, see the [`FlowSystem`][flixopt.flow_system.FlowSystem] API reference.
 
