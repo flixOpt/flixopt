@@ -703,6 +703,7 @@ class InvestParameters(Interface):
         mandatory: Controls whether investment is required. When True, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
             When False (default), optimization can choose not to invest.
+            With multiple periods, at least one period has to have an investment.
         effects_of_investment: Fixed costs if investment is made, regardless of size.
             Dict: {'effect_name': value} (e.g., {'cost': 10000}).
         effects_of_investment_per_size: Variable costs proportional to size (per-unit costs).
