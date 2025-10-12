@@ -83,7 +83,7 @@ class FlowSystem(Interface):
         hours_of_last_timestep: float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weights: PeriodicDataUser | None = None,
-        scenario_independent_sizes: bool | list[str] = False,
+        scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
@@ -282,7 +282,7 @@ class FlowSystem(Interface):
             else None,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
-            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', False),
+            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
         )
 
