@@ -132,9 +132,9 @@ $$
 
 ### Shared Periodic Decisions: The Exception
 
-**Within a period, periodic (investment) decisions are shared across all scenarios:**
+**Investment decisions (sizes) can be shared across all scenarios:**
 
-If a period has multiple scenarios, periodic variables (e.g., component size) are **scenario-independent** but **temporal variables are scenario-specific**.
+By default, sizes (e.g., Storage capacity, Thermal power, ...) are **scenario-independent** but **flow_rates are scenario-specific**.
 
 **Example - Flow with investment:**
 
@@ -152,6 +152,28 @@ $$
 - "Periodic effects (investment) are incurred once per period, temporal effects (operational) are weighted across scenarios"
 
 This reflects real-world investment under uncertainty: you build capacity once (periodic/investment decision), but it operates under different conditions (temporal/operational decisions per scenario).
+
+**Mathematical Flexibility:**
+
+Variables can be either scenario-independent or scenario-specific:
+
+| Variable Type | Scenario-Independent | Scenario-Specific |
+|---------------|---------------------|-------------------|
+| **Sizes** (e.g., $\text{P}$) | $\text{P}(y)$ - Single value per period | $\text{P}(y, s)$ - Different per scenario |
+| **Flow rates** (e.g., $p(\text{t}_i)$) | $p(\text{t}_i, y)$ - Same across scenarios | $p(\text{t}_i, y, s)$ - Different per scenario |
+
+**Use Cases:**
+
+*Investment problems (with InvestParameters):*
+- **Sizes shared** (default): Investment under uncertainty - build capacity that performs well across all scenarios
+- **Sizes vary**: Scenario-specific capacity planning where different investments can be made for each future
+- **Selected sizes shared**: Mix of shared critical infrastructure and scenario-specific optional/flexible capacity
+
+*Dispatch problems (fixed sizes, no investments):*
+- **Flow rates shared**: Robust dispatch - find a single operational strategy that works across all forecast scenarios (e.g., day-ahead unit commitment under demand/weather uncertainty)
+- **Flow rates vary** (default): Scenario-adaptive dispatch - optimize operations for each scenario's specific conditions (demand, weather, prices)
+
+For implementation details on controlling scenario independence, see the [`FlowSystem`][flixopt.flow_system.FlowSystem] API reference.
 
 ---
 

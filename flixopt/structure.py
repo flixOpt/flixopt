@@ -103,6 +103,55 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         for bus in self.flow_system.buses.values():
             bus.create_model(self)
 
+        # Add scenario equality constraints after all elements are modeled
+        self._add_scenario_equality_constraints()
+
+    def _add_scenario_equality_for_parameter_type(
+        self,
+        parameter_type: Literal['flow_rate', 'size'],
+        config: bool | list[str],
+    ):
+        """Add scenario equality constraints for a specific parameter type.
+
+        Args:
+            parameter_type: The type of parameter ('flow_rate' or 'size')
+            config: Configuration value (True = equalize all, False = equalize none, list = equalize these)
+        """
+        if config is False:
+            return  # All vary per scenario, no constraints needed
+
+        suffix = f'|{parameter_type}'
+        if config is True:
+            # All should be scenario-independent
+            vars_to_constrain = [var for var in self.variables if var.endswith(suffix)]
+        else:
+            # Only those in the list should be scenario-independent
+            all_vars = [var for var in self.variables if var.endswith(suffix)]
+            to_equalize = {f'{element}{suffix}' for element in config}
+            vars_to_constrain = [var for var in all_vars if var in to_equalize]
+
+        # Validate that all specified variables exist
+        missing_vars = [v for v in vars_to_constrain if v not in self.variables]
+        if missing_vars:
+            param_name = 'scenario_independent_sizes' if parameter_type == 'size' else 'scenario_independent_flow_rates'
+            raise ValueError(f'{param_name} contains invalid labels: {missing_vars}')
+
+        logger.debug(f'Adding scenario equality constraints for {len(vars_to_constrain)} {parameter_type} variables')
+        for var in vars_to_constrain:
+            self.add_constraints(
+                self.variables[var].isel(scenario=0) == self.variables[var].isel(scenario=slice(1, None)),
+                name=f'{var}|scenario_independent',
+            )
+
+    def _add_scenario_equality_constraints(self):
+        """Add equality constraints to equalize variables across scenarios based on FlowSystem configuration."""
+        # Only proceed if we have scenarios
+        if self.flow_system.scenarios is None or len(self.flow_system.scenarios) <= 1:
+            return
+
+        self._add_scenario_equality_for_parameter_type('flow_rate', self.flow_system.scenario_independent_flow_rates)
+        self._add_scenario_equality_for_parameter_type('size', self.flow_system.scenario_independent_sizes)
+
     @property
     def solution(self):
         solution = super().solution
