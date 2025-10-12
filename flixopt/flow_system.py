@@ -778,6 +778,27 @@ class FlowSystem(Interface):
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
 
+    def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
+        """
+        Validate scenario parameter value.
+
+        Args:
+            value: The value to validate
+            param_name: Name of the parameter (for error messages)
+            element_type: Type of elements expected in list (e.g., 'component label_full', 'flow label_full')
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        if isinstance(value, bool):
+            return  # Valid
+        elif isinstance(value, list):
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError(f'{param_name} list must contain only strings ({element_type} values)')
+        else:
+            raise TypeError(f'{param_name} must be bool or list[str], got {type(value).__name__}')
+
     @property
     def scenario_independent_sizes(self) -> bool | list[str]:
         """
@@ -800,16 +821,8 @@ class FlowSystem(Interface):
             TypeError: If value is not bool or list[str]
             ValueError: If list contains non-string elements
         """
-        if isinstance(value, bool):
-            self._scenario_independent_sizes = value
-        elif isinstance(value, list):
-            if not all(isinstance(item, str) for item in value):
-                raise ValueError(
-                    'scenario_independent_sizes list must contain only strings (component label_full values)'
-                )
-            self._scenario_independent_sizes = value
-        else:
-            raise TypeError(f'scenario_independent_sizes must be bool or list[str], got {type(value).__name__}')
+        self._validate_scenario_parameter(value, 'scenario_independent_sizes', 'Element.label_full')
+        self._scenario_independent_sizes = value
 
     @property
     def scenario_independent_flow_rates(self) -> bool | list[str]:
@@ -833,16 +846,8 @@ class FlowSystem(Interface):
             TypeError: If value is not bool or list[str]
             ValueError: If list contains non-string elements
         """
-        if isinstance(value, bool):
-            self._scenario_independent_flow_rates = value
-        elif isinstance(value, list):
-            if not all(isinstance(item, str) for item in value):
-                raise ValueError(
-                    'scenario_independent_flow_rates list must contain only strings (flow label_full values)'
-                )
-            self._scenario_independent_flow_rates = value
-        else:
-            raise TypeError(f'scenario_independent_flow_rates must be bool or list[str], got {type(value).__name__}')
+        self._validate_scenario_parameter(value, 'scenario_independent_flow_rates', 'Flow.label_full')
+        self._scenario_independent_flow_rates = value
 
     def sel(
         self,
