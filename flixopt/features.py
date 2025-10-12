@@ -64,31 +64,18 @@ class InvestmentModel(Submodel):
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
         )
-        self.add_variables(
-            binary=True,
-            coords=self._model.get_coords(['period', 'scenario']),
-            short_name='invested',
-        )
-        BoundingPatterns.bounds_with_state(
-            self,
-            variable=self.size,
-            variable_state=self._variables['invested'],
-            bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-        )
 
-        if self.parameters.mandatory:
-            self.add_constraints(
-                (self._variables['invested'].sum('period') >= 1)
-                if self._model.flow_system.periods is not None
-                else (self._variables['invested'] == 1),
-                'single_invest|mandatory',
+        if not self.parameters.mandatory:
+            self.add_variables(
+                binary=True,
+                coords=self._model.get_coords(['period', 'scenario']),
+                short_name='invested',
             )
-        else:
-            self.add_constraints(
-                (self._variables['invested'].sum('period') <= 1)
-                if self._model.flow_system.periods is not None
-                else (self._variables['invested'] <= 1),
-                'single_invest',
+            BoundingPatterns.bounds_with_state(
+                self,
+                variable=self.size,
+                variable_state=self._variables['invested'],
+                bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
         if self.parameters.linked_periods is not None:
