@@ -120,5 +120,5 @@ linked_periods=np.array([1, 1, 2, 2, 3])  # Gen 1, Gen 2, Gen 3
 1. **Start simple**: Use `linked_periods=(0, 1)` for most long-lived assets
 2. **Model reality**: Match linking to actual equipment lifecycles
 3. **Cost annualization**: Ensure investment costs are properly annualized to the period duration
-4. **Check results**: Verify the `is_invested` binary variable to understand investment timing
+4. **Check results**: Verify the `invested` binary variable to understand investment timing
 5. **Solver settings**: Multi-period MIP problems may need longer solve times or relaxed MIP gaps
