@@ -59,7 +59,7 @@ class InvestmentModel(Submodel):
 
         self.add_variables(
             short_name='size',
-            lower=size_min if self.parameters.mandatory else 0,
+            lower=size_min if self.parameters.mandatory and self.parameters.linked_periods is None else 0,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
         )
@@ -68,6 +68,13 @@ class InvestmentModel(Submodel):
             coords=self._model.get_coords(['period', 'scenario']),
             short_name='do_invest',
         )
+        BoundingPatterns.bounds_with_state(
+            self,
+            variable=self.size,
+            variable_state=self._variables['do_invest'],
+            bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+        )
+
         if self.parameters.mandatory:
             self.add_constraints(
                 (self._variables['do_invest'].sum('period') == 1)
@@ -82,13 +89,6 @@ class InvestmentModel(Submodel):
                 else (self._variables['do_invest'] <= 1),
                 'single_invest',
             )
-
-        BoundingPatterns.bounds_with_state(
-            self,
-            variable=self.size,
-            variable_state=self._variables['do_invest'],
-            bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-        )
 
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
