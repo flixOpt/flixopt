@@ -222,7 +222,7 @@ class TestFlowInvestModel:
 
         assert_sets_equal(
             set(flow.submodel.variables),
-            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|is_invested'},
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|invested'},
             msg='Incorrect variables',
         )
         assert_sets_equal(
@@ -243,7 +243,7 @@ class TestFlowInvestModel:
         )
 
         assert_var_equal(
-            model['Sink(Wärme)|is_invested'],
+            model['Sink(Wärme)|invested'],
             model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
 
@@ -273,11 +273,11 @@ class TestFlowInvestModel:
         # Is invested
         assert_conequal(
             model.constraints['Sink(Wärme)|size|ub'],
-            flow.submodel.variables['Sink(Wärme)|size'] <= flow.submodel.variables['Sink(Wärme)|is_invested'] * 100,
+            flow.submodel.variables['Sink(Wärme)|size'] <= flow.submodel.variables['Sink(Wärme)|invested'] * 100,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|size|lb'],
-            flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|is_invested'] * 20,
+            flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|invested'] * 20,
         )
 
     def test_flow_invest_optional_wo_min_size(self, basic_flow_system_linopy_coords, coords_config):
@@ -297,7 +297,7 @@ class TestFlowInvestModel:
 
         assert_sets_equal(
             set(flow.submodel.variables),
-            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|is_invested'},
+            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|invested'},
             msg='Incorrect variables',
         )
         assert_sets_equal(
@@ -318,7 +318,7 @@ class TestFlowInvestModel:
         )
 
         assert_var_equal(
-            model['Sink(Wärme)|is_invested'],
+            model['Sink(Wärme)|invested'],
             model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
 
@@ -348,11 +348,11 @@ class TestFlowInvestModel:
         # Is invested
         assert_conequal(
             model.constraints['Sink(Wärme)|size|ub'],
-            flow.submodel.variables['Sink(Wärme)|size'] <= flow.submodel.variables['Sink(Wärme)|is_invested'] * 100,
+            flow.submodel.variables['Sink(Wärme)|size'] <= flow.submodel.variables['Sink(Wärme)|invested'] * 100,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|size|lb'],
-            flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|is_invested'] * 1e-5,
+            flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|invested'] * 1e-5,
         )
 
     def test_flow_invest_wo_min_size_non_optional(self, basic_flow_system_linopy_coords, coords_config):
@@ -471,19 +471,18 @@ class TestFlowInvestModel:
         assert 'Sink(Wärme)->costs(periodic)' in model.variables
         assert 'Sink(Wärme)->CO2(periodic)' in model.variables
 
-        # Check fix effects (applied only when is_invested=1)
+        # Check fix effects (applied only when invested=1)
         assert_conequal(
             model.constraints['Sink(Wärme)->costs(periodic)'],
             model.variables['Sink(Wärme)->costs(periodic)']
-            == flow.submodel.variables['Sink(Wärme)|is_invested'] * 1000
+            == flow.submodel.variables['Sink(Wärme)|invested'] * 1000
             + flow.submodel.variables['Sink(Wärme)|size'] * 500,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)->CO2(periodic)'],
             model.variables['Sink(Wärme)->CO2(periodic)']
-            == flow.submodel.variables['Sink(Wärme)|is_invested'] * 5
-            + flow.submodel.variables['Sink(Wärme)|size'] * 0.1,
+            == flow.submodel.variables['Sink(Wärme)|invested'] * 5 + flow.submodel.variables['Sink(Wärme)|size'] * 0.1,
         )
 
     def test_flow_invest_divest_effects(self, basic_flow_system_linopy_coords, coords_config):
@@ -509,8 +508,7 @@ class TestFlowInvestModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)->costs(periodic)'],
-            model.variables['Sink(Wärme)->costs(periodic)'] + (model.variables['Sink(Wärme)|is_invested'] - 1) * 500
-            == 0,
+            model.variables['Sink(Wärme)->costs(periodic)'] + (model.variables['Sink(Wärme)|invested'] - 1) * 500 == 0,
         )
 
 
@@ -1089,7 +1087,7 @@ class TestFlowOnInvestModel:
             {
                 'Sink(Wärme)|total_flow_hours',
                 'Sink(Wärme)|flow_rate',
-                'Sink(Wärme)|is_invested',
+                'Sink(Wärme)|invested',
                 'Sink(Wärme)|size',
                 'Sink(Wärme)|on',
                 'Sink(Wärme)|on_hours_total',
@@ -1133,11 +1131,11 @@ class TestFlowOnInvestModel:
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|size|lb'],
-            flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|is_invested'] * 20,
+            flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|invested'] * 20,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|size|ub'],
-            flow.submodel.variables['Sink(Wärme)|size'] <= flow.submodel.variables['Sink(Wärme)|is_invested'] * 200,
+            flow.submodel.variables['Sink(Wärme)|size'] <= flow.submodel.variables['Sink(Wärme)|invested'] * 200,
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb1'],

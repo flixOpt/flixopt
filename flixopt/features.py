@@ -67,27 +67,27 @@ class InvestmentModel(Submodel):
         self.add_variables(
             binary=True,
             coords=self._model.get_coords(['period', 'scenario']),
-            short_name='unit_installed',
+            short_name='invested',
         )
         BoundingPatterns.bounds_with_state(
             self,
             variable=self.size,
-            variable_state=self._variables['unit_installed'],
+            variable_state=self._variables['invested'],
             bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
         )
 
         if self.parameters.mandatory:
             self.add_constraints(
-                (self._variables['unit_installed'].sum('period') >= 1)
+                (self._variables['invested'].sum('period') >= 1)
                 if self._model.flow_system.periods is not None
-                else (self._variables['unit_installed'] == 1),
+                else (self._variables['invested'] == 1),
                 'single_invest|mandatory',
             )
         else:
             self.add_constraints(
-                (self._variables['unit_installed'].sum('period') <= 1)
+                (self._variables['invested'].sum('period') <= 1)
                 if self._model.flow_system.periods is not None
-                else (self._variables['unit_installed'] <= 1),
+                else (self._variables['invested'] <= 1),
                 'single_invest',
             )
 
@@ -104,7 +104,7 @@ class InvestmentModel(Submodel):
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.is_invested * factor if self.is_invested is not None else factor
+                    effect: self.invested * factor if self.invested is not None else factor
                     for effect, factor in self.parameters.effects_of_investment.items()
                 },
                 target='periodic',
@@ -114,7 +114,7 @@ class InvestmentModel(Submodel):
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: -self.is_invested * factor + factor
+                    effect: -self.invested * factor + factor
                     for effect, factor in self.parameters.effects_of_retirement.items()
                 },
                 target='periodic',
@@ -138,7 +138,7 @@ class InvestmentModel(Submodel):
                     label_of_model=f'{self.label_of_element}|PiecewiseEffects',
                     piecewise_origin=(self.size.name, self.parameters.piecewise_effects_of_investment.piecewise_origin),
                     piecewise_shares=self.parameters.piecewise_effects_of_investment.piecewise_shares,
-                    zero_point=self.is_invested,
+                    zero_point=self.invested,
                 ),
                 short_name='segments',
             )
@@ -149,11 +149,11 @@ class InvestmentModel(Submodel):
         return self._variables['size']
 
     @property
-    def is_invested(self) -> linopy.Variable | None:
+    def invested(self) -> linopy.Variable | None:
         """Binary investment decision variable"""
-        if 'is_invested' not in self._variables:
+        if 'invested' not in self._variables:
             return None
-        return self._variables['is_invested']
+        return self._variables['invested']
 
 
 class OnOffModel(Submodel):
