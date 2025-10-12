@@ -62,11 +62,11 @@ class FlowSystem(Interface):
             Its recommended to normalize the weights to sum up to 1.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
-            - False: All sizes are optimized separately per scenario (default)
+            - False: All sizes are optimized separately per scenario
             - list[str]: Only specified components (by label_full) are equalized across scenarios
         scenario_independent_flow_rates: Controls whether flow rates are equalized across scenarios.
             - True: All flow rates are shared/equalized across scenarios
-            - False: All flow rates are optimized separately per scenario (default)
+            - False: All flow rates are optimized separately per scenario
             - list[str]: Only specified flows (by label_full) are equalized across scenarios
 
     Notes:

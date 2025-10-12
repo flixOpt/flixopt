@@ -340,13 +340,13 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
 
 def test_sizes_per_scenario_default():
-    """Test that scenario_independent_sizes defaults to False (sizes vary across scenarios)."""
+    """Test that scenario_independent_sizes defaults to True (sizes equalized) and flow_rates to False (vary)."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
     fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
 
-    assert fs.scenario_independent_sizes is False
+    assert fs.scenario_independent_sizes is True
     assert fs.scenario_independent_flow_rates is False
 
 
