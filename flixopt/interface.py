@@ -962,7 +962,7 @@ class InvestParameters(Interface):
                 raise TypeError(
                     f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
                 )
-            logger.info(f'Computing linked_periods from {self.linked_periods}')
+            logger.debug(f'Computing linked_periods from {self.linked_periods}')
             start, end = self.linked_periods
             if start not in flow_system.periods.values:
                 logger.warning(
@@ -973,6 +973,7 @@ class InvestParameters(Interface):
                     f'End of linked periods ({end} not found in periods directly: {flow_system.periods.values}'
                 )
             self.linked_periods = self.compute_linked_periods(start, end, flow_system.periods)
+            logger.debug(f'Computed {self.linked_periods=}')
 
         self.linked_periods = flow_system.fit_to_model_coords(
             f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
