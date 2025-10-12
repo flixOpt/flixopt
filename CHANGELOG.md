@@ -87,6 +87,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Renamed class `SystemModel` to `FlowSystemModel`
 - Renamed class `Model` to `Submodel`
 - Renamed `mode` parameter in plotting methods to `style`
+- Renamed investment binary variable `is_invested` to `invested` in `InvestmentModel`
 - `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`.
 
 ### ♻️ Changed

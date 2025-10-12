@@ -54,39 +54,35 @@ class InvestmentModel(Submodel):
 
     def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
+        if self.parameters.linked_periods is not None:
+            size_min = size_min * self.parameters.linked_periods
+            size_max = size_max * self.parameters.linked_periods
+
         self.add_variables(
             short_name='size',
-            lower=0 if not self.parameters.mandatory else size_min,
+            lower=size_min if self.parameters.mandatory else 0,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
         )
 
-        # Optional (not mandatory)
         if not self.parameters.mandatory:
             self.add_variables(
                 binary=True,
                 coords=self._model.get_coords(['period', 'scenario']),
-                short_name='is_invested',
+                short_name='invested',
             )
-
             BoundingPatterns.bounds_with_state(
                 self,
                 variable=self.size,
-                variable_state=self.is_invested,
+                variable_state=self._variables['invested'],
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
-        if self.parameters.piecewise_effects_of_investment:
-            self.piecewise_effects = self.add_submodels(
-                PiecewiseEffectsModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects_of_investment.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects_of_investment.piecewise_shares,
-                    zero_point=self.is_invested,
-                ),
-                short_name='segments',
+        if self.parameters.linked_periods is not None:
+            masked_size = self.size.where(self.parameters.linked_periods, drop=True)
+            self.add_constraints(
+                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
+                short_name='linked_periods',
             )
 
     def _add_effects(self):
@@ -95,7 +91,7 @@ class InvestmentModel(Submodel):
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.is_invested * factor if self.is_invested is not None else factor
+                    effect: self.invested * factor if self.invested is not None else factor
                     for effect, factor in self.parameters.effects_of_investment.items()
                 },
                 target='periodic',
@@ -105,7 +101,7 @@ class InvestmentModel(Submodel):
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: -self.is_invested * factor + factor
+                    effect: -self.invested * factor + factor
                     for effect, factor in self.parameters.effects_of_retirement.items()
                 },
                 target='periodic',
@@ -121,17 +117,30 @@ class InvestmentModel(Submodel):
                 target='periodic',
             )
 
+        if self.parameters.piecewise_effects_of_investment:
+            self.piecewise_effects = self.add_submodels(
+                PiecewiseEffectsModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects_of_investment.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects_of_investment.piecewise_shares,
+                    zero_point=self.invested,
+                ),
+                short_name='segments',
+            )
+
     @property
     def size(self) -> linopy.Variable:
         """Investment size variable"""
         return self._variables['size']
 
     @property
-    def is_invested(self) -> linopy.Variable | None:
+    def invested(self) -> linopy.Variable | None:
         """Binary investment decision variable"""
-        if 'is_invested' not in self._variables:
+        if 'invested' not in self._variables:
             return None
-        return self._variables['is_invested']
+        return self._variables['invested']
 
 
 class OnOffModel(Submodel):

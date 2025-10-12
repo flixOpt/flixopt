@@ -169,11 +169,11 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.is_invested.solution.item(),
+        boiler.Q_th.submodel._investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
-        err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
+        err_msg='"Boiler__Q_th__invested" does not have the right value',
     )
 
 
@@ -210,7 +210,7 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.is_invested.solution.item(),
+        boiler.Q_th.submodel._investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -251,7 +251,7 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.is_invested.solution.item(),
+        boiler.Q_th.submodel._investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -307,7 +307,7 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.is_invested.solution.item(),
+        boiler.Q_th.submodel._investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -322,7 +322,7 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler_optional.Q_th.submodel._investment.is_invested.solution.item(),
+        boiler_optional.Q_th.submodel._investment.invested.solution.item(),
         0,
         rtol=1e-5,
         atol=1e-10,
