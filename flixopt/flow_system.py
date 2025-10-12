@@ -62,11 +62,11 @@ class FlowSystem(Interface):
             Its recommended to normalize the weights to sum up to 1.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
-            - False: All sizes are optimized separately per scenario (default)
+            - False: All sizes are optimized separately per scenario
             - list[str]: Only specified components (by label_full) are equalized across scenarios
         scenario_independent_flow_rates: Controls whether flow rates are equalized across scenarios.
             - True: All flow rates are shared/equalized across scenarios
-            - False: All flow rates are optimized separately per scenario (default)
+            - False: All flow rates are optimized separately per scenario
             - list[str]: Only specified flows (by label_full) are equalized across scenarios
 
     Notes:
@@ -83,7 +83,7 @@ class FlowSystem(Interface):
         hours_of_last_timestep: float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weights: PeriodicDataUser | None = None,
-        scenario_independent_sizes: bool | list[str] = False,
+        scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
@@ -282,7 +282,7 @@ class FlowSystem(Interface):
             else None,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
-            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', False),
+            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
         )
 
