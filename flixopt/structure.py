@@ -112,19 +112,19 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if self.flow_system.scenarios is None or len(self.flow_system.scenarios) <= 1:
             return None
 
-        if self.flow_system.flow_rates_per_scenario is not True:
-            if self.flow_system.flow_rates_per_scenario is False:
+        if self.flow_system.scenario_independent_flow_rates is not False:
+            if self.flow_system.scenario_independent_flow_rates is True:
                 # All flow rates should be scenario-independent
                 flow_vars = [var for var in self.variables if var.endswith('|flow_rate')]
             else:
-                # Only flow rates NOT in the list should be scenario-independent
+                # Only flow rates in the list should be scenario-independent
                 all_flow_vars = [var for var in self.variables if var.endswith('|flow_rate')]
-                allowed_to_vary = {f'{flow}|flow_rate' for flow in self.flow_system.flow_rates_per_scenario}
-                flow_vars = [var for var in all_flow_vars if var not in allowed_to_vary]
+                to_equalize = {f'{flow}|flow_rate' for flow in self.flow_system.scenario_independent_flow_rates}
+                flow_vars = [var for var in all_flow_vars if var in to_equalize]
             # Validate that all specified variables exist
             missing_vars = [v for v in flow_vars if v not in self.variables]
             if missing_vars:
-                raise ValueError(f'flow_rates_per_scenario contains invalid labels: {missing_vars}')
+                raise ValueError(f'scenario_independent_flow_rates contains invalid labels: {missing_vars}')
 
             logger.debug(f'Adding scenario equality constraints for {len(flow_vars)} flow_rate variables')
             for flow_var in flow_vars:
@@ -133,19 +133,19 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                     name=f'{flow_var}|scenario_independent',
                 )
 
-        if self.flow_system.sizes_per_scenario is not True:
-            if self.flow_system.sizes_per_scenario is False:
+        if self.flow_system.scenario_independent_sizes is not False:
+            if self.flow_system.scenario_independent_sizes is True:
                 # All sizes should be scenario-independent
                 size_vars = [var for var in self.variables if var.endswith('|size')]
             else:
-                # Only sizes NOT in the list should be scenario-independent
+                # Only sizes in the list should be scenario-independent
                 all_size_vars = [var for var in self.variables if var.endswith('|size')]
-                allowed_to_vary = {f'{element}|size' for element in self.flow_system.sizes_per_scenario}
-                size_vars = [var for var in all_size_vars if var not in allowed_to_vary]
+                to_equalize = {f'{element}|size' for element in self.flow_system.scenario_independent_sizes}
+                size_vars = [var for var in all_size_vars if var in to_equalize]
             # Validate that all specified variables exist
             missing_vars = [v for v in size_vars if v not in self.variables]
             if missing_vars:
-                raise ValueError(f'sizes_per_scenario contains invalid labels: {missing_vars}')
+                raise ValueError(f'scenario_independent_sizes contains invalid labels: {missing_vars}')
 
             logger.debug(f'Adding scenario equality constraints for {len(size_vars)} size variables')
             for size_var in size_vars:

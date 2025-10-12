@@ -340,69 +340,69 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
 
 def test_sizes_per_scenario_default():
-    """Test that sizes_per_scenario defaults to False (sizes shared across scenarios)."""
+    """Test that scenario_independent_sizes defaults to False (sizes vary across scenarios)."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
     fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
 
-    assert fs.sizes_per_scenario is False
-    assert fs.flow_rates_per_scenario is True
+    assert fs.scenario_independent_sizes is False
+    assert fs.scenario_independent_flow_rates is False
 
 
 def test_sizes_per_scenario_bool():
-    """Test sizes_per_scenario with boolean values."""
+    """Test scenario_independent_sizes with boolean values."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
-    # Test False
-    fs1 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, sizes_per_scenario=False)
-    assert fs1.sizes_per_scenario is False
+    # Test False (vary per scenario)
+    fs1 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_independent_sizes=False)
+    assert fs1.scenario_independent_sizes is False
 
-    # Test True
-    fs2 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, sizes_per_scenario=True)
-    assert fs2.sizes_per_scenario is True
+    # Test True (equalized across scenarios)
+    fs2 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_independent_sizes=True)
+    assert fs2.scenario_independent_sizes is True
 
 
 def test_sizes_per_scenario_list():
-    """Test sizes_per_scenario with list of element labels."""
+    """Test scenario_independent_sizes with list of element labels."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
     fs = fx.FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        sizes_per_scenario=['solar->grid', 'battery->grid'],
+        scenario_independent_sizes=['solar->grid', 'battery->grid'],
     )
 
-    assert fs.sizes_per_scenario == ['solar->grid', 'battery->grid']
-    assert fs._should_include_scenario_dim('solar->grid', 'size') is True
-    assert fs._should_include_scenario_dim('battery->grid', 'size') is True
-    assert fs._should_include_scenario_dim('wind->grid', 'size') is False
+    assert fs.scenario_independent_sizes == ['solar->grid', 'battery->grid']
+    assert fs._should_include_scenario_dim('solar->grid', 'size') is False
+    assert fs._should_include_scenario_dim('battery->grid', 'size') is False
+    assert fs._should_include_scenario_dim('wind->grid', 'size') is True
 
 
 def test_flow_rates_per_scenario_default():
-    """Test that flow_rates_per_scenario defaults to True (flow rates vary by scenario)."""
+    """Test that scenario_independent_flow_rates defaults to False (flow rates vary by scenario)."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
     fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
 
-    assert fs.flow_rates_per_scenario is True
+    assert fs.scenario_independent_flow_rates is False
 
 
 def test_flow_rates_per_scenario_bool():
-    """Test flow_rates_per_scenario with boolean values."""
+    """Test scenario_independent_flow_rates with boolean values."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
-    # Test False (shared)
-    fs1 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, flow_rates_per_scenario=False)
-    assert fs1.flow_rates_per_scenario is False
+    # Test False (vary per scenario)
+    fs1 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_independent_flow_rates=False)
+    assert fs1.scenario_independent_flow_rates is False
 
-    # Test True (per scenario)
-    fs2 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, flow_rates_per_scenario=True)
-    assert fs2.flow_rates_per_scenario is True
+    # Test True (equalized across scenarios)
+    fs2 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_independent_flow_rates=True)
+    assert fs2.scenario_independent_flow_rates is True
 
 
 def test_scenario_parameters_property_setters():
@@ -412,19 +412,19 @@ def test_scenario_parameters_property_setters():
 
     fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
 
-    # Change sizes_per_scenario
-    fs.sizes_per_scenario = True
-    assert fs.sizes_per_scenario is True
+    # Change scenario_independent_sizes
+    fs.scenario_independent_sizes = True
+    assert fs.scenario_independent_sizes is True
 
-    fs.sizes_per_scenario = ['component1', 'component2']
-    assert fs.sizes_per_scenario == ['component1', 'component2']
+    fs.scenario_independent_sizes = ['component1', 'component2']
+    assert fs.scenario_independent_sizes == ['component1', 'component2']
 
-    # Change flow_rates_per_scenario
-    fs.flow_rates_per_scenario = False
-    assert fs.flow_rates_per_scenario is False
+    # Change scenario_independent_flow_rates
+    fs.scenario_independent_flow_rates = True
+    assert fs.scenario_independent_flow_rates is True
 
-    fs.flow_rates_per_scenario = ['flow1', 'flow2']
-    assert fs.flow_rates_per_scenario == ['flow1', 'flow2']
+    fs.scenario_independent_flow_rates = ['flow1', 'flow2']
+    assert fs.scenario_independent_flow_rates == ['flow1', 'flow2']
 
 
 def test_scenario_parameters_validation():
@@ -436,23 +436,23 @@ def test_scenario_parameters_validation():
 
     # Test invalid type
     with pytest.raises(TypeError, match='must be bool or list'):
-        fs.sizes_per_scenario = 'invalid'
+        fs.scenario_independent_sizes = 'invalid'
 
     # Test invalid list content
     with pytest.raises(ValueError, match='must contain only strings'):
-        fs.sizes_per_scenario = [1, 2, 3]
+        fs.scenario_independent_sizes = [1, 2, 3]
 
 
 def test_size_equality_constraints():
-    """Test that size equality constraints are created when sizes_per_scenario=False."""
+    """Test that size equality constraints are created when scenario_independent_sizes=True."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
     fs = fx.FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        sizes_per_scenario=False,  # Sizes should be equal
-        flow_rates_per_scenario=True,  # Flow rates can vary
+        scenario_independent_sizes=True,  # Sizes should be equalized
+        scenario_independent_flow_rates=False,  # Flow rates can vary
     )
 
     bus = fx.Bus('grid')
@@ -484,15 +484,15 @@ def test_size_equality_constraints():
 
 
 def test_flow_rate_equality_constraints():
-    """Test that flow_rate equality constraints are created when flow_rates_per_scenario=False."""
+    """Test that flow_rate equality constraints are created when scenario_independent_flow_rates=True."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
     fs = fx.FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        sizes_per_scenario=True,  # Sizes can vary
-        flow_rates_per_scenario=False,  # Flow rates should be equal
+        scenario_independent_sizes=False,  # Sizes can vary
+        scenario_independent_flow_rates=True,  # Flow rates should be equalized
     )
 
     bus = fx.Bus('grid')
@@ -531,8 +531,8 @@ def test_selective_scenario_independence():
     fs = fx.FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        sizes_per_scenario=['solar(out)'],  # Only solar size varies
-        flow_rates_per_scenario=['demand(in)'],  # Only demand flow_rate varies
+        scenario_independent_sizes=['solar(out)'],  # Only solar size is equalized
+        scenario_independent_flow_rates=['demand(in)'],  # Only demand flow_rate is equalized
     )
 
     bus = fx.Bus('grid')
@@ -560,25 +560,29 @@ def test_selective_scenario_independence():
 
     constraint_names = [str(c) for c in calc.model.constraints]
 
-    # Solar should NOT have size constraints (it's in the list, so varies per scenario)
+    # Solar SHOULD have size constraints (it's in the list, so equalized)
     solar_size_constraints = [c for c in constraint_names if 'solar(out)|size' in c and 'scenario_independent' in c]
-    assert len(solar_size_constraints) == 0
+    assert len(solar_size_constraints) > 0
 
-    # Solar SHOULD have flow_rate constraints (not in the list, so shared)
+    # Solar should NOT have flow_rate constraints (not in the list, so varies per scenario)
     solar_flow_constraints = [
         c for c in constraint_names if 'solar(out)|flow_rate' in c and 'scenario_independent' in c
     ]
-    assert len(solar_flow_constraints) > 0
+    assert len(solar_flow_constraints) == 0
 
-    # Demand should NOT have flow_rate constraints (it's in the list, so varies per scenario)
+    # Demand should NOT have size constraints (no InvestParameters, size is fixed)
+    demand_size_constraints = [c for c in constraint_names if 'demand(in)|size' in c and 'scenario_independent' in c]
+    assert len(demand_size_constraints) == 0
+
+    # Demand SHOULD have flow_rate constraints (it's in the list, so equalized)
     demand_flow_constraints = [
         c for c in constraint_names if 'demand(in)|flow_rate' in c and 'scenario_independent' in c
     ]
-    assert len(demand_flow_constraints) == 0
+    assert len(demand_flow_constraints) > 0
 
 
 def test_scenario_parameters_io_persistence():
-    """Test that sizes_per_scenario and flow_rates_per_scenario persist through IO operations."""
+    """Test that scenario_independent_sizes and scenario_independent_flow_rates persist through IO operations."""
     import shutil
     import tempfile
 
@@ -589,8 +593,8 @@ def test_scenario_parameters_io_persistence():
     fs_original = fx.FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        sizes_per_scenario=['solar(out)'],
-        flow_rates_per_scenario=False,
+        scenario_independent_sizes=['solar(out)'],
+        scenario_independent_flow_rates=True,
     )
 
     bus = fx.Bus('grid')
@@ -617,8 +621,8 @@ def test_scenario_parameters_io_persistence():
     fs_loaded = fx.FlowSystem.from_dataset(ds)
 
     # Verify parameters persisted
-    assert fs_loaded.sizes_per_scenario == fs_original.sizes_per_scenario
-    assert fs_loaded.flow_rates_per_scenario == fs_original.flow_rates_per_scenario
+    assert fs_loaded.scenario_independent_sizes == fs_original.scenario_independent_sizes
+    assert fs_loaded.scenario_independent_flow_rates == fs_original.scenario_independent_flow_rates
 
 
 def test_scenario_parameters_io_with_calculation():
@@ -632,8 +636,8 @@ def test_scenario_parameters_io_with_calculation():
     fs = fx.FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        sizes_per_scenario=False,
-        flow_rates_per_scenario=['demand(in)'],
+        scenario_independent_sizes=True,
+        scenario_independent_flow_rates=['demand(in)'],
     )
 
     bus = fx.Bus('grid')
@@ -671,8 +675,8 @@ def test_scenario_parameters_io_with_calculation():
         fs_loaded = fx.FlowSystem.from_dataset(results.flow_system_data)
 
         # Verify parameters persisted
-        assert fs_loaded.sizes_per_scenario == fs.sizes_per_scenario
-        assert fs_loaded.flow_rates_per_scenario == fs.flow_rates_per_scenario
+        assert fs_loaded.scenario_independent_sizes == fs.scenario_independent_sizes
+        assert fs_loaded.scenario_independent_flow_rates == fs.scenario_independent_flow_rates
 
         # Verify constraints are recreated correctly
         calc2 = fx.FullCalculation('test_io_2', fs_loaded, folder=temp_dir)
