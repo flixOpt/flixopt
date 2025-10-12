@@ -51,6 +51,8 @@ This release introduces new model dimensions (periods and scenarios) for multi-p
 
 - **Period dimension**: Enables multi-period investment modeling with distinct decisions in each period for transformation pathway optimization
 - **Scenario dimension**: Supports stochastic modeling with weighted scenarios for robust decision-making under uncertainty (demand, prices, weather)
+    - Control variable independence across scenarios via `scenario_independent_sizes` and `scenario_independent_flow_rates` parameters
+    - By default, investment sizes are shared across scenarios while flow rates vary per scenario
 
 **Redesigned effect sharing system:**
 

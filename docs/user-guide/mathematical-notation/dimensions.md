@@ -132,9 +132,9 @@ $$
 
 ### Shared Periodic Decisions: The Exception
 
-**Within a period, periodic (investment) decisions are shared across all scenarios:**
+**Investment decisions (sizes) can be shared across all scenarios:**
 
-If a period has multiple scenarios, periodic variables (e.g., component size) are **scenario-independent** but **temporal variables are scenario-specific**.
+By default, sizes (e.g., Storage capacity, Thermal power, ...) are **scenario-independent** but **flow_rates are scenario-specific**.
 
 **Example - Flow with investment:**
 
@@ -152,6 +152,28 @@ $$
 - "Periodic effects (investment) are incurred once per period, temporal effects (operational) are weighted across scenarios"
 
 This reflects real-world investment under uncertainty: you build capacity once (periodic/investment decision), but it operates under different conditions (temporal/operational decisions per scenario).
+
+**Controlling Scenario Independence:**
+
+You can control which variables are shared across scenarios using `FlowSystem` parameters:
+
+```python
+flow_system = fx.FlowSystem(
+    timesteps=timesteps,
+    scenarios=scenarios,
+    scenario_independent_sizes=True,         # Sizes equalized (default)
+    scenario_independent_flow_rates=False    # Flow rates vary per scenario (default)
+)
+```
+
+Options:
+- `True`: All variables of this type are equalized across scenarios
+- `False`: All variables of this type vary independently per scenario
+- `['component1', 'component2']`: Only listed components are equalized
+
+This allows flexible modeling, such as:
+- Scenario-specific capacity planning (set `scenario_independent_sizes=False`)
+- Equalizing only critical infrastructure across scenarios (use selective lists)
 
 ---
 
