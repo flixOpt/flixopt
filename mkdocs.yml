@@ -8,6 +8,36 @@ site_url: https://flixopt.github.io/flixopt/
 repo_url: https://github.com/flixOpt/flixopt
 repo_name: flixOpt/flixopt
 
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - User Guide:
+    - user-guide/index.md
+    - Migration to v3.0.0: user-guide/migration-guide-v3.md
+    - Recipes: user-guide/recipes/index.md
+    - Mathematical Notation:
+      - Overview: user-guide/mathematical-notation/index.md
+      - Dimensions: user-guide/mathematical-notation/dimensions.md
+      - Elements:
+        - Flow: user-guide/mathematical-notation/elements/Flow.md
+        - Bus: user-guide/mathematical-notation/elements/Bus.md
+        - Storage: user-guide/mathematical-notation/elements/Storage.md
+        - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
+      - Features:
+        - InvestParameters: user-guide/mathematical-notation/features/InvestParameters.md
+        - OnOffParameters: user-guide/mathematical-notation/features/OnOffParameters.md
+        - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
+      - Effects, Penalty & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
+      - Modeling Patterns:
+        - Overview: user-guide/mathematical-notation/modeling-patterns/index.md
+        - Bounds and States: user-guide/mathematical-notation/modeling-patterns/bounds-and-states.md
+        - Duration Tracking: user-guide/mathematical-notation/modeling-patterns/duration-tracking.md
+        - State Transitions: user-guide/mathematical-notation/modeling-patterns/state-transitions.md
+  - Examples: examples/
+  - Contribute: contribute.md
+  - API Reference: api-reference/
+  - Release Notes: changelog/
+
 
 theme:
   name: material
@@ -49,12 +79,10 @@ theme:
     - content.code.copy
     - content.code.annotate
     - content.tooltips
-    - content.code.copy
     - navigation.footer.version
 
 markdown_extensions:
   - admonition
-  - codehilite
   - markdown_include.include:
       base_path: docs
   - pymdownx.highlight:
@@ -62,7 +90,6 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
   - pymdownx.superfences
   - attr_list
   - abbr
@@ -85,13 +112,11 @@ plugins:
   - include-markdown
   - mike:
       version_selector: true
-      default_version: latest
+  - literate-nav:
+      nav_file: SUMMARY.md
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py
-  - literate-nav:
-      nav_file: SUMMARY.md
-      implicit_index: true  # This makes index.md the default landing page
   - mkdocstrings:  # Handles automatic API documentation generation
      default_handler: python  # Sets Python as the default language
      handlers:

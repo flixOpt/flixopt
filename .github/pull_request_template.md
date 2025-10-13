@@ -15,6 +15,6 @@ Closes #(issue number)
 - [ ] Existing tests still pass
 
 ## Checklist
-- [ ] My code follows the project style
-- [ ] I have updated documentation if needed
-- [ ] I have added tests for new functionality (if applicable)
+- [x] My code follows the project style
+- [x] I have updated documentation if needed
+- [x] I have added tests for new functionality (if applicable)

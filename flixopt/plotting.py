@@ -1,14 +1,37 @@
+"""Comprehensive visualization toolkit for flixopt optimization results and data analysis.
+
+This module provides a unified plotting interface supporting both Plotly (interactive)
+and Matplotlib (static) backends for visualizing energy system optimization results.
+It offers specialized plotting functions for time series, heatmaps, network diagrams,
+and statistical analyses commonly needed in energy system modeling.
+
+Key Features:
+    **Dual Backend Support**: Seamless switching between Plotly and Matplotlib
+    **Energy System Focus**: Specialized plots for power flows, storage states, emissions
+    **Color Management**: Intelligent color processing and palette management
+    **Export Capabilities**: High-quality export for reports and publications
+    **Integration Ready**: Designed for use with CalculationResults and standalone analysis
+
+Main Plot Types:
+    - **Time Series**: Flow rates, power profiles, storage states over time
+    - **Heatmaps**: High-resolution temporal data visualization with customizable aggregation
+    - **Network Diagrams**: System topology with flow visualization
+    - **Statistical Plots**: Distribution analysis, correlation studies, performance metrics
+    - **Comparative Analysis**: Multi-scenario and sensitivity study visualizations
+
+The module integrates seamlessly with flixopt's result classes while remaining
+accessible for standalone data visualization tasks.
 """
-This module contains the plotting functionality of the flixopt framework.
-It provides high level functions to plot data with plotly and matplotlib.
-It's meant to be used in results.py, but is designed to be used by the end user as well.
-"""
+
+from __future__ import annotations
 
 import itertools
 import logging
+import os
 import pathlib
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Literal
 
+import matplotlib
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,18 +56,63 @@ _portland_colors = [
 ]
 
 # Check if the colormap already exists before registering it
-if 'portland' not in plt.colormaps:
-    plt.colormaps.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
+if hasattr(plt, 'colormaps'):  # Matplotlib >= 3.7
+    registry = plt.colormaps
+    if 'portland' not in registry:
+        registry.register(mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
+else:  # Matplotlib < 3.7
+    if 'portland' not in [c for c in plt.colormaps()]:
+        plt.register_cmap(name='portland', cmap=mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
 
-ColorType = Union[str, List[str], Dict[str, str]]
-"""Identifier for the colors to use.
-Use the name of a colorscale, a list of colors or a dictionary of labels to colors.
-The colors must be valid color strings (HEX or names). Depending on the Engine used, other formats are possible.
-See also:
-- https://htmlcolorcodes.com/color-names/
-- https://matplotlib.org/stable/tutorials/colors/colormaps.html
-- https://plotly.com/python/builtin-colorscales/
+ColorType = str | list[str] | dict[str, str]
+"""Flexible color specification type supporting multiple input formats for visualization.
+
+Color specifications can take several forms to accommodate different use cases:
+
+**Named Colormaps** (str):
+    - Standard colormaps: 'viridis', 'plasma', 'cividis', 'tab10', 'Set1'
+    - Energy-focused: 'portland' (custom flixopt colormap for energy systems)
+    - Backend-specific maps available in Plotly and Matplotlib
+
+**Color Lists** (list[str]):
+    - Explicit color sequences: ['red', 'blue', 'green', 'orange']
+    - HEX codes: ['#FF0000', '#0000FF', '#00FF00', '#FFA500']
+    - Mixed formats: ['red', '#0000FF', 'green', 'orange']
+
+**Label-to-Color Mapping** (dict[str, str]):
+    - Explicit associations: {'Wind': 'skyblue', 'Solar': 'gold', 'Gas': 'brown'}
+    - Ensures consistent colors across different plots and datasets
+    - Ideal for energy system components with semantic meaning
+
+Examples:
+    ```python
+    # Named colormap
+    colors = 'viridis'  # Automatic color generation
+
+    # Explicit color list
+    colors = ['red', 'blue', 'green', '#FFD700']
+
+    # Component-specific mapping
+    colors = {
+        'Wind_Turbine': 'skyblue',
+        'Solar_Panel': 'gold',
+        'Natural_Gas': 'brown',
+        'Battery': 'green',
+        'Electric_Load': 'darkred'
+    }
+    ```
+
+Color Format Support:
+    - **Named Colors**: 'red', 'blue', 'forestgreen', 'darkorange'
+    - **HEX Codes**: '#FF0000', '#0000FF', '#228B22', '#FF8C00'
+    - **RGB Tuples**: (255, 0, 0), (0, 0, 255) [Matplotlib only]
+    - **RGBA**: 'rgba(255,0,0,0.8)' [Plotly only]
+
+References:
+    - HTML Color Names: https://htmlcolorcodes.com/color-names/
+    - Matplotlib Colormaps: https://matplotlib.org/stable/tutorials/colors/colormaps.html
+    - Plotly Built-in Colorscales: https://plotly.com/python/builtin-colorscales/
 """
 
 PlottingEngine = Literal['plotly', 'matplotlib']
@@ -52,22 +120,74 @@ PlottingEngine = Literal['plotly', 'matplotlib']
 
 
 class ColorProcessor:
-    """Class to handle color processing for different visualization engines."""
+    """Intelligent color management system for consistent multi-backend visualization.
+
+    This class provides unified color processing across Plotly and Matplotlib backends,
+    ensuring consistent visual appearance regardless of the plotting engine used.
+    It handles color palette generation, named colormap translation, and intelligent
+    color cycling for complex datasets with many categories.
+
+    Key Features:
+        **Backend Agnostic**: Automatic color format conversion between engines
+        **Palette Management**: Support for named colormaps, custom palettes, and color lists
+        **Intelligent Cycling**: Smart color assignment for datasets with many categories
+        **Fallback Handling**: Graceful degradation when requested colormaps are unavailable
+        **Energy System Colors**: Built-in palettes optimized for energy system visualization
+
+    Color Input Types:
+        - **Named Colormaps**: 'viridis', 'plasma', 'portland', 'tab10', etc.
+        - **Color Lists**: ['red', 'blue', 'green'] or ['#FF0000', '#0000FF', '#00FF00']
+        - **Label Dictionaries**: {'Generator': 'red', 'Storage': 'blue', 'Load': 'green'}
+
+    Examples:
+        Basic color processing:
+
+        ```python
+        # Initialize for Plotly backend
+        processor = ColorProcessor(engine='plotly', default_colormap='viridis')
+
+        # Process different color specifications
+        colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
+        colors = processor.process_colors(['red', 'blue', 'green'], ['A', 'B', 'C'])
+        colors = processor.process_colors({'Wind': 'skyblue', 'Solar': 'gold'}, ['Wind', 'Solar', 'Gas'])
+
+        # Switch to Matplotlib
+        processor = ColorProcessor(engine='matplotlib')
+        mpl_colors = processor.process_colors('tab10', component_labels)
+        ```
+
+        Energy system visualization:
+
+        ```python
+        # Specialized energy system palette
+        energy_colors = {
+            'Natural_Gas': '#8B4513',  # Brown
+            'Electricity': '#FFD700',  # Gold
+            'Heat': '#FF4500',  # Red-orange
+            'Cooling': '#87CEEB',  # Sky blue
+            'Hydrogen': '#E6E6FA',  # Lavender
+            'Battery': '#32CD32',  # Lime green
+        }
+
+        processor = ColorProcessor('plotly')
+        flow_colors = processor.process_colors(energy_colors, flow_labels)
+        ```
+
+    Args:
+        engine: Plotting backend ('plotly' or 'matplotlib'). Determines output color format.
+        default_colormap: Fallback colormap when requested palettes are unavailable.
+            Common options: 'viridis', 'plasma', 'tab10', 'portland'.
+
+    """
 
     def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str = 'viridis'):
-        """
-        Initialize the color processor.
-
-        Args:
-            engine: The plotting engine to use ('plotly' or 'matplotlib')
-            default_colormap: Default colormap to use if none is specified
-        """
+        """Initialize the color processor with specified backend and defaults."""
         if engine not in ['plotly', 'matplotlib']:
             raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
         self.engine = engine
         self.default_colormap = default_colormap
 
-    def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> List[Any]:
+    def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> list[Any]:
         """
         Generate colors from a named colormap.
 
@@ -76,13 +196,13 @@ class ColorProcessor:
             num_colors: Number of colors to generate
 
         Returns:
-            List of colors in the format appropriate for the engine
+            list of colors in the format appropriate for the engine
         """
         if self.engine == 'plotly':
             try:
                 colorscale = px.colors.get_colorscale(colormap_name)
             except PlotlyError as e:
-                logger.warning(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
+                logger.error(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
                 colorscale = px.colors.get_colorscale(self.default_colormap)
 
             # Generate evenly spaced points
@@ -93,26 +213,24 @@ class ColorProcessor:
             try:
                 cmap = plt.get_cmap(colormap_name, num_colors)
             except ValueError as e:
-                logger.warning(
-                    f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}"
-                )
+                logger.error(f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}")
                 cmap = plt.get_cmap(self.default_colormap, num_colors)
 
             return [cmap(i) for i in range(num_colors)]
 
-    def _handle_color_list(self, colors: List[str], num_labels: int) -> List[str]:
+    def _handle_color_list(self, colors: list[str], num_labels: int) -> list[str]:
         """
         Handle a list of colors, cycling if necessary.
 
         Args:
-            colors: List of color strings
+            colors: list of color strings
             num_labels: Number of labels that need colors
 
         Returns:
-            List of colors matching the number of labels
+            list of colors matching the number of labels
         """
         if len(colors) == 0:
-            logger.warning(f'Empty color list provided. Using {self.default_colormap} instead.')
+            logger.error(f'Empty color list provided. Using {self.default_colormap} instead.')
             return self._generate_colors_from_colormap(self.default_colormap, num_labels)
 
         if len(colors) < num_labels:
@@ -130,23 +248,23 @@ class ColorProcessor:
                 )
             return colors[:num_labels]
 
-    def _handle_color_dict(self, colors: Dict[str, str], labels: List[str]) -> List[str]:
+    def _handle_color_dict(self, colors: dict[str, str], labels: list[str]) -> list[str]:
         """
         Handle a dictionary mapping labels to colors.
 
         Args:
             colors: Dictionary mapping labels to colors
-            labels: List of labels that need colors
+            labels: list of labels that need colors
 
         Returns:
-            List of colors in the same order as labels
+            list of colors in the same order as labels
         """
         if len(colors) == 0:
             logger.warning(f'Empty color dictionary provided. Using {self.default_colormap} instead.')
             return self._generate_colors_from_colormap(self.default_colormap, len(labels))
 
         # Find missing labels
-        missing_labels = set(labels) - set(colors.keys())
+        missing_labels = sorted(set(labels) - set(colors.keys()))
         if missing_labels:
             logger.warning(
                 f'Some labels have no color specified: {missing_labels}. Using {self.default_colormap} for these.'
@@ -168,15 +286,15 @@ class ColorProcessor:
     def process_colors(
         self,
         colors: ColorType,
-        labels: List[str],
+        labels: list[str],
         return_mapping: bool = False,
-    ) -> Union[List[Any], Dict[str, Any]]:
+    ) -> list[Any] | dict[str, Any]:
         """
         Process colors for the specified labels.
 
         Args:
             colors: Color specification (colormap name, list of colors, or label-to-color mapping)
-            labels: List of data labels that need colors assigned
+            labels: list of data labels that need colors assigned
             return_mapping: If True, returns a dictionary mapping labels to colors;
                            if False, returns a list of colors in the same order as labels
 
@@ -184,7 +302,7 @@ class ColorProcessor:
             Either a list of colors or a dictionary mapping labels to colors
         """
         if len(labels) == 0:
-            logger.warning('No labels provided for color assignment.')
+            logger.error('No labels provided for color assignment.')
             return {} if return_mapping else []
 
         # Process based on type of colors input
@@ -195,7 +313,7 @@ class ColorProcessor:
         elif isinstance(colors, dict):
             color_list = self._handle_color_dict(colors, labels)
         else:
-            logger.warning(
+            logger.error(
                 f'Unsupported color specification type: {type(colors)}. Using {self.default_colormap} instead.'
             )
             color_list = self._generate_colors_from_colormap(self.default_colormap, len(labels))
@@ -209,12 +327,12 @@ class ColorProcessor:
 
 def with_plotly(
     data: pd.DataFrame,
-    mode: Literal['bar', 'line', 'area'] = 'area',
+    style: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
-    fig: Optional[go.Figure] = None,
+    fig: go.Figure | None = None,
 ) -> go.Figure:
     """
     Plot a DataFrame with Plotly, using either stacked bars or stepped lines.
@@ -222,7 +340,7 @@ def with_plotly(
     Args:
         data: A DataFrame containing the data to plot, where the index represents time (e.g., hours),
               and each column represents a separate data series.
-        mode: The plotting mode. Use 'bar' for stacked bar charts, 'line' for stepped lines,
+        style: The plotting style. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines,
               or 'area' for stacked area charts.
         colors: Color specification, can be:
             - A string with a colorscale name (e.g., 'viridis', 'plasma')
@@ -230,12 +348,14 @@ def with_plotly(
             - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
         ylabel: The label for the y-axis.
+        xlabel: The label for the x-axis.
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
 
     Returns:
         A Plotly figure object containing the generated plot.
     """
-    assert mode in ['bar', 'line', 'area'], f"'mode' must be one of {['bar', 'line', 'area']}"
+    if style not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
+        raise ValueError(f"'style' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {style!r}")
     if data.empty:
         return go.Figure()
 
@@ -243,23 +363,34 @@ def with_plotly(
 
     fig = fig if fig is not None else go.Figure()
 
-    if mode == 'bar':
+    if style == 'stacked_bar':
         for i, column in enumerate(data.columns):
             fig.add_trace(
                 go.Bar(
                     x=data.index,
                     y=data[column],
                     name=column,
-                    marker=dict(color=processed_colors[i]),
+                    marker=dict(
+                        color=processed_colors[i], line=dict(width=0, color='rgba(0,0,0,0)')
+                    ),  # Transparent line with 0 width
                 )
             )
 
         fig.update_layout(
-            barmode='relative' if mode == 'bar' else None,
+            barmode='relative',
             bargap=0,  # No space between bars
-            bargroupgap=0,  # No space between groups of bars
+            bargroupgap=0,  # No space between grouped bars
         )
-    elif mode == 'line':
+    if style == 'grouped_bar':
+        for i, column in enumerate(data.columns):
+            fig.add_trace(go.Bar(x=data.index, y=data[column], name=column, marker=dict(color=processed_colors[i])))
+
+        fig.update_layout(
+            barmode='group',
+            bargap=0.2,  # No space between bars
+            bargroupgap=0,  # space between grouped bars
+        )
+    elif style == 'line':
         for i, column in enumerate(data.columns):
             fig.add_trace(
                 go.Scatter(
@@ -270,7 +401,7 @@ def with_plotly(
                     line=dict(shape='hv', color=processed_colors[i]),
                 )
             )
-    elif mode == 'area':
+    elif style == 'area':
         data = data.copy()
         data[(data > -1e-5) & (data < 1e-5)] = 0  # Preventing issues with plotting
         # Split columns into positive, negative, and mixed categories
@@ -280,7 +411,7 @@ def with_plotly(
         mixed_columns = list(set(data.columns) - set(positive_columns + negative_columns))
 
         if mixed_columns:
-            logger.warning(
+            logger.error(
                 f'Data for plotting stacked lines contains columns with both positive and negative values:'
                 f' {mixed_columns}. These can not be stacked, and are printed as simple lines'
             )
@@ -330,14 +461,6 @@ def with_plotly(
         plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
         paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
         font=dict(size=14),  # Increase font size for better readability
-        legend=dict(
-            orientation='h',  # Horizontal legend
-            yanchor='bottom',
-            y=-0.3,  # Adjusts how far below the plot it appears
-            xanchor='center',
-            x=0.5,
-            title_text=None,  # Removes legend title for a cleaner look
-        ),
     )
 
     return fig
@@ -345,22 +468,22 @@ def with_plotly(
 
 def with_matplotlib(
     data: pd.DataFrame,
-    mode: Literal['bar', 'line'] = 'bar',
+    style: Literal['stacked_bar', 'line'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
-    figsize: Tuple[int, int] = (12, 6),
-    fig: Optional[plt.Figure] = None,
-    ax: Optional[plt.Axes] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    figsize: tuple[int, int] = (12, 6),
+    fig: plt.Figure | None = None,
+    ax: plt.Axes | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
 
     Args:
         data: A DataFrame containing the data to plot. The index should represent time (e.g., hours),
               and each column represents a separate data series.
-        mode: Plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
+        style: Plotting style. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification, can be:
             - A string with a colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
@@ -376,19 +499,19 @@ def with_matplotlib(
         A tuple containing the Matplotlib figure and axes objects used for the plot.
 
     Notes:
-        - If `mode` is 'bar', bars are stacked for both positive and negative values.
+        - If `style` is 'stacked_bar', bars are stacked for both positive and negative values.
           Negative values are stacked separately without extra labels in the legend.
-        - If `mode` is 'line', stepped lines are drawn for each data series.
-        - The legend is placed below the plot to accommodate multiple data series.
+        - If `style` is 'line', stepped lines are drawn for each data series.
     """
-    assert mode in ['bar', 'line'], f"'mode' must be one of {['bar', 'line']} for matplotlib"
+    if style not in ('stacked_bar', 'line'):
+        raise ValueError(f"'style' must be one of {{'stacked_bar','line'}} for matplotlib, got {style!r}")
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
     processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
 
-    if mode == 'bar':
+    if style == 'stacked_bar':
         cumulative_positive = np.zeros(len(data))
         cumulative_negative = np.zeros(len(data))
         width = data.index.to_series().diff().dropna().min()  # Minimum time difference
@@ -419,7 +542,7 @@ def with_matplotlib(
             )
             cumulative_negative += negative_values.values
 
-    elif mode == 'line':
+    elif style == 'line':
         for i, column in enumerate(data.columns):
             ax.step(data.index, data[column], where='post', color=processed_colors[i], label=column)
 
@@ -445,8 +568,8 @@ def heat_map_matplotlib(
     title: str = '',
     xlabel: str = 'Period',
     ylabel: str = 'Step',
-    figsize: Tuple[float, float] = (12, 6),
-) -> Tuple[plt.Figure, plt.Axes]:
+    figsize: tuple[float, float] = (12, 6),
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Plots a DataFrame as a heatmap using Matplotlib. The columns of the DataFrame will be displayed on the x-axis,
     the index will be displayed on the y-axis, and the values will represent the 'heat' intensity in the plot.
@@ -455,6 +578,9 @@ def heat_map_matplotlib(
         data: A DataFrame containing the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
             The values in the DataFrame will be represented as colors in the heatmap.
         color_map: The colormap to use for the heatmap. Default is 'viridis'. Matplotlib supports various colormaps like 'plasma', 'inferno', 'cividis', etc.
+        title: The title of the plot.
+        xlabel: The label for the x-axis.
+        ylabel: The label for the y-axis.
         figsize: The size of the figure to create. Default is (12, 6), which results in a width of 12 inches and a height of 6 inches.
 
     Returns:
@@ -473,7 +599,7 @@ def heat_map_matplotlib(
 
     # Create the heatmap plot
     fig, ax = plt.subplots(figsize=figsize)
-    ax.pcolormesh(data.values, cmap=color_map)
+    ax.pcolormesh(data.values, cmap=color_map, shading='auto')
     ax.invert_yaxis()  # Flip the y-axis to start at the top
 
     # Adjust ticks and labels for x and y axes
@@ -493,7 +619,7 @@ def heat_map_matplotlib(
 
     # Add the colorbar
     sm1 = plt.cm.ScalarMappable(cmap=color_map, norm=plt.Normalize(vmin=color_bar_min, vmax=color_bar_max))
-    sm1._A = []
+    sm1.set_array([])
     fig.colorbar(sm1, ax=ax, pad=0.12, aspect=15, fraction=0.2, orientation='horizontal')
 
     fig.tight_layout()
@@ -517,11 +643,11 @@ def heat_map_plotly(
         data: A DataFrame with the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
             The values in the DataFrame will be represented as colors in the heatmap.
         color_map: The color scale to use for the heatmap. Default is 'viridis'. Plotly supports various color scales like 'Cividis', 'Inferno', etc.
+        title: The title of the heatmap. Default is an empty string.
+        xlabel: The label for the x-axis. Default is 'Period'.
+        ylabel: The label for the y-axis. Default is 'Step'.
         categorical_labels: If True, the x and y axes are treated as categorical data (i.e., the index and columns will not be interpreted as continuous data).
             Default is True. If False, the axes are treated as continuous, which may be useful for time series or numeric data.
-        show: Wether to show the figure after creation. (This includes saving the figure)
-        save: Wether to save the figure after creation (without showing)
-        path: Path to save the figure.
 
     Returns:
         A Plotly figure object containing the heatmap. This can be further customized and saved
@@ -612,12 +738,12 @@ def heat_map_data_from_df(
     df: pd.DataFrame,
     periods: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'],
     steps_per_period: Literal['W', 'D', 'h', '15min', 'min'],
-    fill: Optional[Literal['ffill', 'bfill']] = None,
+    fill: Literal['ffill', 'bfill'] | None = None,
 ) -> pd.DataFrame:
     """
     Reshapes a DataFrame with a DateTime index into a 2D array for heatmap plotting,
     based on a specified sample rate.
-    If a non-valid combination of periods and steps per period is used, falls back to numerical indices
+    Only specific combinations of `periods` and `steps_per_period` are supported; invalid combinations raise an assertion.
 
     Args:
         df: A DataFrame with a DateTime index containing the data to reshape.
@@ -632,7 +758,7 @@ def heat_map_data_from_df(
         and columns representing each period.
     """
     assert pd.api.types.is_datetime64_any_dtype(df.index), (
-        'The index of the Dataframe must be datetime to transfrom it properly for a heatmap plot'
+        'The index of the DataFrame must be datetime to transform it properly for a heatmap plot'
     )
 
     # Define formats for different combinations of `periods` and `steps_per_period`
@@ -645,23 +771,26 @@ def heat_map_data_from_df(
         ('W', 'D'): ('%Y-w%W', '%w_%A'),  # week and day of week (with prefix for proper sorting)
         ('W', 'h'): ('%Y-w%W', '%w_%A %H:00'),
         ('D', 'h'): ('%Y-%m-%d', '%H:00'),  # Day and hour
-        ('D', '15min'): ('%Y-%m-%d', '%H:%MM'),  # Day and hour
+        ('D', '15min'): ('%Y-%m-%d', '%H:%M'),  # Day and minute
         ('h', '15min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
         ('h', 'min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
     }
 
-    minimum_time_diff_in_min = df.index.to_series().diff().min().total_seconds() / 60  # Smallest time_diff in minutes
+    if df.empty:
+        raise ValueError('DataFrame is empty.')
+    diffs = df.index.to_series().diff().dropna()
+    minimum_time_diff_in_min = diffs.min().total_seconds() / 60
     time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
     if time_intervals[steps_per_period] > minimum_time_diff_in_min:
-        time_intervals[steps_per_period]
-        logger.warning(
+        logger.error(
             f'To compute the heatmap, the data was aggregated from {minimum_time_diff_in_min:.2f} min to '
             f'{time_intervals[steps_per_period]:.2f} min. Mean values are displayed.'
         )
 
     # Select the format based on the `periods` and `steps_per_period` combination
     format_pair = (periods, steps_per_period)
-    assert format_pair in formats, f'{format_pair} is not a valid format. Choose from {list(formats.keys())}'
+    if format_pair not in formats:
+        raise ValueError(f'{format_pair} is not a valid format. Choose from {list(formats.keys())}')
     period_format, step_format = formats[format_pair]
 
     df = df.sort_index()  # Ensure DataFrame is sorted by time index
@@ -675,7 +804,7 @@ def heat_map_data_from_df(
 
     resampled_data['period'] = resampled_data.index.strftime(period_format)
     resampled_data['step'] = resampled_data.index.strftime(step_format)
-    if '%w_%A' in step_format:  # SHift index of strings to ensure proper sorting
+    if '%w_%A' in step_format:  # Shift index of strings to ensure proper sorting
         resampled_data['step'] = resampled_data['step'].apply(
             lambda x: x.replace('0_Sunday', '7_Sunday') if '0_Sunday' in x else x
         )
@@ -689,19 +818,19 @@ def heat_map_data_from_df(
 def plot_network(
     node_infos: dict,
     edge_infos: dict,
-    path: Optional[Union[str, pathlib.Path]] = None,
-    controls: Union[
-        bool,
-        List[Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']],
+    path: str | pathlib.Path | None = None,
+    controls: bool
+    | list[
+        Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
     ] = True,
     show: bool = False,
-) -> Optional['pyvis.network.Network']:
+) -> pyvis.network.Network | None:
     """
     Visualizes the network structure of a FlowSystem using PyVis, using info-dictionaries.
 
     Args:
         path: Path to save the HTML visualization. `False`: Visualization is created but not saved. `str` or `Path`: Specifies file path (default: 'results/network.html').
-        controls: UI controls to add to the visualization. `True`: Enables all available controls. `List`: Specify controls, e.g., ['nodes', 'layout'].
+        controls: UI controls to add to the visualization. `True`: Enables all available controls. `list`: Specify controls, e.g., ['nodes', 'layout'].
             Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
             You can play with these and generate a Dictionary from it that can be applied to the network returned by this function.
             network.set_options()
@@ -763,11 +892,9 @@ def plot_network(
 
             worked = webbrowser.open(f'file://{path.resolve()}', 2)
             if not worked:
-                logger.warning(
-                    f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}'
-                )
+                logger.error(f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}')
         except Exception as e:
-            logger.warning(
+            logger.error(
                 f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}: {e}'
             )
 
@@ -778,7 +905,7 @@ def pie_with_plotly(
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
-    fig: Optional[go.Figure] = None,
+    fig: go.Figure | None = None,
 ) -> go.Figure:
     """
     Create a pie chart with Plotly to visualize the proportion of values in a DataFrame.
@@ -806,7 +933,7 @@ def pie_with_plotly(
 
     """
     if data.empty:
-        logger.warning('Empty DataFrame provided for pie chart. Returning empty figure.')
+        logger.error('Empty DataFrame provided for pie chart. Returning empty figure.')
         return go.Figure()
 
     # Create a copy to avoid modifying the original DataFrame
@@ -814,7 +941,7 @@ def pie_with_plotly(
 
     # Check if any negative values and warn
     if (data_copy < 0).any().any():
-        logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+        logger.error('Negative values detected in data. Using absolute values for pie chart.')
         data_copy = data_copy.abs()
 
     # If data has multiple rows, sum them to get total for each column
@@ -828,7 +955,7 @@ def pie_with_plotly(
     values = data_sum.values.tolist()
 
     # Apply color mapping using the unified color processor
-    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, list(data.columns))
+    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, labels)
 
     # Create figure if not provided
     fig = fig if fig is not None else go.Figure()
@@ -864,10 +991,10 @@ def pie_with_matplotlib(
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
-    figsize: Tuple[int, int] = (10, 8),
-    fig: Optional[plt.Figure] = None,
-    ax: Optional[plt.Axes] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    figsize: tuple[int, int] = (10, 8),
+    fig: plt.Figure | None = None,
+    ax: plt.Axes | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Create a pie chart with Matplotlib to visualize the proportion of values in a DataFrame.
 
@@ -896,7 +1023,7 @@ def pie_with_matplotlib(
 
     """
     if data.empty:
-        logger.warning('Empty DataFrame provided for pie chart. Returning empty figure.')
+        logger.error('Empty DataFrame provided for pie chart. Returning empty figure.')
         if fig is None or ax is None:
             fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
@@ -906,7 +1033,7 @@ def pie_with_matplotlib(
 
     # Check if any negative values and warn
     if (data_copy < 0).any().any():
-        logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+        logger.error('Negative values detected in data. Using absolute values for pie chart.')
         data_copy = data_copy.abs()
 
     # If data has multiple rows, sum them to get total for each column
@@ -976,7 +1103,7 @@ def dual_pie_with_plotly(
     data_right: pd.Series,
     colors: ColorType = 'viridis',
     title: str = '',
-    subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
+    subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
     hole: float = 0.2,
     lower_percentage_group: float = 5.0,
@@ -997,8 +1124,8 @@ def dual_pie_with_plotly(
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
-        hole: Size of the hole in the center for creating donut charts (0.0 to 100).
-        lower_percentage_group: Whether to group small segments (below percentage (0...1)) into an "Other" category.
+        hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
+        lower_percentage_group: Group segments whose cumulative share is below this percentage (0–100) into "Other".
         hover_template: Template for hover text. Use %{label}, %{value}, %{percent}.
         text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
                   'label+value', 'percent+value', 'label+percent+value', or 'none'.
@@ -1011,7 +1138,7 @@ def dual_pie_with_plotly(
 
     # Check for empty data
     if data_left.empty and data_right.empty:
-        logger.warning('Both datasets are empty. Returning empty figure.')
+        logger.error('Both datasets are empty. Returning empty figure.')
         return go.Figure()
 
     # Create a subplot figure
@@ -1034,7 +1161,7 @@ def dual_pie_with_plotly(
         """
         # Handle negative values
         if (series < 0).any():
-            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+            logger.error('Negative values detected in data. Using absolute values for pie chart.')
             series = series.abs()
 
         # Remove zeros
@@ -1090,7 +1217,7 @@ def dual_pie_with_plotly(
             labels=labels,
             values=values,
             name=side,
-            marker_colors=trace_colors,
+            marker=dict(colors=trace_colors),
             hole=hole,
             textinfo=text_info,
             textposition=text_position,
@@ -1119,7 +1246,6 @@ def dual_pie_with_plotly(
         paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
         font=dict(size=14),
         margin=dict(t=80, b=50, l=30, r=30),
-        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5, font=dict(size=12)),
     )
 
     return fig
@@ -1130,14 +1256,14 @@ def dual_pie_with_matplotlib(
     data_right: pd.Series,
     colors: ColorType = 'viridis',
     title: str = '',
-    subtitles: Tuple[str, str] = ('Left Chart', 'Right Chart'),
+    subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
     hole: float = 0.2,
     lower_percentage_group: float = 5.0,
-    figsize: Tuple[int, int] = (14, 7),
-    fig: Optional[plt.Figure] = None,
-    axes: Optional[List[plt.Axes]] = None,
-) -> Tuple[plt.Figure, List[plt.Axes]]:
+    figsize: tuple[int, int] = (14, 7),
+    fig: plt.Figure | None = None,
+    axes: list[plt.Axes] | None = None,
+) -> tuple[plt.Figure, list[plt.Axes]]:
     """
     Create two pie charts side by side with Matplotlib, with consistent coloring across both charts.
     Leverages the existing pie_with_matplotlib function.
@@ -1163,7 +1289,7 @@ def dual_pie_with_matplotlib(
     """
     # Check for empty data
     if data_left.empty and data_right.empty:
-        logger.warning('Both datasets are empty. Returning empty figure.')
+        logger.error('Both datasets are empty. Returning empty figure.')
         if fig is None:
             fig, axes = plt.subplots(1, 2, figsize=figsize)
         return fig, axes
@@ -1181,7 +1307,7 @@ def dual_pie_with_matplotlib(
         """
         # Handle negative values
         if (series < 0).any():
-            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+            logger.error('Negative values detected in data. Using absolute values for pie chart.')
             series = series.abs()
 
         # Remove zeros
@@ -1288,13 +1414,13 @@ def dual_pie_with_matplotlib(
 
 
 def export_figure(
-    figure_like: Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]],
+    figure_like: go.Figure | tuple[plt.Figure, plt.Axes],
     default_path: pathlib.Path,
-    default_filetype: Optional[str] = None,
-    user_path: Optional[pathlib.Path] = None,
+    default_filetype: str | None = None,
+    user_path: pathlib.Path | None = None,
     show: bool = True,
     save: bool = False,
-) -> Union[plotly.graph_objs.Figure, Tuple[plt.Figure, plt.Axes]]:
+) -> go.Figure | tuple[plt.Figure, plt.Axes]:
     """
     Export a figure to a file and or show it.
 
@@ -1319,22 +1445,52 @@ def export_figure(
 
     if isinstance(figure_like, plotly.graph_objs.Figure):
         fig = figure_like
-        if not filename.suffix == '.html':
-            logger.debug(f'To save a plotly figure, the filename should end with ".html". Got {filename}')
-        if show and not save:
-            fig.show()
-        elif save and show:
-            plotly.offline.plot(fig, filename=str(filename))
-        elif save and not show:
-            fig.write_html(filename)
+        if filename.suffix != '.html':
+            logger.warning(f'To save a Plotly figure, using .html. Adjusting suffix for {filename}')
+            filename = filename.with_suffix('.html')
+
+        try:
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+
+            if is_test_env:
+                # Test environment: never open browser, only save if requested
+                if save:
+                    fig.write_html(str(filename))
+                # Ignore show flag in tests
+            else:
+                # Production environment: respect show and save flags
+                if save and show:
+                    # Save and auto-open in browser
+                    plotly.offline.plot(fig, filename=str(filename))
+                elif save and not show:
+                    # Save without opening
+                    fig.write_html(str(filename))
+                elif show and not save:
+                    # Show interactively without saving
+                    fig.show()
+                # If neither save nor show: do nothing
+        finally:
+            # Cleanup to prevent socket warnings
+            if hasattr(fig, '_renderer'):
+                fig._renderer = None
+
         return figure_like
 
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
         if show:
-            fig.show()
+            # Only show if using interactive backend and not in test environment
+            backend = matplotlib.get_backend().lower()
+            is_interactive = backend not in {'agg', 'pdf', 'ps', 'svg', 'template'}
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+
+            if is_interactive and not is_test_env:
+                plt.show()
+
         if save:
             fig.savefig(str(filename), dpi=300)
+            plt.close(fig)  # Close figure to free memory
+
         return fig, ax
 
     raise TypeError(f'Figure type not supported: {type(figure_like)}')

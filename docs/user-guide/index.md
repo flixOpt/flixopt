@@ -1,12 +1,14 @@
 # FlixOpt Concepts
 
-FlixOpt is built around a set of core concepts that work together to represent and optimize energy and material flow systems. This page provides a high-level overview of these concepts and how they interact.
+FlixOpt is built around a set of core concepts that work together to represent and optimize **any system involving flows and conversions** - whether that's energy systems, material flows, supply chains, water networks, or production processes.
+
+This page provides a high-level overview of these concepts and how they interact.
 
 ## Core Concepts
 
 ### FlowSystem
 
-The [`FlowSystem`][flixopt.flow_system.FlowSystem] is the central organizing unit in FlixOpt. 
+The [`FlowSystem`][flixopt.flow_system.FlowSystem] is the central organizing unit in FlixOpt.
 Every FlixOpt model starts with creating a FlowSystem. It:
 
 - Defines the timesteps for the optimization
@@ -40,33 +42,54 @@ Examples:
 [`Bus`][flixopt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
 
 - Balance incoming and outgoing flows
-- Can represent physical networks like heat, electricity, or gas 
+- Can represent physical networks like heat, electricity, or gas
 - Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional)
 
 ### Components
 
-[`Component`][flixopt.elements.Component] objects usually represent physical entities in your system that interact with [`Flows`][flixopt.elements.Flow]. They include:
+[`Component`][flixopt.elements.Component] objects usually represent physical entities in your system that interact with [`Flows`][flixopt.elements.Flow]. The generic component types work across all domains:
 
 - [`LinearConverters`][flixopt.components.LinearConverter] - Converts input flows to output flows with (piecewise) linear relationships
+  - *Energy: boilers, heat pumps, turbines*
+  - *Manufacturing: assembly lines, processing equipment*
+  - *Chemistry: reactors, separators*
 - [`Storages`][flixopt.components.Storage] - Stores energy or material over time
-- [`Sources`][flixopt.components.Source] / [`Sinks`][flixopt.components.Sink] / [`SourceAndSinks`][flixopt.components.SourceAndSink] - Produce or consume flows. They are usually used to model external demands or supplies.
+  - *Energy: batteries, thermal storage, gas storage*
+  - *Logistics: warehouses, buffer inventory*
+  - *Water: reservoirs, tanks*
+- [`Sources`][flixopt.components.Source] / [`Sinks`][flixopt.components.Sink] / [`SourceAndSinks`][flixopt.components.SourceAndSink] - Produce or consume flows
+  - *Energy: demands, renewable generation*
+  - *Manufacturing: raw material supply, product demand*
+  - *Supply chain: suppliers, customers*
 - [`Transmissions`][flixopt.components.Transmission] - Moves flows between locations with possible losses
-- Specialized [`LinearConverters`][flixopt.components.LinearConverter] like [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc. These simplify the usage of the `LinearConverter` class and can also be used as blueprint on how to define custom classes or parameterize existing ones.
+  - *Energy: pipelines, power lines*
+  - *Logistics: transport routes*
+  - *Water: distribution networks*
+
+**Pre-built specialized components** for energy systems include [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc. These can serve as blueprints for custom domain-specific components.
 
 ### Effects
 
-[`Effect`][flixopt.effects.Effect] objects represent impacts or metrics related to your system, such as:
+[`Effect`][flixopt.effects.Effect] objects represent impacts or metrics related to your system. While commonly used to allocate costs, they're completely flexible:
 
+**Energy systems:**
 - Costs (investment, operation)
 - Emissions (CO₂, NOx, etc.)
-- Resource consumption
-- Area demand
+- Primary energy consumption
+
+**Other domains:**
+- Production time, labor hours (manufacturing)
+- Water consumption, wastewater (process industries)
+- Transport distance, vehicle utilization (logistics)
+- Space consumption
+- Any custom metric relevant to your domain
 
 These can be freely defined and crosslink to each other (`CO₂` ──[specific CO₂-costs]─→ `Costs`).
 One effect is designated as the **optimization objective** (typically Costs), while others can be constrained.
-This approach allows for a multi-criteria optimization using both...
- - ... the **Weigted Sum**Method, by Optimizing a theoretical Effect which other Effects crosslink to.
- - ... the ($\epsilon$-constraint method) by constraining effects.
+This approach allows for multi-criteria optimization using both:
+
+ - **Weighted Sum Method**: Optimize a theoretical Effect which other Effects crosslink to
+ - **ε-constraint method**: Constrain effects to specific limits
 
 ### Calculation
 

@@ -2,12 +2,12 @@
 This script shows how load results of a prior calcualtion and how to analyze them.
 """
 
-import pandas as pd
-import plotly.offline
-
 import flixopt as fx
 
 if __name__ == '__main__':
+    # Enable console logging
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG.apply()
     # --- Load Results ---
     try:
         results = fx.results.CalculationResults.from_file('results', 'complex example')
@@ -35,4 +35,3 @@ if __name__ == '__main__':
     # Dataframes from results:
     fw_bus = results['Fernwärme'].node_balance().to_dataframe()
     all = results.solution.to_dataframe()
-

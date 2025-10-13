@@ -2,8 +2,10 @@
 This module contains several utility functions used throughout the flixopt framework.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -11,28 +13,50 @@ import xarray as xr
 logger = logging.getLogger('flixopt')
 
 
-def is_number(number_alias: Union[int, float, str]):
-    """Returns True is string is a number."""
-    try:
-        float(number_alias)
-        return True
-    except ValueError:
-        return False
+def round_nested_floats(obj: dict | list | float | int | Any, decimals: int = 2) -> dict | list | float | int | Any:
+    """Recursively round floating point numbers in nested data structures.
 
+    This function traverses nested data structures (dictionaries, lists) and rounds
+    any floating point numbers to the specified number of decimal places. It handles
+    various data types including NumPy arrays and xarray DataArrays by converting
+    them to lists with rounded values.
 
-def round_floats(obj, decimals=2):
+    Args:
+        obj: The object to process. Can be a dict, list, float, int, numpy.ndarray,
+            xarray.DataArray, or any other type.
+        decimals (int, optional): Number of decimal places to round to. Defaults to 2.
+
+    Returns:
+        The processed object with the same structure as the input, but with all floating point numbers rounded to the specified precision. NumPy arrays and xarray DataArrays are converted to lists.
+
+    Examples:
+        >>> data = {'a': 3.14159, 'b': [1.234, 2.678]}
+        >>> round_nested_floats(data, decimals=2)
+        {'a': 3.14, 'b': [1.23, 2.68]}
+
+        >>> import numpy as np
+        >>> arr = np.array([1.234, 5.678])
+        >>> round_nested_floats(arr, decimals=1)
+        [1.2, 5.7]
+    """
     if isinstance(obj, dict):
-        return {k: round_floats(v, decimals) for k, v in obj.items()}
+        return {k: round_nested_floats(v, decimals) for k, v in obj.items()}
     elif isinstance(obj, list):
-        return [round_floats(v, decimals) for v in obj]
+        return [round_nested_floats(v, decimals) for v in obj]
     elif isinstance(obj, float):
         return round(obj, decimals)
+    elif isinstance(obj, int):
+        return obj
+    elif isinstance(obj, np.ndarray):
+        return np.round(obj, decimals).tolist()
+    elif isinstance(obj, xr.DataArray):
+        return obj.round(decimals).values.tolist()
     return obj
 
 
 def convert_dataarray(
     data: xr.DataArray, mode: Literal['py', 'numpy', 'xarray', 'structure']
-) -> Union[List, np.ndarray, xr.DataArray, str]:
+) -> list | np.ndarray | xr.DataArray | str:
     """
     Convert a DataArray to a different format.
 

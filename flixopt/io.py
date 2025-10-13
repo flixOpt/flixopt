@@ -1,54 +1,20 @@
+from __future__ import annotations
+
 import importlib.util
 import json
 import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Dict, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Literal
 
-import linopy
 import xarray as xr
 import yaml
 
-from .core import TimeSeries
+if TYPE_CHECKING:
+    import linopy
 
 logger = logging.getLogger('flixopt')
-
-
-def replace_timeseries(obj, mode: Literal['name', 'stats', 'data'] = 'name'):
-    """Recursively replaces TimeSeries objects with their names prefixed by '::::'."""
-    if isinstance(obj, dict):
-        return {k: replace_timeseries(v, mode) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [replace_timeseries(v, mode) for v in obj]
-    elif isinstance(obj, TimeSeries):  # Adjust this based on the actual class
-        if obj.all_equal:
-            return obj.active_data.values[0].item()
-        elif mode == 'name':
-            return f'::::{obj.name}'
-        elif mode == 'stats':
-            return obj.stats
-        elif mode == 'data':
-            return obj
-        else:
-            raise ValueError(f'Invalid mode {mode}')
-    else:
-        return obj
-
-
-def insert_dataarray(obj, ds: xr.Dataset):
-    """Recursively inserts TimeSeries objects into a dataset."""
-    if isinstance(obj, dict):
-        return {k: insert_dataarray(v, ds) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [insert_dataarray(v, ds) for v in obj]
-    elif isinstance(obj, str) and obj.startswith('::::'):
-        da = ds[obj[4:]]
-        if da.isel(time=-1).isnull():
-            return da.isel(time=slice(0, -1))
-        return da
-    else:
-        return obj
 
 
 def remove_none_and_empty(obj):
@@ -79,15 +45,17 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
         output_file (str): Path to output YAML file
     """
     # Process strings to normalize all newlines and handle special patterns
-    processed_data = _process_complex_strings(data)
+    processed_data = _normalize_complex_data(data)
 
     # Define a custom representer for strings
     def represent_str(dumper, data):
-        # Use literal block style (|) for any string with newlines
+        # Use literal block style (|) for multi-line strings
         if '\n' in data:
+            # Clean up formatting for literal block style
+            data = data.strip()  # Remove leading/trailing whitespace
             return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
 
-        # Use quoted style for strings with special characters to ensure proper parsing
+        # Use quoted style for strings with special characters
         elif any(char in data for char in ':`{}[]#,&*!|>%@'):
             return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='"')
 
@@ -97,56 +65,83 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
     # Add the string representer to SafeDumper
     yaml.add_representer(str, represent_str, Dumper=yaml.SafeDumper)
 
+    # Configure dumper options for better formatting
+    class CustomDumper(yaml.SafeDumper):
+        def increase_indent(self, flow=False, indentless=False):
+            return super().increase_indent(flow, False)
+
     # Write to file with settings that ensure proper formatting
     with open(output_file, 'w', encoding='utf-8') as file:
         yaml.dump(
             processed_data,
             file,
-            Dumper=yaml.SafeDumper,
+            Dumper=CustomDumper,
             sort_keys=False,  # Preserve dictionary order
             default_flow_style=False,  # Use block style for mappings
-            width=float('inf'),  # Don't wrap long lines
+            width=1000,  # Set a reasonable line width
             allow_unicode=True,  # Support Unicode characters
+            indent=2,  # Set consistent indentation
         )
 
 
-def _process_complex_strings(data):
+def _normalize_complex_data(data):
     """
-    Process dictionary data recursively with comprehensive string normalization.
-    Handles various types of strings and special formatting.
+    Recursively normalize strings in complex data structures.
+
+    Handles dictionaries, lists, and strings, applying various text normalization
+    rules while preserving important formatting elements.
 
     Args:
-        data: The data to process (dict, list, str, or other)
+        data: Any data type (dict, list, str, or primitive)
 
     Returns:
-        Processed data with normalized strings
+        Data with all strings normalized according to defined rules
     """
     if isinstance(data, dict):
-        return {k: _process_complex_strings(v) for k, v in data.items()}
+        return {key: _normalize_complex_data(value) for key, value in data.items()}
+
     elif isinstance(data, list):
-        return [_process_complex_strings(item) for item in data]
+        return [_normalize_complex_data(item) for item in data]
+
     elif isinstance(data, str):
-        # Step 1: Normalize line endings to \n
-        normalized = data.replace('\r\n', '\n').replace('\r', '\n')
+        return _normalize_string_content(data)
 
-        # Step 2: Handle escaped newlines with robust regex
-        normalized = re.sub(r'(?<!\\)\\n', '\n', normalized)
-
-        # Step 3: Handle unnecessary double backslashes
-        normalized = re.sub(r'\\\\(n)', r'\\\1', normalized)
-
-        # Step 4: Ensure proper formatting of "[time: N]:\n---------"
-        normalized = re.sub(r'(\[time: \d+\]):\s*\\?n', r'\1:\n', normalized)
-
-        # Step 5: Ensure "Constraint `...`" patterns are properly formatted
-        normalized = re.sub(r'Constraint `([^`]+)`\\?n', r'Constraint `\1`\n', normalized)
-
-        return normalized
     else:
         return data
 
 
-def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dict[str, str]:
+def _normalize_string_content(text):
+    """
+    Apply comprehensive string normalization rules.
+
+    Args:
+        text: The string to normalize
+
+    Returns:
+        Normalized string with standardized formatting
+    """
+    # Standardize line endings
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Convert escaped newlines to actual newlines (avoiding double-backslashes)
+    text = re.sub(r'(?<!\\)\\n', '\n', text)
+
+    # Normalize double backslashes before specific escape sequences
+    text = re.sub(r'\\\\([rtn])', r'\\\1', text)
+
+    # Standardize constraint headers format
+    text = re.sub(r'Constraint\s*`([^`]+)`\s*(?:\\n|[\s\n]*)', r'Constraint `\1`\n', text)
+
+    # Clean up ellipsis patterns
+    text = re.sub(r'[\t ]*(\.\.\.)', r'\1', text)
+
+    # Limit consecutive newlines (max 2)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return text.strip()
+
+
+def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None) -> dict[str, str]:
     """
     Convert all model variables and constraints to a structured string representation.
     This can take multiple seconds for large models.
@@ -195,18 +190,19 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path = None) -> Dic
     if path is not None:
         if path.suffix not in ['.yaml', '.yml']:
             raise ValueError(f'Invalid file extension for path {path}. Only .yaml and .yml are supported')
-        _save_to_yaml(documentation, path)
+        _save_to_yaml(documentation, str(path))
 
     return documentation
 
 
 def save_dataset_to_netcdf(
     ds: xr.Dataset,
-    path: Union[str, pathlib.Path],
+    path: str | pathlib.Path,
     compression: int = 0,
+    engine: Literal['netcdf4', 'scipy', 'h5netcdf'] = 'h5netcdf',
 ) -> None:
     """
-    Save a dataset to a netcdf file. Store the attrs as a json string in the 'attrs' attribute.
+    Save a dataset to a netcdf file. Store all attrs as JSON strings in 'attrs' attributes.
 
     Args:
         ds: Dataset to save.
@@ -216,40 +212,68 @@ def save_dataset_to_netcdf(
     Raises:
         ValueError: If the path has an invalid file extension.
     """
+    path = pathlib.Path(path)
     if path.suffix not in ['.nc', '.nc4']:
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
 
     apply_encoding = False
     if compression != 0:
-        if importlib.util.find_spec('netCDF4') is not None:
+        if importlib.util.find_spec(engine) is not None:
             apply_encoding = True
         else:
             logger.warning(
-                'Dataset was exported without compression due to missing dependency "netcdf4".'
-                'Install netcdf4 via `pip install netcdf4`.'
+                f'Dataset was exported without compression due to missing dependency "{engine}".'
+                f'Install {engine} via `pip install {engine}`.'
             )
+
     ds = ds.copy(deep=True)
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
+
+    # Convert all DataArray attrs to JSON strings
+    for var_name, data_var in ds.data_vars.items():
+        if data_var.attrs:  # Only if there are attrs
+            ds[var_name].attrs = {'attrs': json.dumps(data_var.attrs)}
+
+    # Also handle coordinate attrs if they exist
+    for coord_name, coord_var in ds.coords.items():
+        if hasattr(coord_var, 'attrs') and coord_var.attrs:
+            ds[coord_name].attrs = {'attrs': json.dumps(coord_var.attrs)}
+
     ds.to_netcdf(
         path,
         encoding=None
         if not apply_encoding
-        else {data_var: {'zlib': True, 'complevel': 5} for data_var in ds.data_vars},
+        else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
+        engine=engine,
     )
 
 
-def load_dataset_from_netcdf(path: Union[str, pathlib.Path]) -> xr.Dataset:
+def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     """
-    Load a dataset from a netcdf file. Load the attrs from the 'attrs' attribute.
+    Load a dataset from a netcdf file. Load all attrs from 'attrs' attributes.
 
     Args:
         path: Path to load the dataset from.
 
     Returns:
-        Dataset: Loaded dataset.
+        Dataset: Loaded dataset with restored attrs.
     """
-    ds = xr.load_dataset(path)
-    ds.attrs = json.loads(ds.attrs['attrs'])
+    ds = xr.load_dataset(str(path), engine='h5netcdf')
+
+    # Restore Dataset attrs
+    if 'attrs' in ds.attrs:
+        ds.attrs = json.loads(ds.attrs['attrs'])
+
+    # Restore DataArray attrs
+    for var_name, data_var in ds.data_vars.items():
+        if 'attrs' in data_var.attrs:
+            ds[var_name].attrs = json.loads(data_var.attrs['attrs'])
+
+    # Restore coordinate attrs
+    for coord_name, coord_var in ds.coords.items():
+        if hasattr(coord_var, 'attrs') and 'attrs' in coord_var.attrs:
+            ds[coord_name].attrs = json.loads(coord_var.attrs['attrs'])
+
     return ds
 
 
@@ -273,7 +297,7 @@ class CalculationResultsPaths:
         self.flow_system = self.folder / f'{self.name}--flow_system.nc4'
         self.model_documentation = self.folder / f'{self.name}--model_documentation.yaml'
 
-    def all_paths(self) -> Dict[str, pathlib.Path]:
+    def all_paths(self) -> dict[str, pathlib.Path]:
         """Return a dictionary of all paths."""
         return {
             'linopy_model': self.linopy_model,
@@ -297,7 +321,7 @@ class CalculationResultsPaths:
                     f'Folder {self.folder} and its parent do not exist. Please create them first.'
                 ) from e
 
-    def update(self, new_name: Optional[str] = None, new_folder: Optional[pathlib.Path] = None) -> None:
+    def update(self, new_name: str | None = None, new_folder: pathlib.Path | None = None) -> None:
         """Update name and/or folder and refresh all paths."""
         if new_name is not None:
             self.name = new_name

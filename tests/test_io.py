@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional, Union
-
 import pytest
 
 import flixopt as fx
@@ -11,10 +9,19 @@ from .conftest import (
     flow_system_long,
     flow_system_segments_of_flows_2,
     simple_flow_system,
+    simple_flow_system_scenarios,
 )
 
 
-@pytest.fixture(params=[flow_system_base, flow_system_segments_of_flows_2, simple_flow_system, flow_system_long])
+@pytest.fixture(
+    params=[
+        flow_system_base,
+        simple_flow_system_scenarios,
+        flow_system_segments_of_flows_2,
+        simple_flow_system,
+        flow_system_long,
+    ]
+)
 def flow_system(request):
     fs = request.getfixturevalue(request.param.__name__)
     if isinstance(fs, fx.FlowSystem):
@@ -22,11 +29,13 @@ def flow_system(request):
     else:
         return fs[0]
 
+
 @pytest.mark.slow
 def test_flow_system_file_io(flow_system, highs_solver):
     calculation_0 = fx.FullCalculation('IO', flow_system=flow_system)
     calculation_0.do_modeling()
     calculation_0.solve(highs_solver)
+    calculation_0.flow_system.plot_network()
 
     calculation_0.results.to_file()
     paths = CalculationResultsPaths(calculation_0.folder, calculation_0.name)
@@ -35,6 +44,7 @@ def test_flow_system_file_io(flow_system, highs_solver):
     calculation_1 = fx.FullCalculation('Loaded_IO', flow_system=flow_system_1)
     calculation_1.do_modeling()
     calculation_1.solve(highs_solver)
+    calculation_1.flow_system.plot_network()
 
     assert_almost_equal_numeric(
         calculation_0.results.model.objective.value,
@@ -43,18 +53,19 @@ def test_flow_system_file_io(flow_system, highs_solver):
     )
 
     assert_almost_equal_numeric(
-        calculation_0.results.solution['costs|total'].values,
-        calculation_1.results.solution['costs|total'].values,
+        calculation_0.results.solution['costs'].values,
+        calculation_1.results.solution['costs'].values,
         'costs doesnt match expected value',
     )
 
 
 def test_flow_system_io(flow_system):
-    di = flow_system.as_dict()
-    _ = fx.FlowSystem.from_dict(di)
+    flow_system.to_json('fs.json')
 
-    ds = flow_system.as_dataset()
-    _ = fx.FlowSystem.from_dataset(ds)
+    ds = flow_system.to_dataset()
+    new_fs = fx.FlowSystem.from_dataset(ds)
+
+    assert flow_system == new_fs
 
     print(flow_system)
     flow_system.__repr__()
