@@ -286,7 +286,9 @@ class AggregatedCalculation(FullCalculation):
             This equalizes variables in the components according to the typical periods computed in the aggregation
         active_timesteps: DatetimeIndex of timesteps to use for calculation. If None, all timesteps are used
         folder: Folder where results should be saved. If None, current working directory is used
-        aggregation: contains the aggregation model
+
+    Attributes:
+        aggregation: Contains the aggregation model (initialized as None)
     """
 
     def __init__(

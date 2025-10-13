@@ -46,12 +46,12 @@ class TimeSeriesData(xr.DataArray):
 
     def __init__(
         self,
-        *args,
+        *args: any,
         aggregation_group: str | None = None,
         aggregation_weight: float | None = None,
         agg_group: str | None = None,
         agg_weight: float | None = None,
-        **kwargs,
+        **kwargs: any,
     ):
         """
         Args:

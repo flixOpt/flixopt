@@ -286,7 +286,7 @@ class CONFIG:
                 setattr(cls, key, value)
 
     @classmethod
-    def to_dict(cls):
+    def to_dict(cls) -> dict:
         """Convert the configuration class into a dictionary for JSON serialization.
 
         Returns:
