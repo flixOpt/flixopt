@@ -531,7 +531,7 @@ flow = fx.Flow('P_el', bus='electricity')  # ✅
 
 - **Documentation:** [https://flixopt.github.io/flixopt/](https://flixopt.github.io/flixopt/)
 - **GitHub Issues:** [https://github.com/flixOpt/flixopt/issues](https://github.com/flixOpt/flixopt/issues)
-- **Changelog:** [Full v3.0.0 release notes](https://flixopt.github.io/flixopt/changelog/)
+- **Changelog:** [Full v3.0.0 release notes](https://flixopt.github.io/flixopt/latest/changelog/99984-v3.0.0/)
 
 ---
 
