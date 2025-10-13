@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -15,13 +16,24 @@ DEPENDENT_EXAMPLES = (
 )
 
 
+@contextmanager
+def working_directory(path):
+    """Context manager for changing the working directory."""
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(original_cwd)
+
+
 @pytest.mark.parametrize(
     'example_script',
     sorted(
         [p for p in EXAMPLES_DIR.rglob('*.py') if str(p.relative_to(EXAMPLES_DIR)) not in DEPENDENT_EXAMPLES],
         key=lambda path: (str(path.parent), path.name),
     ),
-    ids=lambda path: str(path.relative_to(EXAMPLES_DIR)),
+    ids=lambda path: str(path.relative_to(EXAMPLES_DIR)).replace(os.sep, '/'),
 )
 @pytest.mark.examples
 def test_independent_examples(example_script):
@@ -32,52 +44,40 @@ def test_independent_examples(example_script):
     Runs them alphabetically.
     This imitates behaviour of running the script directly.
     """
-    script_dir = example_script.parent
-    original_cwd = os.getcwd()
+    with working_directory(example_script.parent):
+        try:
+            result = subprocess.run(
+                [sys.executable, example_script.name],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            pytest.fail(f'Script {example_script} timed out after 180 seconds')
 
-    try:
-        os.chdir(script_dir)
-
-        result = subprocess.run(
-            [sys.executable, example_script.name],
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 minutes for complex examples
-        )
         assert result.returncode == 0, (
             f'Script {example_script} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
         )
-
-    except subprocess.TimeoutExpired:
-        pytest.fail(f'Script {example_script} timed out after 600 seconds')
-
-    finally:
-        os.chdir(original_cwd)
 
 
 @pytest.mark.examples
 def test_dependent_examples():
     """Test examples that must run in order (complex_example.py generates data for complex_example_results.py)."""
-    original_cwd = os.getcwd()
+    for script_path in DEPENDENT_EXAMPLES:
+        script_full_path = EXAMPLES_DIR / script_path
 
-    try:
-        for script_path in DEPENDENT_EXAMPLES:
-            script_full_path = EXAMPLES_DIR / script_path
-            os.chdir(script_full_path.parent)
+        with working_directory(script_full_path.parent):
+            try:
+                result = subprocess.run(
+                    [sys.executable, script_full_path.name],
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+            except subprocess.TimeoutExpired:
+                pytest.fail(f'Script {script_path} timed out after 180 seconds')
 
-            result = subprocess.run(
-                [sys.executable, script_full_path.name],
-                capture_output=True,
-                text=True,
-                timeout=600,  # 10 minutes for complex examples
-            )
             assert result.returncode == 0, f'{script_path} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
-
-    except subprocess.TimeoutExpired:
-        pytest.fail(f'Script {script_path} timed out after 600 seconds')
-
-    finally:
-        os.chdir(original_cwd)
 
 
 if __name__ == '__main__':
