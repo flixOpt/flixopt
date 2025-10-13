@@ -47,9 +47,7 @@ from .commons import (
 # These filters match the test configuration in pyproject.toml for consistency.
 
 # tsam: Time series aggregation library
-# - FutureWarning: Upcoming API changes in tsam (will be fixed in future tsam releases)
-warnings.filterwarnings('ignore', category=FutureWarning, module='tsam')
-# - UserWarning: Informational message about minimal value constraints
+# - UserWarning: Informational message about minimal value constraints during clustering.
 warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*', module='tsam')
 # TODO: Might be able to fix it in flixopt?
 

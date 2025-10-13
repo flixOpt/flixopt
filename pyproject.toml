@@ -202,7 +202,6 @@ filterwarnings = [
     "error::UserWarning:flixopt",
 
     # === Third-party warnings (mirrored from __init__.py) ===
-    "ignore::FutureWarning:tsam",
     "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
     "ignore:Coordinates across variables not equal:UserWarning:linopy",
     "ignore:.*join will change from join='outer' to join='exact'.*:FutureWarning:linopy",
