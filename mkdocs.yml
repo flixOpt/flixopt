@@ -79,12 +79,10 @@ theme:
     - content.code.copy
     - content.code.annotate
     - content.tooltips
-    - content.code.copy
     - navigation.footer.version
 
 markdown_extensions:
   - admonition
-  - codehilite
   - markdown_include.include:
       base_path: docs
   - pymdownx.highlight:
@@ -92,7 +90,6 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
   - pymdownx.superfences
   - attr_list
   - abbr
