@@ -99,7 +99,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - FlowSystem manipulation: `sel()`, `isel()`, `resample()`, `copy()`, `__eq__()` methods
 - Direct access to FlowSystem from results without manual restoring (lazily loaded)
 - New `FlowResults` class and precomputed DataArrays for sizes/flow_rates/flow_hours
-- `effects_per_component()` dataset for component impact evaluation, including all indirect effects through effect shares
+- `effects_per_component` dataset for component impact evaluation, including all indirect effects through effect shares
 
 **Other additions:**
 
@@ -124,7 +124,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
 - Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
 - Improved Model Structure - Views and organisation is now divided into:
-    - Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the flow_system.
+    - Model: The main Model (linopy.Model) that is used to create and store the variables and constraints for the FlowSystem.
     - Submodel: The base class for all submodels. Each is a subset of the Model, for simpler access and clearer code.
 - Made docstrings in `config.py` more compact and easier to read
 - Improved format handling in configuration module
@@ -188,7 +188,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - **Centralized deprecation pattern**: Added `_handle_deprecated_kwarg()` helper method to `Interface` base class that provides reusable deprecation handling with consistent warnings, conflict detection, and optional value transformation. Applied across 5 classes (InvestParameters, Source, Sink, SourceAndSink, Effect) reducing deprecation boilerplate by 72%.
 - FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
 - Change modeling hierarchy to allow for more flexibility in future development. This leads to minimal changes in the access and creation of Submodels and their variables.
-- Added new module `.modeling` that contains Modelling primitives and utilities
+- Added new module `.modeling` that contains modeling primitives and utilities
 - Clearer separation between the main Model and "Submodels"
 - Improved access to the Submodels and their variables, constraints and submodels
 - Added `__repr__()` for Submodels to easily inspect its content
