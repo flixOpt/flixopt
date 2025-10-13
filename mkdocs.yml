@@ -13,6 +13,7 @@ nav:
   - Getting Started: getting-started.md
   - User Guide:
     - user-guide/index.md
+    - Migration to v3.0.0: user-guide/migration-guide-v3.md
     - Recipes: user-guide/recipes/index.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
