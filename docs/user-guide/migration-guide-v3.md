@@ -2,16 +2,14 @@
 
 This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.0 introduces powerful new features like multi-period investments and scenario-based stochastic optimization, along with a redesigned effect sharing system.
 
-## Quick Start
-
-1. **Update your installation:**
-   ```bash
-   pip install --upgrade flixopt
-   ```
-
-2. **Review breaking changes** in the sections below
-3. **Update deprecated parameters** to their new names
-4. **Test your code** with the new version
+!!! tip "Quick Start"
+    1. **Update your installation:**
+       ```bash
+       pip install --upgrade flixopt
+       ```
+    2. **Review breaking changes** in the sections below
+    3. **Update deprecated parameters** to their new names
+    4. **Test your code** with the new version
 
 ---
 
@@ -19,180 +17,298 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 
 ### 1. Effect Sharing System Redesign
 
-**What changed:** The effect sharing syntax has been inverted and simplified.
+!!! warning "Breaking Change - No Deprecation"
+    The effect sharing syntax has been inverted and simplified. This change was made WITHOUT deprecation warnings due to the fundamental restructuring.
 
-**Old syntax (v2.x):**
-```python
-# Effects "pushed" shares to other effects
-CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions',
-    specific_share_to_other_effects_operation={'costs': 0.2})
-```
+**What changed:** Effects now "pull" shares from other effects instead of "pushing" them.
 
-**New syntax (v3.0.0):**
-```python
-# Effects "pull" shares from other effects (clearer direction)
-costs = fx.Effect('costs', '€', 'Total costs',
-    share_from_temporal={'CO2': 0.2},      # From temporal (operation) effects
-    share_from_periodic={'land': 100})     # From periodic (investment) effects
-```
+=== "v2.x (Old)"
 
-**Migration steps:**
+    ```python
+    # Effects "pushed" shares to other effects
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions',
+        specific_share_to_other_effects_operation={'costs': 0.2})
 
-1. Find all uses of `specific_share_to_other_effects_operation` and `specific_share_to_other_effects_invest`
-2. Move the share definition to the **receiving** effect
-3. Rename to `share_from_temporal` and `share_from_periodic`
+    land = fx.Effect('land', 'm²', 'Land usage',
+        specific_share_to_other_effects_invest={'costs': 100})
 
-**Note:** This change was made WITHOUT deprecation warnings due to the fundamental restructuring.
+    costs = fx.Effect('costs', '€', 'Total costs')
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # Effects "pull" shares from other effects (clearer direction)
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+
+    land = fx.Effect('land', 'm²', 'Land usage')
+
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={'CO2': 0.2},      # From temporal (operation) effects
+        share_from_periodic={'land': 100})     # From periodic (investment) effects
+    ```
+
+!!! success "Migration Steps"
+    1. Find all uses of `specific_share_to_other_effects_operation` and `specific_share_to_other_effects_invest`
+    2. Move the share definition to the **receiving** effect
+    3. Rename parameters:
+         - `specific_share_to_other_effects_operation` → `share_from_temporal`
+         - `specific_share_to_other_effects_invest` → `share_from_periodic`
 
 ---
 
 ### 2. Class and Variable Renaming
 
-#### Investment Variable
-```python
-# In optimization results
-results.solution['component|is_invested']  # ❌ Old
-results.solution['component|invested']     # ✅ New
-```
+=== "v2.x (Old)"
+
+    ```python
+    # In optimization results
+    results.solution['component|is_invested']
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # In optimization results
+    results.solution['component|invested']
+    ```
 
 ---
 
 ### 3. Calculation API Change
 
-**What changed:** `Calculation.do_modeling()` now returns the Calculation object for method chaining.
+!!! info "Method Chaining Support"
+    `Calculation.do_modeling()` now returns the Calculation object to enable method chaining.
 
-**Old usage (v2.x):**
-```python
-calculation = fx.FullCalculation('my_calc', flow_system)
-linopy_model = calculation.do_modeling()  # Returned linopy.Model
-```
+=== "v2.x (Old)"
 
-**New usage (v3.0.0):**
-```python
-calculation = fx.FullCalculation('my_calc', flow_system)
-calculation.do_modeling()  # Returns Calculation object
-linopy_model = calculation.model  # Access model via property
+    ```python
+    calculation = fx.FullCalculation('my_calc', flow_system)
+    linopy_model = calculation.do_modeling()  # Returned linopy.Model
 
-#This enables chaining operations
-fx.FullCalculation('my_calc', flow_system).do_modeling().solve()
-```
+    # Access model directly from return value
+    print(linopy_model)
+    ```
 
-**Migration:** If you used the return value of `do_modeling()`, update to access `.model` property instead.
+=== "v3.0.0 (New)"
+
+    ```python
+    calculation = fx.FullCalculation('my_calc', flow_system)
+    calculation.do_modeling()  # Returns Calculation object
+    linopy_model = calculation.model  # Access model via property
+
+    # This enables chaining operations
+    fx.FullCalculation('my_calc', flow_system).do_modeling().solve()
+    ```
+
+!!! tip "Migration"
+    If you used the return value of `do_modeling()`, update to access `.model` property instead.
 
 ---
 
 ### 4. Storage Charge State Bounds
 
-**What changed:** `relative_minimum_charge_state` and `relative_maximum_charge_state` no longer have an extra timestep.
+!!! warning "Array Dimensions Changed"
+    `relative_minimum_charge_state` and `relative_maximum_charge_state` no longer have an extra timestep.
 
-**Impact:** If you provided arrays for these parameters with `len(timesteps) + 1` elements, reduce to `len(timesteps)`.
+**Impact:** If you provided arrays with `len(timesteps) + 1` elements, reduce to `len(timesteps)`.
 
-**Example:**
-```python
-# Old (v2.x): Array with extra timestep
-storage = fx.Storage(
-    'storage',
-    relative_minimum_charge_state=np.array([0.2, 0.2, 0.2, 0.2, 0.2])  # 5 values for 4 timesteps
-)
+=== "v2.x (Old)"
 
-# New (v3.0.0): Array matches timesteps
-storage = fx.Storage(
-    'storage',
-    relative_minimum_charge_state=np.array([0.2, 0.2, 0.2, 0.2]),  # 4 values for 4 timesteps
-    relative_minimum_final_charge_state=0.3  #Specify the final value directly. If not, the last value is simply repeated
-)
-```
+    ```python
+    # Array with extra timestep
+    storage = fx.Storage(
+        'storage',
+        relative_minimum_charge_state=np.array([0.2, 0.2, 0.2, 0.2, 0.2])  # 5 values for 4 timesteps
+    )
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # Array matches timesteps
+    storage = fx.Storage(
+        'storage',
+        relative_minimum_charge_state=np.array([0.2, 0.2, 0.2, 0.2]),  # 4 values for 4 timesteps
+        relative_minimum_final_charge_state=0.3  # Specify the final value directly
+    )
+    ```
+
+!!! note "Final State Control"
+    Use the new `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameters to explicitly control the final charge state.
 
 ---
 
 ### 5. Plotting Parameter Rename
 
-```python
-# Old
-results.plot_heatmap('component|variable', mode='line')  # ❌
+=== "v2.x (Old)"
 
-# New
-results.plot_heatmap('component|variable', style='line')  # ✅
-```
+    ```python
+    results.plot_heatmap('component|variable', mode='line')
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    results.plot_heatmap('component|variable', style='line')
+    ```
 
 ---
 
 ## Deprecated Parameters (Still Supported)
 
-These parameters still work but will be removed in a future version. Update them at your convenience:
+!!! info "Gradual Migration"
+    These parameters still work but will be removed in a future version. Update them at your convenience - deprecation warnings will guide you.
 
 ### InvestParameters
 
-```python
-# Old → New
-fx.InvestParameters(
-    fix_effects=1000,                    # → effects_of_investment
-    specific_effects={'costs': 10},      # → effects_of_investment_per_size
-    divest_effects=100,                  # → effects_of_retirement
-    piecewise_effects=my_piecewise,      # → piecewise_effects_of_investment
-)
-```
+**Parameter Changes:**
+
+| Old Parameter (v2.x) | New Parameter (v3.0.0) |
+|---------------------|----------------------|
+| `fix_effects` | `effects_of_investment` |
+| `specific_effects` | `effects_of_investment_per_size` |
+| `divest_effects` | `effects_of_retirement` |
+| `piecewise_effects` | `piecewise_effects_of_investment` |
+
+=== "v2.x (Deprecated)"
+
+    ```python
+    fx.InvestParameters(
+        fix_effects=1000,
+        specific_effects={'costs': 10},
+        divest_effects=100,
+        piecewise_effects=my_piecewise,
+    )
+    ```
+
+=== "v3.0.0 (Recommended)"
+
+    ```python
+    fx.InvestParameters(
+        effects_of_investment=1000,
+        effects_of_investment_per_size={'costs': 10},
+        effects_of_retirement=100,
+        piecewise_effects_of_investment=my_piecewise,
+    )
+    ```
 
 ### Effect
 
-```python
-# Old → New
-fx.Effect(
-    minimum_investment=10,     # → minimum_periodic
-    maximum_investment=100,    # → maximum_periodic
-    minimum_operation=5,       # → minimum_temporal
-    maximum_operation=50,      # → maximum_temporal
-    minimum_operation_per_hour=1,   # → minimum_per_hour
-    maximum_operation_per_hour=10,  # → maximum_per_hour
-)
-```
+**Parameter Changes:**
 
-### Component Parameters (Source, Sink, SourceAndSink)
+| Old Parameter (v2.x) | New Parameter (v3.0.0) |
+|---------------------|----------------------|
+| `minimum_investment` | `minimum_periodic` |
+| `maximum_investment` | `maximum_periodic` |
+| `minimum_operation` | `minimum_temporal` |
+| `maximum_operation` | `maximum_temporal` |
+| `minimum_operation_per_hour` | `minimum_per_hour` |
+| `maximum_operation_per_hour` | `maximum_per_hour` |
 
-```python
-# Old → New
-fx.Source(
-    'my_source',
-    source=flow,              # → outputs
-)
+=== "v2.x (Deprecated)"
 
-fx.Sink(
-    'my_sink',
-    sink=flow,                # → inputs
-)
+    ```python
+    fx.Effect(
+        'my_effect', 'unit', 'description',
+        minimum_investment=10,
+        maximum_investment=100,
+        minimum_operation=5,
+        maximum_operation=50,
+        minimum_operation_per_hour=1,
+        maximum_operation_per_hour=10,
+    )
+    ```
 
-fx.SourceAndSink(
-    'my_source_sink',
-    source=flow1,            # → outputs
-    sink=flow2,              # → inputs
-    prevent_simultaneous_sink_and_source=True  # → prevent_simultaneous_flow_rates
-)
-```
+=== "v3.0.0 (Recommended)"
+
+    ```python
+    fx.Effect(
+        'my_effect', 'unit', 'description',
+        minimum_periodic=10,
+        maximum_periodic=100,
+        minimum_temporal=5,
+        maximum_temporal=50,
+        minimum_per_hour=1,
+        maximum_per_hour=10,
+    )
+    ```
+
+### Component Parameters
+
+=== "v2.x (Deprecated)"
+
+    ```python
+    fx.Source('my_source', source=flow)
+
+    fx.Sink('my_sink', sink=flow)
+
+    fx.SourceAndSink(
+        'my_source_sink',
+        source=flow1,
+        sink=flow2,
+        prevent_simultaneous_sink_and_source=True
+    )
+    ```
+
+=== "v3.0.0 (Recommended)"
+
+    ```python
+    fx.Source('my_source', outputs=flow)
+
+    fx.Sink('my_sink', inputs=flow)
+
+    fx.SourceAndSink(
+        'my_source_sink',
+        outputs=flow1,
+        inputs=flow2,
+        prevent_simultaneous_flow_rates=True
+    )
+    ```
 
 ### TimeSeriesData
 
-```python
-# Old → New
-fx.TimeSeriesData(
-    agg_group='group1',      # → aggregation_group
-    agg_weight=2.0           # → aggregation_weight
-)
-```
+=== "v2.x (Deprecated)"
+
+    ```python
+    fx.TimeSeriesData(
+        agg_group='group1',
+        agg_weight=2.0
+    )
+    ```
+
+=== "v3.0.0 (Recommended)"
+
+    ```python
+    fx.TimeSeriesData(
+        aggregation_group='group1',
+        aggregation_weight=2.0
+    )
+    ```
 
 ### Calculation
 
-```python
-# Old → New
-calculation = fx.FullCalculation(
-    'calc',
-    flow_system,
-    active_timesteps=[0, 1, 2]  # → Use flow_system.sel(time=...) instead
-)
+=== "v2.x (Deprecated)"
 
-# Better approach:
-flow_system_subset = flow_system.sel(time=slice('2020-01-01', '2020-01-03'))
-calculation = fx.FullCalculation('calc', flow_system_subset)
-```
+    ```python
+    calculation = fx.FullCalculation(
+        'calc',
+        flow_system,
+        active_timesteps=[0, 1, 2]
+    )
+    ```
+
+=== "v3.0.0 (Recommended)"
+
+    ```python
+    # Use FlowSystem selection methods
+    flow_system_subset = flow_system.sel(time=slice('2020-01-01', '2020-01-03'))
+    calculation = fx.FullCalculation('calc', flow_system_subset)
+
+    # Or with isel for index-based selection
+    flow_system_subset = flow_system.isel(time=slice(0, 3))
+    calculation = fx.FullCalculation('calc', flow_system_subset)
+    ```
 
 ---
 
@@ -382,10 +498,6 @@ np.testing.assert_allclose(v2_costs, v3_costs, rtol=1e-5)
 
 ## Common Migration Issues
 
-### Issue: "AttributeError: module 'flixopt' has no attribute 'SystemModel'"
-
-**Solution:** Rename `SystemModel` → `FlowSystemModel`
-
 ### Issue: "Effect share parameters not working"
 
 **Solution:** Effect sharing was completely redesigned. Move share definitions to the **receiving** effect using `share_from_temporal` and `share_from_periodic`.
@@ -407,6 +519,11 @@ flow = fx.Flow('P_el', bus=my_bus)  # ❌
 my_bus = fx.Bus('electricity')
 flow = fx.Flow('P_el', bus='electricity')  # ✅
 ```
+
+### Issue: "AttributeError: module 'flixopt' has no attribute 'SystemModel'"
+
+**Solution:** Rename `SystemModel` → `FlowSystemModel`
+
 
 ---
 
