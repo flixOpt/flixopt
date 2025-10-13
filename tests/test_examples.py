@@ -45,15 +45,16 @@ def test_independent_examples(example_script):
     This imitates behaviour of running the script directly.
     """
     with working_directory(example_script.parent):
+        timeout = 600
         try:
             result = subprocess.run(
                 [sys.executable, example_script.name],
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired:
-            pytest.fail(f'Script {example_script} timed out after 180 seconds')
+            pytest.fail(f'Script {example_script} timed out after {timeout} seconds')
 
         assert result.returncode == 0, (
             f'Script {example_script} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
@@ -67,15 +68,16 @@ def test_dependent_examples():
         script_full_path = EXAMPLES_DIR / script_path
 
         with working_directory(script_full_path.parent):
+            timeout = 600
             try:
                 result = subprocess.run(
                     [sys.executable, script_full_path.name],
                     capture_output=True,
                     text=True,
-                    timeout=600,
+                    timeout=timeout,
                 )
             except subprocess.TimeoutExpired:
-                pytest.fail(f'Script {script_path} timed out after 180 seconds')
+                pytest.fail(f'Script {script_path} timed out after {timeout} seconds')
 
             assert result.returncode == 0, f'{script_path} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
 
