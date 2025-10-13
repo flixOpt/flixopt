@@ -71,6 +71,7 @@ Until here -->
 
 ## [3.0.1] - 2025-10-14
 **Summary**: Adding a Migration Guide for the new **flixopt 3** and fixing docs
+See the [Migration Guide](https://flixopt.github.io/flixopt/user-guide/migration-guide-v3/).
 
 ### 📝 Docs
 - Fixed deployed docs
