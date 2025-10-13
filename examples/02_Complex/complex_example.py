@@ -75,9 +75,8 @@ if __name__ == '__main__':
                 on_hours_total_min=0,  # Minimum operating hours
                 on_hours_total_max=1000,  # Maximum operating hours
                 consecutive_on_hours_max=10,  # Max consecutive operating hours
-                consecutive_on_hours_min=np.array(
-                    [1, 1, 1, 1, 1, 2, 2, 2, 2]
-                ),  # min consecutive operation hoursconsecutive_off_hours_max=10,  # Max consecutive off hours
+                consecutive_on_hours_min=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
+                consecutive_off_hours_max=10,  # Max consecutive off hours
                 effects_per_switch_on=0.01,  # Cost per switch-on
                 switch_on_total_max=1000,  # Max number of starts
             ),
@@ -191,7 +190,7 @@ if __name__ == '__main__':
     flow_system.add_elements(bhkw_2) if use_chp_with_piecewise_conversion else flow_system.add_elements(bhkw)
 
     pprint(flow_system)  # Get a string representation of the FlowSystem
-    flow_system.start_network_app()  # Start the network app. DOes only work with extra dependencies installed
+    flow_system.start_network_app()  # Start the network app. Does only work with extra dependencies installed
 
     # --- Solve FlowSystem ---
     calculation = fx.FullCalculation('complex example', flow_system, time_indices)

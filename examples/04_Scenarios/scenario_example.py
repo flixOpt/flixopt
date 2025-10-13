@@ -132,8 +132,9 @@ if __name__ == '__main__':
     # Convert the results for the storage component to a dataframe and display
     df = calculation.results['Storage'].node_balance_with_charge_state()
     print(df)
-    calculation.results['Storage'].plot_charge_state(engine='matplotlib')
+
+    # Plot charge state using matplotlib
+    fig, ax = calculation.results['Storage'].plot_charge_state(engine='matplotlib')
 
     # Save results to file for later usage
     calculation.results.to_file()
-    fig, ax = calculation.results['Storage'].plot_charge_state(engine='matplotlib')
