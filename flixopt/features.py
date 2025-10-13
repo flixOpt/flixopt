@@ -55,6 +55,7 @@ class InvestmentModel(Submodel):
     def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         if self.parameters.linked_periods is not None:
+            # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
             size_min = size_min * self.parameters.linked_periods
             size_max = size_max * self.parameters.linked_periods
 
@@ -394,6 +395,11 @@ class PiecewiseModel(Submodel):
 
     def _do_modeling(self):
         super()._do_modeling()
+        # Validate all piecewise variables have the same number of segments
+        segment_counts = [len(pw) for pw in self._piecewise_variables.values()]
+        if not all(count == segment_counts[0] for count in segment_counts):
+            raise ValueError(f'All piecewises must have the same number of pieces, got {segment_counts}')
+
         for i in range(len(list(self._piecewise_variables.values())[0])):
             new_piece = self.add_submodels(
                 PieceModel(
@@ -454,9 +460,13 @@ class PiecewiseEffectsModel(Submodel):
         piecewise_shares: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
     ):
-        assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
-            'Piece length of variable_segments and share_segments must be equal'
-        )
+        origin_count = len(piecewise_origin[1])
+        share_counts = [len(pw) for pw in piecewise_shares.values()]
+        if not all(count == origin_count for count in share_counts):
+            raise ValueError(
+                f'Piece count mismatch: piecewise_origin has {origin_count} segments, '
+                f'but piecewise_shares have {share_counts}'
+            )
         self._zero_point = zero_point
         self._piecewise_origin = piecewise_origin
         self._piecewise_shares = piecewise_shares
