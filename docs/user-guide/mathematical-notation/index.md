@@ -3,7 +3,7 @@
 
 This section provides the **mathematical formulations** underlying FlixOpt's optimization models. It is intended as **reference documentation** for users who want to understand the mathematical details behind the high-level FlixOpt API described in the [FlixOpt Concepts](../index.md) guide.
 
-**For typical usage**, refer to the [FlixOpt Concepts](../index.md) guide, [Examples](../../examples/), and [API Reference](../../api-reference/) - you don't need to understand these mathematical formulations to use FlixOpt effectively.
+**For typical usage**, refer to the [FlixOpt Concepts](../index.md) guide, [Examples](../../examples/index.md), and [API Reference](../../api-reference/index.md) - you don't need to understand these mathematical formulations to use FlixOpt effectively.
 
 ---
 
