@@ -21,7 +21,7 @@ logger = logging.getLogger('flixopt')
 if __name__ == '__main__':
     # Data Import
     data_import = pd.read_csv(
-        pathlib.Path(__file__).parent.parent / 'data' / 'Zeitreihen2020.csv', index_col=0
+        pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
     ).sort_index()
     filtered_data = data_import[:500]
 
