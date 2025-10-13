@@ -23,7 +23,7 @@ import yaml
 
 from . import io as fx_io
 from . import utils as utils
-from .aggregation import AggregationModel, AggregationParameters
+from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
 from .core import DataConverter, Scalar, TimeSeriesData, drop_constant_arrays
@@ -288,7 +288,8 @@ class AggregatedCalculation(FullCalculation):
         folder: Folder where results should be saved. If None, current working directory is used
 
     Attributes:
-        aggregation: Contains the aggregation model (initialized as None)
+        aggregation: Contains the clustered time series data
+        aggregation_model: Contains Variables and Constraints that equalize clusters of the time series data
     """
 
     def __init__(
@@ -308,7 +309,8 @@ class AggregatedCalculation(FullCalculation):
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize
-        self.aggregation = None
+        self.aggregation: Aggregation | None = None
+        self.aggregation_model: AggregationModel | None = None
 
     def do_modeling(self) -> AggregatedCalculation:
         t_start = timeit.default_timer()
@@ -319,10 +321,10 @@ class AggregatedCalculation(FullCalculation):
         self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
         # Add Aggregation Submodel after modeling the rest
-        self.aggregation = AggregationModel(
+        self.aggregation_model = AggregationModel(
             self.model, self.aggregation_parameters, self.flow_system, self.aggregation, self.components_to_clusterize
         )
-        self.aggregation.do_modeling()
+        self.aggregation_model.do_modeling()
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self
 
