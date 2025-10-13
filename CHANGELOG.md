@@ -218,10 +218,12 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - All examples now enable console logging to demonstrate proper logging usage
 - Console logging now outputs to `sys.stdout` instead of `sys.stderr` for better compatibility with output redirection
 
+### 💥 Breaking Changes
+- Console logging is now disabled by default (`CONFIG.Logging.console = False`). Enable it explicitly in your scripts with `CONFIG.Logging.console = True` and `CONFIG.apply()`
+- File logging is now disabled by default (`CONFIG.Logging.file = None`). Set a file path to enable file logging
+
 ### ♻️ Changed
 - Logging and Configuration management changed
-- **Breaking**: Console logging is now disabled by default (`CONFIG.Logging.console = False`). Enable it explicitly in your scripts with `CONFIG.Logging.console = True` and `CONFIG.apply()`
-- **Breaking**: File logging is now disabled by default (`CONFIG.Logging.file = None`). Set a file path to enable file logging
 - Improved default logging colors: DEBUG is now gray (`\033[90m`) for de-emphasized messages, INFO uses terminal default color (`\033[0m`) for clean output
 
 ### 🗑️ Deprecated
