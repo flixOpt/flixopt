@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import warnings
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -25,19 +26,20 @@ _DEFAULTS = MappingProxyType(
         'logging': MappingProxyType(
             {
                 'level': 'INFO',
-                'file': 'flixopt.log',
+                'file': None,
                 'rich': False,
-                'console': True,
+                'console': False,
                 'max_file_size': 10_485_760,  # 10MB
                 'backup_count': 5,
                 'date_format': '%Y-%m-%d %H:%M:%S',
                 'format': '%(message)s',
                 'console_width': 120,
                 'show_path': False,
+                'show_logger_name': False,
                 'colors': MappingProxyType(
                     {
-                        'DEBUG': '\033[32m',  # Green
-                        'INFO': '\033[34m',  # Blue
+                        'DEBUG': '\033[90m',  # Bright Black/Gray
+                        'INFO': '\033[0m',  # Default/White
                         'WARNING': '\033[33m',  # Yellow
                         'ERROR': '\033[31m',  # Red
                         'CRITICAL': '\033[1m\033[31m',  # Bold Red
@@ -59,156 +61,111 @@ _DEFAULTS = MappingProxyType(
 class CONFIG:
     """Configuration for flixopt library.
 
-    The CONFIG class provides centralized configuration for logging and modeling parameters.
-    All changes require calling ``CONFIG.apply()`` to take effect.
-
-    By default, logging outputs to both console and file ('flixopt.log').
+    Always call ``CONFIG.apply()`` after changes.
 
     Attributes:
-        Logging: Nested class containing all logging configuration options.
-            Colors: Nested subclass under Logging containing ANSI color codes for log levels.
-        Modeling: Nested class containing optimization modeling parameters.
-        config_name (str): Name of the configuration (default: 'flixopt').
-
-    Logging Attributes:
-        level (str): Logging level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
-            Default: 'INFO'
-        file (str | None): Log file path. Default: 'flixopt.log'.
-            Set to None to disable file logging.
-        console (bool): Enable console (stdout) logging. Default: True
-        rich (bool): Use Rich library for enhanced console output. Default: False
-        max_file_size (int): Maximum log file size in bytes before rotation.
-            Default: 10485760 (10MB)
-        backup_count (int): Number of backup log files to keep. Default: 5
-        date_format (str): Date/time format for log messages.
-            Default: '%Y-%m-%d %H:%M:%S'
-        format (str): Log message format string. Default: '%(message)s'
-        console_width (int): Console width for Rich handler. Default: 120
-        show_path (bool): Show file paths in log messages. Default: False
-
-    Colors Attributes:
-        DEBUG (str): ANSI color code for DEBUG level. Default: '\\033[32m' (green)
-        INFO (str): ANSI color code for INFO level. Default: '\\033[34m' (blue)
-        WARNING (str): ANSI color code for WARNING level. Default: '\\033[33m' (yellow)
-        ERROR (str): ANSI color code for ERROR level. Default: '\\033[31m' (red)
-        CRITICAL (str): ANSI color code for CRITICAL level. Default: '\\033[1m\\033[31m' (bold red)
-
-        Works with both Rich and standard console handlers.
-        Rich automatically converts ANSI codes using Style.from_ansi().
-
-        Common ANSI codes:
-
-        - '\\033[30m' - Black
-        - '\\033[31m' - Red
-        - '\\033[32m' - Green
-        - '\\033[33m' - Yellow
-        - '\\033[34m' - Blue
-        - '\\033[35m' - Magenta
-        - '\\033[36m' - Cyan
-        - '\\033[37m' - White
-        - '\\033[1m\\033[3Xm' - Bold color (replace X with color code 0-7)
-        - '\\033[2m\\033[3Xm' - Dim color (replace X with color code 0-7)
-
-        Examples:
-
-        - Magenta: '\\033[35m'
-        - Bold cyan: '\\033[1m\\033[36m'
-        - Dim green: '\\033[2m\\033[32m'
-
-    Modeling Attributes:
-        big (int): Large number for optimization constraints. Default: 10000000
-        epsilon (float): Small tolerance value. Default: 1e-5
-        big_binary_bound (int): Upper bound for binary variable constraints.
-            Default: 100000
+        Logging: Logging configuration.
+        Modeling: Optimization modeling parameters.
+        config_name: Configuration name.
 
     Examples:
-        Basic configuration::
+        ```python
+        CONFIG.Logging.console = True
+        CONFIG.Logging.level = 'DEBUG'
+        CONFIG.apply()
+        ```
 
-            from flixopt import CONFIG
+        Load from YAML file:
 
-            CONFIG.Logging.console = True
-            CONFIG.Logging.level = 'DEBUG'
-            CONFIG.apply()
-
-        Configure log file rotation::
-
-            CONFIG.Logging.file = 'myapp.log'
-            CONFIG.Logging.max_file_size = 5_242_880  # 5 MB
-            CONFIG.Logging.backup_count = 3
-            CONFIG.apply()
-
-        Customize log colors::
-
-            CONFIG.Logging.Colors.INFO = '\\033[35m'  # Magenta
-            CONFIG.Logging.Colors.DEBUG = '\\033[36m'  # Cyan
-            CONFIG.Logging.Colors.ERROR = '\\033[1m\\033[31m'  # Bold red
-            CONFIG.apply()
-
-        Use Rich handler with custom colors::
-
-            CONFIG.Logging.console = True
-            CONFIG.Logging.rich = True
-            CONFIG.Logging.console_width = 100
-            CONFIG.Logging.show_path = True
-            CONFIG.Logging.Colors.INFO = '\\033[36m'  # Cyan
-            CONFIG.apply()
-
-        Load from YAML file::
-
-            CONFIG.load_from_file('config.yaml')
-
-        Example YAML config file:
-
-        .. code-block:: yaml
-
-            logging:
-              level: DEBUG
-              console: true
-              file: app.log
-              rich: true
-              max_file_size: 5242880  # 5MB
-              backup_count: 3
-              date_format: '%H:%M:%S'
-              console_width: 100
-              show_path: true
-              colors:
-                DEBUG: "\\033[36m"              # Cyan
-                INFO: "\\033[32m"               # Green
-                WARNING: "\\033[33m"            # Yellow
-                ERROR: "\\033[31m"              # Red
-                CRITICAL: "\\033[1m\\033[31m"   # Bold red
-
-            modeling:
-              big: 20000000
-              epsilon: 1e-6
-              big_binary_bound: 200000
-
-        Reset to defaults::
-
-            CONFIG.reset()
-
-        Export current configuration::
-
-            config_dict = CONFIG.to_dict()
-            import yaml
-
-            with open('my_config.yaml', 'w') as f:
-                yaml.dump(config_dict, f)
+        ```yaml
+        logging:
+          level: DEBUG
+          console: true
+          file: app.log
+        ```
     """
 
     class Logging:
-        level: str = _DEFAULTS['logging']['level']
+        """Logging configuration.
+
+        Silent by default. Enable via ``console=True`` or ``file='path'``.
+
+        Attributes:
+            level: Logging level.
+            file: Log file path for file logging.
+            console: Enable console output.
+            rich: Use Rich library for enhanced output.
+            max_file_size: Max file size before rotation.
+            backup_count: Number of backup files to keep.
+            date_format: Date/time format string.
+            format: Log message format string.
+            console_width: Console width for Rich handler.
+            show_path: Show file paths in messages.
+            show_logger_name: Show logger name in messages.
+            Colors: ANSI color codes for log levels.
+
+        Examples:
+            ```python
+            # File logging with rotation
+            CONFIG.Logging.file = 'app.log'
+            CONFIG.Logging.max_file_size = 5_242_880  # 5MB
+            CONFIG.apply()
+
+            # Rich handler with stdout
+            CONFIG.Logging.console = True  # or 'stdout'
+            CONFIG.Logging.rich = True
+            CONFIG.apply()
+
+            # Console output to stderr
+            CONFIG.Logging.console = 'stderr'
+            CONFIG.apply()
+            ```
+        """
+
+        level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = _DEFAULTS['logging']['level']
         file: str | None = _DEFAULTS['logging']['file']
         rich: bool = _DEFAULTS['logging']['rich']
-        console: bool = _DEFAULTS['logging']['console']
+        console: bool | Literal['stdout', 'stderr'] = _DEFAULTS['logging']['console']
         max_file_size: int = _DEFAULTS['logging']['max_file_size']
         backup_count: int = _DEFAULTS['logging']['backup_count']
         date_format: str = _DEFAULTS['logging']['date_format']
         format: str = _DEFAULTS['logging']['format']
         console_width: int = _DEFAULTS['logging']['console_width']
         show_path: bool = _DEFAULTS['logging']['show_path']
+        show_logger_name: bool = _DEFAULTS['logging']['show_logger_name']
 
         class Colors:
+            """ANSI color codes for log levels.
+
+            Attributes:
+                DEBUG: ANSI color for DEBUG level.
+                INFO: ANSI color for INFO level.
+                WARNING: ANSI color for WARNING level.
+                ERROR: ANSI color for ERROR level.
+                CRITICAL: ANSI color for CRITICAL level.
+
+            Examples:
+                ```python
+                CONFIG.Logging.Colors.INFO = '\\033[32m'  # Green
+                CONFIG.Logging.Colors.ERROR = '\\033[1m\\033[31m'  # Bold red
+                CONFIG.apply()
+                ```
+
+            Common ANSI codes:
+                - '\\033[30m' - Black
+                - '\\033[31m' - Red
+                - '\\033[32m' - Green
+                - '\\033[33m' - Yellow
+                - '\\033[34m' - Blue
+                - '\\033[35m' - Magenta
+                - '\\033[36m' - Cyan
+                - '\\033[37m' - White
+                - '\\033[90m' - Bright Black/Gray
+                - '\\033[0m' - Reset to default
+                - '\\033[1m\\033[3Xm' - Bold (replace X with color code 0-7)
+                - '\\033[2m\\033[3Xm' - Dim (replace X with color code 0-7)
+            """
+
             DEBUG: str = _DEFAULTS['logging']['colors']['DEBUG']
             INFO: str = _DEFAULTS['logging']['colors']['INFO']
             WARNING: str = _DEFAULTS['logging']['colors']['WARNING']
@@ -216,6 +173,14 @@ class CONFIG:
             CRITICAL: str = _DEFAULTS['logging']['colors']['CRITICAL']
 
     class Modeling:
+        """Optimization modeling parameters.
+
+        Attributes:
+            big: Large number for big-M constraints.
+            epsilon: Tolerance for numerical comparisons.
+            big_binary_bound: Upper bound for binary constraints.
+        """
+
         big: int = _DEFAULTS['modeling']['big']
         epsilon: float = _DEFAULTS['modeling']['epsilon']
         big_binary_bound: int = _DEFAULTS['modeling']['big_binary_bound']
@@ -250,6 +215,18 @@ class CONFIG:
             'ERROR': cls.Logging.Colors.ERROR,
             'CRITICAL': cls.Logging.Colors.CRITICAL,
         }
+        valid_levels = list(colors_dict)
+        if cls.Logging.level.upper() not in valid_levels:
+            raise ValueError(f"Invalid log level '{cls.Logging.level}'. Must be one of: {', '.join(valid_levels)}")
+
+        if cls.Logging.max_file_size <= 0:
+            raise ValueError('max_file_size must be positive')
+
+        if cls.Logging.backup_count < 0:
+            raise ValueError('backup_count must be non-negative')
+
+        if cls.Logging.console not in (False, True, 'stdout', 'stderr'):
+            raise ValueError(f"console must be False, True, 'stdout', or 'stderr', got {cls.Logging.console}")
 
         _setup_logging(
             default_level=cls.Logging.level,
@@ -262,25 +239,37 @@ class CONFIG:
             format=cls.Logging.format,
             console_width=cls.Logging.console_width,
             show_path=cls.Logging.show_path,
+            show_logger_name=cls.Logging.show_logger_name,
             colors=colors_dict,
         )
 
     @classmethod
     def load_from_file(cls, config_file: str | Path):
-        """Load configuration from YAML file and apply it."""
+        """Load configuration from YAML file and apply it.
+
+        Args:
+            config_file: Path to the YAML configuration file.
+
+        Raises:
+            FileNotFoundError: If the config file does not exist.
+        """
         config_path = Path(config_file)
         if not config_path.exists():
             raise FileNotFoundError(f'Config file not found: {config_file}')
 
         with config_path.open() as file:
-            config_dict = yaml.safe_load(file)
+            config_dict = yaml.safe_load(file) or {}
             cls._apply_config_dict(config_dict)
 
         cls.apply()
 
     @classmethod
     def _apply_config_dict(cls, config_dict: dict):
-        """Apply configuration dictionary to class attributes."""
+        """Apply configuration dictionary to class attributes.
+
+        Args:
+            config_dict: Dictionary containing configuration values.
+        """
         for key, value in config_dict.items():
             if key == 'logging' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
@@ -298,7 +287,11 @@ class CONFIG:
 
     @classmethod
     def to_dict(cls):
-        """Convert the configuration class into a dictionary for JSON serialization."""
+        """Convert the configuration class into a dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of the current configuration.
+        """
         return {
             'config_name': cls.config_name,
             'logging': {
@@ -312,6 +305,7 @@ class CONFIG:
                 'format': cls.Logging.format,
                 'console_width': cls.Logging.console_width,
                 'show_path': cls.Logging.show_path,
+                'show_logger_name': cls.Logging.show_logger_name,
                 'colors': {
                     'DEBUG': cls.Logging.Colors.DEBUG,
                     'INFO': cls.Logging.Colors.INFO,
@@ -328,40 +322,67 @@ class CONFIG:
         }
 
 
-class MultilineFormater(logging.Formatter):
-    """Formatter that handles multi-line messages with consistent prefixes."""
+class MultilineFormatter(logging.Formatter):
+    """Formatter that handles multi-line messages with consistent prefixes.
 
-    def __init__(self, fmt=None, datefmt=None):
+    Args:
+        fmt: Log message format string.
+        datefmt: Date/time format string.
+        show_logger_name: Show logger name in log messages.
+    """
+
+    def __init__(self, fmt: str = '%(message)s', datefmt: str | None = None, show_logger_name: bool = False):
         super().__init__(fmt=fmt, datefmt=datefmt)
+        self.show_logger_name = show_logger_name
 
-    def format(self, record):
-        message_lines = record.getMessage().split('\n')
+    def format(self, record) -> str:
+        record.message = record.getMessage()
+        message_lines = self._style.format(record).split('\n')
         timestamp = self.formatTime(record, self.datefmt)
         log_level = record.levelname.ljust(8)
-        log_prefix = f'{timestamp} | {log_level} |'
 
-        first_line = [f'{log_prefix} {message_lines[0]}']
-        if len(message_lines) > 1:
-            lines = first_line + [f'{log_prefix} {line}' for line in message_lines[1:]]
+        if self.show_logger_name:
+            # Truncate long logger names for readability
+            logger_name = record.name if len(record.name) <= 20 else f'...{record.name[-17:]}'
+            log_prefix = f'{timestamp} | {log_level} | {logger_name.ljust(20)} |'
         else:
-            lines = first_line
+            log_prefix = f'{timestamp} | {log_level} |'
+
+        indent = ' ' * (len(log_prefix) + 1)  # +1 for the space after prefix
+
+        lines = [f'{log_prefix} {message_lines[0]}']
+        if len(message_lines) > 1:
+            lines.extend([f'{indent}{line}' for line in message_lines[1:]])
 
         return '\n'.join(lines)
 
 
-class ColoredMultilineFormater(MultilineFormater):
-    """Formatter that adds ANSI colors to multi-line log messages."""
+class ColoredMultilineFormatter(MultilineFormatter):
+    """Formatter that adds ANSI colors to multi-line log messages.
+
+    Args:
+        fmt: Log message format string.
+        datefmt: Date/time format string.
+        colors: Dictionary of ANSI color codes for each log level.
+        show_logger_name: Show logger name in log messages.
+    """
 
     RESET = '\033[0m'
 
-    def __init__(self, fmt=None, datefmt=None, colors=None):
-        super().__init__(fmt=fmt, datefmt=datefmt)
+    def __init__(
+        self,
+        fmt: str | None = None,
+        datefmt: str | None = None,
+        colors: dict[str, str] | None = None,
+        show_logger_name: bool = False,
+    ):
+        super().__init__(fmt=fmt, datefmt=datefmt, show_logger_name=show_logger_name)
         self.COLORS = (
             colors
             if colors is not None
             else {
-                'DEBUG': '\033[32m',
-                'INFO': '\033[34m',
+                'DEBUG': '\033[90m',
+                'INFO': '\033[0m',
                 'WARNING': '\033[33m',
                 'ERROR': '\033[31m',
                 'CRITICAL': '\033[1m\033[31m',
@@ -377,18 +398,22 @@ class ColoredMultilineFormater(MultilineFormater):
 
 def _create_console_handler(
     use_rich: bool = False,
+    stream: Literal['stdout', 'stderr'] = 'stdout',
     console_width: int = 120,
     show_path: bool = False,
+    show_logger_name: bool = False,
     date_format: str = '%Y-%m-%d %H:%M:%S',
     format: str = '%(message)s',
     colors: dict[str, str] | None = None,
 ) -> logging.Handler:
-    """Create a console (stdout) logging handler.
+    """Create a console logging handler.
 
     Args:
         use_rich: If True, use RichHandler with color support.
+        stream: Output stream
         console_width: Width of the console for Rich handler.
         show_path: Show file paths in log messages (Rich only).
+        show_logger_name: Show logger name in log messages.
         date_format: Date/time format string.
         format: Log message format string.
         colors: Dictionary of ANSI color codes for each log level.
@@ -396,6 +421,9 @@ def _create_console_handler(
     Returns:
         Configured logging handler (RichHandler or StreamHandler).
     """
+    # Determine the stream object
+    stream_obj = sys.stdout if stream == 'stdout' else sys.stderr
+
     if use_rich:
         # Convert ANSI codes to Rich theme
         if colors:
@@ -413,7 +441,7 @@ def _create_console_handler(
         else:
             theme = None
 
-        console = Console(width=console_width, theme=theme)
+        console = Console(width=console_width, theme=theme, file=stream_obj)
         handler = RichHandler(
             console=console,
             rich_tracebacks=True,
@@ -423,8 +451,15 @@ def _create_console_handler(
         )
         handler.setFormatter(logging.Formatter(format))
     else:
-        handler = logging.StreamHandler()
-        handler.setFormatter(ColoredMultilineFormater(fmt=format, datefmt=date_format, colors=colors))
+        handler = logging.StreamHandler(stream=stream_obj)
+        handler.setFormatter(
+            ColoredMultilineFormatter(
+                fmt=format,
+                datefmt=date_format,
+                colors=colors,
+                show_logger_name=show_logger_name,
+            )
+        )
 
     return handler
 
@@ -433,6 +468,7 @@ def _create_file_handler(
     log_file: str,
     max_file_size: int = 10_485_760,
     backup_count: int = 5,
+    show_logger_name: bool = False,
     date_format: str = '%Y-%m-%d %H:%M:%S',
     format: str = '%(message)s',
 ) -> RotatingFileHandler:
@@ -442,19 +478,41 @@ def _create_file_handler(
         log_file: Path to the log file.
         max_file_size: Maximum size in bytes before rotation.
         backup_count: Number of backup files to keep.
+        show_logger_name: Show logger name in log messages.
         date_format: Date/time format string.
         format: Log message format string.
 
     Returns:
         Configured RotatingFileHandler (without colors).
     """
-    handler = RotatingFileHandler(
-        log_file,
-        maxBytes=max_file_size,
-        backupCount=backup_count,
-        encoding='utf-8',
+
+    # Ensure parent directory exists
+    log_path = Path(log_file)
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError as e:
+        raise PermissionError(f"Cannot create log directory '{log_path.parent}': Permission denied") from e
+
+    try:
+        handler = RotatingFileHandler(
+            log_file,
+            maxBytes=max_file_size,
+            backupCount=backup_count,
+            encoding='utf-8',
+        )
+    except PermissionError as e:
+        raise PermissionError(
+            f"Cannot write to log file '{log_file}': Permission denied. "
+            f'Choose a different location or check file permissions.'
+        ) from e
+
+    handler.setFormatter(
+        MultilineFormatter(
+            fmt=format,
+            datefmt=date_format,
+            show_logger_name=show_logger_name,
+        )
     )
-    handler.setFormatter(MultilineFormater(fmt=format, datefmt=date_format))
     return handler
 
 
@@ -462,15 +520,16 @@ def _setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
     log_file: str | None = None,
     use_rich_handler: bool = False,
-    console: bool = False,
+    console: bool | Literal['stdout', 'stderr'] = False,
     max_file_size: int = 10_485_760,
     backup_count: int = 5,
     date_format: str = '%Y-%m-%d %H:%M:%S',
     format: str = '%(message)s',
     console_width: int = 120,
     show_path: bool = False,
+    show_logger_name: bool = False,
     colors: dict[str, str] | None = None,
-):
+) -> None:
     """Internal function to setup logging - use CONFIG.apply() instead.
 
     Configures the flixopt logger with console and/or file handlers.
@@ -487,6 +546,7 @@ def _setup_logging(
         format: Log message format string.
         console_width: Console width for Rich handler.
         show_path: Show file paths in log messages (Rich only).
+        show_logger_name: Show logger name in log messages.
         colors: ANSI color codes for each log level.
     """
     logger = logging.getLogger('flixopt')
@@ -494,12 +554,17 @@ def _setup_logging(
     logger.propagate = False  # Prevent duplicate logs
     logger.handlers.clear()
 
+    # Handle console parameter: False = disabled, True = stdout, 'stdout' = stdout, 'stderr' = stderr
     if console:
+        # Convert True to 'stdout', keep 'stdout'/'stderr' as-is
+        stream = 'stdout' if console is True else console
         logger.addHandler(
             _create_console_handler(
                 use_rich=use_rich_handler,
+                stream=stream,
                 console_width=console_width,
                 show_path=show_path,
+                show_logger_name=show_logger_name,
                 date_format=date_format,
                 format=format,
                 colors=colors,
@@ -512,6 +577,7 @@ def _setup_logging(
                 log_file=log_file,
                 max_file_size=max_file_size,
                 backup_count=backup_count,
+                show_logger_name=show_logger_name,
                 date_format=date_format,
                 format=format,
             )
@@ -521,28 +587,22 @@ def _setup_logging(
     if not logger.handlers:
         logger.addHandler(logging.NullHandler())
 
-    return logger
-
 
 def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
-    """
-    Change the logging level for the flixopt logger and all its handlers.
+    """Change the logging level for the flixopt logger and all its handlers.
 
     .. deprecated:: 2.1.11
         Use ``CONFIG.Logging.level = level_name`` and ``CONFIG.apply()`` instead.
         This function will be removed in version 3.0.0.
 
-    Parameters
-    ----------
-    level_name : {'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'}
-        The logging level to set.
+    Args:
+        level_name: The logging level to set.
 
-    Examples
-    --------
-    >>> change_logging_level('DEBUG')  # deprecated
-    >>> # Use this instead:
-    >>> CONFIG.Logging.level = 'DEBUG'
-    >>> CONFIG.apply()
+    Examples:
+        >>> change_logging_level('DEBUG')  # deprecated
+        >>> # Use this instead:
+        >>> CONFIG.Logging.level = 'DEBUG'
+        >>> CONFIG.apply()
     """
     warnings.warn(
         'change_logging_level is deprecated and will be removed in version 3.0.0. '

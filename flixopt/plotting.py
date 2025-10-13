@@ -27,9 +27,11 @@ from __future__ import annotations
 
 import itertools
 import logging
+import os
 import pathlib
 from typing import TYPE_CHECKING, Any, Literal
 
+import matplotlib
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -200,7 +202,7 @@ class ColorProcessor:
             try:
                 colorscale = px.colors.get_colorscale(colormap_name)
             except PlotlyError as e:
-                logger.warning(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
+                logger.error(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
                 colorscale = px.colors.get_colorscale(self.default_colormap)
 
             # Generate evenly spaced points
@@ -211,9 +213,7 @@ class ColorProcessor:
             try:
                 cmap = plt.get_cmap(colormap_name, num_colors)
             except ValueError as e:
-                logger.warning(
-                    f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}"
-                )
+                logger.error(f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}")
                 cmap = plt.get_cmap(self.default_colormap, num_colors)
 
             return [cmap(i) for i in range(num_colors)]
@@ -230,7 +230,7 @@ class ColorProcessor:
             list of colors matching the number of labels
         """
         if len(colors) == 0:
-            logger.warning(f'Empty color list provided. Using {self.default_colormap} instead.')
+            logger.error(f'Empty color list provided. Using {self.default_colormap} instead.')
             return self._generate_colors_from_colormap(self.default_colormap, num_labels)
 
         if len(colors) < num_labels:
@@ -302,7 +302,7 @@ class ColorProcessor:
             Either a list of colors or a dictionary mapping labels to colors
         """
         if len(labels) == 0:
-            logger.warning('No labels provided for color assignment.')
+            logger.error('No labels provided for color assignment.')
             return {} if return_mapping else []
 
         # Process based on type of colors input
@@ -313,7 +313,7 @@ class ColorProcessor:
         elif isinstance(colors, dict):
             color_list = self._handle_color_dict(colors, labels)
         else:
-            logger.warning(
+            logger.error(
                 f'Unsupported color specification type: {type(colors)}. Using {self.default_colormap} instead.'
             )
             color_list = self._generate_colors_from_colormap(self.default_colormap, len(labels))
@@ -327,7 +327,7 @@ class ColorProcessor:
 
 def with_plotly(
     data: pd.DataFrame,
-    mode: Literal['bar', 'line', 'area'] = 'area',
+    style: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
@@ -340,7 +340,7 @@ def with_plotly(
     Args:
         data: A DataFrame containing the data to plot, where the index represents time (e.g., hours),
               and each column represents a separate data series.
-        mode: The plotting mode. Use 'bar' for stacked bar charts, 'line' for stepped lines,
+        style: The plotting style. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines,
               or 'area' for stacked area charts.
         colors: Color specification, can be:
             - A string with a colorscale name (e.g., 'viridis', 'plasma')
@@ -354,8 +354,8 @@ def with_plotly(
     Returns:
         A Plotly figure object containing the generated plot.
     """
-    if mode not in ('bar', 'line', 'area'):
-        raise ValueError(f"'mode' must be one of {{'bar','line','area'}}, got {mode!r}")
+    if style not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
+        raise ValueError(f"'style' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {style!r}")
     if data.empty:
         return go.Figure()
 
@@ -363,23 +363,34 @@ def with_plotly(
 
     fig = fig if fig is not None else go.Figure()
 
-    if mode == 'bar':
+    if style == 'stacked_bar':
         for i, column in enumerate(data.columns):
             fig.add_trace(
                 go.Bar(
                     x=data.index,
                     y=data[column],
                     name=column,
-                    marker=dict(color=processed_colors[i]),
+                    marker=dict(
+                        color=processed_colors[i], line=dict(width=0, color='rgba(0,0,0,0)')
+                    ),  # Transparent line with 0 width
                 )
             )
 
         fig.update_layout(
-            barmode='relative' if mode == 'bar' else None,
+            barmode='relative',
             bargap=0,  # No space between bars
-            bargroupgap=0,  # No space between groups of bars
+            bargroupgap=0,  # No space between grouped bars
         )
-    elif mode == 'line':
+    if style == 'grouped_bar':
+        for i, column in enumerate(data.columns):
+            fig.add_trace(go.Bar(x=data.index, y=data[column], name=column, marker=dict(color=processed_colors[i])))
+
+        fig.update_layout(
+            barmode='group',
+            bargap=0.2,  # No space between bars
+            bargroupgap=0,  # space between grouped bars
+        )
+    elif style == 'line':
         for i, column in enumerate(data.columns):
             fig.add_trace(
                 go.Scatter(
@@ -390,7 +401,7 @@ def with_plotly(
                     line=dict(shape='hv', color=processed_colors[i]),
                 )
             )
-    elif mode == 'area':
+    elif style == 'area':
         data = data.copy()
         data[(data > -1e-5) & (data < 1e-5)] = 0  # Preventing issues with plotting
         # Split columns into positive, negative, and mixed categories
@@ -400,7 +411,7 @@ def with_plotly(
         mixed_columns = list(set(data.columns) - set(positive_columns + negative_columns))
 
         if mixed_columns:
-            logger.warning(
+            logger.error(
                 f'Data for plotting stacked lines contains columns with both positive and negative values:'
                 f' {mixed_columns}. These can not be stacked, and are printed as simple lines'
             )
@@ -450,14 +461,6 @@ def with_plotly(
         plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
         paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
         font=dict(size=14),  # Increase font size for better readability
-        legend=dict(
-            orientation='h',  # Horizontal legend
-            yanchor='bottom',
-            y=-0.3,  # Adjusts how far below the plot it appears
-            xanchor='center',
-            x=0.5,
-            title_text=None,  # Removes legend title for a cleaner look
-        ),
     )
 
     return fig
@@ -465,7 +468,7 @@ def with_plotly(
 
 def with_matplotlib(
     data: pd.DataFrame,
-    mode: Literal['bar', 'line'] = 'bar',
+    style: Literal['stacked_bar', 'line'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
@@ -480,7 +483,7 @@ def with_matplotlib(
     Args:
         data: A DataFrame containing the data to plot. The index should represent time (e.g., hours),
               and each column represents a separate data series.
-        mode: Plotting mode. Use 'bar' for stacked bar charts or 'line' for stepped lines.
+        style: Plotting style. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification, can be:
             - A string with a colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
@@ -496,20 +499,19 @@ def with_matplotlib(
         A tuple containing the Matplotlib figure and axes objects used for the plot.
 
     Notes:
-        - If `mode` is 'bar', bars are stacked for both positive and negative values.
+        - If `style` is 'stacked_bar', bars are stacked for both positive and negative values.
           Negative values are stacked separately without extra labels in the legend.
-        - If `mode` is 'line', stepped lines are drawn for each data series.
-        - The legend is placed below the plot to accommodate multiple data series.
+        - If `style` is 'line', stepped lines are drawn for each data series.
     """
-    if mode not in ('bar', 'line'):
-        raise ValueError(f"'mode' must be one of {{'bar','line'}} for matplotlib, got {mode!r}")
+    if style not in ('stacked_bar', 'line'):
+        raise ValueError(f"'style' must be one of {{'stacked_bar','line'}} for matplotlib, got {style!r}")
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
     processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
 
-    if mode == 'bar':
+    if style == 'stacked_bar':
         cumulative_positive = np.zeros(len(data))
         cumulative_negative = np.zeros(len(data))
         width = data.index.to_series().diff().dropna().min()  # Minimum time difference
@@ -540,7 +542,7 @@ def with_matplotlib(
             )
             cumulative_negative += negative_values.values
 
-    elif mode == 'line':
+    elif style == 'line':
         for i, column in enumerate(data.columns):
             ax.step(data.index, data[column], where='post', color=processed_colors[i], label=column)
 
@@ -780,7 +782,7 @@ def heat_map_data_from_df(
     minimum_time_diff_in_min = diffs.min().total_seconds() / 60
     time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
     if time_intervals[steps_per_period] > minimum_time_diff_in_min:
-        logger.warning(
+        logger.error(
             f'To compute the heatmap, the data was aggregated from {minimum_time_diff_in_min:.2f} min to '
             f'{time_intervals[steps_per_period]:.2f} min. Mean values are displayed.'
         )
@@ -890,11 +892,9 @@ def plot_network(
 
             worked = webbrowser.open(f'file://{path.resolve()}', 2)
             if not worked:
-                logger.warning(
-                    f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}'
-                )
+                logger.error(f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}')
         except Exception as e:
-            logger.warning(
+            logger.error(
                 f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}: {e}'
             )
 
@@ -933,7 +933,7 @@ def pie_with_plotly(
 
     """
     if data.empty:
-        logger.warning('Empty DataFrame provided for pie chart. Returning empty figure.')
+        logger.error('Empty DataFrame provided for pie chart. Returning empty figure.')
         return go.Figure()
 
     # Create a copy to avoid modifying the original DataFrame
@@ -941,7 +941,7 @@ def pie_with_plotly(
 
     # Check if any negative values and warn
     if (data_copy < 0).any().any():
-        logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+        logger.error('Negative values detected in data. Using absolute values for pie chart.')
         data_copy = data_copy.abs()
 
     # If data has multiple rows, sum them to get total for each column
@@ -1023,7 +1023,7 @@ def pie_with_matplotlib(
 
     """
     if data.empty:
-        logger.warning('Empty DataFrame provided for pie chart. Returning empty figure.')
+        logger.error('Empty DataFrame provided for pie chart. Returning empty figure.')
         if fig is None or ax is None:
             fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
@@ -1033,7 +1033,7 @@ def pie_with_matplotlib(
 
     # Check if any negative values and warn
     if (data_copy < 0).any().any():
-        logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+        logger.error('Negative values detected in data. Using absolute values for pie chart.')
         data_copy = data_copy.abs()
 
     # If data has multiple rows, sum them to get total for each column
@@ -1138,7 +1138,7 @@ def dual_pie_with_plotly(
 
     # Check for empty data
     if data_left.empty and data_right.empty:
-        logger.warning('Both datasets are empty. Returning empty figure.')
+        logger.error('Both datasets are empty. Returning empty figure.')
         return go.Figure()
 
     # Create a subplot figure
@@ -1161,7 +1161,7 @@ def dual_pie_with_plotly(
         """
         # Handle negative values
         if (series < 0).any():
-            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+            logger.error('Negative values detected in data. Using absolute values for pie chart.')
             series = series.abs()
 
         # Remove zeros
@@ -1246,7 +1246,6 @@ def dual_pie_with_plotly(
         paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
         font=dict(size=14),
         margin=dict(t=80, b=50, l=30, r=30),
-        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5, font=dict(size=12)),
     )
 
     return fig
@@ -1290,7 +1289,7 @@ def dual_pie_with_matplotlib(
     """
     # Check for empty data
     if data_left.empty and data_right.empty:
-        logger.warning('Both datasets are empty. Returning empty figure.')
+        logger.error('Both datasets are empty. Returning empty figure.')
         if fig is None:
             fig, axes = plt.subplots(1, 2, figsize=figsize)
         return fig, axes
@@ -1308,7 +1307,7 @@ def dual_pie_with_matplotlib(
         """
         # Handle negative values
         if (series < 0).any():
-            logger.warning('Negative values detected in data. Using absolute values for pie chart.')
+            logger.error('Negative values detected in data. Using absolute values for pie chart.')
             series = series.abs()
 
         # Remove zeros
@@ -1449,20 +1448,49 @@ def export_figure(
         if filename.suffix != '.html':
             logger.warning(f'To save a Plotly figure, using .html. Adjusting suffix for {filename}')
             filename = filename.with_suffix('.html')
-        if show and not save:
-            fig.show()
-        elif save and show:
-            plotly.offline.plot(fig, filename=str(filename))
-        elif save and not show:
-            fig.write_html(str(filename))
+
+        try:
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+
+            if is_test_env:
+                # Test environment: never open browser, only save if requested
+                if save:
+                    fig.write_html(str(filename))
+                # Ignore show flag in tests
+            else:
+                # Production environment: respect show and save flags
+                if save and show:
+                    # Save and auto-open in browser
+                    plotly.offline.plot(fig, filename=str(filename))
+                elif save and not show:
+                    # Save without opening
+                    fig.write_html(str(filename))
+                elif show and not save:
+                    # Show interactively without saving
+                    fig.show()
+                # If neither save nor show: do nothing
+        finally:
+            # Cleanup to prevent socket warnings
+            if hasattr(fig, '_renderer'):
+                fig._renderer = None
+
         return figure_like
 
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
         if show:
-            fig.show()
+            # Only show if using interactive backend and not in test environment
+            backend = matplotlib.get_backend().lower()
+            is_interactive = backend not in {'agg', 'pdf', 'ps', 'svg', 'template'}
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+
+            if is_interactive and not is_test_env:
+                plt.show()
+
         if save:
             fig.savefig(str(filename), dpi=300)
+            plt.close(fig)  # Close figure to free memory
+
         return fig, ax
 
     raise TypeError(f'Figure type not supported: {type(figure_like)}')

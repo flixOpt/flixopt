@@ -9,6 +9,9 @@ from rich.pretty import pprint
 import flixopt as fx
 
 if __name__ == '__main__':
+    # Enable console logging
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG.apply()
     # --- Define the Flow System, that will hold all elements, and the time steps you want to model ---
     timesteps = pd.date_range('2020-01-01', periods=3, freq='h')
     flow_system = fx.FlowSystem(timesteps)
@@ -37,13 +40,15 @@ if __name__ == '__main__':
     # Heat load component with a fixed thermal demand profile
     heat_load = fx.Sink(
         'Heat Demand',
-        sink=fx.Flow(label='Thermal Load', bus='District Heating', size=1, fixed_relative_profile=thermal_load_profile),
+        inputs=[
+            fx.Flow(label='Thermal Load', bus='District Heating', size=1, fixed_relative_profile=thermal_load_profile)
+        ],
     )
 
     # Gas source component with cost-effect per flow hour
     gas_source = fx.Source(
         'Natural Gas Tariff',
-        source=fx.Flow(label='Gas Flow', bus='Natural Gas', size=1000, effects_per_flow_hour=0.04),  # 0.04 €/kWh
+        outputs=[fx.Flow(label='Gas Flow', bus='Natural Gas', size=1000, effects_per_flow_hour=0.04)],  # 0.04 €/kWh
     )
 
     # --- Build the Flow System ---

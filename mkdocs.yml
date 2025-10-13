@@ -8,6 +8,56 @@ site_url: https://flixopt.github.io/flixopt/
 repo_url: https://github.com/flixOpt/flixopt
 repo_name: flixOpt/flixopt
 
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - User Guide:
+    - user-guide/index.md
+    - Recipes: user-guide/recipes/index.md
+    - Mathematical Notation:
+      - Overview: user-guide/mathematical-notation/index.md
+      - Dimensions: user-guide/mathematical-notation/dimensions.md
+      - Elements:
+        - Flow: user-guide/mathematical-notation/elements/Flow.md
+        - Bus: user-guide/mathematical-notation/elements/Bus.md
+        - Storage: user-guide/mathematical-notation/elements/Storage.md
+        - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
+      - Features:
+        - InvestParameters: user-guide/mathematical-notation/features/InvestParameters.md
+        - OnOffParameters: user-guide/mathematical-notation/features/OnOffParameters.md
+        - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
+      - Effects, Penalty & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
+      - Modeling Patterns:
+        - Overview: user-guide/mathematical-notation/modeling-patterns/index.md
+        - Bounds and States: user-guide/mathematical-notation/modeling-patterns/bounds-and-states.md
+        - Duration Tracking: user-guide/mathematical-notation/modeling-patterns/duration-tracking.md
+        - State Transitions: user-guide/mathematical-notation/modeling-patterns/state-transitions.md
+  - Examples: examples/
+  - Contribute: contribute.md
+  - API Reference:
+    - api-reference/index.md
+    - Aggregation: api-reference/aggregation.md
+    - Calculation: api-reference/calculation.md
+    - Commons: api-reference/commons.md
+    - Components: api-reference/components.md
+    - Config: api-reference/config.md
+    - Core: api-reference/core.md
+    - Effects: api-reference/effects.md
+    - Elements: api-reference/elements.md
+    - Features: api-reference/features.md
+    - Flow System: api-reference/flow_system.md
+    - Interface: api-reference/interface.md
+    - IO: api-reference/io.md
+    - Linear Converters: api-reference/linear_converters.md
+    - Modeling: api-reference/modeling.md
+    - Network App: api-reference/network_app.md
+    - Plotting: api-reference/plotting.md
+    - Results: api-reference/results.md
+    - Solvers: api-reference/solvers.md
+    - Structure: api-reference/structure.md
+    - Utils: api-reference/utils.md
+  - Release Notes: changelog/
+
 
 theme:
   name: material
@@ -88,9 +138,6 @@ plugins:
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py
-  - literate-nav:
-      nav_file: SUMMARY.md
-      implicit_index: true  # This makes index.md the default landing page
   - mkdocstrings:  # Handles automatic API documentation generation
      default_handler: python  # Sets Python as the default language
      handlers:

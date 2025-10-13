@@ -1,4 +1,4 @@
-"""Generate the code reference pages and navigation."""
+"""Generate the code reference pages."""
 
 import sys
 from pathlib import Path
@@ -9,10 +9,10 @@ import mkdocs_gen_files
 root = Path(__file__).parent.parent
 sys.path.insert(0, str(root))
 
-nav = mkdocs_gen_files.Nav()
-
 src = root / 'flixopt'
 api_dir = 'api-reference'
+
+generated_files = []
 
 for path in sorted(src.rglob('*.py')):
     module_path = path.relative_to(src).with_suffix('')
@@ -30,10 +30,8 @@ for path in sorted(src.rglob('*.py')):
     elif parts[-1] == '__main__' or parts[-1].startswith('_'):
         continue
 
-    # Only add to navigation if there are actual parts
+    # Only generate documentation if there are actual parts
     if parts:
-        nav[parts] = doc_path.as_posix()
-
         # Generate documentation file - always using the flixopt prefix
         with mkdocs_gen_files.open(full_doc_path, 'w') as fd:
             # Use 'flixopt.' prefix for all module references
@@ -41,6 +39,7 @@ for path in sorted(src.rglob('*.py')):
             fd.write(f'::: {module_id}\n    options:\n       inherited_members: true\n')
 
         mkdocs_gen_files.set_edit_path(full_doc_path, path.relative_to(root))
+        generated_files.append(str(full_doc_path))
 
 # Create an index file for the API reference
 with mkdocs_gen_files.open(f'{api_dir}/index.md', 'w') as index_file:
@@ -50,5 +49,7 @@ with mkdocs_gen_files.open(f'{api_dir}/index.md', 'w') as index_file:
         'For more information on how to use the classes and functions, see the [User Guide](../user-guide/index.md) section.\n'
     )
 
-with mkdocs_gen_files.open(f'{api_dir}/SUMMARY.md', 'w') as nav_file:
-    nav_file.writelines(nav.build_literate_nav())
+# Print generated files for validation
+print(f'Generated {len(generated_files)} API reference files:')
+for file in sorted(generated_files):
+    print(f'  - {file}')

@@ -48,6 +48,9 @@ dependencies = [
     # Visualization
     "matplotlib >= 3.5.2, < 4",
     "plotly >= 5.15.0, < 7",
+
+    # Fix for numexpr compatibility issue with numpy 1.26.4 on Python 3.10
+    "numexpr >= 2.8.4, < 2.14; python_version < '3.11'",  # Avoid 2.14.0 on older Python
 ]
 
 [project.optional-dependencies]
@@ -116,10 +119,6 @@ documentation = "https://flixopt.github.io/flixopt/"
 where = ["."]
 include = ["flixopt*"]
 exclude = ["tests*", "docs*", "examples*", "Tutorials*"]
-
-[tool.setuptools.package-data]
-"flixopt" = ["config.yaml"]
-
 [tool.setuptools]
 include-package-data = true
 
@@ -187,7 +186,28 @@ markers = [
     "slow: marks tests as slow",
     "examples: marks example tests (run only on releases)",
 ]
-addopts = "-m 'not examples'"  # Skip examples by default
+addopts = '-m "not examples"'  # Skip examples by default
+
+# Warning filter configuration for pytest
+# Filters are processed in order; first match wins
+# Format: "action:message:category:module"
+filterwarnings = [
+    # === Default behavior: show all warnings ===
+    "default",
+
+    # === Treat flixopt warnings as errors (strict mode for our code) ===
+    # This ensures we catch deprecations, future changes, and user warnings in our own code
+    "error::DeprecationWarning:flixopt",
+    "error::FutureWarning:flixopt",
+    "error::UserWarning:flixopt",
+
+    # === Third-party warnings (mirrored from __init__.py) ===
+    "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
+    "ignore:Coordinates across variables not equal:UserWarning:linopy",
+    "ignore:.*join will change from join='outer' to join='exact'.*:FutureWarning:linopy",
+    "ignore:numpy\\.ndarray size changed:RuntimeWarning",
+    "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
+]
 
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load
