@@ -79,6 +79,8 @@ Until here -->
 ### 👷 Development
 - Added missing type hints
 
+---
+
 ## [3.0.0] - 2025-10-13
 **Summary**: This release introduces new model dimensions (periods and scenarios) for multi-period investments and stochastic modeling, along with a redesigned effect sharing system and enhanced I/O capabilities.
 For detailed migration instructions, see the [Migration Guide](https://flixopt.github.io/flixopt/user-guide/migration-guide-v3/).
