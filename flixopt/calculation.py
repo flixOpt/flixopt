@@ -288,8 +288,8 @@ class AggregatedCalculation(FullCalculation):
         folder: Folder where results should be saved. If None, current working directory is used
 
     Attributes:
-        aggregation: Contains the clustered time series data
-        aggregation_model: Contains Variables and Constraints that equalize clusters of the time series data
+        aggregation (Aggregation | None): Contains the clustered time series data
+        aggregation_model (AggregationModel | None): Contains Variables and Constraints that equalize clusters of the time series data
     """
 
     def __init__(
