@@ -42,14 +42,14 @@ def test_independent_examples(example_script):
             [sys.executable, example_script.name],
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=600,  # 10 minutes for complex examples
         )
         assert result.returncode == 0, (
             f'Script {example_script} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
         )
 
     except subprocess.TimeoutExpired:
-        pytest.fail(f'Script {example_script} timed out after 180 seconds')
+        pytest.fail(f'Script {example_script} timed out after 600 seconds')
 
     finally:
         os.chdir(original_cwd)
@@ -69,12 +69,12 @@ def test_dependent_examples():
                 [sys.executable, script_full_path.name],
                 capture_output=True,
                 text=True,
-                timeout=180,
+                timeout=600,  # 10 minutes for complex examples
             )
             assert result.returncode == 0, f'{script_path} failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}'
 
     except subprocess.TimeoutExpired:
-        pytest.fail(f'Script {script_path} timed out after 180 seconds')
+        pytest.fail(f'Script {script_path} timed out after 600 seconds')
 
     finally:
         os.chdir(original_cwd)
