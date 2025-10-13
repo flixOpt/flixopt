@@ -33,7 +33,9 @@ if __name__ == '__main__':
     excess_penalty = 1e5  # or set to None if not needed
 
     # Data Import
-    data_import = pd.read_csv(pathlib.Path('Zeitreihen2020.csv'), index_col=0).sort_index()
+    data_import = pd.read_csv(
+        pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
+    ).sort_index()
     filtered_data = data_import['2020-01-01':'2020-01-02 23:45:00']
     # filtered_data = data_import[0:500]  # Alternatively filter by index
 

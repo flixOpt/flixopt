@@ -48,6 +48,9 @@ dependencies = [
     # Visualization
     "matplotlib >= 3.5.2, < 4",
     "plotly >= 5.15.0, < 7",
+
+    # Fix for numexpr compatibility issue with numpy 1.26.4 on Python 3.10
+    "numexpr >= 2.8.4, < 2.14; python_version < '3.11'",  # Avoid 2.14.0 on older Python
 ]
 
 [project.optional-dependencies]
