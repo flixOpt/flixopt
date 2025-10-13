@@ -1243,7 +1243,7 @@ class ComponentResults(_NodeResults):
 class EffectResults(_ElementResults):
     """Results for an Effect"""
 
-    def get_shares_from(self, element: str):
+    def get_shares_from(self, element: str) -> xr.Dataset:
         """Get effect shares from specific element.
 
         Args:
@@ -1399,7 +1399,7 @@ class SegmentedCalculationResults:
         )
 
     @classmethod
-    def from_file(cls, folder: str | pathlib.Path, name: str):
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> SegmentedCalculationResults:
         """Load SegmentedCalculationResults from saved files.
 
         Args:

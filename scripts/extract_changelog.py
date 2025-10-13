@@ -136,9 +136,13 @@ def extract_index():
         raise ValueError('Intro section not found before comment block')
     final_content = intro_match.group(1).strip()
 
-    # Write file
+    # Write simple index without TOC (literate-nav plugin handles navigation)
     with open(index_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(['# Changelog\n', final_content]))
+        f.write(
+            '# Changelog\n\n'
+            + final_content
+            + '\n\nUse the navigation menu to browse through individual release notes.'
+        )
 
     print('✅ Created index.md')
 

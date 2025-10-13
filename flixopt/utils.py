@@ -5,7 +5,7 @@ This module contains several utility functions used throughout the flixopt frame
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -13,7 +13,7 @@ import xarray as xr
 logger = logging.getLogger('flixopt')
 
 
-def round_nested_floats(obj, decimals=2):
+def round_nested_floats(obj: dict | list | float | int | Any, decimals: int = 2) -> dict | list | float | int | Any:
     """Recursively round floating point numbers in nested data structures.
 
     This function traverses nested data structures (dictionaries, lists) and rounds
@@ -27,9 +27,7 @@ def round_nested_floats(obj, decimals=2):
         decimals (int, optional): Number of decimal places to round to. Defaults to 2.
 
     Returns:
-        The processed object with the same structure as the input, but with all
-        floating point numbers rounded to the specified precision. NumPy arrays
-        and xarray DataArrays are converted to lists.
+        The processed object with the same structure as the input, but with all floating point numbers rounded to the specified precision. NumPy arrays and xarray DataArrays are converted to lists.
 
     Examples:
         >>> data = {'a': 3.14159, 'b': [1.234, 2.678]}

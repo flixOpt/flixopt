@@ -396,7 +396,7 @@ class BoundingPatterns:
         variable: linopy.Variable,
         bounds: tuple[TemporalData, TemporalData],
         name: str = None,
-    ):
+    ) -> list[linopy.constraints.Constraint]:
         """Create simple bounds.
         variable ∈ [lower_bound, upper_bound]
 
@@ -409,9 +409,7 @@ class BoundingPatterns:
             bounds: Tuple of (lower_bound, upper_bound) absolute bounds
 
         Returns:
-            Tuple containing:
-                - variables (Dict): Empty dict
-                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
+            List containing lower_bound and upper_bound constraints
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.basic_bounds() can only be used with a Submodel')
