@@ -10,13 +10,13 @@ We believe that optimization modeling should be **approachable for beginners** y
 
 **Short-term goals:**
 
-- **Multi-dimensional modeling**: Full support for multi-period investments and scenario-based stochastic optimization (periods and scenarios are in active development)
+- **Multi-dimensional modeling**: Multi-period investments and scenario-based stochastic optimization are available (periods and scenarios are in active development for enhanced features)
 - **Enhanced component library**: More pre-built, domain-specific components (sector coupling, hydrogen systems, thermal networks, demand-side management)
 
 **Medium-term vision:**
 
 - **Modeling to generate alternatives (MGA)**: Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty
-- **Interactive tutorials**: Browser-based, reactive tutorials for learning FlixOpt without local installation (marimo)
+- **Interactive tutorials**: Browser-based, reactive tutorials for learning FlixOpt without local installation ([marimo](https://marimo.io))
 - **Standardized cost calculations**: Align with industry standards (VDI 2067) for CAPEX/OPEX calculations
 - **Advanced result analysis**: Time-series aggregation, automated reporting, and rich visualization options
 - **Recipe collection**: Community-driven library of common modeling patterns, data manipulation techniques, and optimization strategies (see [Recipes](user-guide/recipes/index.md) - help wanted!)
