@@ -69,6 +69,16 @@ Please keep the format of the changelog consistent with the other releases, so t
 ---
 Until here -->
 
+## [3.0.1] - 2025-10-14
+**Summary**: Adding a Migration Guide for the new **flixopt 3** and fixing docs
+
+### 📝 Docs
+- Fixed deployed docs
+- Added Migration Guide for flixopt 3
+
+### 👷 Development
+- Added missing type hints
+
 ## [3.0.0] - 2025-10-13
 **Summary**: This release introduces new model dimensions (periods and scenarios) for multi-period investments and stochastic modeling, along with a redesigned effect sharing system and enhanced I/O capabilities.
 For detailed migration instructions, see the [Migration Guide](https://flixopt.github.io/flixopt/user-guide/migration-guide-v3/).
