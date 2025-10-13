@@ -3,9 +3,13 @@ This module bundles all common functionality of flixopt and sets up the logging
 """
 
 import warnings
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = version('flixopt')
+try:
+    __version__ = version('flixopt')
+except PackageNotFoundError:
+    # Package is not installed (development mode without editable install)
+    __version__ = '0.0.0.dev0'
 
 from .commons import (
     CONFIG,
