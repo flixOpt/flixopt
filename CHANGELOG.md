@@ -43,7 +43,34 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 
 ## [Unreleased] - ????-??-??
-This release introduces new model dimensions (periods and scenarios) for multi-period investments and stochastic modeling, along with a redesigned effect sharing system and enhanced I/O capabilities.
+
+### ✨ Added
+
+### 💥 Breaking Changes
+
+### ♻️ Changed
+
+### 🗑️ Deprecated
+
+### 🔥 Removed
+
+### 🐛 Fixed
+
+### 🔒 Security
+
+### 📦 Dependencies
+
+### 📝 Docs
+
+### 👷 Development
+
+### 🚧 Known Issues
+
+---
+Until here -->
+
+## [3.0.0] - 2025-10-13
+**Summary**: This release introduces new model dimensions (periods and scenarios) for multi-period investments and stochastic modeling, along with a redesigned effect sharing system and enhanced I/O capabilities.
 
 ### ✨ Added
 
@@ -177,7 +204,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
     - Enhanced backend detection and handling in `plotting.py` for both Matplotlib and Plotly
     - Always run dependent tests in order
 
-Until here -->
+---
 
 ## [2.2.0] - 2025-10-11
 **Summary:** This release is a Configuration and Logging management release.

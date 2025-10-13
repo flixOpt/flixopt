@@ -719,6 +719,15 @@ def create_calculation_and_solve(
 
 
 def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
+    """
+    Create a FlowSystemModel from a FlowSystem by performing the modeling phase.
+
+    Args:
+        flow_system: The FlowSystem to build the model from.
+
+    Returns:
+        FlowSystemModel: The built model from FullCalculation.do_modeling().
+    """
     calculation = fx.FullCalculation('GenericName', flow_system)
     calculation.do_modeling()
     return calculation.model
