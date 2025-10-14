@@ -117,7 +117,7 @@ jobs:
           uv pip install --system .[dev]
 
       - name: Run example tests
-        run: pytest -v -p no:warnings -m examples
+        run: pytest -v -m examples --numprocesses=auto
 
   security:
     name: Security Scan
