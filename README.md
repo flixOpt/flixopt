@@ -32,31 +32,26 @@ pip install flixopt
 
 That's it! FlixOpt comes with the [HiGHS](https://highs.dev/) solver included. You're ready to optimize.
 
-**Create your first model:**
+**The basic workflow:**
 
 ```python
 import flixopt as fx
-import pandas as pd
 
-# Define your time horizon
-timesteps = pd.date_range('2025-01-01', periods=8760, freq='h')
-flow_system = fx.FlowSystem(timesteps=timesteps)
+# 1. Define your system structure
+flow_system = fx.FlowSystem(timesteps)
+flow_system.add_elements(buses, components, effects)
 
-# Add components
-boiler = fx.Boiler("Boiler", eta=0.9, Q_th=fx.Flow(...), Q_fu=fx.Flow(...))
-flow_system.add_component(boiler)
-
-# Optimize
-calculation = fx.FullCalculation("MyModel", flow_system=flow_system)
+# 2. Create and solve
+calculation = fx.FullCalculation("MyModel", flow_system)
 calculation.solve()
 
-# Analyze results
-calculation.results.plot()
+# 3. Analyze results
+calculation.results.solution
 ```
 
-**Next steps:**
+**Get started with real examples:**
 - 📚 [Full Documentation](https://flixopt.github.io/flixopt/latest/)
-- 💡 [Examples Gallery](https://flixopt.github.io/flixopt/latest/examples/)
+- 💡 [Examples Gallery](https://flixopt.github.io/flixopt/latest/examples/) - Complete working examples from simple to complex
 - 🔧 [API Reference](https://flixopt.github.io/flixopt/latest/api-reference/)
 
 ---
