@@ -10,6 +10,7 @@ We believe optimization modeling should be **approachable for beginners** yet **
 
 ## 🚀 Short-term (Next 6 months)
 
+- **Recipe collection** - Community-driven library of common modeling patterns, data manipulation techniques, and optimization strategies
 - **Examples of stochastic and multi-period modeling** - The new v3.0 features currently lack comprehensive showcases
 - **Advanced result analysis** - Automated reporting and enhanced visualization options
 - **Interactive tutorials** - Browser-based, reactive tutorials for learning FlixOpt without local installation using [Marimo](https://marimo.io/)
