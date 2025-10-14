@@ -22,21 +22,21 @@
 
 **FlixOpt aims to be the most accessible, flexible and universal Python framework for energy and material flow optimization.**
 
-We believe that optimization modeling should be **approachable for beginners** yet **powerful for experts**. Further we belive in **minimizing context switching**.
+We believe that optimization modeling should be **approachable for beginners** yet **powerful for experts**. We also believe in **minimizing context switching**.
 
-Flixopt aims to be the tool of choice for both short term planning with high grade of detail, and for long term investment planning. We belive that using the same tool and context for both holds a lot of value.
+FlixOpt aims to be the tool of choice for both short-term planning with high detail resolution and long-term investment planning. We believe that using the same tool and context for both holds tremendous value.
 
 ### Where We're Going
 
 **Short-term goals:**
 - **Enhanced component library**: More pre-built, domain-specific components (sector coupling, hydrogen systems, thermal networks, demand-side management)
-- **Advanced result analysis**: Automated reporting and even more visualization options
-- **Examples of stochastic and Multi-Period Modeling**: THe new feature is currently lacking showcases.
+- **Advanced result analysis**: Automated reporting and enhanced visualization options
+- **Examples of stochastic and multi-period modeling**: The new features currently lack comprehensive showcases
 - **Interactive tutorials**: Browser-based, reactive tutorials for learning FlixOpt without local installation
 
 **Medium-term vision:**
-- **Modeling to generate alternatives (MGA)**: Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty. See [PyPSA](https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/) and [calliope](https://calliope.readthedocs.io/en/latest/examples/modes/)
-- **Stochastic Optimization**: Build sophisticated new `Calculation` classes to perform differnet Stochastic optimization. Like PyPSA's new [**Two-Stage Stochastic-Programming** or **Risk Preferences with Conditional Value-at-Risk (CVaR)**](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/)
+- **Modeling to generate alternatives (MGA)**: Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty. See [PyPSA](https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/) and [Calliope](https://calliope.readthedocs.io/en/latest/examples/modes/) for reference implementations
+- **Advanced stochastic optimization**: Build sophisticated new `Calculation` classes to perform different stochastic optimization approaches, like PyPSA's [two-stage stochastic programming and risk preferences with Conditional Value-at-Risk (CVaR)](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/)
 
 **Long-term vision:**
 - **Showcase universal applicability**: FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
@@ -44,9 +44,9 @@ Flixopt aims to be the tool of choice for both short term planning with high gra
 
 ### Why FlixOpt Exists
 
-FlixOpt is a **general-purpose framework for modeling any system involving flows and conversions** - energy, materials, fluids, goods, or data. While energy systems are the primary use case, the same mathematical foundation applies to supply chains, water networks, production lines, and more. THis also enables the coupling of such systems with an energy system model.
+FlixOpt is a **general-purpose framework for modeling any system involving flows and conversions** - energy, materials, fluids, goods, or data. While energy systems are the primary use case, the same mathematical foundation applies to supply chains, water networks, production lines, and more. This also enables the coupling of such systems within an integrated energy system model.
 
-We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) for long-term planning and low-level tools for short term operation/dispatch.
+We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) for long-term planning and low-level tools for short-term operation and dispatch.
 This approach is similar to the mature [PyPSA](https://docs.pypsa.org/latest/) project. FlixOpt is the **sweet spot** for:
 
 - **Researchers** who need to prototype quickly but may require deep customization later
