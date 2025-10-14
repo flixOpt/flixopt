@@ -342,25 +342,20 @@ jobs:
 
           # Wait and retry while PyPI indexes the package
           INSTALL_SUCCESS=false
-          for d in 10 20 40 80 120 240 480; do
+          for d in 10 20 40 60 90 120 180 300 480 600; do  # Total: up to ~30 minutes
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
-
-            # Install specific version and verify it matches
-            if uv pip install "$PACKAGE_NAME==$VERSION" && \
+            # Install directly from pypi, potentially mitigatiing caches
+            if uv pip install --index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
                python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
               INSTALL_SUCCESS=true
               break
             fi
           done
 
-          # Check if installation succeeded
           if [ "$INSTALL_SUCCESS" = "false" ]; then
             echo "ERROR: Failed to install $PACKAGE_NAME==$VERSION from PyPI after all retries"
-            echo "This could indicate:"
-            echo "  - PyPI indexing issues"
-            echo "  - Package upload problems"
-            echo "  - Version mismatch between tag and package"
+            echo "Check: https://pypi.org/project/$PACKAGE_NAME/$VERSION/"
             exit 1
           fi
 
