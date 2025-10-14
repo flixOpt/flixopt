@@ -64,48 +64,16 @@ boiler = fx.Boiler("Boiler", eta=0.9, ...)
 boiler.model.add_constraints(custom_constraint, name="my_constraint")
 ```
 
-### Grow Your Model Incrementally
-Start with a simple single-period model, then progressively add detail without restructuring:
-
-```python
-import flixopt as fx
-
-# Step 1: Start simple - single period, deterministic
-flow_system = fx.FlowSystem(time_series)
-boiler = fx.Boiler("Boiler", eta=0.9, ...)
-flow_system.add_component(boiler)
-
-# Step 2: Add more detail to existing components
-boiler.add_effects(fx.Effect('CO2', 'kg', 'Emissions'))
-boiler.add_investment(fx.InvestParameters(...))
-
-# Step 3: Later, extend to multi-period planning - no refactoring needed!
-flow_system_extended = flow_system.resample(time="D")  # Coarser resolution
-periods = [fx.Period("2025", length=1), fx.Period("2030", length=5)]
-calc = fx.Calculation(flow_system_extended, periods=periods)
-
-# Step 4: Add uncertainty with scenarios - simply extend your existing model
-scenarios = [
-    fx.Scenario("high_demand", probability=0.3),
-    fx.Scenario("base_case", probability=0.5),
-    fx.Scenario("low_demand", probability=0.2)
-]
-# Create scenario-specific variants of your time series
-calc = fx.Calculation(flow_system_extended, periods=periods, scenarios=scenarios)
-```
-
-**The key**: Your initial model structure stays intact. Periods and scenarios are added as model dimensions, not as rewrites.
-
 ### Multi-Criteria Optimization Done Right
 Model costs, emissions, resource use, and any custom metric simultaneously as **Effects**. Effects use intuitive `share_from_*` syntax showing clear contribution sources. Optimize any single Effect, use weighted combinations, or apply ε-constraints:
 
 ```python
 # Simple start
-costs = fx.Effect('costs', '€', 'Total costs')
+costs = fx.Effect('costs', '€', 'Total costs', objective=True)
 co2 = fx.Effect('CO2', 'kg', 'Emissions')
 
 # Later: Add effect relationships without changing component definitions
-costs = fx.Effect('costs', '€', 'Total costs',
+costs = fx.Effect('costs', '€', 'Total costs', objective=True,
                   share_from_temporal={'CO2': 180},  # 180 €/tCO2 carbon pricing
                   share_from_periodic={'land': 100})  # 100 €/m² land cost
 co2 = fx.Effect('CO2', 'kg', 'Emissions', maximum_periodic=50000)  # Add constraint
