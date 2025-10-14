@@ -116,9 +116,9 @@ system_hourly = flow_system.resample(time="h")
 system_daily = flow_system.resample(time="D")
 ```
 
-### User Friendly
-Flixopt is object oriented and well documented. We try to make the project and the resulting code as readable as possible.
-If you have any issues with naming or definitions of parameters feel free to propose a rename.
+### User-Friendly Design
+FlixOpt is object-oriented and comprehensively documented. We prioritize readability in both the framework and user code.
+If you find any naming or parameter definitions unclear, we welcome your suggestions for improvements.
 
 ---
 
