@@ -3,8 +3,14 @@
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://flixopt.github.io/flixopt/latest/)
 [![Build Status](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
 [![PyPI version](https://img.shields.io/pypi/v/flixopt)](https://pypi.org/project/flixopt/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/flixopt)](https://pypi.org/project/flixopt/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/flixopt.svg)](https://pypi.org/project/flixopt/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/flixOpt/flixopt?style=social)](https://github.com/flixOpt/flixopt/stargazers)
+[![DOI](https://img.shields.io/badge/DOI-10.18086%2Feurosun.2022.04.07-blue)](https://doi.org/10.18086/eurosun.2022.04.07)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![GitHub last commit](https://img.shields.io/github/last-commit/flixOpt/flixopt)](https://github.com/flixOpt/flixopt/commits/main)
+[![GitHub issues](https://img.shields.io/github/issues/flixOpt/flixopt)](https://github.com/flixOpt/flixopt/issues)
 
 ---
 
