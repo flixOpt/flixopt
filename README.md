@@ -64,19 +64,51 @@ boiler = fx.Boiler("Boiler", eta=0.9, ...)
 boiler.model.add_constraints(custom_constraint, name="my_constraint")
 ```
 
-### Multi-Dimensional Modeling
-Model complex real-world decisions with **periods** and **scenarios**:
-- **Periods** enable multi-period investment planning - optimize transformation pathways with distinct investment decisions in each period
-- **Scenarios** support stochastic optimization with weighted scenarios for robust decision-making under uncertainty (demand variations, price scenarios, weather conditions)
-
-### Multi-Criteria Optimization Done Right
-Model costs, emissions, resource use, and any custom metric simultaneously as **Effects**. Effects now use intuitive `share_from_*` syntax showing clear contribution sources. Optimize any single Effect, use weighted combinations, or apply ε-constraints:
+### Grow Your Model Incrementally
+Start with a simple single-period model, then progressively add detail without restructuring:
 
 ```python
+import flixopt as fx
+
+# Step 1: Start simple - single period, deterministic
+flow_system = fx.FlowSystem(time_series)
+boiler = fx.Boiler("Boiler", eta=0.9, ...)
+flow_system.add_component(boiler)
+
+# Step 2: Add more detail to existing components
+boiler.add_effects(fx.Effect('CO2', 'kg', 'Emissions'))
+boiler.add_investment(fx.InvestParameters(...))
+
+# Step 3: Later, extend to multi-period planning - no refactoring needed!
+flow_system_extended = flow_system.resample(time="D")  # Coarser resolution
+periods = [fx.Period("2025", length=1), fx.Period("2030", length=5)]
+calc = fx.Calculation(flow_system_extended, periods=periods)
+
+# Step 4: Add uncertainty with scenarios - simply extend your existing model
+scenarios = [
+    fx.Scenario("high_demand", probability=0.3),
+    fx.Scenario("base_case", probability=0.5),
+    fx.Scenario("low_demand", probability=0.2)
+]
+# Create scenario-specific variants of your time series
+calc = fx.Calculation(flow_system_extended, periods=periods, scenarios=scenarios)
+```
+
+**The key**: Your initial model structure stays intact. Periods and scenarios are added as model dimensions, not as rewrites.
+
+### Multi-Criteria Optimization Done Right
+Model costs, emissions, resource use, and any custom metric simultaneously as **Effects**. Effects use intuitive `share_from_*` syntax showing clear contribution sources. Optimize any single Effect, use weighted combinations, or apply ε-constraints:
+
+```python
+# Simple start
+costs = fx.Effect('costs', '€', 'Total costs')
+co2 = fx.Effect('CO2', 'kg', 'Emissions')
+
+# Later: Add effect relationships without changing component definitions
 costs = fx.Effect('costs', '€', 'Total costs',
-                  share_from_temporal={'CO2': 180},  # 180 €/tCO2 from temporal effects
-                  share_from_periodic={'land': 100})  # 100 €/m² from periodic effects
-co2 = fx.Effect('CO2', 'kg', 'Emissions', maximum_periodic=50000)
+                  share_from_temporal={'CO2': 180},  # 180 €/tCO2 carbon pricing
+                  share_from_periodic={'land': 100})  # 100 €/m² land cost
+co2 = fx.Effect('CO2', 'kg', 'Emissions', maximum_periodic=50000)  # Add constraint
 ```
 
 ### Performance at Any Scale
@@ -85,17 +117,23 @@ Choose the right calculation mode for your problem:
 - **Segmented** - Rolling horizon for large time series
 - **Aggregated** - Typical periods using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam) for massive models
 
+Switch between modes without changing your model definition.
+
 ### Built for Reproducibility
 Every result file is self-contained with complete model information. Full NetCDF/JSON serialization support with round-trip fidelity. Load results months later and know exactly what you optimized - complete with the original FlowSystem. Export to NetCDF, share with colleagues, archive for compliance.
 
-### Powerful Data Manipulation
-FlowSystem objects support intuitive data operations:
+### Flexible Data Manipulation
+Transform your FlowSystem on the fly for different analyses:
 ```python
-# Select specific time ranges or scenarios
-system_subset = flow_system.sel(time=slice("2025-06", "2025-12"))
+# Subset to specific time ranges
+system_q2 = flow_system.sel(time=slice("2025-04", "2025-06"))
 
-# Resample for multi-stage optimization
-coarse_system = flow_system.resample(time="D")  # Daily resolution
+# Extract specific scenarios for comparison
+system_high = flow_system.sel(scenario="high_demand")
+
+# Resample to different temporal resolutions for multi-stage optimization
+system_hourly = flow_system.resample(time="h")
+system_daily = flow_system.resample(time="D")
 ```
 
 ---
