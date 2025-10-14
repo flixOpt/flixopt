@@ -69,9 +69,23 @@ Please keep the format of the changelog consistent with the other releases, so t
 ---
 Until here -->
 
+## [3.0.2] - 2025-10-15
+**Summary**: This is a follow-up release to **[v3.0.0](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0)**, improving the documentation.
+
+**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 📝 Docs
+- Update the Readme
+- Add a project roadmap to the docs
+- Change Development status to "Production/Stable"
+- Regroup parts in docs
+
+---
+
 ## [3.0.1] - 2025-10-14
-**Summary**: Adding a Migration Guide for the new **flixopt 3** and fixing docs
-See the [Migration Guide](https://flixopt.github.io/flixopt/user-guide/migration-guide-v3/).
+**Summary**: This is a follow-up release to **[v3.0.0](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0)**, adding a Migration Guide and bugfixing the docs.
+
+**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### 📝 Docs
 - Fixed deployed docs
@@ -84,7 +98,8 @@ See the [Migration Guide](https://flixopt.github.io/flixopt/user-guide/migration
 
 ## [3.0.0] - 2025-10-13
 **Summary**: This release introduces new model dimensions (periods and scenarios) for multi-period investments and stochastic modeling, along with a redesigned effect sharing system and enhanced I/O capabilities.
-For detailed migration instructions, see the [Migration Guide](https://flixopt.github.io/flixopt/user-guide/migration-guide-v3/).
+
+**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
 
