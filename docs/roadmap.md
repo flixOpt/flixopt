@@ -10,16 +10,15 @@ We believe optimization modeling should be **approachable for beginners** yet **
 
 ## 🚀 Short-term (Next 6 months)
 
-- **Enhanced component library** - Sector coupling, hydrogen systems, thermal networks, demand-side management
 - **Stochastic/multi-period examples** - Showcase v3.0 capabilities with comprehensive examples
 - **Advanced result analysis** - Automated reporting, enhanced visualizations, cost breakdowns ([#398](https://github.com/flixOpt/flixopt/issues/398))
+- **Interactive tutorials** - Browser-based learning without installation ([#304](https://github.com/flixOpt/flixopt/issues/304))
 
-## 🔮 Medium-term (6-18 months)
+## 🔮 Medium-term (6-12 months)
 
 - **Modeling to Generate Alternatives (MGA)** - Explore near-optimal solutions for robust decision-making ([#338](https://github.com/flixOpt/flixopt/issues/338), [PyPSA](https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/), [Calliope](https://calliope.readthedocs.io/en/latest/examples/modes/))
 - **Advanced stochastic optimization** - Two-stage programming, CVaR, rolling horizon ([PyPSA reference](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/))
-- **Standardized cost calculations** - VDI 2067 compliance, NPV/IRR analysis
-- **Interactive tutorials** - Browser-based learning without installation ([#304](https://github.com/flixOpt/flixopt/issues/304))
+- **Enhanced component library** - Sector coupling, hydrogen systems, thermal networks, demand-side management
 
 ## 🌟 Long-term (18+ months)
 
