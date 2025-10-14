@@ -9,7 +9,7 @@
 [![PyPI downloads](https://img.shields.io/pypi/dm/flixopt)](https://pypi.org/project/flixopt/)
 [![GitHub last commit](https://img.shields.io/github/last-commit/flixOpt/flixopt)](https://github.com/flixOpt/flixopt/commits/main)
 [![GitHub issues](https://img.shields.io/github/issues/flixOpt/flixopt)](https://github.com/flixOpt/flixopt/issues)
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/flixOpt/flixopt/main.svg)](https://results.pre-commit.ci/latest/github/flixOpt/flixopt/main)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Powered by linopy](https://img.shields.io/badge/powered%20by-linopy-blue)](https://github.com/PyPSA/linopy/)
 [![Powered by xarray](https://img.shields.io/badge/powered%20by-xarray-blue)](https://xarray.dev/)
@@ -44,9 +44,10 @@ Flixopt aims to be the tool of choice for both short term planning with high gra
 
 ### Why FlixOpt Exists
 
-FlixOpt is a **general-purpose framework for modeling any system involving flows and conversions** - energy, materials, fluids, goods, or data. While energy systems are our primary focus, the same mathematical foundation applies to supply chains, water networks, production lines, and more.
+FlixOpt is a **general-purpose framework for modeling any system involving flows and conversions** - energy, materials, fluids, goods, or data. While energy systems are the primary use case, the same mathematical foundation applies to supply chains, water networks, production lines, and more. THis also enables the coupling of such systems with an energy system model.
 
-We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) for long-term planning and low-level dispatch tools for operations. FlixOpt is the **sweet spot** for:
+We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) for long-term planning and low-level tools for short term operation/dispatch.
+This approach is similar to the mature [PyPSA](https://docs.pypsa.org/latest/) project. FlixOpt is the **sweet spot** for:
 
 - **Researchers** who need to prototype quickly but may require deep customization later
 - **Engineers** who want reliable, tested components without black-box abstractions
@@ -114,6 +115,10 @@ system_high = flow_system.sel(scenario="high_demand")
 system_hourly = flow_system.resample(time="h")
 system_daily = flow_system.resample(time="D")
 ```
+
+### User Friendly
+Flixopt is object oriented and well documented. We try to make the project and the resulting code as readable as possible.
+If you have any issues with naming or definitions of parameters feel free to propose a rename.
 
 ---
 
