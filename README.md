@@ -17,21 +17,19 @@ We believe that optimization modeling should be **approachable for beginners** y
 ### Where We're Going
 
 **Short-term goals:**
-- **Multi-dimensional modeling**: Full support for multi-period investments and scenario-based stochastic optimization (periods and scenarios are in active development)
 - **Enhanced component library**: More pre-built, domain-specific components (sector coupling, hydrogen systems, thermal networks, demand-side management)
+- **Advanced result analysis**: Automated reporting and even more visualization options
+- **Examples of stochastic and Multi-Period Modeling**: THe new feature is currently lacking showcases.
+- **Interactive tutorials**: Browser-based, reactive tutorials for learning FlixOpt without local installation
 
 **Medium-term vision:**
 - **Modeling to generate alternatives (MGA)**: Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty
-- **Interactive tutorials**: Browser-based, reactive tutorials for learning FlixOpt without local installation
 - **Standardized cost calculations**: Align with industry standards (VDI 2067) for CAPEX/OPEX calculations
-- **Advanced result analysis**: Time-series aggregation, automated reporting, and rich visualization options
 
 **Long-term vision:**
 - **Showcase universal applicability**: FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
-- **Seamless integration**: First-class support for coupling with simulation tools, databases, existing energy system models, and GIS data
-- **Robust optimization**: Built-in uncertainty quantification and stochastic programming capabilities
+- **Production ready**: First class support for modeling in production
 - **Community ecosystem**: Rich library of user-contributed components, examples, and domain-specific extensions
-- **Model validation tools**: Automated checks for physical plausibility, data consistency, and common modeling errors
 
 ### Why FlixOpt Exists
 
@@ -66,12 +64,18 @@ boiler = fx.Boiler("Boiler", eta=0.9, ...)
 boiler.model.add_constraints(custom_constraint, name="my_constraint")
 ```
 
+### Multi-Dimensional Modeling
+Model complex real-world decisions with **periods** and **scenarios**:
+- **Periods** enable multi-period investment planning - optimize transformation pathways with distinct investment decisions in each period
+- **Scenarios** support stochastic optimization with weighted scenarios for robust decision-making under uncertainty (demand variations, price scenarios, weather conditions)
+
 ### Multi-Criteria Optimization Done Right
-Model costs, emissions, resource use, and any custom metric simultaneously as **Effects**. Optimize any single Effect, use weighted combinations, or apply ε-constraints:
+Model costs, emissions, resource use, and any custom metric simultaneously as **Effects**. Effects now use intuitive `share_from_*` syntax showing clear contribution sources. Optimize any single Effect, use weighted combinations, or apply ε-constraints:
 
 ```python
 costs = fx.Effect('costs', '€', 'Total costs',
-                  share_from_temporal={'CO2': 180})  # 180 €/tCO2
+                  share_from_temporal={'CO2': 180},  # 180 €/tCO2 from temporal effects
+                  share_from_periodic={'land': 100})  # 100 €/m² from periodic effects
 co2 = fx.Effect('CO2', 'kg', 'Emissions', maximum_periodic=50000)
 ```
 
@@ -82,7 +86,17 @@ Choose the right calculation mode for your problem:
 - **Aggregated** - Typical periods using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam) for massive models
 
 ### Built for Reproducibility
-Every result file is self-contained with complete model information. Load it months later and know exactly what you optimized. Export to NetCDF, share with colleagues, archive for compliance.
+Every result file is self-contained with complete model information. Full NetCDF/JSON serialization support with round-trip fidelity. Load results months later and know exactly what you optimized - complete with the original FlowSystem. Export to NetCDF, share with colleagues, archive for compliance.
+
+### Powerful Data Manipulation
+FlowSystem objects support intuitive data operations:
+```python
+# Select specific time ranges or scenarios
+system_subset = flow_system.sel(time=slice("2025-06", "2025-12"))
+
+# Resample for multi-stage optimization
+coarse_system = flow_system.resample(time="D")  # Daily resolution
+```
 
 ---
 
