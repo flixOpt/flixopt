@@ -10,21 +10,20 @@ We believe optimization modeling should be **approachable for beginners** yet **
 
 ## 🚀 Short-term (Next 6 months)
 
-- **Stochastic/multi-period examples** - Showcase v3.0 capabilities with comprehensive examples
-- **Advanced result analysis** - Automated reporting, enhanced visualizations, cost breakdowns ([#398](https://github.com/flixOpt/flixopt/issues/398))
-- **Interactive tutorials** - Browser-based learning without installation ([#304](https://github.com/flixOpt/flixopt/issues/304))
+- **Examples of stochastic and multi-period modeling** - The new v3.0 features currently lack comprehensive showcases
+- **Advanced result analysis** - Automated reporting and enhanced visualization options
+- **Interactive tutorials** - Browser-based, reactive tutorials for learning FlixOpt without local installation using [Marimo](https://marimo.io/)
 
 ## 🔮 Medium-term (6-12 months)
 
-- **Modeling to Generate Alternatives (MGA)** - Explore near-optimal solutions for robust decision-making ([#338](https://github.com/flixOpt/flixopt/issues/338), [PyPSA](https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/), [Calliope](https://calliope.readthedocs.io/en/latest/examples/modes/))
-- **Advanced stochastic optimization** - Two-stage programming, CVaR, rolling horizon ([PyPSA reference](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/))
-- **Enhanced component library** - Sector coupling, hydrogen systems, thermal networks, demand-side management
+- **Modeling to Generate Alternatives (MGA)** - Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty. See [PyPSA](https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/) and [Calliope](https://calliope.readthedocs.io/en/latest/examples/modes/) for reference implementations
+- **Advanced stochastic optimization** - Build sophisticated new `Calculation` classes to perform different stochastic optimization approaches, like PyPSA's [two-stage stochastic programming and risk preferences with Conditional Value-at-Risk (CVaR)](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/)
+- **Enhanced component library** - More pre-built, domain-specific components (sector coupling, hydrogen systems, thermal networks, demand-side management)
 
-## 🌟 Long-term (18+ months)
+## 🌟 Long-term (12+ months)
 
-- **Universal applicability showcase** - Examples and components for supply chains, water networks, production planning
-- **Production-ready features** - API interfaces, distributed solving, real-time optimization ([#402](https://github.com/flixOpt/flixopt/issues/402))
-- **Community ecosystem** - Component registry, plugin system, template library
+- **Showcase universal applicability** - FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
+- **Community ecosystem** - Rich library of user-contributed components, examples, and domain-specific extensions
 
 ---
 
