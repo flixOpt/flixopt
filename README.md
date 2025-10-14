@@ -58,123 +58,45 @@ calculation.results.solution
 
 ## 🌟 Why FlixOpt?
 
-### For Everyone: Start Simple, Scale Complex
+### Progressive Enhancement - Your Model Grows With You
 
-**Beginners** get working models in minutes with high-level components:
+**Start simple:**
 ```python
-boiler = fx.Boiler("Boiler", eta=0.9, ...)  # Just works
-```
-
-**Experts** can drill down to fine-grained control when needed:
-```python
-boiler.submodel.add_constraints(custom_constraint, name="my_constraint")
-```
-
-**No framework switching.** Your initial model structure stays intact as you add complexity.
-
-### Grow Your Model Incrementally
-
-Start simple, then progressively enhance without refactoring:
-
-```python
-# Step 1: Simple single-period model
-flow_system = fx.FlowSystem(timesteps=timesteps)
+# Basic single-period model
+flow_system = fx.FlowSystem(timesteps)
 boiler = fx.Boiler("Boiler", eta=0.9, ...)
-flow_system.add_component(boiler)
-
-# Step 2: Add investment decisions
-boiler.Q_th.invest_parameters = fx.InvestParameters(...)
-
-# Step 3: Multi-period planning? Just add periods!
-periods = pd.Index([2025, 2030, 2035])
-flow_system_mp = fx.FlowSystem(timesteps=timesteps, periods=periods)
-flow_system_mp.add_component(boiler)  # Same component!
-
-# Step 4: Model uncertainty? Add scenarios!
-scenarios = pd.Index(['high_demand', 'base_case', 'low_demand'])
-flow_system_stoch = fx.FlowSystem(
-    timesteps=timesteps,
-    periods=periods,
-    scenarios=scenarios,
-    weights=[0.3, 0.5, 0.2]
-)
 ```
 
-**The key:** Your component definitions stay the same. Periods and scenarios are dimensions of the FlowSystem, not structural changes to your model.
+**Add complexity incrementally:**
+- **Investment decisions** → Add `InvestParameters` to components
+- **Multi-period planning** → Add `periods` dimension to FlowSystem
+- **Uncertainty modeling** → Add `scenarios` dimension with probabilities
+- **Custom constraints** → Extend with native linopy syntax
 
-### Multi-Criteria Optimization
+**No refactoring required.** Your component definitions stay the same - periods, scenarios, and features are added as dimensions and parameters.
 
-Model multiple metrics simultaneously - costs, emissions, resource use, any custom metric:
+→ [Learn more about multi-period and stochastic modeling](https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/dimensions/)
 
-```python
-# Start simple
-costs = fx.Effect('costs', '€', 'Total costs', is_objective=True)
-co2 = fx.Effect('CO2', 'kg', 'Emissions')
+### For Everyone
 
-# Add sophisticated relationships later
-costs = fx.Effect('costs', '€', 'Total costs', is_objective=True,
-                  share_from_temporal={'CO2': 180},  # Carbon pricing: 180 €/tCO2
-                  share_from_periodic={'land': 100})  # Land cost: 100 €/m²
-co2 = fx.Effect('CO2', 'kg', 'Emissions',
-                maximum_periodic=50000)  # Emission constraint
-```
+- **Beginners:** High-level components that "just work"
+- **Experts:** Full access to modify models with linopy
+- **Researchers:** Quick prototyping with customization options
+- **Engineers:** Reliable, tested components without black boxes
+- **Students:** Clear, Pythonic interfaces for learning optimization
 
-This enables to model and evaluate cost structures in a system directly from the optimization solution (Costs from Investments, Costs from Operation, Revenues, Funding, Net Costs)
+### Key Features
 
-### Performance at Any Scale
+**Multi-criteria optimization:** Model costs, emissions, resource use - any custom metric. Optimize single objectives or use weighted combinations and ε-constraints.
+→ [Effects documentation](https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-penalty-objective/)
 
-Choose the calculation mode that fits your problem - **without changing your model definition:**
+**Performance at any scale:** Choose calculation modes without changing your model - Full, Segmented, or Aggregated (using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam)).
+→ [Calculation modes](https://flixopt.github.io/flixopt/latest/api-reference/calculation/)
 
-- **Full** - Maximum accuracy for detailed models (hours to days)
-- **Segmented** - Rolling horizon for long time series (months to years)
-- **Aggregated** - Typical periods using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam) for massive models (decades)
+**Built for reproducibility:** Self-contained NetCDF result files with complete model information. Load results months later - everything is preserved.
+→ [Results documentation](https://flixopt.github.io/flixopt/latest/api-reference/results/)
 
-```python
-# Same model, different calculation modes
-fx.FullCalculation("MyModel", flow_system)
-fx.SegmentedCalculation("MyModel", flow_system, segment_length=168)
-fx.AggregatedCalculation("MyModel", flow_system, n_clusters=12)
-```
-
-### Built for Reproducibility
-
-Every result file is **self-contained** with complete model information:
-
-- Full NetCDF/JSON serialization with round-trip fidelity
-- Load results months later and know exactly what you optimized
-- Original FlowSystem included - no manual reconstruction needed
-- Export to NetCDF, share with colleagues, archive for compliance
-
-```python
-# Save
-calculation.results.to_file('my_results.nc')
-
-# Load later - everything is there
-results = fx.results.CalculationResults.from_file('my_results.nc')
-original_system = results.flow_system  # Automatically restored!
-```
-
-### Flexible Data Manipulation
-
-Transform your FlowSystem on the fly using familiar xarray-style operations:
-
-```python
-# Subset to specific time ranges
-system_q2 = flow_system.sel(time=slice("2025-04", "2025-06"))
-
-# Extract specific scenarios for comparison
-system_high = flow_system.sel(scenario="high_demand")
-
-# Resample for multi-stage optimization
-system_daily = flow_system.resample(time="D")
-```
-
-### User-Friendly Design
-
-- **Object-oriented** and Pythonic - feels natural if you know Python
-- **Comprehensively documented** - every parameter explained
-- **Readable code** - we prioritize clarity in both framework and user code
-- **Open to feedback** - unclear naming? We welcome your suggestions!
+**Flexible data operations:** Transform FlowSystems with xarray-style operations (`sel()`, `resample()`) for multi-stage optimization.
 
 ---
 
@@ -185,30 +107,18 @@ system_daily = flow_system.resample(time="D")
 FlixOpt models **any system involving flows and conversions:**
 
 - **Energy systems:** District heating/cooling, microgrids, renewable portfolios, sector coupling
-- **Material flows:** Supply chains, production lines, chemical processes, recycling networks
-- **Integrated systems:** Water-energy nexus, industrial symbiosis, smart cities
+- **Material flows:** Supply chains, production lines, chemical processes
+- **Integrated systems:** Water-energy nexus, industrial symbiosis
 
-While energy systems are our primary focus, the same mathematical foundation applies universally. This enables coupling different system types within integrated models.
-
-### The Sweet Spot
-
-We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) for long-term planning and low-level tools for short-term operation and dispatch. This approach is similar to the mature [PyPSA](https://docs.pypsa.org/latest/) project.
-
-**FlixOpt is ideal for:**
-
-- **Researchers** who need quick prototyping but may require deep customization later
-- **Engineers** who want reliable, tested components without black-box abstractions
-- **Students** learning optimization who benefit from clear, Pythonic interfaces
-- **Practitioners** who need to move from model to production-ready results
-- **Domain experts** from any field where things flow, transform, and need optimizing
+While energy systems are our primary focus, the same foundation applies universally. This enables coupling different system types within integrated models.
 
 ### Modern Foundations
 
-Built on [linopy](https://github.com/PyPSA/linopy/) and [xarray](https://github.com/pydata/xarray), FlixOpt delivers both **performance** and **transparency**:
+Built on [linopy](https://github.com/PyPSA/linopy/) and [xarray](https://github.com/pydata/xarray), FlixOpt delivers **performance** and **transparency**. Full access to variables, constraints, and model structure. Extend anything with native linopy syntax.
 
-- **Inspect everything** - full access to variables, constraints, and model structure
-- **Extend anything** - add custom constraints using native linopy syntax
-- **Trust your model** - you control exactly what gets optimized
+### Our Position
+
+We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) and low-level dispatch tools - similar to [PyPSA](https://docs.pypsa.org/latest/). FlixOpt is the sweet spot for detailed operational planning and long-term investment analysis in the **same framework**.
 
 ### Academic Roots
 
@@ -218,28 +128,19 @@ Originally developed at [TU Dresden](https://github.com/gewv-tu-dresden) for the
 
 ## 🛣️ Roadmap
 
-### Our Vision
+**FlixOpt aims to be the most accessible, flexible, and universal Python framework for energy and material flow optimization.** We believe optimization modeling should be approachable for beginners yet powerful for experts, minimizing context switching between different planning horizons.
 
-**FlixOpt aims to be the most accessible, flexible, and universal Python framework for energy and material flow optimization.**
+**Current focus:**
+- Enhanced component library (sector coupling, hydrogen, thermal networks)
+- Examples showcasing multi-period and stochastic modeling
+- Advanced result analysis and visualization
 
-We believe optimization modeling should be **approachable for beginners** yet **powerful for experts**. We also believe in **minimizing context switching** - use the same tool for short-term operational planning and long-term investment analysis.
+**Future vision:**
+- Modeling to generate alternatives (MGA) for robust decision-making
+- Advanced stochastic optimization (two-stage, CVaR)
+- Community ecosystem of user-contributed components
 
-### Short-term Goals
-
-- **Enhanced component library:** More pre-built, domain-specific components (sector coupling, hydrogen systems, thermal networks, demand-side management)
-- **Advanced result analysis:** Automated reporting and enhanced visualization options
-- **Examples of stochastic and multi-period modeling:** The new features currently lack comprehensive showcases
-- **Interactive tutorials:** Browser-based, reactive tutorials for learning FlixOpt without local installation
-
-### Medium-term Vision
-
-- **Modeling to generate alternatives (MGA):** Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty. See [PyPSA](https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/) and [Calliope](https://calliope.readthedocs.io/en/latest/examples/modes/) for reference implementations
-- **Advanced stochastic optimization:** Build sophisticated new `Calculation` classes to perform different stochastic optimization approaches, like PyPSA's [two-stage stochastic programming and risk preferences with Conditional Value-at-Risk (CVaR)](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/)
-
-### Long-term Vision
-
-- **Showcase universal applicability:** FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
-- **Community ecosystem:** Rich library of user-contributed components, examples, and domain-specific extensions
+→ [Full roadmap and vision](https://github.com/flixOpt/flixopt#roadmap)
 
 ---
 
@@ -263,11 +164,9 @@ pip install "flixopt[full]"
 
 ### Solver Support
 
-FlixOpt supports many solvers via linopy:
-- **HiGHS** (included, open-source, recommended for most users)
-- **Gurobi** (commercial, fast for large problems)
-- **CPLEX** (commercial)
-- **CBC, GLPK** (open-source alternatives)
+FlixOpt supports many solvers via linopy: **HiGHS** (included), **Gurobi**, **CPLEX**, **CBC**, **GLPK**, and more.
+
+→ [Installation guide](https://flixopt.github.io/flixopt/latest/getting-started/)
 
 ---
 
@@ -275,7 +174,7 @@ FlixOpt supports many solvers via linopy:
 
 FlixOpt thrives on community input. Whether you're fixing bugs, adding components, improving docs, or sharing use cases - **we welcome your contributions.**
 
-See our [contribution guide](https://flixopt.github.io/flixopt/latest/contribute/) to get started.
+→ [Contribution guide](https://flixopt.github.io/flixopt/latest/contribute/)
 
 ---
 
