@@ -140,7 +140,7 @@ Originally developed at [TU Dresden](https://github.com/gewv-tu-dresden) for the
 - Advanced stochastic optimization (two-stage, CVaR)
 - Community ecosystem of user-contributed components
 
-→ [Full roadmap and vision](https://github.com/flixOpt/flixopt#roadmap)
+→ [Full roadmap and vision](https://flixopt.github.io/flixopt/latest/roadmap/)
 
 ---
 
