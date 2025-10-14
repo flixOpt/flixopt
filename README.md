@@ -20,9 +20,11 @@
 
 ## 🎯 Vision
 
-**FlixOpt aims to be the most accessible and flexible Python framework for energy and material flow optimization.**
+**FlixOpt aims to be the most accessible, flexible and universal Python framework for energy and material flow optimization.**
 
-We believe that optimization modeling should be **approachable for beginners** yet **powerful for experts**. Too often, frameworks force you to choose between ease of use and flexibility. FlixOpt refuses this compromise.
+We believe that optimization modeling should be **approachable for beginners** yet **powerful for experts**. Further we belive in **minimizing context switching**.
+
+Flixopt aims to be the tool of choice for both short term planning with high grade of detail, and for long term investment planning. We belive that using the same tool and context for both holds a lot of value.
 
 ### Where We're Going
 
@@ -33,12 +35,11 @@ We believe that optimization modeling should be **approachable for beginners** y
 - **Interactive tutorials**: Browser-based, reactive tutorials for learning FlixOpt without local installation
 
 **Medium-term vision:**
-- **Modeling to generate alternatives (MGA)**: Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty
-- **Standardized cost calculations**: Align with industry standards (VDI 2067) for CAPEX/OPEX calculations
+- **Modeling to generate alternatives (MGA)**: Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty. See [PyPSA](https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/) and [calliope](https://calliope.readthedocs.io/en/latest/examples/modes/)
+- **Stochastic Optimization**: Build sophisticated new `Calculation` classes to perform differnet Stochastic optimization. Like PyPSA's new [**Two-Stage Stochastic-Programming** or **Risk Preferences with Conditional Value-at-Risk (CVaR)**](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/)
 
 **Long-term vision:**
 - **Showcase universal applicability**: FlixOpt already handles any flow-based system (supply chains, water networks, production planning, chemical processes) - we need more examples and domain-specific component libraries to demonstrate this
-- **Production ready**: First class support for modeling in production
 - **Community ecosystem**: Rich library of user-contributed components, examples, and domain-specific extensions
 
 ### Why FlixOpt Exists
