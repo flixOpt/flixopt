@@ -238,6 +238,8 @@ class FullCalculation(Calculation):
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
+        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]} seconds.')
+        logger.info(f'Model status after solve: {self.model.status}')
 
         if self.model.status == 'warning':
             # Save the model and the flow_system to file in case of infeasibility
@@ -624,6 +626,8 @@ class SegmentedCalculation(Calculation):
         for calc in self.sub_calculations:
             for key, value in calc.durations.items():
                 self.durations[key] += value
+
+        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]} seconds.')
 
         self.results = SegmentedCalculationResults.from_calculation(self)
 
