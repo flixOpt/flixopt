@@ -239,9 +239,9 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 === "v2.x (Deprecated)"
 
     ```python
-    fx.Source('my_source', source=flow)
+    flow1 = fx.Source('Buy', bus='Gas)
 
-    fx.Sink('my_sink', sink=flow)
+    flow2 = fx.Flow('Sell', bus='Gas)
 
     fx.SourceAndSink(
         'my_source_sink',
@@ -254,14 +254,14 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 === "v3.0.0 (Recommended)"
 
     ```python
-    fx.Source('my_source', outputs=flow)
+    flow1 = fx.Source('Buy', bus='Gas)
 
-    fx.Sink('my_sink', inputs=flow)
+    flow2 = fx.Flow('Sell', bus='Gas)
 
     fx.SourceAndSink(
         'my_source_sink',
-        outputs=flow1,
-        inputs=flow2,
+        outputs=[flow1],
+        inputs=[flow2],
         prevent_simultaneous_flow_rates=True
     )
     ```
