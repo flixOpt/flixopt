@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import math
 import pathlib
+import sys
 import timeit
 import warnings
 from collections import Counter
@@ -20,6 +21,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
 import yaml
+from tqdm import tqdm
 
 from . import io as fx_io
 from . import utils as utils
@@ -575,10 +577,19 @@ class SegmentedCalculation(Calculation):
         logger.info(f'{" Segmented Solving ":#^80}')
         self._create_sub_calculations()
 
-        for i, calculation in enumerate(self.sub_calculations):
-            logger.info(
-                f'{self.segment_names[i]} [{i + 1:>2}/{len(self.segment_names):<2}] '
-                f'({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]}):'
+        # Create tqdm progress bar with custom format that prints to stdout
+        progress_bar = tqdm(
+            enumerate(self.sub_calculations),
+            total=len(self.sub_calculations),
+            desc='Solving segments',
+            unit='segment',
+            file=sys.stdout,  # Force tqdm to write to stdout instead of stderr
+        )
+
+        for i, calculation in progress_bar:
+            # Update progress bar description with current segment info
+            progress_bar.set_description(
+                f'Solving ({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]})'
             )
 
             if i > 0 and self.nr_of_previous_values > 0:
@@ -600,11 +611,15 @@ class SegmentedCalculation(Calculation):
                         f'Following InvestmentModels were found: {invest_elements}'
                     )
 
-            calculation.solve(
-                solver,
-                log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
-                log_main_results=log_main_results,
-            )
+            # Redirect solver stdout to null to avoid cluttering the output
+            with utils.suppress_output():
+                calculation.solve(
+                    solver,
+                    log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
+                    log_main_results=log_main_results,
+                )
+
+        progress_bar.close()
 
         for calc in self.sub_calculations:
             for key, value in calc.durations.items():
