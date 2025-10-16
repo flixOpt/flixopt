@@ -41,7 +41,6 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 ---
 
-
 ## [Unreleased] - ????-??-??
 
 ### ✨ Added
@@ -49,8 +48,6 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
-- Reverted breaking change from v3.0.0: continue to use `mode parameter in plotting instead of new `style`
-- Renamed new `mode` parameter in plotting methods to `unit_type`
 
 ### 🗑️ Deprecated
 
@@ -63,8 +60,6 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 📦 Dependencies
 
 ### 📝 Docs
-- Updated Migration Guide and added missing entries.
-- Improved Changelog of v3.0.0
 
 ### 👷 Development
 
@@ -72,6 +67,19 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 ---
 Until here -->
+
+## [3.0.3] - 2025-10-16
+**Summary**: Hotfixing new plotting parameter `style`. Continue to use `mode`.
+
+### 🐛 Fixed
+- Reverted breaking change from v3.0.0: continue to use `mode parameter in plotting instead of new `style`
+- Renamed new `mode` parameter in plotting methods to `unit_type`
+
+### 📝 Docs
+- Updated Migration Guide and added missing entries.
+- Improved Changelog of v3.0.0
+
+---
 
 ## [3.0.2] - 2025-10-15
 **Summary**: This is a follow-up release to **[v3.0.0](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0)**, improving the documentation.
