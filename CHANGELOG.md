@@ -61,6 +61,8 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Updated Migration Guide and added missing entries.
+- Improved Changelog of v3.0.0
 
 ### 👷 Development
 
@@ -139,17 +141,43 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### 💥 Breaking Changes
 
-- `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
+**API and Behavior Changes:**
+
+- **Effect system redesigned** (no deprecation):
+  - **Terminology changes**: Effect domains renamed for clarity: `operation` → `temporal`, `invest`/`investment` → `periodic`
+  - **Sharing system**: The old `specific_share_to_other_effects_*` parameters were completely replaced with the new `share_from_temporal` and `share_from_periodic` syntax (see 🔥 Removed section)
+- **FlowSystem independence**: FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent. Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
+- **Bus and Effect object assignment**: Direct assignment of Bus/Effect objects is no longer supported. Use labels (strings) instead:
+  - `Flow.bus` must receive a string label, not a Bus object
+  - Effect shares must use effect labels (strings) in dictionaries, not Effect objects
+- **Logging defaults** (from v2.2.0): Console and file logging are now disabled by default. Enable explicitly with `CONFIG.Logging.console = True` and `CONFIG.apply()`
+
+**Class and Method Renaming:**
+
 - Renamed class `SystemModel` to `FlowSystemModel`
 - Renamed class `Model` to `Submodel`
 - Renamed `mode` parameter in plotting methods to `style`
-- Renamed investment binary variable `is_invested` to `invested` in `InvestmentModel`
-- `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`.
+- `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`
+
+**Variable Renaming in Results:**
+
+- Investment binary variable: `is_invested` → `invested` in `InvestmentModel`
+- Switch tracking variables in `OnOffModel`:
+  - `switch_on` → `switch|on`
+  - `switch_off` → `switch|off`
+  - `switch_on_nr` → `switch|count`
+- Effect submodel variables (following terminology changes):
+  - `Effect(invest)|total` → `Effect(periodic)`
+  - `Effect(operation)|total` → `Effect(temporal)`
+  - `Effect(operation)|total_per_timestep` → `Effect(temporal)|per_timestep`
+  - `Effect|total` → `Effect`
+
+**Data Structure Changes:**
+
+- `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. Use the new `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameters for final state control
 
 ### ♻️ Changed
 
-- FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
-- Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
 - Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
 - Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
 - Improved Model Structure - Views and organisation is now divided into:
@@ -164,8 +192,6 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 - The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
 - The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
-- The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
-- The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
 - **InvestParameters** parameters renamed for improved clarity around investment and retirement effects:
     - `fix_effects` → `effects_of_investment`
     - `specific_effects` → `effects_of_investment_per_size`
