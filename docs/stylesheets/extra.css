@@ -119,7 +119,7 @@
 }
 
 /* ============================================================================
-   Admonitions & Callouts - NEW SEMANTIC STYLING
+   Admonitions & Callouts - CORRECTED SEMANTIC STYLING
    ========================================================================= */
 
 /* Enhanced admonitions (existing style preserved) */
@@ -129,18 +129,21 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-/* Admonitions using the new palette */
-
-/* Success and Tip (often mapped to success for positive tone) */
+/* Success and Tip (Green) */
 .md-typeset .admonition.success,
 .md-typeset .admonition.tip,
 .md-typeset div.success,
 .md-typeset div.tip {
+  /* This sets the border, title bar, and icon color to your bold semantic color */
   --md-typeset-color-tip: var(--color-success);
+  --md-typeset-color-success: var(--color-success);
+
+  /* This sets the background to your defined lighter shade */
   --md-typeset-color-tip-bg: var(--color-success-light);
+  --md-typeset-color-success-bg: var(--color-success-light);
 }
 
-/* Info, Note, and Abstract (mapped to Info blue for neutral/informational tone) */
+/* Info, Note, and Abstract (Blue) */
 .md-typeset .admonition.info,
 .md-typeset .admonition.note,
 .md-typeset .admonition.abstract,
@@ -148,10 +151,15 @@
 .md-typeset div.note,
 .md-typeset div.abstract {
   --md-typeset-color-info: var(--color-info);
+  --md-typeset-color-abstract: var(--color-info); /* Use info color for abstract/note */
+  --md-typeset-color-note: var(--color-info);
+
   --md-typeset-color-info-bg: var(--color-info-light);
+  --md-typeset-color-abstract-bg: var(--color-info-light);
+  --md-typeset-color-note-bg: var(--color-info-light);
 }
 
-/* Warning and Caution */
+/* Warning and Caution (Orange) */
 .md-typeset .admonition.warning,
 .md-typeset .admonition.caution,
 .md-typeset div.warning,
@@ -160,7 +168,7 @@
   --md-typeset-color-warning-bg: var(--color-warning-light);
 }
 
-/* Danger, Error, and Failure */
+/* Danger, Error, and Failure (Red) */
 .md-typeset .admonition.danger,
 .md-typeset .admonition.error,
 .md-typeset .admonition.failure,
@@ -175,11 +183,15 @@
 [data-md-color-scheme="slate"] {
     --md-code-bg-color: #1e1e1e;
 
+    /* Apply Dark Mode Backgrounds */
     .md-typeset .admonition.success, .md-typeset .admonition.tip {
         --md-typeset-color-tip-bg: var(--color-success-dark-bg);
+        --md-typeset-color-success-bg: var(--color-success-dark-bg);
     }
     .md-typeset .admonition.info, .md-typeset .admonition.note, .md-typeset .admonition.abstract {
         --md-typeset-color-info-bg: var(--color-info-dark-bg);
+        --md-typeset-color-abstract-bg: var(--color-info-dark-bg);
+        --md-typeset-color-note-bg: var(--color-info-dark-bg);
     }
     .md-typeset .admonition.warning, .md-typeset .admonition.caution {
         --md-typeset-color-warning-bg: var(--color-warning-dark-bg);
