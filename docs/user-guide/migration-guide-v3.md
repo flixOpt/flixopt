@@ -31,23 +31,25 @@ Effect domains have been renamed for clarity:
 
 Effects now "pull" shares from other effects instead of "pushing" them.
 
-**v2.x:**
-```python
-CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions',
-    specific_share_to_other_effects_operation={'costs': 0.2})  # operation → temporal
-land = fx.Effect('land', 'm²', 'Land usage',
-    specific_share_to_other_effects_invest={'costs': 100})     # invest → periodic
-costs = fx.Effect('costs', '€', 'Total costs')
-```
+=== "v2.x (Old)"
 
-**v3.0.0:**
-```python
-CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
-land = fx.Effect('land', 'm²', 'Land usage')
-costs = fx.Effect('costs', '€', 'Total costs',
-    share_from_temporal={'CO2': 0.2},      # Pulls from temporal effects
-    share_from_periodic={'land': 100})     # Pulls from periodic effects
-```
+    ```python
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions',
+        specific_share_to_other_effects_operation={'costs': 0.2})  # operation → temporal
+    land = fx.Effect('land', 'm²', 'Land usage',
+        specific_share_to_other_effects_invest={'costs': 100})     # invest → periodic
+    costs = fx.Effect('costs', '€', 'Total costs')
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    land = fx.Effect('land', 'm²', 'Land usage')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={'CO2': 0.2},      # Pulls from temporal effects
+        share_from_periodic={'land': 100})     # Pulls from periodic effects
+    ```
 
 **Migration:**
 1. Move share definitions to the receiving effect
@@ -69,42 +71,96 @@ costs = fx.Effect('costs', '€', 'Total costs',
 | `switch_off` | `switch\|off` |
 | `switch_on_nr` | `switch\|count` |
 
-```python
-# Old: results.solution['component|is_invested']
-# New: results.solution['component|invested']
-```
+=== "v2.x (Old)"
+
+    ```python
+    # Access investment decision
+    results.solution['component|is_invested']
+
+    # Access switch tracking
+    results.solution['component|switch_on']
+    results.solution['component|switch_off']
+    results.solution['component|switch_on_nr']
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # Access investment decision
+    results.solution['component|invested']
+
+    # Access switch tracking
+    results.solution['component|switch|on']
+    results.solution['component|switch|off']
+    results.solution['component|switch|count']
+    ```
 
 ---
 
 ### 3. Bus and Effect Assignment - Use String Labels
 
-Pass string labels instead of objects:
+Pass string labels instead of objects.
 
 **Bus Assignment:**
-```python
-# Old: flow = fx.Flow('P_el', bus=my_bus_object)
-# New: flow = fx.Flow('P_el', bus='electricity')
-```
+
+=== "v2.x (Old)"
+
+    ```python
+    my_bus = fx.Bus('electricity')
+    flow = fx.Flow('P_el', bus=my_bus)  # ❌ Object
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    my_bus = fx.Bus('electricity')
+    flow = fx.Flow('P_el', bus='electricity')  # ✅ String label
+    ```
 
 **Effect Shares:**
-```python
-# Old: costs = fx.Effect('costs', '€', share_from_temporal={CO2_object: 0.2})
-# New: costs = fx.Effect('costs', '€', share_from_temporal={'CO2': 0.2})
-```
+
+=== "v2.x (Old)"
+
+    ```python
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={CO2: 0.2})  # ❌ Object
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={'CO2': 0.2})  # ✅ String label
+    ```
 
 ---
 
 ### 4. Storage Charge State Bounds
 
-Array length now matches timesteps (no extra element):
+Array length now matches timesteps (no extra element).
 
-```python
-storage = fx.Storage(
-    'storage',
-    relative_minimum_charge_state=np.array([0.2, 0.2, 0.2, 0.2]),  # Matches timesteps
-    relative_minimum_final_charge_state=0.3  # New: control final state explicitly
-)
-```
+=== "v2.x (Old)"
+
+    ```python
+    # Array had extra timestep
+    storage = fx.Storage(
+        'storage',
+        relative_minimum_charge_state=np.array([0.2, 0.2, 0.2, 0.2, 0.2])  # 5 values for 4 timesteps
+    )
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # Array matches timesteps exactly
+    storage = fx.Storage(
+        'storage',
+        relative_minimum_charge_state=np.array([0.2, 0.2, 0.2, 0.2]),  # 4 values for 4 timesteps
+        relative_minimum_final_charge_state=0.3  # New: control final state explicitly
+    )
+    ```
 
 ---
 
@@ -112,17 +168,25 @@ storage = fx.Storage(
 
 Each `Calculation` now gets its own FlowSystem copy - calculations are fully independent.
 
-```python
-# v2.x: FlowSystem was shared across calculations
-flow_system = fx.FlowSystem(time=timesteps)
-calc1 = fx.FullCalculation('calc1', flow_system)  # Shared reference
-calc2 = fx.FullCalculation('calc2', flow_system)  # Same reference
+=== "v2.x (Old)"
 
-# v3.0.0: Each calculation gets a copy
-flow_system = fx.FlowSystem(time=timesteps)
-calc1 = fx.FullCalculation('calc1', flow_system)
-calc2 = fx.FullCalculation('calc2', flow_system)  # Gets separate copy
-```
+    ```python
+    # FlowSystem was shared across calculations
+    flow_system = fx.FlowSystem(time=timesteps)
+    calc1 = fx.FullCalculation('calc1', flow_system)  # Shared reference
+    calc2 = fx.FullCalculation('calc2', flow_system)  # Same reference
+    # Changes in calc1's FlowSystem would affect calc2
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # Each calculation gets a copy
+    flow_system = fx.FlowSystem(time=timesteps)
+    calc1 = fx.FullCalculation('calc1', flow_system)  # Gets copy
+    calc2 = fx.FullCalculation('calc2', flow_system)  # Gets separate copy
+    # Calculations are now independent
+    ```
 
 ---
 
@@ -175,18 +239,27 @@ calc2 = fx.FullCalculation('calc2', flow_system)  # Gets separate copy
 ### Calculation
 
 Replace `active_timesteps` with FlowSystem selection:
-```python
-# Old: calculation = fx.FullCalculation('calc', flow_system, active_timesteps=[0, 1, 2])
-# New:
-fs_subset = flow_system.isel(time=slice(0, 3))
-calculation = fx.FullCalculation('calc', fs_subset)
-```
+
+=== "v2.x (Deprecated)"
+
+    ```python
+    calculation = fx.FullCalculation('calc', flow_system,
+                                     active_timesteps=[0, 1, 2])
+    ```
+
+=== "v3.0.0 (Recommended)"
+
+    ```python
+    # Use FlowSystem selection methods
+    fs_subset = flow_system.isel(time=slice(0, 3))
+    calculation = fx.FullCalculation('calc', fs_subset)
+    ```
 
 ---
 
 ## New Features
 
-### Multi-Period Investments
+**Multi-Period Investments** - Model transformation pathways with distinct decisions in each period:
 
 ```python
 periods = pd.Index(['2020', '2030'])
@@ -196,7 +269,7 @@ solar = fx.Source('solar', outputs=[fx.Flow('P_el', bus='electricity',
     size=fx.InvestParameters(minimum_size=0, maximum_size=1000))])
 ```
 
-### Scenario-Based Stochastic Optimization
+**Scenario-Based Stochastic Optimization** - Handle uncertainty with weighted scenarios:
 
 ```python
 scenarios = pd.Index(['low', 'base', 'high'], name='scenario')
@@ -205,7 +278,7 @@ flow_system = fx.FlowSystem(time=timesteps, scenarios=scenarios,
     scenario_independent_sizes=True)  # Optional: scenario-specific capacities
 ```
 
-### Enhanced I/O
+**Enhanced I/O** - Save, load, and manipulate FlowSystems:
 
 ```python
 flow_system.to_netcdf('system.nc')
@@ -214,14 +287,14 @@ fs_subset = flow_system.sel(time=slice('2020-01', '2020-06'))
 fs_resampled = flow_system.resample(time='D')
 ```
 
-### Effects Per Component
+**Effects Per Component** - Analyze component impacts including indirect effects:
 
 ```python
 effects_ds = calculation.results.effects_per_component()
 print(effects_ds['costs'])  # Costs by component
 ```
 
-### Balanced Storage
+**Balanced Storage** - Force equal charging and discharging capacities:
 
 ```python
 storage = fx.Storage('storage',
