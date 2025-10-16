@@ -47,6 +47,8 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### ✨ Added
 
 ### 💥 Breaking Changes
+- Reverted breaking change from v3.0.0: continue to use `mode parameter in plotting instead of new `style`
+- Renamed new usage of `mode` parameter in plotting methods to ùnit_type`
 
 ### ♻️ Changed
 
