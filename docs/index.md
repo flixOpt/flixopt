@@ -176,19 +176,19 @@ hide:
 }
 </style>
 
-<div class="hero-section" markdown>
+<div class="hero-section">
 
-# flixOpt
+<h1>flixOpt</h1>
 
 <p class="tagline">Energy and Material Flow Optimization Framework</p>
 
-Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.
+<p>Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.</p>
 
-<div class="hero-buttons" markdown="1">
-[:material-rocket-launch: Get Started](getting-started.md){ .md-button .md-button--primary }
-[:material-code-braces: View Examples](examples/index.md){ .md-button }
-[:fontawesome-brands-github: GitHub](https://github.com/flixOpt/flixopt){ .md-button }
-</div>
+<p class="hero-buttons">
+  <a href="getting-started.md" class="md-button md-button--primary">🚀 Get Started</a>
+  <a href="examples/index.md" class="md-button">💡 View Examples</a>
+  <a href="https://github.com/flixOpt/flixopt" class="md-button">⭐ GitHub</a>
+</p>
 
 </div>
 
@@ -342,10 +342,12 @@ Model, optimize, and analyze complex energy systems with a powerful Python frame
 
 ---
 
-<div style="text-align: center; margin: 3rem 0; padding: 2rem; background: var(--md-code-bg-color); border-radius: 0.75rem;" markdown>
+<div style="text-align: center; margin: 3rem 0; padding: 2rem; background: var(--md-code-bg-color); border-radius: 0.75rem;">
 
-### Ready to optimize your energy system?
+<h3>Ready to optimize your energy system?</h3>
 
-[:material-arrow-right: Start Building](getting-started.md){ .md-button .md-button--primary .md-button--lg }
+<p>
+  <a href="getting-started.md" class="md-button md-button--primary md-button--lg">▶️ Start Building</a>
+</p>
 
 </div>
