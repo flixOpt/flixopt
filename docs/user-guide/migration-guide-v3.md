@@ -91,7 +91,6 @@ Terminology changed and sharing system inverted: effects now "pull" shares.
 
 | Category | Old (v2.x) | New (v3.0.0) |
 |----------|------------|--------------|
-| Plotting parameter | `mode='line'` | `style='line'` |
 | System model class | `SystemModel` | `FlowSystemModel` |
 | Element submodel | `Model` | `Submodel` |
 | Logging default | Enabled | Disabled |
@@ -221,7 +220,7 @@ Terminology changed and sharing system inverted: effects now "pull" shares.
 | Category | Tasks |
 |----------|-------|
 | **Install** | • `pip install --upgrade flixopt` |
-| **Breaking changes** | • Update [effect sharing](#effect-system-redesign)<br>• Update [variable names](#variable-names)<br>• Update [string labels](#string-labels)<br>• Fix [storage arrays](#flowsystem-calculation)<br>• Update [Calculation API](#flowsystem-calculation)<br>• Rename plotting `mode` → `style`<br>• Update [class names](#other-changes) |
+| **Breaking changes** | • Update [effect sharing](#effect-system-redesign)<br>• Update [variable names](#variable-names)<br>• Update [string labels](#string-labels)<br>• Fix [storage arrays](#flowsystem-calculation)<br>• Update [Calculation API](#flowsystem-calculation)<br>• Update [class names](#other-changes) |
 | **Configuration** | • Enable [logging](#other-changes) if needed |
 | **Deprecated** | • Update [deprecated parameters](#deprecated-parameters) (recommended) |
 | **Testing** | • Test thoroughly<br>• Validate results match v2.x |

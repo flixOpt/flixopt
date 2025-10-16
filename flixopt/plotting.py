@@ -327,7 +327,7 @@ class ColorProcessor:
 
 def with_plotly(
     data: pd.DataFrame,
-    style: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
+    mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
@@ -340,7 +340,7 @@ def with_plotly(
     Args:
         data: A DataFrame containing the data to plot, where the index represents time (e.g., hours),
               and each column represents a separate data series.
-        style: The plotting style. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines,
+        mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines,
               or 'area' for stacked area charts.
         colors: Color specification, can be:
             - A string with a colorscale name (e.g., 'viridis', 'plasma')
@@ -354,8 +354,8 @@ def with_plotly(
     Returns:
         A Plotly figure object containing the generated plot.
     """
-    if style not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
-        raise ValueError(f"'style' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {style!r}")
+    if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
+        raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
     if data.empty:
         return go.Figure()
 
@@ -363,7 +363,7 @@ def with_plotly(
 
     fig = fig if fig is not None else go.Figure()
 
-    if style == 'stacked_bar':
+    if mode == 'stacked_bar':
         for i, column in enumerate(data.columns):
             fig.add_trace(
                 go.Bar(
@@ -381,7 +381,7 @@ def with_plotly(
             bargap=0,  # No space between bars
             bargroupgap=0,  # No space between grouped bars
         )
-    if style == 'grouped_bar':
+    if mode == 'grouped_bar':
         for i, column in enumerate(data.columns):
             fig.add_trace(go.Bar(x=data.index, y=data[column], name=column, marker=dict(color=processed_colors[i])))
 
@@ -390,7 +390,7 @@ def with_plotly(
             bargap=0.2,  # No space between bars
             bargroupgap=0,  # space between grouped bars
         )
-    elif style == 'line':
+    elif mode == 'line':
         for i, column in enumerate(data.columns):
             fig.add_trace(
                 go.Scatter(
@@ -401,7 +401,7 @@ def with_plotly(
                     line=dict(shape='hv', color=processed_colors[i]),
                 )
             )
-    elif style == 'area':
+    elif mode == 'area':
         data = data.copy()
         data[(data > -1e-5) & (data < 1e-5)] = 0  # Preventing issues with plotting
         # Split columns into positive, negative, and mixed categories
@@ -468,7 +468,7 @@ def with_plotly(
 
 def with_matplotlib(
     data: pd.DataFrame,
-    style: Literal['stacked_bar', 'line'] = 'stacked_bar',
+    mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
@@ -483,7 +483,7 @@ def with_matplotlib(
     Args:
         data: A DataFrame containing the data to plot. The index should represent time (e.g., hours),
               and each column represents a separate data series.
-        style: Plotting style. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
+        mode: Plotting mode. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification, can be:
             - A string with a colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
@@ -499,19 +499,19 @@ def with_matplotlib(
         A tuple containing the Matplotlib figure and axes objects used for the plot.
 
     Notes:
-        - If `style` is 'stacked_bar', bars are stacked for both positive and negative values.
+        - If `mode` is 'stacked_bar', bars are stacked for both positive and negative values.
           Negative values are stacked separately without extra labels in the legend.
-        - If `style` is 'line', stepped lines are drawn for each data series.
+        - If `mode` is 'line', stepped lines are drawn for each data series.
     """
-    if style not in ('stacked_bar', 'line'):
-        raise ValueError(f"'style' must be one of {{'stacked_bar','line'}} for matplotlib, got {style!r}")
+    if mode not in ('stacked_bar', 'line'):
+        raise ValueError(f"'mode' must be one of {{'stacked_bar','line'}} for matplotlib, got {mode!r}")
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
     processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
 
-    if style == 'stacked_bar':
+    if mode == 'stacked_bar':
         cumulative_positive = np.zeros(len(data))
         cumulative_negative = np.zeros(len(data))
         width = data.index.to_series().diff().dropna().min()  # Minimum time difference
@@ -542,7 +542,7 @@ def with_matplotlib(
             )
             cumulative_negative += negative_values.values
 
-    elif style == 'line':
+    elif mode == 'line':
         for i, column in enumerate(data.columns):
             ax.step(data.index, data[column], where='post', color=processed_colors[i], label=column)
 
