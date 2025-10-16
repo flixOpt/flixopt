@@ -12,7 +12,14 @@
 
 ### Effect System Redesign
 
-Terminology changed: `operation` → `temporal`, `invest/investment` → `periodic`. Sharing inverted: effects now "pull" shares.
+Terminology changed and sharing system inverted: effects now "pull" shares.
+
+| Concept | Old (v2.x) | New (v3.0.0) |
+|---------|------------|--------------|
+| Time-varying effects | `operation` | `temporal` |
+| Investment effects | `invest` / `investment` | `periodic` |
+| Share to other effects (operation) | `specific_share_to_other_effects_operation` | `share_from_temporal` |
+| Share to other effects (invest) | `specific_share_to_other_effects_invest` | `share_from_periodic` |
 
 === "v2.x"
     ```python
@@ -25,30 +32,35 @@ Terminology changed: `operation` → `temporal`, `invest/investment` → `period
     ```python
     CO2 = fx.Effect('CO2', 'kg', 'CO2')
     costs = fx.Effect('costs', '€', 'Total',
-        share_from_temporal={'CO2': 0.2})
+        share_from_temporal={'CO2': 0.2})  # Pull from CO2
     ```
 
 !!! warning "No deprecation warning"
-    - Move shares to receiving effect
-    - `specific_share_to_other_effects_operation` → `share_from_temporal`
-    - `specific_share_to_other_effects_invest` → `share_from_periodic`
+    Move shares to receiving effect and update parameter names throughout your code.
 
 ---
 
 ### Variable Names
 
-| Old | New | Old | New |
-|-----|-----|-----|-----|
-| `is_invested` | `invested` | `switch_on` | `switch|on` |
-| `switch_off` | `switch|off` | `switch_on_nr` | `switch|count` |
-| `Effect(invest)|total` | `Effect(periodic)` | `Effect(operation)|total` | `Effect(temporal)` |
-| `Effect(operation)|total_per_timestep` | `Effect(temporal)|per_timestep` | `Effect|total` | `Effect` |
+| Category                        | Old (v2.x) | New (v3.0.0) |
+|---------------------------------|------------|--------------|
+| Investment                      | `is_invested` | `invested` |
+| Switching                       | `switch_on` | `switch|on` |
+| Switching                       | `switch_off` | `switch|off` |
+| Switching                       | `switch_on_nr` | `switch|count` |
+| Effects                         | `Effect(invest)|total` | `Effect(periodic)` |
+| Effects        | `Effect(operation)|total` | `Effect(temporal)` |
+| Effects | `Effect(operation)|total_per_timestep` | `Effect(temporal)|per_timestep` |
+| Effects                    | `Effect|total` | `Effect` |
 
 ---
 
 ### String Labels
 
-Use strings instead of objects for Bus/Effect references.
+| What | Old (v2.x) | New (v3.0.0) |
+|------|------------|--------------|
+| Bus assignment | `bus=my_bus` (object) | `bus='electricity'` (string) |
+| Effect shares | `{CO2: 0.2}` (object key) | `{'CO2': 0.2}` (string key) |
 
 === "v2.x"
     ```python
@@ -66,20 +78,24 @@ Use strings instead of objects for Bus/Effect references.
 
 ### FlowSystem & Calculation
 
-- **FlowSystem**: Each `Calculation` gets its own copy (independent)
-- **do_modeling()**: Returns `Calculation` (access model via `.model` property)
-- **Storage**: Arrays match timestep count (no extra element)
-  - Use `relative_minimum_final_charge_state` for final state control
+| Change | Description |
+|--------|-------------|
+| **FlowSystem copying** | Each `Calculation` gets its own copy (independent) |
+| **do_modeling() return** | Returns `Calculation` object (access model via `.model` property) |
+| **Storage arrays** | Arrays match timestep count (no extra element) |
+| **Final charge state** | Use `relative_minimum_final_charge_state` / `relative_maximum_final_charge_state` |
 
 ---
 
 ### Other Changes
 
-| Category | Old | New |
-|----------|-----|-----|
-| Plotting | `mode='line'` | `style='line'` |
-| Classes | `SystemModel`, `Model` | `FlowSystemModel`, `Submodel` |
-| Logging | Enabled by default | Disabled (enable: `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`) |
+| Category | Old (v2.x) | New (v3.0.0) |
+|----------|------------|--------------|
+| Plotting parameter | `mode='line'` | `style='line'` |
+| System model class | `SystemModel` | `FlowSystemModel` |
+| Element submodel | `Model` | `Submodel` |
+| Logging default | Enabled | Disabled |
+| Enable logging | (default) | `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()` |
 
 ---
 
@@ -87,21 +103,44 @@ Use strings instead of objects for Bus/Effect references.
 
 ??? abstract "InvestParameters"
 
-    `fix_effects` → `effects_of_investment` • `specific_effects` → `effects_of_investment_per_size` • `divest_effects` → `effects_of_retirement` • `piecewise_effects` → `piecewise_effects_of_investment`
+    | Old (v2.x) | New (v3.0.0) |
+    |------------|--------------|
+    | `fix_effects` | `effects_of_investment` |
+    | `specific_effects` | `effects_of_investment_per_size` |
+    | `divest_effects` | `effects_of_retirement` |
+    | `piecewise_effects` | `piecewise_effects_of_investment` |
 
 ??? abstract "Effect"
 
-    `minimum_investment` → `minimum_periodic` • `maximum_investment` → `maximum_periodic` • `minimum_operation` → `minimum_temporal` • `maximum_operation` → `maximum_temporal` • `minimum_operation_per_hour` → `minimum_per_hour` • `maximum_operation_per_hour` → `maximum_per_hour`
+    | Old (v2.x) | New (v3.0.0) |
+    |------------|--------------|
+    | `minimum_investment` | `minimum_periodic` |
+    | `maximum_investment` | `maximum_periodic` |
+    | `minimum_operation` | `minimum_temporal` |
+    | `maximum_operation` | `maximum_temporal` |
+    | `minimum_operation_per_hour` | `minimum_per_hour` |
+    | `maximum_operation_per_hour` | `maximum_per_hour` |
 
 ??? abstract "Components"
 
-    `source` → `outputs` • `sink` → `inputs` • `prevent_simultaneous_sink_and_source` → `prevent_simultaneous_flow_rates`
+    | Old (v2.x) | New (v3.0.0) |
+    |------------|--------------|
+    | `source` (parameter) | `outputs` |
+    | `sink` (parameter) | `inputs` |
+    | `prevent_simultaneous_sink_and_source` | `prevent_simultaneous_flow_rates` |
 
-??? abstract "TimeSeriesData & Calculation"
+??? abstract "TimeSeriesData"
 
-    - `agg_group` → `aggregation_group`
-    - `agg_weight` → `aggregation_weight`
-    - `active_timesteps` → Use `flow_system.sel()` or `flow_system.isel()`
+    | Old (v2.x) | New (v3.0.0) |
+    |------------|--------------|
+    | `agg_group` | `aggregation_group` |
+    | `agg_weight` | `aggregation_weight` |
+
+??? abstract "Calculation"
+
+    | Old (v2.x) | New (v3.0.0) |
+    |------------|--------------|
+    | `active_timesteps=[0, 1, 2]` | Use `flow_system.sel()` or `flow_system.isel()` |
 
 ---
 
@@ -116,27 +155,51 @@ Use strings instead of objects for Bus/Effect references.
 
 ??? success "Scenario-Based Optimization"
 
+    | Parameter | Description | Example |
+    |-----------|-------------|---------|
+    | `scenarios` | Scenario index | `pd.Index(['low', 'base', 'high'], name='scenario')` |
+    | `scenario_weights` | Probabilities | `[0.2, 0.6, 0.2]` |
+    | `scenario_independent_sizes` | Separate capacities per scenario | `True` / `False` (default) |
+
     ```python
-    scenarios = pd.Index(['low', 'base', 'high'], name='scenario')
-    flow_system = fx.FlowSystem(time=timesteps, scenarios=scenarios,
-        scenario_weights=[0.2, 0.6, 0.2], scenario_independent_sizes=True)
+    flow_system = fx.FlowSystem(
+        time=timesteps,
+        scenarios=scenarios,
+        scenario_weights=[0.2, 0.6, 0.2],
+        scenario_independent_sizes=True
+    )
     ```
 
 ??? success "Enhanced I/O"
 
-    `flow_system.to_netcdf()` • `fx.FlowSystem.from_netcdf()` • `flow_system.sel()` • `flow_system.resample()` • `results.flow_system`
+    | Method | Description |
+    |--------|-------------|
+    | `flow_system.to_netcdf('file.nc')` | Save FlowSystem |
+    | `fx.FlowSystem.from_netcdf('file.nc')` | Load FlowSystem |
+    | `flow_system.sel(time=slice(...))` | Select by label |
+    | `flow_system.isel(time=slice(...))` | Select by index |
+    | `flow_system.resample(time='D')` | Resample timeseries |
+    | `flow_system.copy()` | Deep copy |
+    | `results.flow_system` | Access from results |
 
 ??? success "Effects Per Component"
 
     ```python
     effects_ds = results.effects_per_component
-    print(effects_ds['total'].sel(effect='costs'))
+
+    # Access effect contributions by component
+    print(effects_ds['total'].sel(effect='costs'))      # Total effects
+    print(effects_ds['temporal'].sel(effect='CO2'))     # Temporal effects
+    print(effects_ds['periodic'].sel(effect='costs'))   # Periodic effects
     ```
 
 ??? success "Storage Features"
 
-    **Balanced**: `balanced=True` ensures charge_size == discharge_size
-    **Final State**: `relative_minimum_final_charge_state=0.5`, `relative_maximum_final_charge_state=0.8`
+    | Feature | Parameter | Description |
+    |---------|-----------|-------------|
+    | **Balanced storage** | `balanced=True` | Ensures charge_size == discharge_size |
+    | **Final state min** | `relative_minimum_final_charge_state=0.5` | End at least 50% charged |
+    | **Final state max** | `relative_maximum_final_charge_state=0.8` | End at most 80% charged |
 
 ---
 
@@ -155,13 +218,13 @@ Use strings instead of objects for Bus/Effect references.
 
 ## ✅ Checklist
 
-- [ ] `pip install --upgrade flixopt`
-- [ ] Update [effect sharing](#effect-system-redesign), [variable names](#variable-names), [string labels](#string-labels)
-- [ ] Fix [storage arrays](#flowsystem-calculation), [Calculation API](#flowsystem-calculation)
-- [ ] Rename `mode` → `style`, update [class names](#other-changes)
-- [ ] Enable [logging](#other-changes) if needed
-- [ ] Update [deprecated parameters](#deprecated-parameters)
-- [ ] Test & validate results
+| Category | Tasks |
+|----------|-------|
+| **Install** | • `pip install --upgrade flixopt` |
+| **Breaking changes** | • Update [effect sharing](#effect-system-redesign)<br>• Update [variable names](#variable-names)<br>• Update [string labels](#string-labels)<br>• Fix [storage arrays](#flowsystem-calculation)<br>• Update [Calculation API](#flowsystem-calculation)<br>• Rename plotting `mode` → `style`<br>• Update [class names](#other-changes) |
+| **Configuration** | • Enable [logging](#other-changes) if needed |
+| **Deprecated** | • Update [deprecated parameters](#deprecated-parameters) (recommended) |
+| **Testing** | • Test thoroughly<br>• Validate results match v2.x |
 
 ---
 
