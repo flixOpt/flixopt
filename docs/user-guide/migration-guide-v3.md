@@ -1,26 +1,20 @@
-# Migration Guide: Upgrading to v3.0.0
+# Migration Guide: v2.x → v3.0.0
 
-This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.0 introduces powerful new features like multi-period investments and scenario-based stochastic optimization, along with a redesigned effect sharing system.
+Quick guide for migrating flixopt from v2.x to v3.0.0.
 
 !!! tip "Quick Start"
-    1. **Update your installation:**
-       ```bash
-       pip install --upgrade flixopt
-       ```
-    2. **Review breaking changes** in the sections below
-    3. **Update deprecated parameters** to their new names
-    4. **Test your code** with the new version
+    ```bash
+    pip install --upgrade flixopt
+    ```
+    Review breaking changes below, update deprecated parameters, and test thoroughly.
 
 ---
 
 ## Breaking Changes
 
-### 1. Effect Sharing System Redesign
+**Effect Sharing System** - ⚠️ No deprecation warning
 
-!!! warning "Breaking Change - No Deprecation"
-    The effect sharing syntax has been inverted and simplified. This change was made WITHOUT deprecation warnings due to the fundamental restructuring.
-
-**What changed:** Effects now "pull" shares from other effects instead of "pushing" them.
+Effects now "pull" shares instead of "pushing" them:
 
 === "v2.x (Old)"
 
@@ -48,16 +42,15 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
         share_from_periodic={'land': 100})     # From periodic (investment) effects
     ```
 
-!!! success "Migration Steps"
-    1. Find all uses of `specific_share_to_other_effects_operation` and `specific_share_to_other_effects_invest`
-    2. Move the share definition to the **receiving** effect
-    3. Rename parameters:
-         - `specific_share_to_other_effects_operation` → `share_from_temporal`
-         - `specific_share_to_other_effects_invest` → `share_from_periodic`
+**Migration:** Move share definitions to receiving effect and rename:
+- `specific_share_to_other_effects_operation` → `share_from_temporal`
+- `specific_share_to_other_effects_invest` → `share_from_periodic`
 
 ---
 
-### 2. Class and Variable Renaming
+**Variable Renaming in Results**
+
+Multiple variables renamed following terminology changes:
 
 === "v2.x (Old)"
 
@@ -75,10 +68,7 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 
 ---
 
-### 3. Calculation API Change
-
-!!! info "Method Chaining Support"
-    `Calculation.do_modeling()` now returns the Calculation object to enable method chaining.
+**Calculation API** - `do_modeling()` now returns `Calculation` object for method chaining
 
 === "v2.x (Old)"
 
@@ -101,17 +91,9 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
     fx.FullCalculation('my_calc', flow_system).do_modeling().solve()
     ```
 
-!!! tip "Migration"
-    If you used the return value of `do_modeling()`, update to access `.model` property instead.
-
 ---
 
-### 4. Storage Charge State Bounds
-
-!!! warning "Array Dimensions Changed"
-    `relative_minimum_charge_state` and `relative_maximum_charge_state` no longer have an extra timestep.
-
-**Impact:** If you provided arrays with `len(timesteps) + 1` elements, reduce to `len(timesteps)`.
+**Storage Charge State** - Arrays no longer have extra timestep
 
 === "v2.x (Old)"
 
@@ -134,12 +116,9 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
     )
     ```
 
-!!! note "Final State Control"
-    Use the new `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameters to explicitly control the final charge state.
-
 ---
 
-### 5. Plotting Parameter Rename
+**Plotting** - `mode` parameter renamed to `style`
 
 === "v2.x (Old)"
 
@@ -155,14 +134,12 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 
 ---
 
-## Deprecated Parameters (Still Supported)
+## Deprecated Parameters
 
-!!! info "Gradual Migration"
-    These parameters still work but will be removed in a future version. Update them at your convenience - deprecation warnings will guide you.
+!!! info "Still Work"
+    These parameters still work but will be removed in a future version. Deprecation warnings will guide you.
 
-### InvestParameters
-
-**Parameter Changes:**
+**InvestParameters:**
 
 | Old Parameter (v2.x) | New Parameter (v3.0.0) |
 |---------------------|----------------------|
@@ -193,9 +170,7 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
     )
     ```
 
-### Effect
-
-**Parameter Changes:**
+**Effect:**
 
 | Old Parameter (v2.x) | New Parameter (v3.0.0) |
 |---------------------|----------------------|
@@ -234,7 +209,7 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
     )
     ```
 
-### Component Parameters
+**Component Parameters:**
 
 === "v2.x (Deprecated)"
 
@@ -266,7 +241,7 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
     )
     ```
 
-### TimeSeriesData
+**TimeSeriesData:**
 
 === "v2.x (Deprecated)"
 
@@ -286,7 +261,7 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
     )
     ```
 
-### Calculation
+**Calculation:**
 
 === "v2.x (Deprecated)"
 
@@ -312,11 +287,9 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 
 ---
 
-## New Features in v3.0.0
+## New Features
 
-### 1. Multi-Period Investments
-
-Model transformation pathways with distinct investment decisions in each period:
+**Multi-Period Investments** - Model transformation pathways with distinct decisions per period:
 
 ```python
 import pandas as pd
@@ -340,9 +313,7 @@ solar = fx.Source(
 )
 ```
 
-### 2. Scenario-Based Stochastic Optimization
-
-Model uncertainty with weighted scenarios:
+**Scenario-Based Stochastic Optimization** - Model uncertainty with weighted scenarios:
 
 ```python
 # Define scenarios with probabilities
@@ -366,18 +337,7 @@ demand = xr.DataArray(
 
 ```
 
-**Control variable independence:**
-```python
-# By default: investment sizes are shared across scenarios, flow rates vary
-# To make sizes scenario-independent:
-flow_system = fx.FlowSystem(
-    time=timesteps,
-    scenarios=scenarios,
-    scenario_independent_sizes=True  # Each scenario gets its own capacity
-)
-```
-
-### 3. Enhanced I/O and Data Handling
+**Enhanced I/O** - Save, load, and manipulate FlowSystems:
 
 ```python
 # Save and load FlowSystem
@@ -394,9 +354,7 @@ results = calculation.results
 original_fs = results.flow_system  # No manual restoration needed
 ```
 
-### 4. Effects Per Component
-
-Analyze the impact of each component, including indirect effects through effect shares:
+**Effects Per Component** - Analyze component impacts including indirect effects:
 
 ```python
 # Get dataset showing contribution of each component to all effects
@@ -406,9 +364,7 @@ print(effects_ds['costs'])  # Total costs by component
 print(effects_ds['CO2'])    # CO2 emissions by component (including indirect)
 ```
 
-### 5. Balanced Storage
-
-Force charging and discharging capacities to be equal:
+**Balanced Storage** - Force equal charging/discharging capacities:
 
 ```python
 storage = fx.Storage(
@@ -420,9 +376,7 @@ storage = fx.Storage(
 )
 ```
 
-### 6. Final Charge State Control
-
-Set bounds on the storage state at the end of the optimization:
+**Final Charge State Control** - Set bounds on storage end state:
 
 ```python
 storage = fx.Storage(
@@ -437,11 +391,9 @@ storage = fx.Storage(
 
 ---
 
-## Configuration Changes
+## Configuration
 
-### Logging (v2.2.0+)
-
-**Breaking change:** Console and file logging are now disabled by default.
+**Logging (v2.2.0+)** - Console and file logging now disabled by default:
 
 ```python
 import flixopt as fx
@@ -461,11 +413,9 @@ fx.CONFIG.apply()
 
 ---
 
-## Testing Your Migration
+## Testing
 
-### 1. Check for Deprecation Warnings
-
-Run your code and watch for deprecation warnings:
+**Check for Deprecation Warnings:**
 
 ```python
 import warnings
@@ -475,9 +425,7 @@ warnings.filterwarnings('default', category=DeprecationWarning)
 # Review any DeprecationWarning messages
 ```
 
-### 2. Validate Results
-
-Compare results from v2.x and v3.0.0 to ensure consistency:
+**Validate Results:**
 
 ```python
 # Save v2.x results before upgrading
@@ -496,19 +444,16 @@ np.testing.assert_allclose(v2_costs, v3_costs, rtol=1e-5)
 
 ---
 
-## Common Migration Issues
+## Common Issues
 
-### Issue: "Effect share parameters not working"
+**"Effect share parameters not working"**
+→ Move shares to receiving effect using `share_from_temporal`/`share_from_periodic`
 
-**Solution:** Effect sharing was completely redesigned. Move share definitions to the **receiving** effect using `share_from_temporal` and `share_from_periodic`.
+**"Storage charge state has wrong dimensions"**
+→ Remove extra timestep; use `relative_minimum_final_charge_state`
 
-### Issue: "Storage charge state has wrong dimensions"
-
-**Solution:** Remove the extra timestep from charge state bound arrays.
-
-### Issue: "Import error with Bus assignment"
-
-**Solution:** Pass bus labels (strings) instead of Bus objects to `Flow.bus`.
+**"Bus assignment error"**
+→ Use string labels instead of Bus objects:
 
 ```python
 # Old
@@ -520,22 +465,12 @@ my_bus = fx.Bus('electricity')
 flow = fx.Flow('P_el', bus='electricity')  # ✅
 ```
 
-### Issue: "AttributeError: module 'flixopt' has no attribute 'SystemModel'"
-
-**Solution:** Rename `SystemModel` → `FlowSystemModel`
-
+**"AttributeError: SystemModel"**
+→ Rename `SystemModel` → `FlowSystemModel`
 
 ---
 
-## Getting Help
-
-- **Documentation:** [https://flixopt.github.io/flixopt/](https://flixopt.github.io/flixopt/)
-- **GitHub Issues:** [https://github.com/flixOpt/flixopt/issues](https://github.com/flixOpt/flixopt/issues)
-- **Changelog:** [Full v3.0.0 release notes](https://flixopt.github.io/flixopt/latest/changelog/99984-v3.0.0/)
-
----
-
-## Summary Checklist
+## Checklist
 
 - [ ] Update flixopt: `pip install --upgrade flixopt`
 - [ ] Update effect sharing syntax (no deprecation warning!)
@@ -546,5 +481,12 @@ flow = fx.Flow('P_el', bus='electricity')  # ✅
 - [ ] Enable logging explicitly if needed
 - [ ] Test your code thoroughly
 - [ ] Explore new features (periods, scenarios, enhanced I/O)
+
+---
+
+**Resources:**
+[Documentation](https://flixopt.github.io/flixopt/) •
+[GitHub Issues](https://github.com/flixOpt/flixopt/issues) •
+[Full Changelog](https://flixopt.github.io/flixopt/latest/changelog/99984-v3.0.0/)
 
 **Welcome to flixopt v3.0.0!** 🎉
