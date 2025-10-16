@@ -187,7 +187,7 @@ hide:
 <p class="hero-buttons">
   <a href="getting-started/" class="md-button md-button--primary">🚀 Get Started</a>
   <a href="examples/" class="md-button">💡 View Examples</a>
-  <a href="https://github.com/flixOpt/flixopt" class="md-button">⭐ GitHub</a>
+  <a href="https://github.com/flixOpt/flixopt" class="md-button" target="_blank" rel="noopener noreferrer">⭐ GitHub</a>
 </p>
 
 </div>
@@ -256,7 +256,7 @@ hide:
 
 Report issues, request features, and contribute to the codebase
 
-[Visit Repository →](https://github.com/flixOpt/flixopt){target="_blank"}
+[Visit Repository →](https://github.com/flixOpt/flixopt){target="_blank" rel="noopener noreferrer"}
 
 </div>
 
@@ -268,7 +268,7 @@ Report issues, request features, and contribute to the codebase
 
 Ask questions and share your projects with the community
 
-[Join Discussion →](https://github.com/flixOpt/flixopt/discussions){target="_blank"}
+[Join Discussion →](https://github.com/flixOpt/flixopt/discussions){target="_blank" rel="noopener noreferrer"}
 
 </div>
 
@@ -280,7 +280,7 @@ Ask questions and share your projects with the community
 
 Help improve FlixOpt by contributing code, docs, or examples
 
-[Learn How →](contribute/){target="_blank"}
+[Learn How →](contribute/){target="_blank" rel="noopener noreferrer"}
 
 </div>
 
