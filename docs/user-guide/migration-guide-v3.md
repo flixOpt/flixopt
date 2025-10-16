@@ -10,7 +10,7 @@ Quick guide for migrating flixopt from v2.x to v3.0.0.
 
 ---
 
-## Breaking Changes
+## 💥 Breaking Changes
 
 ### Effect System Redesign
 
@@ -262,7 +262,7 @@ Arrays now match timestep count (no extra element).
 
 ---
 
-## Deprecated Parameters
+## 🗑️ Deprecated Parameters
 
 !!! info "Still Supported"
     These parameters still work but will be removed in a future version. Deprecation warnings guide migration.
@@ -402,7 +402,7 @@ Arrays now match timestep count (no extra element).
 
 ---
 
-## New Features
+## ✨ New Features
 
 ### Multi-Period Investments
 
@@ -538,7 +538,7 @@ storage = fx.Storage(
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 ### Logging
 
@@ -580,7 +580,7 @@ Console and file logging now disabled by default (changed in v2.2.0).
 
 ---
 
-## Testing
+## 🧪 Testing
 
 ### Check Deprecation Warnings
 
@@ -615,7 +615,7 @@ np.testing.assert_allclose(v2_costs, v3_costs, rtol=1e-5)
 
 ---
 
-## Common Issues
+## 🔧 Common Issues
 
 !!! failure "Effect shares not working"
     **Solution:** Effect sharing was completely redesigned. See [Effect System Redesign](#effect-system-redesign).
@@ -637,7 +637,7 @@ np.testing.assert_allclose(v2_costs, v3_costs, rtol=1e-5)
 
 ---
 
-## Checklist
+## ✅ Checklist
 
 **Critical (Breaking Changes):**
 
@@ -667,7 +667,7 @@ np.testing.assert_allclose(v2_costs, v3_costs, rtol=1e-5)
 
 ---
 
-## Getting Help
+## 📚 Getting Help
 
 :material-book: [Documentation](https://flixopt.github.io/flixopt/)
 :material-github: [GitHub Issues](https://github.com/flixOpt/flixopt/issues)
