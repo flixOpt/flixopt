@@ -272,7 +272,7 @@ MIT licensed and community-driven development with contributions welcome
 
 ## :material-architecture: Documentation Architecture
 
-<div class="architecture-section">
+<div class="architecture-section" markdown="1">
 
 <figure markdown>
   ![FlixOpt Conceptual Usage](./images/architecture_flixOpt.png)
@@ -292,36 +292,54 @@ MIT licensed and community-driven development with contributions welcome
 
 ## :material-map-marker-path: Quick Navigation
 
-<div class="quick-links">
+<div class="quick-links" markdown="1">
 
-<a href="getting-started/" class="quick-link-card">
-  <h3>:material-rocket-launch: Getting Started</h3>
-  <p>New to FlixOpt? Start here with installation and your first model</p>
+<a href="getting-started/" class="quick-link-card" markdown="1">
+
+### :material-rocket-launch: Getting Started
+
+New to FlixOpt? Start here with installation and your first model
+
 </a>
 
-<a href="examples/" class="quick-link-card">
-  <h3>:material-lightbulb-on: Examples Gallery</h3>
-  <p>Explore real-world examples from simple to complex systems</p>
+<a href="examples/" class="quick-link-card" markdown="1">
+
+### :material-lightbulb-on: Examples Gallery
+
+Explore real-world examples from simple to complex systems
+
 </a>
 
-<a href="api-reference/" class="quick-link-card">
-  <h3>:material-api: API Reference</h3>
-  <p>Detailed documentation of all classes, methods, and parameters</p>
+<a href="api-reference/" class="quick-link-card" markdown="1">
+
+### :material-api: API Reference
+
+Detailed documentation of all classes, methods, and parameters
+
 </a>
 
-<a href="user-guide/recipes/" class="quick-link-card">
-  <h3>:material-book-open-variant: Recipes</h3>
-  <p>Common patterns and best practices for modeling energy systems</p>
+<a href="user-guide/recipes/" class="quick-link-card" markdown="1">
+
+### :material-book-open-variant: Recipes
+
+Common patterns and best practices for modeling energy systems
+
 </a>
 
-<a href="user-guide/mathematical-notation/" class="quick-link-card">
-  <h3>:material-math-integral: Mathematical Notation</h3>
-  <p>Understand the mathematical formulations behind the framework</p>
+<a href="user-guide/mathematical-notation/" class="quick-link-card" markdown="1">
+
+### :material-math-integral: Mathematical Notation
+
+Understand the mathematical formulations behind the framework
+
 </a>
 
-<a href="roadmap/" class="quick-link-card">
-  <h3>:material-road-variant: Roadmap</h3>
-  <p>See what's coming next and contribute to the future of FlixOpt</p>
+<a href="roadmap/" class="quick-link-card" markdown="1">
+
+### :material-road-variant: Roadmap
+
+See what's coming next and contribute to the future of FlixOpt
+
 </a>
 
 </div>
