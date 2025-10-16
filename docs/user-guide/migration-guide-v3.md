@@ -157,19 +157,61 @@ Multiple variables renamed following terminology changes.
 
 ---
 
-**Plotting** - `mode` parameter renamed to `style`
+**Bus and Effect Assignment** - Use string labels instead of objects
 
 === "v2.x (Old)"
 
     ```python
-    results.plot_heatmap('component|variable', mode='line')
+    my_bus = fx.Bus('electricity')
+    flow = fx.Flow('P_el', bus=my_bus)  # ❌ Object
+
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={CO2: 0.2})  # ❌ Object
     ```
 
 === "v3.0.0 (New)"
 
     ```python
-    results.plot_heatmap('component|variable', style='line')
+    my_bus = fx.Bus('electricity')
+    flow = fx.Flow('P_el', bus='electricity')  # ✅ String label
+
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={'CO2': 0.2})  # ✅ String label
     ```
+
+---
+
+**FlowSystem Independence** - Each Calculation gets its own copy
+
+=== "v2.x (Old)"
+
+    ```python
+    # FlowSystem was shared across calculations
+    flow_system = fx.FlowSystem(time=timesteps)
+    calc1 = fx.FullCalculation('calc1', flow_system)  # Shared reference
+    calc2 = fx.FullCalculation('calc2', flow_system)  # Same reference
+    # Changes in calc1's FlowSystem would affect calc2
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # Each calculation gets a copy
+    flow_system = fx.FlowSystem(time=timesteps)
+    calc1 = fx.FullCalculation('calc1', flow_system)  # Gets copy
+    calc2 = fx.FullCalculation('calc2', flow_system)  # Gets separate copy
+    # Calculations are now independent
+    ```
+
+---
+
+**Other Breaking Changes:**
+
+- **Plotting:** `mode` parameter renamed to `style`
+- **Class names:** `SystemModel` → `FlowSystemModel`, `Model` → `Submodel`
+- **Logging:** Disabled by default (enable with `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`)
 
 ---
 
