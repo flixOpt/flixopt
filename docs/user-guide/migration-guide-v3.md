@@ -64,35 +64,53 @@ Effects now "pull" shares from other effects instead of "pushing" them.
 
 ### 2. Variable Renaming in Results
 
-| Old (v2.x) | New (v3.0.0) |
-|------------|--------------|
-| `is_invested` | `invested` |
-| `switch_on` | `switch\|on` |
-| `switch_off` | `switch\|off` |
-| `switch_on_nr` | `switch\|count` |
+Multiple variables have been renamed following the terminology changes.
+
+**Quick Reference Table:**
+
+| Category         | Old (v2.x)                         | New (v3.0.0)   |
+|------------------|------------------------------------|----------------|
+| Investment       | `is_invested`                      | `invested`     |
+| Switch tracking  | `switch_on`                        | `switch\|on`   |
+| Switch tracking  | `switch_off`                       | `switch\|off`  |
+| Switch tracking  | `switch_on_nr`                     | `switch\|count` |
+| Effect submodels | `Effect(invest)\|total`            | `Effect(periodic)` |
+| Effect submodels | `Effect(operation)\|total`         | `Effect(temporal)` |
+| Effect submodels | `Effect(operation)\|total_per_timestep` | `Effect(temporal)\|per_tiemstep` |
+| Effect submodels | `Effect\|total`           | `Effect` |
+
+**Examples:**
 
 === "v2.x (Old)"
 
     ```python
-    # Access investment decision
+    # Investment decision
     results.solution['component|is_invested']
 
-    # Access switch tracking
+    # Switch tracking
     results.solution['component|switch_on']
     results.solution['component|switch_off']
     results.solution['component|switch_on_nr']
+
+    # Effect variables (operation → temporal, nontemporal → periodic)
+    results.solution['costs|nontemporal|total']
+    results.solution['costs|operation|total']
     ```
 
 === "v3.0.0 (New)"
 
     ```python
-    # Access investment decision
+    # Investment decision
     results.solution['component|invested']
 
-    # Access switch tracking
+    # Switch tracking
     results.solution['component|switch|on']
     results.solution['component|switch|off']
     results.solution['component|switch|count']
+
+    # Effect variables (with new terminology)
+    results.solution['costs|periodic|total']
+    results.solution['costs|temporal|total']
     ```
 
 ---
@@ -158,7 +176,7 @@ Array length now matches timesteps (no extra element).
     storage = fx.Storage(
         'storage',
         relative_minimum_charge_state=np.array([0.2, 0.2, 0.2, 0.2]),  # 4 values for 4 timesteps
-        relative_minimum_final_charge_state=0.3  # New: control final state explicitly
+        #relative_minimum_final_charge_state=0.3  # New: control final state explicitly if its different from the last value above
     )
     ```
 

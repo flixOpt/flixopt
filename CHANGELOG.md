@@ -164,6 +164,9 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
   - `switch_on` → `switch|on`
   - `switch_off` → `switch|off`
   - `switch_on_nr` → `switch|count`
+- Effect submodel variables (following terminology changes):
+  - `Effect|nontemporal|...` → `Effect|periodic|...`
+  - `Effect|operation|...` → `Effect|temporal|...`
 
 **Data Structure Changes:**
 
