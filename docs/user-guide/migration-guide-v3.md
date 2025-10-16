@@ -39,10 +39,10 @@ Terminology changed: `operation` → `temporal`, `invest/investment` → `period
 
 | Old | New | Old | New |
 |-----|-----|-----|-----|
-| `is_invested` | `invested` | `switch_on` | `switch\|on` |
-| `switch_off` | `switch\|off` | `switch_on_nr` | `switch\|count` |
-| `Effect(invest)\|total` | `Effect(periodic)` | `Effect(operation)\|total` | `Effect(temporal)` |
-| `Effect(operation)\|total_per_timestep` | `Effect(temporal)\|per_timestep` | `Effect\|total` | `Effect` |
+| `is_invested` | `invested` | `switch_on` | `switch|on` |
+| `switch_off` | `switch|off` | `switch_on_nr` | `switch|count` |
+| `Effect(invest)|total` | `Effect(periodic)` | `Effect(operation)|total` | `Effect(temporal)` |
+| `Effect(operation)|total_per_timestep` | `Effect(temporal)|per_timestep` | `Effect|total` | `Effect` |
 
 ---
 
