@@ -92,9 +92,11 @@ Multiple variables have been renamed following the terminology changes.
     results.solution['component|switch_off']
     results.solution['component|switch_on_nr']
 
-    # Effect variables (operation → temporal, nontemporal → periodic)
-    results.solution['costs|nontemporal|total']
-    results.solution['costs|operation|total']
+    # Effect variables
+    results.solution['costs(invest)|total']
+    results.solution['costs(operation)|total']
+    results.solution['costs(operation)|total_per_timestep']
+    results.solution['costs|total']
     ```
 
 === "v3.0.0 (New)"
@@ -109,8 +111,10 @@ Multiple variables have been renamed following the terminology changes.
     results.solution['component|switch|count']
 
     # Effect variables (with new terminology)
-    results.solution['costs|periodic|total']
-    results.solution['costs|temporal|total']
+    results.solution['costs(periodic)']
+    results.solution['costs(temporal)']
+    results.solution['costs(temporal)|per_timestep']
+    results.solution['costs']
     ```
 
 ---
@@ -333,7 +337,13 @@ storage = fx.Storage('storage',
 → Remove extra timestep; use `relative_minimum_final_charge_state`
 
 **"KeyError when accessing results"**
-→ Update variable names (`is_invested` → `invested`, etc.)
+→ Update variable names:
+  - `is_invested` → `invested`
+  - `switch_on` → `switch|on`, `switch_off` → `switch|off`, `switch_on_nr` → `switch|count`
+  - `Effect(invest)|total` → `Effect(periodic)`
+  - `Effect(operation)|total` → `Effect(temporal)`
+  - `Effect(operation)|total_per_timestep` → `Effect(temporal)|per_timestep`
+  - `Effect|total` → `Effect`
 
 **"No logging output"**
 → Enable explicitly: `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`
