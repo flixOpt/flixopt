@@ -10,16 +10,10 @@
   /* Typography */
   --heading-font-weight: 600;
 
-  /* Colors - Redefine original teal theme with new palette shades (Brand Color column) */
-  --flixopt-teal: #009688;     /* Brand Color 500 */
-  --flixopt-teal-light: #4DB6AC; /* Brand Color 300 */
-  --flixopt-teal-dark: #00796B;  /* Brand Color 700 */
-
-  /* NEW: Semantic Colors for direct use in custom components (e.g., semantic callouts) */
-  --color-success: #4BA527;
-  --color-info: #0290E2;
-  --color-warning: #EF8809;
-  --color-danger: #CE2947;
+  /* Colors - enhance teal theme */
+  --flixopt-teal: #009688;
+  --flixopt-teal-light: #4DB6AC;
+  --flixopt-teal-dark: #00796B;
 }
 
 /* Dark mode adjustments */
