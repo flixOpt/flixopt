@@ -184,10 +184,10 @@ hide:
 
 Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.
 
-<div class="hero-buttons">
-  [Get Started :material-rocket-launch:](getting-started.md){ .md-button .md-button--primary }
-  [View Examples :material-code-braces:](examples/index.md){ .md-button }
-  [GitHub :fontawesome-brands-github:](https://github.com/flixOpt/flixopt){ .md-button }
+<div class="hero-buttons" markdown="1">
+[:material-rocket-launch: Get Started](getting-started.md){ .md-button .md-button--primary }
+[:material-code-braces: View Examples](examples/index.md){ .md-button }
+[:fontawesome-brands-github: GitHub](https://github.com/flixOpt/flixopt){ .md-button }
 </div>
 
 </div>
@@ -257,10 +257,10 @@ Model, optimize, and analyze complex energy systems with a powerful Python frame
 
 **FlixOpt** provides a complete workflow for energy system optimization:
 
-- **:material-file-code:** Define** your system using Python components
-- **:material-cog:** Optimize** with powerful solvers (HiGHS, Gurobi, CPLEX)
-- **:material-chart-box:** Analyze** results with built-in visualization tools
-- **:material-export:** Export** to various formats for further analysis
+- **:material-file-code: Define** your system using Python components
+- **:material-cog: Optimize** with powerful solvers (HiGHS, Gurobi, CPLEX)
+- **:material-chart-box: Analyze** results with built-in visualization tools
+- **:material-export: Export** to various formats for further analysis
 
 </div>
 
@@ -342,10 +342,10 @@ Model, optimize, and analyze complex energy systems with a powerful Python frame
 
 ---
 
-<div style="text-align: center; margin: 3rem 0; padding: 2rem; background: var(--md-code-bg-color); border-radius: 0.75rem;">
+<div style="text-align: center; margin: 3rem 0; padding: 2rem; background: var(--md-code-bg-color); border-radius: 0.75rem;" markdown>
 
 ### Ready to optimize your energy system?
 
-[Start Building :material-arrow-right:](getting-started.md){ .md-button .md-button--primary .md-button--lg }
+[:material-arrow-right: Start Building](getting-started.md){ .md-button .md-button--primary .md-button--lg }
 
 </div>
