@@ -921,8 +921,8 @@ class _NodeResults(_ElementResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         indexer: dict[FlowSystemDimensions, Any] | None = None,
-        mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
+        unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
@@ -935,23 +935,26 @@ class _NodeResults(_ElementResults):
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
                  If None, uses first value for each dimension (except time).
                  If empty dict {}, uses all values.
-            style: The style to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
+            unit_type: The unit type to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
+            mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             drop_suffix: Whether to drop the suffix from the variable names.
         """
-        ds = self.node_balance(with_last_timestep=True, mode=mode, drop_suffix=drop_suffix, indexer=indexer)
+        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer=indexer)
 
         ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        title = f'{self.label} (flow rates){suffix}' if mode == 'flow_rate' else f'{self.label} (flow hours){suffix}'
+        title = (
+            f'{self.label} (flow rates){suffix}' if unit_type == 'flow_rate' else f'{self.label} (flow hours){suffix}'
+        )
 
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
-                style=style,
+                mode=mode,
                 title=title,
             )
             default_filetype = '.html'
@@ -959,7 +962,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
-                style=style,
+                mode=mode,
                 title=title,
             )
             default_filetype = '.png'
@@ -1063,7 +1066,7 @@ class _NodeResults(_ElementResults):
         negate_outputs: bool = False,
         threshold: float | None = 1e-5,
         with_last_timestep: bool = False,
-        mode: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
         indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> xr.Dataset:
@@ -1074,7 +1077,7 @@ class _NodeResults(_ElementResults):
             negate_outputs: Whether to negate the output flow_rates of the Node.
             threshold: The threshold for small values. Variables with all values below the threshold are dropped.
             with_last_timestep: Whether to include the last timestep in the dataset.
-            mode: The mode to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
+            unit_type: The unit type to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             drop_suffix: Whether to drop the suffix from the variable names.
@@ -1102,7 +1105,7 @@ class _NodeResults(_ElementResults):
 
         ds, _ = _apply_indexer_to_data(ds, indexer, drop=True)
 
-        if mode == 'flow_hours':
+        if unit_type == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
             ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
 
@@ -1137,7 +1140,7 @@ class ComponentResults(_NodeResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        style: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
+        mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance.
@@ -1147,7 +1150,7 @@ class ComponentResults(_NodeResults):
             show: Whether to show the plot or not.
             colors: Color scheme. Also see plotly.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
-            style: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
+            mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
@@ -1171,7 +1174,7 @@ class ComponentResults(_NodeResults):
             fig = plotting.with_plotly(
                 ds.to_dataframe(),
                 colors=colors,
-                style=style,
+                mode=mode,
                 title=title,
             )
 
@@ -1187,7 +1190,7 @@ class ComponentResults(_NodeResults):
             fig, ax = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
-                style=style,
+                mode=mode,
                 title=title,
             )
 
