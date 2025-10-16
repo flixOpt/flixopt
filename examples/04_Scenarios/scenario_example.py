@@ -125,7 +125,7 @@ if __name__ == '__main__':
 
     # --- Analyze Results ---
     calculation.results['Fernwärme'].plot_node_balance_pie()
-    calculation.results['Fernwärme'].plot_node_balance(style='stacked_bar')
+    calculation.results['Fernwärme'].plot_node_balance(mode='stacked_bar')
     calculation.results['Storage'].plot_node_balance()
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
