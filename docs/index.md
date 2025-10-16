@@ -185,8 +185,8 @@ hide:
 <p>Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.</p>
 
 <p class="hero-buttons">
-  <a href="getting-started.md" class="md-button md-button--primary">🚀 Get Started</a>
-  <a href="examples/index.md" class="md-button">💡 View Examples</a>
+  <a href="getting-started/" class="md-button md-button--primary">🚀 Get Started</a>
+  <a href="examples/" class="md-button">💡 View Examples</a>
   <a href="https://github.com/flixOpt/flixopt" class="md-button">⭐ GitHub</a>
 </p>
 
@@ -196,42 +196,66 @@ hide:
 
 ## :material-star-four-points: Key Features
 
-<div class="feature-grid">
+<div class="feature-grid" markdown="1">
 
-<div class="feature-card">
-  <span class="feature-icon">:material-lightning-bolt:</span>
-  <h3>High Performance</h3>
-  <p>Efficient optimization algorithms powered by industry-standard solvers for fast computation of complex energy systems</p>
+<div class="feature-card" markdown="1">
+
+:material-lightning-bolt:{ .feature-icon }
+
+### High Performance
+
+Efficient optimization algorithms powered by industry-standard solvers for fast computation of complex energy systems
+
 </div>
 
-<div class="feature-card">
-  <span class="feature-icon">:material-puzzle:</span>
-  <h3>Modular Design</h3>
-  <p>Flexible component-based architecture allowing you to build systems from flows, buses, storage, and converters</p>
+<div class="feature-card" markdown="1">
+
+:material-puzzle:{ .feature-icon }
+
+### Modular Design
+
+Flexible component-based architecture allowing you to build systems from flows, buses, storage, and converters
+
 </div>
 
-<div class="feature-card">
-  <span class="feature-icon">:material-chart-line:</span>
-  <h3>Advanced Modeling</h3>
-  <p>Support for piecewise linearization, on/off parameters, investment decisions, and duration tracking</p>
+<div class="feature-card" markdown="1">
+
+:material-chart-line:{ .feature-icon }
+
+### Advanced Modeling
+
+Support for piecewise linearization, on/off parameters, investment decisions, and duration tracking
+
 </div>
 
-<div class="feature-card">
-  <span class="feature-icon">:material-code-tags:</span>
-  <h3>Pythonic API</h3>
-  <p>Clean, intuitive interface with comprehensive type hints and excellent documentation</p>
+<div class="feature-card" markdown="1">
+
+:material-code-tags:{ .feature-icon }
+
+### Pythonic API
+
+Clean, intuitive interface with comprehensive type hints and excellent documentation
+
 </div>
 
-<div class="feature-card">
-  <span class="feature-icon">:material-file-document-multiple:</span>
-  <h3>Well Documented</h3>
-  <p>Extensive guides, mathematical notation, examples, and API reference to get you productive quickly</p>
+<div class="feature-card" markdown="1">
+
+:material-file-document-multiple:{ .feature-icon }
+
+### Well Documented
+
+Extensive guides, mathematical notation, examples, and API reference to get you productive quickly
+
 </div>
 
-<div class="feature-card">
-  <span class="feature-icon">:material-open-source-initiative:</span>
-  <h3>Open Source</h3>
-  <p>MIT licensed and community-driven development with contributions welcome</p>
+<div class="feature-card" markdown="1">
+
+:material-open-source-initiative:{ .feature-icon }
+
+### Open Source
+
+MIT licensed and community-driven development with contributions welcome
+
 </div>
 
 </div>
@@ -306,27 +330,42 @@ hide:
 
 ## :material-account-group: Community & Support
 
-<div class="feature-grid">
+<div class="feature-grid" markdown="1">
 
-<div class="feature-card">
-  <span class="feature-icon">:fontawesome-brands-github:</span>
-  <h3>GitHub</h3>
-  <p>Report issues, request features, and contribute to the codebase</p>
-  <a href="https://github.com/flixOpt/flixopt" target="_blank">Visit Repository →</a>
+<div class="feature-card" markdown="1">
+
+:fontawesome-brands-github:{ .feature-icon }
+
+### GitHub
+
+Report issues, request features, and contribute to the codebase
+
+[Visit Repository →](https://github.com/flixOpt/flixopt){target="_blank"}
+
 </div>
 
-<div class="feature-card">
-  <span class="feature-icon">:material-forum:</span>
-  <h3>Discussions</h3>
-  <p>Ask questions and share your projects with the community</p>
-  <a href="https://github.com/flixOpt/flixopt/discussions" target="_blank">Join Discussion →</a>
+<div class="feature-card" markdown="1">
+
+:material-forum:{ .feature-icon }
+
+### Discussions
+
+Ask questions and share your projects with the community
+
+[Join Discussion →](https://github.com/flixOpt/flixopt/discussions){target="_blank"}
+
 </div>
 
-<div class="feature-card">
-  <span class="feature-icon">:material-book-open-page-variant:</span>
-  <h3>Contributing</h3>
-  <p>Help improve FlixOpt by contributing code, docs, or examples</p>
-  <a href="contribute/" target="_blank">Learn How →</a>
+<div class="feature-card" markdown="1">
+
+:material-book-open-page-variant:{ .feature-icon }
+
+### Contributing
+
+Help improve FlixOpt by contributing code, docs, or examples
+
+[Learn How →](contribute/){target="_blank"}
+
 </div>
 
 </div>
@@ -347,7 +386,7 @@ hide:
 <h3>Ready to optimize your energy system?</h3>
 
 <p>
-  <a href="getting-started.md" class="md-button md-button--primary md-button--lg">▶️ Start Building</a>
+  <a href="getting-started/" class="md-button md-button--primary md-button--lg">▶️ Start Building</a>
 </p>
 
 </div>
