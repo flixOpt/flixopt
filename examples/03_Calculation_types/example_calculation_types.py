@@ -231,7 +231,7 @@ if __name__ == '__main__':
 
     fx.plotting.with_plotly(
         pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]),
-        'stacked_bar',
+        mode='stacked_bar',
     ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
         'results/Speed Comparison.html'
     )
