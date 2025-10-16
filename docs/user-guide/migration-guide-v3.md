@@ -12,39 +12,45 @@ Quick guide for migrating flixopt from v2.x to v3.0.0.
 
 ## Breaking Changes
 
-**Effect Sharing System** - ⚠️ No deprecation warning
+**Effect System Redesign**  - terminology and sharing system redesigned.
 
-Effects now "pull" shares instead of "pushing" them:
+Effect domains have been renamed for clarity:
+
+| Old Term (v2.x) | New Term (v3.0.0) | Meaning                                                                 |
+|-----------------|-------------------|-------------------------------------------------------------------------|
+| `operation` | `temporal` | Time-varying effects (e.g., operational costs, occuring over time)      |
+| `invest` / `investment` | `periodic` | Investment-related effects (e.g., fixed costs per period, annuity, ...) |
+
+Effects now "pull" shares from other effects instead of "pushing" them.
 
 === "v2.x (Old)"
 
     ```python
-    # Effects "pushed" shares to other effects
     CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions',
-        specific_share_to_other_effects_operation={'costs': 0.2})
-
+        specific_share_to_other_effects_operation={'costs': 0.2})  # operation → temporal
     land = fx.Effect('land', 'm²', 'Land usage',
-        specific_share_to_other_effects_invest={'costs': 100})
-
+        specific_share_to_other_effects_invest={'costs': 100})     # invest → periodic
     costs = fx.Effect('costs', '€', 'Total costs')
     ```
 
 === "v3.0.0 (New)"
 
     ```python
-    # Effects "pull" shares from other effects (clearer direction)
     CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
-
     land = fx.Effect('land', 'm²', 'Land usage')
-
     costs = fx.Effect('costs', '€', 'Total costs',
-        share_from_temporal={'CO2': 0.2},      # From temporal (operation) effects
-        share_from_periodic={'land': 100})     # From periodic (investment) effects
+        share_from_temporal={'CO2': 0.2},      # Pulls from temporal effects
+        share_from_periodic={'land': 100})     # Pulls from periodic effects
     ```
 
-**Migration:** Move share definitions to receiving effect and rename:
-- `specific_share_to_other_effects_operation` → `share_from_temporal`
-- `specific_share_to_other_effects_invest` → `share_from_periodic`
+**Migration:**
+1. Move share definitions to the receiving effect
+2. Update parameter names:
+   - `specific_share_to_other_effects_operation` → `share_from_temporal`
+   - `specific_share_to_other_effects_invest` → `share_from_periodic`
+3. Update terminology throughout your code:
+   - Replace "operation" with "temporal" in effect-related contexts
+   - Replace "invest/investment" with "periodic" in effect-related contexts
 
 ---
 
