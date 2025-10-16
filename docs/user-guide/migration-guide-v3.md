@@ -57,25 +57,141 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 
 ---
 
-### 2. Class and Variable Renaming
+### 2. Variable Renaming in Results
+
+!!! warning "Breaking Change"
+    Multiple variables have been renamed in the optimization results. Update all result access accordingly.
+
+**Investment Variables:**
 
 === "v2.x (Old)"
 
     ```python
-    # In optimization results
-    results.solution['component|is_invested']
+    # Investment decision variable
+    results.solution['element|is_invested']
     ```
 
 === "v3.0.0 (New)"
 
     ```python
-    # In optimization results
-    results.solution['component|invested']
+    # Investment decision variable
+    results.solution['element|invested']
+    ```
+
+**Switch Tracking Variables (OnOffModel):**
+
+=== "v2.x (Old)"
+
+    ```python
+    # Switch state tracking
+    results.solution['component|switch_on']
+    results.solution['component|switch_off']
+    results.solution['component|switch_on_nr']
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # Switch state tracking with pipe delimiter
+    results.solution['component|switch|on']
+    results.solution['component|switch|off']
+    results.solution['component|switch|count']
+    ```
+
+**Quick Reference Table:**
+
+| Old Variable Name (v2.x) | New Variable Name (v3.0.0) | Component Type |
+|--------------------------|---------------------------|----------------|
+| `is_invested` | `invested` | Investment |
+| `switch_on` | `switch|on` | OnOff |
+| `switch_off` | `switch|off` | OnOff |
+| `switch_on_nr` | `switch|count` | OnOff |
+
+---
+
+### 3. FlowSystem Independence
+
+!!! warning "Breaking Change"
+    FlowSystems can no longer be shared across multiple Calculations.
+
+**What changed:** Each `Calculation` now automatically creates its own copy of the FlowSystem, making calculations fully independent.
+
+**Impact:**
+- Mutations to one calculation's FlowSystem won't affect others
+- Each `Subcalculation` in `SegmentedCalculation` has its own distinct FlowSystem
+- Memory usage may increase slightly due to copying
+
+=== "v2.x (Old)"
+
+    ```python
+    # FlowSystem was shared
+    flow_system = fx.FlowSystem(time=timesteps)
+    calc1 = fx.FullCalculation('calc1', flow_system)
+    calc2 = fx.FullCalculation('calc2', flow_system)
+
+    # Both calculations shared the same FlowSystem object
+    # Changes in one affected the other
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    # Each calculation gets its own copy
+    flow_system = fx.FlowSystem(time=timesteps)
+    calc1 = fx.FullCalculation('calc1', flow_system)  # Gets a copy
+    calc2 = fx.FullCalculation('calc2', flow_system)  # Gets another copy
+
+    # Calculations are now independent
+    # Changes to calc1's FlowSystem won't affect calc2
+    ```
+
+!!! tip "Migration"
+    If you relied on shared FlowSystem behavior (which you most likely did not), you should copy the flow_system before passing it to another calculation.
+
+---
+
+### 4. Bus and Effect Object Assignment
+
+!!! warning "Breaking Change"
+    Direct assignment of Bus and Effect objects is no longer supported. Use string labels instead.
+
+**Bus Assignment:**
+
+=== "v2.x (Old)"
+
+    ```python
+    my_bus = fx.Bus('electricity')
+    flow = fx.Flow('P_el', bus=my_bus)  # ❌ Object assignment
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    my_bus = fx.Bus('electricity')
+    flow = fx.Flow('P_el', bus='electricity')  # ✅ String label
+    ```
+
+**Effect Shares Assignment:**
+
+=== "v2.x (Old)"
+
+    ```python
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={CO2: 0.2})  # ❌ Effect object
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={'CO2': 0.2})  # ✅ String label
     ```
 
 ---
 
-### 3. Calculation API Change
+### 5. Calculation API Change
 
 !!! info "Method Chaining Support"
     `Calculation.do_modeling()` now returns the Calculation object to enable method chaining.
@@ -106,7 +222,7 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 
 ---
 
-### 4. Storage Charge State Bounds
+### 6. Storage Charge State Bounds
 
 !!! warning "Array Dimensions Changed"
     `relative_minimum_charge_state` and `relative_maximum_charge_state` no longer have an extra timestep.
@@ -139,7 +255,7 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 
 ---
 
-### 5. Plotting Parameter Rename
+### 7. Plotting Parameter Rename
 
 === "v2.x (Old)"
 
@@ -151,6 +267,50 @@ This guide helps you migrate your flixopt code from v2.x to v3.0.0. Version 3.0.
 
     ```python
     results.plot_heatmap('component|variable', style='line')
+    ```
+
+---
+
+### 8. Logging Configuration
+
+!!! warning "Breaking Change (from v2.2.0)"
+    Console and file logging are now **disabled by default**.
+
+**What changed:** In v2.2.0 (before v3.0.0), the default logging behavior was changed to be opt-in rather than opt-out.
+
+**Impact:** If you're upgrading from v2.1.x or earlier to v3.0.0, you may notice that logging output is no longer displayed unless explicitly enabled.
+
+=== "v2.1.x and earlier"
+
+    ```python
+    import flixopt as fx
+
+    # Logging was enabled by default
+    calculation = fx.FullCalculation('calc', flow_system)
+    calculation.solve()  # Logs were shown automatically
+    ```
+
+=== "v2.2.0+ and v3.0.0"
+
+    ```python
+    import flixopt as fx
+
+    # Enable console logging explicitly
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG.Logging.level = 'INFO'
+    fx.CONFIG.Logging.file = 'flixopt.log' # Optional: Enable file logging
+    fx.CONFIG.apply()
+
+    calculation = fx.FullCalculation('calc', flow_system)
+    calculation.solve()  # Now logs are shown
+    ```
+
+!!! tip "Migration"
+    Add logging configuration at the start of your scripts if you want to see log output:
+    ```python
+    import flixopt as fx
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG.apply()
     ```
 
 ---
@@ -524,6 +684,37 @@ flow = fx.Flow('P_el', bus='electricity')  # ✅
 
 **Solution:** Rename `SystemModel` → `FlowSystemModel`
 
+### Issue: "KeyError when accessing results variables"
+
+**Solution:** Variable names have changed. Update your result access:
+
+```python
+# Old variable names
+results.solution['component|is_invested']   # ❌
+results.solution['component|switch_on']     # ❌
+results.solution['component|switch_off']    # ❌
+results.solution['component|switch_on_nr']  # ❌
+
+# New variable names
+results.solution['component|invested']      # ✅
+results.solution['component|switch|on']     # ✅
+results.solution['component|switch|off']    # ✅
+results.solution['component|switch|count']  # ✅
+```
+
+### Issue: "FlowSystem changes affecting multiple calculations"
+
+**Solution:** FlowSystems are now automatically copied for each Calculation. If you need to access the FlowSystem from a calculation, use `calculation.flow_system` instead of keeping a reference to the original.
+
+### Issue: "No logging output"
+
+**Solution:** Logging is disabled by default in v2.2.0+. Enable it explicitly:
+
+```python
+import flixopt as fx
+fx.CONFIG.Logging.console = True
+fx.CONFIG.apply()
+```
 
 ---
 
@@ -537,14 +728,30 @@ flow = fx.Flow('P_el', bus='electricity')  # ✅
 
 ## Summary Checklist
 
+**Critical (Breaking Changes):**
+
 - [ ] Update flixopt: `pip install --upgrade flixopt`
-- [ ] Update effect sharing syntax (no deprecation warning!)
-- [ ] Update `Calculation.do_modeling()` usage
-- [ ] Fix storage charge state array dimensions
+- [ ] Update effect sharing syntax (no deprecation warning!) - move shares to receiving effect
+- [ ] Update all variable names in result access (`is_invested` → `invested`, `switch_on` → `switch|on`, etc.)
+- [ ] Replace Bus/Effect object assignments with string labels
+- [ ] Remove any code that relies on shared FlowSystem objects across Calculations
+- [ ] Update `Calculation.do_modeling()` usage if accessing return value
+- [ ] Fix storage charge state array dimensions (remove extra timestep)
+
+**Important:**
+
 - [ ] Rename `mode` → `style` in plotting calls
+- [ ] Enable logging explicitly if needed (`fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`)
 - [ ] Update deprecated parameter names (optional, but recommended)
-- [ ] Enable logging explicitly if needed
+
+**Testing:**
+
 - [ ] Test your code thoroughly
-- [ ] Explore new features (periods, scenarios, enhanced I/O)
+- [ ] Check for deprecation warnings
+- [ ] Validate results match v2.x output (if upgrading)
+
+**Optional:**
+
+- [ ] Explore new features (periods, scenarios, enhanced I/O, balanced storage, final charge state control)
 
 **Welcome to flixopt v3.0.0!** 🎉
