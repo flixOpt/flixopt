@@ -14,16 +14,29 @@ Review breaking changes, update deprecated parameters, and test thoroughly.
 
 ## Breaking Changes
 
-### 1. Effect Sharing System Redesign
+### 1. Effect System Redesign
 
-⚠️ **No deprecation warning** - Effects now "pull" shares instead of "pushing" them.
+⚠️ **Multiple effect-related changes** - terminology and sharing system redesigned.
+
+**Terminology Changes:**
+
+Effect domains have been renamed for clarity:
+
+| Old Term (v2.x) | New Term (v3.0.0) | Meaning                                                                 |
+|-----------------|-------------------|-------------------------------------------------------------------------|
+| `operation` | `temporal` | Time-varying effects (e.g., operational costs, occuring over time)      |
+| `invest` / `investment` | `periodic` | Investment-related effects (e.g., fixed costs per period, annuity, ...) |
+
+**Effect Sharing System (⚠️ No deprecation warning):**
+
+Effects now "pull" shares from other effects instead of "pushing" them.
 
 **v2.x:**
 ```python
 CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions',
-    specific_share_to_other_effects_operation={'costs': 0.2})
+    specific_share_to_other_effects_operation={'costs': 0.2})  # operation → temporal
 land = fx.Effect('land', 'm²', 'Land usage',
-    specific_share_to_other_effects_invest={'costs': 100})
+    specific_share_to_other_effects_invest={'costs': 100})     # invest → periodic
 costs = fx.Effect('costs', '€', 'Total costs')
 ```
 
@@ -32,14 +45,18 @@ costs = fx.Effect('costs', '€', 'Total costs')
 CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
 land = fx.Effect('land', 'm²', 'Land usage')
 costs = fx.Effect('costs', '€', 'Total costs',
-    share_from_temporal={'CO2': 0.2},      # From temporal effects
-    share_from_periodic={'land': 100})     # From periodic effects
+    share_from_temporal={'CO2': 0.2},      # Pulls from temporal effects
+    share_from_periodic={'land': 100})     # Pulls from periodic effects
 ```
 
 **Migration:**
-- Move share definitions to receiving effect
-- `specific_share_to_other_effects_operation` → `share_from_temporal`
-- `specific_share_to_other_effects_invest` → `share_from_periodic`
+1. Move share definitions to the receiving effect
+2. Update parameter names:
+   - `specific_share_to_other_effects_operation` → `share_from_temporal`
+   - `specific_share_to_other_effects_invest` → `share_from_periodic`
+3. Update terminology throughout your code:
+   - Replace "operation" with "temporal" in effect-related contexts
+   - Replace "invest/investment" with "periodic" in effect-related contexts
 
 ---
 
@@ -59,26 +76,25 @@ costs = fx.Effect('costs', '€', 'Total costs',
 
 ---
 
-### 3. Use String Labels
+### 3. Bus and Effect Assignment - Use String Labels
 
 Pass string labels instead of objects:
 
+**Bus Assignment:**
 ```python
-# Old: flow = fx.Flow('P_el', bus=my_bus)
+# Old: flow = fx.Flow('P_el', bus=my_bus_object)
 # New: flow = fx.Flow('P_el', bus='electricity')
 ```
 
-Applies to Bus assignments and Effect share dictionaries.
+**Effect Shares:**
+```python
+# Old: costs = fx.Effect('costs', '€', share_from_temporal={CO2_object: 0.2})
+# New: costs = fx.Effect('costs', '€', share_from_temporal={'CO2': 0.2})
+```
 
 ---
 
-### 4. FlowSystem Independence
-
-Each `Calculation` now gets its own FlowSystem copy - calculations are fully independent.
-
----
-
-### 5. Storage Charge State Bounds
+### 4. Storage Charge State Bounds
 
 Array length now matches timesteps (no extra element):
 
@@ -92,10 +108,29 @@ storage = fx.Storage(
 
 ---
 
+### 5. FlowSystem Independence
+
+Each `Calculation` now gets its own FlowSystem copy - calculations are fully independent.
+
+```python
+# v2.x: FlowSystem was shared across calculations
+flow_system = fx.FlowSystem(time=timesteps)
+calc1 = fx.FullCalculation('calc1', flow_system)  # Shared reference
+calc2 = fx.FullCalculation('calc2', flow_system)  # Same reference
+
+# v3.0.0: Each calculation gets a copy
+flow_system = fx.FlowSystem(time=timesteps)
+calc1 = fx.FullCalculation('calc1', flow_system)
+calc2 = fx.FullCalculation('calc2', flow_system)  # Gets separate copy
+```
+
+---
+
 ### 6. Other Breaking Changes
 
 - **`do_modeling()` return value:** Now returns `Calculation` object (access model via `.model` property)
 - **Plotting:** `mode` parameter renamed to `style`
+- **Class names:** `SystemModel` → `FlowSystemModel`, `Model` → `Submodel`
 - **Logging:** Disabled by default (enable with `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`)
 
 ---
