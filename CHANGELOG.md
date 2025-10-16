@@ -61,6 +61,8 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Updated Migration Guide and added missing entries.
+- Improved Changelog of v3.0.0
 
 ### 👷 Development
 
