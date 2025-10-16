@@ -20,6 +20,13 @@
   --flixopt-teal: #2a9d90;
   --flixopt-teal-light: #3dbaa8;   /* Lighter teal for gradients */
   --flixopt-teal-dark: #1f7a70;    /* Darker teal for gradients */
+
+  /* Override Material Design primary and accent colors */
+  --md-primary-fg-color: #274754;
+  --md-primary-fg-color--light: #3a5d6d;
+  --md-primary-fg-color--dark: #1a3340;
+  --md-accent-fg-color: #2a9d90;
+  --md-accent-fg-color--transparent: rgba(42, 157, 144, 0.1);
 }
 
 /* Dark mode adjustments */
