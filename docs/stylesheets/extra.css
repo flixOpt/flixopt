@@ -1,0 +1,223 @@
+/* ============================================================================
+   flixOpt Custom Styling
+   ========================================================================= */
+
+/* Root variables for easy customization */
+:root {
+  /* Spacing */
+  --content-padding: 2rem;
+
+  /* Typography */
+  --heading-font-weight: 600;
+
+  /* Colors - enhance teal theme */
+  --flixopt-teal: #009688;
+  --flixopt-teal-light: #4DB6AC;
+  --flixopt-teal-dark: #00796B;
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] {
+  --md-code-bg-color: #1e1e1e;
+}
+
+/* ============================================================================
+   Typography Improvements
+   ========================================================================= */
+
+/* Better line height for readability */
+.md-typeset {
+  line-height: 1.7;
+}
+
+/* Enhanced headings */
+.md-typeset h1 {
+  font-weight: var(--heading-font-weight);
+  letter-spacing: -0.02em;
+  margin-top: 0;
+}
+
+.md-typeset h2 {
+  font-weight: var(--heading-font-weight);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  padding-bottom: 0.3em;
+  margin-top: 2em;
+}
+
+/* Better code inline */
+.md-typeset code {
+  padding: 0.15em 0.4em;
+  border-radius: 0.25em;
+  font-size: 0.875em;
+}
+
+/* ============================================================================
+   Navigation Enhancements
+   ========================================================================= */
+
+/* Smooth hover effects on navigation */
+.md-nav__link:hover {
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+/* Active navigation item enhancement */
+.md-nav__link--active {
+  font-weight: 600;
+  border-left: 3px solid var(--md-primary-fg-color);
+  padding-left: calc(1.2rem - 3px) !important;
+}
+
+/* ============================================================================
+   Code Block Improvements
+   ========================================================================= */
+
+/* Better code block styling */
+.md-typeset .highlight {
+  border-radius: 0.5rem;
+  margin: 1.5em 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .highlight {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Line numbers styling */
+.md-typeset .highlight .linenos {
+  user-select: none;
+  opacity: 0.5;
+}
+
+/* Copy button enhancement */
+.md-clipboard {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.highlight:hover .md-clipboard {
+  opacity: 1;
+}
+
+/* ============================================================================
+   Admonitions & Callouts
+   ========================================================================= */
+
+/* Enhanced admonitions */
+.md-typeset .admonition {
+  border-radius: 0.5rem;
+  border-left-width: 0.25rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================================================================
+   Tables
+   ========================================================================= */
+
+/* Better table styling */
+.md-typeset table:not([class]) {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--md-primary-fg-color);
+  color: white;
+  font-weight: 600;
+  text-align: left;
+}
+
+.md-typeset table:not([class]) tr:hover {
+  background-color: var(--md-default-fg-color--lightest);
+  transition: background-color 0.2s ease;
+}
+
+/* ============================================================================
+   API Documentation Styling
+   ========================================================================= */
+
+/* Better spacing for API docs */
+.doc-heading {
+  margin-top: 2rem !important;
+}
+
+/* Parameter tables */
+.doc-md-description table {
+  width: 100%;
+  font-size: 0.9em;
+}
+
+/* Signature styling */
+.doc-signature {
+  font-family: var(--md-code-font);
+  background-color: var(--md-code-bg-color);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+/* ============================================================================
+   Home Page Hero (optional enhancement)
+   ========================================================================= */
+
+.hero {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: linear-gradient(135deg, var(--flixopt-teal-light) 0%, var(--flixopt-teal-dark) 100%);
+  color: white;
+  border-radius: 1rem;
+  margin-bottom: 2rem;
+}
+
+.hero h1 {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  color: white;
+  border: none;
+}
+
+.hero p {
+  font-size: 1.25rem;
+  opacity: 0.9;
+}
+
+/* ============================================================================
+   Responsive Design
+   ========================================================================= */
+
+@media screen and (max-width: 76.1875em) {
+  .md-typeset h1 {
+    font-size: 2rem;
+  }
+}
+
+@media screen and (max-width: 44.9375em) {
+  :root {
+    --content-padding: 1rem;
+  }
+
+  .hero h1 {
+    font-size: 2rem;
+  }
+
+  .hero p {
+    font-size: 1rem;
+  }
+}
+
+/* ============================================================================
+   Print Styles
+   ========================================================================= */
+
+@media print {
+  .md-typeset {
+    font-size: 0.9rem;
+  }
+
+  .md-header,
+  .md-sidebar,
+  .md-footer {
+    display: none;
+  }
+}
