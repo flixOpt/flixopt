@@ -10,10 +10,16 @@
   /* Typography */
   --heading-font-weight: 600;
 
-  /* Colors - enhance teal theme */
-  --flixopt-teal: #009688;
-  --flixopt-teal-light: #4DB6AC;
-  --flixopt-teal-dark: #00796B;
+  /* Colors - custom brand palette */
+  --flixopt-primary: #274754;      /* Primary dark blue-gray */
+  --flixopt-accent: #2a9d90;       /* Main accent teal-green */
+  --flixopt-gold: #e8c468;         /* Golden yellow */
+  --flixopt-orange: #f4a462;       /* Orange */
+
+  /* Derived colors for gradients */
+  --flixopt-teal: #2a9d90;
+  --flixopt-teal-light: #3dbaa8;   /* Lighter teal for gradients */
+  --flixopt-teal-dark: #1f7a70;    /* Darker teal for gradients */
 }
 
 /* Dark mode adjustments */
@@ -229,7 +235,7 @@
 .hero-section {
   text-align: center;
   padding: 4rem 2rem 3rem 2rem;
-  background: linear-gradient(135deg, rgba(0, 150, 136, 0.1) 0%, rgba(0, 121, 107, 0.1) 100%);
+  background: linear-gradient(135deg, rgba(42, 157, 144, 0.1) 0%, rgba(31, 122, 112, 0.1) 100%);
   border-radius: 1rem;
   margin-bottom: 3rem;
 }
@@ -238,7 +244,7 @@
   font-size: 3.5rem;
   font-weight: 700;
   margin-bottom: 1rem;
-  background: linear-gradient(135deg, #009688 0%, #00796B 100%);
+  background: linear-gradient(135deg, var(--flixopt-accent) 0%, var(--flixopt-teal-dark) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
