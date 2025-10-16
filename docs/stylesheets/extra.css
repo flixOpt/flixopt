@@ -20,12 +20,25 @@
   --color-info: #0290E2;
   --color-warning: #EF8809;
   --color-danger: #CE2947;
+
+  /* Semantic Light Backgrounds (using 100 or 200 shades from your chart if possible, or lightened versions) */
+  --color-success-light: #F0FAE9; /* Light green/Success 100 */
+  --color-info-light: #E7F5FF;    /* Light blue/Info 100 */
+  --color-warning-light: #FFF8E6;  /* Light orange/Warning 100 */
+  --color-danger-light: #FFEDED;   /* Light red/Danger 100 */
 }
 
 /* Dark mode adjustments */
 [data-md-color-scheme="slate"] {
   --md-code-bg-color: #1e1e1e;
+
+  /* Dark Mode Semantic Adjustments for better visibility */
+  --color-success-dark-bg: #1B3C0F;
+  --color-info-dark-bg: #0C2B47;
+  --color-warning-dark-bg: #4F380A;
+  --color-danger-dark-bg: #470D18;
 }
+
 
 /* ============================================================================
    Typography Improvements
@@ -106,15 +119,76 @@
 }
 
 /* ============================================================================
-   Admonitions & Callouts
+   Admonitions & Callouts - NEW SEMANTIC STYLING
    ========================================================================= */
 
-/* Enhanced admonitions */
+/* Enhanced admonitions (existing style preserved) */
 .md-typeset .admonition {
   border-radius: 0.5rem;
   border-left-width: 0.25rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
+
+/* Admonitions using the new palette */
+
+/* Success and Tip (often mapped to success for positive tone) */
+.md-typeset .admonition.success,
+.md-typeset .admonition.tip,
+.md-typeset div.success,
+.md-typeset div.tip {
+  --md-typeset-color-tip: var(--color-success);
+  --md-typeset-color-tip-bg: var(--color-success-light);
+}
+
+/* Info, Note, and Abstract (mapped to Info blue for neutral/informational tone) */
+.md-typeset .admonition.info,
+.md-typeset .admonition.note,
+.md-typeset .admonition.abstract,
+.md-typeset div.info,
+.md-typeset div.note,
+.md-typeset div.abstract {
+  --md-typeset-color-info: var(--color-info);
+  --md-typeset-color-info-bg: var(--color-info-light);
+}
+
+/* Warning and Caution */
+.md-typeset .admonition.warning,
+.md-typeset .admonition.caution,
+.md-typeset div.warning,
+.md-typeset div.caution {
+  --md-typeset-color-warning: var(--color-warning);
+  --md-typeset-color-warning-bg: var(--color-warning-light);
+}
+
+/* Danger, Error, and Failure */
+.md-typeset .admonition.danger,
+.md-typeset .admonition.error,
+.md-typeset .admonition.failure,
+.md-typeset div.danger,
+.md-typeset div.error,
+.md-typeset div.failure {
+  --md-typeset-color-danger: var(--color-danger);
+  --md-typeset-color-danger-bg: var(--color-danger-light);
+}
+
+/* Dark Mode Overrides for better contrast */
+[data-md-color-scheme="slate"] {
+    --md-code-bg-color: #1e1e1e;
+
+    .md-typeset .admonition.success, .md-typeset .admonition.tip {
+        --md-typeset-color-tip-bg: var(--color-success-dark-bg);
+    }
+    .md-typeset .admonition.info, .md-typeset .admonition.note, .md-typeset .admonition.abstract {
+        --md-typeset-color-info-bg: var(--color-info-dark-bg);
+    }
+    .md-typeset .admonition.warning, .md-typeset .admonition.caution {
+        --md-typeset-color-warning-bg: var(--color-warning-dark-bg);
+    }
+    .md-typeset .admonition.danger, .md-typeset .admonition.error, .md-typeset .admonition.failure {
+        --md-typeset-color-danger-bg: var(--color-danger-dark-bg);
+    }
+}
+
 
 /* ============================================================================
    Tables
