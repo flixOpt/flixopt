@@ -179,17 +179,43 @@ Arrays now match timestep count (no extra element).
 
 ---
 
-### Calculation API
+**Bus and Effect Assignment** - Use string labels instead of objects
+
+=== "v2.x (Old)"
+
+    ```python
+    my_bus = fx.Bus('electricity')
+    flow = fx.Flow('P_el', bus=my_bus)  # ❌ Object
+
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={CO2: 0.2})  # ❌ Object
+    ```
+
+=== "v3.0.0 (New)"
+
+    ```python
+    my_bus = fx.Bus('electricity')
+    flow = fx.Flow('P_el', bus='electricity')  # ✅ String label
+
+    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
+    costs = fx.Effect('costs', '€', 'Total costs',
+        share_from_temporal={'CO2': 0.2})  # ✅ String label
+    ```
+
+---
+
+**FlowSystem Independence** - Each Calculation gets its own copy
 
 `do_modeling()` now returns Calculation object for method chaining.
 
 === "v2.x"
     ```python
-    calculation = fx.FullCalculation('my_calc', flow_system)
-    linopy_model = calculation.do_modeling()  # Returned linopy.Model
-
-    # Access model directly from return value
-    print(linopy_model)
+    # FlowSystem was shared across calculations
+    flow_system = fx.FlowSystem(time=timesteps)
+    calc1 = fx.FullCalculation('calc1', flow_system)  # Shared reference
+    calc2 = fx.FullCalculation('calc2', flow_system)  # Same reference
+    # Changes in calc1's FlowSystem would affect calc2
     ```
 
 === "v3.0.0"
@@ -208,12 +234,20 @@ Arrays now match timestep count (no extra element).
 
 === "Plotting"
     ```python
-    # v2.x
-    results.plot_heatmap('component|variable', mode='line')
-
-    # v3.0.0
-    results.plot_heatmap('component|variable', style='line')
+    # Each calculation gets a copy
+    flow_system = fx.FlowSystem(time=timesteps)
+    calc1 = fx.FullCalculation('calc1', flow_system)  # Gets copy
+    calc2 = fx.FullCalculation('calc2', flow_system)  # Gets separate copy
+    # Calculations are now independent
     ```
+
+---
+
+**Other Breaking Changes:**
+
+- **Plotting:** `mode` parameter renamed to `style`
+- **Class names:** `SystemModel` → `FlowSystemModel`, `Model` → `Submodel`
+- **Logging:** Disabled by default (enable with `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`)
 
 === "Class Names"
     ```python
