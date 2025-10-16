@@ -4,6 +4,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Formatting is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Gitmoji](https://gitmoji.dev).
 For more details regarding the individual PRs and contributors, please refer to our [GitHub releases](https://github.com/flixOpt/flixopt/releases).
 
+!!! tip
+
+    If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
 ---
 
 <!-- This text won't be rendered
@@ -16,6 +20,9 @@ Please keep the format of the changelog consistent with the other releases, so t
 ---
 
 ## [Template] - ????-??-??
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
 
 ### ✨ Added
 
@@ -41,8 +48,10 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 ---
 
-
 ## [Unreleased] - ????-??-??
+
+If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
+
 
 ### ✨ Added
 
@@ -69,10 +78,25 @@ Please keep the format of the changelog consistent with the other releases, so t
 ---
 Until here -->
 
+## [3.0.3] - 2025-10-16
+**Summary**: Hotfixing new plotting parameter `style`. Continue to use `mode`.
+
+**Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
+
+### 🐛 Fixed
+- Reverted breaking change from v3.0.0: continue to use `mode parameter in plotting instead of new `style`
+- Renamed new `mode` parameter in plotting methods to `unit_type`
+
+### 📝 Docs
+- Updated Migration Guide and added missing entries.
+- Improved Changelog of v3.0.0
+
+---
+
 ## [3.0.2] - 2025-10-15
 **Summary**: This is a follow-up release to **[v3.0.0](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0)**, improving the documentation.
 
-**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+**Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
 ### 📝 Docs
 - Update the Readme
@@ -85,7 +109,7 @@ Until here -->
 ## [3.0.1] - 2025-10-14
 **Summary**: This is a follow-up release to **[v3.0.0](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0)**, adding a Migration Guide and bugfixing the docs.
 
-**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+**Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
 ### 📝 Docs
 - Fixed deployed docs
@@ -99,7 +123,7 @@ Until here -->
 ## [3.0.0] - 2025-10-13
 **Summary**: This release introduces new model dimensions (periods and scenarios) for multi-period investments and stochastic modeling, along with a redesigned effect sharing system and enhanced I/O capabilities.
 
-**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+**Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
 ### ✨ Added
 
