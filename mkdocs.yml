@@ -319,3 +319,4 @@ extra_javascript:
 
 watch:
   - flixopt
+  - docs

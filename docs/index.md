@@ -192,104 +192,6 @@ hide:
 
 </div>
 
----
-
-## :material-star-four-points: Key Features
-
-<div class="feature-grid" markdown="1">
-
-<div class="feature-card" markdown="1">
-
-:material-lightning-bolt:{ .feature-icon }
-
-### High Performance
-
-Efficient optimization algorithms powered by industry-standard solvers for fast computation of complex energy systems
-
-</div>
-
-<div class="feature-card" markdown="1">
-
-:material-puzzle:{ .feature-icon }
-
-### Modular Design
-
-Flexible component-based architecture allowing you to build systems from flows, buses, storage, and converters
-
-</div>
-
-<div class="feature-card" markdown="1">
-
-:material-chart-line:{ .feature-icon }
-
-### Advanced Modeling
-
-Support for piecewise linearization, on/off parameters, investment decisions, and duration tracking
-
-</div>
-
-<div class="feature-card" markdown="1">
-
-:material-code-tags:{ .feature-icon }
-
-### Pythonic API
-
-Clean, intuitive interface with comprehensive type hints and excellent documentation
-
-</div>
-
-<div class="feature-card" markdown="1">
-
-:material-file-document-multiple:{ .feature-icon }
-
-### Well Documented
-
-Extensive guides, mathematical notation, examples, and API reference to get you productive quickly
-
-</div>
-
-<div class="feature-card" markdown="1">
-
-:material-open-source-initiative:{ .feature-icon }
-
-### Open Source
-
-MIT licensed and community-driven development with contributions welcome
-
-</div>
-
-</div>
-
----
-
-{%
-   include-markdown "../README.md"
-   start="## Installation"
-   end="## License"
-%}
-
----
-
-## 🏗️ Framework Architecture
-
-<div class="architecture-section" markdown="1">
-
-<figure markdown>
-  ![FlixOpt Conceptual Usage](./images/architecture_flixOpt.png)
-  <figcaption>Conceptual Usage and IO operations of FlixOpt</figcaption>
-</figure>
-
-**FlixOpt** provides a complete workflow for energy system optimization:
-
-- **:material-file-code: Define** your system using Python components
-- **:material-cog: Optimize** with powerful solvers (HiGHS, Gurobi, CPLEX)
-- **:material-chart-box: Analyze** results with built-in visualization tools
-- **:material-export: Export** to various formats for further analysis
-
-</div>
-
----
-
 ## :material-map-marker-path: Quick Navigation
 
 <div class="quick-links">
@@ -324,7 +226,23 @@ MIT licensed and community-driven development with contributions welcome
   </a>
 </div>
 
----
+## 🏗️ Framework Architecture
+
+<div class="architecture-section" markdown="1">
+
+<figure markdown>
+  ![FlixOpt Conceptual Usage](./images/architecture_flixOpt.png)
+  <figcaption>Conceptual Usage and IO operations of FlixOpt</figcaption>
+</figure>
+
+**FlixOpt** provides a complete workflow for energy system optimization:
+
+- **:material-file-code: Define** your system using Python components
+- **:material-cog: Optimize** with powerful solvers (HiGHS, Gurobi, CPLEX)
+- **:material-chart-box: Analyze** results with built-in visualization tools
+- **:material-export: Export** to various formats for further analysis
+
+</div>
 
 ## :material-account-group: Community & Support
 
@@ -368,7 +286,6 @@ Help improve FlixOpt by contributing code, docs, or examples
 
 </div>
 
----
 
 ## :material-file-document-edit: Recent Updates
 
@@ -388,3 +305,11 @@ Help improve FlixOpt by contributing code, docs, or examples
 </p>
 
 </div>
+
+---
+
+{%
+   include-markdown "../README.md"
+   start="## Installation"
+   end="## License"
+%}
