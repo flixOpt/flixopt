@@ -319,4 +319,3 @@ extra_javascript:
 
 watch:
   - flixopt
-  - overrides
