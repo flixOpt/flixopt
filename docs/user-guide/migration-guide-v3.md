@@ -50,20 +50,53 @@ Effects now "pull" shares instead of "pushing" them:
 
 **Variable Renaming in Results**
 
-Multiple variables renamed following terminology changes:
+Multiple variables renamed following terminology changes.
+
+| Category         | Old (v2.x)                         | New (v3.0.0)   |
+|------------------|------------------------------------|----------------|
+| Investment       | `is_invested`                      | `invested`     |
+| Switch tracking  | `switch_on`                        | `switch\|on`   |
+| Switch tracking  | `switch_off`                       | `switch\|off`  |
+| Switch tracking  | `switch_on_nr`                     | `switch\|count` |
+| Effect submodels | `Effect(invest)\|total`            | `Effect(periodic)` |
+| Effect submodels | `Effect(operation)\|total`         | `Effect(temporal)` |
+| Effect submodels | `Effect(operation)\|total_per_timestep` | `Effect(temporal)\|per_timestep` |
+| Effect submodels | `Effect\|total`           | `Effect` |
 
 === "v2.x (Old)"
 
     ```python
-    # In optimization results
+    # Investment decision
     results.solution['component|is_invested']
+
+    # Switch tracking
+    results.solution['component|switch_on']
+    results.solution['component|switch_off']
+    results.solution['component|switch_on_nr']
+
+    # Effect variables
+    results.solution['costs(invest)|total']
+    results.solution['costs(operation)|total']
+    results.solution['costs(operation)|total_per_timestep']
+    results.solution['costs|total']
     ```
 
 === "v3.0.0 (New)"
 
     ```python
-    # In optimization results
+    # Investment decision
     results.solution['component|invested']
+
+    # Switch tracking
+    results.solution['component|switch|on']
+    results.solution['component|switch|off']
+    results.solution['component|switch|count']
+
+    # Effect variables (with new terminology)
+    results.solution['costs(periodic)']
+    results.solution['costs(temporal)']
+    results.solution['costs(temporal)|per_timestep']
+    results.solution['costs']
     ```
 
 ---
@@ -465,8 +498,20 @@ my_bus = fx.Bus('electricity')
 flow = fx.Flow('P_el', bus='electricity')  # ✅
 ```
 
+**"KeyError when accessing results"**
+→ Update variable names:
+  - `is_invested` → `invested`
+  - `switch_on` → `switch|on`, `switch_off` → `switch|off`, `switch_on_nr` → `switch|count`
+  - `Effect(invest)|total` → `Effect(periodic)`
+  - `Effect(operation)|total` → `Effect(temporal)`
+  - `Effect(operation)|total_per_timestep` → `Effect(temporal)|per_timestep`
+  - `Effect|total` → `Effect`
+
 **"AttributeError: SystemModel"**
 → Rename `SystemModel` → `FlowSystemModel`
+
+**"No logging output"**
+→ Enable explicitly: `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`
 
 ---
 
