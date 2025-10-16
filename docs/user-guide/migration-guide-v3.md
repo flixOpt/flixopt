@@ -12,7 +12,7 @@ Quick guide for migrating flixopt from v2.x to v3.0.0.
 
 ## Breaking Changes
 
-**Effect System Redesign** - terminology and sharing system redesigned.
+### Effect System Redesign
 
 Effect domains renamed and sharing system inverted (no deprecation warnings).
 
@@ -20,11 +20,6 @@ Effect domains renamed and sharing system inverted (no deprecation warnings).
 |-----------------|-------------------|-------------------------------------------------------------------------|
 | `operation` | `temporal` | Time-varying effects (e.g., operational costs, occurring over time)      |
 | `invest` / `investment` | `periodic` | Investment-related effects (e.g., fixed costs per period, annuity, ...) |
-
-| Old (v2.x) | New (v3.0.0) | Meaning |
-|------------|--------------|---------|
-| `operation` | `temporal` | Time-varying effects (operational costs, emissions) |
-| `invest`/`investment` | `periodic` | Investment effects (fixed costs per period) |
 
 **Sharing system:** Effects now "pull" shares instead of "pushing" them.
 
@@ -158,8 +153,41 @@ Each Calculation now receives its own FlowSystem copy.
     # Each calculation gets a copy
     flow_system = fx.FlowSystem(time=timesteps)
     calc1 = fx.FullCalculation('calc1', flow_system)
-    calc2 = fx.FullCalculation('calc2', flow_system)  # Gets separate copy
+    calc2 = fx.FullCalculation('calc2', flow_system)  # Gets copy
     # Calculations are now independent
+    ```
+
+!!! info "Impact"
+    - Mutations to one calculation's FlowSystem won't affect others
+    - Each `Subcalculation` in `SegmentedCalculation` has its own distinct FlowSystem
+    - Memory usage may increase slightly due to copying
+
+!!! tip "Migration"
+    If you relied on shared FlowSystem behavior (which you most likely did not or by accident), you should copy the flow_system before passing it to another calculation.
+
+---
+
+### Calculation API
+
+`do_modeling()` now returns Calculation object for method chaining.
+
+=== "v2.x"
+    ```python
+    calculation = fx.FullCalculation('my_calc', flow_system)
+    linopy_model = calculation.do_modeling()  # Returned linopy.Model
+
+    # Access model directly from return value
+    print(linopy_model)
+    ```
+
+=== "v3.0.0"
+    ```python
+    calculation = fx.FullCalculation('my_calc', flow_system)
+    calculation.do_modeling()  # Returns Calculation object
+    linopy_model = calculation.model  # Access model via property
+
+    # Enables method chaining
+    fx.FullCalculation('my_calc', flow_system).do_modeling().solve()
     ```
 
 !!! tip "Migration"
@@ -191,61 +219,10 @@ Arrays now match timestep count (no extra element).
     ```
 
 !!! note "Final State Control"
-    You only need to specify `relative_minimum_final_charge_state` only if it differs from the last value of `relative_minimum_charge_state`.
+    You only need to specify `relative_minimum_final_charge_state` if it differs from the last value of `relative_minimum_charge_state`.
 
 !!! info "Impact"
     If you provided arrays with `len(timesteps) + 1` elements, reduce to `len(timesteps)`.
-
----
-
-**Bus and Effect Assignment** - Use string labels instead of objects
-
-=== "v2.x (Old)"
-
-    ```python
-    my_bus = fx.Bus('electricity')
-    flow = fx.Flow('P_el', bus=my_bus)  # ❌ Object
-
-    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
-    costs = fx.Effect('costs', '€', 'Total costs',
-        share_from_temporal={CO2: 0.2})  # ❌ Object
-    ```
-
-=== "v3.0.0 (New)"
-
-    ```python
-    my_bus = fx.Bus('electricity')
-    flow = fx.Flow('P_el', bus='electricity')  # ✅ String label
-
-    CO2 = fx.Effect('CO2', 'kg', 'CO2 emissions')
-    costs = fx.Effect('costs', '€', 'Total costs',
-        share_from_temporal={'CO2': 0.2})  # ✅ String label
-    ```
-
----
-
-**FlowSystem Independence** - Each Calculation gets its own copy
-
-`do_modeling()` now returns Calculation object for method chaining.
-
-=== "v2.x"
-    ```python
-    # FlowSystem was shared across calculations
-    flow_system = fx.FlowSystem(time=timesteps)
-    calc1 = fx.FullCalculation('calc1', flow_system)  # Shared reference
-    calc2 = fx.FullCalculation('calc2', flow_system)  # Same reference
-    # Changes in calc1's FlowSystem would affect calc2
-    ```
-
-=== "v3.0.0"
-    ```python
-    calculation = fx.FullCalculation('my_calc', flow_system)
-    calculation.do_modeling()  # Returns Calculation object
-    linopy_model = calculation.model  # Access model via property
-
-    # Enables method chaining
-    fx.FullCalculation('my_calc', flow_system).do_modeling().solve()
-    ```
 
 ---
 
@@ -253,28 +230,12 @@ Arrays now match timestep count (no extra element).
 
 === "Plotting"
     ```python
-    # Each calculation gets a copy
-    flow_system = fx.FlowSystem(time=timesteps)
-    calc1 = fx.FullCalculation('calc1', flow_system)  # Gets copy
-    calc2 = fx.FullCalculation('calc2', flow_system)  # Gets separate copy
-    # Calculations are now independent
+    # v2.x
+    results.plot_heatmap('component|variable', mode='line')
+
+    # v3.0.0
+    results.plot_heatmap('component|variable', style='line')
     ```
-
-!!! info "Impact"
-    - Mutations to one calculation's FlowSystem won't affect others
-    - Each `Subcalculation` in `SegmentedCalculation` has its own distinct FlowSystem
-    - Memory usage may increase slightly due to copying
-
-!!! tip "Migration"
-    If you relied on shared FlowSystem behavior (which you most likely did not or by accident), you should copy the flow_system before passing it to another calculation.
-
----
-
-**Other Breaking Changes:**
-
-- **Plotting:** `mode` parameter renamed to `style`
-- **Class names:** `SystemModel` → `FlowSystemModel`, `Model` → `Submodel`
-- **Logging:** Disabled by default (enable with `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`)
 
 === "Class Names"
     ```python
@@ -295,6 +256,9 @@ Arrays now match timestep count (no extra element).
     fx.CONFIG.Logging.console = True
     fx.CONFIG.apply()
     ```
+
+!!! warning "Breaking Change (from v2.2.0)"
+    If you're upgrading from v2.1.x or earlier to v3.0.0, logging output is no longer displayed unless explicitly enabled. See [Configuration](#configuration) for details.
 
 ---
 
@@ -384,29 +348,17 @@ Arrays now match timestep count (no extra element).
 === "v2.x (Deprecated)"
     ```python
     fx.Source('my_source', source=flow)
-
     fx.Sink('my_sink', sink=flow)
-
-    fx.SourceAndSink(
-        'my_source_sink',
-        source=flow1,
-        sink=flow2,
-        prevent_simultaneous_sink_and_source=True
-    )
+    fx.SourceAndSink('my_source_sink', source=flow1, sink=flow2,
+                     prevent_simultaneous_sink_and_source=True)
     ```
 
 === "v3.0.0 (Recommended)"
     ```python
     fx.Source('my_source', outputs=flow)
-
     fx.Sink('my_sink', inputs=flow)
-
-    fx.SourceAndSink(
-        'my_source_sink',
-        outputs=flow1,
-        inputs=flow2,
-        prevent_simultaneous_flow_rates=True
-    )
+    fx.SourceAndSink('my_source_sink', outputs=[flow1], inputs=[flow2],
+                     prevent_simultaneous_flow_rates=True)
     ```
 
 ---
@@ -420,18 +372,12 @@ Arrays now match timestep count (no extra element).
 
 === "v2.x (Deprecated)"
     ```python
-    fx.TimeSeriesData(
-        agg_group='group1',
-        agg_weight=2.0
-    )
+    fx.TimeSeriesData(agg_group='group1', agg_weight=2.0)
     ```
 
 === "v3.0.0 (Recommended)"
     ```python
-    fx.TimeSeriesData(
-        aggregation_group='group1',
-        aggregation_weight=2.0
-    )
+    fx.TimeSeriesData(aggregation_group='group1', aggregation_weight=2.0)
     ```
 
 ---
@@ -440,11 +386,7 @@ Arrays now match timestep count (no extra element).
 
 === "v2.x (Deprecated)"
     ```python
-    calculation = fx.FullCalculation(
-        'calc',
-        flow_system,
-        active_timesteps=[0, 1, 2]
-    )
+    calculation = fx.FullCalculation('calc', flow_system, active_timesteps=[0, 1, 2])
     ```
 
 === "v3.0.0 (Recommended)"
@@ -490,7 +432,9 @@ solar = fx.Source(
 
 ---
 
-**Scenario-Based Stochastic Optimization** - Model uncertainty with weighted scenarios:
+### Scenario-Based Stochastic Optimization
+
+Model uncertainty with weighted scenarios.
 
 ```python
 # Define scenarios with probabilities
@@ -500,8 +444,7 @@ scenario_weights = [0.2, 0.6, 0.2]
 flow_system = fx.FlowSystem(
     time=timesteps,
     scenarios=scenarios,
-    scenario_weights=scenario_weights,
-    scenario_independent_sizes=True  # Optional: scenario-specific capacities
+    scenario_weights=scenario_weights
 )
 
 # Define scenario-dependent data
@@ -527,6 +470,8 @@ flow_system = fx.FlowSystem(
 
 ---
 
+### Enhanced I/O
+
 Save, load, and manipulate FlowSystems.
 
 ```python
@@ -545,19 +490,23 @@ original_fs = results.flow_system  # Lazily loaded
 
 ---
 
-**Effects Per Component** - Analyze component impacts including indirect effects:
+### Effects Per Component
+
+Analyze component impacts including indirect effects.
 
 ```python
 # Get dataset showing contribution of each component to all effects
-effects_ds = results.effects_per_component()
+effects_ds = results.effects_per_component
 
-print(effects_ds['costs'])  # Total costs by component
-print(effects_ds['CO2'])    # CO2 emissions by component (including indirect)
+print(effects_ds['total'].sel(effect='costs'))  # Total costs by component
+print(effects_ds['temporal'].sel(effect='CO2'))    # Temporal CO2 emissions by component (including indirect)
 ```
 
 ---
 
-**Balanced Storage** - Force equal charging/discharging capacities:
+### Balanced Storage
+
+Force equal charging/discharging sizes.
 
 ```python
 storage = fx.Storage(
@@ -572,7 +521,9 @@ storage = fx.Storage(
 
 ---
 
-**Final Charge State Control** - Set bounds on storage end state:
+### Final Charge State Control
+
+Set bounds on storage end state.
 
 ```python
 storage = fx.Storage(
@@ -587,13 +538,13 @@ storage = fx.Storage(
 
 ---
 
-## Common Issues
+## Configuration
 
-!!! failure "Effect shares not working"
-    **Solution:** Move shares to receiving effect using `share_from_temporal`/`share_from_periodic`
+### Logging
+
+Console and file logging now disabled by default (changed in v2.2.0).
 
 === "v2.1.x and earlier"
-
     ```python
     import flixopt as fx
 
@@ -603,7 +554,6 @@ storage = fx.Storage(
     ```
 
 === "v2.2.0+ and v3.0.0"
-
     ```python
     import flixopt as fx
 
@@ -620,11 +570,8 @@ storage = fx.Storage(
     calculation.solve()  # Now logs are shown
     ```
 
-!!! warning "Breaking Change (from v2.2.0)"
-    If you're upgrading from v2.1.x or earlier to v3.0.0, you may notice that logging output is no longer displayed unless explicitly enabled.
-
-!!! tip "Migration"
-    Add logging configuration at the start of your scripts if you want to see log output:
+!!! tip "Quick Enable"
+    Add at the start of your scripts:
     ```python
     import flixopt as fx
     fx.CONFIG.Logging.console = True
@@ -647,7 +594,7 @@ warnings.filterwarnings('default', category=DeprecationWarning)
 
 ---
 
-**Validate Results:**
+### Validate Results
 
 Compare results from v2.x and v3.0.0 to ensure consistency:
 
@@ -670,34 +617,23 @@ np.testing.assert_allclose(v2_costs, v3_costs, rtol=1e-5)
 
 ## Common Issues
 
-!!! failure "Effect share parameters not working"
-    **Solution:** Effect sharing was completely redesigned. Move share definitions to the **receiving** effect using `share_from_temporal` and `share_from_periodic`.
+!!! failure "Effect shares not working"
+    **Solution:** Effect sharing was completely redesigned. See [Effect System Redesign](#effect-system-redesign).
 
-!!! failure "Storage charge state has wrong dimensions"
-    **Solution:** Remove the extra timestep from charge state bound arrays.
+!!! failure "Storage dimensions wrong"
+    **Solution:** Remove extra timestep from charge state arrays. See [Storage Charge State](#storage-charge-state).
+
+!!! failure "Bus assignment error"
+    **Solution:** Use string labels instead of Bus objects. See [Bus and Effect Assignment](#bus-and-effect-assignment).
 
 !!! failure "KeyError when accessing results"
-    **Solution:** Variable names have changed. Update your result access:
-
-    - `is_invested` → `invested`
-    - `switch_on` → `switch|on`
-    - `switch_off` → `switch|off`
-    - `switch_on_nr` → `switch|count`
-    - `Effect(invest)|total` → `Effect(periodic)`
-    - `Effect(operation)|total` → `Effect(temporal)`
-    - `Effect(operation)|total_per_timestep` → `Effect(temporal)|per_timestep`
-    - `Effect|total` → `Effect`
+    **Solution:** Variable names have changed. See [Variable Names in Results](#variable-names-in-results) for the complete mapping.
 
 !!! failure "AttributeError: Element x has no attribute `model`"
-    **Solution:** Rename `.model` → `.submodel`
+    **Solution:** Rename `.model` → `.submodel`. See [Other Breaking Changes](#other-breaking-changes).
 
 !!! failure "No logging output"
-    **Solution:** Logging is disabled by default in v2.2.0+. Enable it explicitly:
-    ```python
-    import flixopt as fx
-    fx.CONFIG.Logging.console = True
-    fx.CONFIG.apply()
-    ```
+    **Solution:** Logging is disabled by default. See [Configuration](#configuration) to enable it.
 
 ---
 
@@ -706,28 +642,28 @@ np.testing.assert_allclose(v2_costs, v3_costs, rtol=1e-5)
 **Critical (Breaking Changes):**
 
 - [ ] Update flixopt: `pip install --upgrade flixopt`
-- [ ] Update effect sharing syntax (no deprecation warning!)
-- [ ] Update all variable names in result access
-- [ ] Replace Bus/Effect object assignments with string labels
-- [ ] Remove any code that relies on shared FlowSystem objects across Calculations
-- [ ] Update `Calculation.do_modeling()` usage if accessing return value
-- [ ] Fix storage charge state array dimensions (remove extra timestep)
-- [ ] Rename `mode` → `style` in plotting calls
+- [ ] Update [effect sharing syntax](#effect-system-redesign) (no deprecation warning!)
+- [ ] Update [variable names in results](#variable-names-in-results)
+- [ ] Update [Bus/Effect assignments](#bus-and-effect-assignment) to use string labels
+- [ ] Update [Calculation API](#calculation-api) usage if accessing return value
+- [ ] Fix [storage charge state](#storage-charge-state) array dimensions
+- [ ] Rename plotting `mode` → `style`
+- [ ] Update class names: `SystemModel` → `FlowSystemModel`, `Model` → `Submodel`
 
 **Important:**
 
-- [ ] Enable logging explicitly if needed (`fx.CONFIG.Logging.console = True; fx.CONFIG.apply()`)
-- [ ] Update deprecated parameter names (optional, but recommended)
+- [ ] Enable [logging](#configuration) explicitly if needed
+- [ ] Update [deprecated parameters](#deprecated-parameters) (optional, but recommended)
 
 **Testing:**
 
 - [ ] Test your code thoroughly
-- [ ] Check for deprecation warnings
-- [ ] Validate results match v2.x output (if upgrading)
+- [ ] Check for [deprecation warnings](#check-deprecation-warnings)
+- [ ] [Validate results](#validate-results) match v2.x output (if upgrading)
 
 **Optional:**
 
-- [ ] Explore new features (periods, scenarios, enhanced I/O, balanced storage, final charge state control)
+- [ ] Explore [new features](#new-features)
 
 ---
 
