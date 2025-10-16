@@ -55,13 +55,13 @@ Multiple variables renamed following terminology changes.
 | Category         | Old (v2.x)                         | New (v3.0.0)   |
 |------------------|------------------------------------|----------------|
 | Investment       | `is_invested`                      | `invested`     |
-| Switch tracking  | `switch_on`                        | `switch\|on`   |
-| Switch tracking  | `switch_off`                       | `switch\|off`  |
-| Switch tracking  | `switch_on_nr`                     | `switch\|count` |
-| Effect submodels | `Effect(invest)\|total`            | `Effect(periodic)` |
-| Effect submodels | `Effect(operation)\|total`         | `Effect(temporal)` |
-| Effect submodels | `Effect(operation)\|total_per_timestep` | `Effect(temporal)\|per_timestep` |
-| Effect submodels | `Effect\|total`           | `Effect` |
+| Switch tracking  | `switch_on`                        | `switch|on`   |
+| Switch tracking  | `switch_off`                       | `switch|off`  |
+| Switch tracking  | `switch_on_nr`                     | `switch|count` |
+| Effect submodels | `Effect(invest)|total`            | `Effect(periodic)` |
+| Effect submodels | `Effect(operation)|total`         | `Effect(temporal)` |
+| Effect submodels | `Effect(operation)|total_per_timestep` | `Effect(temporal)|per_timestep` |
+| Effect submodels | `Effect|total`           | `Effect` |
 
 === "v2.x (Old)"
 
