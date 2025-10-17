@@ -924,9 +924,13 @@ class _NodeResults(_ElementResults):
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
+        facet_by: str | list[str] | None = None,
+        animate_by: str | None = None,
+        facet_cols: int = 3,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
-        Plots the node balance of the Component or Bus.
+        Plots the node balance of the Component or Bus with optional faceting and animation.
+
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
@@ -935,39 +939,121 @@ class _NodeResults(_ElementResults):
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
                  If None, uses first value for each dimension (except time).
                  If empty dict {}, uses all values.
+                 Note: indexer filters are applied BEFORE faceting/animation.
             unit_type: The unit type to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             drop_suffix: Whether to drop the suffix from the variable names.
+            facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+                or list of dimensions. Each unique value combination creates a subplot.
+                Example: 'scenario' creates one subplot per scenario.
+                Example: ['scenario', 'period'] creates a grid of subplots for each scenario-period combination.
+            animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
+                dimension values. Only one dimension can be animated.
+                Example: 'period' creates an animation cycling through periods.
+            facet_cols: Number of columns in the facet grid layout (default: 3).
+
+        Examples:
+            Basic plot (current behavior):
+
+            >>> results['Boiler'].plot_node_balance()
+
+            Facet by scenario:
+
+            >>> results['Boiler'].plot_node_balance(facet_by='scenario', facet_cols=2)
+
+            Animate by period:
+
+            >>> results['Boiler'].plot_node_balance(animate_by='period')
+
+            Facet by scenario AND animate by period:
+
+            >>> results['Boiler'].plot_node_balance(facet_by='scenario', animate_by='period')
+
+            Filter one scenario, then facet by period:
+
+            >>> results['Boiler'].plot_node_balance(indexer={'scenario': 'base'}, facet_by='period')
         """
         ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer=indexer)
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        # Check if we should use faceting/animation
+        use_faceting = facet_by is not None or animate_by is not None
 
-        title = (
-            f'{self.label} (flow rates){suffix}' if unit_type == 'flow_rate' else f'{self.label} (flow hours){suffix}'
-        )
+        if use_faceting:
+            # Don't apply indexer to data (it's already in node_balance), but use for suffix
+            suffix_parts = []
+            if indexer:
+                suffix_parts = [f'{v}[{k}]' for k, v in indexer.items()]
+            suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        if engine == 'plotly':
-            figure_like = plotting.with_plotly(
-                ds.to_dataframe(),
-                colors=colors,
-                mode=mode,
-                title=title,
+            title = (
+                f'{self.label} (flow rates){suffix}'
+                if unit_type == 'flow_rate'
+                else f'{self.label} (flow hours){suffix}'
             )
-            default_filetype = '.html'
-        elif engine == 'matplotlib':
-            figure_like = plotting.with_matplotlib(
-                ds.to_dataframe(),
-                colors=colors,
-                mode=mode,
-                title=title,
-            )
-            default_filetype = '.png'
+
+            if engine == 'plotly':
+                figure_like = plotting.with_plotly_faceted(
+                    ds,
+                    facet_by=facet_by,
+                    animate_by=animate_by,
+                    colors=colors,
+                    mode=mode,
+                    title=title,
+                    facet_cols=facet_cols,
+                )
+                default_filetype = '.html'
+            elif engine == 'matplotlib':
+                if animate_by is not None:
+                    raise ValueError('Animation (animate_by) is only supported with engine="plotly"')
+                # For matplotlib, fall back to regular plotting for now
+                # TODO: Implement matplotlib faceting
+                ds_filtered, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
+                suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+                title = (
+                    f'{self.label} (flow rates){suffix}'
+                    if unit_type == 'flow_rate'
+                    else f'{self.label} (flow hours){suffix}'
+                )
+                figure_like = plotting.with_matplotlib(
+                    ds_filtered.to_dataframe(),
+                    colors=colors,
+                    mode=mode,
+                    title=title,
+                )
+                default_filetype = '.png'
+            else:
+                raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
         else:
-            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+            # Original behavior without faceting
+            ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
+            suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+
+            title = (
+                f'{self.label} (flow rates){suffix}'
+                if unit_type == 'flow_rate'
+                else f'{self.label} (flow hours){suffix}'
+            )
+
+            if engine == 'plotly':
+                figure_like = plotting.with_plotly(
+                    ds.to_dataframe(),
+                    colors=colors,
+                    mode=mode,
+                    title=title,
+                )
+                default_filetype = '.html'
+            elif engine == 'matplotlib':
+                figure_like = plotting.with_matplotlib(
+                    ds.to_dataframe(),
+                    colors=colors,
+                    mode=mode,
+                    title=title,
+                )
+                default_filetype = '.png'
+            else:
+                raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
         return plotting.export_figure(
             figure_like=figure_like,

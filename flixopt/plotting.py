@@ -39,6 +39,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.offline
+import xarray as xr
 from plotly.exceptions import PlotlyError
 
 if TYPE_CHECKING:
@@ -117,6 +118,206 @@ References:
 
 PlottingEngine = Literal['plotly', 'matplotlib']
 """Identifier for the plotting engine to use."""
+
+
+class DimensionHandler:
+    """Handles dimension roles for faceting, animation, and filtering in multidimensional plots.
+
+    This class manages how different dimensions of xarray data should be visualized:
+    as facets (subplots), animation frames, axes, filters, or aggregations. It provides
+    a flexible framework for plotting multidimensional energy system data.
+
+    Key Features:
+        **Faceting**: Create subplot grids for comparing across dimension values
+        **Animation**: Generate animation frames cycling through dimension values (Plotly)
+        **Flexible Roles**: Each dimension can be assigned a specific visualization role
+        **Auto-detection**: Intelligent defaults for unspecified dimensions
+
+    Dimension Roles:
+        - 'facet': Create subplots in a grid layout (one per dimension value)
+        - 'animate': Create animation frames (Plotly only, one frame per value)
+        - 'axis': Plot dimension on x or y axis (typically time)
+        - 'filter': Select specific value(s) from the dimension
+        - 'aggregate': Reduce dimension via aggregation (mean, sum, etc.)
+
+    Examples:
+        Basic faceting:
+
+        ```python
+        # Facet by scenario (creates 4 subplots if 4 scenarios)
+        handler = DimensionHandler(data, facet_by='scenario')
+        grid_data, n_rows, n_cols = handler.prepare_facet_grid(facet_cols=2)
+
+        # Facet by both scenario and period (2D grid)
+        handler = DimensionHandler(data, facet_by=['scenario', 'period'])
+        ```
+
+        Animation:
+
+        ```python
+        # Animate over periods
+        handler = DimensionHandler(data, animate_by='period')
+        frames = handler.prepare_animation_frames()
+        ```
+
+        Combined faceting and animation:
+
+        ```python
+        # Facet by scenario, animate by period
+        handler = DimensionHandler(data, facet_by='scenario', animate_by='period')
+        # Each subplot shows a different scenario, all animate through periods
+        ```
+
+    Args:
+        data: xarray DataArray or Dataset with named dimensions
+        facet_by: Dimension(s) to create facets for (str or list of str)
+        animate_by: Dimension to animate over (str, Plotly only)
+        filter_dims: Dictionary of dimension filters {dim: value}
+    """
+
+    def __init__(
+        self,
+        data: xr.DataArray | xr.Dataset,
+        facet_by: str | list[str] | None = None,
+        animate_by: str | None = None,
+        filter_dims: dict[str, Any] | None = None,
+    ):
+        """Initialize the dimension handler."""
+        self.data = data
+        self.facet_by = [facet_by] if isinstance(facet_by, str) else (facet_by or [])
+        self.animate_by = animate_by
+        self.filter_dims = filter_dims or {}
+
+        # Validate
+        self._validate_dimensions()
+
+    def _validate_dimensions(self):
+        """Validate that specified dimensions exist in the data."""
+        data_dims = set(self.data.dims)
+
+        # Check facet dimensions
+        for dim in self.facet_by:
+            if dim not in data_dims:
+                raise ValueError(f"Facet dimension '{dim}' not found in data. Available: {data_dims}")
+
+        # Check animation dimension
+        if self.animate_by and self.animate_by not in data_dims:
+            raise ValueError(f"Animation dimension '{self.animate_by}' not found in data. Available: {data_dims}")
+
+        # Check that facet and animate don't overlap
+        if self.animate_by and self.animate_by in self.facet_by:
+            raise ValueError(f"Dimension '{self.animate_by}' cannot be both faceted and animated")
+
+    def get_filtered_data(self) -> xr.DataArray | xr.Dataset:
+        """Apply filter dimensions to the data."""
+        if not self.filter_dims:
+            return self.data
+        return self.data.sel(self.filter_dims)
+
+    def prepare_facet_grid(
+        self, facet_cols: int = 3
+    ) -> tuple[list[tuple[str, dict, xr.DataArray | xr.Dataset]], int, int]:
+        """
+        Prepare data slices for facet grid plotting.
+
+        Args:
+            facet_cols: Number of columns in the facet grid
+
+        Returns:
+            Tuple of:
+            - List of (title, selector_dict, data_slice) tuples for each subplot
+            - Number of rows in grid
+            - Number of columns in grid
+        """
+        filtered_data = self.get_filtered_data()
+
+        if not self.facet_by:
+            return [('', {}, filtered_data)], 1, 1
+
+        # Get all combinations of facet dimension values
+        facet_coords = []
+        facet_labels = []
+        for dim in self.facet_by:
+            coords = filtered_data.coords[dim].values
+            facet_coords.append(coords)
+            facet_labels.append(dim)
+
+        combinations = list(itertools.product(*facet_coords))
+
+        # Calculate grid dimensions
+        n_plots = len(combinations)
+        n_cols = min(facet_cols, n_plots)
+        n_rows = (n_plots + n_cols - 1) // n_cols
+
+        # Create data slices for each combination
+        slices = []
+        for combo in combinations:
+            selector = {dim: val for dim, val in zip(facet_labels, combo, strict=False)}
+            data_slice = filtered_data.sel(selector)
+
+            # Create title
+            if len(combo) == 1:
+                title = f'{combo[0]}'
+            else:
+                title_parts = [f'{dim}={val}' for dim, val in zip(facet_labels, combo, strict=False)]
+                title = ', '.join(title_parts)
+
+            slices.append((title, selector, data_slice))
+
+        return slices, n_rows, n_cols
+
+    def prepare_animation_frames(self) -> list[tuple[Any, dict, xr.DataArray | xr.Dataset]]:
+        """
+        Prepare data for each animation frame.
+
+        Returns:
+            List of (frame_value, selector_dict, data_slice) tuples
+        """
+        filtered_data = self.get_filtered_data()
+
+        if not self.animate_by:
+            return [(None, {}, filtered_data)]
+
+        frames = []
+        for value in filtered_data.coords[self.animate_by].values:
+            selector = {self.animate_by: value}
+            data_slice = filtered_data.sel(selector)
+            frames.append((value, selector, data_slice))
+
+        return frames
+
+    def get_facet_and_animation_combinations(
+        self, facet_cols: int = 3
+    ) -> tuple[list[tuple[str, dict, list[tuple[Any, xr.DataArray | xr.Dataset]]]], int, int]:
+        """
+        Prepare combined facet and animation data.
+
+        Returns:
+            Tuple of:
+            - List of (subplot_title, facet_selector, [(frame_value, frame_data), ...]) for each subplot
+            - Number of rows in grid
+            - Number of columns in grid
+        """
+        # Get facet grid structure (this internally handles filtering)
+        facet_slices, n_rows, n_cols = self.prepare_facet_grid(facet_cols)
+
+        if not self.animate_by:
+            # No animation, just return facet slices with single "frame"
+            result = []
+            for title, selector, data_slice in facet_slices:
+                result.append((title, selector, [(None, data_slice)]))
+            return result, n_rows, n_cols
+
+        # Prepare animation frames for each facet
+        result = []
+        for title, facet_selector, facet_data in facet_slices:
+            frames = []
+            for value in facet_data.coords[self.animate_by].values:
+                frame_data = facet_data.sel({self.animate_by: value})
+                frames.append((value, frame_data))
+            result.append((title, facet_selector, frames))
+
+        return result, n_rows, n_cols
 
 
 class ColorProcessor:
@@ -464,6 +665,430 @@ def with_plotly(
     )
 
     return fig
+
+
+def with_plotly_faceted(
+    data: pd.DataFrame,
+    facet_by: str | list[str] | None = None,
+    animate_by: str | None = None,
+    mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
+    colors: ColorType = 'viridis',
+    title: str = '',
+    ylabel: str = '',
+    xlabel: str = 'Time in h',
+    facet_cols: int = 3,
+    shared_yaxes: bool = True,
+    shared_xaxes: bool = True,
+) -> go.Figure:
+    """
+    Plot a DataFrame with Plotly using facets (subplots) and/or animation for multidimensional data.
+
+    This function extends the basic plotting capabilities by supporting:
+    - Faceting: Create subplots for different dimension values
+    - Animation: Animate through dimension values (e.g., different periods)
+    - Combined: Facet by one dimension while animating another
+
+    Args:
+        data: A DataFrame or xarray DataArray/Dataset to plot. If DataFrame, index dimensions
+              beyond time should be part of a MultiIndex.
+        facet_by: Dimension(s) to create facets for. Creates a subplot grid.
+              Can be a single dimension name or list of dimensions.
+        animate_by: Dimension to animate over. Only available for Plotly.
+              Creates animation frames that cycle through dimension values.
+        mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines,
+              'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
+        colors: Color specification (colormap, list, or dict mapping labels to colors).
+        title: The main title of the plot.
+        ylabel: The label for the y-axis.
+        xlabel: The label for the x-axis.
+        facet_cols: Number of columns in the facet grid.
+        shared_yaxes: Whether subplots share y-axes.
+        shared_xaxes: Whether subplots share x-axes.
+
+    Returns:
+        A Plotly figure object containing the faceted/animated plot.
+
+    Examples:
+        Facet by scenario:
+
+        ```python
+        # Create 4 subplots, one for each scenario
+        fig = with_plotly_faceted(data, facet_by='scenario', facet_cols=2)
+        ```
+
+        Animate by period:
+
+        ```python
+        # Create animation cycling through periods
+        fig = with_plotly_faceted(data, animate_by='period')
+        ```
+
+        Facet and animate:
+
+        ```python
+        # 4 subplots (scenarios), each animating through periods
+        fig = with_plotly_faceted(data, facet_by='scenario', animate_by='period')
+        ```
+    """
+    from plotly.subplots import make_subplots
+
+    # Convert xarray to appropriate format if needed
+    if isinstance(data, (xr.DataArray, xr.Dataset)):
+        # Use DimensionHandler to process the data
+        handler = DimensionHandler(data, facet_by=facet_by, animate_by=animate_by)
+
+        # Get facet and animation combinations
+        subplot_data, n_rows, n_cols = handler.get_facet_and_animation_combinations(facet_cols)
+
+        # Create subplots
+        subplot_titles = [title for title, _, _ in subplot_data]
+        fig = make_subplots(
+            rows=n_rows,
+            cols=n_cols,
+            subplot_titles=subplot_titles if len(subplot_titles) > 1 else None,
+            shared_yaxes=shared_yaxes,
+            shared_xaxes=shared_xaxes,
+            vertical_spacing=0.15 / n_rows if n_rows > 1 else 0.1,
+            horizontal_spacing=0.1 / n_cols if n_cols > 1 else 0.1,
+        )
+
+        # Get consistent colors for all data variables
+        if isinstance(data, xr.Dataset):
+            all_vars = list(data.data_vars)
+        else:
+            all_vars = [data.name or 'data']
+
+        processed_colors = ColorProcessor(engine='plotly').process_colors(colors, all_vars)
+        color_map = {var: color for var, color in zip(all_vars, processed_colors, strict=False)}
+
+        # Check if we have animation
+        has_animation = animate_by is not None
+
+        if has_animation:
+            # Prepare frames for animation
+            # First frame: initial state
+            for idx, (_, _, frames) in enumerate(subplot_data):
+                row = idx // n_cols + 1
+                col = idx % n_cols + 1
+
+                # Get first frame data
+                _, first_frame_data = frames[0]
+                df_frame = (
+                    first_frame_data.to_dataframe()
+                    if isinstance(first_frame_data, xr.DataArray)
+                    else first_frame_data.to_dataframe()
+                )
+
+                # Fix MultiIndex if present
+                if isinstance(df_frame.index, pd.MultiIndex):
+                    if 'time' in df_frame.index.names:
+                        levels_to_reset = [name for name in df_frame.index.names if name != 'time' and name is not None]
+                        if levels_to_reset:
+                            df_frame = df_frame.reset_index(level=levels_to_reset, drop=True)
+
+                # Remove leftover dimension columns
+                dims_to_remove = [
+                    col for col in df_frame.columns if col in ['scenario', 'period', 'time'] and col not in all_vars
+                ]
+                if dims_to_remove:
+                    df_frame = df_frame.drop(columns=dims_to_remove)
+
+                # Plot first frame
+                _add_traces_to_subplot(
+                    fig,
+                    df_frame,
+                    mode,
+                    color_map,
+                    row,
+                    col,
+                    show_legend=(idx == 0),  # Only show legend for first subplot
+                )
+
+            # Create animation frames
+            animation_frames = []
+            frame_values = [frame_val for frame_val, _ in subplot_data[0][2]]  # Get frame values from first subplot
+
+            for frame_idx, frame_val in enumerate(frame_values):
+                frame_data = []
+
+                for subplot_idx, (_, _, frames) in enumerate(subplot_data):
+                    row = subplot_idx // n_cols + 1
+                    col = subplot_idx % n_cols + 1
+
+                    _, frame_slice = frames[frame_idx]
+                    df_frame = (
+                        frame_slice.to_dataframe()
+                        if isinstance(frame_slice, xr.DataArray)
+                        else frame_slice.to_dataframe()
+                    )
+
+                    # Fix MultiIndex if present
+                    if isinstance(df_frame.index, pd.MultiIndex):
+                        if 'time' in df_frame.index.names:
+                            levels_to_reset = [
+                                name for name in df_frame.index.names if name != 'time' and name is not None
+                            ]
+                            if levels_to_reset:
+                                df_frame = df_frame.reset_index(level=levels_to_reset, drop=True)
+
+                    # Remove leftover dimension columns
+                    dims_to_remove = [
+                        col for col in df_frame.columns if col in ['scenario', 'period', 'time'] and col not in all_vars
+                    ]
+                    if dims_to_remove:
+                        df_frame = df_frame.drop(columns=dims_to_remove)
+
+                    # Get trace data for this frame
+                    traces = _get_traces_for_data(df_frame, mode, color_map, row, col, show_legend=False)
+                    frame_data.extend(traces)
+
+                animation_frames.append(go.Frame(data=frame_data, name=str(frame_val)))
+
+            fig.frames = animation_frames
+
+            # Add play/pause buttons
+            fig.update_layout(
+                updatemenus=[
+                    dict(
+                        type='buttons',
+                        showactive=False,
+                        buttons=[
+                            dict(
+                                label='Play',
+                                method='animate',
+                                args=[None, {'frame': {'duration': 500, 'redraw': True}, 'fromcurrent': True}],
+                            ),
+                            dict(
+                                label='Pause',
+                                method='animate',
+                                args=[
+                                    [None],
+                                    {
+                                        'frame': {'duration': 0, 'redraw': False},
+                                        'mode': 'immediate',
+                                        'transition': {'duration': 0},
+                                    },
+                                ],
+                            ),
+                        ],
+                        x=0.1,
+                        y=0,
+                        xanchor='right',
+                        yanchor='top',
+                    )
+                ],
+                sliders=[
+                    dict(
+                        steps=[
+                            dict(
+                                args=[[f.name], {'frame': {'duration': 0, 'redraw': True}, 'mode': 'immediate'}],
+                                label=str(f.name),
+                                method='animate',
+                            )
+                            for f in animation_frames
+                        ],
+                        x=0.1,
+                        y=0,
+                        currentvalue=dict(prefix=f'{animate_by}: ', visible=True, xanchor='left'),
+                        len=0.9,
+                    )
+                ],
+            )
+        else:
+            # No animation, just faceting
+            for idx, (_, _, frames) in enumerate(subplot_data):
+                row = idx // n_cols + 1
+                col = idx % n_cols + 1
+
+                # Get data (only one "frame" without animation)
+                _, data_slice = frames[0]
+
+                # Convert to DataFrame properly
+                if isinstance(data_slice, xr.DataArray):
+                    df = data_slice.to_dataframe()
+                else:
+                    # For Dataset, convert to DataFrame and reshape if needed
+                    df = data_slice.to_dataframe()
+
+                # Clean up DataFrame: ensure only time index and data variables as columns
+                # Drop any dimension columns that shouldn't be there
+                if isinstance(df.index, pd.MultiIndex):
+                    # Keep only 'time' in index
+                    if 'time' in df.index.names:
+                        levels_to_reset = [name for name in df.index.names if name != 'time' and name is not None]
+                        if levels_to_reset:
+                            df = df.reset_index(level=levels_to_reset, drop=True)
+
+                # Also remove any leftover dimension columns (they shouldn't be data)
+                dims_to_remove = [
+                    col for col in df.columns if col in ['scenario', 'period', 'time'] and col not in all_vars
+                ]
+                if dims_to_remove:
+                    df = df.drop(columns=dims_to_remove)
+
+                # Add traces to subplot
+                _add_traces_to_subplot(
+                    fig,
+                    df,
+                    mode,
+                    color_map,
+                    row,
+                    col,
+                    show_legend=(idx == 0),  # Only show legend for first subplot
+                )
+
+        # Update layout
+        fig.update_layout(
+            title=title,
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(size=12),
+            height=300 * n_rows,
+            showlegend=True,
+        )
+
+        # Update axes labels
+        for i in range(1, n_rows * n_cols + 1):
+            fig.update_xaxes(title_text=xlabel, row=(i - 1) // n_cols + 1, col=(i - 1) % n_cols + 1)
+            fig.update_yaxes(title_text=ylabel, row=(i - 1) // n_cols + 1, col=(i - 1) % n_cols + 1)
+
+        return fig
+
+    else:
+        # Regular DataFrame without faceting/animation
+        # Fall back to regular with_plotly
+        return with_plotly(data, mode=mode, colors=colors, title=title, ylabel=ylabel, xlabel=xlabel)
+
+
+def _add_traces_to_subplot(
+    fig: go.Figure, df: pd.DataFrame, mode: str, color_map: dict[str, str], row: int, col: int, show_legend: bool = True
+):
+    """Helper function to add traces to a subplot."""
+    if mode == 'stacked_bar':
+        for column in df.columns:
+            fig.add_trace(
+                go.Bar(
+                    x=df.index,
+                    y=df[column],
+                    name=column,
+                    marker=dict(color=color_map.get(column, 'gray'), line=dict(width=0)),
+                    showlegend=show_legend,
+                    legendgroup=column,
+                ),
+                row=row,
+                col=col,
+            )
+        fig.update_xaxes(row=row, col=col)
+        fig.update_yaxes(row=row, col=col)
+        if row == 1 and col == 1:  # Only set barmode once
+            fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+
+    elif mode == 'grouped_bar':
+        for column in df.columns:
+            fig.add_trace(
+                go.Bar(
+                    x=df.index,
+                    y=df[column],
+                    name=column,
+                    marker=dict(color=color_map.get(column, 'gray')),
+                    showlegend=show_legend,
+                    legendgroup=column,
+                ),
+                row=row,
+                col=col,
+            )
+        if row == 1 and col == 1:
+            fig.update_layout(barmode='group', bargap=0.2, bargroupgap=0)
+
+    elif mode == 'line':
+        for column in df.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df[column],
+                    mode='lines',
+                    name=column,
+                    line=dict(shape='hv', color=color_map.get(column, 'gray')),
+                    showlegend=show_legend,
+                    legendgroup=column,
+                ),
+                row=row,
+                col=col,
+            )
+
+    elif mode == 'area':
+        df_copy = df.copy()
+
+        # Only filter numeric columns to avoid string comparison errors
+        numeric_cols = df_copy.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols:
+            df_copy.loc[(df_copy[col] > -1e-5) & (df_copy[col] < 1e-5), col] = 0
+
+        # Separate positive and negative columns (only for numeric data)
+        positive_columns = []
+        negative_columns = []
+
+        for col in df_copy.columns:
+            if col in numeric_cols:
+                col_data = df_copy[col].dropna()
+                if len(col_data) > 0:
+                    if (col_data >= 0).all():
+                        positive_columns.append(col)
+                    elif (col_data <= 0).all():
+                        negative_columns.append(col)
+                    # Mixed sign columns are omitted from stacking
+
+        for column in positive_columns + negative_columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=df_copy.index,
+                    y=df_copy[column],
+                    mode='lines',
+                    name=column,
+                    line=dict(shape='hv', color=color_map.get(column, 'gray')),
+                    fill='tonexty',
+                    stackgroup='pos' if column in positive_columns else 'neg',
+                    showlegend=show_legend,
+                    legendgroup=column,
+                ),
+                row=row,
+                col=col,
+            )
+
+
+def _get_traces_for_data(
+    df: pd.DataFrame, mode: str, color_map: dict[str, str], row: int, col: int, show_legend: bool = False
+) -> list[go.Bar | go.Scatter]:
+    """Helper function to generate trace objects for animation frames."""
+    traces = []
+
+    if mode in ['stacked_bar', 'grouped_bar']:
+        for column in df.columns:
+            traces.append(
+                go.Bar(
+                    x=df.index,
+                    y=df[column],
+                    name=column,
+                    marker=dict(color=color_map.get(column, 'gray')),
+                    showlegend=show_legend,
+                    legendgroup=column,
+                )
+            )
+    elif mode in ['line', 'area']:
+        for column in df.columns:
+            traces.append(
+                go.Scatter(
+                    x=df.index,
+                    y=df[column],
+                    mode='lines',
+                    name=column,
+                    line=dict(shape='hv', color=color_map.get(column, 'gray')),
+                    showlegend=show_legend,
+                    legendgroup=column,
+                )
+            )
+
+    return traces
 
 
 def with_matplotlib(
