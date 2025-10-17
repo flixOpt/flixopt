@@ -747,6 +747,11 @@ class CalculationResults:
                 stacklevel=2,
             )
 
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
         dataarray = self.solution[variable_name]
 
         return plot_heatmap(
@@ -1009,6 +1014,11 @@ class _NodeResults(_ElementResults):
                 stacklevel=2,
             )
 
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(f'plot_node_balance() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
         if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
@@ -1084,6 +1094,13 @@ class _NodeResults(_ElementResults):
                 "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
                 DeprecationWarning,
                 stacklevel=2,
+            )
+
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(
+                f'plot_node_balance_pie() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}'
             )
 
         inputs = sanitize_dataset(
@@ -1180,6 +1197,11 @@ class _NodeResults(_ElementResults):
                 stacklevel=2,
             )
 
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(f'node_balance() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
         ds = self.solution[self.inputs + self.outputs]
 
         ds = sanitize_dataset(
@@ -1261,6 +1283,11 @@ class ComponentResults(_NodeResults):
                 DeprecationWarning,
                 stacklevel=2,
             )
+
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(f'plot_charge_state() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
 
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
@@ -1677,6 +1704,11 @@ def plot_heatmap(
             stacklevel=2,
         )
 
+    # Check for unexpected kwargs
+    unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+    if unexpected_kwargs:
+        raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
     dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
     name = name if not suffix_parts else name + suffix
@@ -1963,6 +1995,11 @@ def _apply_indexer_to_data(
             DeprecationWarning,
             stacklevel=3,
         )
+
+    # Check for unexpected kwargs
+    unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+    if unexpected_kwargs:
+        raise TypeError(f'_apply_indexer_to_data() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
 
     # Merge both dicts, select takes precedence
     selection = {**(indexer or {}), **(select or {})}
