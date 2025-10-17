@@ -668,7 +668,7 @@ def with_plotly(
 
 
 def with_plotly_faceted(
-    data: pd.DataFrame,
+    data: pd.DataFrame | xr.DataArray | xr.Dataset,
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
@@ -683,32 +683,26 @@ def with_plotly_faceted(
     width: int | None = None,
 ) -> go.Figure:
     """
-    Plot a DataFrame with Plotly using facets (subplots) and/or animation for multidimensional data.
+    Plot data with Plotly Express using facets (subplots) and/or animation for multidimensional data.
 
-    This function extends the basic plotting capabilities by supporting:
-    - Faceting: Create subplots for different dimension values
-    - Animation: Animate through dimension values (e.g., different periods)
-    - Combined: Facet by one dimension while animating another
+    Uses Plotly Express for convenient faceting and animation with automatic styling.
 
     Args:
-        data: A DataFrame or xarray DataArray/Dataset to plot. If DataFrame, index dimensions
-              beyond time should be part of a MultiIndex.
+        data: A DataFrame or xarray DataArray/Dataset to plot.
         facet_by: Dimension(s) to create facets for. Creates a subplot grid.
-              Can be a single dimension name or list of dimensions.
-        animate_by: Dimension to animate over. Only available for Plotly.
-              Creates animation frames that cycle through dimension values.
-        mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines,
+              Can be a single dimension name or list of dimensions (max 2 for facet_row and facet_col).
+        animate_by: Dimension to animate over. Creates animation frames.
+        mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for lines,
               'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
         colors: Color specification (colormap, list, or dict mapping labels to colors).
         title: The main title of the plot.
         ylabel: The label for the y-axis.
         xlabel: The label for the x-axis.
-        facet_cols: Number of columns in the facet grid.
+        facet_cols: Number of columns in the facet grid (used when facet_by is single dimension).
         shared_yaxes: Whether subplots share y-axes.
         shared_xaxes: Whether subplots share x-axes.
         height_per_row: Height in pixels for each row of subplots (default: None = auto-sized).
-            When None, automatically calculates height to fill ~90% of typical browser viewport.
-            Manually specify (e.g., 600) to override auto-sizing.
+            When None, automatically calculates height to fill browser viewport nicely.
         width: Total width in pixels (default: None = auto-sized by Plotly).
 
     Returns:
@@ -718,403 +712,180 @@ def with_plotly_faceted(
         Facet by scenario:
 
         ```python
-        # Create 4 subplots, one for each scenario
         fig = with_plotly_faceted(data, facet_by='scenario', facet_cols=2)
         ```
 
         Animate by period:
 
         ```python
-        # Create animation cycling through periods
         fig = with_plotly_faceted(data, animate_by='period')
         ```
 
         Facet and animate:
 
         ```python
-        # 4 subplots (scenarios), each animating through periods
         fig = with_plotly_faceted(data, facet_by='scenario', animate_by='period')
         ```
     """
-    from plotly.subplots import make_subplots
-
-    # Convert xarray to appropriate format if needed
+    # Convert xarray to long-form DataFrame for Plotly Express
     if isinstance(data, (xr.DataArray, xr.Dataset)):
-        # Use DimensionHandler to process the data
-        handler = DimensionHandler(data, facet_by=facet_by, animate_by=animate_by)
-
-        # Get facet and animation combinations
-        subplot_data, n_rows, n_cols = handler.get_facet_and_animation_combinations(facet_cols)
-
-        # Create subplots
-        subplot_titles = [title for title, _, _ in subplot_data]
-        fig = make_subplots(
-            rows=n_rows,
-            cols=n_cols,
-            subplot_titles=subplot_titles if len(subplot_titles) > 1 else None,
-            shared_yaxes=shared_yaxes,
-            shared_xaxes=shared_xaxes,
-            vertical_spacing=0.15 / n_rows if n_rows > 1 else 0.1,
-            horizontal_spacing=0.1 / n_cols if n_cols > 1 else 0.1,
-        )
-
-        # Get consistent colors for all data variables
+        # Convert to long-form (tidy) DataFrame
+        # Structure: time, variable, value, scenario, period, ... (all dims as columns)
         if isinstance(data, xr.Dataset):
-            all_vars = list(data.data_vars)
+            # Stack all data variables into long format
+            df_long = data.to_dataframe().reset_index()
+            # Melt to get: time, scenario, period, ..., variable, value
+            id_vars = [dim for dim in data.dims]
+            value_vars = list(data.data_vars)
+            df_long = df_long.melt(id_vars=id_vars, value_vars=value_vars, var_name='variable', value_name='value')
         else:
-            all_vars = [data.name or 'data']
-
-        processed_colors = ColorProcessor(engine='plotly').process_colors(colors, all_vars)
-        color_map = {var: color for var, color in zip(all_vars, processed_colors, strict=False)}
-
-        # Check if we have animation
-        has_animation = animate_by is not None
-
-        if has_animation:
-            # Prepare frames for animation
-            # First frame: initial state
-            for idx, (_, _, frames) in enumerate(subplot_data):
-                row = idx // n_cols + 1
-                col = idx % n_cols + 1
-
-                # Get first frame data
-                _, first_frame_data = frames[0]
-                df_frame = (
-                    first_frame_data.to_dataframe()
-                    if isinstance(first_frame_data, xr.DataArray)
-                    else first_frame_data.to_dataframe()
-                )
-
-                # Fix MultiIndex if present
-                if isinstance(df_frame.index, pd.MultiIndex):
-                    if 'time' in df_frame.index.names:
-                        levels_to_reset = [name for name in df_frame.index.names if name != 'time' and name is not None]
-                        if levels_to_reset:
-                            df_frame = df_frame.reset_index(level=levels_to_reset, drop=True)
-
-                # Remove leftover dimension columns
-                dims_to_remove = [
-                    col for col in df_frame.columns if col in ['scenario', 'period', 'time'] and col not in all_vars
-                ]
-                if dims_to_remove:
-                    df_frame = df_frame.drop(columns=dims_to_remove)
-
-                # Plot first frame
-                _add_traces_to_subplot(
-                    fig,
-                    df_frame,
-                    mode,
-                    color_map,
-                    row,
-                    col,
-                    show_legend=(idx == 0),  # Only show legend for first subplot
-                )
-
-            # Create animation frames
-            animation_frames = []
-            frame_values = [frame_val for frame_val, _ in subplot_data[0][2]]  # Get frame values from first subplot
-
-            for frame_idx, frame_val in enumerate(frame_values):
-                frame_data = []
-
-                for subplot_idx, (_, _, frames) in enumerate(subplot_data):
-                    row = subplot_idx // n_cols + 1
-                    col = subplot_idx % n_cols + 1
-
-                    _, frame_slice = frames[frame_idx]
-                    df_frame = (
-                        frame_slice.to_dataframe()
-                        if isinstance(frame_slice, xr.DataArray)
-                        else frame_slice.to_dataframe()
-                    )
-
-                    # Fix MultiIndex if present
-                    if isinstance(df_frame.index, pd.MultiIndex):
-                        if 'time' in df_frame.index.names:
-                            levels_to_reset = [
-                                name for name in df_frame.index.names if name != 'time' and name is not None
-                            ]
-                            if levels_to_reset:
-                                df_frame = df_frame.reset_index(level=levels_to_reset, drop=True)
-
-                    # Remove leftover dimension columns
-                    dims_to_remove = [
-                        col for col in df_frame.columns if col in ['scenario', 'period', 'time'] and col not in all_vars
-                    ]
-                    if dims_to_remove:
-                        df_frame = df_frame.drop(columns=dims_to_remove)
-
-                    # Get trace data for this frame
-                    traces = _get_traces_for_data(df_frame, mode, color_map, row, col, show_legend=False)
-                    frame_data.extend(traces)
-
-                animation_frames.append(go.Frame(data=frame_data, name=str(frame_val)))
-
-            fig.frames = animation_frames
-
-            # Add play/pause buttons
-            fig.update_layout(
-                updatemenus=[
-                    dict(
-                        type='buttons',
-                        showactive=False,
-                        buttons=[
-                            dict(
-                                label='Play',
-                                method='animate',
-                                args=[None, {'frame': {'duration': 500, 'redraw': True}, 'fromcurrent': True}],
-                            ),
-                            dict(
-                                label='Pause',
-                                method='animate',
-                                args=[
-                                    [None],
-                                    {
-                                        'frame': {'duration': 0, 'redraw': False},
-                                        'mode': 'immediate',
-                                        'transition': {'duration': 0},
-                                    },
-                                ],
-                            ),
-                        ],
-                        x=0.1,
-                        y=0,
-                        xanchor='right',
-                        yanchor='top',
-                    )
-                ],
-                sliders=[
-                    dict(
-                        steps=[
-                            dict(
-                                args=[[f.name], {'frame': {'duration': 0, 'redraw': True}, 'mode': 'immediate'}],
-                                label=str(f.name),
-                                method='animate',
-                            )
-                            for f in animation_frames
-                        ],
-                        x=0.1,
-                        y=0,
-                        currentvalue=dict(prefix=f'{animate_by}: ', visible=True, xanchor='left'),
-                        len=0.9,
-                    )
-                ],
-            )
-        else:
-            # No animation, just faceting
-            for idx, (_, _, frames) in enumerate(subplot_data):
-                row = idx // n_cols + 1
-                col = idx % n_cols + 1
-
-                # Get data (only one "frame" without animation)
-                _, data_slice = frames[0]
-
-                # Convert to DataFrame properly
-                if isinstance(data_slice, xr.DataArray):
-                    df = data_slice.to_dataframe()
-                else:
-                    # For Dataset, convert to DataFrame and reshape if needed
-                    df = data_slice.to_dataframe()
-
-                # Clean up DataFrame: ensure only time index and data variables as columns
-                # Drop any dimension columns that shouldn't be there
-                if isinstance(df.index, pd.MultiIndex):
-                    # Keep only 'time' in index
-                    if 'time' in df.index.names:
-                        levels_to_reset = [name for name in df.index.names if name != 'time' and name is not None]
-                        if levels_to_reset:
-                            df = df.reset_index(level=levels_to_reset, drop=True)
-
-                # Also remove any leftover dimension columns (they shouldn't be data)
-                dims_to_remove = [
-                    col for col in df.columns if col in ['scenario', 'period', 'time'] and col not in all_vars
-                ]
-                if dims_to_remove:
-                    df = df.drop(columns=dims_to_remove)
-
-                # Add traces to subplot
-                _add_traces_to_subplot(
-                    fig,
-                    df,
-                    mode,
-                    color_map,
-                    row,
-                    col,
-                    show_legend=(idx == 0),  # Only show legend for first subplot
-                )
-
-        # Calculate intelligent height if not specified
-        if height_per_row is None:
-            # Auto-size to fill ~90% of a typical browser viewport (900px usable height)
-            # Scale based on number of rows to avoid tiny plots with many rows
-            if n_rows == 1:
-                calculated_height = 800  # Single row: use most of screen
-            elif n_rows == 2:
-                calculated_height = 900  # Two rows: fill screen
-            elif n_rows == 3:
-                calculated_height = 1000  # Three rows: slightly taller
+            # DataArray
+            df_long = data.to_dataframe().reset_index()
+            if data.name:
+                df_long = df_long.rename(columns={data.name: 'value'})
             else:
-                # More rows: use ~350px per row to keep readable
-                calculated_height = min(350 * n_rows, 1400)  # Cap at 1400 for very many rows
-        else:
-            calculated_height = height_per_row * n_rows
-
-        # Update layout
-        layout_kwargs = {
-            'title': title,
-            'plot_bgcolor': 'rgba(0,0,0,0)',
-            'paper_bgcolor': 'rgba(0,0,0,0)',
-            'font': dict(size=12),
-            'height': calculated_height,
-            'showlegend': True,
-        }
-        if width is not None:
-            layout_kwargs['width'] = width
-
-        fig.update_layout(**layout_kwargs)
-
-        # Update axes labels
-        for i in range(1, n_rows * n_cols + 1):
-            fig.update_xaxes(title_text=xlabel, row=(i - 1) // n_cols + 1, col=(i - 1) % n_cols + 1)
-            fig.update_yaxes(title_text=ylabel, row=(i - 1) // n_cols + 1, col=(i - 1) % n_cols + 1)
-
-        return fig
-
+                # Unnamed DataArray, find the value column
+                value_col = [col for col in df_long.columns if col not in data.dims][0]
+                df_long = df_long.rename(columns={value_col: 'value'})
+            df_long['variable'] = data.name or 'data'
     else:
-        # Regular DataFrame without faceting/animation
-        # Fall back to regular with_plotly
-        return with_plotly(data, mode=mode, colors=colors, title=title, ylabel=ylabel, xlabel=xlabel)
+        # Already a DataFrame
+        # Assume it's in proper format with time index and columns as variables
+        df_long = data.reset_index()
+        if 'time' not in df_long.columns:
+            # First column is probably time
+            df_long = df_long.rename(columns={df_long.columns[0]: 'time'})
+        # Melt to long format
+        id_vars = [
+            col
+            for col in df_long.columns
+            if col in ['time', 'scenario', 'period']
+            or col in (facet_by if isinstance(facet_by, list) else [facet_by] if facet_by else [])
+        ]
+        value_vars = [col for col in df_long.columns if col not in id_vars]
+        df_long = df_long.melt(id_vars=id_vars, value_vars=value_vars, var_name='variable', value_name='value')
 
+    # Setup faceting parameters for Plotly Express
+    facet_row = None
+    facet_col = None
+    if facet_by:
+        if isinstance(facet_by, str):
+            # Single facet dimension - use facet_col with facet_col_wrap
+            facet_col = facet_by
+        elif len(facet_by) == 1:
+            facet_col = facet_by[0]
+        elif len(facet_by) == 2:
+            # Two facet dimensions - use facet_row and facet_col
+            facet_row = facet_by[0]
+            facet_col = facet_by[1]
+        else:
+            raise ValueError(f'facet_by can have at most 2 dimensions, got {len(facet_by)}')
 
-def _add_traces_to_subplot(
-    fig: go.Figure, df: pd.DataFrame, mode: str, color_map: dict[str, str], row: int, col: int, show_legend: bool = True
-):
-    """Helper function to add traces to a subplot."""
+    # Process colors
+    all_vars = df_long['variable'].unique().tolist()
+    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, all_vars)
+    color_discrete_map = {var: color for var, color in zip(all_vars, processed_colors, strict=False)}
+
+    # Create plot using Plotly Express based on mode
+    common_args = {
+        'data_frame': df_long,
+        'x': 'time',
+        'y': 'value',
+        'color': 'variable',
+        'facet_row': facet_row,
+        'facet_col': facet_col,
+        'animation_frame': animate_by,
+        'color_discrete_map': color_discrete_map,
+        'title': title,
+        'labels': {'value': ylabel, 'time': xlabel, 'variable': ''},
+    }
+
+    # Add facet_col_wrap for single facet dimension
+    if facet_col and not facet_row:
+        common_args['facet_col_wrap'] = facet_cols
+
     if mode == 'stacked_bar':
-        for column in df.columns:
-            fig.add_trace(
-                go.Bar(
-                    x=df.index,
-                    y=df[column],
-                    name=column,
-                    marker=dict(color=color_map.get(column, 'gray'), line=dict(width=0)),
-                    showlegend=show_legend,
-                    legendgroup=column,
-                ),
-                row=row,
-                col=col,
-            )
-        fig.update_xaxes(row=row, col=col)
-        fig.update_yaxes(row=row, col=col)
-        if row == 1 and col == 1:  # Only set barmode once
-            fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
-
+        fig = px.bar(**common_args)
+        fig.update_traces(marker_line_width=0)
+        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
     elif mode == 'grouped_bar':
-        for column in df.columns:
-            fig.add_trace(
-                go.Bar(
-                    x=df.index,
-                    y=df[column],
-                    name=column,
-                    marker=dict(color=color_map.get(column, 'gray')),
-                    showlegend=show_legend,
-                    legendgroup=column,
-                ),
-                row=row,
-                col=col,
-            )
-        if row == 1 and col == 1:
-            fig.update_layout(barmode='group', bargap=0.2, bargroupgap=0)
-
+        fig = px.bar(**common_args)
+        fig.update_layout(barmode='group', bargap=0.2, bargroupgap=0)
     elif mode == 'line':
-        for column in df.columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=df.index,
-                    y=df[column],
-                    mode='lines',
-                    name=column,
-                    line=dict(shape='hv', color=color_map.get(column, 'gray')),
-                    showlegend=show_legend,
-                    legendgroup=column,
-                ),
-                row=row,
-                col=col,
-            )
-
+        fig = px.line(**common_args, line_shape='hv')  # Stepped lines
     elif mode == 'area':
-        df_copy = df.copy()
+        # Separate positive and negative values for proper stacking
+        df_positive = df_long[df_long['value'] >= 0].copy()
+        df_negative = df_long[df_long['value'] < 0].copy()
 
-        # Only filter numeric columns to avoid string comparison errors
-        numeric_cols = df_copy.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            df_copy.loc[(df_copy[col] > -1e-5) & (df_copy[col] < 1e-5), col] = 0
+        if len(df_negative) > 0 and len(df_positive) > 0:
+            # Need to create two separate plots and combine
+            common_args_pos = common_args.copy()
+            common_args_pos['data_frame'] = df_positive
+            common_args_neg = common_args.copy()
+            common_args_neg['data_frame'] = df_negative
 
-        # Separate positive and negative columns (only for numeric data)
-        positive_columns = []
-        negative_columns = []
+            fig_pos = px.area(**common_args_pos, line_shape='hv')
+            fig_neg = px.area(**common_args_neg, line_shape='hv')
 
-        for col in df_copy.columns:
-            if col in numeric_cols:
-                col_data = df_copy[col].dropna()
-                if len(col_data) > 0:
-                    if (col_data >= 0).all():
-                        positive_columns.append(col)
-                    elif (col_data <= 0).all():
-                        negative_columns.append(col)
-                    # Mixed sign columns are omitted from stacking
+            # Combine traces
+            fig = fig_pos
+            for trace in fig_neg.data:
+                fig.add_trace(trace)
+        else:
+            # All positive or all negative
+            fig = px.area(**common_args, line_shape='hv')
+    else:
+        raise ValueError(f'Unknown mode: {mode}')
 
-        for column in positive_columns + negative_columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=df_copy.index,
-                    y=df_copy[column],
-                    mode='lines',
-                    name=column,
-                    line=dict(shape='hv', color=color_map.get(column, 'gray')),
-                    fill='tonexty',
-                    stackgroup='pos' if column in positive_columns else 'neg',
-                    showlegend=show_legend,
-                    legendgroup=column,
-                ),
-                row=row,
-                col=col,
-            )
+    # Calculate intelligent height if not specified
+    if facet_row and facet_col:
+        n_rows = df_long[facet_row].nunique()
+        n_cols_actual = df_long[facet_col].nunique()
+    elif facet_col:
+        n_unique = df_long[facet_col].nunique()
+        n_cols_actual = min(facet_cols, n_unique)
+        n_rows = (n_unique + n_cols_actual - 1) // n_cols_actual
+    elif facet_row:
+        n_rows = df_long[facet_row].nunique()
+        n_cols_actual = 1
+    else:
+        n_rows = 1
+        n_cols_actual = 1
 
+    if height_per_row is None:
+        # Auto-size to fill browser viewport nicely
+        if n_rows == 1:
+            calculated_height = 800  # Single row: use most of screen
+        elif n_rows == 2:
+            calculated_height = 900  # Two rows: fill screen
+        elif n_rows == 3:
+            calculated_height = 1000  # Three rows: slightly taller
+        else:
+            # More rows: use ~350px per row to keep readable
+            calculated_height = min(350 * n_rows, 1400)  # Cap at 1400 for very many rows
+    else:
+        calculated_height = height_per_row * n_rows
 
-def _get_traces_for_data(
-    df: pd.DataFrame, mode: str, color_map: dict[str, str], row: int, col: int, show_legend: bool = False
-) -> list[go.Bar | go.Scatter]:
-    """Helper function to generate trace objects for animation frames."""
-    traces = []
+    # Update layout
+    layout_kwargs = {
+        'plot_bgcolor': 'rgba(0,0,0,0)',
+        'paper_bgcolor': 'rgba(0,0,0,0)',
+        'font': dict(size=12),
+        'height': calculated_height,
+    }
+    if width is not None:
+        layout_kwargs['width'] = width
 
-    if mode in ['stacked_bar', 'grouped_bar']:
-        for column in df.columns:
-            traces.append(
-                go.Bar(
-                    x=df.index,
-                    y=df[column],
-                    name=column,
-                    marker=dict(color=color_map.get(column, 'gray')),
-                    showlegend=show_legend,
-                    legendgroup=column,
-                )
-            )
-    elif mode in ['line', 'area']:
-        for column in df.columns:
-            traces.append(
-                go.Scatter(
-                    x=df.index,
-                    y=df[column],
-                    mode='lines',
-                    name=column,
-                    line=dict(shape='hv', color=color_map.get(column, 'gray')),
-                    showlegend=show_legend,
-                    legendgroup=column,
-                )
-            )
+    fig.update_layout(**layout_kwargs)
 
-    return traces
+    # Update axes to share if requested (Plotly Express already handles this, but we can customize)
+    if not shared_yaxes:
+        fig.update_yaxes(matches=None)
+    if not shared_xaxes:
+        fig.update_xaxes(matches=None)
+
+    return fig
 
 
 def with_matplotlib(
