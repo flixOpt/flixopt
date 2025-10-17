@@ -975,85 +975,48 @@ class _NodeResults(_ElementResults):
 
             >>> results['Boiler'].plot_node_balance(indexer={'scenario': 'base'}, facet_by='period')
         """
+        if engine not in plotting.PlottingEngine:
+            raise ValueError(f'Engine "{engine}" not supported. Use one of {plotting.PlottingEngine}')
+        if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
+            raise ValueError(
+                f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+            )
+
         ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer=indexer)
 
-        # Check if we should use faceting/animation
-        use_faceting = facet_by is not None or animate_by is not None
+        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        if use_faceting:
-            # Don't apply indexer to data (it's already in node_balance), but use for suffix
-            suffix_parts = []
-            if indexer:
-                suffix_parts = [f'{v}[{k}]' for k, v in indexer.items()]
+        title = (
+            f'{self.label} (flow rates){suffix}' if unit_type == 'flow_rate' else f'{self.label} (flow hours){suffix}'
+        )
+
+        if engine == 'plotly':
+            figure_like = plotting.with_plotly(
+                ds,
+                facet_by=facet_by if facet_by in ds.dims else None,
+                animate_by=animate_by if animate_by in ds.dims else None,
+                colors=colors,
+                mode=mode,
+                title=title,
+                facet_cols=facet_cols,
+            )
+            default_filetype = '.html'
+        elif engine == 'matplotlib':
+            ds_filtered, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
             suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-
             title = (
                 f'{self.label} (flow rates){suffix}'
                 if unit_type == 'flow_rate'
                 else f'{self.label} (flow hours){suffix}'
             )
-
-            if engine == 'plotly':
-                figure_like = plotting.with_plotly_faceted(
-                    ds,
-                    facet_by=facet_by,
-                    animate_by=animate_by,
-                    colors=colors,
-                    mode=mode,
-                    title=title,
-                    facet_cols=facet_cols,
-                )
-                default_filetype = '.html'
-            elif engine == 'matplotlib':
-                if animate_by is not None:
-                    raise ValueError('Animation (animate_by) is only supported with engine="plotly"')
-                # For matplotlib, fall back to regular plotting for now
-                # TODO: Implement matplotlib faceting
-                ds_filtered, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
-                suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-                title = (
-                    f'{self.label} (flow rates){suffix}'
-                    if unit_type == 'flow_rate'
-                    else f'{self.label} (flow hours){suffix}'
-                )
-                figure_like = plotting.with_matplotlib(
-                    ds_filtered.to_dataframe(),
-                    colors=colors,
-                    mode=mode,
-                    title=title,
-                )
-                default_filetype = '.png'
-            else:
-                raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
-        else:
-            # Original behavior without faceting
-            ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
-            suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-
-            title = (
-                f'{self.label} (flow rates){suffix}'
-                if unit_type == 'flow_rate'
-                else f'{self.label} (flow hours){suffix}'
+            figure_like = plotting.with_matplotlib(
+                ds_filtered.to_dataframe(),
+                colors=colors,
+                mode=mode,
+                title=title,
             )
-
-            if engine == 'plotly':
-                figure_like = plotting.with_plotly(
-                    ds.to_dataframe(),
-                    colors=colors,
-                    mode=mode,
-                    title=title,
-                )
-                default_filetype = '.html'
-            elif engine == 'matplotlib':
-                figure_like = plotting.with_matplotlib(
-                    ds.to_dataframe(),
-                    colors=colors,
-                    mode=mode,
-                    title=title,
-                )
-                default_filetype = '.png'
-            else:
-                raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+            default_filetype = '.png'
 
         return plotting.export_figure(
             figure_like=figure_like,
