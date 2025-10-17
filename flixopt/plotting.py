@@ -479,8 +479,6 @@ def with_plotly_faceted(
     facet_cols: int = 3,
     shared_yaxes: bool = True,
     shared_xaxes: bool = True,
-    height_per_row: int | None = None,
-    width: int | None = None,
 ) -> go.Figure:
     """
     Plot data with Plotly Express using facets (subplots) and/or animation for multidimensional data.
@@ -501,9 +499,6 @@ def with_plotly_faceted(
         facet_cols: Number of columns in the facet grid (used when facet_by is single dimension).
         shared_yaxes: Whether subplots share y-axes.
         shared_xaxes: Whether subplots share x-axes.
-        height_per_row: Height in pixels for each row of subplots (default: None = auto-sized).
-            When None, automatically calculates height to fill browser viewport nicely.
-        width: Total width in pixels (default: None = auto-sized by Plotly).
 
     Returns:
         A Plotly figure object containing the faceted/animated plot.
@@ -642,47 +637,6 @@ def with_plotly_faceted(
 
         for trace in all_traces:
             trace.stackgroup = variable_classification.get(trace.name, None)
-
-    # Calculate intelligent height if not specified
-    if facet_row and facet_col:
-        n_rows = df_long[facet_row].nunique()
-        n_cols_actual = df_long[facet_col].nunique()
-    elif facet_col:
-        n_unique = df_long[facet_col].nunique()
-        n_cols_actual = min(facet_cols, n_unique)
-        n_rows = (n_unique + n_cols_actual - 1) // n_cols_actual
-    elif facet_row:
-        n_rows = df_long[facet_row].nunique()
-        n_cols_actual = 1
-    else:
-        n_rows = 1
-        n_cols_actual = 1
-
-    if height_per_row is None:
-        # Auto-size to fill browser viewport nicely
-        if n_rows == 1:
-            calculated_height = 800  # Single row: use most of screen
-        elif n_rows == 2:
-            calculated_height = 900  # Two rows: fill screen
-        elif n_rows == 3:
-            calculated_height = 1000  # Three rows: slightly taller
-        else:
-            # More rows: use ~350px per row to keep readable
-            calculated_height = min(350 * n_rows, 1400)  # Cap at 1400 for very many rows
-    else:
-        calculated_height = height_per_row * n_rows
-
-    # Update layout
-    layout_kwargs = {
-        'plot_bgcolor': 'rgba(0,0,0,0)',
-        'paper_bgcolor': 'rgba(0,0,0,0)',
-        'font': dict(size=12),
-        'height': calculated_height,
-    }
-    if width is not None:
-        layout_kwargs['width'] = width
-
-    fig.update_layout(**layout_kwargs)
 
     # Update axes to share if requested (Plotly Express already handles this, but we can customize)
     if not shared_yaxes:

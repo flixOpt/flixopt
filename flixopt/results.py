@@ -927,8 +927,6 @@ class _NodeResults(_ElementResults):
         facet_by: str | list[str] | None = None,
         animate_by: str | None = None,
         facet_cols: int = 3,
-        height_per_row: int | None = None,
-        width: int | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots the node balance of the Component or Bus with optional faceting and animation.
@@ -955,10 +953,6 @@ class _NodeResults(_ElementResults):
                 dimension values. Only one dimension can be animated.
                 Example: 'period' creates an animation cycling through periods.
             facet_cols: Number of columns in the facet grid layout (default: 3).
-            height_per_row: Height in pixels for each row of subplots (default: None = auto-sized).
-                When None, automatically calculates height to fill browser viewport nicely.
-                Override with specific pixel value (e.g., 600) if needed.
-            width: Total width in pixels (default: None = auto-sized by Plotly).
 
         Examples:
             Basic plot (current behavior):
@@ -980,15 +974,6 @@ class _NodeResults(_ElementResults):
             Filter one scenario, then facet by period:
 
             >>> results['Boiler'].plot_node_balance(indexer={'scenario': 'base'}, facet_by='period')
-
-            Custom height override (optional):
-
-            >>> results['Boiler'].plot_node_balance(
-            ...     facet_by='scenario',
-            ...     animate_by='period',
-            ...     height_per_row=700,  # Override auto-sizing for extra tall plots
-            ...     facet_cols=2,
-            ... )
         """
         ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer=indexer)
 
@@ -1017,8 +1002,6 @@ class _NodeResults(_ElementResults):
                     mode=mode,
                     title=title,
                     facet_cols=facet_cols,
-                    height_per_row=height_per_row,
-                    width=width,
                 )
                 default_filetype = '.html'
             elif engine == 'matplotlib':
