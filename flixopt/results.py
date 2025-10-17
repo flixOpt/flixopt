@@ -1889,7 +1889,7 @@ def _apply_indexer_to_data(
             if dim != 'time' and dim in data.coords:
                 first_value = data.coords[dim].values[0]
                 selection[dim] = first_value
-                selection_string.append(f'{first_value}[{dim}]')
+                selection_string.append(f'{dim}={first_value}')
         if selection:
             data = data.sel(selection, drop=drop)
 
