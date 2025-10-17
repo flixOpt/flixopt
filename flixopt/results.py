@@ -924,8 +924,8 @@ class _NodeResults(_ElementResults):
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
-        facet_by: str | list[str] | None = None,
-        animate_by: str | None = None,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
         facet_cols: int = 3,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
@@ -946,12 +946,11 @@ class _NodeResults(_ElementResults):
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             drop_suffix: Whether to drop the suffix from the variable names.
             facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
-                or list of dimensions. Each unique value combination creates a subplot.
+                or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
                 Example: 'scenario' creates one subplot per scenario.
                 Example: ['scenario', 'period'] creates a grid of subplots for each scenario-period combination.
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
-                dimension values. Only one dimension can be animated.
-                Example: 'period' creates an animation cycling through periods.
+                dimension values. Only one dimension can be animated. Ignored if not found.
             facet_cols: Number of columns in the facet grid layout (default: 3).
 
         Examples:
