@@ -327,175 +327,38 @@ class ColorProcessor:
 
 
 def with_plotly(
-    data: pd.DataFrame,
+    data: pd.DataFrame | xr.DataArray | xr.Dataset,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
     fig: go.Figure | None = None,
-) -> go.Figure:
-    """
-    Plot a DataFrame with Plotly, using either stacked bars or stepped lines.
-
-    Args:
-        data: A DataFrame containing the data to plot, where the index represents time (e.g., hours),
-              and each column represents a separate data series.
-        mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines,
-              or 'area' for stacked area charts.
-        colors: Color specification, can be:
-            - A string with a colorscale name (e.g., 'viridis', 'plasma')
-            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
-            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
-        title: The title of the plot.
-        ylabel: The label for the y-axis.
-        xlabel: The label for the x-axis.
-        fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
-
-    Returns:
-        A Plotly figure object containing the generated plot.
-    """
-    if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
-        raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
-    if data.empty:
-        return go.Figure()
-
-    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, list(data.columns))
-
-    fig = fig if fig is not None else go.Figure()
-
-    if mode == 'stacked_bar':
-        for i, column in enumerate(data.columns):
-            fig.add_trace(
-                go.Bar(
-                    x=data.index,
-                    y=data[column],
-                    name=column,
-                    marker=dict(
-                        color=processed_colors[i], line=dict(width=0, color='rgba(0,0,0,0)')
-                    ),  # Transparent line with 0 width
-                )
-            )
-
-        fig.update_layout(
-            barmode='relative',
-            bargap=0,  # No space between bars
-            bargroupgap=0,  # No space between grouped bars
-        )
-    if mode == 'grouped_bar':
-        for i, column in enumerate(data.columns):
-            fig.add_trace(go.Bar(x=data.index, y=data[column], name=column, marker=dict(color=processed_colors[i])))
-
-        fig.update_layout(
-            barmode='group',
-            bargap=0.2,  # No space between bars
-            bargroupgap=0,  # space between grouped bars
-        )
-    elif mode == 'line':
-        for i, column in enumerate(data.columns):
-            fig.add_trace(
-                go.Scatter(
-                    x=data.index,
-                    y=data[column],
-                    mode='lines',
-                    name=column,
-                    line=dict(shape='hv', color=processed_colors[i]),
-                )
-            )
-    elif mode == 'area':
-        data = data.copy()
-        data[(data > -1e-5) & (data < 1e-5)] = 0  # Preventing issues with plotting
-        # Split columns into positive, negative, and mixed categories
-        positive_columns = list(data.columns[(data >= 0).where(~np.isnan(data), True).all()])
-        negative_columns = list(data.columns[(data <= 0).where(~np.isnan(data), True).all()])
-        negative_columns = [column for column in negative_columns if column not in positive_columns]
-        mixed_columns = list(set(data.columns) - set(positive_columns + negative_columns))
-
-        if mixed_columns:
-            logger.error(
-                f'Data for plotting stacked lines contains columns with both positive and negative values:'
-                f' {mixed_columns}. These can not be stacked, and are printed as simple lines'
-            )
-
-        # Get color mapping for all columns
-        colors_stacked = {column: processed_colors[i] for i, column in enumerate(data.columns)}
-
-        for column in positive_columns + negative_columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=data.index,
-                    y=data[column],
-                    mode='lines',
-                    name=column,
-                    line=dict(shape='hv', color=colors_stacked[column]),
-                    fill='tonexty',
-                    stackgroup='pos' if column in positive_columns else 'neg',
-                )
-            )
-
-        for column in mixed_columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=data.index,
-                    y=data[column],
-                    mode='lines',
-                    name=column,
-                    line=dict(shape='hv', color=colors_stacked[column], dash='dash'),
-                )
-            )
-
-    # Update layout for better aesthetics
-    fig.update_layout(
-        title=title,
-        yaxis=dict(
-            title=ylabel,
-            showgrid=True,  # Enable grid lines on the y-axis
-            gridcolor='lightgrey',  # Customize grid line color
-            gridwidth=0.5,  # Customize grid line width
-        ),
-        xaxis=dict(
-            title=xlabel,
-            showgrid=True,  # Enable grid lines on the x-axis
-            gridcolor='lightgrey',  # Customize grid line color
-            gridwidth=0.5,  # Customize grid line width
-        ),
-        plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
-        paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
-        font=dict(size=14),  # Increase font size for better readability
-    )
-
-    return fig
-
-
-def with_plotly_faceted(
-    data: pd.DataFrame | xr.DataArray | xr.Dataset,
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
-    mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
-    colors: ColorType = 'viridis',
-    title: str = '',
-    ylabel: str = '',
-    xlabel: str = 'Time in h',
     facet_cols: int = 3,
     shared_yaxes: bool = True,
     shared_xaxes: bool = True,
 ) -> go.Figure:
     """
-    Plot data with Plotly Express using facets (subplots) and/or animation for multidimensional data.
+    Plot data with Plotly using facets (subplots) and/or animation for multidimensional data.
 
     Uses Plotly Express for convenient faceting and animation with automatic styling.
+    For simple plots without faceting, can optionally add to an existing figure.
 
     Args:
         data: A DataFrame or xarray DataArray/Dataset to plot.
-        facet_by: Dimension(s) to create facets for. Creates a subplot grid.
-              Can be a single dimension name or list of dimensions (max 2 for facet_row and facet_col).
-        animate_by: Dimension to animate over. Creates animation frames.
         mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for lines,
               'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
         colors: Color specification (colormap, list, or dict mapping labels to colors).
         title: The main title of the plot.
         ylabel: The label for the y-axis.
         xlabel: The label for the x-axis.
+        fig: A Plotly figure object to plot on (only for simple plots without faceting).
+             If not provided, a new figure will be created.
+        facet_by: Dimension(s) to create facets for. Creates a subplot grid.
+              Can be a single dimension name or list of dimensions (max 2 for facet_row and facet_col).
+        animate_by: Dimension to animate over. Creates animation frames.
         facet_cols: Number of columns in the facet grid (used when facet_by is single dimension).
         shared_yaxes: Whether subplots share y-axes.
         shared_xaxes: Whether subplots share x-axes.
@@ -504,24 +367,46 @@ def with_plotly_faceted(
         A Plotly figure object containing the faceted/animated plot.
 
     Examples:
+        Simple plot:
+
+        ```python
+        fig = with_plotly(df, mode='area', title='Energy Mix')
+        ```
+
         Facet by scenario:
 
         ```python
-        fig = with_plotly_faceted(data, facet_by='scenario', facet_cols=2)
+        fig = with_plotly(ds, facet_by='scenario', facet_cols=2)
         ```
 
         Animate by period:
 
         ```python
-        fig = with_plotly_faceted(data, animate_by='period')
+        fig = with_plotly(ds, animate_by='period')
         ```
 
         Facet and animate:
 
         ```python
-        fig = with_plotly_faceted(data, facet_by='scenario', animate_by='period')
+        fig = with_plotly(ds, facet_by='scenario', animate_by='period')
         ```
     """
+    if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
+        raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
+
+    # Handle empty data
+    if isinstance(data, pd.DataFrame) and data.empty:
+        return go.Figure()
+    elif isinstance(data, xr.DataArray) and data.size == 0:
+        return go.Figure()
+    elif isinstance(data, xr.Dataset) and len(data.data_vars) == 0:
+        return go.Figure()
+
+    # Warn if fig parameter is used with faceting
+    if fig is not None and (facet_by is not None or animate_by is not None):
+        logger.warning('The fig parameter is ignored when using faceting or animation. Creating a new figure.')
+        fig = None
+
     # Convert xarray to long-form DataFrame for Plotly Express
     if isinstance(data, (xr.DataArray, xr.Dataset)):
         # Convert to long-form (tidy) DataFrame
@@ -544,8 +429,7 @@ def with_plotly_faceted(
                 df_long = df_long.rename(columns={value_col: 'value'})
             df_long['variable'] = data.name or 'data'
     else:
-        # Already a DataFrame
-        # Assume it's in proper format with time index and columns as variables
+        # Already a DataFrame - convert to long format for Plotly Express
         df_long = data.reset_index()
         if 'time' not in df_long.columns:
             # First column is probably time
@@ -642,6 +526,13 @@ def with_plotly_faceted(
                 if hasattr(trace, 'line') and trace.line.color:
                     trace.fillcolor = trace.line.color  # Will be solid by default
                     trace.line.width = 0
+
+    # Update layout with basic styling (Plotly Express handles sizing automatically)
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(size=12),
+    )
 
     # Update axes to share if requested (Plotly Express already handles this, but we can customize)
     if not shared_yaxes:
