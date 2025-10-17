@@ -42,7 +42,6 @@ nav:
 
 theme:
   name: material
-  custom_dir: docs/overrides
   palette:
     # Light mode
     - media: "(prefers-color-scheme: light)"
@@ -160,6 +159,7 @@ extra_javascript:
   - javascripts/mathjax.js  # Custom MathJax 3 CDN Configuration
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js  #MathJax 3 CDN
   - https://polyfill.io/v3/polyfill.min.js?features=es6  #Support for older browsers
+  - javascripts/gurubase-widget.js
 
 watch:
   - flixopt
