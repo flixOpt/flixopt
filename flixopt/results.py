@@ -695,6 +695,7 @@ class CalculationResults:
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap of the solution of a variable.
@@ -707,9 +708,10 @@ class CalculationResults:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
+            indexer: (Legacy) Optional selection dict. Use `select` instead.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
 
         Examples:
             Basic usage (uses first scenario, first period, all time):
@@ -749,6 +751,7 @@ class CalculationResults:
             show=show,
             engine=engine,
             indexer=indexer,
+            select=select,
         )
 
     def plot_network(
@@ -921,6 +924,7 @@ class _NodeResults(_ElementResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
@@ -936,7 +940,13 @@ class _NodeResults(_ElementResults):
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
+            indexer: (Legacy) Optional selection dict. Use `select` instead for more flexibility.
+            select: Optional data selection dict. Supports:
+                - Single values: {'scenario': 'base', 'period': 2024}
+                - Multiple values: {'scenario': ['base', 'high', 'renewable']}
+                - Slices: {'time': slice('2024-01', '2024-06')}
+                - Index arrays: {'time': time_array}
+                Note: Applied BEFORE faceting/animation.
             unit_type: The unit type to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
@@ -967,9 +977,19 @@ class _NodeResults(_ElementResults):
 
             >>> results['Boiler'].plot_node_balance(facet_by='scenario', animate_by='period')
 
-            Filter one scenario, then facet by period:
+            Select single scenario, then facet by period:
 
-            >>> results['Boiler'].plot_node_balance(indexer={'scenario': 'base'}, facet_by='period')
+            >>> results['Boiler'].plot_node_balance(select={'scenario': 'base'}, facet_by='period')
+
+            Select multiple scenarios and facet by them:
+
+            >>> results['Boiler'].plot_node_balance(
+            ...     select={'scenario': ['base', 'high', 'renewable']}, facet_by='scenario'
+            ... )
+
+            Time range selection (summer months only):
+
+            >>> results['Boiler'].plot_node_balance(select={'time': slice('2024-06', '2024-08')}, facet_by='scenario')
         """
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
@@ -980,7 +1000,7 @@ class _NodeResults(_ElementResults):
 
         ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
+        ds, suffix_parts = _apply_indexer_to_data(ds, indexer=indexer, select=select, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = (
@@ -1025,6 +1045,7 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
         Args:
@@ -1034,7 +1055,8 @@ class _NodeResults(_ElementResults):
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine ('plotly' or 'matplotlib').
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
+            indexer: (Legacy) Optional selection dict. Use `select` instead.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
@@ -1051,8 +1073,8 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_indexer_to_data(inputs, indexer, drop=True)
-        outputs, suffix_parts = _apply_indexer_to_data(outputs, indexer, drop=True)
+        inputs, suffix_parts = _apply_indexer_to_data(inputs, indexer=indexer, select=select, drop=True)
+        outputs, suffix_parts = _apply_indexer_to_data(outputs, indexer=indexer, select=select, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'{self.label} (total flow hours){suffix}'
@@ -1105,6 +1127,7 @@ class _NodeResults(_ElementResults):
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Component or Bus.
@@ -1117,7 +1140,8 @@ class _NodeResults(_ElementResults):
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             drop_suffix: Whether to drop the suffix from the variable names.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
+            indexer: (Legacy) Optional selection dict. Use `select` instead.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
         ds = self.solution[self.inputs + self.outputs]
 
@@ -1137,7 +1161,7 @@ class _NodeResults(_ElementResults):
             drop_suffix='|' if drop_suffix else None,
         )
 
-        ds, _ = _apply_indexer_to_data(ds, indexer, drop=True)
+        ds, _ = _apply_indexer_to_data(ds, indexer=indexer, select=select, drop=True)
 
         if unit_type == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
@@ -1176,6 +1200,7 @@ class ComponentResults(_NodeResults):
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance.
 
@@ -1185,7 +1210,8 @@ class ComponentResults(_NodeResults):
             colors: Color scheme. Also see plotly.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
+            indexer: (Legacy) Optional selection dict. Use `select` instead.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
 
         Raises:
             ValueError: If component is not a storage.
@@ -1193,11 +1219,11 @@ class ComponentResults(_NodeResults):
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
-        ds = self.node_balance(with_last_timestep=True, indexer=indexer)
+        ds = self.node_balance(with_last_timestep=True, indexer=indexer, select=select)
         charge_state = self.charge_state
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
-        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, indexer, drop=True)
+        ds, suffix_parts = _apply_indexer_to_data(ds, indexer=indexer, select=select, drop=True)
+        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, indexer=indexer, select=select, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'Operation Balance of {self.label}{suffix}'
@@ -1578,6 +1604,7 @@ def plot_heatmap(
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
     indexer: dict[str, Any] | None = None,
+    select: dict[str, Any] | None = None,
 ):
     """Plot heatmap of time series data.
 
@@ -1591,9 +1618,10 @@ def plot_heatmap(
         save: Whether to save plot.
         show: Whether to display plot.
         engine: Plotting engine.
-        indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
+        indexer: (Legacy) Optional selection dict. Use `select` instead.
+        select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
     """
-    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer, drop=True)
+    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer=indexer, select=select, drop=True)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
     name = name if not suffix_parts else name + suffix
 
@@ -1851,23 +1879,30 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
 
 
 def _apply_indexer_to_data(
-    data: xr.DataArray | xr.Dataset, indexer: dict[str, Any] | None = None, drop=False
+    data: xr.DataArray | xr.Dataset,
+    indexer: dict[str, Any] | None = None,
+    select: dict[str, Any] | None = None,
+    drop=False,
 ) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
-    Apply indexer selection
+    Apply indexer/select selection to data.
 
     Args:
         data: xarray Dataset or DataArray
-        indexer: Optional selection dict
+        indexer: (Legacy) Optional selection dict. Deprecated, use select instead.
+        select: Optional selection dict (takes precedence over indexer)
+        drop: Whether to drop dimensions after selection
 
     Returns:
         Tuple of (selected_data, selection_string)
     """
     selection_string = []
 
-    if indexer is not None:
-        # User provided indexer
-        data = data.sel(indexer, drop=drop)
-        selection_string.extend(f'{dim}={val}' for dim, val in indexer.items())
+    # Merge both dicts, select takes precedence
+    selection = {**(indexer or {}), **(select or {})}
+
+    if selection:
+        data = data.sel(selection, drop=drop)
+        selection_string.extend(f'{dim}={val}' for dim, val in selection.items())
 
     return data, selection_string
