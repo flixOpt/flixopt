@@ -679,6 +679,8 @@ def with_plotly_faceted(
     facet_cols: int = 3,
     shared_yaxes: bool = True,
     shared_xaxes: bool = True,
+    height_per_row: int | None = None,
+    width: int | None = None,
 ) -> go.Figure:
     """
     Plot a DataFrame with Plotly using facets (subplots) and/or animation for multidimensional data.
@@ -704,6 +706,10 @@ def with_plotly_faceted(
         facet_cols: Number of columns in the facet grid.
         shared_yaxes: Whether subplots share y-axes.
         shared_xaxes: Whether subplots share x-axes.
+        height_per_row: Height in pixels for each row of subplots (default: None = auto-sized).
+            When None, automatically calculates height to fill ~90% of typical browser viewport.
+            Manually specify (e.g., 600) to override auto-sizing.
+        width: Total width in pixels (default: None = auto-sized by Plotly).
 
     Returns:
         A Plotly figure object containing the faceted/animated plot.
@@ -937,15 +943,35 @@ def with_plotly_faceted(
                     show_legend=(idx == 0),  # Only show legend for first subplot
                 )
 
+        # Calculate intelligent height if not specified
+        if height_per_row is None:
+            # Auto-size to fill ~90% of a typical browser viewport (900px usable height)
+            # Scale based on number of rows to avoid tiny plots with many rows
+            if n_rows == 1:
+                calculated_height = 800  # Single row: use most of screen
+            elif n_rows == 2:
+                calculated_height = 900  # Two rows: fill screen
+            elif n_rows == 3:
+                calculated_height = 1000  # Three rows: slightly taller
+            else:
+                # More rows: use ~350px per row to keep readable
+                calculated_height = min(350 * n_rows, 1400)  # Cap at 1400 for very many rows
+        else:
+            calculated_height = height_per_row * n_rows
+
         # Update layout
-        fig.update_layout(
-            title=title,
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(size=12),
-            height=300 * n_rows,
-            showlegend=True,
-        )
+        layout_kwargs = {
+            'title': title,
+            'plot_bgcolor': 'rgba(0,0,0,0)',
+            'paper_bgcolor': 'rgba(0,0,0,0)',
+            'font': dict(size=12),
+            'height': calculated_height,
+            'showlegend': True,
+        }
+        if width is not None:
+            layout_kwargs['width'] = width
+
+        fig.update_layout(**layout_kwargs)
 
         # Update axes labels
         for i in range(1, n_rows * n_cols + 1):
