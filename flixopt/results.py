@@ -694,8 +694,8 @@ class CalculationResults:
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         select: dict[FlowSystemDimensions, Any] | None = None,
+        **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap of the solution of a variable.
@@ -708,10 +708,9 @@ class CalculationResults:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: (Legacy) Optional selection dict. Use `select` instead.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
-            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
 
         Examples:
             Basic usage (uses first scenario, first period, all time):
@@ -720,13 +719,13 @@ class CalculationResults:
 
             Select specific scenario and period:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={'scenario': 'base', 'period': 2024})
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base', 'period': 2024})
 
             Time filtering (summer months only):
 
             >>> results.plot_heatmap(
             ...     'Boiler(Qth)|flow_rate',
-            ...     indexer={
+            ...     select={
             ...         'scenario': 'base',
             ...         'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])],
             ...     },
@@ -735,9 +734,19 @@ class CalculationResults:
             Save to specific location:
 
             >>> results.plot_heatmap(
-            ...     'Boiler(Qth)|flow_rate', indexer={'scenario': 'base'}, save='path/to/my_heatmap.html'
+            ...     'Boiler(Qth)|flow_rate', select={'scenario': 'base'}, save='path/to/my_heatmap.html'
             ... )
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         dataarray = self.solution[variable_name]
 
         return plot_heatmap(
@@ -750,8 +759,8 @@ class CalculationResults:
             save=save,
             show=show,
             engine=engine,
-            indexer=indexer,
             select=select,
+            **kwargs,
         )
 
     def plot_network(
@@ -923,7 +932,6 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         select: dict[FlowSystemDimensions, Any] | None = None,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
@@ -931,6 +939,7 @@ class _NodeResults(_ElementResults):
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
         facet_cols: int = 3,
+        **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots the node balance of the Component or Bus with optional faceting and animation.
@@ -940,7 +949,6 @@ class _NodeResults(_ElementResults):
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: (Legacy) Optional selection dict. Use `select` instead for more flexibility.
             select: Optional data selection dict. Supports:
                 - Single values: {'scenario': 'base', 'period': 2024}
                 - Multiple values: {'scenario': ['base', 'high', 'renewable']}
@@ -991,6 +999,16 @@ class _NodeResults(_ElementResults):
 
             >>> results['Boiler'].plot_node_balance(select={'time': slice('2024-06', '2024-08')}, facet_by='scenario')
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
         if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
@@ -998,9 +1016,10 @@ class _NodeResults(_ElementResults):
                 f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
             )
 
+        # Don't pass select/indexer to node_balance - we'll apply it afterwards
         ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer=indexer, select=select, drop=True)
+        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = (
@@ -1044,8 +1063,8 @@ class _NodeResults(_ElementResults):
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         select: dict[FlowSystemDimensions, Any] | None = None,
+        **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
         Args:
@@ -1055,9 +1074,18 @@ class _NodeResults(_ElementResults):
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine ('plotly' or 'matplotlib').
-            indexer: (Legacy) Optional selection dict. Use `select` instead.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
@@ -1073,8 +1101,8 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_indexer_to_data(inputs, indexer=indexer, select=select, drop=True)
-        outputs, suffix_parts = _apply_indexer_to_data(outputs, indexer=indexer, select=select, drop=True)
+        inputs, suffix_parts = _apply_indexer_to_data(inputs, select=select, drop=True, **kwargs)
+        outputs, suffix_parts = _apply_indexer_to_data(outputs, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'{self.label} (total flow hours){suffix}'
@@ -1126,8 +1154,8 @@ class _NodeResults(_ElementResults):
         with_last_timestep: bool = False,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         select: dict[FlowSystemDimensions, Any] | None = None,
+        **kwargs,
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Component or Bus.
@@ -1140,9 +1168,18 @@ class _NodeResults(_ElementResults):
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             drop_suffix: Whether to drop the suffix from the variable names.
-            indexer: (Legacy) Optional selection dict. Use `select` instead.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         ds = self.solution[self.inputs + self.outputs]
 
         ds = sanitize_dataset(
@@ -1161,7 +1198,7 @@ class _NodeResults(_ElementResults):
             drop_suffix='|' if drop_suffix else None,
         )
 
-        ds, _ = _apply_indexer_to_data(ds, indexer=indexer, select=select, drop=True)
+        ds, _ = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
 
         if unit_type == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
@@ -1199,8 +1236,8 @@ class ComponentResults(_NodeResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         select: dict[FlowSystemDimensions, Any] | None = None,
+        **kwargs,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance.
 
@@ -1210,20 +1247,30 @@ class ComponentResults(_NodeResults):
             colors: Color scheme. Also see plotly.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
-            indexer: (Legacy) Optional selection dict. Use `select` instead.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
 
         Raises:
             ValueError: If component is not a storage.
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
-        ds = self.node_balance(with_last_timestep=True, indexer=indexer, select=select)
+        # Don't pass select/indexer to node_balance - we'll apply it afterwards
+        ds = self.node_balance(with_last_timestep=True)
         charge_state = self.charge_state
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer=indexer, select=select, drop=True)
-        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, indexer=indexer, select=select, drop=True)
+        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
+        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'Operation Balance of {self.label}{suffix}'
@@ -1603,8 +1650,8 @@ def plot_heatmap(
     save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
-    indexer: dict[str, Any] | None = None,
     select: dict[str, Any] | None = None,
+    **kwargs,
 ):
     """Plot heatmap of time series data.
 
@@ -1618,10 +1665,19 @@ def plot_heatmap(
         save: Whether to save plot.
         show: Whether to display plot.
         engine: Plotting engine.
-        indexer: (Legacy) Optional selection dict. Use `select` instead.
         select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
     """
-    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer=indexer, select=select, drop=True)
+    # Handle deprecated indexer parameter
+    if 'indexer' in kwargs:
+        import warnings
+
+        warnings.warn(
+            "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
     name = name if not suffix_parts else name + suffix
 
@@ -1880,16 +1936,15 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
 
 def _apply_indexer_to_data(
     data: xr.DataArray | xr.Dataset,
-    indexer: dict[str, Any] | None = None,
     select: dict[str, Any] | None = None,
     drop=False,
+    **kwargs,
 ) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
-    Apply indexer/select selection to data.
+    Apply selection to data.
 
     Args:
         data: xarray Dataset or DataArray
-        indexer: (Legacy) Optional selection dict. Deprecated, use select instead.
         select: Optional selection dict (takes precedence over indexer)
         drop: Whether to drop dimensions after selection
 
@@ -1897,6 +1952,17 @@ def _apply_indexer_to_data(
         Tuple of (selected_data, selection_string)
     """
     selection_string = []
+
+    # Handle deprecated indexer parameter
+    indexer = kwargs.get('indexer')
+    if indexer is not None:
+        import warnings
+
+        warnings.warn(
+            "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
 
     # Merge both dicts, select takes precedence
     selection = {**(indexer or {}), **(select or {})}
