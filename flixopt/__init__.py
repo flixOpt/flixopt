@@ -7,7 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version('flixopt')
-except PackageNotFoundError:
+except (PackageNotFoundError, TypeError):
     # Package is not installed (development mode without editable install)
     __version__ = '0.0.0.dev0'
 
