@@ -614,27 +614,53 @@ def with_plotly_faceted(
     elif mode == 'line':
         fig = px.line(**common_args, line_shape='hv')  # Stepped lines
     elif mode == 'area':
-        # Separate positive and negative values for proper stacking
-        df_positive = df_long[df_long['value'] >= 0].copy()
-        df_negative = df_long[df_long['value'] < 0].copy()
+        # Use Plotly Express to create the area plot (preserves animation, legends, faceting)
+        fig = px.area(**common_args, line_shape='hv')
 
-        if len(df_negative) > 0 and len(df_positive) > 0:
-            # Need to create two separate plots and combine
-            common_args_pos = common_args.copy()
-            common_args_pos['data_frame'] = df_positive
-            common_args_neg = common_args.copy()
-            common_args_neg['data_frame'] = df_negative
+        # Post-process: Fix stackgroup for variables with negative values
+        # Classify each variable based on its values across all data
+        variable_classification = {}
+        for var in all_vars:
+            var_data = df_long[df_long['variable'] == var]['value']
+            # Clean near-zero values
+            var_data_clean = var_data[(var_data < -1e-5) | (var_data > 1e-5)]
 
-            fig_pos = px.area(**common_args_pos, line_shape='hv')
-            fig_neg = px.area(**common_args_neg, line_shape='hv')
+            if len(var_data_clean) == 0:
+                variable_classification[var] = 'zero'
+            else:
+                has_positive = (var_data_clean > 0).any()
+                has_negative = (var_data_clean < 0).any()
 
-            # Combine traces
-            fig = fig_pos
-            for trace in fig_neg.data:
-                fig.add_trace(trace)
-        else:
-            # All positive or all negative
-            fig = px.area(**common_args, line_shape='hv')
+                if has_positive and has_negative:
+                    variable_classification[var] = 'mixed'
+                elif has_negative:
+                    variable_classification[var] = 'negative'
+                else:
+                    variable_classification[var] = 'positive'
+
+        # Log warning for mixed variables
+        mixed_vars = [v for v, c in variable_classification.items() if c == 'mixed']
+        if mixed_vars:
+            logger.warning(
+                f'Data contains variables with both positive and negative values: {mixed_vars}. '
+                f'These will be plotted as dashed lines instead of stacked areas.'
+            )
+
+        # Modify traces based on classification
+        for trace in fig.data:
+            var_name = trace.name
+            if var_name in variable_classification:
+                classification = variable_classification[var_name]
+
+                if classification == 'negative':
+                    # Change stackgroup to separate negative stack
+                    trace.stackgroup = 'neg'
+                elif classification == 'mixed':
+                    # Remove stacking for mixed variables and use dashed lines
+                    trace.stackgroup = None
+                    trace.fill = None
+                    trace.line.dash = 'dash'
+                # Positive variables keep default stackgroup from px.area()
     else:
         raise ValueError(f'Unknown mode: {mode}')
 
