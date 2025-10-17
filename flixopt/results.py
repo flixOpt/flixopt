@@ -981,7 +981,7 @@ class _NodeResults(_ElementResults):
                 f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
             )
 
-        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer=indexer)
+        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer={})
 
         ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
@@ -1001,16 +1001,9 @@ class _NodeResults(_ElementResults):
                 facet_cols=facet_cols,
             )
             default_filetype = '.html'
-        elif engine == 'matplotlib':
-            ds_filtered, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
-            suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-            title = (
-                f'{self.label} (flow rates){suffix}'
-                if unit_type == 'flow_rate'
-                else f'{self.label} (flow hours){suffix}'
-            )
+        else:
             figure_like = plotting.with_matplotlib(
-                ds_filtered.to_dataframe(),
+                ds.to_dataframe(),
                 colors=colors,
                 mode=mode,
                 title=title,
