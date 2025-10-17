@@ -54,10 +54,12 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 
 
 ### ✨ Added
+- Added facting and animation to plotting methods
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+- Changed indexer behaviour. Defaults to not indexing instead of the first value except for time. Also changed naming when indexing.
 
 ### 🗑️ Deprecated
 
