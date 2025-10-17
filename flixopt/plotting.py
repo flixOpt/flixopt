@@ -647,20 +647,21 @@ def with_plotly_faceted(
             )
 
         # Modify traces based on classification
+        stack_group_mapping = {'negative': 'negative', 'positive': 'positive'}
         for trace in fig.data:
             var_name = trace.name
             if var_name in variable_classification:
                 classification = variable_classification[var_name]
+                trace.stackgroup = stack_group_mapping.get(classification, None)
 
-                if classification == 'negative':
-                    # Change stackgroup to separate negative stack
-                    trace.stackgroup = 'neg'
-                elif classification == 'mixed':
-                    # Remove stacking for mixed variables and use dashed lines
-                    trace.stackgroup = None
-                    trace.fill = None
-                    trace.line.dash = 'dash'
-                # Positive variables keep default stackgroup from px.area()
+        # Update all animation frames
+        if fig.frames:
+            for frame in fig.frames:
+                for trace in frame.data:
+                    var_name = trace.name
+                    if var_name in variable_classification:
+                        classification = variable_classification[var_name]
+                        trace.stackgroup = stack_group_mapping.get(classification, None)
     else:
         raise ValueError(f'Unknown mode: {mode}')
 
