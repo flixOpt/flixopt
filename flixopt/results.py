@@ -937,9 +937,6 @@ class _NodeResults(_ElementResults):
             colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension (except time).
-                 If empty dict {}, uses all values.
-                 Note: indexer filters are applied BEFORE faceting/animation.
             unit_type: The unit type to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
@@ -981,7 +978,7 @@ class _NodeResults(_ElementResults):
                 f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
             )
 
-        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer={})
+        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
 
         ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
@@ -1038,8 +1035,6 @@ class _NodeResults(_ElementResults):
             show: Whether to display plot.
             engine: Plotting engine ('plotly' or 'matplotlib').
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
         """
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
@@ -1123,8 +1118,6 @@ class _NodeResults(_ElementResults):
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             drop_suffix: Whether to drop the suffix from the variable names.
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
         """
         ds = self.solution[self.inputs + self.outputs]
 
@@ -1193,8 +1186,6 @@ class ComponentResults(_NodeResults):
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
 
         Raises:
             ValueError: If component is not a storage.
@@ -1601,8 +1592,6 @@ def plot_heatmap(
         show: Whether to display plot.
         engine: Plotting engine.
         indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-             If None, uses first value for each dimension.
-             If empty dict {}, uses all values.
     """
     dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer, drop=True)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
@@ -1865,13 +1854,11 @@ def _apply_indexer_to_data(
     data: xr.DataArray | xr.Dataset, indexer: dict[str, Any] | None = None, drop=False
 ) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
-    Apply indexer selection or auto-select first values for non-time dimensions.
+    Apply indexer selection
 
     Args:
         data: xarray Dataset or DataArray
         indexer: Optional selection dict
-            If None, uses first value for each dimension (except time).
-            If empty dict {}, uses all values.
 
     Returns:
         Tuple of (selected_data, selection_string)
@@ -1881,16 +1868,6 @@ def _apply_indexer_to_data(
     if indexer is not None:
         # User provided indexer
         data = data.sel(indexer, drop=drop)
-        selection_string.extend(f'{v}[{k}]' for k, v in indexer.items())
-    else:
-        # Auto-select first value for each dimension except 'time'
-        selection = {}
-        for dim in data.dims:
-            if dim != 'time' and dim in data.coords:
-                first_value = data.coords[dim].values[0]
-                selection[dim] = first_value
-                selection_string.append(f'{dim}={first_value}')
-        if selection:
-            data = data.sel(selection, drop=drop)
+        selection_string.extend(f'{dim}={val}' for dim, val in indexer.items())
 
     return data, selection_string
