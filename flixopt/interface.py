@@ -963,6 +963,11 @@ class InvestParameters(Interface):
                 raise TypeError(
                     f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
                 )
+            if flow_system.periods is None:
+                raise ValueError(
+                    f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
+                    f'Please define periods in FlowSystem or use linked_periods=None.'
+                )
             logger.debug(f'Computing linked_periods from {self.linked_periods}')
             start, end = self.linked_periods
             if start not in flow_system.periods.values:
