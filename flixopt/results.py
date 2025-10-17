@@ -974,8 +974,8 @@ class _NodeResults(_ElementResults):
 
             >>> results['Boiler'].plot_node_balance(indexer={'scenario': 'base'}, facet_by='period')
         """
-        if engine not in plotting.PlottingEngine:
-            raise ValueError(f'Engine "{engine}" not supported. Use one of {plotting.PlottingEngine}')
+        if engine not in {'plotly', 'matplotlib'}:
+            raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
         if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
             raise ValueError(
                 f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
@@ -993,8 +993,8 @@ class _NodeResults(_ElementResults):
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
                 ds,
-                facet_by=facet_by if facet_by in ds.dims else None,
-                animate_by=animate_by if animate_by in ds.dims else None,
+                facet_by=facet_by,
+                animate_by=animate_by,
                 colors=colors,
                 mode=mode,
                 title=title,

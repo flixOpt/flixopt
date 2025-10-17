@@ -358,7 +358,9 @@ def with_plotly(
              If not provided, a new figure will be created.
         facet_by: Dimension(s) to create facets for. Creates a subplot grid.
               Can be a single dimension name or list of dimensions (max 2 for facet_row and facet_col).
+              If the dimension doesn't exist in the data, it will be silently ignored.
         animate_by: Dimension to animate over. Creates animation frames.
+              If the dimension doesn't exist in the data, it will be silently ignored.
         facet_cols: Number of columns in the facet grid (used when facet_by is single dimension).
         shared_yaxes: Whether subplots share y-axes.
         shared_xaxes: Whether subplots share x-axes.
@@ -443,6 +445,38 @@ def with_plotly(
         ]
         value_vars = [col for col in df_long.columns if col not in id_vars]
         df_long = df_long.melt(id_vars=id_vars, value_vars=value_vars, var_name='variable', value_name='value')
+
+    # Validate facet_by and animate_by dimensions exist in the data
+    available_dims = [col for col in df_long.columns if col not in ['variable', 'value']]
+
+    # Check facet_by dimensions
+    if facet_by is not None:
+        if isinstance(facet_by, str):
+            if facet_by not in available_dims:
+                logger.debug(
+                    f"Dimension '{facet_by}' not found in data. Available dimensions: {available_dims}. "
+                    f'Ignoring facet_by parameter.'
+                )
+                facet_by = None
+        elif isinstance(facet_by, list):
+            # Filter out dimensions that don't exist
+            missing_dims = [dim for dim in facet_by if dim not in available_dims]
+            facet_by = [dim for dim in facet_by if dim in available_dims]
+            if missing_dims:
+                logger.debug(
+                    f'Dimensions {missing_dims} not found in data. Available dimensions: {available_dims}. '
+                    f'Using only existing dimensions: {facet_by if facet_by else "none"}.'
+                )
+            if len(facet_by) == 0:
+                facet_by = None
+
+    # Check animate_by dimension
+    if animate_by is not None and animate_by not in available_dims:
+        logger.debug(
+            f"Dimension '{animate_by}' not found in data. Available dimensions: {available_dims}. "
+            f'Ignoring animate_by parameter.'
+        )
+        animate_by = None
 
     # Setup faceting parameters for Plotly Express
     facet_row = None
