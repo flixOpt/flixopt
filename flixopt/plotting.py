@@ -617,53 +617,31 @@ def with_plotly_faceted(
         # Use Plotly Express to create the area plot (preserves animation, legends, faceting)
         fig = px.area(**common_args, line_shape='hv')
 
-        # Post-process: Fix stackgroup for variables with negative values
-        # Classify each variable based on its values across all data
+        # Classify each variable based on its values
         variable_classification = {}
         for var in all_vars:
             var_data = df_long[df_long['variable'] == var]['value']
-            # Clean near-zero values
             var_data_clean = var_data[(var_data < -1e-5) | (var_data > 1e-5)]
 
             if len(var_data_clean) == 0:
                 variable_classification[var] = 'zero'
             else:
-                has_positive = (var_data_clean > 0).any()
-                has_negative = (var_data_clean < 0).any()
-
-                if has_positive and has_negative:
-                    variable_classification[var] = 'mixed'
-                elif has_negative:
-                    variable_classification[var] = 'negative'
-                else:
-                    variable_classification[var] = 'positive'
+                has_pos, has_neg = (var_data_clean > 0).any(), (var_data_clean < 0).any()
+                variable_classification[var] = (
+                    'mixed' if has_pos and has_neg else ('negative' if has_neg else 'positive')
+                )
 
         # Log warning for mixed variables
         mixed_vars = [v for v, c in variable_classification.items() if c == 'mixed']
         if mixed_vars:
-            logger.warning(
-                f'Data contains variables with both positive and negative values: {mixed_vars}. '
-                f'These will be plotted as dashed lines instead of stacked areas.'
-            )
+            logger.warning(f'Variables with both positive and negative values: {mixed_vars}. Plotted as dashed lines.')
 
-        # Modify traces based on classification
-        stack_group_mapping = {'negative': 'negative', 'positive': 'positive'}
-        for trace in fig.data:
-            var_name = trace.name
-            if var_name in variable_classification:
-                classification = variable_classification[var_name]
-                trace.stackgroup = stack_group_mapping.get(classification, None)
+        all_traces = list(fig.data)
+        for frame in fig.frames:
+            all_traces.extend(frame.data)
 
-        # Update all animation frames
-        if fig.frames:
-            for frame in fig.frames:
-                for trace in frame.data:
-                    var_name = trace.name
-                    if var_name in variable_classification:
-                        classification = variable_classification[var_name]
-                        trace.stackgroup = stack_group_mapping.get(classification, None)
-    else:
-        raise ValueError(f'Unknown mode: {mode}')
+        for trace in all_traces:
+            trace.stackgroup = variable_classification.get(trace.name, None)
 
     # Calculate intelligent height if not specified
     if facet_row and facet_col:
