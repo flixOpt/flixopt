@@ -637,6 +637,11 @@ def with_plotly_faceted(
 
         for trace in all_traces:
             trace.stackgroup = variable_classification.get(trace.name, None)
+            # No opacity and no line for stacked areas
+            if trace.stackgroup is not None:
+                if hasattr(trace, 'line') and trace.line.color:
+                    trace.fillcolor = trace.line.color  # Will be solid by default
+                    trace.line.width = 0
 
     # Update axes to share if requested (Plotly Express already handles this, but we can customize)
     if not shared_yaxes:
