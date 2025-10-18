@@ -9,14 +9,17 @@ import flixopt as fx
 
 if __name__ == '__main__':
     # Create datetime array starting from '2020-01-01' for the given time period
-    timesteps = pd.date_range('2020-01-01', periods=9, freq='h')
+    timesteps = pd.date_range('2020-01-01', periods=9 * 20, freq='h')
     scenarios = pd.Index(['Base Case', 'High Demand'])
     periods = pd.Index([2020, 2021, 2022])
 
     # --- Create Time Series Data ---
     # Heat demand profile (e.g., kW) over time and corresponding power prices
     heat_demand_per_h = pd.DataFrame(
-        {'Base Case': [30, 0, 90, 110, 110, 20, 20, 20, 20], 'High Demand': [30, 0, 100, 118, 125, 20, 20, 20, 20]},
+        {
+            'Base Case': [30, 0, 90, 110, 110, 20, 20, 20, 20] * 20,
+            'High Demand': [30, 0, 100, 118, 125, 20, 20, 20, 20] * 20,
+        },
         index=timesteps,
     )
     power_prices = np.array([0.08, 0.09, 0.10])
@@ -79,7 +82,7 @@ if __name__ == '__main__':
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1000),
         capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
         initial_charge_state=0,  # Initial storage state: empty
-        relative_maximum_charge_state=np.array([80, 70, 80, 80, 80, 80, 80, 80, 80]) * 0.01,
+        relative_maximum_charge_state=np.array([80, 70, 80, 80, 80, 80, 80, 80, 80] * 20) * 0.01,
         relative_maximum_final_charge_state=0.8,
         eta_charge=0.9,
         eta_discharge=1,  # Efficiency factors for charging/discharging
