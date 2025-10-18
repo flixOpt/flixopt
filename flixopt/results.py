@@ -699,7 +699,11 @@ class CalculationResults:
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
         | None = 'auto',
-        **kwargs,
+        # Deprecated parameters (kept for backwards compatibility)
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
+        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
+        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
+        color_map: str | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap visualization of a variable using imshow or time-based reshaping.
@@ -786,7 +790,9 @@ class CalculationResults:
             animate_by=animate_by,
             facet_cols=facet_cols,
             reshape_time=reshape_time,
-            **kwargs,
+            heatmap_timeframes=heatmap_timeframes,
+            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
+            color_map=color_map,
         )
 
     def plot_network(
@@ -1764,7 +1770,7 @@ class SegmentedCalculationResults:
         variable_name: str,
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
-        | None = ('D', 'h'),
+        | None = 'auto',
         colors: str = 'portland',
         save: bool | pathlib.Path = False,
         show: bool = True,
@@ -1782,7 +1788,7 @@ class SegmentedCalculationResults:
 
         Args:
             variable_name: Variable to plot.
-            reshape_time: Time reshaping configuration:
+            reshape_time: Time reshaping configuration (default: 'auto'):
                 - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
                 - Tuple like ('D', 'h'): Explicit reshaping (days vs hours)
                 - None: Disable time reshaping
@@ -1804,7 +1810,7 @@ class SegmentedCalculationResults:
         # Handle deprecated parameters
         if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
             # Check for conflict with new parameter
-            if reshape_time != ('D', 'h'):  # Check if user explicitly set reshape_time
+            if reshape_time != 'auto':  # Check if user explicitly set reshape_time
                 raise ValueError(
                     "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
                     "and new parameter 'reshape_time'. Use only 'reshape_time'."
@@ -1894,7 +1900,10 @@ def plot_heatmap(
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
     | Literal['auto']
     | None = 'auto',
-    **kwargs,
+    # Deprecated parameters (kept for backwards compatibility)
+    heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
+    heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
+    color_map: str | None = None,
 ):
     """Plot heatmap visualization with support for multi-variable, faceting, and animation.
 
@@ -1940,18 +1949,8 @@ def plot_heatmap(
 
         >>> plot_heatmap(dataset, animate_by='variable', reshape_time=('D', 'h'))
     """
-    # Handle deprecated indexer parameter
-    if 'indexer' in kwargs:
-        import warnings
-
-        warnings.warn(
-            "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    # Handle deprecated heatmap parameters
-    if 'heatmap_timeframes' in kwargs or 'heatmap_timesteps_per_frame' in kwargs:
+    # Handle deprecated heatmap time parameters
+    if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
         # Check for conflict with new parameter
         if reshape_time != 'auto':  # User explicitly set reshape_time
             raise ValueError(
@@ -1967,13 +1966,12 @@ def plot_heatmap(
             DeprecationWarning,
             stacklevel=2,
         )
-        # Override reshape_time if old parameters provided
-        heatmap_timeframes = kwargs.pop('heatmap_timeframes', None)
-        heatmap_timesteps_per_frame = kwargs.pop('heatmap_timesteps_per_frame', None)
+        # Override reshape_time if both old parameters provided
         if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
             reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
 
-    if 'color_map' in kwargs:
+    # Handle deprecated color_map parameter
+    if color_map is not None:
         # Check for conflict with new parameter
         if colors != 'viridis':  # User explicitly set colors
             raise ValueError(
@@ -1987,12 +1985,7 @@ def plot_heatmap(
             DeprecationWarning,
             stacklevel=2,
         )
-        colors = kwargs.pop('color_map')
-
-    # Check for unexpected kwargs (after removing deprecated ones)
-    unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
-    if unexpected_kwargs:
-        raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+        colors = color_map
 
     # Convert Dataset to DataArray with 'variable' dimension
     if isinstance(data, xr.Dataset):
@@ -2017,7 +2010,7 @@ def plot_heatmap(
             title_name = name
 
     # Apply select filtering
-    data, suffix_parts = _apply_indexer_to_data(data, select=select, drop=True, **kwargs)
+    data, suffix_parts = _apply_indexer_to_data(data, select=select, drop=True)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
     # Check if faceting/animating would actually happen based on available dimensions
