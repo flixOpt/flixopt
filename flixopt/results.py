@@ -1703,19 +1703,26 @@ def plot_heatmap(
     select: dict[str, Any] | None = None,
     **kwargs,
 ):
-    """Plot heatmap of time series data.
+    """Plot heatmap of time series data with time-based reshaping.
+
+    This function provides the legacy time-based reshaping approach for heatmaps.
+    For modern faceting and animation support, use CalculationResults.plot_heatmap() instead.
 
     Args:
         dataarray: Data to plot.
         name: Variable name for title.
         folder: Save folder.
-        heatmap_timeframes: Time aggregation level.
-        heatmap_timesteps_per_frame: Timesteps per frame.
-        color_map: Color scheme. Also see plotly.
+        heatmap_timeframes: Time aggregation level for columns.
+        heatmap_timesteps_per_frame: Time aggregation level for rows.
+        color_map: Color scheme.
         save: Whether to save plot.
         show: Whether to display plot.
         engine: Plotting engine.
         select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
+
+    Note:
+        This function uses the legacy time-based reshaping approach. For faceting/animation
+        support, use the plot_heatmap method on CalculationResults instead.
     """
     # Handle deprecated indexer parameter
     if 'indexer' in kwargs:
@@ -1736,20 +1743,36 @@ def plot_heatmap(
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
     name = name if not suffix_parts else name + suffix
 
+    # Reshape data using time-based aggregation
     heatmap_data = plotting.heat_map_data_from_df(
         dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
     )
 
-    xlabel, ylabel = f'timeframe [{heatmap_timeframes}]', f'timesteps [{heatmap_timesteps_per_frame}]'
+    # Convert DataFrame back to DataArray for unified plotting functions
+    heatmap_array = xr.DataArray(
+        heatmap_data.values,
+        dims=('row', 'col'),
+        coords={'row': heatmap_data.index, 'col': heatmap_data.columns},
+        name=name,
+    )
 
+    title = f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})'
+
+    # Use unified heatmap functions
     if engine == 'plotly':
-        figure_like = plotting.heat_map_plotly(
-            heatmap_data, title=name, color_map=color_map, xlabel=xlabel, ylabel=ylabel
+        figure_like = plotting.heatmap_with_plotly(
+            data=heatmap_array,
+            colors=color_map,
+            title=title,
+            facet_by=None,
+            animate_by=None,
         )
         default_filetype = '.html'
     elif engine == 'matplotlib':
-        figure_like = plotting.heat_map_matplotlib(
-            heatmap_data, title=name, color_map=color_map, xlabel=xlabel, ylabel=ylabel
+        figure_like = plotting.heatmap_with_matplotlib(
+            data=heatmap_array,
+            colors=color_map,
+            title=title,
         )
         default_filetype = '.png'
     else:
@@ -1757,7 +1780,7 @@ def plot_heatmap(
 
     return plotting.export_figure(
         figure_like=figure_like,
-        default_path=folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})',
+        default_path=folder / title,
         default_filetype=default_filetype,
         user_path=None if isinstance(save, bool) else pathlib.Path(save),
         show=show,
