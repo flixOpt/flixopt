@@ -18,7 +18,7 @@ pio.renderers.default = 'browser'
 @pytest.fixture(scope='module')
 def results():
     """Load results once for all tests."""
-    return fx.results.CalculationResults.from_file('examples/04_Scenarios/results/', 'Sim1')
+    return fx.results.CalculationResults.from_file('tests/ressources/', 'Sim1')
 
 
 @pytest.fixture(scope='module')
@@ -38,7 +38,7 @@ class TestBasicSelection:
 
     def test_plot_node_balance_single_scenario(self, results, scenarios):
         """Test plot_node_balance with single scenario."""
-        _ = results['Fernwärme'].plot_node_balance(select={'scenario': scenarios[0]}, show=False, save=False)
+        results['Fernwärme'].plot_node_balance(select={'scenario': scenarios[0]}, show=False, save=False)
 
     def test_node_balance_method_single_scenario(self, results, scenarios):
         """Test node_balance method with single scenario."""
@@ -55,7 +55,7 @@ class TestMultiValueSelection:
         if len(scenarios) < 2:
             pytest.skip('Not enough scenarios in dataset')
 
-        _ = results['Fernwärme'].plot_node_balance(
+        results['Fernwärme'].plot_node_balance(
             select={'scenario': scenarios}, facet_by='scenario', animate_by=None, show=False, save=False
         )
 
@@ -65,7 +65,7 @@ class TestMultiValueSelection:
             pytest.skip('Not enough scenarios in dataset')
 
         selected = scenarios[:2]
-        _ = results['Fernwärme'].plot_node_balance(
+        results['Fernwärme'].plot_node_balance(
             select={'scenario': selected}, facet_by='scenario', show=False, save=False
         )
 
@@ -76,12 +76,12 @@ class TestIndexBasedSelection:
     def test_integer_index_selection(self, results):
         """Test with integer index (should fail with current xarray behavior)."""
         with pytest.raises(KeyError, match='not all values found'):
-            _ = results['Fernwärme'].plot_node_balance(select={'scenario': 0}, show=False, save=False)
+            results['Fernwärme'].plot_node_balance(select={'scenario': 0}, show=False, save=False)
 
     def test_list_of_indices_selection(self, results):
         """Test with multiple indices (should fail with current xarray behavior)."""
         with pytest.raises(KeyError, match='not all values found'):
-            _ = results['Fernwärme'].plot_node_balance(
+            results['Fernwärme'].plot_node_balance(
                 select={'scenario': [0, 1]}, facet_by='scenario', show=False, save=False
             )
 
@@ -99,7 +99,7 @@ class TestCombinedSelection:
 
     def test_scenario_list_period_single(self, results, scenarios, periods):
         """Test with one dimension as list, another as single value."""
-        _ = results['Fernwärme'].plot_node_balance(
+        results['Fernwärme'].plot_node_balance(
             select={'scenario': scenarios, 'period': periods[0]}, facet_by='scenario', show=False, save=False
         )
 
@@ -109,7 +109,7 @@ class TestFacetingAndAnimation:
 
     def test_select_scenario_facet_by_period(self, results, scenarios):
         """Test: Select specific scenarios, then facet by period."""
-        _ = results['Fernwärme'].plot_node_balance(
+        results['Fernwärme'].plot_node_balance(
             select={'scenario': scenarios[0]}, facet_by='period', animate_by=None, show=False, save=False
         )
 
@@ -118,7 +118,7 @@ class TestFacetingAndAnimation:
         if len(periods) <= 1:
             pytest.skip('Only one period available')
 
-        _ = results['Fernwärme'].plot_node_balance(
+        results['Fernwärme'].plot_node_balance(
             select={},  # No filtering - use all data
             facet_by='scenario',
             animate_by='period',
@@ -132,9 +132,7 @@ class TestDifferentPlottingMethods:
 
     def test_plot_node_balance(self, results, scenarios):
         """Test plot_node_balance."""
-        _ = results['Fernwärme'].plot_node_balance(
-            select={'scenario': scenarios[0]}, mode='area', show=False, save=False
-        )
+        results['Fernwärme'].plot_node_balance(select={'scenario': scenarios[0]}, mode='area', show=False, save=False)
 
     def test_plot_heatmap(self, results, scenarios):
         """Test plot_heatmap (expected to fail with current data structure)."""
@@ -144,7 +142,7 @@ class TestDifferentPlottingMethods:
 
         # This is expected to fail with the current test data
         with pytest.raises(AssertionError, match='datetime'):
-            _ = results.plot_heatmap(var_names[0], select={'scenario': scenarios[0]}, show=False, save=False)
+            results.plot_heatmap(var_names[0], select={'scenario': scenarios[0]}, show=False, save=False)
 
     def test_node_balance_data_retrieval(self, results, scenarios):
         """Test node_balance (data retrieval)."""
@@ -160,7 +158,7 @@ class TestBackwardCompatibility:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
 
-            _ = results['Fernwärme'].plot_node_balance(indexer={'scenario': scenarios[0]}, show=False, save=False)
+            results['Fernwärme'].plot_node_balance(indexer={'scenario': scenarios[0]}, show=False, save=False)
 
             # Check if deprecation warning was raised
             deprecation_warnings = [warning for warning in w if issubclass(warning.category, DeprecationWarning)]
@@ -193,7 +191,7 @@ class TestEmptyDictBehavior:
 
     def test_empty_dict_no_filtering(self, results):
         """Test using select={} (empty dict - no filtering)."""
-        _ = results['Fernwärme'].plot_node_balance(
+        results['Fernwärme'].plot_node_balance(
             select={}, facet_by='scenario', animate_by='period', show=False, save=False
         )
 
@@ -204,7 +202,7 @@ class TestErrorHandling:
     def test_unexpected_keyword_argument(self, results):
         """Test unexpected kwargs are rejected."""
         with pytest.raises(TypeError, match='unexpected keyword argument'):
-            _ = results['Fernwärme'].plot_node_balance(select={'scenario': 0}, unexpected_param='test', show=False)
+            results['Fernwärme'].plot_node_balance(select={'scenario': 0}, unexpected_param='test', show=False)
 
 
 # Keep the old main function for backward compatibility when run directly
