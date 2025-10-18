@@ -1862,12 +1862,6 @@ def plot_heatmap(
     if unexpected_kwargs:
         raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
 
-    # Validate parameters
-    if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
-        raise ValueError(
-            f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
-        )
-
     # Convert Dataset to DataArray with 'variable' dimension
     if isinstance(data, xr.Dataset):
         # Extract all data variables from the Dataset
@@ -1893,6 +1887,21 @@ def plot_heatmap(
     # Apply select filtering
     data, suffix_parts = _apply_indexer_to_data(data, select=select, drop=True, **kwargs)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+
+    # Check if faceting/animating would actually happen based on available dimensions
+    if engine == 'matplotlib':
+        dims_to_facet = []
+        if facet_by is not None:
+            dims_to_facet.extend([facet_by] if isinstance(facet_by, str) else facet_by)
+        if animate_by is not None:
+            dims_to_facet.append(animate_by)
+
+        # Only raise error if any of the specified dimensions actually exist in the data
+        existing_dims = [dim for dim in dims_to_facet if dim in data.dims]
+        if existing_dims:
+            raise ValueError(
+                f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+            )
 
     # Build title
     title = f'{title_name}{suffix}'
