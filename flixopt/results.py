@@ -693,8 +693,8 @@ class CalculationResults:
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
-        facet_by: str | list[str] | None = None,
-        animate_by: str | None = None,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
         facet_cols: int = 3,
         **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
