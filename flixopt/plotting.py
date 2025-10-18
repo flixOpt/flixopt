@@ -673,134 +673,6 @@ def with_matplotlib(
     return fig, ax
 
 
-def heat_map_matplotlib(
-    data: pd.DataFrame,
-    color_map: str = 'viridis',
-    title: str = '',
-    xlabel: str = 'Period',
-    ylabel: str = 'Step',
-    figsize: tuple[float, float] = (12, 6),
-) -> tuple[plt.Figure, plt.Axes]:
-    """
-    Plots a DataFrame as a heatmap using Matplotlib. The columns of the DataFrame will be displayed on the x-axis,
-    the index will be displayed on the y-axis, and the values will represent the 'heat' intensity in the plot.
-
-    Args:
-        data: A DataFrame containing the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
-            The values in the DataFrame will be represented as colors in the heatmap.
-        color_map: The colormap to use for the heatmap. Default is 'viridis'. Matplotlib supports various colormaps like 'plasma', 'inferno', 'cividis', etc.
-        title: The title of the plot.
-        xlabel: The label for the x-axis.
-        ylabel: The label for the y-axis.
-        figsize: The size of the figure to create. Default is (12, 6), which results in a width of 12 inches and a height of 6 inches.
-
-    Returns:
-        A tuple containing the Matplotlib `Figure` and `Axes` objects. The `Figure` contains the overall plot, while the `Axes` is the area
-        where the heatmap is drawn. These can be used for further customization or saving the plot to a file.
-
-    Notes:
-        - The y-axis is flipped so that the first row of the DataFrame is displayed at the top of the plot.
-        - The color scale is normalized based on the minimum and maximum values in the DataFrame.
-        - The x-axis labels (periods) are placed at the top of the plot.
-        - The colorbar is added horizontally at the bottom of the plot, with a label.
-    """
-
-    # Get the min and max values for color normalization
-    color_bar_min, color_bar_max = data.min().min(), data.max().max()
-
-    # Create the heatmap plot
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.pcolormesh(data.values, cmap=color_map, shading='auto')
-    ax.invert_yaxis()  # Flip the y-axis to start at the top
-
-    # Adjust ticks and labels for x and y axes
-    ax.set_xticks(np.arange(len(data.columns)) + 0.5)
-    ax.set_xticklabels(data.columns, ha='center')
-    ax.set_yticks(np.arange(len(data.index)) + 0.5)
-    ax.set_yticklabels(data.index, va='center')
-
-    # Add labels to the axes
-    ax.set_xlabel(xlabel, ha='center')
-    ax.set_ylabel(ylabel, va='center')
-    ax.set_title(title)
-
-    # Position x-axis labels at the top
-    ax.xaxis.set_label_position('top')
-    ax.xaxis.set_ticks_position('top')
-
-    # Add the colorbar
-    sm1 = plt.cm.ScalarMappable(cmap=color_map, norm=plt.Normalize(vmin=color_bar_min, vmax=color_bar_max))
-    sm1.set_array([])
-    fig.colorbar(sm1, ax=ax, pad=0.12, aspect=15, fraction=0.2, orientation='horizontal')
-
-    fig.tight_layout()
-
-    return fig, ax
-
-
-def heat_map_plotly(
-    data: pd.DataFrame,
-    color_map: str = 'viridis',
-    title: str = '',
-    xlabel: str = 'Period',
-    ylabel: str = 'Step',
-    categorical_labels: bool = True,
-) -> go.Figure:
-    """
-    Plots a DataFrame as a heatmap using Plotly. The columns of the DataFrame will be mapped to the x-axis,
-    and the index will be displayed on the y-axis. The values in the DataFrame will represent the 'heat' in the plot.
-
-    Args:
-        data: A DataFrame with the data to be visualized. The index will be used for the y-axis, and columns will be used for the x-axis.
-            The values in the DataFrame will be represented as colors in the heatmap.
-        color_map: The color scale to use for the heatmap. Default is 'viridis'. Plotly supports various color scales like 'Cividis', 'Inferno', etc.
-        title: The title of the heatmap. Default is an empty string.
-        xlabel: The label for the x-axis. Default is 'Period'.
-        ylabel: The label for the y-axis. Default is 'Step'.
-        categorical_labels: If True, the x and y axes are treated as categorical data (i.e., the index and columns will not be interpreted as continuous data).
-            Default is True. If False, the axes are treated as continuous, which may be useful for time series or numeric data.
-
-    Returns:
-        A Plotly figure object containing the heatmap. This can be further customized and saved
-        or displayed using `fig.show()`.
-
-    Notes:
-        The color bar is automatically scaled to the minimum and maximum values in the data.
-        The y-axis is reversed to display the first row at the top.
-    """
-
-    color_bar_min, color_bar_max = data.min().min(), data.max().max()  # Min and max values for color scaling
-    # Define the figure
-    fig = go.Figure(
-        data=go.Heatmap(
-            z=data.values,
-            x=data.columns,
-            y=data.index,
-            colorscale=color_map,
-            zmin=color_bar_min,
-            zmax=color_bar_max,
-            colorbar=dict(
-                title=dict(text='Color Bar Label', side='right'),
-                orientation='h',
-                xref='container',
-                yref='container',
-                len=0.8,  # Color bar length relative to plot
-                x=0.5,
-                y=0.1,
-            ),
-        )
-    )
-
-    # Set axis labels and style
-    fig.update_layout(
-        title=title,
-        xaxis=dict(title=xlabel, side='top', type='category' if categorical_labels else None),
-        yaxis=dict(title=ylabel, autorange='reversed', type='category' if categorical_labels else None),
-    )
-
-    return fig
-
-
 def reshape_to_2d(data_1d: np.ndarray, nr_of_steps_per_column: int) -> np.ndarray:
     """
     Reshapes a 1D numpy array into a 2D array suitable for plotting as a colormap.
@@ -845,41 +717,110 @@ def reshape_to_2d(data_1d: np.ndarray, nr_of_steps_per_column: int) -> np.ndarra
     return data_2d.T
 
 
-def heat_map_data_from_df(
-    df: pd.DataFrame,
-    periods: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'],
-    steps_per_period: Literal['W', 'D', 'h', '15min', 'min'],
-    fill: Literal['ffill', 'bfill'] | None = None,
-) -> pd.DataFrame:
+def reshape_data_for_heatmap(
+    data: xr.DataArray,
+    reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+    | Literal['auto']
+    | None = 'auto',
+    facet_by: str | list[str] | None = None,
+    animate_by: str | None = None,
+    fill: Literal['ffill', 'bfill'] | None = 'ffill',
+) -> xr.DataArray:
     """
-    Reshapes a DataFrame with a DateTime index into a 2D array for heatmap plotting,
-    based on a specified sample rate.
-    Only specific combinations of `periods` and `steps_per_period` are supported; invalid combinations raise an assertion.
+    Reshape data for heatmap visualization, handling time dimension intelligently.
+
+    This function decides whether to reshape the 'time' dimension based on the reshape_time parameter:
+    - 'auto': Automatically reshapes if only 'time' dimension would remain for heatmap
+    - Tuple: Explicitly reshapes time with specified parameters
+    - None: No reshaping (returns data as-is)
+
+    All non-time dimensions are preserved during reshaping.
 
     Args:
-        df: A DataFrame with a DateTime index containing the data to reshape.
-        periods: The time interval of each period (columns of the heatmap),
-            such as 'YS' (year start), 'W' (weekly), 'D' (daily), 'h' (hourly) etc.
-        steps_per_period: The time interval within each period (rows in the heatmap),
-            such as 'YS' (year start), 'W' (weekly), 'D' (daily), 'h' (hourly) etc.
-        fill: Method to fill missing values: 'ffill' for forward fill or 'bfill' for backward fill.
+        data: DataArray to reshape for heatmap visualization.
+        reshape_time: Reshaping configuration:
+                     - 'auto' (default): Auto-reshape if needed based on facet_by/animate_by
+                     - Tuple (timeframes, timesteps_per_frame): Explicit time reshaping
+                     - None: No reshaping
+        facet_by: Dimension(s) used for faceting (used in 'auto' decision).
+        animate_by: Dimension used for animation (used in 'auto' decision).
+        fill: Method to fill missing values: 'ffill' or 'bfill'. Default is 'ffill'.
 
     Returns:
-        A DataFrame suitable for heatmap plotting, with rows representing steps within each period
-        and columns representing each period.
-    """
-    assert pd.api.types.is_datetime64_any_dtype(df.index), (
-        'The index of the DataFrame must be datetime to transform it properly for a heatmap plot'
-    )
+        Reshaped DataArray. If time reshaping is applied, 'time' dimension is replaced
+        by 'timestep' and 'timeframe'. All other dimensions are preserved.
 
-    # Define formats for different combinations of `periods` and `steps_per_period`
+    Examples:
+        Auto-reshaping:
+
+        ```python
+        # Will auto-reshape because only 'time' remains after faceting/animation
+        data = reshape_data_for_heatmap(data, reshape_time='auto', facet_by='scenario', animate_by='period')
+        ```
+
+        Explicit reshaping:
+
+        ```python
+        # Explicitly reshape to daily pattern
+        data = reshape_data_for_heatmap(data, reshape_time=('D', 'h'))
+        ```
+
+        No reshaping:
+
+        ```python
+        # Keep data as-is
+        data = reshape_data_for_heatmap(data, reshape_time=None)
+        ```
+    """
+    # If no time dimension, return data as-is
+    if 'time' not in data.dims:
+        return data
+
+    # Handle None (disabled) - return data as-is
+    if reshape_time is None:
+        return data
+
+    # Determine timeframes and timesteps_per_frame based on reshape_time parameter
+    if reshape_time == 'auto':
+        # Check if we need automatic time reshaping
+        facet_dims_used = []
+        if facet_by:
+            facet_dims_used = [facet_by] if isinstance(facet_by, str) else list(facet_by)
+        if animate_by:
+            facet_dims_used.append(animate_by)
+
+        # Get dimensions that would remain for heatmap
+        potential_heatmap_dims = [dim for dim in data.dims if dim not in facet_dims_used]
+
+        # Auto-reshape if only 'time' dimension remains
+        if len(potential_heatmap_dims) == 1 and potential_heatmap_dims[0] == 'time':
+            logger.info(
+                "Auto-applying time reshaping: Only 'time' dimension remains after faceting/animation. "
+                "Using default timeframes='D' and timesteps_per_frame='h'. "
+                "To customize, use reshape_time=('D', 'h') or disable with reshape_time=None."
+            )
+            timeframes, timesteps_per_frame = 'D', 'h'
+        else:
+            # No reshaping needed
+            return data
+    elif isinstance(reshape_time, tuple):
+        # Explicit reshaping
+        timeframes, timesteps_per_frame = reshape_time
+    else:
+        raise ValueError(f"reshape_time must be 'auto', a tuple like ('D', 'h'), or None. Got: {reshape_time}")
+
+    # Validate that time is datetime
+    if not np.issubdtype(data.coords['time'].dtype, np.datetime64):
+        raise ValueError(f'Time dimension must be datetime-based, got {data.coords["time"].dtype}')
+
+    # Define formats for different combinations
     formats = {
         ('YS', 'W'): ('%Y', '%W'),
         ('YS', 'D'): ('%Y', '%j'),  # day of year
         ('YS', 'h'): ('%Y', '%j %H:00'),
         ('MS', 'D'): ('%Y-%m', '%d'),  # day of month
         ('MS', 'h'): ('%Y-%m', '%d %H:00'),
-        ('W', 'D'): ('%Y-w%W', '%w_%A'),  # week and day of week (with prefix for proper sorting)
+        ('W', 'D'): ('%Y-w%W', '%w_%A'),  # week and day of week
         ('W', 'h'): ('%Y-w%W', '%w_%A %H:00'),
         ('D', 'h'): ('%Y-%m-%d', '%H:00'),  # Day and hour
         ('D', '15min'): ('%Y-%m-%d', '%H:%M'),  # Day and minute
@@ -887,43 +828,61 @@ def heat_map_data_from_df(
         ('h', 'min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
     }
 
-    if df.empty:
-        raise ValueError('DataFrame is empty.')
-    diffs = df.index.to_series().diff().dropna()
-    minimum_time_diff_in_min = diffs.min().total_seconds() / 60
-    time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
-    if time_intervals[steps_per_period] > minimum_time_diff_in_min:
-        logger.error(
-            f'To compute the heatmap, the data was aggregated from {minimum_time_diff_in_min:.2f} min to '
-            f'{time_intervals[steps_per_period]:.2f} min. Mean values are displayed.'
-        )
-
-    # Select the format based on the `periods` and `steps_per_period` combination
-    format_pair = (periods, steps_per_period)
+    format_pair = (timeframes, timesteps_per_frame)
     if format_pair not in formats:
         raise ValueError(f'{format_pair} is not a valid format. Choose from {list(formats.keys())}')
     period_format, step_format = formats[format_pair]
 
-    df = df.sort_index()  # Ensure DataFrame is sorted by time index
+    # Check if resampling is needed
+    if data.sizes['time'] > 0:
+        time_diff = pd.Series(data.coords['time'].values).diff().dropna()
+        if len(time_diff) > 0:
+            min_time_diff_min = time_diff.min().total_seconds() / 60
+            time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
+            if time_intervals[timesteps_per_frame] > min_time_diff_min:
+                logger.warning(
+                    f'Resampling data from {min_time_diff_min:.2f} min to '
+                    f'{time_intervals[timesteps_per_frame]:.2f} min. Mean values are displayed.'
+                )
 
-    resampled_data = df.resample(steps_per_period).mean()  # Resample and fill any gaps with NaN
+    # Resample along time dimension
+    resampled = data.resample(time=timesteps_per_frame).mean()
 
-    if fill == 'ffill':  # Apply fill method if specified
-        resampled_data = resampled_data.ffill()
+    # Apply fill if specified
+    if fill == 'ffill':
+        resampled = resampled.ffill(dim='time')
     elif fill == 'bfill':
-        resampled_data = resampled_data.bfill()
+        resampled = resampled.bfill(dim='time')
 
-    resampled_data['period'] = resampled_data.index.strftime(period_format)
-    resampled_data['step'] = resampled_data.index.strftime(step_format)
-    if '%w_%A' in step_format:  # Shift index of strings to ensure proper sorting
-        resampled_data['step'] = resampled_data['step'].apply(
-            lambda x: x.replace('0_Sunday', '7_Sunday') if '0_Sunday' in x else x
-        )
+    # Create period and step labels
+    time_values = pd.to_datetime(resampled.coords['time'].values)
+    period_labels = time_values.strftime(period_format)
+    step_labels = time_values.strftime(step_format)
 
-    # Pivot the table so periods are columns and steps are indices
-    df_pivoted = resampled_data.pivot(columns='period', index='step', values=df.columns[0])
+    # Handle special case for weekly day format
+    if '%w_%A' in step_format:
+        step_labels = pd.Series(step_labels).replace('0_Sunday', '7_Sunday').values
 
-    return df_pivoted
+    # Add period and step as coordinates
+    resampled = resampled.assign_coords(
+        {
+            'timeframe': ('time', period_labels),
+            'timestep': ('time', step_labels),
+        }
+    )
+
+    # Convert to multi-index and unstack
+    resampled = resampled.set_index(time=['timeframe', 'timestep'])
+    result = resampled.unstack('time')
+
+    # Ensure timestep and timeframe come first in dimension order
+    # Get other dimensions
+    other_dims = [d for d in result.dims if d not in ['timestep', 'timeframe']]
+
+    # Reorder: timestep, timeframe, then other dimensions
+    result = result.transpose('timestep', 'timeframe', *other_dims)
+
+    return result
 
 
 def plot_network(
@@ -1522,6 +1481,311 @@ def dual_pie_with_matplotlib(
         fig.subplots_adjust(bottom=0.2)
 
     return fig, axes
+
+
+def heatmap_with_plotly(
+    data: xr.DataArray,
+    colors: ColorType = 'viridis',
+    title: str = '',
+    facet_by: str | list[str] | None = None,
+    animate_by: str | None = None,
+    facet_cols: int = 3,
+    reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+    | Literal['auto']
+    | None = 'auto',
+    fill: Literal['ffill', 'bfill'] | None = 'ffill',
+) -> go.Figure:
+    """
+    Plot a heatmap visualization using Plotly's imshow with faceting and animation support.
+
+    This function creates heatmap visualizations from xarray DataArrays, supporting
+    multi-dimensional data through faceting (subplots) and animation. It automatically
+    handles dimension reduction and data reshaping for optimal heatmap display.
+
+    Automatic Time Reshaping:
+        If only the 'time' dimension remains after faceting/animation (making the data 1D),
+        the function automatically reshapes time into a 2D format using default values
+        (timeframes='D', timesteps_per_frame='h'). This creates a daily pattern heatmap
+        showing hours vs days.
+
+    Args:
+        data: An xarray DataArray containing the data to visualize. Should have at least
+              2 dimensions, or a 'time' dimension that can be reshaped into 2D.
+        colors: Color specification (colormap name, list, or dict). Common options:
+                'viridis', 'plasma', 'RdBu', 'portland'.
+        title: The main title of the heatmap.
+        facet_by: Dimension to create facets for. Creates a subplot grid.
+                  Can be a single dimension name or list (only first dimension used).
+                  Note: px.imshow only supports single-dimension faceting.
+                  If the dimension doesn't exist in the data, it will be silently ignored.
+        animate_by: Dimension to animate over. Creates animation frames.
+                    If the dimension doesn't exist in the data, it will be silently ignored.
+        facet_cols: Number of columns in the facet grid (used with facet_by).
+        reshape_time: Time reshaping configuration:
+                     - 'auto' (default): Automatically applies ('D', 'h') if only 'time' dimension remains
+                     - Tuple like ('D', 'h'): Explicit time reshaping (days vs hours)
+                     - None: Disable time reshaping (will error if only 1D time data)
+        fill: Method to fill missing values when reshaping time: 'ffill' or 'bfill'. Default is 'ffill'.
+
+    Returns:
+        A Plotly figure object containing the heatmap visualization.
+
+    Examples:
+        Simple heatmap:
+
+        ```python
+        fig = heatmap_with_plotly(data_array, colors='RdBu', title='Temperature Map')
+        ```
+
+        Facet by scenario:
+
+        ```python
+        fig = heatmap_with_plotly(data_array, facet_by='scenario', facet_cols=2)
+        ```
+
+        Animate by period:
+
+        ```python
+        fig = heatmap_with_plotly(data_array, animate_by='period')
+        ```
+
+        Automatic time reshaping (when only time dimension remains):
+
+        ```python
+        # Data with dims ['time', 'scenario', 'period']
+        # After faceting and animation, only 'time' remains -> auto-reshapes to (timestep, timeframe)
+        fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period')
+        ```
+
+        Explicit time reshaping:
+
+        ```python
+        fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period', reshape_time=('W', 'D'))
+        ```
+    """
+    # Handle empty data
+    if data.size == 0:
+        return go.Figure()
+
+    # Apply time reshaping using the new unified function
+    data = reshape_data_for_heatmap(
+        data, reshape_time=reshape_time, facet_by=facet_by, animate_by=animate_by, fill=fill
+    )
+
+    # Get available dimensions
+    available_dims = list(data.dims)
+
+    # Validate and filter facet_by dimensions
+    if facet_by is not None:
+        if isinstance(facet_by, str):
+            if facet_by not in available_dims:
+                logger.debug(
+                    f"Dimension '{facet_by}' not found in data. Available dimensions: {available_dims}. "
+                    f'Ignoring facet_by parameter.'
+                )
+                facet_by = None
+        elif isinstance(facet_by, list):
+            missing_dims = [dim for dim in facet_by if dim not in available_dims]
+            facet_by = [dim for dim in facet_by if dim in available_dims]
+            if missing_dims:
+                logger.debug(
+                    f'Dimensions {missing_dims} not found in data. Available dimensions: {available_dims}. '
+                    f'Using only existing dimensions: {facet_by if facet_by else "none"}.'
+                )
+            if len(facet_by) == 0:
+                facet_by = None
+
+    # Validate animate_by dimension
+    if animate_by is not None and animate_by not in available_dims:
+        logger.debug(
+            f"Dimension '{animate_by}' not found in data. Available dimensions: {available_dims}. "
+            f'Ignoring animate_by parameter.'
+        )
+        animate_by = None
+
+    # Determine which dimensions are used for faceting/animation
+    facet_dims = []
+    if facet_by:
+        facet_dims = [facet_by] if isinstance(facet_by, str) else facet_by
+    if animate_by:
+        facet_dims.append(animate_by)
+
+    # Get remaining dimensions for the heatmap itself
+    heatmap_dims = [dim for dim in available_dims if dim not in facet_dims]
+
+    if len(heatmap_dims) < 2:
+        # Need at least 2 dimensions for a heatmap
+        logger.error(
+            f'Heatmap requires at least 2 dimensions for rows and columns. '
+            f'After faceting/animation, only {len(heatmap_dims)} dimension(s) remain: {heatmap_dims}'
+        )
+        return go.Figure()
+
+    # Setup faceting parameters for Plotly Express
+    # Note: px.imshow only supports facet_col, not facet_row
+    facet_col_param = None
+    if facet_by:
+        if isinstance(facet_by, str):
+            facet_col_param = facet_by
+        elif len(facet_by) == 1:
+            facet_col_param = facet_by[0]
+        elif len(facet_by) >= 2:
+            # px.imshow doesn't support facet_row, so we can only facet by one dimension
+            # Use the first dimension and warn about the rest
+            facet_col_param = facet_by[0]
+            logger.warning(
+                f'px.imshow only supports faceting by a single dimension. '
+                f'Using {facet_by[0]} for faceting. Dimensions {facet_by[1:]} will be ignored. '
+                f'Consider using animate_by for additional dimensions.'
+            )
+
+    # Create the imshow plot - px.imshow can work directly with xarray DataArrays
+    common_args = {
+        'img': data,
+        'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+        'title': title,
+    }
+
+    # Add faceting if specified
+    if facet_col_param:
+        common_args['facet_col'] = facet_col_param
+        if facet_cols:
+            common_args['facet_col_wrap'] = facet_cols
+
+    # Add animation if specified
+    if animate_by:
+        common_args['animation_frame'] = animate_by
+
+    try:
+        fig = px.imshow(**common_args)
+    except Exception as e:
+        logger.error(f'Error creating imshow plot: {e}. Falling back to basic heatmap.')
+        # Fallback: create a simple heatmap without faceting
+        fig = px.imshow(
+            data.values,
+            color_continuous_scale=colors if isinstance(colors, str) else 'viridis',
+            title=title,
+        )
+
+    # Update layout with basic styling
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(size=12),
+    )
+
+    return fig
+
+
+def heatmap_with_matplotlib(
+    data: xr.DataArray,
+    colors: ColorType = 'viridis',
+    title: str = '',
+    figsize: tuple[float, float] = (12, 6),
+    fig: plt.Figure | None = None,
+    ax: plt.Axes | None = None,
+    reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+    | Literal['auto']
+    | None = 'auto',
+    fill: Literal['ffill', 'bfill'] | None = 'ffill',
+) -> tuple[plt.Figure, plt.Axes]:
+    """
+    Plot a heatmap visualization using Matplotlib's imshow.
+
+    This function creates a basic 2D heatmap from an xarray DataArray using matplotlib's
+    imshow function. For multi-dimensional data, only the first two dimensions are used.
+
+    Args:
+        data: An xarray DataArray containing the data to visualize. Should have at least
+              2 dimensions. If more than 2 dimensions exist, additional dimensions will
+              be reduced by taking the first slice.
+        colors: Color specification. Should be a colormap name (e.g., 'viridis', 'RdBu').
+        title: The title of the heatmap.
+        figsize: The size of the figure (width, height) in inches.
+        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
+        ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
+        reshape_time: Time reshaping configuration:
+                     - 'auto' (default): Automatically applies ('D', 'h') if only 'time' dimension
+                     - Tuple like ('D', 'h'): Explicit time reshaping (days vs hours)
+                     - None: Disable time reshaping
+        fill: Method to fill missing values when reshaping time: 'ffill' or 'bfill'. Default is 'ffill'.
+
+    Returns:
+        A tuple containing the Matplotlib figure and axes objects used for the plot.
+
+    Notes:
+        - Matplotlib backend doesn't support faceting or animation. Use plotly engine for those features.
+        - The y-axis is automatically inverted to display data with origin at top-left.
+        - A colorbar is added to show the value scale.
+
+    Examples:
+        ```python
+        fig, ax = heatmap_with_matplotlib(data_array, colors='RdBu', title='Temperature')
+        plt.savefig('heatmap.png')
+        ```
+
+        Time reshaping:
+
+        ```python
+        fig, ax = heatmap_with_matplotlib(data_array, reshape_time=('D', 'h'))
+        ```
+    """
+    # Handle empty data
+    if data.size == 0:
+        if fig is None or ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+        return fig, ax
+
+    # Apply time reshaping using the new unified function
+    # Matplotlib doesn't support faceting/animation, so we pass None for those
+    data = reshape_data_for_heatmap(data, reshape_time=reshape_time, facet_by=None, animate_by=None, fill=fill)
+
+    # Create figure and axes if not provided
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    # Extract data values
+    # If data has more than 2 dimensions, we need to reduce it
+    if isinstance(data, xr.DataArray):
+        # Get the first 2 dimensions
+        dims = list(data.dims)
+        if len(dims) > 2:
+            logger.warning(
+                f'Data has {len(dims)} dimensions: {dims}. '
+                f'Only the first 2 will be used for the heatmap. '
+                f'Use the plotly engine for faceting/animation support.'
+            )
+            # Select only the first 2 dimensions by taking first slice of others
+            selection = {dim: 0 for dim in dims[2:]}
+            data = data.isel(selection)
+
+        values = data.values
+        x_labels = data.dims[1] if len(data.dims) > 1 else 'x'
+        y_labels = data.dims[0] if len(data.dims) > 0 else 'y'
+    else:
+        values = data
+        x_labels = 'x'
+        y_labels = 'y'
+
+    # Process colormap
+    cmap = colors if isinstance(colors, str) else 'viridis'
+
+    # Create the heatmap using imshow
+    im = ax.imshow(values, cmap=cmap, aspect='auto', origin='upper')
+
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.1, aspect=15, fraction=0.05)
+    cbar.set_label('Value')
+
+    # Set labels and title
+    ax.set_xlabel(str(x_labels).capitalize())
+    ax.set_ylabel(str(y_labels).capitalize())
+    ax.set_title(title)
+
+    # Apply tight layout
+    fig.tight_layout()
+
+    return fig, ax
 
 
 def export_figure(

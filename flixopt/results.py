@@ -687,84 +687,105 @@ class CalculationResults:
 
     def plot_heatmap(
         self,
-        variable_name: str,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-        color_map: str = 'portland',
+        variable_name: str | list[str],
         save: bool | pathlib.Path = False,
         show: bool = True,
+        colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
+        facet_cols: int = 3,
+        reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+        | Literal['auto']
+        | None = 'auto',
         **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
-        Plots a heatmap of the solution of a variable.
+        Plots a heatmap visualization of a variable using imshow or time-based reshaping.
+
+        Supports multiple visualization features that can be combined:
+        - **Multi-variable**: Plot multiple variables on a single heatmap (creates 'variable' dimension)
+        - **Time reshaping**: Converts 'time' dimension into 2D (e.g., hours vs days)
+        - **Faceting**: Creates subplots for different dimension values
+        - **Animation**: Animates through dimension values (Plotly only)
 
         Args:
-            variable_name: The name of the variable to plot.
-            heatmap_timeframes: The timeframes to use for the heatmap.
-            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
-            color_map: The color map to use for the heatmap.
+            variable_name: The name of the variable to plot, or a list of variable names.
+                When a list is provided, variables are combined into a single DataArray
+                with a new 'variable' dimension.
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
+            colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+                Applied BEFORE faceting/animation/reshaping.
+            facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+                or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
+            animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
+                dimension values. Only one dimension can be animated. Ignored if not found.
+            facet_cols: Number of columns in the facet grid layout (default: 3).
+            reshape_time: Time reshaping configuration (default: 'auto'):
+                - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
+                - Tuple: Explicit reshaping, e.g. ('D', 'h') for days vs hours,
+                         ('MS', 'D') for months vs days, ('W', 'h') for weeks vs hours
+                - None: Disable auto-reshaping (will error if only 1D time data)
+                Supported timeframes: 'YS', 'MS', 'W', 'D', 'h', '15min', 'min'
 
         Examples:
-            Basic usage (uses first scenario, first period, all time):
+            Direct imshow mode (default):
 
-            >>> results.plot_heatmap('Battery|charge_state')
+            >>> results.plot_heatmap('Battery|charge_state', select={'scenario': 'base'})
 
-            Select specific scenario and period:
+            Facet by scenario:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base', 'period': 2024})
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', facet_by='scenario', facet_cols=2)
 
-            Time filtering (summer months only):
+            Animate by period:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, animate_by='period')
+
+            Time reshape mode - daily patterns:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, reshape_time=('D', 'h'))
+
+            Combined: time reshaping with faceting and animation:
 
             >>> results.plot_heatmap(
-            ...     'Boiler(Qth)|flow_rate',
-            ...     select={
-            ...         'scenario': 'base',
-            ...         'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])],
-            ...     },
+            ...     'Boiler(Qth)|flow_rate', facet_by='scenario', animate_by='period', reshape_time=('D', 'h')
             ... )
 
-            Save to specific location:
+            Multi-variable heatmap (variables as one axis):
 
             >>> results.plot_heatmap(
-            ...     'Boiler(Qth)|flow_rate', select={'scenario': 'base'}, save='path/to/my_heatmap.html'
+            ...     ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate', 'HeatStorage|charge_state'],
+            ...     select={'scenario': 'base', 'period': 1},
+            ...     reshape_time=None,
+            ... )
+
+            Multi-variable with time reshaping:
+
+            >>> results.plot_heatmap(
+            ...     ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate'],
+            ...     facet_by='scenario',
+            ...     animate_by='period',
+            ...     reshape_time=('D', 'h'),
             ... )
         """
-        # Handle deprecated indexer parameter
-        if 'indexer' in kwargs:
-            import warnings
-
-            warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
-        # Check for unexpected kwargs
-        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
-        if unexpected_kwargs:
-            raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
-
-        dataarray = self.solution[variable_name]
-
+        # Delegate to module-level plot_heatmap function
         return plot_heatmap(
-            dataarray=dataarray,
-            name=variable_name,
+            data=self.solution[variable_name],
+            name=variable_name if isinstance(variable_name, str) else None,
             folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
+            colors=colors,
             save=save,
             show=show,
             engine=engine,
             select=select,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            reshape_time=reshape_time,
             **kwargs,
         )
 
@@ -1619,37 +1640,51 @@ class SegmentedCalculationResults:
     def plot_heatmap(
         self,
         variable_name: str,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-        color_map: str = 'portland',
+        reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+        | Literal['auto']
+        | None = ('D', 'h'),
+        colors: str = 'portland',
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
+        facet_by: str | list[str] | None = None,
+        animate_by: str | None = None,
+        facet_cols: int = 3,
+        fill: Literal['ffill', 'bfill'] | None = 'ffill',
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
         Args:
             variable_name: Variable to plot.
-            heatmap_timeframes: Time aggregation level.
-            heatmap_timesteps_per_frame: Timesteps per frame.
-            color_map: Color scheme. Also see plotly.
+            reshape_time: Time reshaping configuration:
+                - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
+                - Tuple like ('D', 'h'): Explicit reshaping (days vs hours)
+                - None: Disable time reshaping
+            colors: Color scheme. See plotting.ColorType for options.
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine.
+            facet_by: Dimension(s) to create facets (subplots) for.
+            animate_by: Dimension to animate over (Plotly only).
+            facet_cols: Number of columns in the facet grid layout.
+            fill: Method to fill missing values: 'ffill' or 'bfill'.
 
         Returns:
             Figure object.
         """
         return plot_heatmap(
-            dataarray=self.solution_without_overlap(variable_name),
+            data=self.solution_without_overlap(variable_name),
             name=variable_name,
             folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
+            reshape_time=reshape_time,
+            colors=colors,
             save=save,
             show=show,
             engine=engine,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            fill=fill,
         )
 
     def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
@@ -1679,31 +1714,65 @@ class SegmentedCalculationResults:
 
 
 def plot_heatmap(
-    dataarray: xr.DataArray,
-    name: str,
-    folder: pathlib.Path,
-    heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-    heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-    color_map: str = 'portland',
+    data: xr.DataArray | xr.Dataset,
+    name: str | None = None,
+    folder: pathlib.Path | None = None,
+    colors: plotting.ColorType = 'viridis',
     save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
     select: dict[str, Any] | None = None,
+    facet_by: str | list[str] | None = None,
+    animate_by: str | None = None,
+    facet_cols: int = 3,
+    reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+    | Literal['auto']
+    | None = 'auto',
     **kwargs,
 ):
-    """Plot heatmap of time series data.
+    """Plot heatmap visualization with support for multi-variable, faceting, and animation.
+
+    This function provides a standalone interface to the heatmap plotting capabilities,
+    supporting the same modern features as CalculationResults.plot_heatmap().
 
     Args:
-        dataarray: Data to plot.
-        name: Variable name for title.
-        folder: Save folder.
-        heatmap_timeframes: Time aggregation level.
-        heatmap_timesteps_per_frame: Timesteps per frame.
-        color_map: Color scheme. Also see plotly.
-        save: Whether to save plot.
-        show: Whether to display plot.
-        engine: Plotting engine.
+        data: Data to plot. Can be a single DataArray or an xarray Dataset.
+            When a Dataset is provided, all data variables are combined along a new 'variable' dimension.
+        name: Optional name for the title. If not provided, uses the DataArray name or
+            generates a default title for Datasets.
+        folder: Save folder for the plot. Defaults to current directory if not provided.
+        colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
+        save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+        show: Whether to show the plot or not.
+        engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
         select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
+        facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+            or list of dimensions. Each unique value combination creates a subplot.
+        animate_by: Dimension to animate over (Plotly only). Creates animation frames.
+        facet_cols: Number of columns in the facet grid layout (default: 3).
+        reshape_time: Time reshaping configuration (default: 'auto'):
+            - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
+            - Tuple: Explicit reshaping, e.g. ('D', 'h') for days vs hours
+            - None: Disable auto-reshaping
+
+    Examples:
+        Single DataArray with time reshaping:
+
+        >>> plot_heatmap(data, name='Temperature', folder=Path('.'), reshape_time=('D', 'h'))
+
+        Dataset with multiple variables (facet by variable):
+
+        >>> dataset = xr.Dataset({'Boiler': data1, 'CHP': data2, 'Storage': data3})
+        >>> plot_heatmap(
+        ...     dataset,
+        ...     folder=Path('.'),
+        ...     facet_by='variable',
+        ...     reshape_time=('D', 'h'),
+        ... )
+
+        Dataset with animation by variable:
+
+        >>> plot_heatmap(dataset, animate_by='variable', reshape_time=('D', 'h'))
     """
     # Handle deprecated indexer parameter
     if 'indexer' in kwargs:
@@ -1720,32 +1789,74 @@ def plot_heatmap(
     if unexpected_kwargs:
         raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
 
-    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
+    # Validate parameters
+    if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
+        raise ValueError(
+            f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+        )
+
+    # Convert Dataset to DataArray with 'variable' dimension
+    if isinstance(data, xr.Dataset):
+        # Extract all data variables from the Dataset
+        variable_names = list(data.data_vars)
+        dataarrays = [data[var] for var in variable_names]
+
+        # Combine into single DataArray with 'variable' dimension
+        data = xr.concat(dataarrays, dim='variable')
+        data = data.assign_coords(variable=variable_names)
+
+        # Use Dataset variable names for title if name not provided
+        if name is None:
+            title_name = f'Heatmap of {len(variable_names)} variables'
+        else:
+            title_name = name
+    else:
+        # Single DataArray
+        if name is None:
+            title_name = data.name if data.name else 'Heatmap'
+        else:
+            title_name = name
+
+    # Apply select filtering
+    data, suffix_parts = _apply_indexer_to_data(data, select=select, drop=True, **kwargs)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-    name = name if not suffix_parts else name + suffix
 
-    heatmap_data = plotting.heat_map_data_from_df(
-        dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
-    )
+    # Build title
+    title = f'{title_name}{suffix}'
+    if isinstance(reshape_time, tuple):
+        timeframes, timesteps_per_frame = reshape_time
+        title += f' ({timeframes} vs {timesteps_per_frame})'
 
-    xlabel, ylabel = f'timeframe [{heatmap_timeframes}]', f'timesteps [{heatmap_timesteps_per_frame}]'
-
+    # Plot with appropriate engine
     if engine == 'plotly':
-        figure_like = plotting.heat_map_plotly(
-            heatmap_data, title=name, color_map=color_map, xlabel=xlabel, ylabel=ylabel
+        figure_like = plotting.heatmap_with_plotly(
+            data=data,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            colors=colors,
+            title=title,
+            facet_cols=facet_cols,
+            reshape_time=reshape_time,
         )
         default_filetype = '.html'
     elif engine == 'matplotlib':
-        figure_like = plotting.heat_map_matplotlib(
-            heatmap_data, title=name, color_map=color_map, xlabel=xlabel, ylabel=ylabel
+        figure_like = plotting.heatmap_with_matplotlib(
+            data=data,
+            colors=colors,
+            title=title,
+            reshape_time=reshape_time,
         )
         default_filetype = '.png'
     else:
         raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
+    # Set default folder if not provided
+    if folder is None:
+        folder = pathlib.Path('.')
+
     return plotting.export_figure(
         figure_like=figure_like,
-        default_path=folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})',
+        default_path=folder / title,
         default_filetype=default_filetype,
         user_path=None if isinstance(save, bool) else pathlib.Path(save),
         show=show,
