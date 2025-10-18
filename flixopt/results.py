@@ -2045,19 +2045,20 @@ def plot_heatmap(
     data, suffix_parts = _apply_indexer_to_data(data, select=select, drop=True)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-    # Check if faceting/animating would actually happen based on available dimensions
+    # Matplotlib doesn't support faceting or animation for heatmaps
+    # Only raise error if the specified dimensions actually exist in the data
     if engine == 'matplotlib':
-        dims_to_facet = []
+        dims_to_check = []
         if facet_by is not None:
-            dims_to_facet.extend([facet_by] if isinstance(facet_by, str) else facet_by)
+            dims_to_check.extend([facet_by] if isinstance(facet_by, str) else facet_by)
         if animate_by is not None:
-            dims_to_facet.append(animate_by)
+            dims_to_check.append(animate_by)
 
-        # Only raise error if any of the specified dimensions actually exist in the data
-        existing_dims = [dim for dim in dims_to_facet if dim in data.dims]
-        if existing_dims:
+        existing_facet_dims = [dim for dim in dims_to_check if dim in data.dims]
+        if existing_facet_dims:
             raise ValueError(
-                f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+                f'Matplotlib engine does not support faceting/animation, but found dimensions: {existing_facet_dims}. '
+                f'Use engine="plotly" or reduce these dimensions via select={{...}}.'
             )
 
     # Build title
