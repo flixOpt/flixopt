@@ -699,6 +699,7 @@ class CalculationResults:
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
         | None = 'auto',
+        fill: Literal['ffill', 'bfill'] | None = 'ffill',
         # Deprecated parameters (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
@@ -735,6 +736,8 @@ class CalculationResults:
                          ('MS', 'D') for months vs days, ('W', 'h') for weeks vs hours
                 - None: Disable auto-reshaping (will error if only 1D time data)
                 Supported timeframes: 'YS', 'MS', 'W', 'D', 'h', '15min', 'min'
+            fill: Method to fill missing values after reshape: 'ffill' (forward fill) or 'bfill' (backward fill).
+                Default is 'ffill'.
 
         Examples:
             Direct imshow mode (default):
@@ -790,6 +793,7 @@ class CalculationResults:
             animate_by=animate_by,
             facet_cols=facet_cols,
             reshape_time=reshape_time,
+            fill=fill,
             indexer=indexer,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
@@ -1911,6 +1915,7 @@ def plot_heatmap(
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
     | Literal['auto']
     | None = 'auto',
+    fill: Literal['ffill', 'bfill'] | None = 'ffill',
     # Deprecated parameters (kept for backwards compatibility)
     indexer: dict[str, Any] | None = None,
     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
@@ -1941,6 +1946,8 @@ def plot_heatmap(
             - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
             - Tuple: Explicit reshaping, e.g. ('D', 'h') for days vs hours
             - None: Disable auto-reshaping
+        fill: Method to fill missing values after reshape: 'ffill' (forward fill) or 'bfill' (backward fill).
+            Default is 'ffill'.
 
     Examples:
         Single DataArray with time reshaping:
@@ -2073,6 +2080,7 @@ def plot_heatmap(
             title=title,
             facet_cols=facet_cols,
             reshape_time=reshape_time,
+            fill=fill,
         )
         default_filetype = '.html'
     elif engine == 'matplotlib':
@@ -2081,6 +2089,7 @@ def plot_heatmap(
             colors=colors,
             title=title,
             reshape_time=reshape_time,
+            fill=fill,
         )
         default_filetype = '.png'
     else:
