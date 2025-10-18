@@ -688,54 +688,49 @@ class CalculationResults:
     def plot_heatmap(
         self,
         variable_name: str,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-        color_map: str = 'portland',
         save: bool | pathlib.Path = False,
         show: bool = True,
+        colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
+        facet_by: str | list[str] | None = None,
+        animate_by: str | None = None,
+        facet_cols: int = 3,
         **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
-        Plots a heatmap of the solution of a variable.
+        Plots a heatmap visualization of a variable using imshow.
 
         Args:
             variable_name: The name of the variable to plot.
-            heatmap_timeframes: The timeframes to use for the heatmap.
-            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
-            color_map: The color map to use for the heatmap.
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
+            colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+                Applied BEFORE faceting/animation.
+            facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+                or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
+            animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
+                dimension values. Only one dimension can be animated. Ignored if not found.
+            facet_cols: Number of columns in the facet grid layout (default: 3).
 
         Examples:
-            Basic usage (uses first scenario, first period, all time):
+            Basic usage:
 
-            >>> results.plot_heatmap('Battery|charge_state')
+            >>> results.plot_heatmap('Battery|charge_state', select={'scenario': 'base'})
 
-            Select specific scenario and period:
+            Facet by period:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base', 'period': 2024})
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, facet_by='period')
 
-            Time filtering (summer months only):
+            Animate by period:
 
-            >>> results.plot_heatmap(
-            ...     'Boiler(Qth)|flow_rate',
-            ...     select={
-            ...         'scenario': 'base',
-            ...         'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])],
-            ...     },
-            ... )
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, animate_by='period')
 
-            Save to specific location:
+            Combined faceting and animation:
 
-            >>> results.plot_heatmap(
-            ...     'Boiler(Qth)|flow_rate', select={'scenario': 'base'}, save='path/to/my_heatmap.html'
-            ... )
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', facet_by='scenario', animate_by='period')
         """
         # Handle deprecated indexer parameter
         if 'indexer' in kwargs:
@@ -752,20 +747,48 @@ class CalculationResults:
         if unexpected_kwargs:
             raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
 
+        if engine not in {'plotly', 'matplotlib'}:
+            raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
+        if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
+            raise ValueError(
+                f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+            )
+
         dataarray = self.solution[variable_name]
 
-        return plot_heatmap(
-            dataarray=dataarray,
-            name=variable_name,
-            folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
-            save=save,
+        # Apply select filtering
+        dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+
+        title = f'{variable_name}{suffix}'
+
+        if engine == 'plotly':
+            figure_like = plotting.heatmap_with_plotly(
+                data=dataarray,
+                facet_by=facet_by,
+                animate_by=animate_by,
+                colors=colors,
+                title=title,
+                facet_cols=facet_cols,
+            )
+            default_filetype = '.html'
+        elif engine == 'matplotlib':
+            figure_like = plotting.heatmap_with_matplotlib(
+                data=dataarray,
+                colors=colors,
+                title=title,
+            )
+            default_filetype = '.png'
+        else:
+            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+
+        return plotting.export_figure(
+            figure_like=figure_like,
+            default_path=self.folder / title,
+            default_filetype=default_filetype,
+            user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
-            engine=engine,
-            select=select,
-            **kwargs,
+            save=True if save else False,
         )
 
     def plot_network(

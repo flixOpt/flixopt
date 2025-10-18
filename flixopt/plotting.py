@@ -1524,6 +1524,301 @@ def dual_pie_with_matplotlib(
     return fig, axes
 
 
+def heatmap_with_plotly(
+    data: xr.DataArray,
+    colors: ColorType = 'viridis',
+    title: str = '',
+    facet_by: str | list[str] | None = None,
+    animate_by: str | None = None,
+    facet_cols: int = 3,
+) -> go.Figure:
+    """
+    Plot a heatmap visualization using Plotly's imshow with faceting and animation support.
+
+    This function creates heatmap visualizations from xarray DataArrays, supporting
+    multi-dimensional data through faceting (subplots) and animation. It automatically
+    handles dimension reduction and data reshaping for optimal heatmap display.
+
+    Args:
+        data: An xarray DataArray containing the data to visualize. Should have at least
+              2 dimensions (typically time and another dimension for the heatmap).
+        colors: Color specification (colormap name, list, or dict). Common options:
+                'viridis', 'plasma', 'RdBu', 'portland'.
+        title: The main title of the heatmap.
+        facet_by: Dimension(s) to create facets for. Creates a subplot grid.
+                  Can be a single dimension name or list of dimensions (max 2).
+                  If the dimension doesn't exist in the data, it will be silently ignored.
+        animate_by: Dimension to animate over. Creates animation frames.
+                    If the dimension doesn't exist in the data, it will be silently ignored.
+        facet_cols: Number of columns in the facet grid (used when facet_by is single dimension).
+
+    Returns:
+        A Plotly figure object containing the heatmap visualization.
+
+    Examples:
+        Simple heatmap:
+
+        ```python
+        fig = heatmap_with_plotly(data_array, colors='RdBu', title='Temperature Map')
+        ```
+
+        Facet by scenario:
+
+        ```python
+        fig = heatmap_with_plotly(data_array, facet_by='scenario', facet_cols=2)
+        ```
+
+        Animate by period:
+
+        ```python
+        fig = heatmap_with_plotly(data_array, animate_by='period')
+        ```
+
+        Facet and animate:
+
+        ```python
+        fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period')
+        ```
+    """
+    # Handle empty data
+    if data.size == 0:
+        return go.Figure()
+
+    # Convert DataArray to Dataset if needed for consistent handling
+    if isinstance(data, xr.DataArray):
+        var_name = data.name or 'value'
+        ds = data.to_dataset(name=var_name)
+    else:
+        ds = data
+        var_name = list(ds.data_vars)[0]
+
+    # Get available dimensions
+    available_dims = list(ds.dims)
+
+    # Validate and filter facet_by dimensions
+    if facet_by is not None:
+        if isinstance(facet_by, str):
+            if facet_by not in available_dims:
+                logger.debug(
+                    f"Dimension '{facet_by}' not found in data. Available dimensions: {available_dims}. "
+                    f'Ignoring facet_by parameter.'
+                )
+                facet_by = None
+        elif isinstance(facet_by, list):
+            missing_dims = [dim for dim in facet_by if dim not in available_dims]
+            facet_by = [dim for dim in facet_by if dim in available_dims]
+            if missing_dims:
+                logger.debug(
+                    f'Dimensions {missing_dims} not found in data. Available dimensions: {available_dims}. '
+                    f'Using only existing dimensions: {facet_by if facet_by else "none"}.'
+                )
+            if len(facet_by) == 0:
+                facet_by = None
+
+    # Validate animate_by dimension
+    if animate_by is not None and animate_by not in available_dims:
+        logger.debug(
+            f"Dimension '{animate_by}' not found in data. Available dimensions: {available_dims}. "
+            f'Ignoring animate_by parameter.'
+        )
+        animate_by = None
+
+    # For heatmap, we need to have the data in a format suitable for imshow
+    # px.imshow expects data with dimensions like (rows, cols) or (animation_frame, facet, rows, cols)
+    # We'll convert the xarray to the appropriate format
+
+    # Determine which dimensions to use for rows and columns
+    # Typically: one dimension for rows (e.g., time steps within a period)
+    # and one for columns (e.g., different periods or time points)
+    facet_dims = []
+    if facet_by:
+        facet_dims = [facet_by] if isinstance(facet_by, str) else facet_by
+    if animate_by:
+        facet_dims.append(animate_by)
+
+    # Get remaining dimensions for the heatmap itself
+    heatmap_dims = [dim for dim in available_dims if dim not in facet_dims]
+
+    if len(heatmap_dims) < 2:
+        # Need at least 2 dimensions for a heatmap
+        logger.error(
+            f'Heatmap requires at least 2 dimensions for rows and columns. '
+            f'After faceting/animation, only {len(heatmap_dims)} dimension(s) remain: {heatmap_dims}'
+        )
+        return go.Figure()
+
+    # Use first two non-facet dimensions for the heatmap
+    row_dim = heatmap_dims[0]
+    col_dim = heatmap_dims[1] if len(heatmap_dims) > 1 else heatmap_dims[0]
+
+    # Setup faceting parameters for Plotly Express
+    facet_row = None
+    facet_col_param = None
+    if facet_by:
+        if isinstance(facet_by, str):
+            facet_col_param = facet_by
+        elif len(facet_by) == 1:
+            facet_col_param = facet_by[0]
+        elif len(facet_by) == 2:
+            facet_row = facet_by[0]
+            facet_col_param = facet_by[1]
+        else:
+            raise ValueError(f'facet_by can have at most 2 dimensions, got {len(facet_by)}')
+
+    # Convert to format suitable for px.imshow
+    # px.imshow can take an xarray DataArray directly!
+    data_array = ds[var_name]
+
+    # Reorder dimensions for imshow: (animation_frame, facet_row, facet_col, y, x)
+    dim_order = []
+    if animate_by and animate_by in data_array.dims:
+        dim_order.append(animate_by)
+    if facet_row and facet_row in data_array.dims:
+        dim_order.append(facet_row)
+    if facet_col_param and facet_col_param in data_array.dims:
+        dim_order.append(facet_col_param)
+
+    # Add the heatmap dimensions (row_dim, col_dim)
+    for dim in data_array.dims:
+        if dim not in dim_order:
+            dim_order.append(dim)
+
+    # Transpose to the correct order
+    data_array = data_array.transpose(*dim_order)
+
+    # Create the imshow plot
+    common_args = {
+        'img': data_array,
+        'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+        'title': title,
+        'labels': {row_dim: row_dim.capitalize(), col_dim: col_dim.capitalize()},
+    }
+
+    # Add faceting if specified
+    if facet_col_param:
+        common_args['facet_col'] = 2  # Index in the dimension order
+        if facet_row:
+            common_args['facet_row'] = 1
+        if not facet_row and facet_cols:
+            common_args['facet_col_wrap'] = facet_cols
+
+    # Add animation if specified
+    if animate_by:
+        common_args['animation_frame'] = 0  # Index in the dimension order
+
+    try:
+        fig = px.imshow(**common_args)
+    except Exception as e:
+        logger.error(f'Error creating imshow plot: {e}. Falling back to basic heatmap.')
+        # Fallback: create a simple heatmap without faceting
+        fig = px.imshow(
+            data_array.values,
+            color_continuous_scale=colors if isinstance(colors, str) else 'viridis',
+            title=title,
+        )
+
+    # Update layout with basic styling
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(size=12),
+    )
+
+    return fig
+
+
+def heatmap_with_matplotlib(
+    data: xr.DataArray,
+    colors: ColorType = 'viridis',
+    title: str = '',
+    figsize: tuple[float, float] = (12, 6),
+    fig: plt.Figure | None = None,
+    ax: plt.Axes | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
+    """
+    Plot a heatmap visualization using Matplotlib's imshow.
+
+    This function creates a basic 2D heatmap from an xarray DataArray using matplotlib's
+    imshow function. For multi-dimensional data, only the first two dimensions are used.
+
+    Args:
+        data: An xarray DataArray containing the data to visualize. Should have at least
+              2 dimensions. If more than 2 dimensions exist, additional dimensions will
+              be reduced by taking the first slice.
+        colors: Color specification. Should be a colormap name (e.g., 'viridis', 'RdBu').
+        title: The title of the heatmap.
+        figsize: The size of the figure (width, height) in inches.
+        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
+        ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
+
+    Returns:
+        A tuple containing the Matplotlib figure and axes objects used for the plot.
+
+    Notes:
+        - Matplotlib backend doesn't support faceting or animation. Use plotly engine for those features.
+        - The y-axis is automatically inverted to display data with origin at top-left.
+        - A colorbar is added to show the value scale.
+
+    Examples:
+        ```python
+        fig, ax = heatmap_with_matplotlib(data_array, colors='RdBu', title='Temperature')
+        plt.savefig('heatmap.png')
+        ```
+    """
+    # Handle empty data
+    if data.size == 0:
+        if fig is None or ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+        return fig, ax
+
+    # Create figure and axes if not provided
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    # Extract data values
+    # If data has more than 2 dimensions, we need to reduce it
+    if isinstance(data, xr.DataArray):
+        # Get the first 2 dimensions
+        dims = list(data.dims)
+        if len(dims) > 2:
+            logger.warning(
+                f'Data has {len(dims)} dimensions: {dims}. '
+                f'Only the first 2 will be used for the heatmap. '
+                f'Use the plotly engine for faceting/animation support.'
+            )
+            # Select only the first 2 dimensions by taking first slice of others
+            selection = {dim: 0 for dim in dims[2:]}
+            data = data.isel(selection)
+
+        values = data.values
+        x_labels = data.dims[1] if len(data.dims) > 1 else 'x'
+        y_labels = data.dims[0] if len(data.dims) > 0 else 'y'
+    else:
+        values = data
+        x_labels = 'x'
+        y_labels = 'y'
+
+    # Process colormap
+    cmap = colors if isinstance(colors, str) else 'viridis'
+
+    # Create the heatmap using imshow
+    im = ax.imshow(values, cmap=cmap, aspect='auto', origin='upper')
+
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.1, aspect=15, fraction=0.05)
+    cbar.set_label('Value')
+
+    # Set labels and title
+    ax.set_xlabel(str(x_labels).capitalize())
+    ax.set_ylabel(str(y_labels).capitalize())
+    ax.set_title(title)
+
+    # Apply tight layout
+    fig.tight_layout()
+
+    return fig, ax
+
+
 def export_figure(
     figure_like: go.Figure | tuple[plt.Figure, plt.Axes],
     default_path: pathlib.Path,

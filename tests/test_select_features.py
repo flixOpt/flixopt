@@ -135,14 +135,23 @@ class TestDifferentPlottingMethods:
         results['Fernwärme'].plot_node_balance(select={'scenario': scenarios[0]}, mode='area', show=False, save=False)
 
     def test_plot_heatmap(self, results, scenarios):
-        """Test plot_heatmap (expected to fail with current data structure)."""
+        """Test plot_heatmap with the new imshow implementation."""
         var_names = list(results.solution.data_vars)
         if not var_names:
             pytest.skip('No variables found')
 
-        # This is expected to fail with the current test data
-        with pytest.raises(AssertionError, match='datetime'):
-            results.plot_heatmap(var_names[0], select={'scenario': scenarios[0]}, show=False, save=False)
+        # Find a variable with time dimension for proper heatmap
+        var_name = None
+        for name in var_names:
+            if 'time' in results.solution[name].dims:
+                var_name = name
+                break
+
+        if var_name is None:
+            pytest.skip('No time-series variables found for heatmap test')
+
+        # Test that the new heatmap implementation works
+        results.plot_heatmap(var_name, select={'scenario': scenarios[0]}, show=False, save=False)
 
     def test_node_balance_data_retrieval(self, results, scenarios):
         """Test node_balance (data retrieval)."""
