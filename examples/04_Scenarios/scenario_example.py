@@ -83,10 +83,10 @@ if __name__ == '__main__':
         capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
         initial_charge_state=0,  # Initial storage state: empty
         relative_maximum_charge_state=np.array([80, 70, 80, 80, 80, 80, 80, 80, 80] * 20) * 0.01,
-        relative_maximum_final_charge_state=0.8,
+        relative_maximum_final_charge_state=np.array([0.8, 0.5, 0.1]),
         eta_charge=0.9,
         eta_discharge=1,  # Efficiency factors for charging/discharging
-        relative_loss_per_hour=0.08,  # 8% loss per hour. Absolute loss depends on current charge state
+        relative_loss_per_hour=np.array([0.1, 0.2]),  # Assume 10% or 20% losses per hour in the scenarios
         prevent_simultaneous_charge_and_discharge=True,  # Prevent charging and discharging at the same time
     )
 
@@ -137,11 +137,7 @@ if __name__ == '__main__':
     print(df)
 
     # Plot charge state using matplotlib
-    fig, ax = calculation.results['Storage'].plot_charge_state(engine='matplotlib')
-    # Customize the plot further if needed
-    ax.set_title('Storage Charge State Over Time')
-    # Or save the figure
-    # fig.savefig('storage_charge_state.png')
+    calculation.results['Storage'].plot_charge_state()
 
     # Save results to file for later usage
     calculation.results.to_file()
