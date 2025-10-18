@@ -54,7 +54,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 
 
 ### ✨ Added
-- Added facting and animation to plotting methods
+- Added faceting and animation options to plotting methods
 
 ### 💥 Breaking Changes
 
