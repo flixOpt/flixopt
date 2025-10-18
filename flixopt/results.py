@@ -1773,6 +1773,10 @@ class SegmentedCalculationResults:
         animate_by: str | None = None,
         facet_cols: int = 3,
         fill: Literal['ffill', 'bfill'] | None = 'ffill',
+        # Deprecated parameters (kept for backwards compatibility)
+        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
+        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
+        color_map: str | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
@@ -1790,10 +1794,37 @@ class SegmentedCalculationResults:
             animate_by: Dimension to animate over (Plotly only).
             facet_cols: Number of columns in the facet grid layout.
             fill: Method to fill missing values: 'ffill' or 'bfill'.
+            heatmap_timeframes: (Deprecated) Use reshape_time instead.
+            heatmap_timesteps_per_frame: (Deprecated) Use reshape_time instead.
+            color_map: (Deprecated) Use colors instead.
 
         Returns:
             Figure object.
         """
+        # Handle deprecated parameters
+        if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
+            import warnings
+
+            warnings.warn(
+                "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
+                "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # Override reshape_time if old parameters provided
+            if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
+                reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
+
+        if color_map is not None:
+            import warnings
+
+            warnings.warn(
+                "The 'color_map' parameter is deprecated. Use 'colors' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            colors = color_map
+
         return plot_heatmap(
             data=self.solution_without_overlap(variable_name),
             name=variable_name,
@@ -1906,7 +1937,33 @@ def plot_heatmap(
             stacklevel=2,
         )
 
-    # Check for unexpected kwargs
+    # Handle deprecated heatmap parameters
+    if 'heatmap_timeframes' in kwargs or 'heatmap_timesteps_per_frame' in kwargs:
+        import warnings
+
+        warnings.warn(
+            "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
+            "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # Override reshape_time if old parameters provided
+        heatmap_timeframes = kwargs.pop('heatmap_timeframes', None)
+        heatmap_timesteps_per_frame = kwargs.pop('heatmap_timesteps_per_frame', None)
+        if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
+            reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
+
+    if 'color_map' in kwargs:
+        import warnings
+
+        warnings.warn(
+            "The 'color_map' parameter is deprecated. Use 'colors' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        colors = kwargs.pop('color_map')
+
+    # Check for unexpected kwargs (after removing deprecated ones)
     unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
     if unexpected_kwargs:
         raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
