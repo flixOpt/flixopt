@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Literal
 import linopy
 import numpy as np
 import pandas as pd
-import plotly
 import xarray as xr
 import yaml
 
@@ -20,6 +19,7 @@ from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
+    import plotly
     import pyvis
 
     from .calculation import Calculation, SegmentedCalculation
@@ -1280,9 +1280,12 @@ class ComponentResults(_NodeResults):
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         select: dict[FlowSystemDimensions, Any] | None = None,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
+        facet_cols: int = 3,
         **kwargs,
     ) -> plotly.graph_objs.Figure:
-        """Plot storage charge state over time, combined with the node balance.
+        """Plot storage charge state over time, combined with the node balance with optional faceting and animation.
 
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
@@ -1291,9 +1294,32 @@ class ComponentResults(_NodeResults):
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
+                Applied BEFORE faceting/animation.
+            facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+                or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
+            animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
+                dimension values. Only one dimension can be animated. Ignored if not found.
+            facet_cols: Number of columns in the facet grid layout (default: 3).
 
         Raises:
             ValueError: If component is not a storage.
+
+        Examples:
+            Basic plot:
+
+            >>> results['Storage'].plot_charge_state()
+
+            Facet by scenario:
+
+            >>> results['Storage'].plot_charge_state(facet_by='scenario', facet_cols=2)
+
+            Animate by period:
+
+            >>> results['Storage'].plot_charge_state(animate_by='period')
+
+            Facet by scenario AND animate by period:
+
+            >>> results['Storage'].plot_charge_state(facet_by='scenario', animate_by='period')
         """
         # Handle deprecated indexer parameter
         if 'indexer' in kwargs:
@@ -1313,49 +1339,48 @@ class ComponentResults(_NodeResults):
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
-        # Don't pass select/indexer to node_balance - we'll apply it afterwards
+        if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
+            raise ValueError(
+                f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+            )
+
+        # Get node balance and charge state
         ds = self.node_balance(with_last_timestep=True)
         charge_state = self.charge_state
 
+        # Add charge_state to the dataset so it's included in faceting/animation
+        ds[self._charge_state] = charge_state
+
+        # Apply select filtering
         ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
-        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'Operation Balance of {self.label}{suffix}'
 
         if engine == 'plotly':
-            fig = plotting.with_plotly(
-                ds.to_dataframe(),
+            figure_like = plotting.with_plotly(
+                ds,
+                facet_by=facet_by,
+                animate_by=animate_by,
                 colors=colors,
                 mode=mode,
                 title=title,
+                facet_cols=facet_cols,
             )
-
-            # TODO: Use colors for charge state?
-
-            charge_state = charge_state.to_dataframe()
-            fig.add_trace(
-                plotly.graph_objs.Scatter(
-                    x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
-                )
-            )
+            default_filetype = '.html'
         elif engine == 'matplotlib':
-            fig, ax = plotting.with_matplotlib(
+            figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
                 mode=mode,
                 title=title,
             )
-
-            charge_state = charge_state.to_dataframe()
-            ax.plot(charge_state.index, charge_state.values.flatten(), label=self._charge_state)
-            fig.tight_layout()
-            fig = fig, ax
+            default_filetype = '.png'
 
         return plotting.export_figure(
-            fig,
+            figure_like=figure_like,
             default_path=self._calculation_results.folder / title,
-            default_filetype='.html',
+            default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
