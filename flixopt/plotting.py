@@ -1450,8 +1450,8 @@ def heatmap_with_plotly(
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
     facet_cols: int = 3,
-    timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
-    timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
+    reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+    | None = None,
     fill: Literal['ffill', 'bfill'] | None = 'ffill',
 ) -> go.Figure:
     """
@@ -1480,10 +1480,9 @@ def heatmap_with_plotly(
         animate_by: Dimension to animate over. Creates animation frames.
                     If the dimension doesn't exist in the data, it will be silently ignored.
         facet_cols: Number of columns in the facet grid (used with facet_by).
-        timeframes: If provided with 'time' dimension, reshape time into periods (e.g., 'D' for days).
-                   Auto-applied as 'D' if only time dimension remains.
-        timesteps_per_frame: If provided with 'time' dimension, time interval for rows (e.g., 'h' for hours).
-                            Auto-applied as 'h' if only time dimension remains.
+        reshape_time: Tuple of (timeframes, timesteps_per_frame) for time reshaping.
+                     Example: ('D', 'h') reshapes to days vs hours.
+                     Auto-applied as ('D', 'h') if only time dimension remains.
         fill: Method to fill missing values when reshaping time: 'ffill' or 'bfill'. Default is 'ffill'.
 
     Returns:
@@ -1519,9 +1518,7 @@ def heatmap_with_plotly(
         Explicit time reshaping:
 
         ```python
-        fig = heatmap_with_plotly(
-            data_array, facet_by='scenario', animate_by='period', timeframes='W', timesteps_per_frame='D'
-        )
+        fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period', reshape_time=('W', 'D'))
         ```
     """
     # Handle empty data
@@ -1529,9 +1526,10 @@ def heatmap_with_plotly(
         return go.Figure()
 
     # Apply time reshaping if requested and 'time' dimension exists
-    if 'time' in data.dims and timeframes is not None and timesteps_per_frame is not None:
+    if 'time' in data.dims and reshape_time is not None:
+        timeframes, timesteps_per_frame = reshape_time
         data = reshape_time_series_for_heatmap(data, timeframes, timesteps_per_frame, fill)
-    elif 'time' in data.dims and timeframes is None and timesteps_per_frame is None:
+    elif 'time' in data.dims and reshape_time is None:
         # Check if we need automatic time reshaping
         # Count dimensions that will be used for faceting/animation
         facet_dims_used = []
@@ -1664,6 +1662,9 @@ def heatmap_with_matplotlib(
     figsize: tuple[float, float] = (12, 6),
     fig: plt.Figure | None = None,
     ax: plt.Axes | None = None,
+    reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+    | None = None,
+    fill: Literal['ffill', 'bfill'] | None = 'ffill',
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot a heatmap visualization using Matplotlib's imshow.
@@ -1680,6 +1681,9 @@ def heatmap_with_matplotlib(
         figsize: The size of the figure (width, height) in inches.
         fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
         ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
+        reshape_time: Tuple of (timeframes, timesteps_per_frame) for time reshaping.
+                     Example: ('D', 'h') reshapes to days vs hours.
+        fill: Method to fill missing values when reshaping time: 'ffill' or 'bfill'. Default is 'ffill'.
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -1694,12 +1698,23 @@ def heatmap_with_matplotlib(
         fig, ax = heatmap_with_matplotlib(data_array, colors='RdBu', title='Temperature')
         plt.savefig('heatmap.png')
         ```
+
+        Time reshaping:
+
+        ```python
+        fig, ax = heatmap_with_matplotlib(data_array, reshape_time=('D', 'h'))
+        ```
     """
     # Handle empty data
     if data.size == 0:
         if fig is None or ax is None:
             fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
+
+    # Apply time reshaping if requested
+    if 'time' in data.dims and reshape_time is not None:
+        timeframes, timesteps_per_frame = reshape_time
+        data = reshape_time_series_for_heatmap(data, timeframes, timesteps_per_frame, fill)
 
     # Create figure and axes if not provided
     if fig is None or ax is None:

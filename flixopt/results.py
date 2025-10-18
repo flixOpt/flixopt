@@ -785,60 +785,34 @@ class CalculationResults:
         dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        # Choose visualization mode
+        # Build title
+        title = f'{variable_name}{suffix}'
         if reshape_time is not None:
-            # Time reshape mode - reshape time series into periods vs timesteps
             timeframes, timesteps_per_frame = reshape_time
+            title += f' ({timeframes} vs {timesteps_per_frame})'
 
-            # Use the dedicated reshaping function from plotting module
-            # Note: This function automatically handles extra dimensions by selecting first values
-            reshaped_data = plotting.reshape_time_series_for_heatmap(
-                data=dataarray, timeframes=timeframes, timesteps_per_frame=timesteps_per_frame
+        # Plot with appropriate engine
+        if engine == 'plotly':
+            figure_like = plotting.heatmap_with_plotly(
+                data=dataarray,
+                facet_by=facet_by,
+                animate_by=animate_by,
+                colors=colors,
+                title=title,
+                facet_cols=facet_cols,
+                reshape_time=reshape_time,
             )
-
-            title = f'{variable_name}{suffix} ({timeframes} vs {timesteps_per_frame})'
-
-            # Use unified heatmap functions
-            if engine == 'plotly':
-                figure_like = plotting.heatmap_with_plotly(
-                    data=reshaped_data,
-                    colors=colors,
-                    title=title,
-                    facet_by=facet_by,
-                    animate_by=animate_by,
-                )
-                default_filetype = '.html'
-            else:  # matplotlib
-                figure_like = plotting.heatmap_with_matplotlib(
-                    data=reshaped_data,
-                    colors=colors,
-                    title=title,
-                )
-                default_filetype = '.png'
-
+            default_filetype = '.html'
+        elif engine == 'matplotlib':
+            figure_like = plotting.heatmap_with_matplotlib(
+                data=dataarray,
+                colors=colors,
+                title=title,
+                reshape_time=reshape_time,
+            )
+            default_filetype = '.png'
         else:
-            # Direct imshow mode - use data dimensions as-is
-            title = f'{variable_name}{suffix}'
-
-            if engine == 'plotly':
-                figure_like = plotting.heatmap_with_plotly(
-                    data=dataarray,
-                    facet_by=facet_by,
-                    animate_by=animate_by,
-                    colors=colors,
-                    title=title,
-                    facet_cols=facet_cols,
-                )
-                default_filetype = '.html'
-            elif engine == 'matplotlib':
-                figure_like = plotting.heatmap_with_matplotlib(
-                    data=dataarray,
-                    colors=colors,
-                    title=title,
-                )
-                default_filetype = '.png'
-            else:
-                raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
         return plotting.export_figure(
             figure_like=figure_like,
@@ -1801,28 +1775,27 @@ def plot_heatmap(
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
     name = name if not suffix_parts else name + suffix
 
-    # Reshape data using the dedicated time aggregation function
-    reshaped_data = plotting.reshape_time_series_for_heatmap(
-        data=dataarray, timeframes=heatmap_timeframes, timesteps_per_frame=heatmap_timesteps_per_frame
-    )
+    # Build title
+    title = f'{name} ({heatmap_timeframes} vs {heatmap_timesteps_per_frame})'
 
-    title = f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})'
+    # Pass reshape_time as tuple to plotting functions
+    reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
 
     # Use unified heatmap functions
     if engine == 'plotly':
         figure_like = plotting.heatmap_with_plotly(
-            data=reshaped_data,
+            data=dataarray,
             colors=color_map,
             title=title,
-            facet_by=None,
-            animate_by=None,
+            reshape_time=reshape_time,
         )
         default_filetype = '.html'
     elif engine == 'matplotlib':
         figure_like = plotting.heatmap_with_matplotlib(
-            data=reshaped_data,
+            data=dataarray,
             colors=color_map,
             title=title,
+            reshape_time=reshape_time,
         )
         default_filetype = '.png'
     else:
