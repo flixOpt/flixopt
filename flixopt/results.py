@@ -1278,7 +1278,7 @@ class ComponentResults(_NodeResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
+        mode: Literal['area', 'stacked_bar', 'line'] = 'area',
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
@@ -1386,17 +1386,18 @@ class ComponentResults(_NodeResults):
             # This preserves subplot assignments and animation frames
             for trace in charge_state_fig.data:
                 trace.line.width = 2  # Make charge_state line more prominent
+                trace.line.shape = 'linear'  # Smooth line for charge state (not stepped like flows)
                 figure_like.add_trace(trace)
 
             # Also add traces from animation frames if they exist
+            # Both figures use the same animate_by parameter, so they should have matching frames
             if hasattr(charge_state_fig, 'frames') and charge_state_fig.frames:
-                if not hasattr(figure_like, 'frames') or not figure_like.frames:
-                    figure_like.frames = []
                 # Add charge_state traces to each frame
                 for i, frame in enumerate(charge_state_fig.frames):
                     if i < len(figure_like.frames):
                         for trace in frame.data:
                             trace.line.width = 2
+                            trace.line.shape = 'linear'  # Smooth line for charge state
                             figure_like.frames[i].data = figure_like.frames[i].data + (trace,)
 
             default_filetype = '.html'
