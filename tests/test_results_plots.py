@@ -63,7 +63,14 @@ def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
     results.plot_heatmap('Speicher(Q_th_load)|flow_rate', **heatmap_kwargs)
 
     results['Speicher'].plot_node_balance_pie(engine=plotting_engine, save=save, show=show, colors=color_spec)
-    results['Speicher'].plot_charge_state(engine=plotting_engine)
+
+    # Matplotlib doesn't support faceting/animation for plot_charge_state, and 'area' mode
+    charge_state_kwargs = {'engine': plotting_engine}
+    if plotting_engine == 'matplotlib':
+        charge_state_kwargs['facet_by'] = None
+        charge_state_kwargs['animate_by'] = None
+        charge_state_kwargs['mode'] = 'stacked_bar'  # 'area' not supported by matplotlib
+    results['Speicher'].plot_charge_state(**charge_state_kwargs)
 
     plt.close('all')
 
