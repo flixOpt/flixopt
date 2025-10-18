@@ -1,8 +1,14 @@
 """
-Example script demonstrating facet plotting and animation functionality.
+Comprehensive test script demonstrating facet plotting and animation functionality.
 
 This script shows how to use the new facet_by and animate_by parameters
 to create multidimensional plots with scenarios and periods.
+
+Examples 1-13: Core facet plotting features with synthetic data
+Example 14: Manual approach showing how plot_charge_state() works internally
+Example 15: Real flixOpt integration using plot_charge_state() method
+
+All figures are collected in the `all_figures` list for easy access.
 """
 
 import numpy as np
@@ -10,6 +16,33 @@ import pandas as pd
 import xarray as xr
 
 from flixopt import plotting
+
+# List to store all generated figures for easy access
+all_figures = []
+
+
+def create_and_save_figure(example_num, description, plot_func, *args, **kwargs):
+    """Helper function to reduce duplication in creating and saving figures."""
+    suffix = kwargs.pop('suffix', '')
+    filename = f'/tmp/facet_example_{example_num}{suffix}.html'
+
+    print('=' * 70)
+    print(f'Example {example_num}: {description}')
+    print('=' * 70)
+
+    try:
+        fig = plot_func(*args, **kwargs)
+        fig.write_html(filename)
+        all_figures.append((f'Example {example_num}: {description}', fig))
+        print(f'✓ Created: {filename}')
+        return fig
+    except Exception as e:
+        print(f'✗ Error in Example {example_num}: {e}')
+        import traceback
+
+        traceback.print_exc()
+        return None
+
 
 # Create synthetic multidimensional data for demonstration
 # Dimensions: time, scenario, period
@@ -92,6 +125,7 @@ try:
         facet_cols=2,  # 2x2 grid
     )
     fig1.write_html('/tmp/facet_example_1_scenarios.html')
+    all_figures.append(('Example 1: Faceting by scenario', fig1))
     print('✓ Created: /tmp/facet_example_1_scenarios.html')
     print('  4 subplots showing different scenarios')
     fig1.show()
@@ -124,6 +158,7 @@ try:
         xlabel='Time',
     )
     fig2.write_html('/tmp/facet_example_2_animation.html')
+    all_figures.append(('Example 2: Animation by period', fig2))
     print('✓ Created: /tmp/facet_example_2_animation.html')
     print('  Animation cycling through periods: 2024, 2030, 2040')
 except Exception as e:
@@ -155,6 +190,7 @@ try:
         # height_per_row now auto-sizes intelligently!
     )
     fig3.write_html('/tmp/facet_example_3_combined.html')
+    all_figures.append(('Example 3: Facet + animation combined', fig3))
     print('✓ Created: /tmp/facet_example_3_combined.html')
     print('  4 subplots (scenarios) with animation through 3 periods')
     print('  Using intelligent auto-sizing (2 rows = 900px)')
@@ -188,6 +224,7 @@ try:
         facet_cols=3,  # 3 columns for 3 periods
     )
     fig4.write_html('/tmp/facet_example_4_2d_grid.html')
+    all_figures.append(('Example 4: 2D faceting grid', fig4))
     print('✓ Created: /tmp/facet_example_4_2d_grid.html')
     print('  12 subplots (4 scenarios × 3 periods)')
 except Exception as e:
@@ -220,6 +257,7 @@ try:
         facet_cols=2,
     )
     fig5.write_html('/tmp/facet_example_5_area_pos_neg.html')
+    all_figures.append(('Example 5: Area with pos/neg values', fig5))
     print('✓ Created: /tmp/facet_example_5_area_pos_neg.html')
     print('  Area plot with both positive and negative values')
     print('  Negative values (battery charge) should stack downwards')
@@ -251,6 +289,7 @@ try:
         xlabel='Time',
     )
     fig6.write_html('/tmp/facet_example_6_stacked_bar_anim.html')
+    all_figures.append(('Example 6: Stacked bar with animation', fig6))
     print('✓ Created: /tmp/facet_example_6_stacked_bar_anim.html')
     print('  Stacked bar chart with period animation')
 except Exception as e:
@@ -301,6 +340,7 @@ try:
         facet_cols=3,  # 3 columns, 2 rows
     )
     fig7.write_html('/tmp/facet_example_7_large_grid.html')
+    all_figures.append(('Example 7: Large grid (6 scenarios)', fig7))
     print('✓ Created: /tmp/facet_example_7_large_grid.html')
     print('  6 subplots (2x3 grid) with auto-sizing')
 except Exception as e:
@@ -333,6 +373,7 @@ try:
         facet_cols=2,
     )
     fig8.write_html('/tmp/facet_example_8_line_facets.html')
+    all_figures.append(('Example 8: Line mode with faceting', fig8))
     print('✓ Created: /tmp/facet_example_8_line_facets.html')
     print('  Line plots for comparing detailed trends across scenarios')
 except Exception as e:
@@ -365,6 +406,7 @@ try:
         facet_cols=4,  # Single row
     )
     fig9.write_html('/tmp/facet_example_9_single_var.html')
+    all_figures.append(('Example 9: Single variable faceting', fig9))
     print('✓ Created: /tmp/facet_example_9_single_var.html')
     print('  Single variable (Solar) across 4 scenarios')
 except Exception as e:
@@ -397,6 +439,7 @@ for i, color_scheme in enumerate(color_schemes):
             xlabel='Time',
         )
         fig.write_html(f'/tmp/facet_example_10_{color_scheme}.html')
+        all_figures.append((f'Example 10: Color scheme {color_scheme}', fig))
         print(f'✓ Created: /tmp/facet_example_10_{color_scheme}.html')
     except Exception as e:
         print(f'✗ Error with {color_scheme}: {e}')
@@ -426,6 +469,7 @@ try:
         facet_cols=2,
     )
     fig11.write_html('/tmp/facet_example_11_2d_mixed.html')
+    all_figures.append(('Example 11: 2D faceting with mixed values', fig11))
     print('✓ Created: /tmp/facet_example_11_2d_mixed.html')
     print('  2x2 grid showing charging/discharging across scenarios and periods')
 except Exception as e:
@@ -463,6 +507,7 @@ try:
                             button.args[1]['frame']['duration'] = 1000  # 1 second per frame
 
     fig12.write_html('/tmp/facet_example_12_animation_settings.html')
+    all_figures.append(('Example 12: Animation with custom settings', fig12))
     print('✓ Created: /tmp/facet_example_12_animation_settings.html')
     print('  Animation with custom frame duration settings')
 except Exception as e:
@@ -492,6 +537,7 @@ try:
         xlabel='Time',
     )
     fig13.write_html('/tmp/facet_example_13_single_facet.html')
+    all_figures.append(('Example 13: Edge case - single facet', fig13))
     print('✓ Created: /tmp/facet_example_13_single_facet.html')
     print('  Should create normal plot when no facet dimension exists')
 except Exception as e:
@@ -501,10 +547,131 @@ except Exception as e:
     traceback.print_exc()
 
 # ============================================================================
-# Example 14: Real flixOpt integration - plot_charge_state with faceting
+# Example 14: Manual charge state plotting (mimicking plot_charge_state)
 # ============================================================================
 print('=' * 70)
-print('Example 14: plot_charge_state() with facet_by and animate_by')
+print('Example 14: Manual charge state approach (synthetic data)')
+print('=' * 70)
+
+try:
+    print('Demonstrating what plot_charge_state() does under the hood...')
+    print()
+
+    # Step 1: Create "node balance" data (flows in/out) - using existing ds
+    print('  Step 1: Using existing node_balance-like data (flows)...')
+    node_balance_ds = ds.copy()  # This represents flows like charging/discharging
+    print(f'    node_balance shape: {dict(node_balance_ds.dims)}')
+    print(f'    Variables: {list(node_balance_ds.data_vars.keys())}')
+
+    # Step 2: Create synthetic charge state data
+    print('  Step 2: Creating synthetic charge_state data...')
+    # Charge state should be cumulative and vary by scenario/period
+    charge_state_data = np.zeros((len(time), len(scenarios), len(periods)))
+
+    for s_idx, _ in enumerate(scenarios):
+        for p_idx, period in enumerate(periods):
+            # Create a charge state pattern that varies over time
+            # Start at 50%, oscillate based on random charging/discharging
+            base_charge = 50  # 50 MWh base
+            scenario_factor = 1.0 + s_idx * 0.2
+            period_factor = 1.0 + (period - 2024) / 20
+
+            # Simple cumulative pattern with bounds
+            charge_pattern = base_charge * scenario_factor * period_factor
+            oscillation = 20 * np.sin(np.arange(len(time)) * 2 * np.pi / 24)
+            noise = np.random.normal(0, 5, len(time))
+
+            charge_state_data[:, s_idx, p_idx] = np.clip(
+                charge_pattern + oscillation + noise, 0, 100 * scenario_factor * period_factor
+            )
+
+    charge_state_da = xr.DataArray(
+        charge_state_data,
+        dims=['time', 'scenario', 'period'],
+        coords={'time': time, 'scenario': scenarios, 'period': periods},
+        name='ChargeState',
+    )
+    print(f'    charge_state shape: {dict(charge_state_da.dims)}')
+
+    # Step 3: Combine them into a single dataset (this is what plot_charge_state does!)
+    print('  Step 3: Combining flows and charge_state into one Dataset...')
+    combined_ds = node_balance_ds.copy()
+    combined_ds['ChargeState'] = charge_state_da
+    print(f'    Variables in combined dataset: {list(combined_ds.data_vars.keys())}')
+
+    # Step 4: Plot without faceting (single scenario/period)
+    print('  Step 4a: Plotting single scenario/period...')
+    selected_ds = combined_ds.sel(scenario='base', period=2024)
+    fig14a = plotting.with_plotly(
+        selected_ds,
+        mode='area',
+        colors='portland',
+        title='Storage Operation: Flows + Charge State (Base, 2024)',
+        ylabel='Power (MW) / Charge State (MWh)',
+        xlabel='Time',
+    )
+    fig14a.write_html('/tmp/facet_example_14a_manual_single.html')
+    all_figures.append(('Example 14a: Manual approach - single', fig14a))
+    print('     ✓ Created: /tmp/facet_example_14a_manual_single.html')
+
+    # Step 5: Plot WITH faceting by scenario
+    print('  Step 4b: Plotting with faceting by scenario...')
+    selected_ds_scenarios = combined_ds.sel(period=2024)
+    fig14b = plotting.with_plotly(
+        selected_ds_scenarios,
+        facet_by='scenario',
+        mode='area',
+        colors='viridis',
+        title='Storage Operation with Faceting (2024)',
+        ylabel='Power (MW) / Charge State (MWh)',
+        xlabel='Time',
+        facet_cols=2,
+    )
+    fig14b.write_html('/tmp/facet_example_14b_manual_faceted.html')
+    all_figures.append(('Example 14b: Manual with faceting', fig14b))
+    print('     ✓ Created: /tmp/facet_example_14b_manual_faceted.html')
+
+    # Step 6: Plot with 2D faceting
+    print('  Step 4c: Plotting with 2D faceting (scenario × period)...')
+    # Use shorter time window for clearer visualization
+    combined_ds_short = combined_ds.isel(time=slice(0, 48))
+    fig14c = plotting.with_plotly(
+        combined_ds_short,
+        facet_by=['scenario', 'period'],
+        mode='line',
+        colors='tab10',
+        title='Storage Operation: 2D Grid (48 hours)',
+        ylabel='Power (MW) / Charge State (MWh)',
+        xlabel='Time',
+        facet_cols=3,
+    )
+    fig14c.write_html('/tmp/facet_example_14c_manual_2d.html')
+    all_figures.append(('Example 14c: Manual with 2D faceting', fig14c))
+    print('     ✓ Created: /tmp/facet_example_14c_manual_2d.html')
+
+    print()
+    print('  ✓ Manual approach examples completed!')
+    print()
+    print('  KEY INSIGHT - This is what plot_charge_state() does:')
+    print('    1. Get node_balance data (flows in/out)')
+    print('    2. Get charge_state data (storage level)')
+    print('    3. Combine them: combined_ds["ChargeState"] = charge_state')
+    print('    4. Apply selection: combined_ds.sel(scenario=..., period=...)')
+    print('    5. Plot with: plotting.with_plotly(combined_ds, facet_by=...)')
+
+except Exception as e:
+    print(f'✗ Error in Example 14: {e}')
+    import traceback
+
+    traceback.print_exc()
+
+print()
+
+# ============================================================================
+# Example 15: Real flixOpt integration - plot_charge_state with faceting
+# ============================================================================
+print('=' * 70)
+print('Example 15: plot_charge_state() with facet_by and animate_by')
 print('=' * 70)
 
 try:
@@ -604,65 +771,69 @@ try:
     # Now demonstrate plot_charge_state with faceting
     print('Creating faceted charge state plots...')
 
-    # Example 14a: Facet by scenario
+    # Example 15a: Facet by scenario
     print('  a) Faceting by scenario...')
-    fig14a = calculation.results['Battery'].plot_charge_state(
+    fig15a = calculation.results['Battery'].plot_charge_state(
         facet_by='scenario',
         mode='area',
         colors='blues',
         select={'period': 2024},
-        save='/tmp/facet_example_14a_charge_state_scenarios.html',
+        save='/tmp/facet_example_15a_charge_state_scenarios.html',
         show=False,
     )
-    print('     ✓ Created: /tmp/facet_example_14a_charge_state_scenarios.html')
+    all_figures.append(('Example 15a: charge_state faceted by scenario', fig15a))
+    print('     ✓ Created: /tmp/facet_example_15a_charge_state_scenarios.html')
 
-    # Example 14b: Animate by period
+    # Example 15b: Animate by period
     print('  b) Animating by period...')
-    fig14b = calculation.results['Battery'].plot_charge_state(
+    fig15b = calculation.results['Battery'].plot_charge_state(
         animate_by='period',
         mode='area',
         colors='greens',
         select={'scenario': 'base'},
-        save='/tmp/facet_example_14b_charge_state_animation.html',
+        save='/tmp/facet_example_15b_charge_state_animation.html',
         show=False,
     )
-    print('     ✓ Created: /tmp/facet_example_14b_charge_state_animation.html')
+    all_figures.append(('Example 15b: charge_state animated by period', fig15b))
+    print('     ✓ Created: /tmp/facet_example_15b_charge_state_animation.html')
 
-    # Example 14c: Combined faceting and animation
+    # Example 15c: Combined faceting and animation
     print('  c) Faceting by scenario AND animating by period...')
-    fig14c = calculation.results['Battery'].plot_charge_state(
+    fig15c = calculation.results['Battery'].plot_charge_state(
         facet_by='scenario',
         animate_by='period',
         mode='area',
         colors='portland',
         facet_cols=2,
-        save='/tmp/facet_example_14c_charge_state_combined.html',
+        save='/tmp/facet_example_15c_charge_state_combined.html',
         show=False,
     )
-    print('     ✓ Created: /tmp/facet_example_14c_charge_state_combined.html')
+    all_figures.append(('Example 15c: charge_state facet + animation', fig15c))
+    print('     ✓ Created: /tmp/facet_example_15c_charge_state_combined.html')
     print('     4 subplots (scenarios) × 3 frames (periods)')
 
-    # Example 14d: 2D faceting (scenario x period)
+    # Example 15d: 2D faceting (scenario x period)
     print('  d) 2D faceting (scenario × period grid)...')
-    fig14d = calculation.results['Battery'].plot_charge_state(
+    fig15d = calculation.results['Battery'].plot_charge_state(
         facet_by=['scenario', 'period'],
         mode='line',
         colors='viridis',
         facet_cols=3,
-        save='/tmp/facet_example_14d_charge_state_2d.html',
+        save='/tmp/facet_example_15d_charge_state_2d.html',
         show=False,
     )
-    print('     ✓ Created: /tmp/facet_example_14d_charge_state_2d.html')
+    all_figures.append(('Example 15d: charge_state 2D faceting', fig15d))
+    print('     ✓ Created: /tmp/facet_example_15d_charge_state_2d.html')
     print('     12 subplots (4 scenarios × 3 periods)')
 
     print()
     print('✓ All plot_charge_state examples completed successfully!')
 
 except ImportError as e:
-    print(f'✗ Skipping Example 14: flixopt not fully available ({e})')
+    print(f'✗ Skipping Example 15: flixopt not fully available ({e})')
     print('  This example requires a full flixopt installation')
 except Exception as e:
-    print(f'✗ Error in Example 14: {e}')
+    print(f'✗ Error in Example 15: {e}')
     import traceback
 
     traceback.print_exc()
@@ -686,14 +857,43 @@ print(' 10. Different color schemes comparison')
 print(' 11. 2D faceting with mixed values')
 print(' 12. Animation with custom settings')
 print(' 13. Edge case - single facet value')
-print(' 14. Real flixOpt integration:')
+print(' 14. Manual charge state approach (synthetic data):')
+print('     a) Single scenario/period plot')
+print('     b) Faceting by scenario')
+print('     c) 2D faceting (scenario × period)')
+print('     Demonstrates combining flows + charge_state into one Dataset')
+print(' 15. Real flixOpt integration (plot_charge_state):')
 print('     a) plot_charge_state with faceting by scenario')
 print('     b) plot_charge_state with animation by period')
 print('     c) plot_charge_state with combined faceting + animation')
 print('     d) plot_charge_state with 2D faceting (scenario × period)')
+print()
+print('=' * 70)
+print(f'Generated {len(all_figures)} figures total')
+print('=' * 70)
+print()
+print('To show all figures interactively:')
+print('>>> for name, fig in all_figures:')
+print('>>>     print(name)')
+print('>>>     fig.show()')
+print()
+print('To show a specific figure by index:')
+print('>>> all_figures[0][1].show()  # Show first figure')
+print('>>> all_figures[5][1].show()  # Show sixth figure')
+print()
+print('To list all available figures:')
+print('>>> for i, (name, _) in enumerate(all_figures):')
+print('>>>     print(f"{i}: {name}")')
 print()
 print('Next steps for testing with real flixopt data:')
 print('1. Load your CalculationResults with scenario/period dimensions')
 print("2. Use results['Component'].plot_node_balance(facet_by='scenario')")
 print("3. Try animate_by='period' for time evolution visualization")
 print("4. Combine both: facet_by='scenario', animate_by='period'")
+print()
+print('=' * 70)
+print('Quick access: all_figures list is ready to use!')
+print('=' * 70)
+
+for _, fig in all_figures:
+    fig.show()
