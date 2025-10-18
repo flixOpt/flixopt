@@ -784,7 +784,7 @@ class CalculationResults:
 
         # Build title
         title = f'{variable_name}{suffix}'
-        if reshape_time is not None:
+        if isinstance(reshape_time, tuple):
             timeframes, timesteps_per_frame = reshape_time
             title += f' ({timeframes} vs {timesteps_per_frame})'
 
