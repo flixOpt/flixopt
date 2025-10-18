@@ -1661,13 +1661,15 @@ class SegmentedCalculationResults:
         Returns:
             Figure object.
         """
+        # Convert old parameter names to new API
+        reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
+
         return plot_heatmap(
-            dataarray=self.solution_without_overlap(variable_name),
+            data=self.solution_without_overlap(variable_name),
             name=variable_name,
             folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
+            reshape_time=reshape_time,
+            colors=color_map,
             save=save,
             show=show,
             engine=engine,
