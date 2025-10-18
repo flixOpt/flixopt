@@ -2045,20 +2045,24 @@ def plot_heatmap(
     data, suffix_parts = _apply_indexer_to_data(data, select=select, drop=True)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-    # Matplotlib doesn't support faceting or animation for heatmaps
-    # Only raise error if the specified dimensions actually exist in the data
+    # Matplotlib heatmaps require at most 2D data
+    # Time dimension will be reshaped to 2D (timeframe × timestep), so can't have other dims alongside it
     if engine == 'matplotlib':
-        dims_to_check = []
-        if facet_by is not None:
-            dims_to_check.extend([facet_by] if isinstance(facet_by, str) else facet_by)
-        if animate_by is not None:
-            dims_to_check.append(animate_by)
+        dims = list(data.dims)
 
-        existing_facet_dims = [dim for dim in dims_to_check if dim in data.dims]
-        if existing_facet_dims:
+        # If 'time' dimension exists and will be reshaped, we can't have any other dimensions
+        if 'time' in dims and len(dims) > 1 and reshape_time is not None:
+            extra_dims = [d for d in dims if d != 'time']
             raise ValueError(
-                f'Matplotlib engine does not support faceting/animation, but found dimensions: {existing_facet_dims}. '
-                f'Use engine="plotly" or reduce these dimensions via select={{...}}.'
+                f'Matplotlib heatmaps with time reshaping cannot have additional dimensions. '
+                f'Found extra dimensions: {extra_dims}. '
+                f'Use select={{...}} to reduce to time only, use "reshape_time=None" or switch to engine="plotly" or use for multi-dimensional support.'
+            )
+        # If no 'time' dimension (already reshaped or different data), allow at most 2 dimensions
+        elif 'time' not in dims and len(dims) > 2:
+            raise ValueError(
+                f'Matplotlib heatmaps support at most 2 dimensions, but data has {len(dims)}: {dims}. '
+                f'Use select={{...}} to reduce dimensions or switch to engine="plotly".'
             )
 
     # Build title
