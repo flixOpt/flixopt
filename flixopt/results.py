@@ -1367,26 +1367,37 @@ class ComponentResults(_NodeResults):
                 facet_cols=facet_cols,
             )
 
-            # Add charge_state as line traces (works with faceting and animation)
-            # plotly express handles this automatically if we convert to dataframe format
-            import plotly.graph_objects as go
+            # Create a dataset with just charge_state and plot it as lines
+            # This ensures proper handling of facets and animation
+            charge_state_ds = charge_state_da.to_dataset(name=self._charge_state)
 
-            # Convert charge_state to dataframe for easier handling
-            charge_state_df = charge_state_da.to_dataframe()
+            # Plot charge_state with mode='line' to get Scatter traces
+            charge_state_fig = plotting.with_plotly(
+                charge_state_ds,
+                facet_by=facet_by,
+                animate_by=animate_by,
+                colors=colors,
+                mode='line',  # Always line for charge_state
+                title='',  # No title needed for this temp figure
+                facet_cols=facet_cols,
+            )
 
-            # Add line trace for charge_state
-            # This will appear on all facets/frames since it's added to the main figure
-            if len(charge_state_df.columns) > 0:
-                for col in charge_state_df.columns:
-                    figure_like.add_trace(
-                        go.Scatter(
-                            x=charge_state_df.index,
-                            y=charge_state_df[col],
-                            mode='lines',
-                            name=self._charge_state,
-                            line=dict(width=2),
-                        )
-                    )
+            # Add charge_state traces to the main figure
+            # This preserves subplot assignments and animation frames
+            for trace in charge_state_fig.data:
+                trace.line.width = 2  # Make charge_state line more prominent
+                figure_like.add_trace(trace)
+
+            # Also add traces from animation frames if they exist
+            if hasattr(charge_state_fig, 'frames') and charge_state_fig.frames:
+                if not hasattr(figure_like, 'frames') or not figure_like.frames:
+                    figure_like.frames = []
+                # Add charge_state traces to each frame
+                for i, frame in enumerate(charge_state_fig.frames):
+                    if i < len(figure_like.frames):
+                        for trace in frame.data:
+                            trace.line.width = 2
+                            figure_like.frames[i].data = figure_like.frames[i].data + (trace,)
 
             default_filetype = '.html'
         elif engine == 'matplotlib':
