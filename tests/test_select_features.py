@@ -11,8 +11,8 @@ import pytest
 
 import flixopt as fx
 
-# Set default renderer to browser
-pio.renderers.default = 'browser'
+# Set default renderer to json for tests (safe for headless CI)
+pio.renderers.default = 'json'
 
 
 @pytest.fixture(scope='module')

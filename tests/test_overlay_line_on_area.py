@@ -9,6 +9,8 @@ The key technique: Create two separate figures with the same faceting/animation,
 then add the line traces to the area/bar figure.
 """
 
+import copy
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -104,10 +106,12 @@ charge_fig = plotting.with_plotly(
 
 # Step 3: Add the line trace to the area figure
 for trace in charge_fig.data:
-    trace.line.width = 3  # Make line more prominent
-    trace.line.shape = 'linear'  # Smooth line (not stepped like flows)
-    trace.line.dash = 'dash'  # Optional: make it dashed
-    fig1.add_trace(trace)
+    trace_copy = copy.deepcopy(trace)
+    trace_copy.line.width = 3  # Make line more prominent
+    trace_copy.line.shape = 'linear'  # Straight line (not stepped like flows)
+    trace_copy.line.dash = 'dash'  # Optional: make it dashed
+    trace_copy.showlegend = False  # Avoid duplicate legend entries
+    fig1.add_trace(trace_copy)
 
 fig1.write_html('/tmp/overlay_example_1_simple.html')
 all_figures.append(('Example 1: Simple overlay', fig1))
@@ -155,9 +159,11 @@ charge_fig = plotting.with_plotly(
 # Step 3: Add line traces to the main figure
 # This preserves subplot assignments
 for trace in charge_fig.data:
-    trace.line.width = 2.5
-    trace.line.shape = 'linear'  # Smooth line for charge state
-    fig2.add_trace(trace)
+    trace_copy = copy.deepcopy(trace)
+    trace_copy.line.width = 2.5
+    trace_copy.line.shape = 'linear'  # Straight line for charge state
+    trace_copy.showlegend = False  # Avoid duplicate legend entries
+    fig2.add_trace(trace_copy)
 
 fig2.write_html('/tmp/overlay_example_2_faceted.html')
 all_figures.append(('Example 2: Overlay with faceting', fig2))
@@ -201,10 +207,12 @@ charge_fig = plotting.with_plotly(
 
 # Step 3: Add charge_state traces to main figure
 for trace in charge_fig.data:
-    trace.line.width = 3
-    trace.line.shape = 'linear'  # Smooth line for charge state
-    trace.line.dash = 'dot'
-    fig3.add_trace(trace)
+    trace_copy = copy.deepcopy(trace)
+    trace_copy.line.width = 3
+    trace_copy.line.shape = 'linear'  # Straight line for charge state
+    trace_copy.line.dash = 'dot'
+    trace_copy.showlegend = False  # Avoid duplicate legend entries
+    fig3.add_trace(trace_copy)
 
 # Step 4: Add charge_state to animation frames
 if hasattr(charge_fig, 'frames') and charge_fig.frames:
@@ -214,10 +222,12 @@ if hasattr(charge_fig, 'frames') and charge_fig.frames:
     for i, frame in enumerate(charge_fig.frames):
         if i < len(fig3.frames):
             for trace in frame.data:
-                trace.line.width = 3
-                trace.line.shape = 'linear'  # Smooth line for charge state
-                trace.line.dash = 'dot'
-                fig3.frames[i].data = fig3.frames[i].data + (trace,)
+                trace_copy = copy.deepcopy(trace)
+                trace_copy.line.width = 3
+                trace_copy.line.shape = 'linear'  # Straight line for charge state
+                trace_copy.line.dash = 'dot'
+                trace_copy.showlegend = False  # Avoid duplicate legend entries
+                fig3.frames[i].data = fig3.frames[i].data + (trace_copy,)
 
 fig3.write_html('/tmp/overlay_example_3_animated.html')
 all_figures.append(('Example 3: Overlay with animation', fig3))
@@ -267,9 +277,11 @@ charge_fig = plotting.with_plotly(
 
 # Step 3: Add line traces to base figure
 for trace in charge_fig.data:
-    trace.line.width = 2.5
-    trace.line.shape = 'linear'  # Smooth line for charge state
-    fig4.add_trace(trace)
+    trace_copy = copy.deepcopy(trace)
+    trace_copy.line.width = 2.5
+    trace_copy.line.shape = 'linear'  # Straight line for charge state
+    trace_copy.showlegend = False  # Avoid duplicate legend entries
+    fig4.add_trace(trace_copy)
 
 # Step 4: Add to animation frames
 if hasattr(charge_fig, 'frames') and charge_fig.frames:
@@ -278,9 +290,11 @@ if hasattr(charge_fig, 'frames') and charge_fig.frames:
     for i, frame in enumerate(charge_fig.frames):
         if i < len(fig4.frames):
             for trace in frame.data:
-                trace.line.width = 2.5
-                trace.line.shape = 'linear'  # Smooth line for charge state
-                fig4.frames[i].data = fig4.frames[i].data + (trace,)
+                trace_copy = copy.deepcopy(trace)
+                trace_copy.line.width = 2.5
+                trace_copy.line.shape = 'linear'  # Straight line for charge state
+                trace_copy.showlegend = False  # Avoid duplicate legend entries
+                fig4.frames[i].data = fig4.frames[i].data + (trace_copy,)
 
 fig4.write_html('/tmp/overlay_example_4_combined.html')
 all_figures.append(('Example 4: Complete overlay', fig4))
@@ -327,10 +341,12 @@ charge_fig = plotting.with_plotly(
 
 # Step 3: Add charge state as thick dashed line
 for trace in charge_fig.data:
-    trace.line.width = 3
-    trace.line.shape = 'linear'  # Smooth line for charge state
-    trace.line.dash = 'dashdot'
-    fig5.add_trace(trace)
+    trace_copy = copy.deepcopy(trace)
+    trace_copy.line.width = 3
+    trace_copy.line.shape = 'linear'  # Straight line for charge state
+    trace_copy.line.dash = 'dashdot'
+    trace_copy.showlegend = False  # Avoid duplicate legend entries
+    fig5.add_trace(trace_copy)
 
 fig5.write_html('/tmp/overlay_example_5_2d_faceting.html')
 all_figures.append(('Example 5: 2D faceting with overlay', fig5))
