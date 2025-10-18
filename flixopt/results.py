@@ -772,82 +772,27 @@ class CalculationResults:
             ...     reshape_time=('D', 'h'),
             ... )
         """
-        # Handle deprecated indexer parameter
-        if 'indexer' in kwargs:
-            import warnings
-
-            warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
-        # Check for unexpected kwargs
-        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
-        if unexpected_kwargs:
-            raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
-
-        if engine not in {'plotly', 'matplotlib'}:
-            raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
-
-        # Validate parameters
-        if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
-            raise ValueError(
-                f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
-            )
-
-        # Handle single variable or list of variables
+        # Extract DataArray(s) from solution
         if isinstance(variable_name, str):
             dataarray = self.solution[variable_name]
-            title_name = variable_name
         else:  # list of variables
-            # Extract all variables and combine them
-            dataarrays = [self.solution[var] for var in variable_name]
-            # Combine them along a new 'variable' dimension
-            dataarray = xr.concat(dataarrays, dim='variable')
-            dataarray = dataarray.assign_coords(variable=variable_name)
-            title_name = f'Heatmap of {len(variable_name)} variables'
+            dataarray = [self.solution[var] for var in variable_name]
 
-        # Apply select filtering
-        dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-
-        # Build title
-        title = f'{title_name}{suffix}'
-        if isinstance(reshape_time, tuple):
-            timeframes, timesteps_per_frame = reshape_time
-            title += f' ({timeframes} vs {timesteps_per_frame})'
-
-        # Plot with appropriate engine
-        if engine == 'plotly':
-            figure_like = plotting.heatmap_with_plotly(
-                data=dataarray,
-                facet_by=facet_by,
-                animate_by=animate_by,
-                colors=colors,
-                title=title,
-                facet_cols=facet_cols,
-                reshape_time=reshape_time,
-            )
-            default_filetype = '.html'
-        elif engine == 'matplotlib':
-            figure_like = plotting.heatmap_with_matplotlib(
-                data=dataarray,
-                colors=colors,
-                title=title,
-                reshape_time=reshape_time,
-            )
-            default_filetype = '.png'
-        else:
-            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
-
-        return plotting.export_figure(
-            figure_like=figure_like,
-            default_path=self.folder / title,
-            default_filetype=default_filetype,
-            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+        # Delegate to module-level plot_heatmap function
+        return plot_heatmap(
+            dataarray=dataarray,
+            name=variable_name,
+            folder=self.folder,
+            colors=colors,
+            save=save,
             show=show,
-            save=True if save else False,
+            engine=engine,
+            select=select,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            reshape_time=reshape_time,
+            **kwargs,
         )
 
     def plot_network(
