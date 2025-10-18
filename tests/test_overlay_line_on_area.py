@@ -52,10 +52,10 @@ charge_state_data = np.zeros((len(time), len(scenarios), len(periods)))
 
 for s_idx in range(len(scenarios)):
     for p_idx in range(len(periods)):
-        # Oscillating charge state between 20-80%
-        base = 50
-        oscillation = 20 * np.sin(np.arange(len(time)) * 2 * np.pi / 24)
-        trend = 10 * np.sin(np.arange(len(time)) * 2 * np.pi / (24 * 7))  # Weekly trend
+        # Oscillating charge state - vary by scenario and period
+        base = 50 + s_idx * 15 + p_idx * 10  # Different base for each scenario/period
+        oscillation = (20 - s_idx * 5) * np.sin(np.arange(len(time)) * 2 * np.pi / 24)
+        trend = (10 + p_idx * 5) * np.sin(np.arange(len(time)) * 2 * np.pi / (24 * 7))  # Weekly trend
         charge_state_data[:, s_idx, p_idx] = np.clip(base + oscillation + trend, 10, 90)
 
 charge_state_da = xr.DataArray(
