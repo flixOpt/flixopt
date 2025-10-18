@@ -772,20 +772,10 @@ class CalculationResults:
             ...     reshape_time=('D', 'h'),
             ... )
         """
-        # Extract DataArray(s) from solution
-        if isinstance(variable_name, str):
-            data = self.solution[variable_name]
-            name_param = variable_name
-        else:  # list of variables - convert to Dataset
-            # Create a Dataset with the specified variables
-            data_dict = {var: self.solution[var] for var in variable_name}
-            data = xr.Dataset(data_dict)
-            name_param = None  # Let module-level function generate name from Dataset
-
         # Delegate to module-level plot_heatmap function
         return plot_heatmap(
-            data=data,
-            name=name_param,
+            data=self.solution[variable_name],
+            name=variable_name if isinstance(variable_name, str) else None,
             folder=self.folder,
             colors=colors,
             save=save,
