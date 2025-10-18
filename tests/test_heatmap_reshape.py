@@ -7,6 +7,9 @@ import xarray as xr
 
 from flixopt.plotting import reshape_data_for_heatmap
 
+# Set random seed for reproducible tests
+np.random.seed(42)
+
 
 @pytest.fixture
 def hourly_week_data():
@@ -34,6 +37,9 @@ def test_weekly_daily_pattern(hourly_week_data):
     result = reshape_data_for_heatmap(hourly_week_data, reshape_time=('W', 'D'))
 
     assert 'timeframe' in result.dims and 'timestep' in result.dims
+    # 168 hours = 7 days = 1 week
+    assert result.sizes['timeframe'] == 1  # 1 week
+    assert result.sizes['timestep'] == 7  # 7 days
 
 
 def test_with_irregular_data():
@@ -47,6 +53,9 @@ def test_with_irregular_data():
     result = reshape_data_for_heatmap(da, reshape_time=('h', 'min'), fill='ffill')
 
     assert 'timeframe' in result.dims and 'timestep' in result.dims
+    # 100 * 15min = 1500min = 25h; reshaped to hours × minutes
+    assert result.sizes['timeframe'] == 25  # 25 hours
+    assert result.sizes['timestep'] == 60  # 60 minutes per hour
     # Should handle irregular data without errors
 
 
@@ -63,6 +72,9 @@ def test_multidimensional_scenarios():
     # Should preserve scenario dimension
     assert 'scenario' in result.dims
     assert result.sizes['scenario'] == 2
+    # 48 hours = 2 days × 24 hours
+    assert result.sizes['timeframe'] == 2  # 2 days
+    assert result.sizes['timestep'] == 24  # 24 hours
 
 
 def test_no_reshape_returns_unchanged():
