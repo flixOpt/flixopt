@@ -1451,7 +1451,8 @@ def heatmap_with_plotly(
     animate_by: str | None = None,
     facet_cols: int = 3,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
-    | None = None,
+    | Literal['auto']
+    | None = 'auto',
     fill: Literal['ffill', 'bfill'] | None = 'ffill',
 ) -> go.Figure:
     """
@@ -1480,9 +1481,10 @@ def heatmap_with_plotly(
         animate_by: Dimension to animate over. Creates animation frames.
                     If the dimension doesn't exist in the data, it will be silently ignored.
         facet_cols: Number of columns in the facet grid (used with facet_by).
-        reshape_time: Tuple of (timeframes, timesteps_per_frame) for time reshaping.
-                     Example: ('D', 'h') reshapes to days vs hours.
-                     Auto-applied as ('D', 'h') if only time dimension remains.
+        reshape_time: Time reshaping configuration:
+                     - 'auto' (default): Automatically applies ('D', 'h') if only 'time' dimension remains
+                     - Tuple like ('D', 'h'): Explicit time reshaping (days vs hours)
+                     - None: Disable time reshaping (will error if only 1D time data)
         fill: Method to fill missing values when reshaping time: 'ffill' or 'bfill'. Default is 'ffill'.
 
     Returns:
@@ -1525,30 +1527,33 @@ def heatmap_with_plotly(
     if data.size == 0:
         return go.Figure()
 
-    # Apply time reshaping if requested and 'time' dimension exists
-    if 'time' in data.dims and reshape_time is not None:
-        timeframes, timesteps_per_frame = reshape_time
-        data = reshape_time_series_for_heatmap(data, timeframes, timesteps_per_frame, fill)
-    elif 'time' in data.dims and reshape_time is None:
-        # Check if we need automatic time reshaping
-        # Count dimensions that will be used for faceting/animation
-        facet_dims_used = []
-        if facet_by:
-            facet_dims_used = [facet_by] if isinstance(facet_by, str) else list(facet_by)
-        if animate_by:
-            facet_dims_used.append(animate_by)
+    # Apply time reshaping based on reshape_time parameter
+    if 'time' in data.dims:
+        if reshape_time == 'auto':
+            # Check if we need automatic time reshaping
+            # Count dimensions that will be used for faceting/animation
+            facet_dims_used = []
+            if facet_by:
+                facet_dims_used = [facet_by] if isinstance(facet_by, str) else list(facet_by)
+            if animate_by:
+                facet_dims_used.append(animate_by)
 
-        # Get dimensions that would remain for heatmap
-        potential_heatmap_dims = [dim for dim in data.dims if dim not in facet_dims_used]
+            # Get dimensions that would remain for heatmap
+            potential_heatmap_dims = [dim for dim in data.dims if dim not in facet_dims_used]
 
-        # Auto-reshape if only 'time' dimension remains
-        if len(potential_heatmap_dims) == 1 and potential_heatmap_dims[0] == 'time':
-            logger.info(
-                "Auto-applying time reshaping: Only 'time' dimension remains after faceting/animation. "
-                "Using default timeframes='D' and timesteps_per_frame='h'. "
-                'To customize, use reshape_time parameter.'
-            )
-            data = reshape_time_series_for_heatmap(data, timeframes='D', timesteps_per_frame='h', fill=fill)
+            # Auto-reshape if only 'time' dimension remains
+            if len(potential_heatmap_dims) == 1 and potential_heatmap_dims[0] == 'time':
+                logger.info(
+                    "Auto-applying time reshaping: Only 'time' dimension remains after faceting/animation. "
+                    "Using default timeframes='D' and timesteps_per_frame='h'. "
+                    "To customize, use reshape_time=('D', 'h') or disable with reshape_time=None."
+                )
+                data = reshape_time_series_for_heatmap(data, timeframes='D', timesteps_per_frame='h', fill=fill)
+        elif isinstance(reshape_time, tuple):
+            # Explicit time reshaping
+            timeframes, timesteps_per_frame = reshape_time
+            data = reshape_time_series_for_heatmap(data, timeframes, timesteps_per_frame, fill)
+        # elif reshape_time is None: do nothing (disabled)
 
     # Get available dimensions
     available_dims = list(data.dims)
@@ -1663,7 +1668,8 @@ def heatmap_with_matplotlib(
     fig: plt.Figure | None = None,
     ax: plt.Axes | None = None,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
-    | None = None,
+    | Literal['auto']
+    | None = 'auto',
     fill: Literal['ffill', 'bfill'] | None = 'ffill',
 ) -> tuple[plt.Figure, plt.Axes]:
     """
@@ -1681,8 +1687,10 @@ def heatmap_with_matplotlib(
         figsize: The size of the figure (width, height) in inches.
         fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
         ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
-        reshape_time: Tuple of (timeframes, timesteps_per_frame) for time reshaping.
-                     Example: ('D', 'h') reshapes to days vs hours.
+        reshape_time: Time reshaping configuration:
+                     - 'auto' (default): Automatically applies ('D', 'h') if only 'time' dimension
+                     - Tuple like ('D', 'h'): Explicit time reshaping (days vs hours)
+                     - None: Disable time reshaping
         fill: Method to fill missing values when reshaping time: 'ffill' or 'bfill'. Default is 'ffill'.
 
     Returns:
@@ -1711,10 +1719,22 @@ def heatmap_with_matplotlib(
             fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
 
-    # Apply time reshaping if requested
-    if 'time' in data.dims and reshape_time is not None:
-        timeframes, timesteps_per_frame = reshape_time
-        data = reshape_time_series_for_heatmap(data, timeframes, timesteps_per_frame, fill)
+    # Apply time reshaping based on reshape_time parameter
+    if 'time' in data.dims:
+        if reshape_time == 'auto':
+            # Auto-reshape if only time dimension
+            if len(data.dims) == 1:
+                logger.info(
+                    "Auto-applying time reshaping: Only 'time' dimension present. "
+                    "Using default timeframes='D' and timesteps_per_frame='h'. "
+                    "To customize, use reshape_time=('D', 'h') or disable with reshape_time=None."
+                )
+                data = reshape_time_series_for_heatmap(data, timeframes='D', timesteps_per_frame='h', fill=fill)
+        elif isinstance(reshape_time, tuple):
+            # Explicit time reshaping
+            timeframes, timesteps_per_frame = reshape_time
+            data = reshape_time_series_for_heatmap(data, timeframes, timesteps_per_frame, fill)
+        # elif reshape_time is None: do nothing (disabled)
 
     # Create figure and axes if not provided
     if fig is None or ax is None:

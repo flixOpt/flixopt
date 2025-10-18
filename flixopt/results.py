@@ -697,7 +697,8 @@ class CalculationResults:
         animate_by: str | None = 'period',
         facet_cols: int = 3,
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
-        | None = None,
+        | Literal['auto']
+        | None = 'auto',
         **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
@@ -721,11 +722,11 @@ class CalculationResults:
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
             facet_cols: Number of columns in the facet grid layout (default: 3).
-            reshape_time: Optional time-based reshaping. Provide a tuple of (timeframes, timesteps_per_frame).
-                Examples:
-                - ('D', 'h'): Days (columns) vs hours (rows) - typical daily pattern
-                - ('MS', 'D'): Months (columns) vs days (rows) - monthly pattern
-                - ('W', 'h'): Weeks (columns) vs hours (rows) - weekly pattern
+            reshape_time: Time reshaping configuration (default: 'auto'):
+                - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
+                - Tuple: Explicit reshaping, e.g. ('D', 'h') for days vs hours,
+                         ('MS', 'D') for months vs days, ('W', 'h') for weeks vs hours
+                - None: Disable auto-reshaping (will error if only 1D time data)
                 Supported timeframes: 'YS', 'MS', 'W', 'D', 'h', '15min', 'min'
 
         Examples:
