@@ -703,9 +703,10 @@ class CalculationResults:
         """
         Plots a heatmap visualization of a variable using imshow or time-based reshaping.
 
-        Two visualization modes are available:
-        1. **Direct imshow mode** (default): Shows data dimensions as-is with optional faceting/animation
-        2. **Time reshape mode**: Reshapes time series into periods vs timesteps (e.g., days vs hours)
+        Supports multiple visualization features that can be combined:
+        - **Time reshaping**: Converts 'time' dimension into 2D (e.g., hours vs days)
+        - **Faceting**: Creates subplots for different dimension values
+        - **Animation**: Animates through dimension values (Plotly only)
 
         Args:
             variable_name: The name of the variable to plot.
@@ -717,18 +718,15 @@ class CalculationResults:
                 Applied BEFORE faceting/animation/reshaping.
             facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
                 or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
-                Not compatible with reshape_time mode.
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
-                Not compatible with reshape_time mode.
             facet_cols: Number of columns in the facet grid layout (default: 3).
-            reshape_time: Enable time-based reshaping mode. Provide a tuple of (timeframes, timesteps_per_frame).
+            reshape_time: Optional time-based reshaping. Provide a tuple of (timeframes, timesteps_per_frame).
                 Examples:
                 - ('D', 'h'): Days (columns) vs hours (rows) - typical daily pattern
                 - ('MS', 'D'): Months (columns) vs days (rows) - monthly pattern
                 - ('W', 'h'): Weeks (columns) vs hours (rows) - weekly pattern
                 Supported timeframes: 'YS', 'MS', 'W', 'D', 'h', '15min', 'min'
-                When enabled, facet_by and animate_by are ignored.
 
         Examples:
             Direct imshow mode (default):
@@ -747,13 +745,11 @@ class CalculationResults:
 
             >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, reshape_time=('D', 'h'))
 
-            Time reshape mode - monthly patterns:
+            Combined: time reshaping with faceting and animation:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, reshape_time=('MS', 'D'))
-
-            Combined faceting and animation:
-
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', facet_by='scenario', animate_by='period')
+            >>> results.plot_heatmap(
+            ...     'Boiler(Qth)|flow_rate', facet_by='scenario', animate_by='period', reshape_time=('D', 'h')
+            ... )
         """
         # Handle deprecated indexer parameter
         if 'indexer' in kwargs:
