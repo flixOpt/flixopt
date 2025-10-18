@@ -972,7 +972,8 @@ class _NodeResults(_ElementResults):
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
         facet_cols: int = 3,
-        **kwargs,
+        # Deprecated parameter (kept for backwards compatibility)
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots the node balance of the Component or Bus with optional faceting and animation.
@@ -1033,7 +1034,13 @@ class _NodeResults(_ElementResults):
             >>> results['Boiler'].plot_node_balance(select={'time': slice('2024-06', '2024-08')}, facet_by='scenario')
         """
         # Handle deprecated indexer parameter
-        if 'indexer' in kwargs:
+        if indexer is not None:
+            # Check for conflict with new parameter
+            if select is not None:
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+                )
+
             import warnings
 
             warnings.warn(
@@ -1041,11 +1048,7 @@ class _NodeResults(_ElementResults):
                 DeprecationWarning,
                 stacklevel=2,
             )
-
-        # Check for unexpected kwargs
-        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
-        if unexpected_kwargs:
-            raise TypeError(f'plot_node_balance() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+            select = indexer
 
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
@@ -1053,7 +1056,7 @@ class _NodeResults(_ElementResults):
         # Don't pass select/indexer to node_balance - we'll apply it afterwards
         ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
+        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True)
 
         # Check if faceting/animating would actually happen based on available dimensions
         if engine == 'matplotlib':
@@ -1113,7 +1116,8 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
-        **kwargs,
+        # Deprecated parameter (kept for backwards compatibility)
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
 
@@ -1144,7 +1148,13 @@ class _NodeResults(_ElementResults):
             >>> results['Bus'].plot_node_balance_pie(select={'scenario': 'high_demand', 'period': 2030})
         """
         # Handle deprecated indexer parameter
-        if 'indexer' in kwargs:
+        if indexer is not None:
+            # Check for conflict with new parameter
+            if select is not None:
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+                )
+
             import warnings
 
             warnings.warn(
@@ -1152,13 +1162,7 @@ class _NodeResults(_ElementResults):
                 DeprecationWarning,
                 stacklevel=2,
             )
-
-        # Check for unexpected kwargs
-        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
-        if unexpected_kwargs:
-            raise TypeError(
-                f'plot_node_balance_pie() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}'
-            )
+            select = indexer
 
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
@@ -1175,8 +1179,8 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_indexer_to_data(inputs, select=select, drop=True, **kwargs)
-        outputs, suffix_parts = _apply_indexer_to_data(outputs, select=select, drop=True, **kwargs)
+        inputs, suffix_parts = _apply_indexer_to_data(inputs, select=select, drop=True)
+        outputs, suffix_parts = _apply_indexer_to_data(outputs, select=select, drop=True)
 
         # Sum over time dimension
         inputs = inputs.sum('time')
@@ -1260,7 +1264,8 @@ class _NodeResults(_ElementResults):
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
         select: dict[FlowSystemDimensions, Any] | None = None,
-        **kwargs,
+        # Deprecated parameter (kept for backwards compatibility)
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Component or Bus.
@@ -1276,7 +1281,13 @@ class _NodeResults(_ElementResults):
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
         # Handle deprecated indexer parameter
-        if 'indexer' in kwargs:
+        if indexer is not None:
+            # Check for conflict with new parameter
+            if select is not None:
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+                )
+
             import warnings
 
             warnings.warn(
@@ -1284,11 +1295,7 @@ class _NodeResults(_ElementResults):
                 DeprecationWarning,
                 stacklevel=2,
             )
-
-        # Check for unexpected kwargs
-        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
-        if unexpected_kwargs:
-            raise TypeError(f'node_balance() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+            select = indexer
 
         ds = self.solution[self.inputs + self.outputs]
 
@@ -1308,7 +1315,7 @@ class _NodeResults(_ElementResults):
             drop_suffix='|' if drop_suffix else None,
         )
 
-        ds, _ = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
+        ds, _ = _apply_indexer_to_data(ds, select=select, drop=True)
 
         if unit_type == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
@@ -1350,7 +1357,8 @@ class ComponentResults(_NodeResults):
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
         facet_cols: int = 3,
-        **kwargs,
+        # Deprecated parameter (kept for backwards compatibility)
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance with optional faceting and animation.
 
@@ -1389,7 +1397,13 @@ class ComponentResults(_NodeResults):
             >>> results['Storage'].plot_charge_state(facet_by='scenario', animate_by='period')
         """
         # Handle deprecated indexer parameter
-        if 'indexer' in kwargs:
+        if indexer is not None:
+            # Check for conflict with new parameter
+            if select is not None:
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+                )
+
             import warnings
 
             warnings.warn(
@@ -1397,11 +1411,7 @@ class ComponentResults(_NodeResults):
                 DeprecationWarning,
                 stacklevel=2,
             )
-
-        # Check for unexpected kwargs
-        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
-        if unexpected_kwargs:
-            raise TypeError(f'plot_charge_state() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+            select = indexer
 
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
@@ -1416,8 +1426,8 @@ class ComponentResults(_NodeResults):
         charge_state_da = self.charge_state
 
         # Apply select filtering
-        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
-        charge_state_da, _ = _apply_indexer_to_data(charge_state_da, select=select, drop=True, **kwargs)
+        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True)
+        charge_state_da, _ = _apply_indexer_to_data(charge_state_da, select=select, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'Operation Balance of {self.label}{suffix}'
@@ -2323,14 +2333,13 @@ def _apply_indexer_to_data(
     data: xr.DataArray | xr.Dataset,
     select: dict[str, Any] | None = None,
     drop=False,
-    **kwargs,
 ) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
     Apply selection to data.
 
     Args:
         data: xarray Dataset or DataArray
-        select: Optional selection dict (takes precedence over indexer)
+        select: Optional selection dict
         drop: Whether to drop dimensions after selection
 
     Returns:
@@ -2338,27 +2347,8 @@ def _apply_indexer_to_data(
     """
     selection_string = []
 
-    # Handle deprecated indexer parameter
-    indexer = kwargs.get('indexer')
-    if indexer is not None:
-        import warnings
-
-        warnings.warn(
-            "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-
-    # Check for unexpected kwargs
-    unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
-    if unexpected_kwargs:
-        raise TypeError(f'_apply_indexer_to_data() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
-
-    # Merge both dicts, select takes precedence
-    selection = {**(indexer or {}), **(select or {})}
-
-    if selection:
-        data = data.sel(selection, drop=drop)
-        selection_string.extend(f'{dim}={val}' for dim, val in selection.items())
+    if select:
+        data = data.sel(select, drop=drop)
+        selection_string.extend(f'{dim}={val}' for dim, val in select.items())
 
     return data, selection_string
