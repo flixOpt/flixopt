@@ -103,13 +103,19 @@ class TestPlots(unittest.TestCase):
 
         # Convert data for heatmap plotting using 'day' as period and 'hour' steps
         heatmap_data = plotting.reshape_to_2d(data.iloc[:, 0].values.flatten(), 24)
-        # Plotting heatmaps with Plotly and Matplotlib
-        _ = plotting.heat_map_plotly(pd.DataFrame(heatmap_data))
-        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
+        # Convert to xarray DataArray for the new API
+        import xarray as xr
+
+        heatmap_xr = xr.DataArray(heatmap_data, dims=['timestep', 'timeframe'])
+        # Plotting heatmaps with Plotly and Matplotlib using new API
+        _ = plotting.heatmap_with_plotly(heatmap_xr, reshape_time=None)
+        plotting.heatmap_with_matplotlib(heatmap_xr, reshape_time=None)
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
 
     def test_heat_map_plots_resampling(self):
+        import xarray as xr
+
         date_range = pd.date_range(start='2023-01-01', end='2023-03-21', freq='5min')
 
         # Generate random data for the DataFrame, simulating some metric (e.g., energy consumption, temperature)
@@ -125,24 +131,29 @@ class TestPlots(unittest.TestCase):
 
         # Generate single-column data with datetime index for heatmap
         data = df_irregular
-        # Convert data for heatmap plotting using 'day' as period and 'hour' steps
-        heatmap_data = plotting.heat_map_data_from_df(data, 'MS', 'D')
-        _ = plotting.heat_map_plotly(heatmap_data)
-        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
+        # Convert DataFrame to xarray DataArray for the new API
+        data_xr = xr.DataArray(data['value'].values, dims=['time'], coords={'time': data.index.values}, name='value')
+
+        # Test 1: Monthly timeframes, daily timesteps
+        heatmap_data = plotting.reshape_data_for_heatmap(data_xr, reshape_time=('MS', 'D'))
+        _ = plotting.heatmap_with_plotly(heatmap_data, reshape_time=None)
+        plotting.heatmap_with_matplotlib(heatmap_data, reshape_time=None)
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
 
-        heatmap_data = plotting.heat_map_data_from_df(data, 'W', 'h', fill='ffill')
+        # Test 2: Weekly timeframes, hourly timesteps with forward fill
+        heatmap_data = plotting.reshape_data_for_heatmap(data_xr, reshape_time=('W', 'h'), fill='ffill')
         # Plotting heatmaps with Plotly and Matplotlib
-        _ = plotting.heat_map_plotly(pd.DataFrame(heatmap_data))
-        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
+        _ = plotting.heatmap_with_plotly(heatmap_data, reshape_time=None)
+        plotting.heatmap_with_matplotlib(heatmap_data, reshape_time=None)
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
 
-        heatmap_data = plotting.heat_map_data_from_df(data, 'D', 'h', fill='ffill')
+        # Test 3: Daily timeframes, hourly timesteps with forward fill
+        heatmap_data = plotting.reshape_data_for_heatmap(data_xr, reshape_time=('D', 'h'), fill='ffill')
         # Plotting heatmaps with Plotly and Matplotlib
-        _ = plotting.heat_map_plotly(pd.DataFrame(heatmap_data))
-        plotting.heat_map_matplotlib(pd.DataFrame(heatmap_data))
+        _ = plotting.heatmap_with_plotly(heatmap_data, reshape_time=None)
+        plotting.heatmap_with_matplotlib(heatmap_data, reshape_time=None)
         plt.savefig(f'test_plot_{self._testMethodName}.png', bbox_inches='tight')
         plt.close('all')  # Close all figures to prevent memory leaks
 
