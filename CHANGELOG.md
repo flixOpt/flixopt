@@ -64,13 +64,15 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 ### 🔥 Removed
 
 ### 🐛 Fixed
+- Add error handling for empty buses to prevent cryptic errors
+- Add early validation for non-existent periods when using linked periods with tuples
 
 ### 🔒 Security
 
 ### 📦 Dependencies
 
 ### 📝 Docs
-- Improve docs visually
+- Improve docs visually with new Material theme and enhanced styling
 
 ### 👷 Development
 
