@@ -1640,39 +1640,51 @@ class SegmentedCalculationResults:
     def plot_heatmap(
         self,
         variable_name: str,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-        color_map: str = 'portland',
+        reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+        | Literal['auto']
+        | None = ('D', 'h'),
+        colors: str = 'portland',
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
+        facet_by: str | list[str] | None = None,
+        animate_by: str | None = None,
+        facet_cols: int = 3,
+        fill: Literal['ffill', 'bfill'] | None = 'ffill',
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
         Args:
             variable_name: Variable to plot.
-            heatmap_timeframes: Time aggregation level.
-            heatmap_timesteps_per_frame: Timesteps per frame.
-            color_map: Color scheme. Also see plotly.
+            reshape_time: Time reshaping configuration:
+                - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
+                - Tuple like ('D', 'h'): Explicit reshaping (days vs hours)
+                - None: Disable time reshaping
+            colors: Color scheme. See plotting.ColorType for options.
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine.
+            facet_by: Dimension(s) to create facets (subplots) for.
+            animate_by: Dimension to animate over (Plotly only).
+            facet_cols: Number of columns in the facet grid layout.
+            fill: Method to fill missing values: 'ffill' or 'bfill'.
 
         Returns:
             Figure object.
         """
-        # Convert old parameter names to new API
-        reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
-
         return plot_heatmap(
             data=self.solution_without_overlap(variable_name),
             name=variable_name,
             folder=self.folder,
             reshape_time=reshape_time,
-            colors=color_map,
+            colors=colors,
             save=save,
             show=show,
             engine=engine,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            fill=fill,
         )
 
     def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
