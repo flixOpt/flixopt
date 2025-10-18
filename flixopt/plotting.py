@@ -673,50 +673,6 @@ def with_matplotlib(
     return fig, ax
 
 
-def reshape_to_2d(data_1d: np.ndarray, nr_of_steps_per_column: int) -> np.ndarray:
-    """
-    Reshapes a 1D numpy array into a 2D array suitable for plotting as a colormap.
-
-    The reshaped array will have the number of rows corresponding to the steps per column
-    (e.g., 24 hours per day) and columns representing time periods (e.g., days or months).
-
-    Args:
-        data_1d: A 1D numpy array with the data to reshape.
-        nr_of_steps_per_column: The number of steps (rows) per column in the resulting 2D array. For example,
-            this could be 24 (for hours) or 31 (for days in a month).
-
-    Returns:
-        The reshaped 2D array. Each internal array corresponds to one column, with the specified number of steps.
-        Each column might represents a time period (e.g., day, month, etc.).
-    """
-
-    # Step 1: Ensure the input is a 1D array.
-    if data_1d.ndim != 1:
-        raise ValueError('Input must be a 1D array')
-
-    # Step 2: Convert data to float type to allow NaN padding
-    if data_1d.dtype != np.float64:
-        data_1d = data_1d.astype(np.float64)
-
-    # Step 3: Calculate the number of columns required
-    total_steps = len(data_1d)
-    cols = len(data_1d) // nr_of_steps_per_column  # Base number of columns
-
-    # If there's a remainder, add an extra column to hold the remaining values
-    if total_steps % nr_of_steps_per_column != 0:
-        cols += 1
-
-    # Step 4: Pad the 1D data to match the required number of rows and columns
-    padded_data = np.pad(
-        data_1d, (0, cols * nr_of_steps_per_column - total_steps), mode='constant', constant_values=np.nan
-    )
-
-    # Step 5: Reshape the padded data into a 2D array
-    data_2d = padded_data.reshape(cols, nr_of_steps_per_column)
-
-    return data_2d.T
-
-
 def reshape_data_for_heatmap(
     data: xr.DataArray,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
