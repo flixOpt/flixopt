@@ -790,6 +790,7 @@ class CalculationResults:
             animate_by=animate_by,
             facet_cols=facet_cols,
             reshape_time=reshape_time,
+            indexer=indexer,
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
             color_map=color_map,
@@ -1901,6 +1902,7 @@ def plot_heatmap(
     | Literal['auto']
     | None = 'auto',
     # Deprecated parameters (kept for backwards compatibility)
+    indexer: dict[str, Any] | None = None,
     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
     color_map: str | None = None,
@@ -1986,6 +1988,23 @@ def plot_heatmap(
             stacklevel=2,
         )
         colors = color_map
+
+    # Handle deprecated indexer parameter
+    if indexer is not None:
+        # Check for conflict with new parameter
+        if select is not None:  # User explicitly set select
+            raise ValueError(
+                "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+            )
+
+        import warnings
+
+        warnings.warn(
+            "The 'indexer' parameter is deprecated. Use 'select' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        select = indexer
 
     # Convert Dataset to DataArray with 'variable' dimension
     if isinstance(data, xr.Dataset):
