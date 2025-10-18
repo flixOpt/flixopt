@@ -195,8 +195,8 @@ class CalculationResults:
         if 'flow_system' in kwargs and flow_system_data is None:
             flow_system_data = kwargs.pop('flow_system')
             warnings.warn(
-                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead."
-                "Acess is now by '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
+                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead. "
+                "Access is now via '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
                 DeprecationWarning,
                 stacklevel=2,
             )
