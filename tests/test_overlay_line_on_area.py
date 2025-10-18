@@ -105,6 +105,7 @@ charge_fig = plotting.with_plotly(
 # Step 3: Add the line trace to the area figure
 for trace in charge_fig.data:
     trace.line.width = 3  # Make line more prominent
+    trace.line.shape = 'linear'  # Smooth line (not stepped like flows)
     trace.line.dash = 'dash'  # Optional: make it dashed
     fig1.add_trace(trace)
 
@@ -155,6 +156,7 @@ charge_fig = plotting.with_plotly(
 # This preserves subplot assignments
 for trace in charge_fig.data:
     trace.line.width = 2.5
+    trace.line.shape = 'linear'  # Smooth line for charge state
     fig2.add_trace(trace)
 
 fig2.write_html('/tmp/overlay_example_2_faceted.html')
@@ -200,6 +202,7 @@ charge_fig = plotting.with_plotly(
 # Step 3: Add charge_state traces to main figure
 for trace in charge_fig.data:
     trace.line.width = 3
+    trace.line.shape = 'linear'  # Smooth line for charge state
     trace.line.dash = 'dot'
     fig3.add_trace(trace)
 
@@ -212,6 +215,7 @@ if hasattr(charge_fig, 'frames') and charge_fig.frames:
         if i < len(fig3.frames):
             for trace in frame.data:
                 trace.line.width = 3
+                trace.line.shape = 'linear'  # Smooth line for charge state
                 trace.line.dash = 'dot'
                 fig3.frames[i].data = fig3.frames[i].data + (trace,)
 
@@ -264,6 +268,7 @@ charge_fig = plotting.with_plotly(
 # Step 3: Add line traces to base figure
 for trace in charge_fig.data:
     trace.line.width = 2.5
+    trace.line.shape = 'linear'  # Smooth line for charge state
     fig4.add_trace(trace)
 
 # Step 4: Add to animation frames
@@ -274,6 +279,7 @@ if hasattr(charge_fig, 'frames') and charge_fig.frames:
         if i < len(fig4.frames):
             for trace in frame.data:
                 trace.line.width = 2.5
+                trace.line.shape = 'linear'  # Smooth line for charge state
                 fig4.frames[i].data = fig4.frames[i].data + (trace,)
 
 fig4.write_html('/tmp/overlay_example_4_combined.html')
@@ -322,6 +328,7 @@ charge_fig = plotting.with_plotly(
 # Step 3: Add charge state as thick dashed line
 for trace in charge_fig.data:
     trace.line.width = 3
+    trace.line.shape = 'linear'  # Smooth line for charge state
     trace.line.dash = 'dashdot'
     fig5.add_trace(trace)
 
@@ -342,7 +349,11 @@ print('Summary of overlay technique:')
 print('  1. Plot main data (flows) with desired mode (area/stacked_bar)')
 print('  2. Convert overlay data to Dataset: overlay_ds = da.to_dataset(name="Name")')
 print('  3. Plot overlay with mode="line" using SAME facet_by/animate_by')
-print('  4. Add traces: for trace in overlay_fig.data: main_fig.add_trace(trace)')
+print('  4. Add traces with customization:')
+print('     for trace in overlay_fig.data:')
+print('         trace.line.width = 2  # Make prominent')
+print('         trace.line.shape = "linear"  # Smooth line (not stepped)')
+print('         main_fig.add_trace(trace)')
 print('  5. Add to frames: for i, frame in enumerate(overlay_fig.frames): ...')
 print()
 print('Key insight: Both figures must use identical faceting/animation parameters')
