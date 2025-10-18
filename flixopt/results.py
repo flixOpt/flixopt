@@ -1062,19 +1062,13 @@ class _NodeResults(_ElementResults):
 
         ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True)
 
-        # Check if faceting/animating would actually happen based on available dimensions
+        # Matplotlib requires only 'time' dimension; check for extras after selection
         if engine == 'matplotlib':
-            dims_to_facet = []
-            if facet_by is not None:
-                dims_to_facet.extend([facet_by] if isinstance(facet_by, str) else facet_by)
-            if animate_by is not None:
-                dims_to_facet.append(animate_by)
-
-            # Only raise error if any of the specified dimensions actually exist in the data
-            existing_dims = [dim for dim in dims_to_facet if dim in ds.dims]
-            if existing_dims:
+            extra_dims = [d for d in ds.dims if d != 'time']
+            if extra_dims:
                 raise ValueError(
-                    f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+                    f'Matplotlib engine only supports a single time axis, but found extra dimensions: {extra_dims}. '
+                    f'Please use select={{...}} to reduce dimensions or switch to engine="plotly" for faceting/animation.'
                 )
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
@@ -1420,11 +1414,6 @@ class ComponentResults(_NodeResults):
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
-        if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
-            raise ValueError(
-                f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
-            )
-
         # Get node balance and charge state
         ds = self.node_balance(with_last_timestep=True)
         charge_state_da = self.charge_state
@@ -1483,6 +1472,13 @@ class ComponentResults(_NodeResults):
 
             default_filetype = '.html'
         elif engine == 'matplotlib':
+            # Matplotlib requires only 'time' dimension; check for extras after selection
+            extra_dims = [d for d in ds.dims if d != 'time']
+            if extra_dims:
+                raise ValueError(
+                    f'Matplotlib engine only supports a single time axis, but found extra dimensions: {extra_dims}. '
+                    f'Please use select={{...}} to reduce dimensions or switch to engine="plotly" for faceting/animation.'
+                )
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
                 ds.to_dataframe(),
