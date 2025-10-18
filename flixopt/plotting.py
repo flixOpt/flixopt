@@ -554,12 +554,22 @@ def with_plotly(
             all_traces.extend(frame.data)
 
         for trace in all_traces:
-            trace.stackgroup = variable_classification.get(trace.name, None)
-            # No opacity and no line for stacked areas
-            if trace.stackgroup is not None:
+            cls = variable_classification.get(trace.name, None)
+            # Only stack positive and negative, not mixed or zero
+            trace.stackgroup = cls if cls in ('positive', 'negative') else None
+
+            if cls in ('positive', 'negative'):
+                # Stacked area: add opacity to avoid hiding layers, remove line border
                 if hasattr(trace, 'line') and trace.line.color:
-                    trace.fillcolor = trace.line.color  # Will be solid by default
+                    trace.fillcolor = trace.line.color
                     trace.line.width = 0
+            elif cls == 'mixed':
+                # Mixed variables: show as dashed line, not stacked
+                if hasattr(trace, 'line'):
+                    trace.line.width = 2
+                    trace.line.dash = 'dash'
+                if hasattr(trace, 'fill'):
+                    trace.fill = None
 
     # Update layout with basic styling (Plotly Express handles sizing automatically)
     fig.update_layout(
