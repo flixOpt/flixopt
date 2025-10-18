@@ -687,7 +687,7 @@ class CalculationResults:
 
     def plot_heatmap(
         self,
-        variable_name: str,
+        variable_name: str | list[str],
         save: bool | pathlib.Path = False,
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
@@ -705,12 +705,15 @@ class CalculationResults:
         Plots a heatmap visualization of a variable using imshow or time-based reshaping.
 
         Supports multiple visualization features that can be combined:
+        - **Multi-variable**: Plot multiple variables on a single heatmap (creates 'variable' dimension)
         - **Time reshaping**: Converts 'time' dimension into 2D (e.g., hours vs days)
         - **Faceting**: Creates subplots for different dimension values
         - **Animation**: Animates through dimension values (Plotly only)
 
         Args:
-            variable_name: The name of the variable to plot.
+            variable_name: The name of the variable to plot, or a list of variable names.
+                When a list is provided, variables are combined into a single DataArray
+                with a new 'variable' dimension.
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
@@ -751,6 +754,23 @@ class CalculationResults:
             >>> results.plot_heatmap(
             ...     'Boiler(Qth)|flow_rate', facet_by='scenario', animate_by='period', reshape_time=('D', 'h')
             ... )
+
+            Multi-variable heatmap (variables as one axis):
+
+            >>> results.plot_heatmap(
+            ...     ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate', 'HeatStorage|charge_state'],
+            ...     select={'scenario': 'base', 'period': 1},
+            ...     reshape_time=None,
+            ... )
+
+            Multi-variable with time reshaping:
+
+            >>> results.plot_heatmap(
+            ...     ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate'],
+            ...     facet_by='scenario',
+            ...     animate_by='period',
+            ...     reshape_time=('D', 'h'),
+            ... )
         """
         # Handle deprecated indexer parameter
         if 'indexer' in kwargs:
@@ -776,14 +796,24 @@ class CalculationResults:
                 f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
             )
 
-        dataarray = self.solution[variable_name]
+        # Handle single variable or list of variables
+        if isinstance(variable_name, str):
+            dataarray = self.solution[variable_name]
+            title_name = variable_name
+        else:  # list of variables
+            # Extract all variables and combine them
+            dataarrays = [self.solution[var] for var in variable_name]
+            # Combine them along a new 'variable' dimension
+            dataarray = xr.concat(dataarrays, dim='variable')
+            dataarray = dataarray.assign_coords(variable=variable_name)
+            title_name = f'Heatmap of {len(variable_name)} variables'
 
         # Apply select filtering
         dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         # Build title
-        title = f'{variable_name}{suffix}'
+        title = f'{title_name}{suffix}'
         if isinstance(reshape_time, tuple):
             timeframes, timesteps_per_frame = reshape_time
             title += f' ({timeframes} vs {timesteps_per_frame})'
