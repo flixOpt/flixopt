@@ -1803,6 +1803,13 @@ class SegmentedCalculationResults:
         """
         # Handle deprecated parameters
         if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
+            # Check for conflict with new parameter
+            if reshape_time != ('D', 'h'):  # Check if user explicitly set reshape_time
+                raise ValueError(
+                    "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
+                    "and new parameter 'reshape_time'. Use only 'reshape_time'."
+                )
+
             import warnings
 
             warnings.warn(
@@ -1816,6 +1823,12 @@ class SegmentedCalculationResults:
                 reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
 
         if color_map is not None:
+            # Check for conflict with new parameter
+            if colors != 'portland':  # Check if user explicitly set colors
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
+                )
+
             import warnings
 
             warnings.warn(
@@ -1939,6 +1952,13 @@ def plot_heatmap(
 
     # Handle deprecated heatmap parameters
     if 'heatmap_timeframes' in kwargs or 'heatmap_timesteps_per_frame' in kwargs:
+        # Check for conflict with new parameter
+        if reshape_time != 'auto':  # User explicitly set reshape_time
+            raise ValueError(
+                "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
+                "and new parameter 'reshape_time'. Use only 'reshape_time'."
+            )
+
         import warnings
 
         warnings.warn(
@@ -1954,6 +1974,12 @@ def plot_heatmap(
             reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
 
     if 'color_map' in kwargs:
+        # Check for conflict with new parameter
+        if colors != 'viridis':  # User explicitly set colors
+            raise ValueError(
+                "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
+            )
+
         import warnings
 
         warnings.warn(
