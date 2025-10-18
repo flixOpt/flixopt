@@ -2189,8 +2189,13 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
         if coord_name not in array.coords:
             raise AttributeError(f"Missing required coordinate '{coord_name}'")
 
-        # Convert single value to list
-        val_list = [coord_values] if isinstance(coord_values, str) else coord_values
+        # Normalize to list for sequence-like inputs (excluding strings)
+        if isinstance(coord_values, str):
+            val_list = [coord_values]
+        elif isinstance(coord_values, (list, tuple, np.ndarray, pd.Index)):
+            val_list = list(coord_values)
+        else:
+            val_list = [coord_values]
 
         # Verify coord_values exist
         available = set(array[coord_name].values)
@@ -2200,7 +2205,7 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
 
         # Apply filter
         return array.where(
-            array[coord_name].isin(val_list) if isinstance(coord_values, list) else array[coord_name] == coord_values,
+            array[coord_name].isin(val_list) if len(val_list) > 1 else array[coord_name] == val_list[0],
             drop=True,
         )
 
