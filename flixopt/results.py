@@ -693,13 +693,21 @@ class CalculationResults:
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
-        facet_by: str | list[str] | None = 'scenario',
-        animate_by: str | None = 'period',
+        facet_by: str | list[str] | None = None,
+        animate_by: str | None = None,
         facet_cols: int = 3,
+        time_aggregation: tuple[
+            Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']
+        ]
+        | None = None,
         **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
-        Plots a heatmap visualization of a variable using imshow.
+        Plots a heatmap visualization of a variable using imshow or time-based aggregation.
+
+        Two visualization modes are available:
+        1. **Direct imshow mode** (default): Shows data dimensions as-is with optional faceting/animation
+        2. **Time aggregation mode**: Reshapes time series into periods vs timesteps (e.g., days vs hours)
 
         Args:
             variable_name: The name of the variable to plot.
@@ -708,25 +716,42 @@ class CalculationResults:
             colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
-                Applied BEFORE faceting/animation.
+                Applied BEFORE faceting/animation/reshaping.
             facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
                 or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
+                Not compatible with time_aggregation mode.
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
+                Not compatible with time_aggregation mode.
             facet_cols: Number of columns in the facet grid layout (default: 3).
+            time_aggregation: Enable time-based reshaping mode. Provide a tuple of (timeframes, timesteps_per_frame).
+                Examples:
+                - ('D', 'h'): Days (columns) vs hours (rows) - typical daily pattern
+                - ('MS', 'D'): Months (columns) vs days (rows) - monthly pattern
+                - ('W', 'h'): Weeks (columns) vs hours (rows) - weekly pattern
+                Supported timeframes: 'YS', 'MS', 'W', 'D', 'h', '15min', 'min'
+                When enabled, facet_by and animate_by are ignored.
 
         Examples:
-            Basic usage:
+            Direct imshow mode (default):
 
             >>> results.plot_heatmap('Battery|charge_state', select={'scenario': 'base'})
 
-            Facet by period:
+            Facet by scenario:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, facet_by='period')
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', facet_by='scenario', facet_cols=2)
 
             Animate by period:
 
             >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, animate_by='period')
+
+            Time aggregation mode - daily patterns:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, time_aggregation=('D', 'h'))
+
+            Time aggregation mode - monthly patterns:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, time_aggregation=('MS', 'D'))
 
             Combined faceting and animation:
 
@@ -749,7 +774,17 @@ class CalculationResults:
 
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
-        if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
+
+        # Validate parameters
+        if time_aggregation is not None:
+            if facet_by is not None or animate_by is not None:
+                logger.warning(
+                    'time_aggregation mode is enabled. Ignoring facet_by and animate_by parameters. '
+                    'Time aggregation is not compatible with faceting/animation.'
+                )
+                facet_by = None
+                animate_by = None
+        elif (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
             raise ValueError(
                 f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
             )
@@ -760,27 +795,66 @@ class CalculationResults:
         dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        title = f'{variable_name}{suffix}'
+        # Choose visualization mode
+        if time_aggregation is not None:
+            # Time aggregation mode - reshape time series into periods vs timesteps
+            timeframes, timesteps_per_frame = time_aggregation
 
-        if engine == 'plotly':
-            figure_like = plotting.heatmap_with_plotly(
-                data=dataarray,
-                facet_by=facet_by,
-                animate_by=animate_by,
-                colors=colors,
-                title=title,
-                facet_cols=facet_cols,
-            )
-            default_filetype = '.html'
-        elif engine == 'matplotlib':
-            figure_like = plotting.heatmap_with_matplotlib(
-                data=dataarray,
-                colors=colors,
-                title=title,
-            )
-            default_filetype = '.png'
+            # Use the dedicated reshaping function from plotting module
+            try:
+                reshaped_data = plotting.reshape_time_series_for_heatmap(
+                    data=dataarray, timeframes=timeframes, timesteps_per_frame=timesteps_per_frame
+                )
+            except ValueError as e:
+                # Add context to the error message
+                raise ValueError(
+                    f'Failed to apply time aggregation: {e}\n'
+                    f'Hint: Use the select parameter to filter to a single scenario/period first.'
+                ) from e
+
+            title = f'{variable_name}{suffix} ({timeframes} vs {timesteps_per_frame})'
+
+            # Use unified heatmap functions
+            if engine == 'plotly':
+                figure_like = plotting.heatmap_with_plotly(
+                    data=reshaped_data,
+                    colors=colors,
+                    title=title,
+                    facet_by=None,
+                    animate_by=None,
+                )
+                default_filetype = '.html'
+            else:  # matplotlib
+                figure_like = plotting.heatmap_with_matplotlib(
+                    data=reshaped_data,
+                    colors=colors,
+                    title=title,
+                )
+                default_filetype = '.png'
+
         else:
-            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+            # Direct imshow mode - use data dimensions as-is
+            title = f'{variable_name}{suffix}'
+
+            if engine == 'plotly':
+                figure_like = plotting.heatmap_with_plotly(
+                    data=dataarray,
+                    facet_by=facet_by,
+                    animate_by=animate_by,
+                    colors=colors,
+                    title=title,
+                    facet_cols=facet_cols,
+                )
+                default_filetype = '.html'
+            elif engine == 'matplotlib':
+                figure_like = plotting.heatmap_with_matplotlib(
+                    data=dataarray,
+                    colors=colors,
+                    title=title,
+                )
+                default_filetype = '.png'
+            else:
+                raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
         return plotting.export_figure(
             figure_like=figure_like,
@@ -1743,17 +1817,9 @@ def plot_heatmap(
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
     name = name if not suffix_parts else name + suffix
 
-    # Reshape data using time-based aggregation
-    heatmap_data = plotting.heat_map_data_from_df(
-        dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
-    )
-
-    # Convert DataFrame back to DataArray for unified plotting functions
-    heatmap_array = xr.DataArray(
-        heatmap_data.values,
-        dims=('row', 'col'),
-        coords={'row': heatmap_data.index, 'col': heatmap_data.columns},
-        name=name,
+    # Reshape data using the dedicated time aggregation function
+    reshaped_data = plotting.reshape_time_series_for_heatmap(
+        data=dataarray, timeframes=heatmap_timeframes, timesteps_per_frame=heatmap_timesteps_per_frame
     )
 
     title = f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})'
@@ -1761,7 +1827,7 @@ def plot_heatmap(
     # Use unified heatmap functions
     if engine == 'plotly':
         figure_like = plotting.heatmap_with_plotly(
-            data=heatmap_array,
+            data=reshaped_data,
             colors=color_map,
             title=title,
             facet_by=None,
@@ -1770,7 +1836,7 @@ def plot_heatmap(
         default_filetype = '.html'
     elif engine == 'matplotlib':
         figure_like = plotting.heatmap_with_matplotlib(
-            data=heatmap_array,
+            data=reshaped_data,
             colors=color_map,
             title=title,
         )

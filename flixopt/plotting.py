@@ -717,6 +717,78 @@ def reshape_to_2d(data_1d: np.ndarray, nr_of_steps_per_column: int) -> np.ndarra
     return data_2d.T
 
 
+def reshape_time_series_for_heatmap(
+    data: xr.DataArray,
+    timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'],
+    timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'],
+    fill: Literal['ffill', 'bfill'] | None = 'ffill',
+) -> xr.DataArray:
+    """
+    Reshape a time series DataArray into a 2D heatmap format.
+
+    Transforms time series data into a 2D structure suitable for heatmap visualization,
+    where rows represent timesteps within a period (e.g., hours) and columns represent
+    the periods (e.g., days).
+
+    Args:
+        data: DataArray with a time dimension containing datetime values.
+        timeframes: Time interval for heatmap columns (e.g., 'D' for days, 'MS' for months).
+        timesteps_per_frame: Time interval for heatmap rows (e.g., 'h' for hours, 'D' for days).
+        fill: Method to fill missing values: 'ffill' (forward fill) or 'bfill' (backward fill).
+              Default is 'ffill'.
+
+    Returns:
+        A 2D DataArray with dimensions ('timestep', 'timeframe') ready for heatmap plotting.
+
+    Examples:
+        Daily pattern (hours vs days):
+
+        ```python
+        heatmap_data = reshape_time_series_for_heatmap(data, timeframes='D', timesteps_per_frame='h')
+        ```
+
+        Monthly pattern (days vs months):
+
+        ```python
+        heatmap_data = reshape_time_series_for_heatmap(data, timeframes='MS', timesteps_per_frame='D')
+        ```
+
+    Raises:
+        ValueError: If data doesn't have a time dimension or has more than one dimension.
+        ValueError: If the time dimension is not datetime-based.
+        ValueError: If the timeframe/timestep combination is not supported.
+    """
+    # Validate data
+    if 'time' not in data.dims:
+        raise ValueError(f'Data must have a time dimension. Available dimensions: {list(data.dims)}')
+
+    if len(data.dims) > 1:
+        raise ValueError(
+            f'Data must have only a time dimension for time-based reshaping. '
+            f'Current dimensions: {list(data.dims)}. '
+            f'Use .sel() to filter to a single slice first.'
+        )
+
+    # Convert to DataFrame for time-based operations
+    var_name = data.name or 'value'
+    df = data.to_dataframe(var_name)
+
+    # Use existing heat_map_data_from_df for the actual reshaping
+    df_reshaped = heat_map_data_from_df(df, timeframes, timesteps_per_frame, fill)
+
+    # Convert back to DataArray
+    # The DataFrame has index named 'step' and columns named 'period'
+    return xr.DataArray(
+        df_reshaped.values,
+        dims=(df_reshaped.index.name or 'timestep', df_reshaped.columns.name or 'timeframe'),
+        coords={
+            df_reshaped.index.name or 'timestep': df_reshaped.index,
+            df_reshaped.columns.name or 'timeframe': df_reshaped.columns,
+        },
+        name=var_name,
+    )
+
+
 def heat_map_data_from_df(
     df: pd.DataFrame,
     periods: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'],
