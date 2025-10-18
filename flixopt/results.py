@@ -694,7 +694,8 @@ class CalculationResults:
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
+        **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap of the solution of a variable.
@@ -707,7 +708,7 @@ class CalculationResults:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
                  If None, uses first value for each dimension.
                  If empty dict {}, uses all values.
 
@@ -718,13 +719,13 @@ class CalculationResults:
 
             Select specific scenario and period:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={'scenario': 'base', 'period': 2024})
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base', 'period': 2024})
 
             Time filtering (summer months only):
 
             >>> results.plot_heatmap(
             ...     'Boiler(Qth)|flow_rate',
-            ...     indexer={
+            ...     select={
             ...         'scenario': 'base',
             ...         'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])],
             ...     },
@@ -733,9 +734,24 @@ class CalculationResults:
             Save to specific location:
 
             >>> results.plot_heatmap(
-            ...     'Boiler(Qth)|flow_rate', indexer={'scenario': 'base'}, save='path/to/my_heatmap.html'
+            ...     'Boiler(Qth)|flow_rate', select={'scenario': 'base'}, save='path/to/my_heatmap.html'
             ... )
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
         dataarray = self.solution[variable_name]
 
         return plot_heatmap(
@@ -748,7 +764,8 @@ class CalculationResults:
             save=save,
             show=show,
             engine=engine,
-            indexer=indexer,
+            select=select,
+            **kwargs,
         )
 
     def plot_network(
@@ -920,30 +937,110 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
+        facet_cols: int = 3,
+        **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
-        Plots the node balance of the Component or Bus.
+        Plots the node balance of the Component or Bus with optional faceting and animation.
+
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension (except time).
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports:
+                - Single values: {'scenario': 'base', 'period': 2024}
+                - Multiple values: {'scenario': ['base', 'high', 'renewable']}
+                - Slices: {'time': slice('2024-01', '2024-06')}
+                - Index arrays: {'time': time_array}
+                Note: Applied BEFORE faceting/animation.
             unit_type: The unit type to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             drop_suffix: Whether to drop the suffix from the variable names.
-        """
-        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer=indexer)
+            facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+                or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
+                Example: 'scenario' creates one subplot per scenario.
+                Example: ['scenario', 'period'] creates a grid of subplots for each scenario-period combination.
+            animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
+                dimension values. Only one dimension can be animated. Ignored if not found.
+            facet_cols: Number of columns in the facet grid layout (default: 3).
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
+        Examples:
+            Basic plot (current behavior):
+
+            >>> results['Boiler'].plot_node_balance()
+
+            Facet by scenario:
+
+            >>> results['Boiler'].plot_node_balance(facet_by='scenario', facet_cols=2)
+
+            Animate by period:
+
+            >>> results['Boiler'].plot_node_balance(animate_by='period')
+
+            Facet by scenario AND animate by period:
+
+            >>> results['Boiler'].plot_node_balance(facet_by='scenario', animate_by='period')
+
+            Select single scenario, then facet by period:
+
+            >>> results['Boiler'].plot_node_balance(select={'scenario': 'base'}, facet_by='period')
+
+            Select multiple scenarios and facet by them:
+
+            >>> results['Boiler'].plot_node_balance(
+            ...     select={'scenario': ['base', 'high', 'renewable']}, facet_by='scenario'
+            ... )
+
+            Time range selection (summer months only):
+
+            >>> results['Boiler'].plot_node_balance(select={'time': slice('2024-06', '2024-08')}, facet_by='scenario')
+        """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(f'plot_node_balance() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
+        if engine not in {'plotly', 'matplotlib'}:
+            raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
+
+        # Don't pass select/indexer to node_balance - we'll apply it afterwards
+        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
+
+        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
+
+        # Check if faceting/animating would actually happen based on available dimensions
+        if engine == 'matplotlib':
+            dims_to_facet = []
+            if facet_by is not None:
+                dims_to_facet.extend([facet_by] if isinstance(facet_by, str) else facet_by)
+            if animate_by is not None:
+                dims_to_facet.append(animate_by)
+
+            # Only raise error if any of the specified dimensions actually exist in the data
+            existing_dims = [dim for dim in dims_to_facet if dim in ds.dims]
+            if existing_dims:
+                raise ValueError(
+                    f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+                )
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = (
@@ -952,13 +1049,16 @@ class _NodeResults(_ElementResults):
 
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
-                ds.to_dataframe(),
+                ds,
+                facet_by=facet_by,
+                animate_by=animate_by,
                 colors=colors,
                 mode=mode,
                 title=title,
+                facet_cols=facet_cols,
             )
             default_filetype = '.html'
-        elif engine == 'matplotlib':
+        else:
             figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
@@ -966,8 +1066,6 @@ class _NodeResults(_ElementResults):
                 title=title,
             )
             default_filetype = '.png'
-        else:
-            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
         return plotting.export_figure(
             figure_like=figure_like,
@@ -986,7 +1084,8 @@ class _NodeResults(_ElementResults):
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
+        **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
         Args:
@@ -996,10 +1095,25 @@ class _NodeResults(_ElementResults):
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine ('plotly' or 'matplotlib').
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(
+                f'plot_node_balance_pie() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}'
+            )
+
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
@@ -1015,8 +1129,8 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_indexer_to_data(inputs, indexer, drop=True)
-        outputs, suffix_parts = _apply_indexer_to_data(outputs, indexer, drop=True)
+        inputs, suffix_parts = _apply_indexer_to_data(inputs, select=select, drop=True, **kwargs)
+        outputs, suffix_parts = _apply_indexer_to_data(outputs, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'{self.label} (total flow hours){suffix}'
@@ -1068,7 +1182,8 @@ class _NodeResults(_ElementResults):
         with_last_timestep: bool = False,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
+        **kwargs,
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Component or Bus.
@@ -1081,10 +1196,23 @@ class _NodeResults(_ElementResults):
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             drop_suffix: Whether to drop the suffix from the variable names.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(f'node_balance() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
         ds = self.solution[self.inputs + self.outputs]
 
         ds = sanitize_dataset(
@@ -1103,7 +1231,7 @@ class _NodeResults(_ElementResults):
             drop_suffix='|' if drop_suffix else None,
         )
 
-        ds, _ = _apply_indexer_to_data(ds, indexer, drop=True)
+        ds, _ = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
 
         if unit_type == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
@@ -1141,7 +1269,8 @@ class ComponentResults(_NodeResults):
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
+        **kwargs,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance.
 
@@ -1151,21 +1280,35 @@ class ComponentResults(_NodeResults):
             colors: Color scheme. Also see plotly.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
 
         Raises:
             ValueError: If component is not a storage.
         """
+        # Handle deprecated indexer parameter
+        if 'indexer' in kwargs:
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        # Check for unexpected kwargs
+        unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+        if unexpected_kwargs:
+            raise TypeError(f'plot_charge_state() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
-        ds = self.node_balance(with_last_timestep=True, indexer=indexer)
+        # Don't pass select/indexer to node_balance - we'll apply it afterwards
+        ds = self.node_balance(with_last_timestep=True)
         charge_state = self.charge_state
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
-        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, indexer, drop=True)
+        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
+        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'Operation Balance of {self.label}{suffix}'
@@ -1545,7 +1688,8 @@ def plot_heatmap(
     save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
-    indexer: dict[str, Any] | None = None,
+    select: dict[str, Any] | None = None,
+    **kwargs,
 ):
     """Plot heatmap of time series data.
 
@@ -1559,11 +1703,24 @@ def plot_heatmap(
         save: Whether to save plot.
         show: Whether to display plot.
         engine: Plotting engine.
-        indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-             If None, uses first value for each dimension.
-             If empty dict {}, uses all values.
+        select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
     """
-    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer, drop=True)
+    # Handle deprecated indexer parameter
+    if 'indexer' in kwargs:
+        import warnings
+
+        warnings.warn(
+            "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    # Check for unexpected kwargs
+    unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+    if unexpected_kwargs:
+        raise TypeError(f'plot_heatmap() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
+    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
     name = name if not suffix_parts else name + suffix
 
@@ -1821,35 +1978,45 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
 
 
 def _apply_indexer_to_data(
-    data: xr.DataArray | xr.Dataset, indexer: dict[str, Any] | None = None, drop=False
+    data: xr.DataArray | xr.Dataset,
+    select: dict[str, Any] | None = None,
+    drop=False,
+    **kwargs,
 ) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
-    Apply indexer selection or auto-select first values for non-time dimensions.
+    Apply selection to data.
 
     Args:
         data: xarray Dataset or DataArray
-        indexer: Optional selection dict
-            If None, uses first value for each dimension (except time).
-            If empty dict {}, uses all values.
+        select: Optional selection dict (takes precedence over indexer)
+        drop: Whether to drop dimensions after selection
 
     Returns:
         Tuple of (selected_data, selection_string)
     """
     selection_string = []
 
+    # Handle deprecated indexer parameter
+    indexer = kwargs.get('indexer')
     if indexer is not None:
-        # User provided indexer
-        data = data.sel(indexer, drop=drop)
-        selection_string.extend(f'{v}[{k}]' for k, v in indexer.items())
-    else:
-        # Auto-select first value for each dimension except 'time'
-        selection = {}
-        for dim in data.dims:
-            if dim != 'time' and dim in data.coords:
-                first_value = data.coords[dim].values[0]
-                selection[dim] = first_value
-                selection_string.append(f'{first_value}[{dim}]')
-        if selection:
-            data = data.sel(selection, drop=drop)
+        import warnings
+
+        warnings.warn(
+            "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    # Check for unexpected kwargs
+    unexpected_kwargs = set(kwargs.keys()) - {'indexer'}
+    if unexpected_kwargs:
+        raise TypeError(f'_apply_indexer_to_data() got unexpected keyword argument(s): {", ".join(unexpected_kwargs)}')
+
+    # Merge both dicts, select takes precedence
+    selection = {**(indexer or {}), **(select or {})}
+
+    if selection:
+        data = data.sel(selection, drop=drop)
+        selection_string.extend(f'{dim}={val}' for dim, val in selection.items())
 
     return data, selection_string
