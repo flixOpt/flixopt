@@ -1346,18 +1346,17 @@ class ComponentResults(_NodeResults):
 
         # Get node balance and charge state
         ds = self.node_balance(with_last_timestep=True)
-        charge_state = self.charge_state
-
-        # Add charge_state to the dataset so it's included in faceting/animation
-        ds[self._charge_state] = charge_state
+        charge_state_da = self.charge_state
 
         # Apply select filtering
         ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
+        charge_state_da, _ = _apply_indexer_to_data(charge_state_da, select=select, drop=True, **kwargs)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'Operation Balance of {self.label}{suffix}'
 
         if engine == 'plotly':
+            # Plot flows (node balance) with the specified mode
             figure_like = plotting.with_plotly(
                 ds,
                 facet_by=facet_by,
@@ -1367,14 +1366,51 @@ class ComponentResults(_NodeResults):
                 title=title,
                 facet_cols=facet_cols,
             )
+
+            # Add charge_state as line traces (works with faceting and animation)
+            # plotly express handles this automatically if we convert to dataframe format
+            import plotly.graph_objects as go
+
+            # Convert charge_state to dataframe for easier handling
+            charge_state_df = charge_state_da.to_dataframe()
+
+            # Add line trace for charge_state
+            # This will appear on all facets/frames since it's added to the main figure
+            if len(charge_state_df.columns) > 0:
+                for col in charge_state_df.columns:
+                    figure_like.add_trace(
+                        go.Scatter(
+                            x=charge_state_df.index,
+                            y=charge_state_df[col],
+                            mode='lines',
+                            name=self._charge_state,
+                            line=dict(width=2),
+                        )
+                    )
+
             default_filetype = '.html'
         elif engine == 'matplotlib':
-            figure_like = plotting.with_matplotlib(
+            # For matplotlib, plot flows (node balance), then add charge_state as line
+            fig, ax = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
                 mode=mode,
                 title=title,
             )
+
+            # Add charge_state as a line overlay
+            charge_state_df = charge_state_da.to_dataframe()
+            ax.plot(
+                charge_state_df.index,
+                charge_state_df.values.flatten(),
+                label=self._charge_state,
+                linewidth=2,
+                color='black',
+            )
+            ax.legend()
+            fig.tight_layout()
+
+            figure_like = fig, ax
             default_filetype = '.png'
 
         return plotting.export_figure(
