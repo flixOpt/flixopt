@@ -1021,15 +1021,26 @@ class _NodeResults(_ElementResults):
 
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
-        if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
-            raise ValueError(
-                f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
-            )
 
         # Don't pass select/indexer to node_balance - we'll apply it afterwards
         ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
 
         ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True, **kwargs)
+
+        # Check if faceting/animating would actually happen based on available dimensions
+        if engine == 'matplotlib':
+            dims_to_facet = []
+            if facet_by is not None:
+                dims_to_facet.extend([facet_by] if isinstance(facet_by, str) else facet_by)
+            if animate_by is not None:
+                dims_to_facet.append(animate_by)
+
+            # Only raise error if any of the specified dimensions actually exist in the data
+            existing_dims = [dim for dim in dims_to_facet if dim in ds.dims]
+            if existing_dims:
+                raise ValueError(
+                    f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
+                )
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = (
