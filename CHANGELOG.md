@@ -70,6 +70,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Improve docs visually
 
 ### 👷 Development
 
