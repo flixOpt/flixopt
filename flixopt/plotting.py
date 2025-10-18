@@ -834,10 +834,13 @@ def reshape_data_for_heatmap(
     period_format, step_format = formats[format_pair]
 
     # Check if resampling is needed
-    if data.sizes['time'] > 0:
-        time_diff = pd.Series(data.coords['time'].values).diff().dropna()
-        if len(time_diff) > 0:
-            min_time_diff_min = time_diff.min().total_seconds() / 60
+    if data.sizes['time'] > 1:
+        # Use NumPy for more efficient timedelta computation
+        time_values = data.coords['time'].values  # Already numpy datetime64[ns]
+        # Calculate differences and convert to minutes
+        time_diffs = np.diff(time_values).astype('timedelta64[s]').astype(float) / 60.0
+        if time_diffs.size > 0:
+            min_time_diff_min = np.nanmin(time_diffs)
             time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
             if time_intervals[timesteps_per_frame] > min_time_diff_min:
                 logger.warning(
