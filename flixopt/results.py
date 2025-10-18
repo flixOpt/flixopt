@@ -1098,6 +1098,14 @@ class _NodeResults(_ElementResults):
         **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
+
+        Note:
+            Pie charts require scalar data (no extra dimensions beyond time).
+            If your data has dimensions like 'scenario' or 'period', either:
+
+            - Use `select` to choose specific values: `select={'scenario': 'base', 'period': 2024}`
+            - Let auto-selection choose the first value (a warning will be logged)
+
         Args:
             lower_percentage_group: Percentage threshold for "Others" grouping.
             colors: Color scheme. Also see plotly.
@@ -1106,6 +1114,16 @@ class _NodeResults(_ElementResults):
             show: Whether to display plot.
             engine: Plotting engine ('plotly' or 'matplotlib').
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
+                Use this to select specific scenario/period before creating the pie chart.
+
+        Examples:
+            Basic usage (auto-selects first scenario/period if present):
+
+            >>> results['Bus'].plot_node_balance_pie()
+
+            Explicitly select a scenario and period:
+
+            >>> results['Bus'].plot_node_balance_pie(select={'scenario': 'high_demand', 'period': 2030})
         """
         # Handle deprecated indexer parameter
         if 'indexer' in kwargs:
@@ -1141,12 +1159,43 @@ class _NodeResults(_ElementResults):
 
         inputs, suffix_parts = _apply_indexer_to_data(inputs, select=select, drop=True, **kwargs)
         outputs, suffix_parts = _apply_indexer_to_data(outputs, select=select, drop=True, **kwargs)
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        title = f'{self.label} (total flow hours){suffix}'
-
+        # Sum over time dimension
         inputs = inputs.sum('time')
         outputs = outputs.sum('time')
+
+        # Auto-select first value for any remaining dimensions (scenario, period, etc.)
+        # Pie charts need scalar data, so we automatically reduce extra dimensions
+        extra_dims_inputs = [dim for dim in inputs.dims if dim != 'time']
+        extra_dims_outputs = [dim for dim in outputs.dims if dim != 'time']
+        extra_dims = list(set(extra_dims_inputs + extra_dims_outputs))
+
+        if extra_dims:
+            auto_select = {}
+            for dim in extra_dims:
+                # Get first value of this dimension
+                if dim in inputs.coords:
+                    first_val = inputs.coords[dim].values[0]
+                elif dim in outputs.coords:
+                    first_val = outputs.coords[dim].values[0]
+                else:
+                    continue
+                auto_select[dim] = first_val
+                logger.info(
+                    f'Pie chart auto-selected {dim}={first_val} (first value). '
+                    f'Use select={{"{dim}": value}} to choose a different value.'
+                )
+
+            # Apply auto-selection
+            inputs = inputs.sel(auto_select)
+            outputs = outputs.sel(auto_select)
+
+            # Update suffix with auto-selected values
+            auto_suffix_parts = [f'{dim}={val}' for dim, val in auto_select.items()]
+            suffix_parts.extend(auto_suffix_parts)
+
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        title = f'{self.label} (total flow hours){suffix}'
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
