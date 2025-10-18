@@ -693,8 +693,8 @@ class CalculationResults:
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
-        facet_by: str | list[str] | None = None,
-        animate_by: str | None = None,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
         facet_cols: int = 3,
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | None = None,
@@ -799,16 +799,10 @@ class CalculationResults:
             timeframes, timesteps_per_frame = reshape_time
 
             # Use the dedicated reshaping function from plotting module
-            try:
-                reshaped_data = plotting.reshape_time_series_for_heatmap(
-                    data=dataarray, timeframes=timeframes, timesteps_per_frame=timesteps_per_frame
-                )
-            except ValueError as e:
-                # Add context to the error message
-                raise ValueError(
-                    f'Failed to reshape time dimension: {e}\n'
-                    f'Hint: Use the select parameter to filter to a single scenario/period first.'
-                ) from e
+            # Note: This function automatically handles extra dimensions by selecting first values
+            reshaped_data = plotting.reshape_time_series_for_heatmap(
+                data=dataarray, timeframes=timeframes, timesteps_per_frame=timesteps_per_frame
+            )
 
             title = f'{variable_name}{suffix} ({timeframes} vs {timesteps_per_frame})'
 
@@ -818,8 +812,8 @@ class CalculationResults:
                     data=reshaped_data,
                     colors=colors,
                     title=title,
-                    facet_by=None,
-                    animate_by=None,
+                    facet_by=facet_by,
+                    animate_by=animate_by,
                 )
                 default_filetype = '.html'
             else:  # matplotlib
