@@ -696,18 +696,16 @@ class CalculationResults:
         facet_by: str | list[str] | None = None,
         animate_by: str | None = None,
         facet_cols: int = 3,
-        time_aggregation: tuple[
-            Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']
-        ]
+        reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | None = None,
         **kwargs,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
-        Plots a heatmap visualization of a variable using imshow or time-based aggregation.
+        Plots a heatmap visualization of a variable using imshow or time-based reshaping.
 
         Two visualization modes are available:
         1. **Direct imshow mode** (default): Shows data dimensions as-is with optional faceting/animation
-        2. **Time aggregation mode**: Reshapes time series into periods vs timesteps (e.g., days vs hours)
+        2. **Time reshape mode**: Reshapes time series into periods vs timesteps (e.g., days vs hours)
 
         Args:
             variable_name: The name of the variable to plot.
@@ -719,12 +717,12 @@ class CalculationResults:
                 Applied BEFORE faceting/animation/reshaping.
             facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
                 or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
-                Not compatible with time_aggregation mode.
+                Not compatible with reshape_time mode.
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
-                Not compatible with time_aggregation mode.
+                Not compatible with reshape_time mode.
             facet_cols: Number of columns in the facet grid layout (default: 3).
-            time_aggregation: Enable time-based reshaping mode. Provide a tuple of (timeframes, timesteps_per_frame).
+            reshape_time: Enable time-based reshaping mode. Provide a tuple of (timeframes, timesteps_per_frame).
                 Examples:
                 - ('D', 'h'): Days (columns) vs hours (rows) - typical daily pattern
                 - ('MS', 'D'): Months (columns) vs days (rows) - monthly pattern
@@ -745,13 +743,13 @@ class CalculationResults:
 
             >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, animate_by='period')
 
-            Time aggregation mode - daily patterns:
+            Time reshape mode - daily patterns:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, time_aggregation=('D', 'h'))
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, reshape_time=('D', 'h'))
 
-            Time aggregation mode - monthly patterns:
+            Time reshape mode - monthly patterns:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, time_aggregation=('MS', 'D'))
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, reshape_time=('MS', 'D'))
 
             Combined faceting and animation:
 
@@ -776,11 +774,11 @@ class CalculationResults:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
 
         # Validate parameters
-        if time_aggregation is not None:
+        if reshape_time is not None:
             if facet_by is not None or animate_by is not None:
                 logger.warning(
-                    'time_aggregation mode is enabled. Ignoring facet_by and animate_by parameters. '
-                    'Time aggregation is not compatible with faceting/animation.'
+                    'reshape_time mode is enabled. Ignoring facet_by and animate_by parameters. '
+                    'Time reshaping is not compatible with faceting/animation.'
                 )
                 facet_by = None
                 animate_by = None
@@ -796,9 +794,9 @@ class CalculationResults:
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         # Choose visualization mode
-        if time_aggregation is not None:
-            # Time aggregation mode - reshape time series into periods vs timesteps
-            timeframes, timesteps_per_frame = time_aggregation
+        if reshape_time is not None:
+            # Time reshape mode - reshape time series into periods vs timesteps
+            timeframes, timesteps_per_frame = reshape_time
 
             # Use the dedicated reshaping function from plotting module
             try:
@@ -808,7 +806,7 @@ class CalculationResults:
             except ValueError as e:
                 # Add context to the error message
                 raise ValueError(
-                    f'Failed to apply time aggregation: {e}\n'
+                    f'Failed to reshape time dimension: {e}\n'
                     f'Hint: Use the select parameter to filter to a single scenario/period first.'
                 ) from e
 
