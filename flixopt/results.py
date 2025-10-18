@@ -774,14 +774,18 @@ class CalculationResults:
         """
         # Extract DataArray(s) from solution
         if isinstance(variable_name, str):
-            dataarray = self.solution[variable_name]
-        else:  # list of variables
-            dataarray = [self.solution[var] for var in variable_name]
+            data = self.solution[variable_name]
+            name_param = variable_name
+        else:  # list of variables - convert to Dataset
+            # Create a Dataset with the specified variables
+            data_dict = {var: self.solution[var] for var in variable_name}
+            data = xr.Dataset(data_dict)
+            name_param = None  # Let module-level function generate name from Dataset
 
         # Delegate to module-level plot_heatmap function
         return plot_heatmap(
-            dataarray=dataarray,
-            name=variable_name,
+            data=data,
+            name=name_param,
             folder=self.folder,
             colors=colors,
             save=save,
@@ -1695,9 +1699,9 @@ class SegmentedCalculationResults:
 
 
 def plot_heatmap(
-    dataarray: xr.DataArray | list[xr.DataArray],
-    name: str | list[str],
-    folder: pathlib.Path,
+    data: xr.DataArray | xr.Dataset,
+    name: str | None = None,
+    folder: pathlib.Path | None = None,
     colors: plotting.ColorType = 'viridis',
     save: bool | pathlib.Path = False,
     show: bool = True,
@@ -1717,10 +1721,11 @@ def plot_heatmap(
     supporting the same modern features as CalculationResults.plot_heatmap().
 
     Args:
-        dataarray: Data to plot. Can be a single DataArray or a list of DataArrays.
-            When a list is provided, they are combined along a new 'variable' dimension.
-        name: Variable name(s) for title. Can be a string or list matching dataarray parameter.
-        folder: Save folder for the plot.
+        data: Data to plot. Can be a single DataArray or an xarray Dataset.
+            When a Dataset is provided, all data variables are combined along a new 'variable' dimension.
+        name: Optional name for the title. If not provided, uses the DataArray name or
+            generates a default title for Datasets.
+        folder: Save folder for the plot. Defaults to current directory if not provided.
         colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
         save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
         show: Whether to show the plot or not.
@@ -1736,19 +1741,23 @@ def plot_heatmap(
             - None: Disable auto-reshaping
 
     Examples:
-        Single variable with time reshaping:
+        Single DataArray with time reshaping:
 
         >>> plot_heatmap(data, name='Temperature', folder=Path('.'), reshape_time=('D', 'h'))
 
-        Multiple variables with faceting:
+        Dataset with multiple variables (facet by variable):
 
+        >>> dataset = xr.Dataset({'Boiler': data1, 'CHP': data2, 'Storage': data3})
         >>> plot_heatmap(
-        ...     [data1, data2, data3],
-        ...     name=['Boiler', 'CHP', 'Storage'],
+        ...     dataset,
         ...     folder=Path('.'),
         ...     facet_by='variable',
         ...     reshape_time=('D', 'h'),
         ... )
+
+        Dataset with animation by variable:
+
+        >>> plot_heatmap(dataset, animate_by='variable', reshape_time=('D', 'h'))
     """
     # Handle deprecated indexer parameter
     if 'indexer' in kwargs:
@@ -1771,25 +1780,30 @@ def plot_heatmap(
             f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
         )
 
-    # Handle single DataArray or list of DataArrays
-    if isinstance(dataarray, list):
-        # Validate that name is also a list or convert to list
-        if isinstance(name, str):
-            # If single name provided for multiple arrays, use generic name
-            variable_names = [f'var_{i}' for i in range(len(dataarray))]
-            title_name = f'{name} ({len(dataarray)} variables)'
-        else:
-            variable_names = name
-            title_name = f'Heatmap of {len(dataarray)} variables'
+    # Convert Dataset to DataArray with 'variable' dimension
+    if isinstance(data, xr.Dataset):
+        # Extract all data variables from the Dataset
+        variable_names = list(data.data_vars)
+        dataarrays = [data[var] for var in variable_names]
 
-        # Combine DataArrays along 'variable' dimension
-        dataarray = xr.concat(dataarray, dim='variable')
-        dataarray = dataarray.assign_coords(variable=variable_names)
+        # Combine into single DataArray with 'variable' dimension
+        data = xr.concat(dataarrays, dim='variable')
+        data = data.assign_coords(variable=variable_names)
+
+        # Use Dataset variable names for title if name not provided
+        if name is None:
+            title_name = f'Heatmap of {len(variable_names)} variables'
+        else:
+            title_name = name
     else:
-        title_name = name
+        # Single DataArray
+        if name is None:
+            title_name = data.name if data.name else 'Heatmap'
+        else:
+            title_name = name
 
     # Apply select filtering
-    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, select=select, drop=True, **kwargs)
+    data, suffix_parts = _apply_indexer_to_data(data, select=select, drop=True, **kwargs)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
     # Build title
@@ -1801,7 +1815,7 @@ def plot_heatmap(
     # Plot with appropriate engine
     if engine == 'plotly':
         figure_like = plotting.heatmap_with_plotly(
-            data=dataarray,
+            data=data,
             facet_by=facet_by,
             animate_by=animate_by,
             colors=colors,
@@ -1812,7 +1826,7 @@ def plot_heatmap(
         default_filetype = '.html'
     elif engine == 'matplotlib':
         figure_like = plotting.heatmap_with_matplotlib(
-            data=dataarray,
+            data=data,
             colors=colors,
             title=title,
             reshape_time=reshape_time,
@@ -1820,6 +1834,10 @@ def plot_heatmap(
         default_filetype = '.png'
     else:
         raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
+
+    # Set default folder if not provided
+    if folder is None:
+        folder = pathlib.Path('.')
 
     return plotting.export_figure(
         figure_like=figure_like,
