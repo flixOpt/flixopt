@@ -774,15 +774,7 @@ class CalculationResults:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
 
         # Validate parameters
-        if reshape_time is not None:
-            if facet_by is not None or animate_by is not None:
-                logger.warning(
-                    'reshape_time mode is enabled. Ignoring facet_by and animate_by parameters. '
-                    'Time reshaping is not compatible with faceting/animation.'
-                )
-                facet_by = None
-                animate_by = None
-        elif (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
+        if (facet_by is not None or animate_by is not None) and engine == 'matplotlib':
             raise ValueError(
                 f'Faceting and animating are not supported by the plotting engine {engine}. Use Plotly instead'
             )

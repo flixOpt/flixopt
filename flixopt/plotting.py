@@ -769,120 +769,18 @@ def reshape_time_series_for_heatmap(
     if 'time' not in data.dims:
         raise ValueError(f'Data must have a time dimension. Available dimensions: {list(data.dims)}')
 
-    # Get non-time dimensions to preserve
-    extra_dims = [dim for dim in data.dims if dim != 'time']
+    # Validate that time is datetime
+    if not np.issubdtype(data.coords['time'].dtype, np.datetime64):
+        raise ValueError(f'Time dimension must be datetime-based, got {data.coords["time"].dtype}')
 
-    var_name = data.name or 'value'
-
-    if len(extra_dims) == 0:
-        # Simple case: only time dimension
-        df = data.to_series().to_frame(name=var_name)
-        df_reshaped = heat_map_data_from_df(df, timeframes, timesteps_per_frame, fill)
-
-        # Use fixed dimension names to avoid conflicts
-        # Create new Index objects without the old names to avoid conflicts
-        return xr.DataArray(
-            df_reshaped.values,
-            dims=('timestep', 'timeframe'),
-            coords={
-                'timestep': pd.Index(df_reshaped.index, name='timestep'),
-                'timeframe': pd.Index(df_reshaped.columns, name='timeframe'),
-            },
-            name=var_name,
-        )
-
-    # Complex case: preserve extra dimensions
-    # Stack all extra dimensions into a single multi-index dimension
-    stacked = data.stack(stacked_dims=extra_dims)
-
-    # Get the coordinate values for reconstructing later
-    extra_coords = {dim: data.coords[dim].values for dim in extra_dims}
-
-    # Create list to store reshaped slices
-    reshaped_slices = []
-    timestep_coords = None
-    timeframe_coords = None
-
-    # Reshape each slice along the stacked dimension
-    for idx in stacked.coords['stacked_dims'].values:
-        # Extract the time series for this combination of extra dimensions
-        slice_data = stacked.sel(stacked_dims=idx)
-
-        # Convert to DataFrame and reshape
-        df = slice_data.to_series().to_frame(name=var_name)
-        df_reshaped = heat_map_data_from_df(df, timeframes, timesteps_per_frame, fill)
-
-        # Store coordinates from first slice
-        if timestep_coords is None:
-            timestep_coords = df_reshaped.index
-            timeframe_coords = df_reshaped.columns
-
-        # Add the reshaped values
-        reshaped_slices.append(df_reshaped.values)
-
-    # Stack all reshaped slices
-    # Shape: (timesteps, timeframes, ...)
-    reshaped_array = np.stack(reshaped_slices, axis=-1)
-
-    # Reshape to separate out the extra dimensions
-    # Current shape: (timesteps, timeframes, product_of_extra_dims)
-    # Target shape: (timesteps, timeframes, dim1_size, dim2_size, ...)
-    extra_dim_sizes = [len(data.coords[dim]) for dim in extra_dims]
-    target_shape = (len(timestep_coords), len(timeframe_coords), *extra_dim_sizes)
-    reshaped_array = reshaped_array.reshape(target_shape)
-
-    # Create the result DataArray with all dimensions
-    # Use fixed dimension names to avoid conflicts with existing dimension names
-    result_dims = ['timestep', 'timeframe'] + extra_dims
-    result_coords = {
-        'timestep': pd.Index(timestep_coords, name='timestep'),
-        'timeframe': pd.Index(timeframe_coords, name='timeframe'),
-        **extra_coords,
-    }
-
-    return xr.DataArray(
-        reshaped_array,
-        dims=result_dims,
-        coords=result_coords,
-        name=var_name,
-    )
-
-
-def heat_map_data_from_df(
-    df: pd.DataFrame,
-    periods: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'],
-    steps_per_period: Literal['W', 'D', 'h', '15min', 'min'],
-    fill: Literal['ffill', 'bfill'] | None = None,
-) -> pd.DataFrame:
-    """
-    Reshapes a DataFrame with a DateTime index into a 2D array for heatmap plotting,
-    based on a specified sample rate.
-    Only specific combinations of `periods` and `steps_per_period` are supported; invalid combinations raise an assertion.
-
-    Args:
-        df: A DataFrame with a DateTime index containing the data to reshape.
-        periods: The time interval of each period (columns of the heatmap),
-            such as 'YS' (year start), 'W' (weekly), 'D' (daily), 'h' (hourly) etc.
-        steps_per_period: The time interval within each period (rows in the heatmap),
-            such as 'YS' (year start), 'W' (weekly), 'D' (daily), 'h' (hourly) etc.
-        fill: Method to fill missing values: 'ffill' for forward fill or 'bfill' for backward fill.
-
-    Returns:
-        A DataFrame suitable for heatmap plotting, with rows representing steps within each period
-        and columns representing each period.
-    """
-    assert pd.api.types.is_datetime64_any_dtype(df.index), (
-        'The index of the DataFrame must be datetime to transform it properly for a heatmap plot'
-    )
-
-    # Define formats for different combinations of `periods` and `steps_per_period`
+    # Define formats for different combinations
     formats = {
         ('YS', 'W'): ('%Y', '%W'),
         ('YS', 'D'): ('%Y', '%j'),  # day of year
         ('YS', 'h'): ('%Y', '%j %H:00'),
         ('MS', 'D'): ('%Y-%m', '%d'),  # day of month
         ('MS', 'h'): ('%Y-%m', '%d %H:00'),
-        ('W', 'D'): ('%Y-w%W', '%w_%A'),  # week and day of week (with prefix for proper sorting)
+        ('W', 'D'): ('%Y-w%W', '%w_%A'),  # week and day of week
         ('W', 'h'): ('%Y-w%W', '%w_%A %H:00'),
         ('D', 'h'): ('%Y-%m-%d', '%H:00'),  # Day and hour
         ('D', '15min'): ('%Y-%m-%d', '%H:%M'),  # Day and minute
@@ -890,43 +788,61 @@ def heat_map_data_from_df(
         ('h', 'min'): ('%Y-%m-%d %H:00', '%M'),  # minute of hour
     }
 
-    if df.empty:
-        raise ValueError('DataFrame is empty.')
-    diffs = df.index.to_series().diff().dropna()
-    minimum_time_diff_in_min = diffs.min().total_seconds() / 60
-    time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
-    if time_intervals[steps_per_period] > minimum_time_diff_in_min:
-        logger.error(
-            f'To compute the heatmap, the data was aggregated from {minimum_time_diff_in_min:.2f} min to '
-            f'{time_intervals[steps_per_period]:.2f} min. Mean values are displayed.'
-        )
-
-    # Select the format based on the `periods` and `steps_per_period` combination
-    format_pair = (periods, steps_per_period)
+    format_pair = (timeframes, timesteps_per_frame)
     if format_pair not in formats:
         raise ValueError(f'{format_pair} is not a valid format. Choose from {list(formats.keys())}')
     period_format, step_format = formats[format_pair]
 
-    df = df.sort_index()  # Ensure DataFrame is sorted by time index
+    # Check if resampling is needed
+    if data.sizes['time'] > 0:
+        time_diff = pd.Series(data.coords['time'].values).diff().dropna()
+        if len(time_diff) > 0:
+            min_time_diff_min = time_diff.min().total_seconds() / 60
+            time_intervals = {'min': 1, '15min': 15, 'h': 60, 'D': 24 * 60, 'W': 7 * 24 * 60}
+            if time_intervals[timesteps_per_frame] > min_time_diff_min:
+                logger.warning(
+                    f'Resampling data from {min_time_diff_min:.2f} min to '
+                    f'{time_intervals[timesteps_per_frame]:.2f} min. Mean values are displayed.'
+                )
 
-    resampled_data = df.resample(steps_per_period).mean()  # Resample and fill any gaps with NaN
+    # Resample along time dimension
+    resampled = data.resample(time=timesteps_per_frame).mean()
 
-    if fill == 'ffill':  # Apply fill method if specified
-        resampled_data = resampled_data.ffill()
+    # Apply fill if specified
+    if fill == 'ffill':
+        resampled = resampled.ffill(dim='time')
     elif fill == 'bfill':
-        resampled_data = resampled_data.bfill()
+        resampled = resampled.bfill(dim='time')
 
-    resampled_data['period'] = resampled_data.index.strftime(period_format)
-    resampled_data['step'] = resampled_data.index.strftime(step_format)
-    if '%w_%A' in step_format:  # Shift index of strings to ensure proper sorting
-        resampled_data['step'] = resampled_data['step'].apply(
-            lambda x: x.replace('0_Sunday', '7_Sunday') if '0_Sunday' in x else x
-        )
+    # Create period and step labels
+    time_values = pd.to_datetime(resampled.coords['time'].values)
+    period_labels = time_values.strftime(period_format)
+    step_labels = time_values.strftime(step_format)
 
-    # Pivot the table so periods are columns and steps are indices
-    df_pivoted = resampled_data.pivot(columns='period', index='step', values=df.columns[0])
+    # Handle special case for weekly day format
+    if '%w_%A' in step_format:
+        step_labels = pd.Series(step_labels).replace('0_Sunday', '7_Sunday').values
 
-    return df_pivoted
+    # Add period and step as coordinates
+    resampled = resampled.assign_coords(
+        {
+            'timeframe': ('time', period_labels),
+            'timestep': ('time', step_labels),
+        }
+    )
+
+    # Convert to multi-index and unstack
+    resampled = resampled.set_index(time=['timeframe', 'timestep'])
+    result = resampled.unstack('time')
+
+    # Ensure timestep and timeframe come first in dimension order
+    # Get other dimensions
+    other_dims = [d for d in result.dims if d not in ['timestep', 'timeframe']]
+
+    # Reorder: timestep, timeframe, then other dimensions
+    result = result.transpose('timestep', 'timeframe', *other_dims)
+
+    return result
 
 
 def plot_network(
