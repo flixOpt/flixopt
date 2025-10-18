@@ -207,6 +207,10 @@ class Bus(Element):
                 logger.warning(
                     f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
                 )
+        if len(self.inputs) == 0 and len(self.outputs) == 0:
+            raise ValueError(
+                f'Bus "{self.label_full}" has no Flows connected to it. Please remove it from the FlowSystem'
+            )
 
     @property
     def with_excess(self) -> bool:
