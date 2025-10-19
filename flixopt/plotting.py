@@ -405,15 +405,11 @@ class XarrayColorMapper:
     }
 
     def __init__(self, color_families: dict[str, list[str]] | None = None, sort_within_groups: bool = True) -> None:
-        """
-        Initialize with Plotly sequential color families.
+        """Initialize with Plotly sequential color families.
 
-        Parameters:
-        -----------
-        color_families : dict, optional
-            Custom color families. If None, uses DEFAULT_FAMILIES
-        sort_within_groups : bool, default True
-            Whether to sort values within groups by default
+        Args:
+            color_families: Custom color families. If None, uses DEFAULT_FAMILIES.
+            sort_within_groups: Whether to sort values within groups by default. Default is True.
         """
         if color_families is None:
             self.color_families = self.DEFAULT_FAMILIES.copy()
@@ -425,61 +421,53 @@ class XarrayColorMapper:
         self.overrides: dict[str, str] = {}
 
     def add_custom_family(self, name: str, colors: list[str]) -> XarrayColorMapper:
-        """
-        Add a custom color family.
+        """Add a custom color family.
 
-        Parameters:
-        -----------
-        name : str
-            Name for the color family
-        colors : List[str]
-            List of hex color codes
+        Args:
+            name: Name for the color family.
+            colors: List of hex color codes.
 
         Returns:
-        --------
-        XarrayColorMapper : Self for method chaining
+            Self for method chaining.
         """
         self.color_families[name] = colors
         return self
 
     def add_rule(self, pattern: str, family_or_color: str, match_type: MatchType = 'prefix') -> XarrayColorMapper:
-        """
-        Add a pattern-based rule to assign color families or discrete colors.
+        """Add a pattern-based rule to assign color families or discrete colors.
 
-        Parameters:
-        -----------
-        pattern : str
-            Pattern to match against coordinate values
-        family_or_color : str
-            Either a color family name (e.g., 'blues', 'greens') or a discrete color.
-            Discrete colors can be:
-            - Hex colors: '#FF0000', '#00FF00'
-            - RGB/RGBA strings: 'rgb(255,0,0)', 'rgba(255,0,0,0.5)'
-            - Named colors: 'red', 'blue', 'skyblue'
-        match_type : {'prefix', 'suffix', 'contains', 'glob', 'regex'}, default 'prefix'
-            Type of pattern matching to use:
-            - 'prefix': Match if value starts with pattern
-            - 'suffix': Match if value ends with pattern
-            - 'contains': Match if pattern appears anywhere in value
-            - 'glob': Unix-style wildcards (* matches anything, ? matches one char)
-            - 'regex': Match using regular expression
+        Args:
+            pattern: Pattern to match against coordinate values.
+            family_or_color: Either a color family name (e.g., 'blues', 'greens') or a discrete color.
+                Discrete colors can be:
+                - Hex colors: '#FF0000', '#00FF00'
+                - RGB/RGBA strings: 'rgb(255,0,0)', 'rgba(255,0,0,0.5)'
+                - Named colors: 'red', 'blue', 'skyblue'
+            match_type: Type of pattern matching to use. Default is 'prefix'.
+                - 'prefix': Match if value starts with pattern
+                - 'suffix': Match if value ends with pattern
+                - 'contains': Match if pattern appears anywhere in value
+                - 'glob': Unix-style wildcards (* matches anything, ? matches one char)
+                - 'regex': Match using regular expression
 
         Returns:
-        --------
-        XarrayColorMapper : Self for method chaining
+            Self for method chaining.
 
         Examples:
-        ---------
-        Using color families (cycles through shades):
+            Using color families (cycles through shades):
 
-        mapper.add_rule('Product_A', 'blues', 'prefix')
-        mapper.add_rule('_test', 'greens', 'suffix')
+            ```python
+            mapper.add_rule('Product_A', 'blues', 'prefix')
+            mapper.add_rule('_test', 'greens', 'suffix')
+            ```
 
-        Using discrete colors (all matches get the same color):
+            Using discrete colors (all matches get the same color):
 
-        mapper.add_rule('Solar', '#FFA500', 'prefix')  # All Solar* items get orange
-        mapper.add_rule('Wind', 'skyblue', 'prefix')  # All Wind* items get skyblue
-        mapper.add_rule('Battery', 'rgb(50,205,50)', 'contains')  # All *Battery* get lime green
+            ```python
+            mapper.add_rule('Solar', '#FFA500', 'prefix')  # All Solar* items get orange
+            mapper.add_rule('Wind', 'skyblue', 'prefix')  # All Wind* items get skyblue
+            mapper.add_rule('Battery', 'rgb(50,205,50)', 'contains')  # All *Battery* get lime green
+            ```
         """
         valid_types = ('prefix', 'suffix', 'contains', 'glob', 'regex')
         if match_type not in valid_types:
@@ -500,25 +488,19 @@ class XarrayColorMapper:
         return self
 
     def add_override(self, color_dict: dict[str, str]) -> XarrayColorMapper:
-        """
-        Override colors for specific values (takes precedence over rules).
+        """Override colors for specific values (takes precedence over rules).
 
-        Parameters:
-        -----------
-        color_dict : Dict[str, str]
-            Mapping of {value: hex_color}
+        Args:
+            color_dict: Mapping of {value: hex_color}.
 
         Returns:
-        --------
-        XarrayColorMapper : Self for method chaining
+            Self for method chaining.
 
         Examples:
-        ---------
-        mapper.add_override({'Special': '#FFD700'})
-        mapper.add_override({
-            'Product_A1': '#FF00FF',
-            'Product_B2': '#00FFFF'
-        })
+            ```python
+            mapper.add_override({'Special': '#FFD700'})
+            mapper.add_override({'Product_A1': '#FF00FF', 'Product_B2': '#00FFFF'})
+            ```
         """
         for val, col in color_dict.items():
             self.overrides[str(val)] = col
@@ -530,21 +512,15 @@ class XarrayColorMapper:
         sort_within_groups: bool | None = None,
         fallback_family: str = 'greys',
     ) -> dict[str, str]:
-        """
-        Create color mapping for coordinate values.
+        """Create color mapping for coordinate values.
 
-        Parameters:
-        -----------
-        coord_values : xr.DataArray, np.ndarray, or list
-            Coordinate values to map
-        sort_within_groups : bool, optional
-            Sort values within each group. If None, uses instance default
-        fallback_family : str, default 'greys'
-            Color family for unmatched values
+        Args:
+            coord_values: Coordinate values to map (xr.DataArray, np.ndarray, or list).
+            sort_within_groups: Sort values within each group. If None, uses instance default.
+            fallback_family: Color family for unmatched values. Default is 'greys'.
 
         Returns:
-        --------
-        Dict[str, str] : Mapping of {value: hex_color}
+            Mapping of {value: hex_color}.
         """
         if sort_within_groups is None:
             sort_within_groups = self.sort_within_groups
@@ -597,23 +573,17 @@ class XarrayColorMapper:
         return color_map
 
     def apply_to_dataarray(self, da: xr.DataArray, coord_dim: str) -> dict[str, str]:
-        """
-        Create color map for a DataArray coordinate dimension.
+        """Create color map for a DataArray coordinate dimension.
 
-        Parameters:
-        -----------
-        da : xr.DataArray
-            The data array
-        coord_dim : str
-            Coordinate dimension name
+        Args:
+            da: The data array.
+            coord_dim: Coordinate dimension name.
 
         Returns:
-        --------
-        Dict[str, str] : Color mapping for that dimension
+            Color mapping for that dimension.
 
         Raises:
-        -------
-        ValueError : If coord_dim is not found in the DataArray
+            ValueError: If coord_dim is not found in the DataArray.
         """
         if coord_dim not in da.coords:
             raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
@@ -623,35 +593,30 @@ class XarrayColorMapper:
     def reorder_coordinate(
         self, da: xr.DataArray, coord_dim: str, sort_within_groups: bool | None = None
     ) -> xr.DataArray:
-        """
-        Reorder a DataArray coordinate so values with the same color are adjacent.
+        """Reorder a DataArray coordinate so values with the same color are adjacent.
 
         This is useful for creating plots where similar items (same color group)
         appear next to each other, making visual groupings clear.
 
-        Parameters:
-        -----------
-        da : xr.DataArray
-            The data array to reorder
-        coord_dim : str
-            The coordinate dimension to reorder
-        sort_within_groups : bool, optional
-            Whether to sort values within each group. If None, uses instance default
+        Args:
+            da: The data array to reorder.
+            coord_dim: The coordinate dimension to reorder.
+            sort_within_groups: Whether to sort values within each group. If None, uses instance default.
 
         Returns:
-        --------
-        xr.DataArray : New DataArray with reordered coordinate
+            New DataArray with reordered coordinate.
 
         Examples:
-        ---------
-        # Original order: ['Product_B1', 'Product_A1', 'Product_B2', 'Product_A2']
-        # After reorder: ['Product_A1', 'Product_A2', 'Product_B1', 'Product_B2']
+            Original order: ['Product_B1', 'Product_A1', 'Product_B2', 'Product_A2']
+            After reorder: ['Product_A1', 'Product_A2', 'Product_B1', 'Product_B2']
 
-        mapper = XarrayColorMapper()
-        mapper.add_rule('Product_A', 'blues', 'prefix')
-        mapper.add_rule('Product_B', 'greens', 'prefix')
+            ```python
+            mapper = XarrayColorMapper()
+            mapper.add_rule('Product_A', 'blues', 'prefix')
+            mapper.add_rule('Product_B', 'greens', 'prefix')
 
-        da_reordered = mapper.reorder_coordinate(da, 'product')
+            da_reordered = mapper.reorder_coordinate(da, 'product')
+            ```
         """
         if coord_dim not in da.coords:
             raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
@@ -696,19 +661,14 @@ class XarrayColorMapper:
         return self.color_families.copy()
 
     def _match_rule(self, value: str, rule: dict[str, str]) -> bool:
-        """
-        Check if value matches a rule.
+        """Check if value matches a rule.
 
-        Parameters:
-        -----------
-        value : str
-            Value to check
-        rule : dict
-            Rule dictionary with 'pattern' and 'match_type' keys
+        Args:
+            value: Value to check.
+            rule: Rule dictionary with 'pattern' and 'match_type' keys.
 
         Returns:
-        --------
-        bool : True if value matches the rule
+            True if value matches the rule.
         """
         pattern = rule['pattern']
         match_type = rule['match_type']
@@ -730,20 +690,17 @@ class XarrayColorMapper:
         return False
 
     def _group_categories(self, categories: list[str]) -> dict[str, list[str]]:
-        """
-        Group categories by matching rules.
+        """Group categories by matching rules.
 
-        Parameters:
-        -----------
-        categories : List[str]
-            List of category values to group
+        Args:
+            categories: List of category values to group.
 
         Returns:
-        --------
-        Dict[str, List[str]] : Mapping of {group_key: [matching_values]}
+            Mapping of {group_key: [matching_values]}.
 
-        Note: For discrete color rules, group_key is '_discrete_<color>',
-              for family rules, group_key is the family name.
+        Note:
+            For discrete color rules, group_key is '_discrete_<color>',
+            for family rules, group_key is the family name.
         """
         groups: dict[str, list[str]] = {}
         unmatched: list[str] = []
