@@ -1139,7 +1139,7 @@ class _NodeResults(_ElementResults):
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
         # Resolve colors to a dict (handles auto, mapper, etc.)
-        color_dict = self._calculation_results._resolve_colors(ds, colors, coord_dim='variable', engine=engine)
+        resolved_colors = self._calculation_results._resolve_colors(ds, colors, coord_dim='variable', engine=engine)
 
         # Matplotlib requires only 'time' dimension; check for extras after selection
         if engine == 'matplotlib':
@@ -1160,7 +1160,7 @@ class _NodeResults(_ElementResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=color_dict,
+                colors=resolved_colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1169,7 +1169,7 @@ class _NodeResults(_ElementResults):
         else:
             figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
-                colors=color_dict,
+                colors=resolved_colors,
                 mode=mode,
                 title=title,
             )
@@ -1298,13 +1298,15 @@ class _NodeResults(_ElementResults):
 
         # Combine inputs and outputs to resolve colors for all variables
         combined_ds = xr.Dataset({**inputs.data_vars, **outputs.data_vars})
-        color_dict = self._calculation_results._resolve_colors(combined_ds, colors, coord_dim='variable', engine=engine)
+        resolved_colors = self._calculation_results._resolve_colors(
+            combined_ds, colors, coord_dim='variable', engine=engine
+        )
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=color_dict,
+                colors=resolved_colors,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
@@ -1317,7 +1319,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_matplotlib(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=color_dict,
+                colors=resolved_colors,
                 title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -1509,7 +1511,7 @@ class ComponentResults(_NodeResults):
         title = f'Operation Balance of {self.label}{suffix}'
 
         # Resolve colors to a dict (handles auto, mapper, etc.)
-        color_dict = self._calculation_results._resolve_colors(ds, colors, coord_dim='variable', engine=engine)
+        resolved_colors = self._calculation_results._resolve_colors(ds, colors, coord_dim='variable', engine=engine)
 
         if engine == 'plotly':
             # Plot flows (node balance) with the specified mode
@@ -1517,7 +1519,7 @@ class ComponentResults(_NodeResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=color_dict,
+                colors=resolved_colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
