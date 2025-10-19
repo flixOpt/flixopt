@@ -50,6 +50,32 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+
+### 💥 Breaking Changes
+
+### ♻️ Changed
+
+### 🗑️ Deprecated
+
+### 🔥 Removed
+
+### 🐛 Fixed
+
+### 🔒 Security
+
+### 📦 Dependencies
+
+### 📝 Docs
+
+### 👷 Development
+
+### 🚧 Known Issues
+
+---
+
 Until here -->
 
 ## [3.1.0] - 2025-10-19
