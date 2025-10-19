@@ -427,7 +427,13 @@ def with_plotly(
                 df_long = df_long.rename(columns={data.name: 'value'})
             else:
                 # Unnamed DataArray, find the value column
-                value_col = [col for col in df_long.columns if col not in data.dims][0]
+                non_dim_cols = [col for col in df_long.columns if col not in data.dims]
+                if len(non_dim_cols) != 1:
+                    raise ValueError(
+                        f'Expected exactly one non-dimension column for unnamed DataArray, '
+                        f'but found {len(non_dim_cols)}: {non_dim_cols}'
+                    )
+                value_col = non_dim_cols[0]
                 df_long = df_long.rename(columns={value_col: 'value'})
             df_long['variable'] = data.name or 'data'
     else:
