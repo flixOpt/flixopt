@@ -8,115 +8,35 @@ import pandas as pd
 import flixopt as fx
 
 if __name__ == '__main__':
-    # Create datetime array starting from '2020-01-01' for the given time period (7.5 days)
-    timesteps = pd.date_range('2020-01-01', periods=9 * 20, freq='h')
+    # Create datetime array starting from '2020-01-01' for one week
+    timesteps = pd.date_range('2020-01-01', periods=24 * 7, freq='h')
     scenarios = pd.Index(['Base Case', 'High Demand'])
     periods = pd.Index([2020, 2021, 2022])
 
     # --- Create Time Series Data ---
-    # Realistic heat demand profile (kW) with daily patterns:
-    # - Peak demand: morning (6-9am) and evening (6-10pm)
-    # - Low demand: night (11pm-5am) and midday
-    # - Base Case: typical residential/commercial heating pattern
-    # - High Demand: 15-25% higher demand with different peak characteristics
-
-    # Create a realistic daily heating pattern (24 hours)
-    hours_in_day = np.arange(24)
-
-    # Base Case: Standard demand pattern
-    # Night (0-5): low demand ~20-25 kW
-    # Morning ramp (6-8): rising to ~90 kW
-    # Morning peak (9): ~110 kW
-    # Midday decline (10-16): ~60-70 kW
-    # Evening ramp (17-18): rising to ~100 kW
-    # Evening peak (19-21): ~120-130 kW
-    # Night decline (22-23): falling to ~40-30 kW
-    base_daily_pattern = np.array(
-        [
-            22,
-            20,
-            18,
-            18,
-            20,
-            25,  # 0-5: Night low
-            40,
-            70,
-            95,
-            110,
-            85,
-            65,  # 6-11: Morning peak
-            60,
-            58,
-            62,
-            68,
-            75,
-            88,  # 12-17: Midday and ramp
-            105,
-            125,
-            130,
-            122,
-            95,
-            35,  # 18-23: Evening peak and decline
-        ]
-    )
-
-    # High Demand: 15-25% higher with shifted peaks
-    high_daily_pattern = np.array(
-        [
-            28,
-            25,
-            22,
-            22,
-            24,
-            30,  # 0-5: Night low (slightly higher)
-            52,
-            88,
-            118,
-            135,
-            105,
-            80,  # 6-11: Morning peak (higher and sharper)
-            75,
-            72,
-            75,
-            82,
-            92,
-            108,  # 12-17: Midday (higher baseline)
-            128,
-            148,
-            155,
-            145,
-            115,
-            48,  # 18-23: Evening peak (significantly higher)
-        ]
-    )
-
-    # Repeat pattern for 7.5 days and add realistic variation
-    np.random.seed(42)  # For reproducibility
+    # Realistic daily patterns: morning/evening peaks, night/midday lows
+    np.random.seed(42)
     n_hours = len(timesteps)
 
-    base_demand = np.tile(base_daily_pattern, n_hours // 24 + 1)[:n_hours]
-    high_demand = np.tile(high_daily_pattern, n_hours // 24 + 1)[:n_hours]
-
-    # Add realistic noise/variation (±5% for base, ±7% for high demand)
-    base_demand = base_demand * (1 + np.random.uniform(-0.05, 0.05, n_hours))
-    high_demand = high_demand * (1 + np.random.uniform(-0.07, 0.07, n_hours))
-
-    heat_demand_per_h = pd.DataFrame(
-        {
-            'Base Case': base_demand,
-            'High Demand': high_demand,
-        },
-        index=timesteps,
+    # Heat demand: 24-hour patterns (kW) for Base Case and High Demand scenarios
+    base_daily_pattern = np.array(
+        [22, 20, 18, 18, 20, 25, 40, 70, 95, 110, 85, 65, 60, 58, 62, 68, 75, 88, 105, 125, 130, 122, 95, 35]
+    )
+    high_daily_pattern = np.array(
+        [28, 25, 22, 22, 24, 30, 52, 88, 118, 135, 105, 80, 75, 72, 75, 82, 92, 108, 128, 148, 155, 145, 115, 48]
     )
 
-    # Realistic power prices (€/kWh) varying by period and time of day
-    # Period differences: 2020: lower, 2021: medium, 2022: higher (reflecting market trends)
-    # Prices vary more realistically throughout the day
-    base_price_2020 = 0.075
-    base_price_2021 = 0.095
-    base_price_2022 = 0.135
+    # Tile and add variation
+    base_demand = np.tile(base_daily_pattern, n_hours // 24 + 1)[:n_hours] * (
+        1 + np.random.uniform(-0.05, 0.05, n_hours)
+    )
+    high_demand = np.tile(high_daily_pattern, n_hours // 24 + 1)[:n_hours] * (
+        1 + np.random.uniform(-0.07, 0.07, n_hours)
+    )
 
-    # Create hourly price modifiers based on typical electricity market patterns
+    heat_demand_per_h = pd.DataFrame({'Base Case': base_demand, 'High Demand': high_demand}, index=timesteps)
+
+    # Power prices: hourly factors (night low, peak high) and period escalation (2020-2022)
     hourly_price_factors = np.array(
         [
             0.70,
@@ -124,37 +44,37 @@ if __name__ == '__main__':
             0.62,
             0.60,
             0.62,
-            0.70,  # 0-5: Night (lowest prices)
+            0.70,
             0.95,
             1.15,
             1.30,
             1.25,
             1.10,
-            1.00,  # 6-11: Morning peak
+            1.00,
             0.95,
             0.90,
             0.88,
             0.92,
             1.00,
-            1.10,  # 12-17: Midday and ramp
+            1.10,
             1.25,
             1.40,
             1.35,
             1.20,
             0.95,
-            0.80,  # 18-23: Evening peak
+            0.80,
         ]
     )
+    period_base_prices = np.array([0.075, 0.095, 0.135])  # €/kWh for 2020, 2021, 2022
 
-    # Generate price series with realistic hourly and daily variation
-    price_series = np.zeros((n_hours, 3))  # 3 periods
-    for period_idx, base_price in enumerate([base_price_2020, base_price_2021, base_price_2022]):
-        hourly_prices = np.tile(hourly_price_factors, n_hours // 24 + 1)[:n_hours] * base_price
-        # Add small random variation (±3%)
-        hourly_prices *= 1 + np.random.uniform(-0.03, 0.03, n_hours)
-        price_series[:, period_idx] = hourly_prices
+    price_series = np.zeros((n_hours, 3))
+    for period_idx, base_price in enumerate(period_base_prices):
+        price_series[:, period_idx] = (
+            np.tile(hourly_price_factors, n_hours // 24 + 1)[:n_hours]
+            * base_price
+            * (1 + np.random.uniform(-0.03, 0.03, n_hours))
+        )
 
-    # Average prices per period for the flow (simplified representation)
     power_prices = price_series.mean(axis=0)
 
     # Scenario weights: probability of each scenario occurring
@@ -223,7 +143,6 @@ if __name__ == '__main__':
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1000),
         capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
         initial_charge_state=0,  # Initial storage state: empty
-        relative_maximum_charge_state=np.array([80, 70, 80, 80, 80, 80, 80, 80, 80] * 20) * 0.01,
         relative_maximum_final_charge_state=np.array([0.8, 0.5, 0.1]),
         eta_charge=0.95,  # Realistic charging efficiency (~95%)
         eta_discharge=0.98,  # Realistic discharging efficiency (~98%)
