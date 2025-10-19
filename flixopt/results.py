@@ -35,6 +35,93 @@ class _FlowSystemRestorationError(Exception):
     pass
 
 
+def resolve_colors(
+    data: xr.DataArray | xr.Dataset,
+    colors: plotting.ColorType | Literal['auto'],
+    color_mapper: plotting.XarrayColorMapper | None = None,
+    coord_dim: str = 'variable',
+    engine: plotting.PlottingEngine = 'plotly',
+) -> dict[str, str]:
+    """Resolve colors parameter to a color mapping dict.
+
+    This public utility function handles all color parameter types and applies the
+    color mapper intelligently based on the data structure. Can be used standalone
+    or as part of CalculationResults.
+
+    Args:
+        data: DataArray or Dataset to create colors for
+        colors: Color specification or 'auto'
+        color_mapper: Optional XarrayColorMapper to use. If None and colors='auto',
+            falls back to default colormap
+        coord_dim: Coordinate dimension to map colors to
+        engine: Plotting engine ('plotly' or 'matplotlib')
+
+    Returns:
+        Dictionary mapping coordinate values to colors
+
+    Examples:
+        With CalculationResults:
+
+        >>> resolved_colors = resolve_colors(data, 'auto', results.color_mapper)
+
+        Standalone usage:
+
+        >>> mapper = plotting.XarrayColorMapper()
+        >>> mapper.add_rule('Solar', 'oranges', 'prefix')
+        >>> resolved_colors = resolve_colors(data, 'auto', mapper)
+
+        Without mapper:
+
+        >>> resolved_colors = resolve_colors(data, 'viridis')
+    """
+    # If explicit dict provided, use it directly
+    if isinstance(colors, dict):
+        return colors
+
+    # If string or list, use ColorProcessor (traditional behavior)
+    if isinstance(colors, (str, list)):
+        if isinstance(data, xr.DataArray):
+            if coord_dim in data.coords:
+                labels = [str(v) for v in data.coords[coord_dim].values]
+            else:
+                labels = []
+        elif isinstance(data, xr.Dataset):
+            labels = [str(v) for v in data.data_vars]
+        else:
+            labels = []
+
+        if labels:
+            processor = plotting.ColorProcessor(engine=engine)
+            return processor.process_colors(colors, labels, return_mapping=True)
+
+    # If 'auto', use provided mapper if available, else fall back to default
+    if colors == 'auto':
+        if color_mapper is not None:
+            # Apply reordering if configured in mapper
+            if color_mapper.sort_within_groups:
+                # Check if coord_dim exists and reorder
+                if isinstance(data, xr.DataArray) and coord_dim in data.coords:
+                    data = color_mapper.reorder_coordinate(data, coord_dim)
+                elif isinstance(data, xr.Dataset):
+                    # For Dataset, we'll work with the variables directly
+                    pass
+
+            # Apply color mapper to get dict
+            if isinstance(data, xr.DataArray):
+                if coord_dim in data.coords:
+                    return color_mapper.apply_to_dataarray(data, coord_dim)
+            elif isinstance(data, xr.Dataset):
+                # For Dataset, map colors to variable names
+                labels = [str(v) for v in data.data_vars]
+                return color_mapper.create_color_map(labels)
+
+        # No mapper provided, fall back to default colormap
+        colors = 'viridis'
+
+    # Safe fallback
+    return {}
+
+
 class CalculationResults:
     """Comprehensive container for optimization calculation results and analysis tools.
 
@@ -1154,7 +1241,7 @@ class _NodeResults(_ElementResults):
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
         # Resolve colors to a dict (handles auto, mapper, etc.)
-        resolved_colors = self._calculation_results._resolve_colors(
+        resolved_colors = resolve_colors(
             ds, colors, color_mapper=self._calculation_results.color_mapper, coord_dim='variable', engine=engine
         )
 
@@ -1315,7 +1402,7 @@ class _NodeResults(_ElementResults):
 
         # Combine inputs and outputs to resolve colors for all variables
         combined_ds = xr.Dataset({**inputs.data_vars, **outputs.data_vars})
-        resolved_colors = self._calculation_results._resolve_colors(
+        resolved_colors = resolve_colors(
             combined_ds,
             colors,
             color_mapper=self._calculation_results.color_mapper,
@@ -1532,7 +1619,7 @@ class ComponentResults(_NodeResults):
         title = f'Operation Balance of {self.label}{suffix}'
 
         # Resolve colors to a dict (handles auto, mapper, etc.)
-        resolved_colors = self._calculation_results._resolve_colors(
+        resolved_colors = resolve_colors(
             ds, colors, color_mapper=self._calculation_results.color_mapper, coord_dim='variable', engine=engine
         )
 
