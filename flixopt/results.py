@@ -69,6 +69,10 @@ class CalculationResults:
         effects: Dictionary mapping effect names to EffectResults objects
         timesteps_extra: Extended time index including boundary conditions
         hours_per_timestep: Duration of each timestep for proper energy calculations
+        color_mapper: Optional XarrayColorMapper for automatic pattern-based coloring in plots.
+            When set, all plotting methods automatically use this mapper when colors='auto'
+            (the default). Use `create_color_mapper()` to create and configure one, or assign
+            an existing mapper directly. Set to None to disable automatic coloring.
 
     Examples:
         Load and analyze saved results:
@@ -105,6 +109,24 @@ class CalculationResults:
         avg_efficiency = (
             results.solution['HeatPump(Heat)|flow_rate'] / results.solution['HeatPump(Electricity)|flow_rate']
         ).mean()
+        ```
+
+        Configure automatic color mapping for plots:
+
+        ```python
+        # Create and configure a color mapper for pattern-based coloring
+        mapper = results.create_color_mapper()
+        mapper.add_rule('Solar', 'oranges', 'prefix')  # Solar components get orange shades
+        mapper.add_rule('Wind', 'blues', 'prefix')  # Wind components get blue shades
+        mapper.add_rule('Battery', 'greens', 'prefix')  # Battery components get green shades
+        mapper.add_rule('Gas', 'reds', 'prefix')  # Gas components get red shades
+
+        # All plots automatically use the mapper (colors='auto' is the default)
+        results['ElectricityBus'].plot_node_balance()  # Uses configured colors
+        results['Battery'].plot_charge_state()  # Also uses configured colors
+
+        # Override when needed
+        results['ElectricityBus'].plot_node_balance(colors='viridis')  # Ignores mapper
         ```
 
     Design Patterns:
