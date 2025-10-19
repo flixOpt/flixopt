@@ -50,8 +50,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
-
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
 - **Pattern-based color mapping with `XarrayColorMapper`**: New color mapping system for automatic, semantically meaningful plot colors based on component naming patterns
@@ -98,7 +97,43 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 ### 🚧 Known Issues
 
 ---
+
 Until here -->
+
+## [3.1.0] - 2025-10-19
+
+**Summary**: This release adds faceting and animation support for multidimensional plots and redesigns the documentation website. Plotting results across scenarios or periods is now significantly simpler (Plotly only).
+
+If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
+
+### ✨ Added
+- **Faceting and animation for multidimensional plots**: All plotting methods now support `facet_by` and `animate_by` parameters to create subplot grids and animations from multidimensional data (scenarios, periods, etc.). *Plotly only.*
+- **Flexible data selection with `select` parameter**: Select data using single values, lists, slices, or index arrays for precise control over what gets plotted
+- **Heatmap fill control**: New `fill` parameter in heatmap methods controls how missing values are filled after reshaping (`'ffill'` or `'bfill'`)
+- **Smart line styling for mixed variables**: Area plots now automatically style variables containing both positive and negative values with dashed lines, while stacking purely positive or negative variables
+
+### ♻️ Changed
+- **Breaking: Selection behavior**: Plotting methods no longer automatically select the first value for non-time dimensions. Use the `select` parameter for explicit selection of scenarios, periods, or other dimensions
+- **Better error messages**: Enhanced error messages when using Matplotlib with multidimensional data, with clearer guidance on dimension requirements and suggestions to use Plotly
+- **Improved examples**: Enhanced `scenario_example.py` with better demonstration of new features
+- **Robust validation**: Improved dimension validation in `plot_heatmap()` with clearer error messages
+
+### 🗑️ Deprecated
+- **`indexer` parameter**: Use the new `select` parameter instead. The `indexer` parameter will be removed in v4.0.0
+- **`heatmap_timeframes` and `heatmap_timesteps_per_frame` parameters**: Use the new `reshape_time=(timeframes, timesteps_per_frame)` parameter instead in heatmap plotting methods
+- **`color_map` parameter**: Use the new `colors` parameter instead in heatmap plotting methods
+
+### 🐛 Fixed
+- Fixed cryptic errors when working with empty buses by adding proper validation
+- Added early validation for non-existent periods when using linked periods with tuples
+
+### 📝 Documentation
+- **Redesigned documentation website** with custom css
+
+### 👷 Development
+- Renamed internal `_apply_indexer_to_data()` to `_apply_selection_to_data()` for consistency with new API naming
+
+---
 
 ## [3.0.3] - 2025-10-16
 **Summary**: Hotfixing new plotting parameter `style`. Continue to use `mode`.
