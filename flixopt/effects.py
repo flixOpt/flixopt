@@ -159,6 +159,8 @@ class Effect(Element):
 
     """
 
+    submodel: EffectModel
+
     def __init__(
         self,
         label: str,
@@ -453,12 +455,14 @@ class EffectCollection:
     Handling all Effects
     """
 
+    submodel: EffectCollectionModel | None
+
     def __init__(self, *effects: Effect):
         self._effects = {}
         self._standard_effect: Effect | None = None
         self._objective_effect: Effect | None = None
 
-        self.submodel: EffectCollectionModel | None = None
+        self.submodel = None
         self.add_effects(*effects)
 
     def create_model(self, model: FlowSystemModel) -> EffectCollectionModel:
