@@ -794,8 +794,31 @@ def resolve_colors(
             if isinstance(data, xr.DataArray) and coord_dim in data.coords:
                 data = color_mapper.reorder_coordinate(data, coord_dim)
             elif isinstance(data, xr.Dataset):
-                # For Dataset, we'll work with the variables directly
-                pass
+                # For Dataset, reorder the coordinate if it exists
+                if coord_dim in data.coords or coord_dim in data.dims:
+                    # Get coordinate values
+                    coord_values = data.coords[coord_dim].values
+                    categories = [str(val) for val in coord_values]
+
+                    # Group categories using the color mapper's logic
+                    groups = color_mapper._group_categories(categories)
+
+                    # Build new order: group by group, optionally sorted within each
+                    new_order = []
+                    for group_name in groups.keys():
+                        group_categories = groups[group_name]
+                        if color_mapper.sort_within_groups:
+                            group_categories = sorted(group_categories)
+                        new_order.extend(group_categories)
+
+                    # Convert back to original dtype if needed
+                    original_values = list(coord_values)
+                    # Map string back to original values
+                    str_to_original = {str(v): v for v in original_values}
+                    reordered_values = [str_to_original[cat] for cat in new_order]
+
+                    # Reindex the Dataset
+                    data = data.sel({coord_dim: reordered_values})
 
         # Apply color mapper to get dict
         if isinstance(data, xr.DataArray):
