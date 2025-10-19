@@ -56,11 +56,13 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 ### ✨ Added
 - **Pattern-based color mapping with `XarrayColorMapper`**: New color mapping system for automatic, semantically meaningful plot colors based on component naming patterns
   - `XarrayColorMapper` class provides pattern-based color assignment using prefix, suffix, contains, glob, and regex matching
-  - Automatic grouping of similar items with coordinated color families (blues, greens, oranges, etc.) from ColorBrewer sequential palettes
+  - **Discrete color support**: Directly assign single colors (hex, rgb, named) to patterns for consistent coloring across all matching items (e.g., all Solar components get exact same orange)
+  - Color families from Plotly sequential palettes: 14 single-hue families (blues, greens, reds, purples, oranges, teals, greys, pinks, peach, burg, sunsetdark, mint, emrld, darkmint)
   - Support for custom color families and explicit color overrides for special cases
   - Coordinate reordering for visual grouping in plots
   - `CalculationResults.create_color_mapper()` factory method for easy setup
   - `CalculationResults.color_mapper` attribute automatically applies colors to all plots when `colors='auto'` (the default)
+  - **`SegmentedCalculationResults.create_color_mapper()`**: ColorMapper support for segmented results, automatically propagates to all segments for consistent coloring
   - `resolve_colors()` utility function in `plotting` module for standalone color resolution
 - **Faceting and animation support for plots**: All plotting methods now support `facet_by` and `animate_by` parameters for creating subplot grids and animations with multidimensional data (scenarios, periods, etc.)
 - **New `select` parameter**: Added to all plotting methods for flexible data selection using single values, lists, slices, and index arrays
@@ -88,6 +90,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Updated `complex_example.py` and `complex_example_results.py` to demonstrate ColorMapper usage with discrete colors
 
 ### 👷 Development
 - Renamed `_apply_indexer_to_data()` to `_apply_selection_to_data()` for consistency with new API
