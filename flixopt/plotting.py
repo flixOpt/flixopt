@@ -641,8 +641,26 @@ class XarrayColorMapper:
 
         # Convert back to original dtype if needed
         original_values = list(coord_values)
-        # Map string back to original values
-        str_to_original = {str(v): v for v in original_values}
+
+        # Build mapping from string to list of original values to detect collisions
+        str_to_originals: dict[str, list] = {}
+        for v in original_values:
+            key = str(v)
+            if key not in str_to_originals:
+                str_to_originals[key] = []
+            str_to_originals[key].append(v)
+
+        # Check for collisions (multiple distinct values with same string representation)
+        collisions = {k: vals for k, vals in str_to_originals.items() if len(vals) > 1}
+        if collisions:
+            collision_details = ', '.join(f"'{k}' -> {vals}" for k, vals in collisions.items())
+            raise ValueError(
+                f"Coordinate '{coord_dim}' has ambiguous string representations. "
+                f'Multiple distinct values stringify to the same string: {collision_details}'
+            )
+
+        # No collisions - create simple mapping and reorder
+        str_to_original = {k: vals[0] for k, vals in str_to_originals.items()}
         reordered_values = [str_to_original[cat] for cat in new_order]
 
         # Reindex the DataArray
@@ -813,8 +831,26 @@ def resolve_colors(
 
                     # Convert back to original dtype if needed
                     original_values = list(coord_values)
-                    # Map string back to original values
-                    str_to_original = {str(v): v for v in original_values}
+
+                    # Build mapping from string to list of original values to detect collisions
+                    str_to_originals: dict[str, list] = {}
+                    for v in original_values:
+                        key = str(v)
+                        if key not in str_to_originals:
+                            str_to_originals[key] = []
+                        str_to_originals[key].append(v)
+
+                    # Check for collisions (multiple distinct values with same string representation)
+                    collisions = {k: vals for k, vals in str_to_originals.items() if len(vals) > 1}
+                    if collisions:
+                        collision_details = ', '.join(f"'{k}' -> {vals}" for k, vals in collisions.items())
+                        raise ValueError(
+                            f"Coordinate '{coord_dim}' has ambiguous string representations. "
+                            f'Multiple distinct values stringify to the same string: {collision_details}'
+                        )
+
+                    # No collisions - create simple mapping and reorder
+                    str_to_original = {k: vals[0] for k, vals in str_to_originals.items()}
                     reordered_values = [str_to_original[cat] for cat in new_order]
 
                     # Reindex the Dataset
