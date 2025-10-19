@@ -343,11 +343,18 @@ class XarrayColorMapper:
 
     Key Features:
         - Pattern-based color assignment (prefix, suffix, contains, glob, regex)
-        - ColorBrewer sequential palettes for grouped coloring (cycles through shades)
+        - Plotly sequential color palettes for grouped coloring (cycles through shades)
         - Discrete color support for exact color matching across all items
         - Override support for special cases
         - Coordinate reordering for visual grouping in plots
         - Full type hints and comprehensive documentation
+
+    Available Color Families (14 single-hue palettes):
+        Cool colors: blues, greens, teals, purples, mint, emrld, darkmint
+        Warm colors: reds, oranges, peach, pinks, burg, sunsetdark
+        Neutral:     greys
+
+        See: https://plotly.com/python/builtin-colorscales/
 
     Example Usage:
         Using color families (items cycle through shades):
@@ -389,11 +396,17 @@ class XarrayColorMapper:
         'teals': px.colors.sequential.Teal[2:7],
         'greys': px.colors.sequential.Greys[2:7],
         'pinks': px.colors.sequential.Pinkyl[2:7],
+        'peach': px.colors.sequential.Peach[2:7],
+        'burg': px.colors.sequential.Burg[2:7],
+        'sunsetdark': px.colors.sequential.Sunsetdark[2:7],
+        'mint': px.colors.sequential.Mint[2:7],
+        'emrld': px.colors.sequential.Emrld[2:7],
+        'darkmint': px.colors.sequential.Darkmint[2:7],
     }
 
     def __init__(self, color_families: dict[str, list[str]] | None = None, sort_within_groups: bool = True) -> None:
         """
-        Initialize with ColorBrewer families.
+        Initialize with Plotly sequential color families.
 
         Parameters:
         -----------
