@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Literal
 import linopy
 import numpy as np
 import pandas as pd
-import plotly
 import xarray as xr
 import yaml
 
@@ -20,6 +19,7 @@ from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
+    import plotly
     import pyvis
 
     from .calculation import Calculation, SegmentedCalculation
@@ -195,8 +195,8 @@ class CalculationResults:
         if 'flow_system' in kwargs and flow_system_data is None:
             flow_system_data = kwargs.pop('flow_system')
             warnings.warn(
-                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead."
-                "Acess is now by '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
+                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead. "
+                "Access is now via '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -687,68 +687,117 @@ class CalculationResults:
 
     def plot_heatmap(
         self,
-        variable_name: str,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-        color_map: str = 'portland',
+        variable_name: str | list[str],
         save: bool | pathlib.Path = False,
         show: bool = True,
+        colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
+        select: dict[FlowSystemDimensions, Any] | None = None,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
+        facet_cols: int = 3,
+        reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+        | Literal['auto']
+        | None = 'auto',
+        fill: Literal['ffill', 'bfill'] | None = 'ffill',
+        # Deprecated parameters (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
+        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
+        color_map: str | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
-        Plots a heatmap of the solution of a variable.
+        Plots a heatmap visualization of a variable using imshow or time-based reshaping.
+
+        Supports multiple visualization features that can be combined:
+        - **Multi-variable**: Plot multiple variables on a single heatmap (creates 'variable' dimension)
+        - **Time reshaping**: Converts 'time' dimension into 2D (e.g., hours vs days)
+        - **Faceting**: Creates subplots for different dimension values
+        - **Animation**: Animates through dimension values (Plotly only)
 
         Args:
-            variable_name: The name of the variable to plot.
-            heatmap_timeframes: The timeframes to use for the heatmap.
-            heatmap_timesteps_per_frame: The timesteps per frame to use for the heatmap.
-            color_map: The color map to use for the heatmap.
+            variable_name: The name of the variable to plot, or a list of variable names.
+                When a list is provided, variables are combined into a single DataArray
+                with a new 'variable' dimension.
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
+            colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
+                Applied BEFORE faceting/animation/reshaping.
+            facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+                or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
+            animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
+                dimension values. Only one dimension can be animated. Ignored if not found.
+            facet_cols: Number of columns in the facet grid layout (default: 3).
+            reshape_time: Time reshaping configuration (default: 'auto'):
+                - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
+                - Tuple: Explicit reshaping, e.g. ('D', 'h') for days vs hours,
+                         ('MS', 'D') for months vs days, ('W', 'h') for weeks vs hours
+                - None: Disable auto-reshaping (will error if only 1D time data)
+                Supported timeframes: 'YS', 'MS', 'W', 'D', 'h', '15min', 'min'
+            fill: Method to fill missing values after reshape: 'ffill' (forward fill) or 'bfill' (backward fill).
+                Default is 'ffill'.
 
         Examples:
-            Basic usage (uses first scenario, first period, all time):
+            Direct imshow mode (default):
 
-            >>> results.plot_heatmap('Battery|charge_state')
+            >>> results.plot_heatmap('Battery|charge_state', select={'scenario': 'base'})
 
-            Select specific scenario and period:
+            Facet by scenario:
 
-            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', indexer={'scenario': 'base', 'period': 2024})
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', facet_by='scenario', facet_cols=2)
 
-            Time filtering (summer months only):
+            Animate by period:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, animate_by='period')
+
+            Time reshape mode - daily patterns:
+
+            >>> results.plot_heatmap('Boiler(Qth)|flow_rate', select={'scenario': 'base'}, reshape_time=('D', 'h'))
+
+            Combined: time reshaping with faceting and animation:
 
             >>> results.plot_heatmap(
-            ...     'Boiler(Qth)|flow_rate',
-            ...     indexer={
-            ...         'scenario': 'base',
-            ...         'time': results.solution.time[results.solution.time.dt.month.isin([6, 7, 8])],
-            ...     },
+            ...     'Boiler(Qth)|flow_rate', facet_by='scenario', animate_by='period', reshape_time=('D', 'h')
             ... )
 
-            Save to specific location:
+            Multi-variable heatmap (variables as one axis):
 
             >>> results.plot_heatmap(
-            ...     'Boiler(Qth)|flow_rate', indexer={'scenario': 'base'}, save='path/to/my_heatmap.html'
+            ...     ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate', 'HeatStorage|charge_state'],
+            ...     select={'scenario': 'base', 'period': 1},
+            ...     reshape_time=None,
+            ... )
+
+            Multi-variable with time reshaping:
+
+            >>> results.plot_heatmap(
+            ...     ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate'],
+            ...     facet_by='scenario',
+            ...     animate_by='period',
+            ...     reshape_time=('D', 'h'),
             ... )
         """
-        dataarray = self.solution[variable_name]
-
+        # Delegate to module-level plot_heatmap function
         return plot_heatmap(
-            dataarray=dataarray,
-            name=variable_name,
+            data=self.solution[variable_name],
+            name=variable_name if isinstance(variable_name, str) else None,
             folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
+            colors=colors,
             save=save,
             show=show,
             engine=engine,
+            select=select,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            reshape_time=reshape_time,
+            fill=fill,
             indexer=indexer,
+            heatmap_timeframes=heatmap_timeframes,
+            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
+            color_map=color_map,
         )
 
     def plot_network(
@@ -920,30 +969,107 @@ class _NodeResults(_ElementResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
+        select: dict[FlowSystemDimensions, Any] | None = None,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
         drop_suffix: bool = True,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
+        facet_cols: int = 3,
+        # Deprecated parameter (kept for backwards compatibility)
+        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
-        Plots the node balance of the Component or Bus.
+        Plots the node balance of the Component or Bus with optional faceting and animation.
+
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension (except time).
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports:
+                - Single values: {'scenario': 'base', 'period': 2024}
+                - Multiple values: {'scenario': ['base', 'high', 'renewable']}
+                - Slices: {'time': slice('2024-01', '2024-06')}
+                - Index arrays: {'time': time_array}
+                Note: Applied BEFORE faceting/animation.
             unit_type: The unit type to use for the dataset. Can be 'flow_rate' or 'flow_hours'.
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             drop_suffix: Whether to drop the suffix from the variable names.
-        """
-        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix, indexer=indexer)
+            facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+                or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
+                Example: 'scenario' creates one subplot per scenario.
+                Example: ['scenario', 'period'] creates a grid of subplots for each scenario-period combination.
+            animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
+                dimension values. Only one dimension can be animated. Ignored if not found.
+            facet_cols: Number of columns in the facet grid layout (default: 3).
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
+        Examples:
+            Basic plot (current behavior):
+
+            >>> results['Boiler'].plot_node_balance()
+
+            Facet by scenario:
+
+            >>> results['Boiler'].plot_node_balance(facet_by='scenario', facet_cols=2)
+
+            Animate by period:
+
+            >>> results['Boiler'].plot_node_balance(animate_by='period')
+
+            Facet by scenario AND animate by period:
+
+            >>> results['Boiler'].plot_node_balance(facet_by='scenario', animate_by='period')
+
+            Select single scenario, then facet by period:
+
+            >>> results['Boiler'].plot_node_balance(select={'scenario': 'base'}, facet_by='period')
+
+            Select multiple scenarios and facet by them:
+
+            >>> results['Boiler'].plot_node_balance(
+            ...     select={'scenario': ['base', 'high', 'renewable']}, facet_by='scenario'
+            ... )
+
+            Time range selection (summer months only):
+
+            >>> results['Boiler'].plot_node_balance(select={'time': slice('2024-06', '2024-08')}, facet_by='scenario')
+        """
+        # Handle deprecated indexer parameter
+        if indexer is not None:
+            # Check for conflict with new parameter
+            if select is not None:
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+                )
+
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            select = indexer
+
+        if engine not in {'plotly', 'matplotlib'}:
+            raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
+
+        # Don't pass select/indexer to node_balance - we'll apply it afterwards
+        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
+
+        ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
+
+        # Matplotlib requires only 'time' dimension; check for extras after selection
+        if engine == 'matplotlib':
+            extra_dims = [d for d in ds.dims if d != 'time']
+            if extra_dims:
+                raise ValueError(
+                    f'Matplotlib engine only supports a single time axis, but found extra dimensions: {extra_dims}. '
+                    f'Please use select={{...}} to reduce dimensions or switch to engine="plotly" for faceting/animation.'
+                )
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = (
@@ -952,13 +1078,16 @@ class _NodeResults(_ElementResults):
 
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
-                ds.to_dataframe(),
+                ds,
+                facet_by=facet_by,
+                animate_by=animate_by,
                 colors=colors,
                 mode=mode,
                 title=title,
+                facet_cols=facet_cols,
             )
             default_filetype = '.html'
-        elif engine == 'matplotlib':
+        else:
             figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
@@ -966,8 +1095,6 @@ class _NodeResults(_ElementResults):
                 title=title,
             )
             default_filetype = '.png'
-        else:
-            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
         return plotting.export_figure(
             figure_like=figure_like,
@@ -986,9 +1113,19 @@ class _NodeResults(_ElementResults):
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
+        select: dict[FlowSystemDimensions, Any] | None = None,
+        # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
+
+        Note:
+            Pie charts require scalar data (no extra dimensions beyond time).
+            If your data has dimensions like 'scenario' or 'period', either:
+
+            - Use `select` to choose specific values: `select={'scenario': 'base', 'period': 2024}`
+            - Let auto-selection choose the first value (a warning will be logged)
+
         Args:
             lower_percentage_group: Percentage threshold for "Others" grouping.
             colors: Color scheme. Also see plotly.
@@ -996,10 +1133,35 @@ class _NodeResults(_ElementResults):
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine ('plotly' or 'matplotlib').
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
+                Use this to select specific scenario/period before creating the pie chart.
+
+        Examples:
+            Basic usage (auto-selects first scenario/period if present):
+
+            >>> results['Bus'].plot_node_balance_pie()
+
+            Explicitly select a scenario and period:
+
+            >>> results['Bus'].plot_node_balance_pie(select={'scenario': 'high_demand', 'period': 2030})
         """
+        # Handle deprecated indexer parameter
+        if indexer is not None:
+            # Check for conflict with new parameter
+            if select is not None:
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+                )
+
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            select = indexer
+
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
@@ -1015,14 +1177,45 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_indexer_to_data(inputs, indexer, drop=True)
-        outputs, suffix_parts = _apply_indexer_to_data(outputs, indexer, drop=True)
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        inputs, suffix_parts = _apply_selection_to_data(inputs, select=select, drop=True)
+        outputs, suffix_parts = _apply_selection_to_data(outputs, select=select, drop=True)
 
-        title = f'{self.label} (total flow hours){suffix}'
-
+        # Sum over time dimension
         inputs = inputs.sum('time')
         outputs = outputs.sum('time')
+
+        # Auto-select first value for any remaining dimensions (scenario, period, etc.)
+        # Pie charts need scalar data, so we automatically reduce extra dimensions
+        extra_dims_inputs = [dim for dim in inputs.dims if dim != 'time']
+        extra_dims_outputs = [dim for dim in outputs.dims if dim != 'time']
+        extra_dims = list(set(extra_dims_inputs + extra_dims_outputs))
+
+        if extra_dims:
+            auto_select = {}
+            for dim in extra_dims:
+                # Get first value of this dimension
+                if dim in inputs.coords:
+                    first_val = inputs.coords[dim].values[0]
+                elif dim in outputs.coords:
+                    first_val = outputs.coords[dim].values[0]
+                else:
+                    continue
+                auto_select[dim] = first_val
+                logger.info(
+                    f'Pie chart auto-selected {dim}={first_val} (first value). '
+                    f'Use select={{"{dim}": value}} to choose a different value.'
+                )
+
+            # Apply auto-selection
+            inputs = inputs.sel(auto_select)
+            outputs = outputs.sel(auto_select)
+
+            # Update suffix with auto-selected values
+            auto_suffix_parts = [f'{dim}={val}' for dim, val in auto_select.items()]
+            suffix_parts.extend(auto_suffix_parts)
+
+        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        title = f'{self.label} (total flow hours){suffix}'
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -1068,6 +1261,8 @@ class _NodeResults(_ElementResults):
         with_last_timestep: bool = False,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
+        select: dict[FlowSystemDimensions, Any] | None = None,
+        # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> xr.Dataset:
         """
@@ -1081,10 +1276,25 @@ class _NodeResults(_ElementResults):
                 - 'flow_rate': Returns the flow_rates of the Node.
                 - 'flow_hours': Returns the flow_hours of the Node. [flow_hours(t) = flow_rate(t) * dt(t)]. Renames suffixes to |flow_hours.
             drop_suffix: Whether to drop the suffix from the variable names.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
+        # Handle deprecated indexer parameter
+        if indexer is not None:
+            # Check for conflict with new parameter
+            if select is not None:
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+                )
+
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            select = indexer
+
         ds = self.solution[self.inputs + self.outputs]
 
         ds = sanitize_dataset(
@@ -1103,7 +1313,7 @@ class _NodeResults(_ElementResults):
             drop_suffix='|' if drop_suffix else None,
         )
 
-        ds, _ = _apply_indexer_to_data(ds, indexer, drop=True)
+        ds, _ = _apply_selection_to_data(ds, select=select, drop=True)
 
         if unit_type == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
@@ -1140,10 +1350,15 @@ class ComponentResults(_NodeResults):
         show: bool = True,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
-        mode: Literal['area', 'stacked_bar', 'line'] = 'stacked_bar',
+        mode: Literal['area', 'stacked_bar', 'line'] = 'area',
+        select: dict[FlowSystemDimensions, Any] | None = None,
+        facet_by: str | list[str] | None = 'scenario',
+        animate_by: str | None = 'period',
+        facet_cols: int = 3,
+        # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> plotly.graph_objs.Figure:
-        """Plot storage charge state over time, combined with the node balance.
+        """Plot storage charge state over time, combined with the node balance with optional faceting and animation.
 
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
@@ -1151,42 +1366,120 @@ class ComponentResults(_NodeResults):
             colors: Color scheme. Also see plotly.
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
-            indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-                 If None, uses first value for each dimension.
-                 If empty dict {}, uses all values.
+            select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
+                Applied BEFORE faceting/animation.
+            facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+                or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
+            animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
+                dimension values. Only one dimension can be animated. Ignored if not found.
+            facet_cols: Number of columns in the facet grid layout (default: 3).
 
         Raises:
             ValueError: If component is not a storage.
+
+        Examples:
+            Basic plot:
+
+            >>> results['Storage'].plot_charge_state()
+
+            Facet by scenario:
+
+            >>> results['Storage'].plot_charge_state(facet_by='scenario', facet_cols=2)
+
+            Animate by period:
+
+            >>> results['Storage'].plot_charge_state(animate_by='period')
+
+            Facet by scenario AND animate by period:
+
+            >>> results['Storage'].plot_charge_state(facet_by='scenario', animate_by='period')
         """
+        # Handle deprecated indexer parameter
+        if indexer is not None:
+            # Check for conflict with new parameter
+            if select is not None:
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+                )
+
+            import warnings
+
+            warnings.warn(
+                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            select = indexer
+
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
-        ds = self.node_balance(with_last_timestep=True, indexer=indexer)
-        charge_state = self.charge_state
+        # Get node balance and charge state
+        ds = self.node_balance(with_last_timestep=True)
+        charge_state_da = self.charge_state
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, indexer, drop=True)
-        charge_state, suffix_parts = _apply_indexer_to_data(charge_state, indexer, drop=True)
+        # Apply select filtering
+        ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
+        charge_state_da, _ = _apply_selection_to_data(charge_state_da, select=select, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'Operation Balance of {self.label}{suffix}'
 
         if engine == 'plotly':
-            fig = plotting.with_plotly(
-                ds.to_dataframe(),
+            # Plot flows (node balance) with the specified mode
+            figure_like = plotting.with_plotly(
+                ds,
+                facet_by=facet_by,
+                animate_by=animate_by,
                 colors=colors,
                 mode=mode,
                 title=title,
+                facet_cols=facet_cols,
             )
 
-            # TODO: Use colors for charge state?
+            # Create a dataset with just charge_state and plot it as lines
+            # This ensures proper handling of facets and animation
+            charge_state_ds = charge_state_da.to_dataset(name=self._charge_state)
 
-            charge_state = charge_state.to_dataframe()
-            fig.add_trace(
-                plotly.graph_objs.Scatter(
-                    x=charge_state.index, y=charge_state.values.flatten(), mode='lines', name=self._charge_state
-                )
+            # Plot charge_state with mode='line' to get Scatter traces
+            charge_state_fig = plotting.with_plotly(
+                charge_state_ds,
+                facet_by=facet_by,
+                animate_by=animate_by,
+                colors=colors,
+                mode='line',  # Always line for charge_state
+                title='',  # No title needed for this temp figure
+                facet_cols=facet_cols,
             )
+
+            # Add charge_state traces to the main figure
+            # This preserves subplot assignments and animation frames
+            for trace in charge_state_fig.data:
+                trace.line.width = 2  # Make charge_state line more prominent
+                trace.line.shape = 'linear'  # Smooth line for charge state (not stepped like flows)
+                figure_like.add_trace(trace)
+
+            # Also add traces from animation frames if they exist
+            # Both figures use the same animate_by parameter, so they should have matching frames
+            if hasattr(charge_state_fig, 'frames') and charge_state_fig.frames:
+                # Add charge_state traces to each frame
+                for i, frame in enumerate(charge_state_fig.frames):
+                    if i < len(figure_like.frames):
+                        for trace in frame.data:
+                            trace.line.width = 2
+                            trace.line.shape = 'linear'  # Smooth line for charge state
+                            figure_like.frames[i].data = figure_like.frames[i].data + (trace,)
+
+            default_filetype = '.html'
         elif engine == 'matplotlib':
+            # Matplotlib requires only 'time' dimension; check for extras after selection
+            extra_dims = [d for d in ds.dims if d != 'time']
+            if extra_dims:
+                raise ValueError(
+                    f'Matplotlib engine only supports a single time axis, but found extra dimensions: {extra_dims}. '
+                    f'Please use select={{...}} to reduce dimensions or switch to engine="plotly" for faceting/animation.'
+                )
+            # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
                 ds.to_dataframe(),
                 colors=colors,
@@ -1194,15 +1487,25 @@ class ComponentResults(_NodeResults):
                 title=title,
             )
 
-            charge_state = charge_state.to_dataframe()
-            ax.plot(charge_state.index, charge_state.values.flatten(), label=self._charge_state)
+            # Add charge_state as a line overlay
+            charge_state_df = charge_state_da.to_dataframe()
+            ax.plot(
+                charge_state_df.index,
+                charge_state_df.values.flatten(),
+                label=self._charge_state,
+                linewidth=2,
+                color='black',
+            )
+            ax.legend()
             fig.tight_layout()
-            fig = fig, ax
+
+            figure_like = fig, ax
+            default_filetype = '.png'
 
         return plotting.export_figure(
-            fig,
+            figure_like=figure_like,
             default_path=self._calculation_results.folder / title,
-            default_filetype='.html',
+            default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
@@ -1476,37 +1779,95 @@ class SegmentedCalculationResults:
     def plot_heatmap(
         self,
         variable_name: str,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-        color_map: str = 'portland',
+        reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+        | Literal['auto']
+        | None = 'auto',
+        colors: str = 'portland',
         save: bool | pathlib.Path = False,
         show: bool = True,
         engine: plotting.PlottingEngine = 'plotly',
+        facet_by: str | list[str] | None = None,
+        animate_by: str | None = None,
+        facet_cols: int = 3,
+        fill: Literal['ffill', 'bfill'] | None = 'ffill',
+        # Deprecated parameters (kept for backwards compatibility)
+        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
+        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
+        color_map: str | None = None,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
         Args:
             variable_name: Variable to plot.
-            heatmap_timeframes: Time aggregation level.
-            heatmap_timesteps_per_frame: Timesteps per frame.
-            color_map: Color scheme. Also see plotly.
+            reshape_time: Time reshaping configuration (default: 'auto'):
+                - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
+                - Tuple like ('D', 'h'): Explicit reshaping (days vs hours)
+                - None: Disable time reshaping
+            colors: Color scheme. See plotting.ColorType for options.
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine.
+            facet_by: Dimension(s) to create facets (subplots) for.
+            animate_by: Dimension to animate over (Plotly only).
+            facet_cols: Number of columns in the facet grid layout.
+            fill: Method to fill missing values: 'ffill' or 'bfill'.
+            heatmap_timeframes: (Deprecated) Use reshape_time instead.
+            heatmap_timesteps_per_frame: (Deprecated) Use reshape_time instead.
+            color_map: (Deprecated) Use colors instead.
 
         Returns:
             Figure object.
         """
+        # Handle deprecated parameters
+        if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
+            # Check for conflict with new parameter
+            if reshape_time != 'auto':  # Check if user explicitly set reshape_time
+                raise ValueError(
+                    "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
+                    "and new parameter 'reshape_time'. Use only 'reshape_time'."
+                )
+
+            import warnings
+
+            warnings.warn(
+                "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
+                "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # Override reshape_time if old parameters provided
+            if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
+                reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
+
+        if color_map is not None:
+            # Check for conflict with new parameter
+            if colors != 'portland':  # Check if user explicitly set colors
+                raise ValueError(
+                    "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
+                )
+
+            import warnings
+
+            warnings.warn(
+                "The 'color_map' parameter is deprecated. Use 'colors' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            colors = color_map
+
         return plot_heatmap(
-            dataarray=self.solution_without_overlap(variable_name),
+            data=self.solution_without_overlap(variable_name),
             name=variable_name,
             folder=self.folder,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
+            reshape_time=reshape_time,
+            colors=colors,
             save=save,
             show=show,
             engine=engine,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            fill=fill,
         )
 
     def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
@@ -1536,59 +1897,212 @@ class SegmentedCalculationResults:
 
 
 def plot_heatmap(
-    dataarray: xr.DataArray,
-    name: str,
-    folder: pathlib.Path,
-    heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] = 'D',
-    heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] = 'h',
-    color_map: str = 'portland',
+    data: xr.DataArray | xr.Dataset,
+    name: str | None = None,
+    folder: pathlib.Path | None = None,
+    colors: plotting.ColorType = 'viridis',
     save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
+    select: dict[str, Any] | None = None,
+    facet_by: str | list[str] | None = None,
+    animate_by: str | None = None,
+    facet_cols: int = 3,
+    reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
+    | Literal['auto']
+    | None = 'auto',
+    fill: Literal['ffill', 'bfill'] | None = 'ffill',
+    # Deprecated parameters (kept for backwards compatibility)
     indexer: dict[str, Any] | None = None,
+    heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
+    heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
+    color_map: str | None = None,
 ):
-    """Plot heatmap of time series data.
+    """Plot heatmap visualization with support for multi-variable, faceting, and animation.
+
+    This function provides a standalone interface to the heatmap plotting capabilities,
+    supporting the same modern features as CalculationResults.plot_heatmap().
 
     Args:
-        dataarray: Data to plot.
-        name: Variable name for title.
-        folder: Save folder.
-        heatmap_timeframes: Time aggregation level.
-        heatmap_timesteps_per_frame: Timesteps per frame.
-        color_map: Color scheme. Also see plotly.
-        save: Whether to save plot.
-        show: Whether to display plot.
-        engine: Plotting engine.
-        indexer: Optional selection dict, e.g., {'scenario': 'base', 'period': 2024}.
-             If None, uses first value for each dimension.
-             If empty dict {}, uses all values.
+        data: Data to plot. Can be a single DataArray or an xarray Dataset.
+            When a Dataset is provided, all data variables are combined along a new 'variable' dimension.
+        name: Optional name for the title. If not provided, uses the DataArray name or
+            generates a default title for Datasets.
+        folder: Save folder for the plot. Defaults to current directory if not provided.
+        colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
+        save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
+        show: Whether to show the plot or not.
+        engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
+        select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
+        facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
+            or list of dimensions. Each unique value combination creates a subplot.
+        animate_by: Dimension to animate over (Plotly only). Creates animation frames.
+        facet_cols: Number of columns in the facet grid layout (default: 3).
+        reshape_time: Time reshaping configuration (default: 'auto'):
+            - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
+            - Tuple: Explicit reshaping, e.g. ('D', 'h') for days vs hours
+            - None: Disable auto-reshaping
+        fill: Method to fill missing values after reshape: 'ffill' (forward fill) or 'bfill' (backward fill).
+            Default is 'ffill'.
+
+    Examples:
+        Single DataArray with time reshaping:
+
+        >>> plot_heatmap(data, name='Temperature', folder=Path('.'), reshape_time=('D', 'h'))
+
+        Dataset with multiple variables (facet by variable):
+
+        >>> dataset = xr.Dataset({'Boiler': data1, 'CHP': data2, 'Storage': data3})
+        >>> plot_heatmap(
+        ...     dataset,
+        ...     folder=Path('.'),
+        ...     facet_by='variable',
+        ...     reshape_time=('D', 'h'),
+        ... )
+
+        Dataset with animation by variable:
+
+        >>> plot_heatmap(dataset, animate_by='variable', reshape_time=('D', 'h'))
     """
-    dataarray, suffix_parts = _apply_indexer_to_data(dataarray, indexer, drop=True)
+    # Handle deprecated heatmap time parameters
+    if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
+        # Check for conflict with new parameter
+        if reshape_time != 'auto':  # User explicitly set reshape_time
+            raise ValueError(
+                "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
+                "and new parameter 'reshape_time'. Use only 'reshape_time'."
+            )
+
+        import warnings
+
+        warnings.warn(
+            "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
+            "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # Override reshape_time if both old parameters provided
+        if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
+            reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
+
+    # Handle deprecated color_map parameter
+    if color_map is not None:
+        # Check for conflict with new parameter
+        if colors != 'viridis':  # User explicitly set colors
+            raise ValueError(
+                "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
+            )
+
+        import warnings
+
+        warnings.warn(
+            "The 'color_map' parameter is deprecated. Use 'colors' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        colors = color_map
+
+    # Handle deprecated indexer parameter
+    if indexer is not None:
+        # Check for conflict with new parameter
+        if select is not None:  # User explicitly set select
+            raise ValueError(
+                "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
+            )
+
+        import warnings
+
+        warnings.warn(
+            "The 'indexer' parameter is deprecated. Use 'select' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        select = indexer
+
+    # Convert Dataset to DataArray with 'variable' dimension
+    if isinstance(data, xr.Dataset):
+        # Extract all data variables from the Dataset
+        variable_names = list(data.data_vars)
+        dataarrays = [data[var] for var in variable_names]
+
+        # Combine into single DataArray with 'variable' dimension
+        data = xr.concat(dataarrays, dim='variable')
+        data = data.assign_coords(variable=variable_names)
+
+        # Use Dataset variable names for title if name not provided
+        if name is None:
+            title_name = f'Heatmap of {len(variable_names)} variables'
+        else:
+            title_name = name
+    else:
+        # Single DataArray
+        if name is None:
+            title_name = data.name if data.name else 'Heatmap'
+        else:
+            title_name = name
+
+    # Apply select filtering
+    data, suffix_parts = _apply_selection_to_data(data, select=select, drop=True)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-    name = name if not suffix_parts else name + suffix
 
-    heatmap_data = plotting.heat_map_data_from_df(
-        dataarray.to_dataframe(name), heatmap_timeframes, heatmap_timesteps_per_frame, 'ffill'
-    )
+    # Matplotlib heatmaps require at most 2D data
+    # Time dimension will be reshaped to 2D (timeframe × timestep), so can't have other dims alongside it
+    if engine == 'matplotlib':
+        dims = list(data.dims)
 
-    xlabel, ylabel = f'timeframe [{heatmap_timeframes}]', f'timesteps [{heatmap_timesteps_per_frame}]'
+        # If 'time' dimension exists and will be reshaped, we can't have any other dimensions
+        if 'time' in dims and len(dims) > 1 and reshape_time is not None:
+            extra_dims = [d for d in dims if d != 'time']
+            raise ValueError(
+                f'Matplotlib heatmaps with time reshaping cannot have additional dimensions. '
+                f'Found extra dimensions: {extra_dims}. '
+                f'Use select={{...}} to reduce to time only, use "reshape_time=None" or switch to engine="plotly" or use for multi-dimensional support.'
+            )
+        # If no 'time' dimension (already reshaped or different data), allow at most 2 dimensions
+        elif 'time' not in dims and len(dims) > 2:
+            raise ValueError(
+                f'Matplotlib heatmaps support at most 2 dimensions, but data has {len(dims)}: {dims}. '
+                f'Use select={{...}} to reduce dimensions or switch to engine="plotly".'
+            )
 
+    # Build title
+    title = f'{title_name}{suffix}'
+    if isinstance(reshape_time, tuple):
+        timeframes, timesteps_per_frame = reshape_time
+        title += f' ({timeframes} vs {timesteps_per_frame})'
+
+    # Plot with appropriate engine
     if engine == 'plotly':
-        figure_like = plotting.heat_map_plotly(
-            heatmap_data, title=name, color_map=color_map, xlabel=xlabel, ylabel=ylabel
+        figure_like = plotting.heatmap_with_plotly(
+            data=data,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            colors=colors,
+            title=title,
+            facet_cols=facet_cols,
+            reshape_time=reshape_time,
+            fill=fill,
         )
         default_filetype = '.html'
     elif engine == 'matplotlib':
-        figure_like = plotting.heat_map_matplotlib(
-            heatmap_data, title=name, color_map=color_map, xlabel=xlabel, ylabel=ylabel
+        figure_like = plotting.heatmap_with_matplotlib(
+            data=data,
+            colors=colors,
+            title=title,
+            reshape_time=reshape_time,
+            fill=fill,
         )
         default_filetype = '.png'
     else:
         raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
 
+    # Set default folder if not provided
+    if folder is None:
+        folder = pathlib.Path('.')
+
     return plotting.export_figure(
         figure_like=figure_like,
-        default_path=folder / f'{name} ({heatmap_timeframes}-{heatmap_timesteps_per_frame})',
+        default_path=folder / title,
         default_filetype=default_filetype,
         user_path=None if isinstance(save, bool) else pathlib.Path(save),
         show=show,
@@ -1790,8 +2304,13 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
         if coord_name not in array.coords:
             raise AttributeError(f"Missing required coordinate '{coord_name}'")
 
-        # Convert single value to list
-        val_list = [coord_values] if isinstance(coord_values, str) else coord_values
+        # Normalize to list for sequence-like inputs (excluding strings)
+        if isinstance(coord_values, str):
+            val_list = [coord_values]
+        elif isinstance(coord_values, (list, tuple, np.ndarray, pd.Index)):
+            val_list = list(coord_values)
+        else:
+            val_list = [coord_values]
 
         # Verify coord_values exist
         available = set(array[coord_name].values)
@@ -1801,7 +2320,7 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
 
         # Apply filter
         return array.where(
-            array[coord_name].isin(val_list) if isinstance(coord_values, list) else array[coord_name] == coord_values,
+            array[coord_name].isin(val_list) if len(val_list) > 1 else array[coord_name] == val_list[0],
             drop=True,
         )
 
@@ -1820,36 +2339,26 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
     return da
 
 
-def _apply_indexer_to_data(
-    data: xr.DataArray | xr.Dataset, indexer: dict[str, Any] | None = None, drop=False
+def _apply_selection_to_data(
+    data: xr.DataArray | xr.Dataset,
+    select: dict[str, Any] | None = None,
+    drop=False,
 ) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
-    Apply indexer selection or auto-select first values for non-time dimensions.
+    Apply selection to data.
 
     Args:
         data: xarray Dataset or DataArray
-        indexer: Optional selection dict
-            If None, uses first value for each dimension (except time).
-            If empty dict {}, uses all values.
+        select: Optional selection dict
+        drop: Whether to drop dimensions after selection
 
     Returns:
         Tuple of (selected_data, selection_string)
     """
     selection_string = []
 
-    if indexer is not None:
-        # User provided indexer
-        data = data.sel(indexer, drop=drop)
-        selection_string.extend(f'{v}[{k}]' for k, v in indexer.items())
-    else:
-        # Auto-select first value for each dimension except 'time'
-        selection = {}
-        for dim in data.dims:
-            if dim != 'time' and dim in data.coords:
-                first_value = data.coords[dim].values[0]
-                selection[dim] = first_value
-                selection_string.append(f'{first_value}[{dim}]')
-        if selection:
-            data = data.sel(selection, drop=drop)
+    if select:
+        data = data.sel(select, drop=drop)
+        selection_string.extend(f'{dim}={val}' for dim, val in select.items())
 
     return data, selection_string

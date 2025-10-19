@@ -54,12 +54,21 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 
 
 ### ✨ Added
+- **Faceting and animation support for plots**: All plotting methods now support `facet_by` and `animate_by` parameters for creating subplot grids and animations with multidimensional data (scenarios, periods, etc.)
+- **New `select` parameter**: Added to all plotting methods for flexible data selection using single values, lists, slices, and index arrays
+- **Heatmap `fill` parameter**: Added `fill` parameter to heatmap plotting methods to control how missing values are filled after reshaping ('ffill' or 'bfill')
+- **Dashed line styling**: Area plots now automatically style "mixed" variables (containing both positive and negative values) with dashed lines, while only stacking purely positive or negative variables
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+- **Selection behavior**: Changed default selection behavior in plotting methods - no longer automatically selects first value for non-time dimensions. Use `select` parameter for explicit selection
+- **Improved error messages**: Enhanced error messages when using matplotlib engine with multidimensional data, providing clearer guidance on dimension requirements
+- Improved `scenario_example.py`
+- Improved error handling in `plot_heatmap()` method for better dimension validation
 
 ### 🗑️ Deprecated
+- **`indexer` parameter**: The `indexer` parameter in all plotting methods is deprecated in favor of the new `select` parameter with enhanced functionality
 
 ### 🔥 Removed
 
@@ -75,6 +84,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 - Improve docs visually with new Material theme and enhanced styling
 
 ### 👷 Development
+- Renamed `_apply_indexer_to_data()` to `_apply_selection_to_data()` for consistency with new API
 
 ### 🚧 Known Issues
 
