@@ -52,8 +52,8 @@ def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
     heatmap_kwargs = {
         'reshape_time': ('D', 'h'),
         'colors': 'viridis',  # Note: heatmap only accepts string colormap
-        'save': show,
-        'show': save,
+        'save': save,
+        'show': show,
         'engine': plotting_engine,
     }
     if plotting_engine == 'matplotlib':
