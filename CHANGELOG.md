@@ -65,6 +65,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 - **Selection behavior**: Changed default selection behavior in plotting methods - no longer automatically selects first value for non-time dimensions. Use `select` parameter for explicit selection
 - **Improved error messages**: Enhanced error messages when using matplotlib engine with multidimensional data, providing clearer guidance on dimension requirements
 - Improved `scenario_example.py`
+- Improved error handling in `plot_heatmap()` method for better dimension validation
 
 ### 🗑️ Deprecated
 - **`indexer` parameter**: The `indexer` parameter in all plotting methods is deprecated in favor of the new `select` parameter with enhanced functionality
@@ -72,13 +73,15 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 ### 🔥 Removed
 
 ### 🐛 Fixed
-- Fixed error handling in `plot_heatmap()` method for better dimension validation
+- Add error handling for empty buses to prevent cryptic errors
+- Add early validation for non-existent periods when using linked periods with tuples
 
 ### 🔒 Security
 
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Improve docs visually with new Material theme and enhanced styling
 
 ### 👷 Development
 - Renamed `_apply_indexer_to_data()` to `_apply_selection_to_data()` for consistency with new API
