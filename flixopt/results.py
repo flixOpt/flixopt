@@ -1517,7 +1517,9 @@ class ComponentResults(_NodeResults):
             if colors == 'auto'
             else colors
         )
-        resolved_colors = plotting.resolve_colors(ds, colors_to_use, coord_dim='variable', engine=engine)
+        resolved_colors = plotting.resolve_colors(
+            xr.merge([ds, charge_state_da.to_dataset()]), colors_to_use, coord_dim='variable', engine=engine
+        )
 
         if engine == 'plotly':
             # Plot flows (node balance) with the specified mode
