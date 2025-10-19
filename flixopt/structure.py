@@ -880,13 +880,10 @@ class Element(Interface):
 
     @staticmethod
     def _valid_label(label: str) -> str:
-        """
-        Checks if the label is valid. If not, it is replaced by the default label
+        """Checks if the label is valid. If not, it is replaced by the default label.
 
-        Raises
-        ------
-        ValueError
-            If the label is not valid
+        Raises:
+            ValueError: If the label is not valid.
         """
         not_allowed = ['(', ')', '|', '->', '\\', '-slash-']  # \\ is needed to check for \
         if any([sign in label for sign in not_allowed]):
