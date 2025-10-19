@@ -683,7 +683,7 @@ class XarrayColorMapper:
             return fnmatch.fnmatch(value, pattern)
         elif match_type == 'regex':
             try:
-                return bool(re.match(pattern, value))
+                return bool(re.search(pattern, value))
             except re.error as e:
                 raise ValueError(f"Invalid regex pattern '{pattern}': {e}") from e
 
