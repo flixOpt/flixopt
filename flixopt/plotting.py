@@ -766,7 +766,7 @@ def reshape_data_for_heatmap(
 
         # Auto-reshape if only 'time' dimension remains
         if len(potential_heatmap_dims) == 1 and potential_heatmap_dims[0] == 'time':
-            logger.info(
+            logger.debug(
                 "Auto-applying time reshaping: Only 'time' dimension remains after faceting/animation. "
                 "Using default timeframes='D' and timesteps_per_frame='h'. "
                 "To customize, use reshape_time=('D', 'h') or disable with reshape_time=None."
