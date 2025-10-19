@@ -308,6 +308,39 @@ class CalculationResults:
                 logger.level = old_level
         return self._flow_system
 
+    def create_color_mapper(self) -> plotting.XarrayColorMapper:
+        """Create and assign a new XarrayColorMapper for this results instance.
+
+        The color mapper is automatically used by all plotting methods when colors='auto'
+        (the default). Configure it with rules to define pattern-based color grouping.
+
+        You can also assign an existing mapper directly via `results.color_mapper = mapper`.
+
+        Returns:
+            The newly created XarrayColorMapper, ready to be configured with rules.
+
+        Examples:
+            Create and configure a new mapper:
+
+            >>> mapper = results.create_color_mapper()
+            >>> mapper.add_rule('Solar', 'oranges', 'prefix')
+            >>> mapper.add_rule('Wind', 'blues', 'prefix')
+            >>> mapper.add_rule('Gas', 'reds', 'prefix')
+            >>> results['ElectricityBus'].plot_node_balance()  # Uses mapper automatically
+
+            Or assign an existing mapper:
+
+            >>> my_mapper = plotting.XarrayColorMapper()
+            >>> my_mapper.add_rule('Renewable', 'greens', 'prefix')
+            >>> results.color_mapper = my_mapper
+
+            Override with explicit colors if needed:
+
+            >>> results['ElectricityBus'].plot_node_balance(colors='viridis')  # Ignores mapper
+        """
+        self.color_mapper = plotting.XarrayColorMapper()
+        return self.color_mapper
+
     def filter_solution(
         self,
         variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
