@@ -711,6 +711,84 @@ class XarrayColorMapper:
         return groups
 
 
+def resolve_colors(
+    data: xr.DataArray | xr.Dataset,
+    colors: ColorType | XarrayColorMapper,
+    coord_dim: str = 'variable',
+    engine: PlottingEngine = 'plotly',
+) -> dict[str, str]:
+    """Resolve colors parameter to a color mapping dict.
+
+    This public utility function handles all color parameter types and applies the
+    color mapper intelligently based on the data structure. Can be used standalone
+    or as part of CalculationResults.
+
+    Args:
+        data: DataArray or Dataset to create colors for
+        colors: Color specification or a XarrayColorMapper to use
+        coord_dim: Coordinate dimension to map colors to
+        engine: Plotting engine ('plotly' or 'matplotlib')
+
+    Returns:
+        Dictionary mapping coordinate values to colors
+
+    Examples:
+        With CalculationResults:
+
+        >>> resolved_colors = resolve_colors(data, results.color_mapper)
+
+        Standalone usage:
+
+        >>> mapper = plotting.XarrayColorMapper()
+        >>> mapper.add_rule('Solar', 'oranges', 'prefix')
+        >>> resolved_colors = resolve_colors(data, mapper)
+
+        Without mapper:
+
+        >>> resolved_colors = resolve_colors(data, 'viridis')
+    """
+    # If explicit dict provided, use it directly
+    if isinstance(colors, dict):
+        return colors
+
+    # If string or list, use ColorProcessor (traditional behavior)
+    if isinstance(colors, (str, list)):
+        if isinstance(data, xr.DataArray):
+            if coord_dim in data.coords:
+                labels = [str(v) for v in data.coords[coord_dim].values]
+            else:
+                labels = []
+        elif isinstance(data, xr.Dataset):
+            labels = [str(v) for v in data.data_vars]
+        else:
+            labels = []
+
+        if labels:
+            processor = ColorProcessor(engine=engine)
+            return processor.process_colors(colors, labels, return_mapping=True)
+
+    if isinstance(colors, XarrayColorMapper):
+        color_mapper = colors
+        if color_mapper.sort_within_groups:
+            # Check if coord_dim exists and reorder
+            if isinstance(data, xr.DataArray) and coord_dim in data.coords:
+                data = color_mapper.reorder_coordinate(data, coord_dim)
+            elif isinstance(data, xr.Dataset):
+                # For Dataset, we'll work with the variables directly
+                pass
+
+        # Apply color mapper to get dict
+        if isinstance(data, xr.DataArray):
+            if coord_dim in data.coords:
+                return color_mapper.apply_to_dataarray(data, coord_dim)
+        elif isinstance(data, xr.Dataset):
+            # For Dataset, map colors to variable names
+            labels = [str(v) for v in data.data_vars]
+            return color_mapper.create_color_map(labels)
+
+    raise TypeError(f'Wrong type passed to resolve_colors(): {type(colors)}')
+
+
 def with_plotly(
     data: pd.DataFrame | xr.DataArray | xr.Dataset,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
