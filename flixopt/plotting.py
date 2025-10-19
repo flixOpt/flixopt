@@ -503,7 +503,7 @@ def with_plotly(
     # Process colors
     all_vars = df_long['variable'].unique().tolist()
     processed_colors = ColorProcessor(engine='plotly').process_colors(colors, all_vars)
-    color_discrete_map = {var: color for var, color in zip(all_vars, processed_colors, strict=False)}
+    color_discrete_map = {var: color for var, color in zip(all_vars, processed_colors, strict=True)}
 
     # Create plot using Plotly Express based on mode
     common_args = {
