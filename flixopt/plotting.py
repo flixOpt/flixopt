@@ -388,20 +388,20 @@ class XarrayColorMapper:
 
     # Class-level defaults (easy to update in one place)
     DEFAULT_FAMILIES = {
-        'blues': px.colors.sequential.Blues[2:7],
-        'greens': px.colors.sequential.Greens[2:7],
-        'reds': px.colors.sequential.Reds[2:7],
-        'purples': px.colors.sequential.Purples[2:7],
-        'oranges': px.colors.sequential.Oranges[2:7],
-        'teals': px.colors.sequential.Teal[2:7],
-        'greys': px.colors.sequential.Greys[2:7],
-        'pinks': px.colors.sequential.Pinkyl[2:7],
-        'peach': px.colors.sequential.Peach[2:7],
-        'burg': px.colors.sequential.Burg[2:7],
-        'sunsetdark': px.colors.sequential.Sunsetdark[2:7],
-        'mint': px.colors.sequential.Mint[2:7],
-        'emrld': px.colors.sequential.Emrld[2:7],
-        'darkmint': px.colors.sequential.Darkmint[2:7],
+        'blues': px.colors.sequential.Blues[1:8],
+        'greens': px.colors.sequential.Greens[1:8],
+        'reds': px.colors.sequential.Reds[1:8],
+        'purples': px.colors.sequential.Purples[1:8],
+        'oranges': px.colors.sequential.Oranges[1:8],
+        'teals': px.colors.sequential.Teal[1:8],
+        'greys': px.colors.sequential.Greys[1:8],
+        'pinks': px.colors.sequential.Pinkyl[1:8],
+        'peach': px.colors.sequential.Peach[1:8],
+        'burg': px.colors.sequential.Burg[1:8],
+        'sunsetdark': px.colors.sequential.Sunsetdark[1:8],
+        'mint': px.colors.sequential.Mint[1:8],
+        'emrld': px.colors.sequential.Emrld[1:8],
+        'darkmint': px.colors.sequential.Darkmint[1:8],
     }
 
     def __init__(self, color_families: dict[str, list[str]] | None = None, sort_within_groups: bool = True) -> None:
