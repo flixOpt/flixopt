@@ -343,28 +343,39 @@ class XarrayColorMapper:
 
     Key Features:
         - Pattern-based color assignment (prefix, suffix, contains, glob, regex)
-        - ColorBrewer sequential palettes for grouped coloring
+        - ColorBrewer sequential palettes for grouped coloring (cycles through shades)
+        - Discrete color support for exact color matching across all items
         - Override support for special cases
         - Coordinate reordering for visual grouping in plots
         - Full type hints and comprehensive documentation
 
     Example Usage:
+        Using color families (items cycle through shades):
+
         ```python
         mapper = (
             XarrayColorMapper()
-            .add_rule('Product_A', 'blues', 'prefix')
-            .add_rule('Product_B', 'greens', 'prefix')
+            .add_rule('Product_A', 'blues', 'prefix')  # Product_A1, A2, A3 get different blue shades
+            .add_rule('Product_B', 'greens', 'prefix')  # Product_B1, B2, B3 get different green shades
             .add_override({'Special': '#FFD700'})
         )
+        ```
 
-        # Reorder for visual grouping
-        da_reordered = mapper.reorder_coordinate(da, 'product')
+        Using discrete colors (all matching items get the same color):
 
-        # Get color mapping
-        color_map = mapper.apply_to_dataarray(da_reordered, 'product')
+        ```python
+        mapper = (
+            XarrayColorMapper()
+            .add_rule('Solar', '#FFA500', 'prefix')  # All Solar* items get exact orange
+            .add_rule('Wind', 'skyblue', 'prefix')  # All Wind* items get exact skyblue
+            .add_rule('Battery', 'rgb(50,205,50)', 'contains')  # All *Battery* get lime green
+        )
+
+        # Apply to data
+        color_map = mapper.apply_to_dataarray(da, 'component')
 
         # Plot with Plotly
-        fig = px.bar(df, x='product', y='value', color='product', color_discrete_map=color_map)
+        fig = px.bar(df, x='component', y='value', color='component', color_discrete_map=color_map)
         ```
     """
 
@@ -418,16 +429,20 @@ class XarrayColorMapper:
         self.color_families[name] = colors
         return self
 
-    def add_rule(self, pattern: str, family: str, match_type: MatchType = 'prefix') -> XarrayColorMapper:
+    def add_rule(self, pattern: str, family_or_color: str, match_type: MatchType = 'prefix') -> XarrayColorMapper:
         """
-        Add a pattern-based rule to assign color families.
+        Add a pattern-based rule to assign color families or discrete colors.
 
         Parameters:
         -----------
         pattern : str
             Pattern to match against coordinate values
-        family : str
-            Color family name to assign
+        family_or_color : str
+            Either a color family name (e.g., 'blues', 'greens') or a discrete color.
+            Discrete colors can be:
+            - Hex colors: '#FF0000', '#00FF00'
+            - RGB/RGBA strings: 'rgb(255,0,0)', 'rgba(255,0,0,0.5)'
+            - Named colors: 'red', 'blue', 'skyblue'
         match_type : {'prefix', 'suffix', 'contains', 'glob', 'regex'}, default 'prefix'
             Type of pattern matching to use:
             - 'prefix': Match if value starts with pattern
@@ -442,21 +457,103 @@ class XarrayColorMapper:
 
         Examples:
         ---------
+        Using color families (cycles through shades):
+
         mapper.add_rule('Product_A', 'blues', 'prefix')
         mapper.add_rule('_test', 'greens', 'suffix')
-        mapper.add_rule('control', 'reds', 'contains')
-        mapper.add_rule('exp_A*', 'purples', 'glob')
-        mapper.add_rule(r'^exp_[AB]\\d+', 'oranges', 'regex')
-        """
-        if family not in self.color_families:
-            raise ValueError(f"Unknown family '{family}'. Available: {list(self.color_families.keys())}")
 
+        Using discrete colors (all matches get the same color):
+
+        mapper.add_rule('Solar', '#FFA500', 'prefix')  # All Solar* items get orange
+        mapper.add_rule('Wind', 'skyblue', 'prefix')  # All Wind* items get skyblue
+        mapper.add_rule('Battery', 'rgb(50,205,50)', 'contains')  # All *Battery* get lime green
+        """
         valid_types = ('prefix', 'suffix', 'contains', 'glob', 'regex')
         if match_type not in valid_types:
             raise ValueError(f"match_type must be one of {valid_types}, got '{match_type}'")
 
-        self.rules.append({'pattern': pattern, 'family': family, 'match_type': match_type})
+        # Check if family_or_color is a discrete color or a family name
+        is_discrete_color = self._is_discrete_color(family_or_color)
+
+        if is_discrete_color:
+            # Store as discrete color rule
+            self.rules.append(
+                {'pattern': pattern, 'discrete_color': family_or_color, 'match_type': match_type, 'is_discrete': True}
+            )
+        else:
+            # Validate that it's a known family
+            if family_or_color not in self.color_families:
+                raise ValueError(
+                    f"Unknown family '{family_or_color}'. "
+                    f'Available families: {list(self.color_families.keys())}. '
+                    f"If you meant to use a discrete color, ensure it's a valid color format "
+                    f"(hex like '#FF0000', rgb like 'rgb(255,0,0)', or named color)."
+                )
+            # Store as family rule
+            self.rules.append(
+                {'pattern': pattern, 'family': family_or_color, 'match_type': match_type, 'is_discrete': False}
+            )
+
         return self
+
+    def _is_discrete_color(self, color_str: str) -> bool:
+        """Check if a string is a discrete color (hex, rgb, or named color)."""
+        # Check for hex color
+        if color_str.startswith('#'):
+            return True
+        # Check for rgb/rgba
+        if color_str.startswith('rgb'):
+            return True
+        # Check if it's NOT a known family - assume it's a named color
+        # Common named colors won't conflict with family names
+        if color_str not in self.color_families:
+            # List of common CSS named colors that are likely discrete colors
+            common_colors = {
+                'red',
+                'blue',
+                'green',
+                'yellow',
+                'orange',
+                'purple',
+                'pink',
+                'brown',
+                'black',
+                'white',
+                'gray',
+                'grey',
+                'cyan',
+                'magenta',
+                'lime',
+                'navy',
+                'teal',
+                'olive',
+                'maroon',
+                'aqua',
+                'fuchsia',
+                'silver',
+                'gold',
+                'skyblue',
+                'lightblue',
+                'darkblue',
+                'lightgreen',
+                'darkgreen',
+                'lightgray',
+                'darkgray',
+                'coral',
+                'salmon',
+                'khaki',
+                'lavender',
+                'violet',
+                'indigo',
+                'turquoise',
+                'tan',
+                'beige',
+                'ivory',
+                'crimson',
+            }
+            if color_str.lower() in common_colors:
+                return True
+        return False
 
     def add_override(self, color_dict: dict[str, str]) -> XarrayColorMapper:
         """
@@ -525,17 +622,30 @@ class XarrayColorMapper:
         color_map: dict[str, str] = {}
 
         # Assign colors to groups
-        for group_name, group_categories in groups.items():
-            if group_name == '_unmatched':
+        for group_key, group_categories in groups.items():
+            if group_key == '_unmatched':
+                # Unmatched items use fallback family
                 family = self.color_families.get(fallback_family, self.color_families['greys'])
+                if sort_within_groups:
+                    group_categories = sorted(group_categories)
+                for idx, category in enumerate(group_categories):
+                    color_map[category] = family[idx % len(family)]
+
+            elif group_key.startswith('_discrete_'):
+                # Discrete color group - all items get the same color
+                discrete_color = group_key.replace('_discrete_', '', 1)
+                if sort_within_groups:
+                    group_categories = sorted(group_categories)
+                for category in group_categories:
+                    color_map[category] = discrete_color
+
             else:
-                family = self.color_families[group_name]
-
-            if sort_within_groups:
-                group_categories = sorted(group_categories)
-
-            for idx, category in enumerate(group_categories):
-                color_map[category] = family[idx % len(family)]
+                # Family-based group - cycle through family colors
+                family = self.color_families[group_key]
+                if sort_within_groups:
+                    group_categories = sorted(group_categories)
+                for idx, category in enumerate(group_categories):
+                    color_map[category] = family[idx % len(family)]
 
         # Apply overrides
         color_map.update(self.overrides)
@@ -686,7 +796,10 @@ class XarrayColorMapper:
 
         Returns:
         --------
-        Dict[str, List[str]] : Mapping of {family_name: [matching_values]}
+        Dict[str, List[str]] : Mapping of {group_key: [matching_values]}
+
+        Note: For discrete color rules, group_key is '_discrete_<color>',
+              for family rules, group_key is the family name.
         """
         groups: dict[str, list[str]] = {}
         unmatched: list[str] = []
@@ -695,10 +808,16 @@ class XarrayColorMapper:
             matched = False
             for rule in self.rules:
                 if self._match_rule(category, rule):
-                    family = rule['family']
-                    if family not in groups:
-                        groups[family] = []
-                    groups[family].append(category)
+                    if rule.get('is_discrete', False):
+                        # For discrete colors, use a special group key
+                        group_key = f'_discrete_{rule["discrete_color"]}'
+                    else:
+                        # For families, use the family name
+                        group_key = rule['family']
+
+                    if group_key not in groups:
+                        groups[group_key] = []
+                    groups[group_key].append(category)
                     matched = True
                     break  # First match wins
 
