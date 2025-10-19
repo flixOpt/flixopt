@@ -239,6 +239,9 @@ class CalculationResults:
         self._sizes = None
         self._effects_per_component = None
 
+        # Color mapper for intelligent plot coloring
+        self.color_mapper: plotting.XarrayColorMapper | None = None
+
     def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
             return self.components[key]
@@ -249,6 +252,74 @@ class CalculationResults:
         if key in self.flows:
             return self.flows[key]
         raise KeyError(f'No element with label {key} found.')
+
+    def _resolve_colors(
+        self,
+        data: xr.DataArray | xr.Dataset,
+        colors: plotting.ColorType | Literal['auto'],
+        coord_dim: str = 'variable',
+        engine: plotting.PlottingEngine = 'plotly',
+    ) -> dict[str, str]:
+        """Resolve colors parameter to a color mapping dict.
+
+        This internal helper handles all color parameter types and applies the color mapper
+        intelligently based on the data structure.
+
+        Args:
+            data: DataArray or Dataset to create colors for
+            colors: Color specification or 'auto'
+            coord_dim: Coordinate dimension to map colors to
+            engine: Plotting engine ('plotly' or 'matplotlib')
+
+        Returns:
+            Dictionary mapping coordinate values to colors
+        """
+        # If explicit dict provided, use it directly
+        if isinstance(colors, dict):
+            return colors
+
+        # If 'auto', use class mapper if available, else fall back to default
+        if colors == 'auto':
+            if self.color_mapper is not None:
+                # Apply reordering if configured in mapper
+                if self.color_mapper.sort_within_groups:
+                    # Check if coord_dim exists and reorder
+                    if isinstance(data, xr.DataArray) and coord_dim in data.coords:
+                        data = self.color_mapper.reorder_coordinate(data, coord_dim)
+                    elif isinstance(data, xr.Dataset):
+                        # For Dataset, we'll work with the variables directly
+                        pass
+
+                # Apply color mapper to get dict
+                if isinstance(data, xr.DataArray):
+                    if coord_dim in data.coords:
+                        return self.color_mapper.apply_to_dataarray(data, coord_dim)
+                elif isinstance(data, xr.Dataset):
+                    # For Dataset, map colors to variable names
+                    labels = [str(v) for v in data.data_vars]
+                    return self.color_mapper.create_color_map(labels)
+
+            # No mapper configured, fall back to default colormap
+            colors = 'viridis'
+
+        # If string or list, use ColorProcessor (traditional behavior)
+        if isinstance(colors, (str, list)):
+            if isinstance(data, xr.DataArray):
+                if coord_dim in data.coords:
+                    labels = [str(v) for v in data.coords[coord_dim].values]
+                else:
+                    labels = []
+            elif isinstance(data, xr.Dataset):
+                labels = [str(v) for v in data.data_vars]
+            else:
+                labels = []
+
+            if labels:
+                processor = plotting.ColorProcessor(engine=engine)
+                return processor.process_colors(colors, labels, return_mapping=True)
+
+        # Safe fallback
+        return {}
 
     @property
     def storages(self) -> list[ComponentResults]:
@@ -967,7 +1038,7 @@ class _NodeResults(_ElementResults):
         self,
         save: bool | pathlib.Path = False,
         show: bool = True,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType | Literal['auto'] = 'auto',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
@@ -985,7 +1056,12 @@ class _NodeResults(_ElementResults):
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
-            colors: The colors to use for the plot. See `flixopt.plotting.ColorType` for options.
+            colors: The colors to use for the plot. Options:
+                - 'auto' (default): Use `self.color_mapper` if configured, else fall back to 'viridis'
+                - Colormap name string (e.g., 'viridis', 'plasma')
+                - List of color strings
+                - Dict mapping variable names to colors
+                Set `results.color_mapper` to an `XarrayColorMapper` for automatic pattern-based grouping.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             select: Optional data selection dict. Supports:
                 - Single values: {'scenario': 'base', 'period': 2024}
@@ -1062,6 +1138,9 @@ class _NodeResults(_ElementResults):
 
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
+        # Resolve colors to a dict (handles auto, mapper, etc.)
+        color_dict = self._calculation_results._resolve_colors(ds, colors, coord_dim='variable', engine=engine)
+
         # Matplotlib requires only 'time' dimension; check for extras after selection
         if engine == 'matplotlib':
             extra_dims = [d for d in ds.dims if d != 'time']
@@ -1081,7 +1160,7 @@ class _NodeResults(_ElementResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=color_dict,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1090,7 +1169,7 @@ class _NodeResults(_ElementResults):
         else:
             figure_like = plotting.with_matplotlib(
                 ds.to_dataframe(),
-                colors=colors,
+                colors=color_dict,
                 mode=mode,
                 title=title,
             )
@@ -1108,7 +1187,7 @@ class _NodeResults(_ElementResults):
     def plot_node_balance_pie(
         self,
         lower_percentage_group: float = 5,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType | Literal['auto'] = 'auto',
         text_info: str = 'percent+label+value',
         save: bool | pathlib.Path = False,
         show: bool = True,
@@ -1217,11 +1296,15 @@ class _NodeResults(_ElementResults):
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
         title = f'{self.label} (total flow hours){suffix}'
 
+        # Combine inputs and outputs to resolve colors for all variables
+        combined_ds = xr.Dataset({**inputs.data_vars, **outputs.data_vars})
+        color_dict = self._calculation_results._resolve_colors(combined_ds, colors, coord_dim='variable', engine=engine)
+
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=colors,
+                colors=color_dict,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
@@ -1234,7 +1317,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_matplotlib(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=colors,
+                colors=color_dict,
                 title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -1348,7 +1431,7 @@ class ComponentResults(_NodeResults):
         self,
         save: bool | pathlib.Path = False,
         show: bool = True,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType | Literal['auto'] = 'auto',
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'area',
         select: dict[FlowSystemDimensions, Any] | None = None,
@@ -1425,13 +1508,16 @@ class ComponentResults(_NodeResults):
 
         title = f'Operation Balance of {self.label}{suffix}'
 
+        # Resolve colors to a dict (handles auto, mapper, etc.)
+        color_dict = self._calculation_results._resolve_colors(ds, colors, coord_dim='variable', engine=engine)
+
         if engine == 'plotly':
             # Plot flows (node balance) with the specified mode
             figure_like = plotting.with_plotly(
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=color_dict,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
