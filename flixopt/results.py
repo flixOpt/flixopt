@@ -1540,7 +1540,7 @@ class ComponentResults(_NodeResults):
                 charge_state_ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=resolved_colors,
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
@@ -1576,7 +1576,7 @@ class ComponentResults(_NodeResults):
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
                 ds.to_dataframe(),
-                colors=colors,
+                colors=resolved_colors,
                 mode=mode,
                 title=title,
             )
