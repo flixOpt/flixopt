@@ -64,6 +64,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 ### ♻️ Changed
 - **Selection behavior**: Changed default selection behavior in plotting methods - no longer automatically selects first value for non-time dimensions. Use `select` parameter for explicit selection
 - **Improved error messages**: Enhanced error messages when using matplotlib engine with multidimensional data, providing clearer guidance on dimension requirements
+- Improved `scenario_example.py`
 
 ### 🗑️ Deprecated
 - **`indexer` parameter**: The `indexer` parameter in all plotting methods is deprecated in favor of the new `select` parameter with enhanced functionality
