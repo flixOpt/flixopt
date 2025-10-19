@@ -1060,7 +1060,7 @@ class _NodeResults(_ElementResults):
         # Don't pass select/indexer to node_balance - we'll apply it afterwards
         ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
 
-        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True)
+        ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
         # Matplotlib requires only 'time' dimension; check for extras after selection
         if engine == 'matplotlib':
@@ -1177,8 +1177,8 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_indexer_to_data(inputs, select=select, drop=True)
-        outputs, suffix_parts = _apply_indexer_to_data(outputs, select=select, drop=True)
+        inputs, suffix_parts = _apply_selection_to_data(inputs, select=select, drop=True)
+        outputs, suffix_parts = _apply_selection_to_data(outputs, select=select, drop=True)
 
         # Sum over time dimension
         inputs = inputs.sum('time')
@@ -1313,7 +1313,7 @@ class _NodeResults(_ElementResults):
             drop_suffix='|' if drop_suffix else None,
         )
 
-        ds, _ = _apply_indexer_to_data(ds, select=select, drop=True)
+        ds, _ = _apply_selection_to_data(ds, select=select, drop=True)
 
         if unit_type == 'flow_hours':
             ds = ds * self._calculation_results.hours_per_timestep
@@ -1419,8 +1419,8 @@ class ComponentResults(_NodeResults):
         charge_state_da = self.charge_state
 
         # Apply select filtering
-        ds, suffix_parts = _apply_indexer_to_data(ds, select=select, drop=True)
-        charge_state_da, _ = _apply_indexer_to_data(charge_state_da, select=select, drop=True)
+        ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
+        charge_state_da, _ = _apply_selection_to_data(charge_state_da, select=select, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
         title = f'Operation Balance of {self.label}{suffix}'
@@ -2042,7 +2042,7 @@ def plot_heatmap(
             title_name = name
 
     # Apply select filtering
-    data, suffix_parts = _apply_indexer_to_data(data, select=select, drop=True)
+    data, suffix_parts = _apply_selection_to_data(data, select=select, drop=True)
     suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
     # Matplotlib heatmaps require at most 2D data
@@ -2339,7 +2339,7 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
     return da
 
 
-def _apply_indexer_to_data(
+def _apply_selection_to_data(
     data: xr.DataArray | xr.Dataset,
     select: dict[str, Any] | None = None,
     drop=False,
