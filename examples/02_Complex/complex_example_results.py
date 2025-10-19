@@ -22,12 +22,12 @@ if __name__ == '__main__':
     # Create a color mapper to automatically assign consistent colors to components
     # based on naming patterns. This ensures visual grouping in all plots.
     mapper = results.create_color_mapper()
-    mapper.add_rule('BHKW', 'oranges', 'prefix')  # CHP units get orange shades
-    mapper.add_rule('Kessel', 'reds', 'prefix')  # Boilers get red shades
-    mapper.add_rule('Speicher', 'greens', 'prefix')  # Storage gets green shades
-    mapper.add_rule('last', 'blues', 'contains')  # Loads/demands get blue shades (Wärmelast)
-    mapper.add_rule('tarif', 'greys', 'contains')  # Tariffs/sources get grey shades (Gastarif)
-    mapper.add_rule('Einspeisung', 'purples', 'prefix')  # Feed-in gets purple shades
+    mapper.add_rule('BHKW', '#FF8C00', 'prefix')  # All CHP units: dark orange
+    mapper.add_rule('Kessel', '#DC143C', 'prefix')  # All boilers: crimson
+    mapper.add_rule('Speicher', '#32CD32', 'prefix')  # All storage: lime green
+    mapper.add_rule('last', 'skyblue', 'contains')  # All loads/demands: skyblue
+    mapper.add_rule('tarif', 'greys', 'contains')  # Tariffs cycle through grey shades
+    mapper.add_rule('Einspeisung', '#9370DB', 'prefix')  # Feed-in: medium purple
 
     # --- Basic overview ---
     results.plot_network(show=True)
