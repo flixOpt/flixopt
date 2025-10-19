@@ -205,8 +205,17 @@ if __name__ == '__main__':
     # You can analyze results directly or save them to file and reload them later.
     calculation.results.to_file()
 
-    # But let's plot some results anyway
-    calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
-    calculation.results['BHKW2'].plot_node_balance()
-    calculation.results['Speicher'].plot_charge_state()
-    calculation.results['Fernwärme'].plot_node_balance_pie()
+    # Configure color mapping for consistent plot colors
+    mapper = calculation.results.create_color_mapper()
+    mapper.add_rule('BHKW', 'oranges', 'prefix')  # CHP units get orange shades
+    mapper.add_rule('Kessel', 'reds', 'prefix')  # Boilers get red shades
+    mapper.add_rule('Speicher', 'greens', 'prefix')  # Storage gets green shades
+    mapper.add_rule('last', 'blues', 'contains')  # Loads/demands get blue shades
+    mapper.add_rule('tarif', 'greys', 'contains')  # Tariffs/sources get grey shades
+    mapper.add_rule('Einspeisung', 'purples', 'prefix')  # Feed-in gets purple shades
+
+    # Plot results with automatic color mapping
+    calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')  # Heatmap uses continuous colors (not ColorMapper)
+    calculation.results['BHKW2'].plot_node_balance()  # Uses ColorMapper
+    calculation.results['Speicher'].plot_charge_state()  # Uses ColorMapper
+    calculation.results['Fernwärme'].plot_node_balance_pie()  # Uses ColorMapper

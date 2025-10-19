@@ -18,8 +18,20 @@ if __name__ == '__main__':
             f'Original error: {e}'
         ) from e
 
+    # --- Configure Color Mapping for Consistent Plot Colors ---
+    # Create a color mapper to automatically assign consistent colors to components
+    # based on naming patterns. This ensures visual grouping in all plots.
+    mapper = results.create_color_mapper()
+    mapper.add_rule('BHKW', 'oranges', 'prefix')  # CHP units get orange shades
+    mapper.add_rule('Kessel', 'reds', 'prefix')  # Boilers get red shades
+    mapper.add_rule('Speicher', 'greens', 'prefix')  # Storage gets green shades
+    mapper.add_rule('last', 'blues', 'contains')  # Loads/demands get blue shades (Wärmelast)
+    mapper.add_rule('tarif', 'greys', 'contains')  # Tariffs/sources get grey shades (Gastarif)
+    mapper.add_rule('Einspeisung', 'purples', 'prefix')  # Feed-in gets purple shades
+
     # --- Basic overview ---
     results.plot_network(show=True)
+    # All plots below automatically use the color mapper (colors='auto' is the default)
     results['Fernwärme'].plot_node_balance()
 
     # --- Detailed Plots ---
