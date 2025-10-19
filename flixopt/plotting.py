@@ -473,87 +473,18 @@ class XarrayColorMapper:
             raise ValueError(f"match_type must be one of {valid_types}, got '{match_type}'")
 
         # Check if family_or_color is a discrete color or a family name
-        is_discrete_color = self._is_discrete_color(family_or_color)
-
-        if is_discrete_color:
-            # Store as discrete color rule
-            self.rules.append(
-                {'pattern': pattern, 'discrete_color': family_or_color, 'match_type': match_type, 'is_discrete': True}
-            )
-        else:
-            # Validate that it's a known family
-            if family_or_color not in self.color_families:
-                raise ValueError(
-                    f"Unknown family '{family_or_color}'. "
-                    f'Available families: {list(self.color_families.keys())}. '
-                    f"If you meant to use a discrete color, ensure it's a valid color format "
-                    f"(hex like '#FF0000', rgb like 'rgb(255,0,0)', or named color)."
-                )
-            # Store as family rule
+        if family_or_color in self.color_families:
+            # It's a known family - store as family rule
             self.rules.append(
                 {'pattern': pattern, 'family': family_or_color, 'match_type': match_type, 'is_discrete': False}
             )
+        else:
+            # Otherwise treat as discrete color - no error handling of invalid colors!
+            self.rules.append(
+                {'pattern': pattern, 'discrete_color': family_or_color, 'match_type': match_type, 'is_discrete': True}
+            )
 
         return self
-
-    def _is_discrete_color(self, color_str: str) -> bool:
-        """Check if a string is a discrete color (hex, rgb, or named color)."""
-        # Check for hex color
-        if color_str.startswith('#'):
-            return True
-        # Check for rgb/rgba
-        if color_str.startswith('rgb'):
-            return True
-        # Check if it's NOT a known family - assume it's a named color
-        # Common named colors won't conflict with family names
-        if color_str not in self.color_families:
-            # List of common CSS named colors that are likely discrete colors
-            common_colors = {
-                'red',
-                'blue',
-                'green',
-                'yellow',
-                'orange',
-                'purple',
-                'pink',
-                'brown',
-                'black',
-                'white',
-                'gray',
-                'grey',
-                'cyan',
-                'magenta',
-                'lime',
-                'navy',
-                'teal',
-                'olive',
-                'maroon',
-                'aqua',
-                'fuchsia',
-                'silver',
-                'gold',
-                'skyblue',
-                'lightblue',
-                'darkblue',
-                'lightgreen',
-                'darkgreen',
-                'lightgray',
-                'darkgray',
-                'coral',
-                'salmon',
-                'khaki',
-                'lavender',
-                'violet',
-                'indigo',
-                'turquoise',
-                'tan',
-                'beige',
-                'ivory',
-                'crimson',
-            }
-            if color_str.lower() in common_colors:
-                return True
-        return False
 
     def add_override(self, color_dict: dict[str, str]) -> XarrayColorMapper:
         """
