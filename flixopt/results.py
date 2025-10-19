@@ -1713,6 +1713,19 @@ class SegmentedCalculationResults:
         - Flow rate transitions at segment boundaries
         - Aggregated results over the full time horizon
 
+    Attributes:
+        segment_results: List of CalculationResults for each segment
+        all_timesteps: Complete time index spanning all segments
+        timesteps_per_segment: Number of timesteps in each segment
+        overlap_timesteps: Number of overlapping timesteps between segments
+        name: Identifier for this segmented calculation
+        folder: Directory path for result storage and loading
+        hours_per_timestep: Duration of each timestep
+        color_mapper: Optional XarrayColorMapper for automatic pattern-based coloring in plots.
+            When set, it is automatically propagated to all segment results, ensuring
+            consistent coloring across segments. Use `create_color_mapper()` to create
+            and configure one, or assign an existing mapper directly.
+
     Examples:
         Load and analyze segmented results:
 
@@ -1766,6 +1779,20 @@ class SegmentedCalculationResults:
         # Storage continuity analysis
         if 'Battery' in results.segment_results[0].components:
             storage_continuity = results.check_storage_continuity('Battery')
+        ```
+
+        Configure color mapping for consistent plotting across segments:
+
+        ```python
+        # Create and configure a color mapper
+        mapper = results.create_color_mapper()
+        mapper.add_rule('Solar', 'oranges', 'prefix')
+        mapper.add_rule('Wind', 'blues', 'prefix')
+        mapper.add_rule('Battery', 'greens', 'prefix')
+
+        # Plot using any segment - colors are consistent across all segments
+        results.segment_results[0]['ElectricityBus'].plot_node_balance()
+        results.segment_results[1]['ElectricityBus'].plot_node_balance()
         ```
 
     Design Considerations:
@@ -1842,6 +1869,9 @@ class SegmentedCalculationResults:
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
 
+        # Color mapper for intelligent plot coloring
+        self.color_mapper: plotting.XarrayColorMapper | None = None
+
     @property
     def meta_data(self) -> dict[str, int | list[str]]:
         return {
@@ -1854,6 +1884,30 @@ class SegmentedCalculationResults:
     @property
     def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
+
+    def create_color_mapper(self) -> plotting.XarrayColorMapper:
+        """Create and assign a new XarrayColorMapper for this segmented results instance.
+
+        The color mapper is automatically propagated to all segment results,
+        ensuring consistent coloring across all segments when using plotting methods.
+
+        Returns:
+            The newly created XarrayColorMapper, ready to be configured with rules.
+
+        Examples:
+            Create and configure a mapper for segmented results:
+
+            >>> mapper = segmented_results.create_color_mapper()
+            >>> mapper.add_rule('Solar', 'oranges', 'prefix')
+            >>> mapper.add_rule('Wind', 'blues', 'prefix')
+            >>> # The mapper is now available on all segments
+            >>> segmented_results.segment_results[0]['ElectricityBus'].plot_node_balance()
+        """
+        self.color_mapper = plotting.XarrayColorMapper()
+        # Propagate to all segment results for consistent coloring
+        for segment in self.segment_results:
+            segment.color_mapper = self.color_mapper
+        return self.color_mapper
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Get variable solution removing segment overlaps.
