@@ -8,7 +8,8 @@ and statistical analyses commonly needed in energy system modeling.
 Key Features:
     **Dual Backend Support**: Seamless switching between Plotly and Matplotlib
     **Energy System Focus**: Specialized plots for power flows, storage states, emissions
-    **Color Management**: Intelligent color processing and palette management
+    **Color Management**: Intelligent color processing with ColorProcessor and pattern-based
+                         XarrayColorMapper for grouped coloring
     **Export Capabilities**: High-quality export for reports and publications
     **Integration Ready**: Designed for use with CalculationResults and standalone analysis
 
@@ -25,10 +26,12 @@ accessible for standalone data visualization tasks.
 
 from __future__ import annotations
 
+import fnmatch
 import itertools
 import logging
 import os
 import pathlib
+import re
 from typing import TYPE_CHECKING, Any, Literal
 
 import matplotlib
@@ -324,6 +327,388 @@ class ColorProcessor:
             return {label: color_list[i] for i, label in enumerate(labels)}
         else:
             return color_list
+
+
+# Type aliases for XarrayColorMapper
+MatchType = Literal['prefix', 'suffix', 'contains', 'glob', 'regex']
+CoordValues = xr.DataArray | np.ndarray | list[Any]
+
+
+class XarrayColorMapper:
+    """Map xarray coordinate values to colors based on naming patterns.
+
+    A simple, maintainable utility class for mapping xarray coordinate values
+    to colors based on naming patterns. Enables visual grouping in plots where
+    similar items get similar colors.
+
+    Key Features:
+        - Pattern-based color assignment (prefix, suffix, contains, glob, regex)
+        - ColorBrewer sequential palettes for grouped coloring
+        - Override support for special cases
+        - Coordinate reordering for visual grouping in plots
+        - Full type hints and comprehensive documentation
+
+    Example Usage:
+        ```python
+        mapper = (
+            XarrayColorMapper()
+            .add_rule('Product_A', 'blues', 'prefix')
+            .add_rule('Product_B', 'greens', 'prefix')
+            .add_override({'Special': '#FFD700'})
+        )
+
+        # Reorder for visual grouping
+        da_reordered = mapper.reorder_coordinate(da, 'product')
+
+        # Get color mapping
+        color_map = mapper.apply_to_dataarray(da_reordered, 'product')
+
+        # Plot with Plotly
+        fig = px.bar(df, x='product', y='value', color='product', color_discrete_map=color_map)
+        ```
+    """
+
+    # Class-level defaults (easy to update in one place)
+    DEFAULT_FAMILIES = {
+        'blues': px.colors.sequential.Blues[2:7],
+        'greens': px.colors.sequential.Greens[2:7],
+        'reds': px.colors.sequential.Reds[2:7],
+        'purples': px.colors.sequential.Purples[2:7],
+        'oranges': px.colors.sequential.Oranges[2:7],
+        'teals': px.colors.sequential.Teal[2:7],
+        'greys': px.colors.sequential.Greys[2:7],
+        'pinks': px.colors.sequential.Pinkyl[2:7],
+    }
+
+    def __init__(self, color_families: dict[str, list[str]] | None = None, sort_within_groups: bool = True) -> None:
+        """
+        Initialize with ColorBrewer families.
+
+        Parameters:
+        -----------
+        color_families : dict, optional
+            Custom color families. If None, uses DEFAULT_FAMILIES
+        sort_within_groups : bool, default True
+            Whether to sort values within groups by default
+        """
+        if color_families is None:
+            self.color_families = self.DEFAULT_FAMILIES.copy()
+        else:
+            self.color_families = color_families.copy()
+
+        self.sort_within_groups = sort_within_groups
+        self.rules: list[dict[str, str]] = []
+        self.overrides: dict[str, str] = {}
+
+    def add_custom_family(self, name: str, colors: list[str]) -> XarrayColorMapper:
+        """
+        Add a custom color family.
+
+        Parameters:
+        -----------
+        name : str
+            Name for the color family
+        colors : List[str]
+            List of hex color codes
+
+        Returns:
+        --------
+        XarrayColorMapper : Self for method chaining
+        """
+        self.color_families[name] = colors
+        return self
+
+    def add_rule(self, pattern: str, family: str, match_type: MatchType = 'prefix') -> XarrayColorMapper:
+        """
+        Add a pattern-based rule to assign color families.
+
+        Parameters:
+        -----------
+        pattern : str
+            Pattern to match against coordinate values
+        family : str
+            Color family name to assign
+        match_type : {'prefix', 'suffix', 'contains', 'glob', 'regex'}, default 'prefix'
+            Type of pattern matching to use:
+            - 'prefix': Match if value starts with pattern
+            - 'suffix': Match if value ends with pattern
+            - 'contains': Match if pattern appears anywhere in value
+            - 'glob': Unix-style wildcards (* matches anything, ? matches one char)
+            - 'regex': Match using regular expression
+
+        Returns:
+        --------
+        XarrayColorMapper : Self for method chaining
+
+        Examples:
+        ---------
+        mapper.add_rule('Product_A', 'blues', 'prefix')
+        mapper.add_rule('_test', 'greens', 'suffix')
+        mapper.add_rule('control', 'reds', 'contains')
+        mapper.add_rule('exp_A*', 'purples', 'glob')
+        mapper.add_rule(r'^exp_[AB]\\d+', 'oranges', 'regex')
+        """
+        if family not in self.color_families:
+            raise ValueError(f"Unknown family '{family}'. Available: {list(self.color_families.keys())}")
+
+        valid_types = ('prefix', 'suffix', 'contains', 'glob', 'regex')
+        if match_type not in valid_types:
+            raise ValueError(f"match_type must be one of {valid_types}, got '{match_type}'")
+
+        self.rules.append({'pattern': pattern, 'family': family, 'match_type': match_type})
+        return self
+
+    def add_override(self, color_dict: dict[str, str]) -> XarrayColorMapper:
+        """
+        Override colors for specific values (takes precedence over rules).
+
+        Parameters:
+        -----------
+        color_dict : Dict[str, str]
+            Mapping of {value: hex_color}
+
+        Returns:
+        --------
+        XarrayColorMapper : Self for method chaining
+
+        Examples:
+        ---------
+        mapper.add_override({'Special': '#FFD700'})
+        mapper.add_override({
+            'Product_A1': '#FF00FF',
+            'Product_B2': '#00FFFF'
+        })
+        """
+        for val, col in color_dict.items():
+            self.overrides[str(val)] = col
+        return self
+
+    def create_color_map(
+        self,
+        coord_values: CoordValues,
+        sort_within_groups: bool | None = None,
+        fallback_family: str = 'greys',
+    ) -> dict[str, str]:
+        """
+        Create color mapping for coordinate values.
+
+        Parameters:
+        -----------
+        coord_values : xr.DataArray, np.ndarray, or list
+            Coordinate values to map
+        sort_within_groups : bool, optional
+            Sort values within each group. If None, uses instance default
+        fallback_family : str, default 'greys'
+            Color family for unmatched values
+
+        Returns:
+        --------
+        Dict[str, str] : Mapping of {value: hex_color}
+        """
+        if sort_within_groups is None:
+            sort_within_groups = self.sort_within_groups
+
+        # Convert to string list
+        if isinstance(coord_values, xr.DataArray):
+            categories: list[str] = [str(val) for val in coord_values.values]
+        elif isinstance(coord_values, np.ndarray):
+            categories = [str(val) for val in coord_values]
+        else:
+            categories = [str(val) for val in coord_values]
+
+        # Remove duplicates while preserving order
+        seen: set = set()
+        categories = [x for x in categories if not (x in seen or seen.add(x))]
+
+        # Group by rules
+        groups = self._group_categories(categories)
+        color_map: dict[str, str] = {}
+
+        # Assign colors to groups
+        for group_name, group_categories in groups.items():
+            if group_name == '_unmatched':
+                family = self.color_families.get(fallback_family, self.color_families['greys'])
+            else:
+                family = self.color_families[group_name]
+
+            if sort_within_groups:
+                group_categories = sorted(group_categories)
+
+            for idx, category in enumerate(group_categories):
+                color_map[category] = family[idx % len(family)]
+
+        # Apply overrides
+        color_map.update(self.overrides)
+
+        return color_map
+
+    def apply_to_dataarray(self, da: xr.DataArray, coord_dim: str) -> dict[str, str]:
+        """
+        Create color map for a DataArray coordinate dimension.
+
+        Parameters:
+        -----------
+        da : xr.DataArray
+            The data array
+        coord_dim : str
+            Coordinate dimension name
+
+        Returns:
+        --------
+        Dict[str, str] : Color mapping for that dimension
+
+        Raises:
+        -------
+        ValueError : If coord_dim is not found in the DataArray
+        """
+        if coord_dim not in da.coords:
+            raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
+
+        return self.create_color_map(da.coords[coord_dim])
+
+    def reorder_coordinate(
+        self, da: xr.DataArray, coord_dim: str, sort_within_groups: bool | None = None
+    ) -> xr.DataArray:
+        """
+        Reorder a DataArray coordinate so values with the same color are adjacent.
+
+        This is useful for creating plots where similar items (same color group)
+        appear next to each other, making visual groupings clear.
+
+        Parameters:
+        -----------
+        da : xr.DataArray
+            The data array to reorder
+        coord_dim : str
+            The coordinate dimension to reorder
+        sort_within_groups : bool, optional
+            Whether to sort values within each group. If None, uses instance default
+
+        Returns:
+        --------
+        xr.DataArray : New DataArray with reordered coordinate
+
+        Examples:
+        ---------
+        # Original order: ['Product_B1', 'Product_A1', 'Product_B2', 'Product_A2']
+        # After reorder: ['Product_A1', 'Product_A2', 'Product_B1', 'Product_B2']
+
+        mapper = XarrayColorMapper()
+        mapper.add_rule('Product_A', 'blues', 'prefix')
+        mapper.add_rule('Product_B', 'greens', 'prefix')
+
+        da_reordered = mapper.reorder_coordinate(da, 'product')
+        """
+        if coord_dim not in da.coords:
+            raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
+
+        if sort_within_groups is None:
+            sort_within_groups = self.sort_within_groups
+
+        # Get coordinate values
+        coord_values = da.coords[coord_dim].values
+        categories = [str(val) for val in coord_values]
+
+        # Group categories
+        groups = self._group_categories(categories)
+
+        # Build new order: group by group, optionally sorted within each
+        new_order = []
+        for group_name in groups.keys():
+            group_categories = groups[group_name]
+            if sort_within_groups:
+                group_categories = sorted(group_categories)
+            new_order.extend(group_categories)
+
+        # Convert back to original dtype if needed
+        original_values = list(coord_values)
+        # Map string back to original values
+        str_to_original = {str(v): v for v in original_values}
+        reordered_values = [str_to_original[cat] for cat in new_order]
+
+        # Reindex the DataArray
+        return da.sel({coord_dim: reordered_values})
+
+    def get_rules(self) -> list[dict[str, str]]:
+        """Return a copy of current rules for inspection."""
+        return self.rules.copy()
+
+    def get_overrides(self) -> dict[str, str]:
+        """Return a copy of current overrides for inspection."""
+        return self.overrides.copy()
+
+    def get_families(self) -> dict[str, list[str]]:
+        """Return a copy of available color families."""
+        return self.color_families.copy()
+
+    def _match_rule(self, value: str, rule: dict[str, str]) -> bool:
+        """
+        Check if value matches a rule.
+
+        Parameters:
+        -----------
+        value : str
+            Value to check
+        rule : dict
+            Rule dictionary with 'pattern' and 'match_type' keys
+
+        Returns:
+        --------
+        bool : True if value matches the rule
+        """
+        pattern = rule['pattern']
+        match_type = rule['match_type']
+
+        if match_type == 'prefix':
+            return value.startswith(pattern)
+        elif match_type == 'suffix':
+            return value.endswith(pattern)
+        elif match_type == 'contains':
+            return pattern in value
+        elif match_type == 'glob':
+            return fnmatch.fnmatch(value, pattern)
+        elif match_type == 'regex':
+            try:
+                return bool(re.match(pattern, value))
+            except re.error as e:
+                raise ValueError(f"Invalid regex pattern '{pattern}': {e}") from e
+
+        return False
+
+    def _group_categories(self, categories: list[str]) -> dict[str, list[str]]:
+        """
+        Group categories by matching rules.
+
+        Parameters:
+        -----------
+        categories : List[str]
+            List of category values to group
+
+        Returns:
+        --------
+        Dict[str, List[str]] : Mapping of {family_name: [matching_values]}
+        """
+        groups: dict[str, list[str]] = {}
+        unmatched: list[str] = []
+
+        for category in categories:
+            matched = False
+            for rule in self.rules:
+                if self._match_rule(category, rule):
+                    family = rule['family']
+                    if family not in groups:
+                        groups[family] = []
+                    groups[family].append(category)
+                    matched = True
+                    break  # First match wins
+
+            if not matched:
+                unmatched.append(category)
+
+        if unmatched:
+            groups['_unmatched'] = unmatched
+
+        return groups
 
 
 def with_plotly(
