@@ -54,6 +54,14 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 
 
 ### ✨ Added
+- **Pattern-based color mapping with `XarrayColorMapper`**: New color mapping system for automatic, semantically meaningful plot colors based on component naming patterns
+  - `XarrayColorMapper` class provides pattern-based color assignment using prefix, suffix, contains, glob, and regex matching
+  - Automatic grouping of similar items with coordinated color families (blues, greens, oranges, etc.) from ColorBrewer sequential palettes
+  - Support for custom color families and explicit color overrides for special cases
+  - Coordinate reordering for visual grouping in plots
+  - `CalculationResults.create_color_mapper()` factory method for easy setup
+  - `CalculationResults.color_mapper` attribute automatically applies colors to all plots when `colors='auto'` (the default)
+  - `resolve_colors()` utility function in `plotting` module for standalone color resolution
 - **Faceting and animation support for plots**: All plotting methods now support `facet_by` and `animate_by` parameters for creating subplot grids and animations with multidimensional data (scenarios, periods, etc.)
 - **New `select` parameter**: Added to all plotting methods for flexible data selection using single values, lists, slices, and index arrays
 - **Heatmap `fill` parameter**: Added `fill` parameter to heatmap plotting methods to control how missing values are filled after reshaping ('ffill' or 'bfill')
@@ -62,6 +70,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+- **Plotting color defaults**: All plotting methods now default to `colors='auto'`, which uses `CalculationResults.color_mapper` if configured, otherwise falls back to 'viridis'. Explicit colors (dict, string, list) still work as before
 - **Selection behavior**: Changed default selection behavior in plotting methods - no longer automatically selects first value for non-time dimensions. Use `select` parameter for explicit selection
 - **Improved error messages**: Enhanced error messages when using matplotlib engine with multidimensional data, providing clearer guidance on dimension requirements
 - Improved `scenario_example.py`
