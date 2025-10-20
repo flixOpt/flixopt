@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "flixopt"
+version: 3.1.1
+date-released: 2025-10-20
+url: "https://github.com/flixOpt/flixopt"
+repository-code: "https://github.com/flixOpt/flixopt"
+license: MIT
+abstract: "Vector based energy and material flow optimization framework in Python."
+keywords:
+  - optimization
+  - energy systems
+  - numerical analysis
+  - python
+  - material flow
+  - linear programming
+authors:
+  - name: "Chair of Building Energy Systems and Heat Supply, TU Dresden"
+    email: peter.stange@tu-dresden.de
+  - family-names: Bumann
+    given-names: Felix
+    email: felixbumann387@gmail.com
+  - family-names: Panitz
+    given-names: Felix
+    email: baumbude@googlemail.com
+  - family-names: Stange
+    given-names: Peter
+    email: peter.stange@tu-dresden.de
