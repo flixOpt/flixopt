@@ -230,6 +230,7 @@ class CalculationResults:
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
+        self.periods = self.solution.indexes['period'] if 'period' in self.solution.indexes else None
 
         self._effect_share_factors = None
         self._flow_system = None
