@@ -63,7 +63,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 🔥 Removed
 
 ### 🐛 Fixed
-- Fixed `ValueError` in `effects_per_component` when all periodic effects are scalars/NaN by explicitly creating templates with correct dimensions for each mode
+- Fixed ValueError in effects_per_component when all periodic effects are scalars/NaN by explicitly creating mode-specific templates (via _create_template_for_mode) with correct dimensions
 
 ### 🔒 Security
 
