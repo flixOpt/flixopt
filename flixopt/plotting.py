@@ -929,7 +929,9 @@ def with_plotly(
 
     df_long = data.to_dataframe().reset_index()
     df_long = df_long.rename(columns={temp_name: 'value'})
-    df_long['variable'] = data.name or 'data'
+    # Only add 'variable' column if it doesn't already exist (preserve actual variable names from coordinates)
+    if 'variable' not in df_long.columns:
+        df_long['variable'] = data.name or 'data'
 
     # Validate facet_by and animate_by dimensions exist in the data
     available_dims = [col for col in df_long.columns if col not in ['variable', 'value']]

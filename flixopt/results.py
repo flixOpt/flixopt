@@ -1302,7 +1302,9 @@ class _NodeResults(_ElementResults):
             if colors == 'auto'
             else colors
         )
-        resolved_colors = plotting.resolve_colors(combined_ds, colors_to_use, coord_dim='variable', engine=engine)
+        # Convert Dataset to DataArray to create 'variable' coordinate
+        combined_da = combined_ds.to_array(dim='variable')
+        resolved_colors = plotting.resolve_colors(combined_da, colors_to_use, coord_dim='variable', engine=engine)
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
