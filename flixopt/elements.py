@@ -50,16 +50,19 @@ class Component(Element):
             component has discrete on/off states. Creates binary variables for all
             connected Flows. For better performance, prefer defining OnOffParameters
             on individual Flows when possible.
-        prevent_simultaneous_flows: Flows that cannot be active simultaneously.
-            Can be either a single list of flows (one constraint group) or a list of lists
+        prevent_simultaneous_flows: Flow labels (strings) that cannot be active simultaneously.
+            Can be either a single list of flow labels (one constraint group) or a list of lists
             (multiple independent constraint groups). Each group enforces "at most 1 flow
             active" within that group. Creates binary variables to enforce mutual exclusivity.
             Use sparingly as it increases computational complexity.
 
             Examples:
-                - `[flow1, flow2, flow3]` - At most 1 of these 3 flows can be active
-                - `[[fuel1, fuel2], [cooling1, cooling2]]` - Two independent constraints:
+                - `['flow1', 'flow2', 'flow3']` - At most 1 of these 3 flows can be active
+                - `[['fuel1', 'fuel2'], ['cooling1', 'cooling2']]` - Two independent constraints:
                   at most 1 fuel AND at most 1 cooling method
+
+            Note:
+                Passing Flow objects is deprecated. Use flow label strings instead.
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -87,7 +90,7 @@ class Component(Element):
         inputs: list[Flow] | None = None,
         outputs: list[Flow] | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        prevent_simultaneous_flows: list[Flow] | list[list[Flow]] | None = None,
+        prevent_simultaneous_flows: list[str | Flow] | list[list[str | Flow]] | None = None,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -96,38 +99,64 @@ class Component(Element):
         self._check_unique_flow_labels()
         self.on_off_parameters = on_off_parameters
 
-        # Normalize prevent_simultaneous_flows to always be list of lists
-        self.prevent_simultaneous_flows: list[list[Flow]] | None = self._normalize_simultaneous_flows(
+        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
+
+        # Normalize prevent_simultaneous_flows to always be list of lists of flow labels (strings)
+        self.prevent_simultaneous_flows: list[list[str]] | None = self._normalize_simultaneous_flows(
             prevent_simultaneous_flows
         )
 
-        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
-
     @staticmethod
     def _normalize_simultaneous_flows(
-        prevent_simultaneous_flows: list[Flow] | list[list[Flow] | tuple[Flow]] | None,
-    ) -> list[list[Flow]] | None:
-        """Normalize prevent_simultaneous_flows to always be a list of constraint groups.
+        prevent_simultaneous_flows: list[Flow | str] | list[list[Flow | str] | tuple[Flow | str]] | None,
+    ) -> list[list[str]] | None:
+        """Normalize prevent_simultaneous_flows to always be a list of constraint groups with flow labels.
 
         Args:
-            prevent_simultaneous_flows: Either None, a single list of flows, or a list of lists
+            prevent_simultaneous_flows: Either None, a single list of flow labels/objects,
+                or a list of lists/tuples of flow labels/objects.
+                Passing Flow objects is deprecated - use flow label strings instead.
 
         Returns:
-            List of constraint groups (list of lists). Empty list if input is None.
+            List of constraint groups as flow label strings (list of lists of strings), or None if input is None.
 
         Examples:
-            None -> []
-            [flow1, flow2] -> [[flow1, flow2]]
-            [[flow1, flow2], [flow3, flow4]] -> [[flow1, flow2], [flow3, flow4]]
+            None -> None
+            ['flow1', 'flow2'] -> [['flow1', 'flow2']]  (preferred)
+            [flow1, flow2] -> [['flow1_label', 'flow2_label']]  (deprecated)
+            [['flow1', 'flow2'], ['flow3', 'flow4']] -> [['flow1', 'flow2'], ['flow3', 'flow4']]
+            [[flow1, flow2], [flow3, flow4]] -> [['flow1_label', 'flow2_label'], ['flow3_label', 'flow4_label']]  (deprecated)
         """
+        import warnings
+
         if prevent_simultaneous_flows is None:
             return None
         elif not isinstance(prevent_simultaneous_flows, (list, tuple)):
-            raise TypeError('Wrong type')
-        elif isinstance(prevent_simultaneous_flows[0], (list, tuple)):
-            return prevent_simultaneous_flows
+            raise TypeError('prevent_simultaneous_flows must be a list or tuple')
+
+        def extract_label(item) -> str:
+            """Extract label from item, warn if it's a Flow object."""
+            if isinstance(item, str):
+                return item
+            elif isinstance(item, Flow):
+                warnings.warn(
+                    'Passing Flow objects to prevent_simultaneous_flows is deprecated. '
+                    'Please use flow label strings instead. '
+                    f"Example: prevent_simultaneous_flows=['{item.label}', ...] instead of [flow_object, ...]",
+                    DeprecationWarning,
+                    stacklevel=4,
+                )
+                return item.label
+            else:
+                raise TypeError(f'Expected str or Flow object, got {type(item).__name__}')
+
+        # Check if it's a list of lists/tuples (multiple groups) or a single list
+        if len(prevent_simultaneous_flows) > 0 and isinstance(prevent_simultaneous_flows[0], (list, tuple)):
+            # Multiple groups: [['flow1', 'flow2'], ['flow3', 'flow4']]
+            return [[extract_label(item) for item in group] for group in prevent_simultaneous_flows]
         else:
-            return [prevent_simultaneous_flows]
+            # Single group: ['flow1', 'flow2', 'flow3']
+            return [[extract_label(item) for item in prevent_simultaneous_flows]]
 
     def create_model(self, model: FlowSystemModel) -> ComponentModel:
         self._plausibility_checks()
@@ -825,9 +854,10 @@ class ComponentModel(ElementModel):
                     flow.on_off_parameters = OnOffParameters()
 
         if self.element.prevent_simultaneous_flows is not None:
-            # Iterate over all flows in all constraint groups
+            # Iterate over all flows in all constraint groups (flow_label is a string)
             for group in self.element.prevent_simultaneous_flows:
-                for flow in group:
+                for flow_label in group:
+                    flow = self.element.flows[flow_label]
                     if flow.on_off_parameters is None:
                         flow.on_off_parameters = OnOffParameters()
 
@@ -861,15 +891,18 @@ class ComponentModel(ElementModel):
         if self.element.prevent_simultaneous_flows:
             # Create mutual exclusivity constraint for each group
             # Each group enforces "at most 1 flow active at a time"
-            for group_idx, flow_group in enumerate(self.element.prevent_simultaneous_flows):
+            # flow_labels_group is a list of flow label strings
+            for group_idx, flow_labels_group in enumerate(self.element.prevent_simultaneous_flows):
                 constraint_name = (
                     'prevent_simultaneous_use'
                     if len(self.element.prevent_simultaneous_flows) == 1
                     else f'prevent_simultaneous_use|group{group_idx}'
                 )
+                # Look up flows by their labels and get their binary variables
+                flows_in_group = [self.element.flows[label] for label in flow_labels_group]
                 ModelingPrimitives.mutual_exclusivity_constraint(
                     self,
-                    binary_variables=[flow.submodel.on_off.on for flow in flow_group],
+                    binary_variables=[flow.submodel.on_off.on for flow in flows_in_group],
                     short_name=constraint_name,
                 )
 

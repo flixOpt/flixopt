@@ -53,12 +53,15 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
+- **Multiple constraint groups for `prevent_simultaneous_flows`**: Components can now define multiple independent constraint groups. Each group enforces "at most 1 flow active" within that group. Example: `prevent_simultaneous_flows=[[fuel1, fuel2], [cooling1, cooling2]]` ensures at most 1 fuel AND at most 1 cooling method are active simultaneously, but allows one of each.
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+- **Internal representation of `prevent_simultaneous_flows`**: Now stores flow labels (strings) instead of Flow object references. This improves serialization and avoids circular references. The API remains unchanged - users still pass Flow objects, which are automatically converted to labels internally.
 
 ### 🗑️ Deprecated
+- **Passing Flow objects to `prevent_simultaneous_flows`**: Now deprecated in favor of passing flow label strings directly. Example: use `prevent_simultaneous_flows=['flow1', 'flow2']` instead of `prevent_simultaneous_flows=[flow1_object, flow2_object]`. Flow objects still work but will trigger a DeprecationWarning.
 
 ### 🔥 Removed
 
@@ -71,6 +74,9 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 📝 Docs
 
 ### 👷 Development
+
+- Added comprehensive tests for multiple constraint groups in `prevent_simultaneous_flows`
+- Fixed type hints for `submodel` attributes to include `| None` for consistency with runtime behavior
 
 ### 🚧 Known Issues
 
