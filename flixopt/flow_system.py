@@ -75,6 +75,8 @@ class FlowSystem(Interface):
         connected_and_transformed automatically when trying to solve a calculation.
     """
 
+    model: FlowSystemModel | None
+
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
