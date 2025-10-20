@@ -1310,16 +1310,18 @@ class Sink(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
-        """
-        Initialize a Sink (consumes flow from the system).
+        """Initialize a Sink (consumes flow from the system).
 
-        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided it is used as the single input flow and a DeprecationWarning is issued; specifying both `inputs` and `sink` raises ValueError.
+        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided
+        it is used as the single input flow and a DeprecationWarning is issued; specifying both
+        `inputs` and `sink` raises ValueError.
 
-        Parameters:
-            label (str): Unique element label.
-            inputs (list[Flow], optional): Input flows for the sink.
-            meta_data (dict, optional): Arbitrary metadata attached to the element.
-            prevent_simultaneous_flow_rates (bool, optional): If True, prevents simultaneous nonzero flow rates across the element's inputs by wiring that restriction into the base Component setup.
+        Args:
+            label: Unique element label.
+            inputs: Input flows for the sink.
+            meta_data: Arbitrary metadata attached to the element.
+            prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero flow rates
+                across the element's inputs by wiring that restriction into the base Component setup.
 
         Note:
             The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
