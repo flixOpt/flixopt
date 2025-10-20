@@ -54,6 +54,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### ✨ Added
 - **Multiple constraint groups for `prevent_simultaneous_flows`**: Components can now define multiple independent mutual exclusivity constraints. Use `[['fuel1', 'fuel2'], ['cooling1', 'cooling2']]` to enforce "at most 1 fuel AND at most 1 cooling method" while allowing combinations like (fuel1+cooling2). Previously only single constraint groups were supported.
+- Added `prevent_simultaneous_flows` to `LinearConverter` class
 
 ### 💥 Breaking Changes
 
