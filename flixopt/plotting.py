@@ -1187,30 +1187,24 @@ def with_matplotlib(
     if mode not in ('stacked_bar', 'line'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line'}} for matplotlib, got {mode!r}")
 
-    # Store original data for XarrayColorMapper processing (before conversion to pandas)
-    data_original = data
-
-    # Convert xarray to DataFrame if needed
-    if isinstance(data, xr.Dataset):
-        # Convert Dataset to DataFrame with variables as columns
-        data = data.to_dataframe()
-    elif isinstance(data, xr.DataArray):
-        # Convert DataArray to DataFrame
-        data = data.to_dataframe()
-        if len(data.columns) == 1:
-            # Single column - this is typical for a simple DataArray
-            pass
-        # else: multi-dimensional DataArray already in wide format
-
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    # Process colors - use XarrayColorMapper if provided with xarray data
-    if isinstance(data_original, (xr.DataArray, xr.Dataset)) and isinstance(colors, XarrayColorMapper):
-        color_discrete_map = resolve_colors(data_original, colors, coord_dim='variable', engine='matplotlib')
-        # Get colors in order of DataFrame columns
+    # Process colors while data is still xarray (if applicable)
+    if isinstance(data, (xr.DataArray, xr.Dataset)):
+        # For xarray data: resolve colors first, then convert to DataFrame
+        color_discrete_map = resolve_colors(data, colors, coord_dim='variable', engine='matplotlib')
+
+        # Convert to DataFrame for matplotlib plotting
+        if isinstance(data, xr.Dataset):
+            data = data.to_dataframe()
+        else:  # DataArray
+            data = data.to_dataframe()
+
+        # Get colors in column order
         processed_colors = [color_discrete_map.get(str(col), '#808080') for col in data.columns]
     else:
+        # Already a DataFrame: use ColorProcessor directly
         processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
 
     if mode == 'stacked_bar':
