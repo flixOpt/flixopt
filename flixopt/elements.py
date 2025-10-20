@@ -119,12 +119,14 @@ class Component(Element):
 
     @staticmethod
     def _normalize_simultaneous_flows(
-        prevent_simultaneous_flows: list[Flow | str] | list[list[Flow | str] | tuple[Flow | str]] | None,
+        prevent_simultaneous_flows: (
+            list[str | Flow] | tuple[str | Flow, ...] | list[list[str | Flow] | tuple[str | Flow, ...]] | None
+        ),
     ) -> list[list[str]] | None:
         """Normalize prevent_simultaneous_flows to always be a list of constraint groups with flow labels.
 
         Args:
-            prevent_simultaneous_flows: Either None, a single list of flow labels/objects,
+            prevent_simultaneous_flows: Either None, a single list/tuple of flow labels/objects,
                 or a list of lists/tuples of flow labels/objects.
                 Passing Flow objects is deprecated - use flow label strings instead.
 
@@ -134,12 +136,10 @@ class Component(Element):
         Examples:
             None -> None
             ['flow1', 'flow2'] -> [['flow1', 'flow2']]  (preferred)
-            [flow1, flow2] -> [['flow1_label', 'flow2_label']]  (deprecated)
-            [['flow1', 'flow2'], ['flow3', 'flow4']] -> [['flow1', 'flow2'], ['flow3', 'flow4']]
-            [[flow1, flow2], [flow3, flow4]] -> [['flow1_label', 'flow2_label'], ['flow3_label', 'flow4_label']]  (deprecated)
+            ['flow1', 'flow2', 'flow1'] -> [['flow1', 'flow2']]  (duplicates removed)
+            ['flow1'] -> None  (< 2 unique labels, skipped with warning)
+            [['flow1', 'flow2'], ['flow3']] -> [['flow1', 'flow2']]  (second group skipped)
         """
-        import warnings
-
         if prevent_simultaneous_flows is None:
             return None
         elif not isinstance(prevent_simultaneous_flows, (list, tuple)):
