@@ -63,7 +63,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 🔥 Removed
 
 ### 🐛 Fixed
-- Fixed ValueError in effects_per_component when all periodic effects are scalars/NaN by explicitly creating mode-specific templates (via _create_template_for_mode) with correct dimensions
 
 ### 🔒 Security
 
@@ -78,6 +77,16 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ---
 
 Until here -->
+
+## [3.1.1] - 2025-10-20
+**Summary**: Fixed a bug when acessing the `effects_per_component` dataset in results without periodic effects.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 🐛 Fixed
+- Fixed ValueError in effects_per_component when all periodic effects are scalars/NaN by explicitly creating mode-specific templates (via _create_template_for_mode) with correct dimensions
+
+---
 
 ## [3.1.0] - 2025-10-19
 
