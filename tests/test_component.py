@@ -795,3 +795,49 @@ class TestPreventSimultaneousFlows:
 
         # Internal representation should be None
         assert conv.prevent_simultaneous_flows is None
+
+    def test_unknown_label_during_modeling(self, basic_flow_system_linopy_coords):
+        """Test that unknown flow label raises ValueError during full modeling."""
+        flow_system = basic_flow_system_linopy_coords
+
+        # Create flows and converter with unknown label
+        flow1 = fx.Flow('flow1', bus='Fernwärme', size=100)
+        flow2 = fx.Flow('flow2', bus='Fernwärme', size=100)
+        output = fx.Flow('output', bus='Gas', size=200)
+
+        conv = fx.LinearConverter(
+            label='bad_conv',
+            inputs=[flow1, flow2],
+            outputs=[output],
+            conversion_factors=[{'flow1': 1, 'output': 0.9}],
+            prevent_simultaneous_flows=['flow1', 'nonexistent'],  # 'nonexistent' doesn't exist
+        )
+
+        flow_system.add_elements(conv)
+
+        # Modeling should fail with ValueError during plausibility checks
+        with pytest.raises(ValueError, match='Flow name "nonexistent" is not present'):
+            create_linopy_model(flow_system)
+
+    def test_duplicate_labels_during_modeling(self, basic_flow_system_linopy_coords):
+        """Test that duplicate flow labels raise ValueError during full modeling."""
+        flow_system = basic_flow_system_linopy_coords
+
+        # Create flows and converter with duplicate labels
+        flow1 = fx.Flow('flow1', bus='Fernwärme', size=100)
+        flow2 = fx.Flow('flow2', bus='Fernwärme', size=100)
+        output = fx.Flow('output', bus='Gas', size=200)
+
+        conv = fx.LinearConverter(
+            label='bad_conv',
+            inputs=[flow1, flow2],
+            outputs=[output],
+            conversion_factors=[{'flow1': 1, 'output': 0.9}],
+            prevent_simultaneous_flows=['flow1', 'flow2', 'flow1'],  # 'flow1' appears twice
+        )
+
+        flow_system.add_elements(conv)
+
+        # Modeling should fail with ValueError during plausibility checks
+        with pytest.raises(ValueError, match='Flow names must not occure multiple times'):
+            create_linopy_model(flow_system)
