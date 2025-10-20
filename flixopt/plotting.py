@@ -745,10 +745,12 @@ def _validate_string_coordinate(da: xr.DataArray, coord_dim: str) -> None:
         raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
 
     coord_values = da.coords[coord_dim].values
-    if not all(isinstance(v, str) for v in coord_values):
-        non_strings = [f'{v!r} ({type(v).__name__})' for v in coord_values if not isinstance(v, str)]
+    non_strings = [v for v in coord_values if not isinstance(v, str)]
+
+    if non_strings:
+        non_string_repr = [f'{v!r} ({type(v).__name__})' for v in non_strings[:5]]
         raise TypeError(
-            f"Coordinate '{coord_dim}' must contain only strings. Found non-string values: {non_strings[:5]}"
+            f"Coordinate '{coord_dim}' must contain only strings. Found non-string values: {non_string_repr}"
         )
 
 
