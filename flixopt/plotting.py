@@ -584,9 +584,13 @@ class XarrayColorMapper:
 
         Raises:
             ValueError: If coord_dim is not found in the DataArray.
-            TypeError: If coord_dim values are not all strings.
+
+        Note:
+            Assumes coordinate values are strings. Use resolve_colors() for automatic validation.
         """
-        _validate_string_coordinate(da, coord_dim)
+        if coord_dim not in da.coords:
+            raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
+
         return self.create_color_map(da.coords[coord_dim])
 
     def reorder_coordinate(
@@ -605,6 +609,9 @@ class XarrayColorMapper:
         Returns:
             New DataArray with reordered coordinate.
 
+        Note:
+            Assumes coordinate values are strings. Use resolve_colors() for automatic validation.
+
         Examples:
             Original order: ['Product_B1', 'Product_A1', 'Product_B2', 'Product_A2']
             After reorder: ['Product_A1', 'Product_A2', 'Product_B1', 'Product_B2']
@@ -617,7 +624,8 @@ class XarrayColorMapper:
             da_reordered = mapper.reorder_coordinate(da, 'product')
             ```
         """
-        _validate_string_coordinate(da, coord_dim)
+        if coord_dim not in da.coords:
+            raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
 
         if sort_within_groups is None:
             sort_within_groups = self.sort_within_groups
