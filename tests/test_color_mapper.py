@@ -223,66 +223,50 @@ class TestOverrides:
 class TestXarrayIntegration:
     """Test integration with xarray DataArrays."""
 
-    def test_apply_to_dataarray(self):
-        """Test applying mapper to a DataArray."""
-        mapper = XarrayColorMapper()
-        mapper.add_rule('Product_A', 'blues', 'prefix')
-        mapper.add_rule('Product_B', 'greens', 'prefix')
-
-        da = xr.DataArray(
-            np.random.rand(5, 4),
-            coords={'time': range(5), 'product': ['Product_A1', 'Product_A2', 'Product_B1', 'Product_B2']},
-            dims=['time', 'product'],
-        )
-
-        color_map = mapper.apply_to_dataarray(da, 'product')
-
-        assert len(color_map) == 4
-        assert all(prod in color_map for prod in da.product.values)
-
-    def test_apply_to_dataarray_missing_coord(self):
-        """Test that applying to missing coordinate raises error."""
-        mapper = XarrayColorMapper()
-        da = xr.DataArray(np.random.rand(5), coords={'time': range(5)}, dims=['time'])
-
-        with pytest.raises(ValueError, match="Coordinate 'product' not found"):
-            mapper.apply_to_dataarray(da, 'product')
-
-    def test_reorder_coordinate(self):
-        """Test reordering coordinates."""
+    def test_reorder_dataset(self):
+        """Test reordering Dataset variables."""
         mapper = XarrayColorMapper()
         mapper.add_rule('A', 'blues', 'prefix')
         mapper.add_rule('B', 'greens', 'prefix')
 
-        da = xr.DataArray(
-            np.random.rand(4),
-            coords={'product': ['B2', 'A1', 'B1', 'A2']},
-            dims=['product'],
+        ds = xr.Dataset(
+            {
+                'B2': xr.DataArray([1, 2, 3], dims=['time']),
+                'A1': xr.DataArray([4, 5, 6], dims=['time']),
+                'B1': xr.DataArray([7, 8, 9], dims=['time']),
+                'A2': xr.DataArray([10, 11, 12], dims=['time']),
+            }
         )
 
-        da_reordered = mapper.reorder_coordinate(da, 'product')
+        ds_reordered = mapper.reorder_dataset(ds)
 
-        # With sorting, items are grouped by family (order of first occurrence in input),
+        # With sorting, variables are grouped by family (order of first occurrence in input),
         # then sorted within each group
-        # B items are encountered first, so greens group comes first
+        # B variables are encountered first, so greens group comes first
         expected_order = ['B1', 'B2', 'A1', 'A2']
-        assert [str(v) for v in da_reordered.product.values] == expected_order
+        assert list(ds_reordered.data_vars.keys()) == expected_order
 
-    def test_reorder_coordinate_preserves_data(self):
+    def test_reorder_dataset_preserves_data(self):
         """Test that reordering preserves data values."""
         mapper = XarrayColorMapper()
         mapper.add_rule('A', 'blues', 'prefix')
 
-        original_data = np.array([10, 20, 30, 40])
-        da = xr.DataArray(original_data, coords={'product': ['A4', 'A1', 'A3', 'A2']}, dims=['product'])
+        ds = xr.Dataset(
+            {
+                'A4': xr.DataArray([10, 20], dims=['time']),
+                'A1': xr.DataArray([30, 40], dims=['time']),
+                'A3': xr.DataArray([50, 60], dims=['time']),
+                'A2': xr.DataArray([70, 80], dims=['time']),
+            }
+        )
 
-        da_reordered = mapper.reorder_coordinate(da, 'product')
+        ds_reordered = mapper.reorder_dataset(ds)
 
-        # Check that the data is correctly reordered with the coordinates
-        assert da_reordered.sel(product='A1').values == 20
-        assert da_reordered.sel(product='A2').values == 40
-        assert da_reordered.sel(product='A3').values == 30
-        assert da_reordered.sel(product='A4').values == 10
+        # Check that the data is correctly preserved
+        assert (ds_reordered['A1'].values == np.array([30, 40])).all()
+        assert (ds_reordered['A2'].values == np.array([70, 80])).all()
+        assert (ds_reordered['A3'].values == np.array([50, 60])).all()
+        assert (ds_reordered['A4'].values == np.array([10, 20])).all()
 
 
 class TestEdgeCases:
@@ -426,13 +410,8 @@ class TestRealWorldScenarios:
         )
 
         components = ['Solar_PV', 'Wind_Turbine', 'Gas_Turbine', 'Battery_Storage', 'Grid_Import']
-        da = xr.DataArray(
-            np.random.rand(24, len(components)),
-            coords={'time': range(24), 'component': components},
-            dims=['time', 'component'],
-        )
 
-        color_map = mapper.apply_to_dataarray(da, 'component')
+        color_map = mapper.create_color_map(components)
 
         assert color_map['Grid_Import'] == '#808080'  # Override
         assert all(comp in color_map for comp in components)
@@ -468,15 +447,13 @@ class TestRealWorldScenarios:
         )
 
         products = ['Premium_A', 'Premium_B', 'Standard_A', 'Standard_B', 'Budget_A', 'Budget_B']
-        da = xr.DataArray(
-            np.random.rand(10, 6), coords={'time': range(10), 'product': products}, dims=['time', 'product']
-        )
+        ds = xr.Dataset({p: xr.DataArray(np.random.rand(10), dims=['time']) for p in products})
 
-        da_reordered = mapper.reorder_coordinate(da, 'product')
-        mapper.apply_to_dataarray(da_reordered, 'product')
+        ds_reordered = mapper.reorder_dataset(ds)
+        mapper.create_color_map(list(ds_reordered.data_vars.keys()))
 
         # Check grouping: all Premium together, then Standard, then Budget
-        reordered_products = list(da_reordered.product.values)
+        reordered_products = list(ds_reordered.data_vars.keys())
         premium_indices = [i for i, p in enumerate(reordered_products) if p.startswith('Premium_')]
         standard_indices = [i for i, p in enumerate(reordered_products) if p.startswith('Standard_')]
         budget_indices = [i for i, p in enumerate(reordered_products) if p.startswith('Budget_')]
