@@ -849,7 +849,7 @@ def resolve_colors(
 def with_plotly(
     data: pd.DataFrame | xr.DataArray | xr.Dataset,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
-    colors: ColorType = 'viridis',
+    colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -870,7 +870,11 @@ def with_plotly(
         data: A DataFrame or xarray DataArray/Dataset to plot.
         mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for lines,
               'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
-        colors: Color specification (colormap, list, or dict mapping labels to colors).
+        colors: Color specification. Can be:
+            - A colormap name (e.g., 'viridis', 'plasma')
+            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
+            - A dict mapping labels to colors (e.g., {'Solar': '#FFD700'})
+            - An XarrayColorMapper instance for pattern-based color rules with grouping and sorting
         title: The main title of the plot.
         ylabel: The label for the y-axis.
         xlabel: The label for the x-axis.
@@ -912,6 +916,16 @@ def with_plotly(
         ```python
         fig = with_plotly(ds, facet_by='scenario', animate_by='period')
         ```
+
+        Pattern-based colors with XarrayColorMapper:
+
+        ```python
+        mapper = XarrayColorMapper()
+        mapper.add_rule('Solar', 'oranges', 'prefix')
+        mapper.add_rule('Wind', 'blues', 'prefix')
+        mapper.add_rule('Battery', 'greens', 'contains')
+        fig = with_plotly(ds, colors=mapper, mode='area')
+        ```
     """
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
@@ -928,6 +942,9 @@ def with_plotly(
     if fig is not None and (facet_by is not None or animate_by is not None):
         logger.warning('The fig parameter is ignored when using faceting or animation. Creating a new figure.')
         fig = None
+
+    # Store original data for XarrayColorMapper processing (before conversion to pandas)
+    data_original = data
 
     # Convert xarray to long-form DataFrame for Plotly Express
     if isinstance(data, (xr.DataArray, xr.Dataset)):
@@ -1021,9 +1038,14 @@ def with_plotly(
             raise ValueError(f'facet_by can have at most 2 dimensions, got {len(facet_by)}')
 
     # Process colors
-    all_vars = df_long['variable'].unique().tolist()
-    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, all_vars)
-    color_discrete_map = {var: color for var, color in zip(all_vars, processed_colors, strict=True)}
+    # For xarray data with XarrayColorMapper: resolve using the original xarray structure
+    if isinstance(data_original, (xr.DataArray, xr.Dataset)) and isinstance(colors, XarrayColorMapper):
+        color_discrete_map = resolve_colors(data_original, colors, coord_dim='variable', engine='plotly')
+    else:
+        # Traditional behavior: use ColorProcessor on variable names from long-form DataFrame
+        all_vars = df_long['variable'].unique().tolist()
+        processed_colors = ColorProcessor(engine='plotly').process_colors(colors, all_vars)
+        color_discrete_map = {var: color for var, color in zip(all_vars, processed_colors, strict=True)}
 
     # Create plot using Plotly Express based on mode
     common_args = {
@@ -1114,9 +1136,9 @@ def with_plotly(
 
 
 def with_matplotlib(
-    data: pd.DataFrame,
+    data: pd.DataFrame | xr.DataArray | xr.Dataset,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
-    colors: ColorType = 'viridis',
+    colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -1125,16 +1147,17 @@ def with_matplotlib(
     ax: plt.Axes | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
-    Plot a DataFrame with Matplotlib using stacked bars or stepped lines.
+    Plot data with Matplotlib using stacked bars or stepped lines.
 
     Args:
-        data: A DataFrame containing the data to plot. The index should represent time (e.g., hours),
-              and each column represents a separate data series.
+        data: A DataFrame or xarray DataArray/Dataset to plot. For DataFrames and converted xarray,
+              the index should represent time (e.g., hours), and each column represents a separate data series.
         mode: Plotting mode. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
-        colors: Color specification, can be:
-            - A string with a colormap name (e.g., 'viridis', 'plasma')
+        colors: Color specification. Can be:
+            - A colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
-            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
+            - A dict mapping column names to colors (e.g., {'Column1': '#ff0000'})
+            - An XarrayColorMapper instance for pattern-based color rules with grouping and sorting
         title: The title of the plot.
         ylabel: The ylabel of the plot.
         xlabel: The xlabel of the plot.
@@ -1149,14 +1172,46 @@ def with_matplotlib(
         - If `mode` is 'stacked_bar', bars are stacked for both positive and negative values.
           Negative values are stacked separately without extra labels in the legend.
         - If `mode` is 'line', stepped lines are drawn for each data series.
+        - XarrayColorMapper is only applied when xarray data (DataArray/Dataset) is provided.
+
+    Examples:
+        With XarrayColorMapper:
+
+        ```python
+        mapper = XarrayColorMapper()
+        mapper.add_rule('Solar', 'oranges', 'prefix')
+        mapper.add_rule('Wind', 'blues', 'prefix')
+        fig, ax = with_matplotlib(data_array, colors=mapper, mode='line')
+        ```
     """
     if mode not in ('stacked_bar', 'line'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line'}} for matplotlib, got {mode!r}")
 
+    # Store original data for XarrayColorMapper processing (before conversion to pandas)
+    data_original = data
+
+    # Convert xarray to DataFrame if needed
+    if isinstance(data, xr.Dataset):
+        # Convert Dataset to DataFrame with variables as columns
+        data = data.to_dataframe()
+    elif isinstance(data, xr.DataArray):
+        # Convert DataArray to DataFrame
+        data = data.to_dataframe()
+        if len(data.columns) == 1:
+            # Single column - this is typical for a simple DataArray
+            pass
+        # else: multi-dimensional DataArray already in wide format
+
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
+    # Process colors - use XarrayColorMapper if provided with xarray data
+    if isinstance(data_original, (xr.DataArray, xr.Dataset)) and isinstance(colors, XarrayColorMapper):
+        color_discrete_map = resolve_colors(data_original, colors, coord_dim='variable', engine='matplotlib')
+        # Get colors in order of DataFrame columns
+        processed_colors = [color_discrete_map.get(str(col), '#808080') for col in data.columns]
+    else:
+        processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
 
     if mode == 'stacked_bar':
         cumulative_positive = np.zeros(len(data))
