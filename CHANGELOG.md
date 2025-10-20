@@ -53,12 +53,15 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
+- **Multiple constraint groups for `prevent_simultaneous_flows`**: Components can now define multiple independent mutual exclusivity constraints. Use `[['fuel1', 'fuel2'], ['cooling1', 'cooling2']]` to enforce "at most 1 fuel AND at most 1 cooling method" while allowing combinations like (fuel1+cooling2). Previously only single constraint groups were supported.
+- Added `prevent_simultaneous_flows` to `LinearConverter` class
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
 
 ### 🗑️ Deprecated
+- **Flow objects in `prevent_simultaneous_flows`**: Use flow label strings instead of Flow objects. Example: `prevent_simultaneous_flows=['flow1', 'flow2']` (preferred) instead of `prevent_simultaneous_flows=[flow1_obj, flow2_obj]` (deprecated). Flow objects still work but trigger a DeprecationWarning.
 
 ### 🔥 Removed
 
@@ -72,6 +75,9 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 👷 Development
 - Fixed concurrency issue in CI
+
+- Added comprehensive tests for multiple constraint groups in `prevent_simultaneous_flows`
+- Fixed type hints for `submodel` attributes to include `| None` for consistency with runtime behavior
 
 ### 🚧 Known Issues
 

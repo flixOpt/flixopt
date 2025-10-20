@@ -599,3 +599,245 @@ class TestTransmissionModel:
             10,
             'Sizing does not work properly',
         )
+
+
+class TestPreventSimultaneousFlows:
+    """Tests for prevent_simultaneous_flows feature with multiple constraint groups."""
+
+    def test_single_constraint_group(self, basic_flow_system_linopy_coords, coords_config):
+        """Test backward compatibility: single list of flows creates one constraint."""
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+
+        # Create flows
+        flow1 = fx.Flow('flow1', bus='Fernwärme', size=100)
+        flow2 = fx.Flow('flow2', bus='Fernwärme', size=100)
+        flow3 = fx.Flow('flow3', bus='Fernwärme', size=100)
+        output_flow = fx.Flow('output', bus='Gas', size=200)
+
+        # Create converter with single constraint group using string labels (preferred)
+        converter = fx.LinearConverter(
+            label='single_group',
+            inputs=[flow1, flow2, flow3],
+            outputs=[output_flow],
+            conversion_factors=[{'flow1': 1, 'output': 0.9}],
+            prevent_simultaneous_flows=['flow1', 'flow2', 'flow3'],  # String labels (preferred)
+        )
+
+        flow_system.add_elements(converter)
+        model = create_linopy_model(flow_system)
+
+        # Check that binary variables were created for each flow
+        assert 'single_group(flow1)|on' in model.variables
+        assert 'single_group(flow2)|on' in model.variables
+        assert 'single_group(flow3)|on' in model.variables
+
+        # Check that the mutual exclusivity constraint exists
+        assert 'single_group|prevent_simultaneous_use' in model.constraints
+
+        # Verify constraint: sum of on variables <= 1
+        assert_conequal(
+            model.constraints['single_group|prevent_simultaneous_use'],
+            model.variables['single_group(flow1)|on']
+            + model.variables['single_group(flow2)|on']
+            + model.variables['single_group(flow3)|on']
+            <= 1,
+        )
+
+    def test_multiple_constraint_groups(self, basic_flow_system_linopy_coords, coords_config):
+        """Test multiple independent constraint groups using string labels."""
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+
+        # Add required buses
+        flow_system.add_elements(
+            fx.Bus('fuel'),
+            fx.Bus('cooling'),
+            fx.Bus('steam'),
+        )
+
+        # Create flows for different constraint groups
+        coal = fx.Flow('coal', bus='fuel', size=100)
+        gas = fx.Flow('gas', bus='fuel', size=100)
+        biomass = fx.Flow('biomass', bus='fuel', size=100)
+
+        water_cooling = fx.Flow('water_cooling', bus='cooling', size=50)
+        air_cooling = fx.Flow('air_cooling', bus='cooling', size=50)
+
+        steam = fx.Flow('steam', bus='steam', size=200)
+
+        # Create converter with two independent constraint groups using string labels (preferred)
+        converter = fx.LinearConverter(
+            label='multi_group',
+            inputs=[coal, gas, biomass, water_cooling, air_cooling],
+            outputs=[steam],
+            conversion_factors=[{'coal': 1, 'steam': 0.8}],
+            prevent_simultaneous_flows=[
+                ['coal', 'gas', 'biomass'],  # Group 0: at most 1 fuel (string labels)
+                ['water_cooling', 'air_cooling'],  # Group 1: at most 1 cooling (string labels)
+            ],
+        )
+
+        flow_system.add_elements(converter)
+        model = create_linopy_model(flow_system)
+
+        # Check that binary variables exist for all flows
+        for flow_name in ['coal', 'gas', 'biomass', 'water_cooling', 'air_cooling']:
+            assert f'multi_group({flow_name})|on' in model.variables
+
+        # Check that two separate constraints exist
+        assert 'multi_group|prevent_simultaneous_use|group0' in model.constraints
+        assert 'multi_group|prevent_simultaneous_use|group1' in model.constraints
+
+        # Verify first constraint: sum of fuel flow on-variables <= 1
+        assert_conequal(
+            model.constraints['multi_group|prevent_simultaneous_use|group0'],
+            model.variables['multi_group(coal)|on']
+            + model.variables['multi_group(gas)|on']
+            + model.variables['multi_group(biomass)|on']
+            <= 1,
+        )
+
+        # Verify second constraint: sum of cooling flow on-variables <= 1
+        assert_conequal(
+            model.constraints['multi_group|prevent_simultaneous_use|group1'],
+            model.variables['multi_group(water_cooling)|on'] + model.variables['multi_group(air_cooling)|on'] <= 1,
+        )
+
+    def test_normalization_internal_representation(self):
+        """Test that single list is normalized to list of lists with flow labels internally."""
+        flow1 = fx.Flow('f1', bus='test', size=10)
+        flow2 = fx.Flow('f2', bus='test', size=10)
+        flow3 = fx.Flow('f3', bus='test', size=10)
+        output = fx.Flow('out', bus='test', size=20)
+
+        # Create with single list (Flow objects - deprecated but still works)
+        with pytest.warns(DeprecationWarning, match='Passing Flow objects to prevent_simultaneous_flows is deprecated'):
+            conv1 = fx.LinearConverter(
+                label='test1',
+                inputs=[flow1, flow2, flow3],
+                outputs=[output],
+                conversion_factors=[{'f1': 1, 'out': 0.9}],
+                prevent_simultaneous_flows=[flow1, flow2],  # Single list
+            )
+
+        # Internal representation should be list of lists of flow label strings
+        assert isinstance(conv1.prevent_simultaneous_flows, list)
+        assert len(conv1.prevent_simultaneous_flows) == 1
+        assert isinstance(conv1.prevent_simultaneous_flows[0], list)
+        assert len(conv1.prevent_simultaneous_flows[0]) == 2
+        # Verify they are strings (flow labels), not Flow objects
+        assert all(isinstance(label, str) for label in conv1.prevent_simultaneous_flows[0])
+        assert set(conv1.prevent_simultaneous_flows[0]) == {'f1', 'f2'}
+
+    def test_string_labels_preferred(self):
+        """Test that using string labels (preferred way) works without deprecation warnings."""
+        flow1 = fx.Flow('f1', bus='test', size=10)
+        flow2 = fx.Flow('f2', bus='test', size=10)
+        flow3 = fx.Flow('f3', bus='test', size=10)
+        output = fx.Flow('out', bus='test', size=20)
+
+        # Create with string labels (preferred - no deprecation warning)
+        conv = fx.LinearConverter(
+            label='test_strings',
+            inputs=[flow1, flow2, flow3],
+            outputs=[output],
+            conversion_factors=[{'f1': 1, 'out': 0.9}],
+            prevent_simultaneous_flows=['f1', 'f2'],  # String labels
+        )
+
+        # Should have same internal representation
+        assert conv.prevent_simultaneous_flows == [['f1', 'f2']]
+
+    def test_multiple_groups_with_strings(self):
+        """Test multiple constraint groups using string labels."""
+        flow1 = fx.Flow('coal', bus='test', size=10)
+        flow2 = fx.Flow('gas', bus='test', size=10)
+        flow3 = fx.Flow('water', bus='test', size=10)
+        flow4 = fx.Flow('air', bus='test', size=10)
+        output = fx.Flow('out', bus='test', size=20)
+
+        # Multiple groups with string labels (preferred)
+        conv = fx.LinearConverter(
+            label='test_multi',
+            inputs=[flow1, flow2, flow3, flow4],
+            outputs=[output],
+            conversion_factors=[{'coal': 1, 'out': 0.9}],
+            prevent_simultaneous_flows=[
+                ['coal', 'gas'],  # Fuel group
+                ['water', 'air'],  # Cooling group
+            ],
+        )
+
+        assert conv.prevent_simultaneous_flows == [['coal', 'gas'], ['water', 'air']]
+
+    def test_empty_prevent_simultaneous_flows(self, basic_flow_system_linopy_coords, coords_config):
+        """Test that None or empty prevent_simultaneous_flows works correctly."""
+        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+
+        flow1 = fx.Flow('f1', bus='Fernwärme', size=10)
+        flow2 = fx.Flow('f2', bus='Fernwärme', size=10)
+        output = fx.Flow('out', bus='Gas', size=20)
+
+        # Create with None
+        conv = fx.LinearConverter(
+            label='test_none',
+            inputs=[flow1, flow2],
+            outputs=[output],
+            conversion_factors=[{'f1': 1, 'out': 0.9}],
+            prevent_simultaneous_flows=None,
+        )
+
+        flow_system.add_elements(conv)
+        model = create_linopy_model(flow_system)
+
+        # No prevent_simultaneous_use constraints should exist
+        prevent_constraints = [c for c in model.constraints if 'prevent_simultaneous_use' in c]
+        assert len(prevent_constraints) == 0
+
+        # Internal representation should be None
+        assert conv.prevent_simultaneous_flows is None
+
+    def test_unknown_label_during_modeling(self, basic_flow_system_linopy_coords):
+        """Test that unknown flow label raises ValueError during full modeling."""
+        flow_system = basic_flow_system_linopy_coords
+
+        # Create flows and converter with unknown label
+        flow1 = fx.Flow('flow1', bus='Fernwärme', size=100)
+        flow2 = fx.Flow('flow2', bus='Fernwärme', size=100)
+        output = fx.Flow('output', bus='Gas', size=200)
+
+        conv = fx.LinearConverter(
+            label='bad_conv',
+            inputs=[flow1, flow2],
+            outputs=[output],
+            conversion_factors=[{'flow1': 1, 'output': 0.9}],
+            prevent_simultaneous_flows=['flow1', 'nonexistent'],  # 'nonexistent' doesn't exist
+        )
+
+        flow_system.add_elements(conv)
+
+        # Modeling should fail with ValueError during plausibility checks
+        with pytest.raises(ValueError, match='Flow name "nonexistent" is not present'):
+            create_linopy_model(flow_system)
+
+    def test_duplicate_labels_during_modeling(self, basic_flow_system_linopy_coords):
+        """Test that duplicate flow labels raise ValueError during full modeling."""
+        flow_system = basic_flow_system_linopy_coords
+
+        # Create flows and converter with duplicate labels
+        flow1 = fx.Flow('flow1', bus='Fernwärme', size=100)
+        flow2 = fx.Flow('flow2', bus='Fernwärme', size=100)
+        output = fx.Flow('output', bus='Gas', size=200)
+
+        conv = fx.LinearConverter(
+            label='bad_conv',
+            inputs=[flow1, flow2],
+            outputs=[output],
+            conversion_factors=[{'flow1': 1, 'output': 0.9}],
+            prevent_simultaneous_flows=['flow1', 'flow2', 'flow1'],  # 'flow1' appears twice
+        )
+
+        flow_system.add_elements(conv)
+
+        # Modeling should fail with ValueError during plausibility checks
+        with pytest.raises(ValueError, match='Flow names must not occure multiple times'):
+            create_linopy_model(flow_system)
