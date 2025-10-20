@@ -745,13 +745,22 @@ def _validate_string_coordinate(da: xr.DataArray, coord_dim: str) -> None:
         raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
 
     coord_values = da.coords[coord_dim].values
-    non_strings = [v for v in coord_values if not isinstance(v, str)]
 
-    if non_strings:
-        non_string_repr = [f'{v!r} ({type(v).__name__})' for v in non_strings[:5]]
-        raise TypeError(
-            f"Coordinate '{coord_dim}' must contain only strings. Found non-string values: {non_string_repr}"
-        )
+    # Check if the array dtype is a string/unicode type
+    if not np.issubdtype(coord_values.dtype, np.str_) and not np.issubdtype(coord_values.dtype, np.object_):
+        raise TypeError(f"Coordinate '{coord_dim}' must contain only strings. Found dtype: {coord_values.dtype}")
+
+    # For object arrays, verify all elements are actually strings
+    if coord_values.dtype == np.object_:
+        # Vectorized check using numpy
+        is_string = np.vectorize(lambda x: isinstance(x, str), otypes=[bool])(coord_values)
+        if not np.all(is_string):
+            non_string_mask = ~is_string
+            non_strings = coord_values[non_string_mask][:5]
+            non_string_repr = [f'{v!r} ({type(v).__name__})' for v in non_strings]
+            raise TypeError(
+                f"Coordinate '{coord_dim}' must contain only strings. Found non-string values: {non_string_repr}"
+            )
 
 
 def resolve_colors(
