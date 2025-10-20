@@ -1133,7 +1133,7 @@ class _NodeResults(_ElementResults):
             if colors == 'auto'
             else colors
         )
-        resolved_colors = plotting.resolve_colors(ds, colors_to_use, coord_dim='variable', engine=engine)
+        resolved_colors = plotting.resolve_colors(ds, colors_to_use, engine=engine)
 
         # Matplotlib requires only 'time' dimension; check for extras after selection
         if engine == 'matplotlib':
@@ -1299,7 +1299,7 @@ class _NodeResults(_ElementResults):
             if colors == 'auto'
             else colors
         )
-        resolved_colors = plotting.resolve_colors(combined_ds, colors_to_use, coord_dim='variable', engine=engine)
+        resolved_colors = plotting.resolve_colors(combined_ds, colors_to_use, engine=engine)
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -1521,7 +1521,7 @@ class ComponentResults(_NodeResults):
             if colors == 'auto'
             else colors
         )
-        resolved_colors = plotting.resolve_colors(combined_ds, colors_to_use, coord_dim='variable', engine=engine)
+        resolved_colors = plotting.resolve_colors(combined_ds, colors_to_use, engine=engine)
 
         if engine == 'plotly':
             # Plot flows (node balance) with the specified mode
