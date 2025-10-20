@@ -335,18 +335,18 @@ CoordValues = xr.DataArray | np.ndarray | list[Any]
 
 
 class XarrayColorMapper:
-    """Map xarray coordinate values to colors based on naming patterns.
+    """Map Dataset variable names to colors based on naming patterns.
 
-    A simple, maintainable utility class for mapping xarray coordinate values
+    A simple, maintainable utility class for mapping Dataset variable names
     to colors based on naming patterns. Enables visual grouping in plots where
-    similar items get similar colors.
+    similar variables get similar colors.
 
     Key Features:
         - Pattern-based color assignment (prefix, suffix, contains, glob, regex)
         - Plotly sequential color palettes for grouped coloring (cycles through shades)
         - Discrete color support for exact color matching across all items
         - Override support for special cases
-        - Coordinate reordering for visual grouping in plots
+        - Dataset variable reordering for visual grouping in plots
         - Full type hints and comprehensive documentation
 
     Available Color Families (14 single-hue palettes):
@@ -357,32 +357,35 @@ class XarrayColorMapper:
         See: https://plotly.com/python/builtin-colorscales/
 
     Example Usage:
-        Using color families (items cycle through shades):
+        Using color families (variables cycle through shades):
 
         ```python
         mapper = (
             XarrayColorMapper()
-            .add_rule('Product_A', 'blues', 'prefix')  # Product_A1, A2, A3 get different blue shades
-            .add_rule('Product_B', 'greens', 'prefix')  # Product_B1, B2, B3 get different green shades
-            .add_override({'Special': '#FFD700'})
+            .add_rule('Boiler', 'reds', 'prefix')  # Boiler_1, Boiler_2 get different red shades
+            .add_rule('CHP', 'oranges', 'prefix')  # CHP_1, CHP_2 get different orange shades
+            .add_rule('Storage', 'blues', 'contains')  # *Storage* variables get blue shades
+            .add_override({'Special_var': '#FFD700'})
         )
+
+        # Use with plotting
+        results['Component'].plot_node_balance(colors=mapper)
         ```
 
-        Using discrete colors (all matching items get the same color):
+        Using discrete colors (all matching variables get the same color):
 
         ```python
         mapper = (
             XarrayColorMapper()
-            .add_rule('Solar', '#FFA500', 'prefix')  # All Solar* items get exact orange
-            .add_rule('Wind', 'skyblue', 'prefix')  # All Wind* items get exact skyblue
+            .add_rule('Solar', '#FFA500', 'prefix')  # All Solar* get exact orange
+            .add_rule('Wind', 'skyblue', 'prefix')  # All Wind* get exact skyblue
             .add_rule('Battery', 'rgb(50,205,50)', 'contains')  # All *Battery* get lime green
         )
 
-        # Apply to data
-        color_map = mapper.apply_to_dataarray(da, 'component')
-
-        # Plot with Plotly
-        fig = px.bar(df, x='component', y='value', color='component', color_discrete_map=color_map)
+        # Apply to Dataset and plot
+        color_map = mapper.create_color_map(list(ds.data_vars.keys()))
+        # Or use with resolve_colors()
+        resolved_colors = resolve_colors(ds, mapper)
         ```
     """
 
@@ -572,47 +575,18 @@ class XarrayColorMapper:
 
         return color_map
 
-    def apply_to_dataarray(self, da: xr.DataArray, coord_dim: str) -> dict[str, str]:
-        """Create color map for a DataArray coordinate dimension.
+    def reorder_dataset(self, ds: xr.Dataset, sort_within_groups: bool | None = None) -> xr.Dataset:
+        """Reorder Dataset variables so variables with the same color group are adjacent.
+
+        This is useful for creating plots where similar variables (same color group)
+        appear next to each other, making visual groupings clear in legends and stacked plots.
 
         Args:
-            da: The data array.
-            coord_dim: Coordinate dimension name.
+            ds: The Dataset to reorder.
+            sort_within_groups: Whether to sort variables within each group. If None, uses instance default.
 
         Returns:
-            Color mapping for that dimension.
-
-        Raises:
-            ValueError: If coord_dim is not found in the DataArray.
-
-        Note:
-            Coordinate values must be strings. This method is used for DataArray coordinates (e.g., in heatmaps).
-            For Datasets, use resolve_colors() which extracts variable names directly.
-        """
-        if coord_dim not in da.coords:
-            raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
-
-        return self.create_color_map(da.coords[coord_dim])
-
-    def reorder_coordinate(
-        self, da: xr.DataArray, coord_dim: str, sort_within_groups: bool | None = None
-    ) -> xr.DataArray:
-        """Reorder a DataArray coordinate so values with the same color are adjacent.
-
-        This is useful for creating plots where similar items (same color group)
-        appear next to each other, making visual groupings clear.
-
-        Args:
-            da: The data array to reorder.
-            coord_dim: The coordinate dimension to reorder.
-            sort_within_groups: Whether to sort values within each group. If None, uses instance default.
-
-        Returns:
-            New DataArray with reordered coordinate.
-
-        Note:
-            Coordinate values must be strings. This method is used for DataArray coordinates (e.g., in heatmaps).
-            For Datasets, variable names from data_vars are always strings.
+            New Dataset with reordered variables.
 
         Examples:
             Original order: ['Product_B1', 'Product_A1', 'Product_B2', 'Product_A2']
@@ -623,31 +597,28 @@ class XarrayColorMapper:
             mapper.add_rule('Product_A', 'blues', 'prefix')
             mapper.add_rule('Product_B', 'greens', 'prefix')
 
-            da_reordered = mapper.reorder_coordinate(da, 'product')
+            ds_reordered = mapper.reorder_dataset(ds)
             ```
         """
-        if coord_dim not in da.coords:
-            raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
-
         if sort_within_groups is None:
             sort_within_groups = self.sort_within_groups
 
-        # Get coordinate values as categories
-        categories = list(da.coords[coord_dim].values)
+        # Get variable names
+        variable_names = list(ds.data_vars.keys())
 
-        # Group categories
-        groups = self._group_categories(categories)
+        # Group variables
+        groups = self._group_categories(variable_names)
 
         # Build new order: group by group, optionally sorted within each
         new_order = []
         for group_name in groups.keys():
-            group_categories = groups[group_name]
+            group_vars = groups[group_name]
             if sort_within_groups:
-                group_categories = sorted(group_categories)
-            new_order.extend(group_categories)
+                group_vars = sorted(group_vars)
+            new_order.extend(group_vars)
 
-        # Reindex the DataArray
-        return da.sel({coord_dim: new_order})
+        # Reorder Dataset by selecting variables in new order
+        return ds[new_order]
 
     def get_rules(self) -> list[dict[str, str]]:
         """Return a copy of current rules for inspection."""
