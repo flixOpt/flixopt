@@ -746,21 +746,21 @@ def _validate_string_coordinate(da: xr.DataArray, coord_dim: str) -> None:
 
     coord_values = da.coords[coord_dim].values
 
-    # Check if the array dtype is a string/unicode type
-    if not np.issubdtype(coord_values.dtype, np.str_) and not np.issubdtype(coord_values.dtype, np.object_):
-        raise TypeError(f"Coordinate '{coord_dim}' must contain only strings. Found dtype: {coord_values.dtype}")
+    # Fast path: If dtype is string, all values are guaranteed to be strings
+    if np.issubdtype(coord_values.dtype, np.str_):
+        return  # All good!
 
-    # For object arrays, verify all elements are actually strings
-    if coord_values.dtype == np.object_:
-        # Vectorized check using numpy
-        is_string = np.vectorize(lambda x: isinstance(x, str), otypes=[bool])(coord_values)
-        if not np.all(is_string):
-            non_string_mask = ~is_string
-            non_strings = coord_values[non_string_mask][:5]
-            non_string_repr = [f'{v!r} ({type(v).__name__})' for v in non_strings]
-            raise TypeError(
-                f"Coordinate '{coord_dim}' must contain only strings. Found non-string values: {non_string_repr}"
-            )
+    # For object arrays or other types, check elements
+    # Use early exit - stop after finding first 5 non-strings
+    non_strings = []
+    for v in coord_values:
+        if not isinstance(v, str):
+            non_strings.append(f'{v!r} ({type(v).__name__})')
+            if len(non_strings) >= 5:  # Early exit
+                break
+
+    if non_strings:
+        raise TypeError(f"Coordinate '{coord_dim}' must contain only strings. Found non-string values: {non_strings}")
 
 
 def resolve_colors(
