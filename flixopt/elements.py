@@ -50,9 +50,16 @@ class Component(Element):
             component has discrete on/off states. Creates binary variables for all
             connected Flows. For better performance, prefer defining OnOffParameters
             on individual Flows when possible.
-        prevent_simultaneous_flows: list of Flows that cannot be active simultaneously.
-            Creates binary variables to enforce mutual exclusivity. Use sparingly as
-            it increases computational complexity.
+        prevent_simultaneous_flows: Flows that cannot be active simultaneously.
+            Can be either a single list of flows (one constraint group) or a list of lists
+            (multiple independent constraint groups). Each group enforces "at most 1 flow
+            active" within that group. Creates binary variables to enforce mutual exclusivity.
+            Use sparingly as it increases computational complexity.
+
+            Examples:
+                - `[flow1, flow2, flow3]` - At most 1 of these 3 flows can be active
+                - `[[fuel1, fuel2], [cooling1, cooling2]]` - Two independent constraints:
+                  at most 1 fuel AND at most 1 cooling method
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -80,7 +87,7 @@ class Component(Element):
         inputs: list[Flow] | None = None,
         outputs: list[Flow] | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        prevent_simultaneous_flows: list[Flow] | None = None,
+        prevent_simultaneous_flows: list[Flow] | list[list[Flow]] | None = None,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -88,9 +95,41 @@ class Component(Element):
         self.outputs: list[Flow] = outputs or []
         self._check_unique_flow_labels()
         self.on_off_parameters = on_off_parameters
-        self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
+
+        # Normalize prevent_simultaneous_flows to always be list of lists
+        self.prevent_simultaneous_flows: list[list[Flow]] = self._normalize_simultaneous_flows(
+            prevent_simultaneous_flows
+        )
 
         self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
+
+    @staticmethod
+    def _normalize_simultaneous_flows(
+        prevent_simultaneous_flows: list[Flow] | list[list[Flow]] | None,
+    ) -> list[list[Flow]] | None:
+        """Normalize prevent_simultaneous_flows to always be a list of constraint groups.
+
+        Args:
+            prevent_simultaneous_flows: Either None, a single list of flows, or a list of lists
+
+        Returns:
+            List of constraint groups (list of lists). Empty list if input is None.
+
+        Examples:
+            None -> []
+            [flow1, flow2] -> [[flow1, flow2]]
+            [[flow1, flow2], [flow3, flow4]] -> [[flow1, flow2], [flow3, flow4]]
+        """
+        if prevent_simultaneous_flows is None:
+            return None
+
+        # Check if it's a list of lists by examining the first element
+        if prevent_simultaneous_flows and isinstance(prevent_simultaneous_flows[0], list):
+            # Already a list of lists
+            return prevent_simultaneous_flows
+        else:
+            # Single list - wrap it in another list
+            return [prevent_simultaneous_flows] if prevent_simultaneous_flows else []
 
     def create_model(self, model: FlowSystemModel) -> ComponentModel:
         self._plausibility_checks()
@@ -787,10 +826,12 @@ class ComponentModel(ElementModel):
                 if flow.on_off_parameters is None:
                     flow.on_off_parameters = OnOffParameters()
 
-        if self.element.prevent_simultaneous_flows:
-            for flow in self.element.prevent_simultaneous_flows:
-                if flow.on_off_parameters is None:
-                    flow.on_off_parameters = OnOffParameters()
+        if self.element.prevent_simultaneous_flows is not None:
+            # Iterate over all flows in all constraint groups
+            for group in self.element.prevent_simultaneous_flows:
+                for flow in group:
+                    if flow.on_off_parameters is None:
+                        flow.on_off_parameters = OnOffParameters()
 
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
@@ -820,12 +861,19 @@ class ComponentModel(ElementModel):
             )
 
         if self.element.prevent_simultaneous_flows:
-            # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
-            ModelingPrimitives.mutual_exclusivity_constraint(
-                self,
-                binary_variables=[flow.submodel.on_off.on for flow in self.element.prevent_simultaneous_flows],
-                short_name='prevent_simultaneous_use',
-            )
+            # Create mutual exclusivity constraint for each group
+            # Each group enforces "at most 1 flow active at a time"
+            for group_idx, flow_group in enumerate(self.element.prevent_simultaneous_flows):
+                constraint_name = (
+                    'prevent_simultaneous_use'
+                    if len(self.element.prevent_simultaneous_flows) == 1
+                    else f'prevent_simultaneous_use|group{group_idx}'
+                )
+                ModelingPrimitives.mutual_exclusivity_constraint(
+                    self,
+                    binary_variables=[flow.submodel.on_off.on for flow in flow_group],
+                    short_name=constraint_name,
+                )
 
     def results_structure(self):
         return {

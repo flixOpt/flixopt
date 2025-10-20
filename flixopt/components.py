@@ -62,6 +62,9 @@ class LinearConverter(Component):
             of different flows. Enables modeling of non-linear conversion behavior through
             linear approximation. Either 'conversion_factors' or 'piecewise_conversion'
             can be used, but not both.
+        prevent_simultaneous_flows: Flows that cannot be active simultaneously.
+            Can be a single list or list of lists for multiple independent constraint groups.
+            See Component class documentation for details and examples.
         meta_data: Used to store additional information about the Element. Not used
             internally, but saved in results. Only use Python native types.
 
@@ -168,9 +171,10 @@ class LinearConverter(Component):
         on_off_parameters: OnOffParameters | None = None,
         conversion_factors: list[dict[str, TemporalDataUser]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
+        prevent_simultaneous_flows: list[Flow] | list[list[Flow]] | None = None,
         meta_data: dict | None = None,
     ):
-        super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
+        super().__init__(label, inputs, outputs, on_off_parameters, prevent_simultaneous_flows, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
