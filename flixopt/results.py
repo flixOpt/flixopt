@@ -629,42 +629,21 @@ class CalculationResults:
         Returns:
             A DataArray filled with NaN, with dimensions appropriate for the mode.
         """
+        coords = {}
+        if self.scenarios is not None:
+            coords['scenario'] = self.scenarios
+        if self.periods is not None:
+            coords['period'] = self.periods
+
         if mode == 'temporal':
-            # Temporal mode has time dimension
-            coords = {'time': self.timesteps_extra}
-            if self.scenarios is not None:
-                coords['scenario'] = self.scenarios
-            dims = list(coords.keys())
-        elif mode == 'periodic':
-            # Periodic mode has scenario dimension (if it exists), but no time
-            if self.scenarios is not None:
-                coords = {'scenario': self.scenarios}
-                dims = ['scenario']
-            else:
-                coords = {}
-                dims = []
-        else:  # mode == 'total'
-            # Total mode has scenario dimension (if it exists), but no time
-            if self.scenarios is not None:
-                coords = {'scenario': self.scenarios}
-                dims = ['scenario']
-            else:
-                coords = {}
-                dims = []
+            coords['time'] = self.timesteps_extra
 
         # Create template with appropriate shape
-        if dims:
-            shape = tuple(len(coords[dim]) for dim in dims)
-            template = xr.DataArray(
-                np.full(shape, np.nan, dtype=float),
-                coords=coords,
-                dims=dims,
-            )
+        if coords:
+            shape = tuple(len(coords[dim]) for dim in coords)
+            return xr.DataArray(np.full(shape, np.nan, dtype=float), coords=coords, dims=list(coords.keys()))
         else:
-            # Scalar case
-            template = xr.DataArray(np.nan)
-
-        return template
+            return xr.DataArray(np.nan)
 
     def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
         """Creates a dataset containing effect totals for all components (including their flows).
