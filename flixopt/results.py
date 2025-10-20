@@ -630,13 +630,12 @@ class CalculationResults:
             A DataArray filled with NaN, with dimensions appropriate for the mode.
         """
         coords = {}
-        if self.scenarios is not None:
-            coords['scenario'] = self.scenarios
-        if self.periods is not None:
-            coords['period'] = self.periods
-
         if mode == 'temporal':
             coords['time'] = self.timesteps_extra
+        if self.periods is not None:
+            coords['period'] = self.periods
+        if self.scenarios is not None:
+            coords['scenario'] = self.scenarios
 
         # Create template with appropriate shape
         if coords:
