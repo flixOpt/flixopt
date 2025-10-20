@@ -813,63 +813,35 @@ def resolve_colors(
 
     if isinstance(colors, XarrayColorMapper):
         color_mapper = colors
-        if color_mapper.sort_within_groups:
-            # Check if coord_dim exists and reorder
-            if isinstance(data, xr.DataArray) and coord_dim in data.coords:
-                data = color_mapper.reorder_coordinate(data, coord_dim)
-            elif isinstance(data, xr.Dataset):
-                # For Dataset, reorder the coordinate if it exists
-                if coord_dim in data.coords or coord_dim in data.dims:
-                    # Get coordinate values
-                    coord_values = data.coords[coord_dim].values
-                    categories = [str(val) for val in coord_values]
 
-                    # Group categories using the color mapper's logic
-                    groups = color_mapper._group_categories(categories)
-
-                    # Build new order: group by group, optionally sorted within each
-                    new_order = []
-                    for group_name in groups.keys():
-                        group_categories = groups[group_name]
-                        if color_mapper.sort_within_groups:
-                            group_categories = sorted(group_categories)
-                        new_order.extend(group_categories)
-
-                    # Convert back to original dtype if needed
-                    original_values = list(coord_values)
-
-                    # Build mapping from string to list of original values to detect collisions
-                    str_to_originals: dict[str, list] = {}
-                    for v in original_values:
-                        key = str(v)
-                        if key not in str_to_originals:
-                            str_to_originals[key] = []
-                        str_to_originals[key].append(v)
-
-                    # Check for collisions (multiple distinct values with same string representation)
-                    collisions = {k: vals for k, vals in str_to_originals.items() if len(vals) > 1}
-                    if collisions:
-                        collision_details = ', '.join(f"'{k}' -> {vals}" for k, vals in collisions.items())
-                        raise ValueError(
-                            f"Coordinate '{coord_dim}' has ambiguous string representations. "
-                            f'Multiple distinct values stringify to the same string: {collision_details}'
-                        )
-
-                    # No collisions - create simple mapping and reorder
-                    str_to_original = {k: vals[0] for k, vals in str_to_originals.items()}
-                    reordered_values = [str_to_original[cat] for cat in new_order]
-
-                    # Reindex the Dataset
-                    data = data.sel({coord_dim: reordered_values})
-
-        # Apply color mapper to get dict
+        # For DataArray: reorder coordinate dimension if sorting enabled
         if isinstance(data, xr.DataArray):
+            if color_mapper.sort_within_groups and coord_dim in data.coords:
+                data = color_mapper.reorder_coordinate(data, coord_dim)
             if coord_dim in data.coords:
                 return color_mapper.apply_to_dataarray(data, coord_dim)
+
+        # For Dataset: reorder variable names if sorting enabled
         elif isinstance(data, xr.Dataset):
-            # For Dataset, map colors to variable names
-            labels = [str(v) for v in data.data_vars]
-            return color_mapper.create_color_map(labels)
+            # Get variable names
+            var_names = [str(v) for v in data.data_vars]
+
+            # Apply sorting if enabled
+            if color_mapper.sort_within_groups:
+                # Group variable names using the color mapper's logic
+                groups = color_mapper._group_categories(var_names)
+
+                # Build new order: group by group, sorted within each
+                sorted_var_names = []
+                for group_name in groups.keys():
+                    group_vars = groups[group_name]
+                    group_vars = sorted(group_vars)
+                    sorted_var_names.extend(group_vars)
+
+                var_names = sorted_var_names
+
+            # Map colors to variable names (in sorted order if applicable)
+            return color_mapper.create_color_map(var_names)
 
     raise TypeError(f'Wrong type passed to resolve_colors(): {type(colors)}')
 
