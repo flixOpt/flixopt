@@ -619,6 +619,52 @@ class CalculationResults:
             total = xr.DataArray(np.nan)
         return total.rename(f'{element}->{effect}({mode})')
 
+    def _create_template_for_mode(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.DataArray:
+        """Create a template DataArray with the correct dimensions for a given mode.
+
+        Args:
+            mode: The calculation mode ('temporal', 'periodic', or 'total').
+
+        Returns:
+            A DataArray filled with NaN, with dimensions appropriate for the mode.
+        """
+        if mode == 'temporal':
+            # Temporal mode has time dimension
+            coords = {'time': self.timesteps_extra}
+            if self.scenarios is not None:
+                coords['scenario'] = self.scenarios
+            dims = list(coords.keys())
+        elif mode == 'periodic':
+            # Periodic mode has scenario dimension (if it exists), but no time
+            if self.scenarios is not None:
+                coords = {'scenario': self.scenarios}
+                dims = ['scenario']
+            else:
+                coords = {}
+                dims = []
+        else:  # mode == 'total'
+            # Total mode has scenario dimension (if it exists), but no time
+            if self.scenarios is not None:
+                coords = {'scenario': self.scenarios}
+                dims = ['scenario']
+            else:
+                coords = {}
+                dims = []
+
+        # Create template with appropriate shape
+        if dims:
+            shape = tuple(len(coords[dim]) for dim in dims)
+            template = xr.DataArray(
+                np.full(shape, np.nan, dtype=float),
+                coords=coords,
+                dims=dims,
+            )
+        else:
+            # Scalar case
+            template = xr.DataArray(np.nan)
+
+        return template
+
     def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
         """Creates a dataset containing effect totals for all components (including their flows).
         The dataset does contain the direct as well as the indirect effects of each component.
@@ -629,36 +675,23 @@ class CalculationResults:
         Returns:
             An xarray Dataset with components as dimension and effects as variables.
         """
+        # Create template with correct dimensions for this mode
+        template = self._create_template_for_mode(mode)
+
         ds = xr.Dataset()
         all_arrays = {}
-        template = None  # Template is needed to determine the dimensions of the arrays. This handles the case of no shares for an effect
-
         components_list = list(self.components)
 
-        # First pass: collect arrays and find template
+        # Collect arrays for all effects and components
         for effect in self.effects:
             effect_arrays = []
             for component in components_list:
                 da = self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
                 effect_arrays.append(da)
 
-                if template is None and (da.dims or not da.isnull().all()):
-                    template = da
-
             all_arrays[effect] = effect_arrays
 
-        # Ensure we have a template
-        if template is None:
-            # If no template with dimensions/values found, use first available array (even if scalar NaN)
-            for effect_arrays in all_arrays.values():
-                if effect_arrays:
-                    template = effect_arrays[0]
-                    break
-
-        if template is None:
-            raise ValueError(f"No arrays found for mode '{mode}'. Cannot create effects dataset.")
-
-        # Second pass: process all effects (guaranteed to include all)
+        # Process all effects: expand scalar NaN arrays to match template dimensions
         for effect in self.effects:
             dataarrays = all_arrays[effect]
             component_arrays = []
