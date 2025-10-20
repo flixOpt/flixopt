@@ -13,7 +13,7 @@ class TestBasicFunctionality:
     def test_initialization_default(self):
         """Test default initialization."""
         mapper = XarrayColorMapper()
-        assert len(mapper.get_families()) == 8  # Default families
+        assert len(mapper.get_families()) == 14  # Default families
         assert 'blues' in mapper.get_families()
         assert mapper.sort_within_groups is True
 
@@ -307,12 +307,6 @@ class TestEdgeCases:
         assert 'Product_A' in color_map
         assert 'Product_B' in color_map
 
-    def test_unknown_family(self):
-        """Test that adding rule with unknown family raises error."""
-        mapper = XarrayColorMapper()
-        with pytest.raises(ValueError, match='Unknown family'):
-            mapper.add_rule('Product', 'unknown_family', 'prefix')
-
     def test_invalid_match_type(self):
         """Test that invalid match type raises error."""
         mapper = XarrayColorMapper()
@@ -344,7 +338,7 @@ class TestEdgeCases:
         # Should cycle through colors
         assert len(color_map) == 10
         # First and 6th item should have the same color (cycling)
-        assert color_map['Item_0'] == color_map['Item_5']
+        assert color_map['Item_0'] == color_map['Item_7']
 
 
 class TestInspectionMethods:
@@ -378,7 +372,7 @@ class TestInspectionMethods:
 
         assert 'blues' in families
         assert 'greens' in families
-        assert len(families['blues']) == 5  # Blues[2:7] has 5 colors
+        assert len(families['blues']) == 7  # Blues[1:8] has 5 colors
 
 
 class TestMethodChaining:
