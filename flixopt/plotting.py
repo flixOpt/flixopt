@@ -584,9 +584,19 @@ class XarrayColorMapper:
 
         Raises:
             ValueError: If coord_dim is not found in the DataArray.
+            TypeError: If coord_dim values are not all strings.
         """
         if coord_dim not in da.coords:
             raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
+
+        # Validate all coordinate values are strings
+        coord_values = da.coords[coord_dim].values
+        if not all(isinstance(v, str) for v in coord_values):
+            non_strings = [f'{v!r} ({type(v).__name__})' for v in coord_values if not isinstance(v, str)]
+            raise TypeError(
+                f"Coordinate '{coord_dim}' must contain only strings. "
+                f'Found non-string values: {non_strings[:5]}'  # Show first 5
+            )
 
         return self.create_color_map(da.coords[coord_dim])
 
@@ -624,9 +634,16 @@ class XarrayColorMapper:
         if sort_within_groups is None:
             sort_within_groups = self.sort_within_groups
 
-        # Get coordinate values
+        # Get coordinate values and validate they are strings
         coord_values = da.coords[coord_dim].values
-        categories = [str(val) for val in coord_values]
+        if not all(isinstance(v, str) for v in coord_values):
+            non_strings = [f'{v!r} ({type(v).__name__})' for v in coord_values if not isinstance(v, str)]
+            raise TypeError(
+                f"Coordinate '{coord_dim}' must contain only strings. "
+                f'Found non-string values: {non_strings[:5]}'  # Show first 5
+            )
+
+        categories = list(coord_values)
 
         # Group categories
         groups = self._group_categories(categories)
@@ -639,38 +656,8 @@ class XarrayColorMapper:
                 group_categories = sorted(group_categories)
             new_order.extend(group_categories)
 
-        # Convert back to original dtype if needed
-        original_values = list(coord_values)
-
-        # Build mapping from string to list of original values to detect collisions
-        str_to_originals: dict[str, list] = {}
-        for v in original_values:
-            key = str(v)
-            if key not in str_to_originals:
-                str_to_originals[key] = []
-            str_to_originals[key].append(v)
-
-        # Check for collisions (multiple distinct values with same string representation)
-        collisions = {k: vals for k, vals in str_to_originals.items() if len(vals) > 1}
-        if collisions:
-            collision_details = []
-            for k, vals in collisions.items():
-                typed_vals = ', '.join(f'{v!r} ({type(v).__name__})' for v in vals)
-                collision_details.append(f"  '{k}' -> [{typed_vals}]")
-
-            raise ValueError(
-                f"Coordinate '{coord_dim}' has ambiguous string representations. "
-                f'Multiple distinct values stringify to the same string:\n' + '\n'.join(collision_details) + '\n'
-                'Ensure coordinate values have unique string representations, or convert to consistent types '
-                'before plotting (e.g., using .astype()).'
-            )
-
-        # No collisions - create simple mapping and reorder
-        str_to_original = {k: vals[0] for k, vals in str_to_originals.items()}
-        reordered_values = [str_to_original[cat] for cat in new_order]
-
         # Reindex the DataArray
-        return da.sel({coord_dim: reordered_values})
+        return da.sel({coord_dim: new_order})
 
     def get_rules(self) -> list[dict[str, str]]:
         """Return a copy of current rules for inspection."""
@@ -756,7 +743,7 @@ class XarrayColorMapper:
 
 
 def resolve_colors(
-    data: xr.DataArray | xr.Dataset,
+    data: xr.DataArray,
     colors: ColorType | XarrayColorMapper,
     coord_dim: str = 'variable',
     engine: PlottingEngine = 'plotly',
@@ -768,7 +755,7 @@ def resolve_colors(
     or as part of CalculationResults.
 
     Args:
-        data: DataArray or Dataset to create colors for
+        data: DataArray to create colors for
         colors: Color specification or a XarrayColorMapper to use
         coord_dim: Coordinate dimension to map colors to
         engine: Plotting engine ('plotly' or 'matplotlib')
@@ -791,63 +778,43 @@ def resolve_colors(
 
         >>> resolved_colors = resolve_colors(data, 'viridis')
     """
+    # Validate coordinate exists
+    if coord_dim not in data.coords:
+        raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(data.coords.keys())}")
+
+    # Validate all coordinate values are strings
+    coord_values = data.coords[coord_dim].values
+    if not all(isinstance(v, str) for v in coord_values):
+        non_strings = [f'{v!r} ({type(v).__name__})' for v in coord_values if not isinstance(v, str)]
+        raise TypeError(
+            f"Coordinate '{coord_dim}' must contain only strings. "
+            f'Found non-string values: {non_strings[:5]}'  # Show first 5
+        )
+
     # If explicit dict provided, use it directly
     if isinstance(colors, dict):
         return colors
 
     # If string or list, use ColorProcessor (traditional behavior)
     if isinstance(colors, (str, list)):
-        if isinstance(data, xr.DataArray):
-            if coord_dim in data.coords:
-                labels = [str(v) for v in data.coords[coord_dim].values]
-            else:
-                labels = []
-        elif isinstance(data, xr.Dataset):
-            labels = [str(v) for v in data.data_vars]
-        else:
-            labels = []
-
-        if labels:
-            processor = ColorProcessor(engine=engine)
-            return processor.process_colors(colors, labels, return_mapping=True)
+        labels = [str(v) for v in coord_values]
+        processor = ColorProcessor(engine=engine)
+        return processor.process_colors(colors, labels, return_mapping=True)
 
     if isinstance(colors, XarrayColorMapper):
         color_mapper = colors
 
-        # For DataArray: reorder coordinate dimension if sorting enabled
-        if isinstance(data, xr.DataArray):
-            if color_mapper.sort_within_groups and coord_dim in data.coords:
-                data = color_mapper.reorder_coordinate(data, coord_dim)
-            if coord_dim in data.coords:
-                return color_mapper.apply_to_dataarray(data, coord_dim)
+        # Reorder coordinate dimension if sorting enabled
+        if color_mapper.sort_within_groups:
+            data = color_mapper.reorder_coordinate(data, coord_dim)
 
-        # For Dataset: reorder variable names if sorting enabled
-        elif isinstance(data, xr.Dataset):
-            # Get variable names
-            var_names = [str(v) for v in data.data_vars]
-
-            # Apply sorting if enabled
-            if color_mapper.sort_within_groups:
-                # Group variable names using the color mapper's logic
-                groups = color_mapper._group_categories(var_names)
-
-                # Build new order: group by group, sorted within each
-                sorted_var_names = []
-                for group_name in groups.keys():
-                    group_vars = groups[group_name]
-                    group_vars = sorted(group_vars)
-                    sorted_var_names.extend(group_vars)
-
-                var_names = sorted_var_names
-
-            # Map colors to variable names (in sorted order if applicable)
-            return color_mapper.create_color_map(var_names)
+        return color_mapper.apply_to_dataarray(data, coord_dim)
 
     raise TypeError(f'Wrong type passed to resolve_colors(): {type(colors)}')
 
 
 def with_plotly(
-    data: pd.DataFrame | xr.DataArray | xr.Dataset,
+    data: xr.DataArray,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
@@ -867,7 +834,7 @@ def with_plotly(
     For simple plots without faceting, can optionally add to an existing figure.
 
     Args:
-        data: A DataFrame or xarray DataArray/Dataset to plot.
+        data: An xarray DataArray to plot.
         mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for lines,
               'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
         colors: Color specification. Can be:
@@ -896,25 +863,25 @@ def with_plotly(
         Simple plot:
 
         ```python
-        fig = with_plotly(df, mode='area', title='Energy Mix')
+        fig = with_plotly(data_array, mode='area', title='Energy Mix')
         ```
 
         Facet by scenario:
 
         ```python
-        fig = with_plotly(ds, facet_by='scenario', facet_cols=2)
+        fig = with_plotly(data_array, facet_by='scenario', facet_cols=2)
         ```
 
         Animate by period:
 
         ```python
-        fig = with_plotly(ds, animate_by='period')
+        fig = with_plotly(data_array, animate_by='period')
         ```
 
         Facet and animate:
 
         ```python
-        fig = with_plotly(ds, facet_by='scenario', animate_by='period')
+        fig = with_plotly(data_array, facet_by='scenario', animate_by='period')
         ```
 
         Pattern-based colors with XarrayColorMapper:
@@ -924,18 +891,14 @@ def with_plotly(
         mapper.add_rule('Solar', 'oranges', 'prefix')
         mapper.add_rule('Wind', 'blues', 'prefix')
         mapper.add_rule('Battery', 'greens', 'contains')
-        fig = with_plotly(ds, colors=mapper, mode='area')
+        fig = with_plotly(data_array, colors=mapper, mode='area')
         ```
     """
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
 
     # Handle empty data
-    if isinstance(data, pd.DataFrame) and data.empty:
-        return go.Figure()
-    elif isinstance(data, xr.DataArray) and data.size == 0:
-        return go.Figure()
-    elif isinstance(data, xr.Dataset) and len(data.data_vars) == 0:
+    if data.size == 0:
         return go.Figure()
 
     # Warn if fig parameter is used with faceting
@@ -943,51 +906,18 @@ def with_plotly(
         logger.warning('The fig parameter is ignored when using faceting or animation. Creating a new figure.')
         fig = None
 
-    # Store original data for XarrayColorMapper processing (before conversion to pandas)
-    data_original = data
-
-    # Convert xarray to long-form DataFrame for Plotly Express
-    if isinstance(data, (xr.DataArray, xr.Dataset)):
-        # Convert to long-form (tidy) DataFrame
-        # Structure: time, variable, value, scenario, period, ... (all dims as columns)
-        if isinstance(data, xr.Dataset):
-            # Stack all data variables into long format
-            df_long = data.to_dataframe().reset_index()
-            # Melt to get: time, scenario, period, ..., variable, value
-            id_vars = [dim for dim in data.dims]
-            value_vars = list(data.data_vars)
-            df_long = df_long.melt(id_vars=id_vars, value_vars=value_vars, var_name='variable', value_name='value')
-        else:
-            # DataArray
-            df_long = data.to_dataframe().reset_index()
-            if data.name:
-                df_long = df_long.rename(columns={data.name: 'value'})
-            else:
-                # Unnamed DataArray, find the value column
-                non_dim_cols = [col for col in df_long.columns if col not in data.dims]
-                if len(non_dim_cols) != 1:
-                    raise ValueError(
-                        f'Expected exactly one non-dimension column for unnamed DataArray, '
-                        f'but found {len(non_dim_cols)}: {non_dim_cols}'
-                    )
-                value_col = non_dim_cols[0]
-                df_long = df_long.rename(columns={value_col: 'value'})
-            df_long['variable'] = data.name or 'data'
+    # Convert DataArray to long-form DataFrame for Plotly Express
+    # Structure: time, variable, value, scenario, period, ... (all dims as columns)
+    # Give unnamed DataArrays a temporary name for conversion
+    if data.name is None:
+        data = data.rename('_temp_value')
+        temp_name = '_temp_value'
     else:
-        # Already a DataFrame - convert to long format for Plotly Express
-        df_long = data.reset_index()
-        if 'time' not in df_long.columns:
-            # First column is probably time
-            df_long = df_long.rename(columns={df_long.columns[0]: 'time'})
-        # Melt to long format
-        id_vars = [
-            col
-            for col in df_long.columns
-            if col in ['time', 'scenario', 'period']
-            or col in (facet_by if isinstance(facet_by, list) else [facet_by] if facet_by else [])
-        ]
-        value_vars = [col for col in df_long.columns if col not in id_vars]
-        df_long = df_long.melt(id_vars=id_vars, value_vars=value_vars, var_name='variable', value_name='value')
+        temp_name = data.name
+
+    df_long = data.to_dataframe().reset_index()
+    df_long = df_long.rename(columns={temp_name: 'value'})
+    df_long['variable'] = data.name or 'data'
 
     # Validate facet_by and animate_by dimensions exist in the data
     available_dims = [col for col in df_long.columns if col not in ['variable', 'value']]
@@ -1037,15 +967,11 @@ def with_plotly(
         else:
             raise ValueError(f'facet_by can have at most 2 dimensions, got {len(facet_by)}')
 
-    # Process colors
-    # For xarray data with XarrayColorMapper: resolve using the original xarray structure
-    if isinstance(data_original, (xr.DataArray, xr.Dataset)) and isinstance(colors, XarrayColorMapper):
-        color_discrete_map = resolve_colors(data_original, colors, coord_dim='variable', engine='plotly')
-    else:
-        # Traditional behavior: use ColorProcessor on variable names from long-form DataFrame
-        all_vars = df_long['variable'].unique().tolist()
-        processed_colors = ColorProcessor(engine='plotly').process_colors(colors, all_vars)
-        color_discrete_map = {var: color for var, color in zip(all_vars, processed_colors, strict=True)}
+    # Process colors using resolve_colors (handles validation and all color types)
+    color_discrete_map = resolve_colors(data, colors, coord_dim='variable', engine='plotly')
+
+    # Get unique variable names for area plot processing
+    all_vars = df_long['variable'].unique().tolist()
 
     # Create plot using Plotly Express based on mode
     common_args = {
@@ -1136,7 +1062,7 @@ def with_plotly(
 
 
 def with_matplotlib(
-    data: pd.DataFrame | xr.DataArray | xr.Dataset,
+    data: xr.DataArray,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
@@ -1150,8 +1076,8 @@ def with_matplotlib(
     Plot data with Matplotlib using stacked bars or stepped lines.
 
     Args:
-        data: A DataFrame or xarray DataArray/Dataset to plot. For DataFrames and converted xarray,
-              the index should represent time (e.g., hours), and each column represents a separate data series.
+        data: An xarray DataArray to plot. After conversion to DataFrame,
+              the index represents time and each column represents a separate data series.
         mode: Plotting mode. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification. Can be:
             - A colormap name (e.g., 'viridis', 'plasma')
@@ -1172,7 +1098,6 @@ def with_matplotlib(
         - If `mode` is 'stacked_bar', bars are stacked for both positive and negative values.
           Negative values are stacked separately without extra labels in the legend.
         - If `mode` is 'line', stepped lines are drawn for each data series.
-        - XarrayColorMapper is only applied when xarray data (DataArray/Dataset) is provided.
 
     Examples:
         With XarrayColorMapper:
@@ -1190,22 +1115,28 @@ def with_matplotlib(
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    # Process colors while data is still xarray (if applicable)
-    if isinstance(data, (xr.DataArray, xr.Dataset)):
-        # For xarray data: resolve colors first, then convert to DataFrame
-        color_discrete_map = resolve_colors(data, colors, coord_dim='variable', engine='matplotlib')
+    # Resolve colors first (includes validation)
+    color_discrete_map = resolve_colors(data, colors, coord_dim='variable', engine='matplotlib')
 
-        # Convert to DataFrame for matplotlib plotting
-        if isinstance(data, xr.Dataset):
-            data = data.to_dataframe()
-        else:  # DataArray
-            data = data.to_dataframe()
+    # Convert to DataFrame for matplotlib plotting
+    # Give unnamed DataArrays a temporary name for conversion
+    if data.name is None:
+        data = data.rename('_temp_value')
+    df = data.to_dataframe()
 
-        # Get colors in column order
-        processed_colors = [color_discrete_map.get(str(col), '#808080') for col in data.columns]
-    else:
-        # Already a DataFrame: use ColorProcessor directly
-        processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, list(data.columns))
+    # If 'variable' is in the index (multi-index DataFrame), pivot to wide format
+    # This happens when the DataArray has 'variable' as a dimension
+    if 'variable' in df.index.names:
+        # Unstack to get variables as columns
+        df = df.unstack('variable')
+        # Flatten column multi-index if present
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(-1)
+
+    data = df
+
+    # Get colors in column order
+    processed_colors = [color_discrete_map.get(str(col), '#808080') for col in data.columns]
 
     if mode == 'stacked_bar':
         cumulative_positive = np.zeros(len(data))

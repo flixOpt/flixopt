@@ -1125,6 +1125,9 @@ class _NodeResults(_ElementResults):
 
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
+        # Convert Dataset to DataArray for plotting
+        da = ds.to_array(dim='variable')
+
         # Resolve colors to a dict (handles auto, mapper, etc.)
         colors_to_use = (
             self._calculation_results.color_mapper
@@ -1133,7 +1136,7 @@ class _NodeResults(_ElementResults):
             if colors == 'auto'
             else colors
         )
-        resolved_colors = plotting.resolve_colors(ds, colors_to_use, coord_dim='variable', engine=engine)
+        resolved_colors = plotting.resolve_colors(da, colors_to_use, coord_dim='variable', engine=engine)
 
         # Matplotlib requires only 'time' dimension; check for extras after selection
         if engine == 'matplotlib':
@@ -1151,7 +1154,7 @@ class _NodeResults(_ElementResults):
 
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
-                ds,
+                da,
                 facet_by=facet_by,
                 animate_by=animate_by,
                 colors=resolved_colors,
@@ -1162,7 +1165,7 @@ class _NodeResults(_ElementResults):
             default_filetype = '.html'
         else:
             figure_like = plotting.with_matplotlib(
-                ds.to_dataframe(),
+                da,
                 colors=resolved_colors,
                 mode=mode,
                 title=title,
@@ -1509,6 +1512,13 @@ class ComponentResults(_NodeResults):
 
         title = f'Operation Balance of {self.label}{suffix}'
 
+        # Convert Dataset to DataArray for plotting
+        da = ds.to_array(dim='variable')
+
+        # Merge both DataArrays for color resolution
+        # We need to combine the flow balance and charge state data to get consistent colors
+        combined_da = xr.concat([da, charge_state_da.expand_dims(variable=[self._charge_state])], dim='variable')
+
         # Resolve colors to a dict (handles auto, mapper, etc.)
         colors_to_use = (
             self._calculation_results.color_mapper
@@ -1517,14 +1527,12 @@ class ComponentResults(_NodeResults):
             if colors == 'auto'
             else colors
         )
-        resolved_colors = plotting.resolve_colors(
-            xr.merge([ds, charge_state_da.to_dataset()]), colors_to_use, coord_dim='variable', engine=engine
-        )
+        resolved_colors = plotting.resolve_colors(combined_da, colors_to_use, coord_dim='variable', engine=engine)
 
         if engine == 'plotly':
             # Plot flows (node balance) with the specified mode
             figure_like = plotting.with_plotly(
-                ds,
+                da,
                 facet_by=facet_by,
                 animate_by=animate_by,
                 colors=resolved_colors,
@@ -1533,13 +1541,12 @@ class ComponentResults(_NodeResults):
                 facet_cols=facet_cols,
             )
 
-            # Create a dataset with just charge_state and plot it as lines
-            # This ensures proper handling of facets and animation
-            charge_state_ds = charge_state_da.to_dataset(name=self._charge_state)
+            # Prepare charge_state as DataArray with variable dimension for plotting
+            charge_state_da_plot = charge_state_da.expand_dims(variable=[self._charge_state])
 
             # Plot charge_state with mode='line' to get Scatter traces
             charge_state_fig = plotting.with_plotly(
-                charge_state_ds,
+                charge_state_da_plot,
                 facet_by=facet_by,
                 animate_by=animate_by,
                 colors=resolved_colors,
@@ -1577,7 +1584,7 @@ class ComponentResults(_NodeResults):
                 )
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
-                ds.to_dataframe(),
+                da,
                 colors=resolved_colors,
                 mode=mode,
                 title=title,
