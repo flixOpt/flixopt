@@ -586,7 +586,8 @@ class XarrayColorMapper:
             ValueError: If coord_dim is not found in the DataArray.
 
         Note:
-            Assumes coordinate values are strings. Use resolve_colors() for automatic validation.
+            Coordinate values must be strings. This method is used for DataArray coordinates (e.g., in heatmaps).
+            For Datasets, use resolve_colors() which extracts variable names directly.
         """
         if coord_dim not in da.coords:
             raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
@@ -610,7 +611,8 @@ class XarrayColorMapper:
             New DataArray with reordered coordinate.
 
         Note:
-            Assumes coordinate values are strings. Use resolve_colors() for automatic validation.
+            Coordinate values must be strings. This method is used for DataArray coordinates (e.g., in heatmaps).
+            For Datasets, variable names from data_vars are always strings.
 
         Examples:
             Original order: ['Product_B1', 'Product_A1', 'Product_B2', 'Product_A2']
@@ -730,43 +732,9 @@ class XarrayColorMapper:
         return groups
 
 
-def _validate_string_coordinate(da: xr.DataArray, coord_dim: str) -> None:
-    """Validate that a DataArray coordinate contains only string values.
-
-    Args:
-        da: DataArray to validate
-        coord_dim: Coordinate dimension name
-
-    Raises:
-        ValueError: If coord_dim not found in DataArray
-        TypeError: If coordinate values are not all strings
-    """
-    if coord_dim not in da.coords:
-        raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
-
-    coord_values = da.coords[coord_dim].values
-
-    # Fast path: If dtype is string, all values are guaranteed to be strings
-    if np.issubdtype(coord_values.dtype, np.str_):
-        return  # All good!
-
-    # For object arrays or other types, check elements
-    # Use early exit - stop after finding first 5 non-strings
-    non_strings = []
-    for v in coord_values:
-        if not isinstance(v, str):
-            non_strings.append(f'{v!r} ({type(v).__name__})')
-            if len(non_strings) >= 5:  # Early exit
-                break
-
-    if non_strings:
-        raise TypeError(f"Coordinate '{coord_dim}' must contain only strings. Found non-string values: {non_strings}")
-
-
 def resolve_colors(
     data: xr.Dataset,
     colors: ColorType | XarrayColorMapper,
-    coord_dim: str = 'variable',
     engine: PlottingEngine = 'plotly',
 ) -> dict[str, str]:
     """Resolve colors parameter to a color mapping dict.
@@ -776,9 +744,8 @@ def resolve_colors(
     or as part of CalculationResults.
 
     Args:
-        data: Dataset to create colors for
+        data: Dataset to create colors for. Variable names from data_vars are used as labels.
         colors: Color specification or a XarrayColorMapper to use
-        coord_dim: Not used (kept for API compatibility). Variable names come from data_vars.
         engine: Plotting engine ('plotly' or 'matplotlib')
 
     Returns:
@@ -965,7 +932,7 @@ def with_plotly(
             raise ValueError(f'facet_by can have at most 2 dimensions, got {len(facet_by)}')
 
     # Process colors using resolve_colors (handles validation and all color types)
-    color_discrete_map = resolve_colors(data, colors, coord_dim='variable', engine='plotly')
+    color_discrete_map = resolve_colors(data, colors, engine='plotly')
 
     # Get unique variable names for area plot processing
     all_vars = df_long['variable'].unique().tolist()
@@ -1113,7 +1080,7 @@ def with_matplotlib(
         fig, ax = plt.subplots(figsize=figsize)
 
     # Resolve colors first (includes validation)
-    color_discrete_map = resolve_colors(data, colors, coord_dim='variable', engine='matplotlib')
+    color_discrete_map = resolve_colors(data, colors, engine='matplotlib')
 
     # Convert Dataset to DataFrame for matplotlib plotting (naturally wide-form)
     df = data.to_dataframe()
