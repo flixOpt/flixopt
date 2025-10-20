@@ -50,19 +50,30 @@ class Component(Element):
             component has discrete on/off states. Creates binary variables for all
             connected Flows. For better performance, prefer defining OnOffParameters
             on individual Flows when possible.
-        prevent_simultaneous_flows: Flow labels (strings) that cannot be active simultaneously.
-            Can be either a single list of flow labels (one constraint group) or a list of lists
-            (multiple independent constraint groups). Each group enforces "at most 1 flow
-            active" within that group. Creates binary variables to enforce mutual exclusivity.
-            Use sparingly as it increases computational complexity.
+        prevent_simultaneous_flows: Defines mutual exclusivity constraints between flows.
+            Each constraint group allows at most 1 flow to be active simultaneously.
 
-            Examples:
-                - `['flow1', 'flow2', 'flow3']` - At most 1 of these 3 flows can be active
-                - `[['fuel1', 'fuel2'], ['cooling1', 'cooling2']]` - Two independent constraints:
-                  at most 1 fuel AND at most 1 cooling method
+            **Single constraint group** (one list):
+                `['flow1', 'flow2', 'flow3']` - At most 1 of these 3 flows can be active.
+
+                Use case: A boiler that can burn different fuels (coal, gas, or biomass)
+                but only one at a time.
+
+            **Multiple constraint groups** (list of lists):
+                `[['coal', 'gas', 'biomass'], ['water_cooling', 'air_cooling']]`
+                Creates two independent constraints:
+                - At most 1 fuel source active (coal OR gas OR biomass)
+                - At most 1 cooling method active (water OR air)
+
+                Use case: A power plant that must choose one fuel AND one cooling method,
+                allowing combinations like (coal+water), (gas+air), etc.
+
+            **Performance note**: Creates binary variables for mutual exclusivity constraints.
+            Use sparingly as it increases computational complexity. The implementation uses
+            string-based flow labels internally for efficient serialization and deserialization.
 
             Note:
-                Passing Flow objects is deprecated. Use flow label strings instead.
+                Passing Flow objects directly is deprecated. Always use flow label strings.
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
