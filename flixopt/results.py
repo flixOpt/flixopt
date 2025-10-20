@@ -649,10 +649,14 @@ class CalculationResults:
 
         # Ensure we have a template
         if template is None:
-            raise ValueError(
-                f"No template with proper dimensions found for mode '{mode}'. "
-                f'All computed arrays are scalars, which indicates a data issue.'
-            )
+            # If no template with dimensions/values found, use first available array (even if scalar NaN)
+            for effect_arrays in all_arrays.values():
+                if effect_arrays:
+                    template = effect_arrays[0]
+                    break
+
+        if template is None:
+            raise ValueError(f"No arrays found for mode '{mode}'. Cannot create effects dataset.")
 
         # Second pass: process all effects (guaranteed to include all)
         for effect in self.effects:
