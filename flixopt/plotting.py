@@ -586,18 +586,7 @@ class XarrayColorMapper:
             ValueError: If coord_dim is not found in the DataArray.
             TypeError: If coord_dim values are not all strings.
         """
-        if coord_dim not in da.coords:
-            raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
-
-        # Validate all coordinate values are strings
-        coord_values = da.coords[coord_dim].values
-        if not all(isinstance(v, str) for v in coord_values):
-            non_strings = [f'{v!r} ({type(v).__name__})' for v in coord_values if not isinstance(v, str)]
-            raise TypeError(
-                f"Coordinate '{coord_dim}' must contain only strings. "
-                f'Found non-string values: {non_strings[:5]}'  # Show first 5
-            )
-
+        _validate_string_coordinate(da, coord_dim)
         return self.create_color_map(da.coords[coord_dim])
 
     def reorder_coordinate(
@@ -628,22 +617,13 @@ class XarrayColorMapper:
             da_reordered = mapper.reorder_coordinate(da, 'product')
             ```
         """
-        if coord_dim not in da.coords:
-            raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
+        _validate_string_coordinate(da, coord_dim)
 
         if sort_within_groups is None:
             sort_within_groups = self.sort_within_groups
 
-        # Get coordinate values and validate they are strings
-        coord_values = da.coords[coord_dim].values
-        if not all(isinstance(v, str) for v in coord_values):
-            non_strings = [f'{v!r} ({type(v).__name__})' for v in coord_values if not isinstance(v, str)]
-            raise TypeError(
-                f"Coordinate '{coord_dim}' must contain only strings. "
-                f'Found non-string values: {non_strings[:5]}'  # Show first 5
-            )
-
-        categories = list(coord_values)
+        # Get coordinate values as categories
+        categories = list(da.coords[coord_dim].values)
 
         # Group categories
         groups = self._group_categories(categories)
@@ -742,6 +722,28 @@ class XarrayColorMapper:
         return groups
 
 
+def _validate_string_coordinate(da: xr.DataArray, coord_dim: str) -> None:
+    """Validate that a DataArray coordinate contains only string values.
+
+    Args:
+        da: DataArray to validate
+        coord_dim: Coordinate dimension name
+
+    Raises:
+        ValueError: If coord_dim not found in DataArray
+        TypeError: If coordinate values are not all strings
+    """
+    if coord_dim not in da.coords:
+        raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(da.coords.keys())}")
+
+    coord_values = da.coords[coord_dim].values
+    if not all(isinstance(v, str) for v in coord_values):
+        non_strings = [f'{v!r} ({type(v).__name__})' for v in coord_values if not isinstance(v, str)]
+        raise TypeError(
+            f"Coordinate '{coord_dim}' must contain only strings. Found non-string values: {non_strings[:5]}"
+        )
+
+
 def resolve_colors(
     data: xr.DataArray,
     colors: ColorType | XarrayColorMapper,
@@ -778,18 +780,9 @@ def resolve_colors(
 
         >>> resolved_colors = resolve_colors(data, 'viridis')
     """
-    # Validate coordinate exists
-    if coord_dim not in data.coords:
-        raise ValueError(f"Coordinate '{coord_dim}' not found. Available: {list(data.coords.keys())}")
-
-    # Validate all coordinate values are strings
+    # Validate coordinate and ensure all values are strings
+    _validate_string_coordinate(data, coord_dim)
     coord_values = data.coords[coord_dim].values
-    if not all(isinstance(v, str) for v in coord_values):
-        non_strings = [f'{v!r} ({type(v).__name__})' for v in coord_values if not isinstance(v, str)]
-        raise TypeError(
-            f"Coordinate '{coord_dim}' must contain only strings. "
-            f'Found non-string values: {non_strings[:5]}'  # Show first 5
-        )
 
     # If explicit dict provided, use it directly
     if isinstance(colors, dict):
