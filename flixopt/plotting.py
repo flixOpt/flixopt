@@ -653,10 +653,16 @@ class XarrayColorMapper:
         # Check for collisions (multiple distinct values with same string representation)
         collisions = {k: vals for k, vals in str_to_originals.items() if len(vals) > 1}
         if collisions:
-            collision_details = ', '.join(f"'{k}' -> {vals}" for k, vals in collisions.items())
+            collision_details = []
+            for k, vals in collisions.items():
+                typed_vals = ', '.join(f'{v!r} ({type(v).__name__})' for v in vals)
+                collision_details.append(f"  '{k}' -> [{typed_vals}]")
+
             raise ValueError(
                 f"Coordinate '{coord_dim}' has ambiguous string representations. "
-                f'Multiple distinct values stringify to the same string: {collision_details}'
+                f'Multiple distinct values stringify to the same string:\n' + '\n'.join(collision_details) + '\n'
+                'Ensure coordinate values have unique string representations, or convert to consistent types '
+                'before plotting (e.g., using .astype()).'
             )
 
         # No collisions - create simple mapping and reorder
