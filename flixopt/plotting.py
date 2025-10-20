@@ -764,7 +764,7 @@ def _validate_string_coordinate(da: xr.DataArray, coord_dim: str) -> None:
 
 
 def resolve_colors(
-    data: xr.DataArray,
+    data: xr.Dataset,
     colors: ColorType | XarrayColorMapper,
     coord_dim: str = 'variable',
     engine: PlottingEngine = 'plotly',
@@ -776,13 +776,13 @@ def resolve_colors(
     or as part of CalculationResults.
 
     Args:
-        data: DataArray to create colors for
+        data: Dataset to create colors for
         colors: Color specification or a XarrayColorMapper to use
-        coord_dim: Coordinate dimension to map colors to
+        coord_dim: Not used (kept for API compatibility). Variable names come from data_vars.
         engine: Plotting engine ('plotly' or 'matplotlib')
 
     Returns:
-        Dictionary mapping coordinate values to colors
+        Dictionary mapping variable names to colors
 
     Examples:
         With CalculationResults:
@@ -799,9 +799,8 @@ def resolve_colors(
 
         >>> resolved_colors = resolve_colors(data, 'viridis')
     """
-    # Validate coordinate and ensure all values are strings
-    _validate_string_coordinate(data, coord_dim)
-    coord_values = data.coords[coord_dim].values
+    # Get variable names from Dataset (always strings and unique)
+    labels = list(data.data_vars.keys())
 
     # If explicit dict provided, use it directly
     if isinstance(colors, dict):
@@ -809,24 +808,18 @@ def resolve_colors(
 
     # If string or list, use ColorProcessor (traditional behavior)
     if isinstance(colors, (str, list)):
-        labels = [str(v) for v in coord_values]
         processor = ColorProcessor(engine=engine)
         return processor.process_colors(colors, labels, return_mapping=True)
 
     if isinstance(colors, XarrayColorMapper):
-        color_mapper = colors
-
-        # Reorder coordinate dimension if sorting enabled
-        if color_mapper.sort_within_groups:
-            data = color_mapper.reorder_coordinate(data, coord_dim)
-
-        return color_mapper.apply_to_dataarray(data, coord_dim)
+        # Use color mapper's create_color_map directly with variable names
+        return colors.create_color_map(labels)
 
     raise TypeError(f'Wrong type passed to resolve_colors(): {type(colors)}')
 
 
 def with_plotly(
-    data: xr.DataArray,
+    data: xr.Dataset,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
@@ -846,7 +839,7 @@ def with_plotly(
     For simple plots without faceting, can optionally add to an existing figure.
 
     Args:
-        data: An xarray DataArray to plot.
+        data: An xarray Dataset to plot.
         mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for lines,
               'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
         colors: Color specification. Can be:
@@ -875,25 +868,25 @@ def with_plotly(
         Simple plot:
 
         ```python
-        fig = with_plotly(data_array, mode='area', title='Energy Mix')
+        fig = with_plotly(dataset, mode='area', title='Energy Mix')
         ```
 
         Facet by scenario:
 
         ```python
-        fig = with_plotly(data_array, facet_by='scenario', facet_cols=2)
+        fig = with_plotly(dataset, facet_by='scenario', facet_cols=2)
         ```
 
         Animate by period:
 
         ```python
-        fig = with_plotly(data_array, animate_by='period')
+        fig = with_plotly(dataset, animate_by='period')
         ```
 
         Facet and animate:
 
         ```python
-        fig = with_plotly(data_array, facet_by='scenario', animate_by='period')
+        fig = with_plotly(dataset, facet_by='scenario', animate_by='period')
         ```
 
         Pattern-based colors with XarrayColorMapper:
@@ -903,14 +896,14 @@ def with_plotly(
         mapper.add_rule('Solar', 'oranges', 'prefix')
         mapper.add_rule('Wind', 'blues', 'prefix')
         mapper.add_rule('Battery', 'greens', 'contains')
-        fig = with_plotly(data_array, colors=mapper, mode='area')
+        fig = with_plotly(dataset, colors=mapper, mode='area')
         ```
     """
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
 
     # Handle empty data
-    if data.size == 0:
+    if len(data.data_vars) == 0:
         return go.Figure()
 
     # Warn if fig parameter is used with faceting
@@ -918,20 +911,10 @@ def with_plotly(
         logger.warning('The fig parameter is ignored when using faceting or animation. Creating a new figure.')
         fig = None
 
-    # Convert DataArray to long-form DataFrame for Plotly Express
+    # Convert Dataset to long-form DataFrame for Plotly Express
     # Structure: time, variable, value, scenario, period, ... (all dims as columns)
-    # Give unnamed DataArrays a temporary name for conversion
-    if data.name is None:
-        data = data.rename('_temp_value')
-        temp_name = '_temp_value'
-    else:
-        temp_name = data.name
-
-    df_long = data.to_dataframe().reset_index()
-    df_long = df_long.rename(columns={temp_name: 'value'})
-    # Only add 'variable' column if it doesn't already exist (preserve actual variable names from coordinates)
-    if 'variable' not in df_long.columns:
-        df_long['variable'] = data.name or 'data'
+    dim_names = list(data.dims)
+    df_long = data.to_dataframe().reset_index().melt(id_vars=dim_names, var_name='variable', value_name='value')
 
     # Validate facet_by and animate_by dimensions exist in the data
     available_dims = [col for col in df_long.columns if col not in ['variable', 'value']]
@@ -1076,7 +1059,7 @@ def with_plotly(
 
 
 def with_matplotlib(
-    data: xr.DataArray,
+    data: xr.Dataset,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
@@ -1090,8 +1073,8 @@ def with_matplotlib(
     Plot data with Matplotlib using stacked bars or stepped lines.
 
     Args:
-        data: An xarray DataArray to plot. After conversion to DataFrame,
-              the index represents time and each column represents a separate data series.
+        data: An xarray Dataset to plot. After conversion to DataFrame,
+              the index represents time and each column represents a separate data series (variables).
         mode: Plotting mode. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification. Can be:
             - A colormap name (e.g., 'viridis', 'plasma')
@@ -1120,7 +1103,7 @@ def with_matplotlib(
         mapper = XarrayColorMapper()
         mapper.add_rule('Solar', 'oranges', 'prefix')
         mapper.add_rule('Wind', 'blues', 'prefix')
-        fig, ax = with_matplotlib(data_array, colors=mapper, mode='line')
+        fig, ax = with_matplotlib(dataset, colors=mapper, mode='line')
         ```
     """
     if mode not in ('stacked_bar', 'line'):
@@ -1132,37 +1115,23 @@ def with_matplotlib(
     # Resolve colors first (includes validation)
     color_discrete_map = resolve_colors(data, colors, coord_dim='variable', engine='matplotlib')
 
-    # Convert to DataFrame for matplotlib plotting
-    # Give unnamed DataArrays a temporary name for conversion
-    if data.name is None:
-        data = data.rename('_temp_value')
+    # Convert Dataset to DataFrame for matplotlib plotting (naturally wide-form)
     df = data.to_dataframe()
 
-    # If 'variable' is in the index (multi-index DataFrame), pivot to wide format
-    # This happens when the DataArray has 'variable' as a dimension
-    if 'variable' in df.index.names:
-        # Unstack to get variables as columns
-        df = df.unstack('variable')
-        # Flatten column multi-index if present
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(-1)
-
-    data = df
-
     # Get colors in column order
-    processed_colors = [color_discrete_map.get(str(col), '#808080') for col in data.columns]
+    processed_colors = [color_discrete_map.get(str(col), '#808080') for col in df.columns]
 
     if mode == 'stacked_bar':
-        cumulative_positive = np.zeros(len(data))
-        cumulative_negative = np.zeros(len(data))
-        width = data.index.to_series().diff().dropna().min()  # Minimum time difference
+        cumulative_positive = np.zeros(len(df))
+        cumulative_negative = np.zeros(len(df))
+        width = df.index.to_series().diff().dropna().min()  # Minimum time difference
 
-        for i, column in enumerate(data.columns):
-            positive_values = np.clip(data[column], 0, None)  # Keep only positive values
-            negative_values = np.clip(data[column], None, 0)  # Keep only negative values
+        for i, column in enumerate(df.columns):
+            positive_values = np.clip(df[column], 0, None)  # Keep only positive values
+            negative_values = np.clip(df[column], None, 0)  # Keep only negative values
             # Plot positive bars
             ax.bar(
-                data.index,
+                df.index,
                 positive_values,
                 bottom=cumulative_positive,
                 color=processed_colors[i],
@@ -1173,7 +1142,7 @@ def with_matplotlib(
             cumulative_positive += positive_values.values
             # Plot negative bars
             ax.bar(
-                data.index,
+                df.index,
                 negative_values,
                 bottom=cumulative_negative,
                 color=processed_colors[i],
@@ -1184,8 +1153,8 @@ def with_matplotlib(
             cumulative_negative += negative_values.values
 
     elif mode == 'line':
-        for i, column in enumerate(data.columns):
-            ax.step(data.index, data[column], where='post', color=processed_colors[i], label=column)
+        for i, column in enumerate(df.columns):
+            ax.step(df.index, df[column], where='post', color=processed_colors[i], label=column)
 
     # Aesthetics
     ax.set_xlabel(xlabel, ha='center')
