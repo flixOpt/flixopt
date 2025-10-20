@@ -97,7 +97,7 @@ class Component(Element):
         self.on_off_parameters = on_off_parameters
 
         # Normalize prevent_simultaneous_flows to always be list of lists
-        self.prevent_simultaneous_flows: list[list[Flow]] = self._normalize_simultaneous_flows(
+        self.prevent_simultaneous_flows: list[list[Flow]] | None = self._normalize_simultaneous_flows(
             prevent_simultaneous_flows
         )
 
@@ -105,7 +105,7 @@ class Component(Element):
 
     @staticmethod
     def _normalize_simultaneous_flows(
-        prevent_simultaneous_flows: list[Flow] | list[list[Flow]] | None,
+        prevent_simultaneous_flows: list[Flow] | list[list[Flow] | tuple[Flow]] | None,
     ) -> list[list[Flow]] | None:
         """Normalize prevent_simultaneous_flows to always be a list of constraint groups.
 
@@ -122,14 +122,12 @@ class Component(Element):
         """
         if prevent_simultaneous_flows is None:
             return None
-
-        # Check if it's a list of lists by examining the first element
-        if prevent_simultaneous_flows and isinstance(prevent_simultaneous_flows[0], list):
-            # Already a list of lists
+        elif not isinstance(prevent_simultaneous_flows, (list, tuple)):
+            raise TypeError('Wrong type')
+        elif isinstance(prevent_simultaneous_flows[0], (list, tuple)):
             return prevent_simultaneous_flows
         else:
-            # Single list - wrap it in another list
-            return [prevent_simultaneous_flows] if prevent_simultaneous_flows else []
+            return [prevent_simultaneous_flows]
 
     def create_model(self, model: FlowSystemModel) -> ComponentModel:
         self._plausibility_checks()

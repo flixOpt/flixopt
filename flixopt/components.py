@@ -405,7 +405,7 @@ class Storage(Component):
             label,
             inputs=[charging],
             outputs=[discharging],
-            prevent_simultaneous_flows=[charging, discharging] if prevent_simultaneous_charge_and_discharge else None,
+            prevent_simultaneous_flows=[(charging, discharging)] if prevent_simultaneous_charge_and_discharge else None,
             meta_data=meta_data,
         )
 
@@ -665,7 +665,7 @@ class Transmission(Component):
             on_off_parameters=on_off_parameters,
             prevent_simultaneous_flows=None
             if in2 is None or prevent_simultaneous_flows_in_both_directions is False
-            else [in1, in2],
+            else [(in1, in2)],
             meta_data=meta_data,
         )
         self.in1 = in1
@@ -1082,7 +1082,7 @@ class SourceAndSink(Component):
             label,
             inputs=inputs,
             outputs=outputs,
-            prevent_simultaneous_flows=(inputs or []) + (outputs or []) if prevent_simultaneous_flow_rates else None,
+            prevent_simultaneous_flows=[(inputs or []) + (outputs or [])] if prevent_simultaneous_flow_rates else None,
             meta_data=meta_data,
         )
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
@@ -1210,7 +1210,7 @@ class Source(Component):
             label,
             outputs=outputs,
             meta_data=meta_data,
-            prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None,
+            prevent_simultaneous_flows=[[outputs]] if prevent_simultaneous_flow_rates else None,
         )
 
     @property
@@ -1335,7 +1335,7 @@ class Sink(Component):
             label,
             inputs=inputs,
             meta_data=meta_data,
-            prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None,
+            prevent_simultaneous_flows=[inputs] if prevent_simultaneous_flow_rates else None,
         )
 
     @property
