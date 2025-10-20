@@ -178,7 +178,7 @@ class Bus(Element):
         by the FlowSystem during system setup.
     """
 
-    submodel: BusModel
+    submodel: BusModel | None
 
     def __init__(
         self,
@@ -364,7 +364,7 @@ class Flow(Element):
 
     """
 
-    submodel: FlowModel
+    submodel: FlowModel | None
 
     def __init__(
         self,

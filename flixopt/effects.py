@@ -159,7 +159,7 @@ class Effect(Element):
 
     """
 
-    submodel: EffectModel
+    submodel: EffectModel | None
 
     def __init__(
         self,

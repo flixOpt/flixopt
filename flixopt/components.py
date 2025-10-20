@@ -160,7 +160,7 @@ class LinearConverter(Component):
 
     """
 
-    submodel: LinearConverterModel
+    submodel: LinearConverterModel | None
 
     def __init__(
         self,
@@ -378,7 +378,7 @@ class Storage(Component):
         With flow rates in m3/h, the charge state is therefore in m3.
     """
 
-    submodel: StorageModel
+    submodel: StorageModel | None
 
     def __init__(
         self,
@@ -644,7 +644,7 @@ class Transmission(Component):
 
     """
 
-    submodel: TransmissionModel
+    submodel: TransmissionModel | None
 
     def __init__(
         self,
