@@ -192,6 +192,18 @@ class Component(Element):
     def _plausibility_checks(self) -> None:
         self._check_unique_flow_labels()
 
+        if self.prevent_simultaneous_flows is not None:
+            for group in self.prevent_simultaneous_flows:
+                if len(set(group)) != len(group):
+                    raise ValueError(
+                        f'Flow names must not occure multiple times in "prevent_simultaneous_flows"! Got {group}'
+                    )
+                for flow_name in group:
+                    if flow_name not in self.flows:
+                        raise ValueError(
+                            f'Flow name "{flow_name}" is not present in the component "{self.label_full}". You cant use it in "prevent_simultaneous_flows". Availlable flows: {list(self.flows)}'
+                        )
+
 
 @register_class_for_io
 class Bus(Element):
