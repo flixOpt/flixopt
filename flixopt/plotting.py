@@ -406,7 +406,7 @@ class ComponentColorManager:
         'darkmint': px.colors.sequential.Darkmint[1:8],
     }
 
-    def __init__(self, components: list[str], default_colormap: str = 'tab10') -> None:
+    def __init__(self, components: list[str], default_colormap: str = 'viridis') -> None:
         """Initialize component color manager.
 
         Args:
@@ -428,6 +428,52 @@ class ComponentColorManager:
 
         # Auto-assign default colors
         self._assign_default_colors()
+
+    def __repr__(self) -> str:
+        """Return detailed representation of ComponentColorManager."""
+        return (
+            f'ComponentColorManager(components={len(self.components)}, '
+            f'rules={len(self._grouping_rules)}, '
+            f'overrides={len(self._overrides)}, '
+            f"default_colormap='{self.default_colormap}')"
+        )
+
+    def __str__(self) -> str:
+        """Return human-readable summary of ComponentColorManager."""
+        lines = [
+            'ComponentColorManager',
+            f'  Components: {len(self.components)}',
+        ]
+
+        # Show first few components as examples
+        if self.components:
+            sample = self.components[:5]
+            if len(self.components) > 5:
+                sample_str = ', '.join(sample) + f', ... ({len(self.components) - 5} more)'
+            else:
+                sample_str = ', '.join(sample)
+            lines.append(f'    [{sample_str}]')
+
+        lines.append(f'  Grouping rules: {len(self._grouping_rules)}')
+        if self._grouping_rules:
+            for rule in self._grouping_rules[:3]:  # Show first 3 rules
+                lines.append(
+                    f"    - {rule['match_type']}('{rule['pattern']}') → "
+                    f"group '{rule['group_name']}' ({rule['colormap']})"
+                )
+            if len(self._grouping_rules) > 3:
+                lines.append(f'    ... and {len(self._grouping_rules) - 3} more')
+
+        lines.append(f'  Overrides: {len(self._overrides)}')
+        if self._overrides:
+            for comp, color in list(self._overrides.items())[:3]:
+                lines.append(f'    - {comp}: {color}')
+            if len(self._overrides) > 3:
+                lines.append(f'    ... and {len(self._overrides) - 3} more')
+
+        lines.append(f'  Default colormap: {self.default_colormap}')
+
+        return '\n'.join(lines)
 
     def add_custom_family(self, name: str, colors: list[str]) -> ComponentColorManager:
         """Add a custom color family.
