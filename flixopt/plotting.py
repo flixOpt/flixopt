@@ -544,6 +544,8 @@ class ComponentColorManager:
         self._grouping_rules.append(
             {'pattern': pattern, 'group_name': group_name, 'colormap': colormap, 'match_type': match_type}
         )
+        # Auto-apply colors after adding rule for immediate effect
+        self.apply_colors()
         return self
 
     def apply_colors(self) -> None:
