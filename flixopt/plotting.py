@@ -8,8 +8,8 @@ and statistical analyses commonly needed in energy system modeling.
 Key Features:
     **Dual Backend Support**: Seamless switching between Plotly and Matplotlib
     **Energy System Focus**: Specialized plots for power flows, storage states, emissions
-    **Color Management**: Intelligent color processing with ColorProcessor and pattern-based
-                         XarrayColorMapper for grouped coloring
+    **Color Management**: Intelligent color processing with ColorProcessor and component-based
+                         ComponentColorManager for stable, pattern-matched coloring
     **Export Capabilities**: High-quality export for reports and publications
     **Integration Ready**: Designed for use with CalculationResults and standalone analysis
 
@@ -329,67 +329,66 @@ class ColorProcessor:
             return color_list
 
 
-# Type aliases for XarrayColorMapper
+# Type aliases for ComponentColorManager
 MatchType = Literal['prefix', 'suffix', 'contains', 'glob', 'regex']
-CoordValues = xr.DataArray | np.ndarray | list[Any]
 
 
-class XarrayColorMapper:
-    """Map Dataset variable names to colors based on naming patterns.
+class ComponentColorManager:
+    """Manage stable colors for flow system components with pattern-based grouping.
 
-    A simple, maintainable utility class for mapping Dataset variable names
-    to colors based on naming patterns. Enables visual grouping in plots where
-    similar variables get similar colors.
+    This class provides component-centric color management where each component gets
+    a stable color assigned once, ensuring consistent coloring across all plots.
+    Components can be grouped using pattern matching, and each group uses a different colormap.
 
     Key Features:
-        - Pattern-based color assignment (prefix, suffix, contains, glob, regex)
-        - Plotly sequential color palettes for grouped coloring (cycles through shades)
-        - Discrete color support for exact color matching across all items
-        - Override support for special cases
-        - Dataset variable reordering for visual grouping in plots
-        - Full type hints and comprehensive documentation
+        - **Stable colors**: Components assigned colors once based on sorted order
+        - **Pattern-based grouping**: Auto-group components using patterns (prefix, contains, regex, etc.)
+        - **Variable extraction**: Auto-extract component names from variable names
+        - **Flexible colormaps**: Use Plotly sequential palettes or custom colors
+        - **Override support**: Manually override specific component colors
+        - **Zero configuration**: Works automatically with sensible defaults
 
     Available Color Families (14 single-hue palettes):
-        Cool colors: blues, greens, teals, purples, mint, emrld, darkmint
-        Warm colors: reds, oranges, peach, pinks, burg, sunsetdark
-        Neutral:     greys
-
-        See: https://plotly.com/python/builtin-colorscales/
+        Cool: blues, greens, teals, purples, mint, emrld, darkmint
+        Warm: reds, oranges, peach, pinks, burg, sunsetdark
+        Neutral: greys
 
     Example Usage:
-        Using color families (variables cycle through shades):
+        Basic usage (automatic, each component gets distinct color):
 
         ```python
-        mapper = (
-            XarrayColorMapper()
-            .add_rule('Boiler', 'reds', 'prefix')  # Boiler_1, Boiler_2 get different red shades
-            .add_rule('CHP', 'oranges', 'prefix')  # CHP_1, CHP_2 get different orange shades
-            .add_rule('Storage', 'blues', 'contains')  # *Storage* variables get blue shades
-            .add_override({'Special_var': '#FFD700'})
-        )
-
-        # Use with plotting
-        results['Component'].plot_node_balance(colors=mapper)
+        manager = ComponentColorManager(components=['Boiler1', 'Boiler2', 'CHP1'])
+        color = manager.get_color('Boiler1')  # Always same color
         ```
 
-        Using discrete colors (all matching variables get the same color):
+        Grouped coloring (components in same group get shades of same color):
 
         ```python
-        mapper = (
-            XarrayColorMapper()
-            .add_rule('Solar', '#FFA500', 'prefix')  # All Solar* get exact orange
-            .add_rule('Wind', 'skyblue', 'prefix')  # All Wind* get exact skyblue
-            .add_rule('Battery', 'rgb(50,205,50)', 'contains')  # All *Battery* get lime green
-        )
+        manager = ComponentColorManager(components=['Boiler1', 'Boiler2', 'CHP1', 'Storage1'])
+        manager.add_grouping_rule('Boiler', 'Heat_Producers', 'reds', 'prefix')
+        manager.add_grouping_rule('CHP', 'Heat_Producers', 'reds', 'prefix')
+        manager.add_grouping_rule('Storage', 'Storage', 'blues', 'contains')
+        manager.auto_group_components()
 
-        # Apply to Dataset and plot
-        color_map = mapper.create_color_map(list(ds.data_vars.keys()))
-        # Or use with resolve_colors()
-        resolved_colors = resolve_colors(ds, mapper)
+        # Boiler1, Boiler2, CHP1 get different shades of red
+        # Storage1 gets blue
+        ```
+
+        Override specific components:
+
+        ```python
+        manager.override({'Boiler1': '#FF0000'})  # Force Boiler1 to red
+        ```
+
+        Get colors for variables (extracts component automatically):
+
+        ```python
+        colors = manager.get_variable_colors(['Boiler1(Bus_A)|flow', 'CHP1(Bus_B)|flow'])
+        # Returns: {'Boiler1(Bus_A)|flow': '#...', 'CHP1(Bus_B)|flow': '#...'}
         ```
     """
 
-    # Class-level defaults (easy to update in one place)
+    # Class-level color family defaults
     DEFAULT_FAMILIES = {
         'blues': px.colors.sequential.Blues[1:8],
         'greens': px.colors.sequential.Greens[1:8],
@@ -407,23 +406,30 @@ class XarrayColorMapper:
         'darkmint': px.colors.sequential.Darkmint[1:8],
     }
 
-    def __init__(self, color_families: dict[str, list[str]] | None = None, sort_within_groups: bool = True) -> None:
-        """Initialize with Plotly sequential color families.
+    def __init__(self, components: list[str], default_colormap: str = 'tab10') -> None:
+        """Initialize component color manager.
 
         Args:
-            color_families: Custom color families. If None, uses DEFAULT_FAMILIES.
-            sort_within_groups: Whether to sort values within groups by default. Default is True.
+            components: List of all component names in the system
+            default_colormap: Default colormap for ungrouped components (default: 'tab10')
         """
-        if color_families is None:
-            self.color_families = self.DEFAULT_FAMILIES.copy()
-        else:
-            self.color_families = color_families.copy()
+        self.components = sorted(set(components))  # Stable sorted order, remove duplicates
+        self.default_colormap = default_colormap
+        self.color_families = self.DEFAULT_FAMILIES.copy()
 
-        self.sort_within_groups = sort_within_groups
-        self.rules: list[dict[str, str]] = []
-        self.overrides: dict[str, str] = {}
+        # Pattern-based grouping rules
+        self._grouping_rules: list[dict[str, str]] = []
 
-    def add_custom_family(self, name: str, colors: list[str]) -> XarrayColorMapper:
+        # Computed colors: {component_name: color}
+        self._component_colors: dict[str, str] = {}
+
+        # Manual overrides (highest priority)
+        self._overrides: dict[str, str] = {}
+
+        # Auto-assign default colors
+        self._assign_default_colors()
+
+    def add_custom_family(self, name: str, colors: list[str]) -> ComponentColorManager:
         """Add a custom color family.
 
         Args:
@@ -436,215 +442,192 @@ class XarrayColorMapper:
         self.color_families[name] = colors
         return self
 
-    def add_rule(self, pattern: str, family_or_color: str, match_type: MatchType = 'prefix') -> XarrayColorMapper:
-        """Add a pattern-based rule to assign color families or discrete colors.
+    def add_grouping_rule(
+        self, pattern: str, group_name: str, colormap: str, match_type: MatchType = 'prefix'
+    ) -> ComponentColorManager:
+        """Add pattern rule for grouping components.
+
+        Components matching the pattern are assigned to the specified group,
+        and colors are drawn from the group's colormap.
 
         Args:
-            pattern: Pattern to match against coordinate values.
-            family_or_color: Either a color family name (e.g., 'blues', 'greens') or a discrete color.
-                Discrete colors can be:
-                - Hex colors: '#FF0000', '#00FF00'
-                - RGB/RGBA strings: 'rgb(255,0,0)', 'rgba(255,0,0,0.5)'
-                - Named colors: 'red', 'blue', 'skyblue'
-            match_type: Type of pattern matching to use. Default is 'prefix'.
-                - 'prefix': Match if value starts with pattern
-                - 'suffix': Match if value ends with pattern
-                - 'contains': Match if pattern appears anywhere in value
-                - 'glob': Unix-style wildcards (* matches anything, ? matches one char)
-                - 'regex': Match using regular expression
+            pattern: Pattern to match component names against
+            group_name: Name of the group (used for organization)
+            colormap: Colormap name for this group ('reds', 'blues', etc.)
+            match_type: Type of pattern matching (default: 'prefix')
+                - 'prefix': Match if component starts with pattern
+                - 'suffix': Match if component ends with pattern
+                - 'contains': Match if pattern appears in component name
+                - 'glob': Unix wildcards (* and ?)
+                - 'regex': Regular expression matching
 
         Returns:
-            Self for method chaining.
+            Self for method chaining
 
         Examples:
-            Using color families (cycles through shades):
-
             ```python
-            mapper.add_rule('Product_A', 'blues', 'prefix')
-            mapper.add_rule('_test', 'greens', 'suffix')
-            ```
-
-            Using discrete colors (all matches get the same color):
-
-            ```python
-            mapper.add_rule('Solar', '#FFA500', 'prefix')  # All Solar* items get orange
-            mapper.add_rule('Wind', 'skyblue', 'prefix')  # All Wind* items get skyblue
-            mapper.add_rule('Battery', 'rgb(50,205,50)', 'contains')  # All *Battery* get lime green
+            manager.add_grouping_rule('Boiler', 'Heat_Production', 'reds', 'prefix')
+            manager.add_grouping_rule('CHP', 'Heat_Production', 'oranges', 'prefix')
+            manager.add_grouping_rule('.*Storage.*', 'Storage', 'blues', 'regex')
             ```
         """
         valid_types = ('prefix', 'suffix', 'contains', 'glob', 'regex')
         if match_type not in valid_types:
             raise ValueError(f"match_type must be one of {valid_types}, got '{match_type}'")
 
-        # Check if family_or_color is a discrete color or a family name
-        if family_or_color in self.color_families:
-            # It's a known family - store as family rule
-            self.rules.append(
-                {'pattern': pattern, 'family': family_or_color, 'match_type': match_type, 'is_discrete': False}
-            )
-        else:
-            # Otherwise treat as discrete color - no error handling of invalid colors!
-            self.rules.append(
-                {'pattern': pattern, 'discrete_color': family_or_color, 'match_type': match_type, 'is_discrete': True}
-            )
-
+        self._grouping_rules.append(
+            {'pattern': pattern, 'group_name': group_name, 'colormap': colormap, 'match_type': match_type}
+        )
         return self
 
-    def add_override(self, color_dict: dict[str, str]) -> XarrayColorMapper:
-        """Override colors for specific values (takes precedence over rules).
+    def auto_group_components(self) -> None:
+        """Apply grouping rules and assign colors to all components.
+
+        This recomputes colors for all components based on current grouping rules.
+        Components are grouped, then within each group they get sequential colors
+        from the group's colormap (based on sorted order for stability).
+
+        Call this after adding/changing grouping rules to update colors.
+        """
+        # Group components by matching rules
+        groups: dict[str, dict] = {}
+
+        for component in self.components:
+            matched = False
+            for rule in self._grouping_rules:
+                if self._match_pattern(component, rule['pattern'], rule['match_type']):
+                    group_name = rule['group_name']
+                    if group_name not in groups:
+                        groups[group_name] = {'components': [], 'colormap': rule['colormap']}
+                    groups[group_name]['components'].append(component)
+                    matched = True
+                    break  # First match wins
+
+            if not matched:
+                # Unmatched components go to default group
+                if '_ungrouped' not in groups:
+                    groups['_ungrouped'] = {'components': [], 'colormap': self.default_colormap}
+                groups['_ungrouped']['components'].append(component)
+
+        # Assign colors within each group (stable sorted order)
+        self._component_colors = {}
+        for group_data in groups.values():
+            colormap = self._get_colormap_colors(group_data['colormap'])
+            sorted_components = sorted(group_data['components'])  # Stable!
+
+            for idx, component in enumerate(sorted_components):
+                self._component_colors[component] = colormap[idx % len(colormap)]
+
+        # Apply overrides (highest priority)
+        self._component_colors.update(self._overrides)
+
+    def override(self, component_colors: dict[str, str]) -> None:
+        """Override colors for specific components.
+
+        These overrides have highest priority and persist even after regrouping.
 
         Args:
-            color_dict: Mapping of {value: hex_color}.
-
-        Returns:
-            Self for method chaining.
+            component_colors: Dict mapping component names to colors
 
         Examples:
             ```python
-            mapper.add_override({'Special': '#FFD700'})
-            mapper.add_override({'Product_A1': '#FF00FF', 'Product_B2': '#00FFFF'})
+            manager.override({'Boiler1': '#FF0000', 'CHP1': '#00FF00'})
             ```
         """
-        for val, col in color_dict.items():
-            self.overrides[str(val)] = col
-        return self
+        self._overrides.update(component_colors)
+        self._component_colors.update(component_colors)
 
-    def create_color_map(
-        self,
-        coord_values: CoordValues,
-        sort_within_groups: bool | None = None,
-        fallback_family: str = 'greys',
-    ) -> dict[str, str]:
-        """Create color mapping for coordinate values.
+    def get_color(self, component: str) -> str:
+        """Get color for a component.
 
         Args:
-            coord_values: Coordinate values to map (xr.DataArray, np.ndarray, or list).
-            sort_within_groups: Sort values within each group. If None, uses instance default.
-            fallback_family: Color family for unmatched values. Default is 'greys'.
+            component: Component name
 
         Returns:
-            Mapping of {value: hex_color}.
+            Hex color string (defaults to grey if component unknown)
         """
-        if sort_within_groups is None:
-            sort_within_groups = self.sort_within_groups
+        return self._component_colors.get(component, '#808080')
 
-        # Convert to string list
-        if isinstance(coord_values, xr.DataArray):
-            categories: list[str] = [str(val) for val in coord_values.values]
-        elif isinstance(coord_values, np.ndarray):
-            categories = [str(val) for val in coord_values]
-        else:
-            categories = [str(val) for val in coord_values]
+    def extract_component(self, variable: str) -> str:
+        """Extract component name from variable name.
 
-        # Remove duplicates while preserving order
-        seen: set = set()
-        categories = [x for x in categories if not (x in seen or seen.add(x))]
-
-        # Group by rules
-        groups = self._group_categories(categories)
-        color_map: dict[str, str] = {}
-
-        # Assign colors to groups
-        for group_key, group_categories in groups.items():
-            if group_key == '_unmatched':
-                # Unmatched items use fallback family
-                family = self.color_families.get(fallback_family, self.color_families['greys'])
-                if sort_within_groups:
-                    group_categories = sorted(group_categories)
-                for idx, category in enumerate(group_categories):
-                    color_map[category] = family[idx % len(family)]
-
-            elif group_key.startswith('_discrete_'):
-                # Discrete color group - all items get the same color
-                discrete_color = group_key.replace('_discrete_', '', 1)
-                if sort_within_groups:
-                    group_categories = sorted(group_categories)
-                for category in group_categories:
-                    color_map[category] = discrete_color
-
-            else:
-                # Family-based group - cycle through family colors
-                family = self.color_families[group_key]
-                if sort_within_groups:
-                    group_categories = sorted(group_categories)
-                for idx, category in enumerate(group_categories):
-                    color_map[category] = family[idx % len(family)]
-
-        # Apply overrides
-        color_map.update(self.overrides)
-
-        return color_map
-
-    def reorder_dataset(self, ds: xr.Dataset, sort_within_groups: bool | None = None) -> xr.Dataset:
-        """Reorder Dataset variables so variables with the same color group are adjacent.
-
-        This is useful for creating plots where similar variables (same color group)
-        appear next to each other, making visual groupings clear in legends and stacked plots.
+        Uses default extraction logic: split on '(' or '|' to get component.
 
         Args:
-            ds: The Dataset to reorder.
-            sort_within_groups: Whether to sort variables within each group. If None, uses instance default.
+            variable: Variable name (e.g., 'Boiler1(Bus_A)|flow_rate')
 
         Returns:
-            New Dataset with reordered variables.
+            Component name (e.g., 'Boiler1')
 
         Examples:
-            Original order: ['Product_B1', 'Product_A1', 'Product_B2', 'Product_A2']
-            After reorder: ['Product_A1', 'Product_A2', 'Product_B1', 'Product_B2']
-
             ```python
-            mapper = XarrayColorMapper()
-            mapper.add_rule('Product_A', 'blues', 'prefix')
-            mapper.add_rule('Product_B', 'greens', 'prefix')
-
-            ds_reordered = mapper.reorder_dataset(ds)
+            extract_component('Boiler1(Bus_A)|flow')  # Returns: 'Boiler1'
+            extract_component('CHP1|power')  # Returns: 'CHP1'
+            extract_component('Storage')  # Returns: 'Storage'
             ```
         """
-        if sort_within_groups is None:
-            sort_within_groups = self.sort_within_groups
+        # Try "Component(Bus)|type" format
+        if '(' in variable:
+            return variable.split('(')[0]
+        # Try "Component|type" format
+        elif '|' in variable:
+            return variable.split('|')[0]
+        # Just use the variable name itself
+        return variable
 
-        # Get variable names
-        variable_names = list(ds.data_vars.keys())
-
-        # Group variables
-        groups = self._group_categories(variable_names)
-
-        # Build new order: group by group, optionally sorted within each
-        new_order = []
-        for group_name in groups.keys():
-            group_vars = groups[group_name]
-            if sort_within_groups:
-                group_vars = sorted(group_vars)
-            new_order.extend(group_vars)
-
-        # Reorder Dataset by selecting variables in new order
-        return ds[new_order]
-
-    def get_rules(self) -> list[dict[str, str]]:
-        """Return a copy of current rules for inspection."""
-        return self.rules.copy()
-
-    def get_overrides(self) -> dict[str, str]:
-        """Return a copy of current overrides for inspection."""
-        return self.overrides.copy()
-
-    def get_families(self) -> dict[str, list[str]]:
-        """Return a copy of available color families."""
-        return self.color_families.copy()
-
-    def _match_rule(self, value: str, rule: dict[str, str]) -> bool:
-        """Check if value matches a rule.
+    def get_variable_color(self, variable: str) -> str:
+        """Get color for a variable (extracts component automatically).
 
         Args:
-            value: Value to check.
-            rule: Rule dictionary with 'pattern' and 'match_type' keys.
+            variable: Variable name
 
         Returns:
-            True if value matches the rule.
+            Hex color string
         """
-        pattern = rule['pattern']
-        match_type = rule['match_type']
+        component = self.extract_component(variable)
+        return self.get_color(component)
 
+    def get_variable_colors(self, variables: list[str]) -> dict[str, str]:
+        """Get colors for multiple variables.
+
+        This is the main API used by plotting functions.
+
+        Args:
+            variables: List of variable names
+
+        Returns:
+            Dict mapping variable names to colors
+        """
+        return {var: self.get_variable_color(var) for var in variables}
+
+    def to_dict(self) -> dict[str, str]:
+        """Get complete component→color mapping.
+
+        Returns:
+            Dict of all components and their assigned colors
+        """
+        return self._component_colors.copy()
+
+    # ==================== INTERNAL METHODS ====================
+
+    def _assign_default_colors(self) -> None:
+        """Assign default colors to all components (no grouping)."""
+        colormap = self._get_colormap_colors(self.default_colormap)
+
+        for idx, component in enumerate(self.components):
+            self._component_colors[component] = colormap[idx % len(colormap)]
+
+    def _match_pattern(self, value: str, pattern: str, match_type: str) -> bool:
+        """Check if value matches pattern.
+
+        Args:
+            value: String to test
+            pattern: Pattern to match against
+            match_type: Type of matching
+
+        Returns:
+            True if matches
+        """
         if match_type == 'prefix':
             return value.startswith(pattern)
         elif match_type == 'suffix':
@@ -658,49 +641,30 @@ class XarrayColorMapper:
                 return bool(re.search(pattern, value))
             except re.error as e:
                 raise ValueError(f"Invalid regex pattern '{pattern}': {e}") from e
-
         return False
 
-    def _group_categories(self, categories: list[str]) -> dict[str, list[str]]:
-        """Group categories by matching rules.
+    def _get_colormap_colors(self, colormap_name: str) -> list[str]:
+        """Get list of colors from colormap name.
 
         Args:
-            categories: List of category values to group.
+            colormap_name: Name of colormap ('reds', 'blues', 'tab10', 'viridis', etc.)
 
         Returns:
-            Mapping of {group_key: [matching_values]}.
-
-        Note:
-            For discrete color rules, group_key is '_discrete_<color>',
-            for family rules, group_key is the family name.
+            List of hex color strings
         """
-        groups: dict[str, list[str]] = {}
-        unmatched: list[str] = []
+        # Check if it's a known family
+        if colormap_name in self.color_families:
+            return self.color_families[colormap_name]
 
-        for category in categories:
-            matched = False
-            for rule in self.rules:
-                if self._match_rule(category, rule):
-                    if rule.get('is_discrete', False):
-                        # For discrete colors, use a special group key
-                        group_key = f'_discrete_{rule["discrete_color"]}'
-                    else:
-                        # For families, use the family name
-                        group_key = rule['family']
-
-                    if group_key not in groups:
-                        groups[group_key] = []
-                    groups[group_key].append(category)
-                    matched = True
-                    break  # First match wins
-
-            if not matched:
-                unmatched.append(category)
-
-        if unmatched:
-            groups['_unmatched'] = unmatched
-
-        return groups
+        # Otherwise use ColorProcessor to generate from matplotlib/plotly colormaps
+        processor = ColorProcessor(engine='plotly')
+        try:
+            colors = processor._generate_colors_from_colormap(colormap_name, 10)
+            return colors
+        except Exception:
+            # Fallback to greys if colormap not found
+            logger.warning(f"Colormap '{colormap_name}' not found, using 'greys' instead")
+            return self.color_families['greys']
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
@@ -768,18 +732,18 @@ def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None
 
 def resolve_colors(
     data: xr.Dataset,
-    colors: ColorType | XarrayColorMapper,
+    colors: ColorType | ComponentColorManager,
     engine: PlottingEngine = 'plotly',
 ) -> dict[str, str]:
     """Resolve colors parameter to a color mapping dict.
 
     This public utility function handles all color parameter types and applies the
-    color mapper intelligently based on the data structure. Can be used standalone
+    color manager intelligently based on the data structure. Can be used standalone
     or as part of CalculationResults.
 
     Args:
         data: Dataset to create colors for. Variable names from data_vars are used as labels.
-        colors: Color specification or a XarrayColorMapper to use
+        colors: Color specification or a ComponentColorManager to use
         engine: Plotting engine ('plotly' or 'matplotlib')
 
     Returns:
@@ -788,15 +752,15 @@ def resolve_colors(
     Examples:
         With CalculationResults:
 
-        >>> resolved_colors = resolve_colors(data, results.color_mapper)
+        >>> resolved_colors = resolve_colors(data, results.color_manager)
 
         Standalone usage:
 
-        >>> mapper = plotting.XarrayColorMapper()
-        >>> mapper.add_rule('Solar', 'oranges', 'prefix')
-        >>> resolved_colors = resolve_colors(data, mapper)
+        >>> manager = plotting.ComponentColorManager(['Solar', 'Wind', 'Coal'])
+        >>> manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+        >>> resolved_colors = resolve_colors(data, manager)
 
-        Without mapper:
+        Without manager:
 
         >>> resolved_colors = resolve_colors(data, 'viridis')
     """
@@ -812,9 +776,9 @@ def resolve_colors(
         processor = ColorProcessor(engine=engine)
         return processor.process_colors(colors, labels, return_mapping=True)
 
-    if isinstance(colors, XarrayColorMapper):
-        # Use color mapper's create_color_map directly with variable names
-        return colors.create_color_map(labels)
+    if isinstance(colors, ComponentColorManager):
+        # Use color manager to resolve colors for variables
+        return colors.get_variable_colors(labels)
 
     raise TypeError(f'Wrong type passed to resolve_colors(): {type(colors)}')
 
@@ -822,7 +786,7 @@ def resolve_colors(
 def with_plotly(
     data: xr.Dataset | pd.DataFrame,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
-    colors: ColorType | XarrayColorMapper = 'viridis',
+    colors: ColorType | ComponentColorManager = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = '',
@@ -850,7 +814,7 @@ def with_plotly(
             - A colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dict mapping labels to colors (e.g., {'Solar': '#FFD700'})
-            - An XarrayColorMapper instance for pattern-based color rules with grouping and sorting
+            - A ComponentColorManager instance for pattern-based color rules with component grouping
         title: The main title of the plot.
         ylabel: The label for the y-axis.
         xlabel: The label for the x-axis.
@@ -899,14 +863,15 @@ def with_plotly(
         fig = with_plotly(dataset, facet_by='scenario', animate_by='period')
         ```
 
-        Pattern-based colors with XarrayColorMapper:
+        Pattern-based colors with ComponentColorManager:
 
         ```python
-        mapper = XarrayColorMapper()
-        mapper.add_rule('Solar', 'oranges', 'prefix')
-        mapper.add_rule('Wind', 'blues', 'prefix')
-        mapper.add_rule('Battery', 'greens', 'contains')
-        fig = with_plotly(dataset, colors=mapper, mode='area')
+        manager = ComponentColorManager(['Solar', 'Wind', 'Battery', 'Gas'])
+        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
+        manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='contains')
+        manager.auto_group_components()
+        fig = with_plotly(dataset, colors=manager, mode='area')
         ```
     """
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
@@ -1149,7 +1114,7 @@ def with_plotly(
 def with_matplotlib(
     data: xr.Dataset | pd.DataFrame,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
-    colors: ColorType | XarrayColorMapper = 'viridis',
+    colors: ColorType | ComponentColorManager = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -1167,7 +1132,7 @@ def with_matplotlib(
             - A colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dict mapping column names to colors (e.g., {'Column1': '#ff0000'})
-            - An XarrayColorMapper instance for pattern-based color rules with grouping and sorting
+            - A ComponentColorManager instance for pattern-based color rules with grouping and sorting
         title: The title of the plot.
         ylabel: The ylabel of the plot.
         xlabel: The xlabel of the plot.
@@ -1184,13 +1149,14 @@ def with_matplotlib(
         - If `mode` is 'line', stepped lines are drawn for each data series.
 
     Examples:
-        With XarrayColorMapper:
+        With ComponentColorManager:
 
         ```python
-        mapper = XarrayColorMapper()
-        mapper.add_rule('Solar', 'oranges', 'prefix')
-        mapper.add_rule('Wind', 'blues', 'prefix')
-        fig, ax = with_matplotlib(dataset, colors=mapper, mode='line')
+        manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
+        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
+        manager.auto_group_components()
+        fig, ax = with_matplotlib(dataset, colors=manager, mode='line')
         ```
     """
     if mode not in ('stacked_bar', 'line'):
@@ -1564,7 +1530,7 @@ def plot_network(
 
 def pie_with_plotly(
     data: xr.Dataset | pd.DataFrame,
-    colors: ColorType | XarrayColorMapper = 'viridis',
+    colors: ColorType | ComponentColorManager = 'viridis',
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
@@ -1583,7 +1549,7 @@ def pie_with_plotly(
             - A string with a colorscale name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
-            - An XarrayColorMapper instance for pattern-based color rules
+            - A ComponentColorManager instance for pattern-based color rules
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -1608,13 +1574,14 @@ def pie_with_plotly(
         fig = pie_with_plotly(dataset, colors='viridis', title='Energy Mix')
         ```
 
-        With XarrayColorMapper:
+        With ComponentColorManager:
 
         ```python
-        mapper = XarrayColorMapper()
-        mapper.add_rule('Solar', 'oranges', 'prefix')
-        mapper.add_rule('Wind', 'blues', 'prefix')
-        fig = pie_with_plotly(dataset, colors=mapper, title='Renewable Energy')
+        manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
+        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
+        manager.auto_group_components()
+        fig = pie_with_plotly(dataset, colors=manager, title='Renewable Energy')
         ```
     """
     # Ensure data is a Dataset and validate it
@@ -1682,7 +1649,7 @@ def pie_with_plotly(
 
 def pie_with_matplotlib(
     data: xr.Dataset | pd.DataFrame,
-    colors: ColorType | XarrayColorMapper = 'viridis',
+    colors: ColorType | ComponentColorManager = 'viridis',
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
@@ -1698,7 +1665,7 @@ def pie_with_matplotlib(
             - A string with a colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
-            - An XarrayColorMapper instance for pattern-based color rules
+            - A ComponentColorManager instance for pattern-based color rules
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -1719,13 +1686,14 @@ def pie_with_matplotlib(
         fig, ax = pie_with_matplotlib(dataset, colors='viridis', title='Energy Mix')
         ```
 
-        With XarrayColorMapper:
+        With ComponentColorManager:
 
         ```python
-        mapper = XarrayColorMapper()
-        mapper.add_rule('Solar', 'oranges', 'prefix')
-        mapper.add_rule('Wind', 'blues', 'prefix')
-        fig, ax = pie_with_matplotlib(dataset, colors=mapper, title='Renewable Energy')
+        manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
+        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
+        manager.auto_group_components()
+        fig, ax = pie_with_matplotlib(dataset, colors=manager, title='Renewable Energy')
         ```
     """
     # Ensure data is a Dataset and validate it
@@ -1814,7 +1782,7 @@ def pie_with_matplotlib(
 def dual_pie_with_plotly(
     data_left: xr.Dataset | pd.DataFrame,
     data_right: xr.Dataset | pd.DataFrame,
-    colors: ColorType | XarrayColorMapper = 'viridis',
+    colors: ColorType | ComponentColorManager = 'viridis',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1834,7 +1802,7 @@ def dual_pie_with_plotly(
             - A string with a colorscale name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
-            - An XarrayColorMapper instance for pattern-based color rules
+            - A ComponentColorManager instance for pattern-based color rules
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.

@@ -69,10 +69,10 @@ class CalculationResults:
         effects: Dictionary mapping effect names to EffectResults objects
         timesteps_extra: Extended time index including boundary conditions
         hours_per_timestep: Duration of each timestep for proper energy calculations
-        color_mapper: Optional XarrayColorMapper for automatic pattern-based coloring in plots.
-            When set, all plotting methods automatically use this mapper when colors='auto'
-            (the default). Use `create_color_mapper()` to create and configure one, or assign
-            an existing mapper directly. Set to None to disable automatic coloring.
+        color_manager: Optional ComponentColorManager for automatic component-based coloring in plots.
+            When set, all plotting methods automatically use this manager when colors='auto'
+            (the default). Use `create_color_manager()` to create and configure one, or assign
+            an existing manager directly. Set to None to disable automatic coloring.
 
     Examples:
         Load and analyze saved results:
@@ -111,17 +111,18 @@ class CalculationResults:
         ).mean()
         ```
 
-        Configure automatic color mapping for plots:
+        Configure automatic color management for plots:
 
         ```python
-        # Create and configure a color mapper for pattern-based coloring
-        mapper = results.create_color_mapper()
-        mapper.add_rule('Solar', 'oranges', 'prefix')  # Solar components get orange shades
-        mapper.add_rule('Wind', 'blues', 'prefix')  # Wind components get blue shades
-        mapper.add_rule('Battery', 'greens', 'prefix')  # Battery components get green shades
-        mapper.add_rule('Gas', 'reds', 'prefix')  # Gas components get red shades
+        # Create and configure a color manager for pattern-based coloring
+        manager = results.create_color_manager()
+        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
+        manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='prefix')
+        manager.add_grouping_rule('Gas', 'fossil', 'reds', match_type='prefix')
+        manager.auto_group_components()
 
-        # All plots automatically use the mapper (colors='auto' is the default)
+        # All plots automatically use the manager (colors='auto' is the default)
         results['ElectricityBus'].plot_node_balance()  # Uses configured colors
         results['Battery'].plot_charge_state()  # Also uses configured colors
 
@@ -261,8 +262,8 @@ class CalculationResults:
         self._sizes = None
         self._effects_per_component = None
 
-        # Color mapper for intelligent plot coloring
-        self.color_mapper: plotting.XarrayColorMapper | None = None
+        # Color manager for intelligent plot coloring
+        self.color_manager: plotting.ComponentColorManager | None = None
 
     def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
@@ -330,38 +331,41 @@ class CalculationResults:
                 logger.level = old_level
         return self._flow_system
 
-    def create_color_mapper(self) -> plotting.XarrayColorMapper:
-        """Create and assign a new XarrayColorMapper for this results instance.
+    def create_color_manager(self) -> plotting.ComponentColorManager:
+        """Create and assign a new ComponentColorManager for this results instance.
 
-        The color mapper is automatically used by all plotting methods when colors='auto'
-        (the default). Configure it with rules to define pattern-based color grouping.
+        The color manager is automatically used by all plotting methods when colors='auto'
+        (the default). Configure it with grouping rules to define pattern-based color families.
 
-        You can also assign an existing mapper directly via `results.color_mapper = mapper`.
+        You can also assign an existing manager directly via `results.color_manager = manager`.
 
         Returns:
-            The newly created XarrayColorMapper, ready to be configured with rules.
+            The newly created ComponentColorManager with all components registered, ready to be configured.
 
         Examples:
-            Create and configure a new mapper:
+            Create and configure a new manager:
 
-            >>> mapper = results.create_color_mapper()
-            >>> mapper.add_rule('Solar', 'oranges', 'prefix')
-            >>> mapper.add_rule('Wind', 'blues', 'prefix')
-            >>> mapper.add_rule('Gas', 'reds', 'prefix')
-            >>> results['ElectricityBus'].plot_node_balance()  # Uses mapper automatically
+            >>> manager = results.create_color_manager()
+            >>> manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+            >>> manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
+            >>> manager.add_grouping_rule('Gas', 'fossil', 'reds', match_type='prefix')
+            >>> manager.auto_group_components()
+            >>> results['ElectricityBus'].plot_node_balance()  # Uses manager automatically
 
-            Or assign an existing mapper:
+            Or assign an existing manager:
 
-            >>> my_mapper = plotting.XarrayColorMapper()
-            >>> my_mapper.add_rule('Renewable', 'greens', 'prefix')
-            >>> results.color_mapper = my_mapper
+            >>> my_manager = plotting.ComponentColorManager(list(results.components.keys()))
+            >>> my_manager.add_grouping_rule('Renewable', 'renewables', 'greens', match_type='prefix')
+            >>> my_manager.auto_group_components()
+            >>> results.color_manager = my_manager
 
             Override with explicit colors if needed:
 
-            >>> results['ElectricityBus'].plot_node_balance(colors='viridis')  # Ignores mapper
+            >>> results['ElectricityBus'].plot_node_balance(colors='viridis')  # Ignores manager
         """
-        self.color_mapper = plotting.XarrayColorMapper()
-        return self.color_mapper
+        component_names = list(self.components.keys())
+        self.color_manager = plotting.ComponentColorManager(component_names)
+        return self.color_manager
 
     def filter_solution(
         self,
@@ -1073,11 +1077,11 @@ class _NodeResults(_ElementResults):
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. Options:
-                - 'auto' (default): Use `self.color_mapper` if configured, else fall back to 'viridis'
+                - 'auto' (default): Use `self.color_manager` if configured, else fall back to 'viridis'
                 - Colormap name string (e.g., 'viridis', 'plasma')
                 - List of color strings
                 - Dict mapping variable names to colors
-                Set `results.color_mapper` to an `XarrayColorMapper` for automatic pattern-based grouping.
+                Set `results.color_manager` to a `ComponentColorManager` for automatic component-based grouping.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             select: Optional data selection dict. Supports:
                 - Single values: {'scenario': 'base', 'period': 2024}
@@ -1198,8 +1202,8 @@ class _NodeResults(_ElementResults):
 
         # Resolve colors to a dict (handles auto, mapper, etc.)
         colors_to_use = (
-            self._calculation_results.color_mapper
-            if colors == 'auto' and self._calculation_results.color_mapper is not None
+            self._calculation_results.color_manager
+            if colors == 'auto' and self._calculation_results.color_manager is not None
             else 'viridis'
             if colors == 'auto'
             else colors
@@ -1391,8 +1395,8 @@ class _NodeResults(_ElementResults):
         # Combine inputs and outputs to resolve colors for all variables
         combined_ds = xr.Dataset({**inputs.data_vars, **outputs.data_vars})
         colors_to_use = (
-            self._calculation_results.color_mapper
-            if colors == 'auto' and self._calculation_results.color_mapper is not None
+            self._calculation_results.color_manager
+            if colors == 'auto' and self._calculation_results.color_manager is not None
             else 'viridis'
             if colors == 'auto'
             else colors
@@ -1646,8 +1650,8 @@ class ComponentResults(_NodeResults):
 
         # Resolve colors to a dict (handles auto, mapper, etc.)
         colors_to_use = (
-            self._calculation_results.color_mapper
-            if colors == 'auto' and self._calculation_results.color_mapper is not None
+            self._calculation_results.color_manager
+            if colors == 'auto' and self._calculation_results.color_manager is not None
             else 'viridis'
             if colors == 'auto'
             else colors
@@ -1862,10 +1866,10 @@ class SegmentedCalculationResults:
         name: Identifier for this segmented calculation
         folder: Directory path for result storage and loading
         hours_per_timestep: Duration of each timestep
-        color_mapper: Optional XarrayColorMapper for automatic pattern-based coloring in plots.
+        color_manager: Optional ComponentColorManager for automatic component-based coloring in plots.
             When set, it is automatically propagated to all segment results, ensuring
-            consistent coloring across segments. Use `create_color_mapper()` to create
-            and configure one, or assign an existing mapper directly.
+            consistent coloring across segments. Use `create_color_manager()` to create
+            and configure one, or assign an existing manager directly.
 
     Examples:
         Load and analyze segmented results:
@@ -1922,14 +1926,15 @@ class SegmentedCalculationResults:
             storage_continuity = results.check_storage_continuity('Battery')
         ```
 
-        Configure color mapping for consistent plotting across segments:
+        Configure color management for consistent plotting across segments:
 
         ```python
-        # Create and configure a color mapper
-        mapper = results.create_color_mapper()
-        mapper.add_rule('Solar', 'oranges', 'prefix')
-        mapper.add_rule('Wind', 'blues', 'prefix')
-        mapper.add_rule('Battery', 'greens', 'prefix')
+        # Create and configure a color manager
+        manager = results.create_color_manager()
+        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
+        manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='prefix')
+        manager.auto_group_components()
 
         # Plot using any segment - colors are consistent across all segments
         results.segment_results[0]['ElectricityBus'].plot_node_balance()
@@ -2010,8 +2015,8 @@ class SegmentedCalculationResults:
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
 
-        # Color mapper for intelligent plot coloring
-        self.color_mapper: plotting.XarrayColorMapper | None = None
+        # Color manager for intelligent plot coloring
+        self.color_manager: plotting.ComponentColorManager | None = None
 
     @property
     def meta_data(self) -> dict[str, int | list[str]]:
@@ -2026,29 +2031,32 @@ class SegmentedCalculationResults:
     def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
 
-    def create_color_mapper(self) -> plotting.XarrayColorMapper:
-        """Create and assign a new XarrayColorMapper for this segmented results instance.
+    def create_color_manager(self) -> plotting.ComponentColorManager:
+        """Create and assign a new ComponentColorManager for this segmented results instance.
 
-        The color mapper is automatically propagated to all segment results,
+        The color manager is automatically propagated to all segment results,
         ensuring consistent coloring across all segments when using plotting methods.
 
         Returns:
-            The newly created XarrayColorMapper, ready to be configured with rules.
+            The newly created ComponentColorManager with all components registered.
 
         Examples:
-            Create and configure a mapper for segmented results:
+            Create and configure a manager for segmented results:
 
-            >>> mapper = segmented_results.create_color_mapper()
-            >>> mapper.add_rule('Solar', 'oranges', 'prefix')
-            >>> mapper.add_rule('Wind', 'blues', 'prefix')
-            >>> # The mapper is now available on all segments
+            >>> manager = segmented_results.create_color_manager()
+            >>> manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+            >>> manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
+            >>> manager.auto_group_components()
+            >>> # The manager is now available on all segments
             >>> segmented_results.segment_results[0]['ElectricityBus'].plot_node_balance()
         """
-        self.color_mapper = plotting.XarrayColorMapper()
+        # Get component names from first segment (all segments should have same components)
+        component_names = list(self.segment_results[0].components.keys()) if self.segment_results else []
+        self.color_manager = plotting.ComponentColorManager(component_names)
         # Propagate to all segment results for consistent coloring
         for segment in self.segment_results:
-            segment.color_mapper = self.color_mapper
-        return self.color_mapper
+            segment.color_manager = self.color_manager
+        return self.color_manager
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Get variable solution removing segment overlaps.
