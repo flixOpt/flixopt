@@ -426,6 +426,9 @@ class ComponentColorManager:
         # Manual overrides (highest priority)
         self._overrides: dict[str, str] = {}
 
+        # Variable color cache for performance: {variable_name: color}
+        self._variable_cache: dict[str, str] = {}
+
         # Auto-assign default colors
         self._assign_default_colors()
 
@@ -567,6 +570,9 @@ class ComponentColorManager:
         # Apply overrides (highest priority)
         self._component_colors.update(self._overrides)
 
+        # Clear variable cache since colors have changed
+        self._variable_cache.clear()
+
     def override(self, component_colors: dict[str, str]) -> None:
         """Override colors for specific components.
 
@@ -582,6 +588,9 @@ class ComponentColorManager:
         """
         self._overrides.update(component_colors)
         self._component_colors.update(component_colors)
+
+        # Clear variable cache since colors have changed
+        self._variable_cache.clear()
 
     def get_color(self, component: str) -> str:
         """Get color for a component.
@@ -630,8 +639,15 @@ class ComponentColorManager:
         Returns:
             Hex color string
         """
+        # Check cache first
+        if variable in self._variable_cache:
+            return self._variable_cache[variable]
+
+        # Compute and cache
         component = self.extract_component(variable)
-        return self.get_color(component)
+        color = self.get_color(component)
+        self._variable_cache[variable] = color
+        return color
 
     def get_variable_colors(self, variables: list[str]) -> dict[str, str]:
         """Get colors for multiple variables.
