@@ -527,7 +527,7 @@ class ComponentColorManager:
         components: list[str] | None = None,
         flows: dict[str, list[str]] | None = None,
         enable_flow_shading: bool = False,
-        flow_variation_strength: float = 0.08,
+        flow_variation_strength: float = 0.04,
         default_colormap: str = 'Dark24',
     ) -> None:
         """Initialize component color manager.
