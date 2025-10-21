@@ -2147,6 +2147,7 @@ def heatmap_with_plotly(
     | Literal['auto']
     | None = 'auto',
     fill: Literal['ffill', 'bfill'] | None = 'ffill',
+    **imshow_kwargs: Any,
 ) -> go.Figure:
     """
     Plot a heatmap visualization using Plotly's imshow with faceting and animation support.
@@ -2179,6 +2180,11 @@ def heatmap_with_plotly(
                      - Tuple like ('D', 'h'): Explicit time reshaping (days vs hours)
                      - None: Disable time reshaping (will error if only 1D time data)
         fill: Method to fill missing values when reshaping time: 'ffill' or 'bfill'. Default is 'ffill'.
+        **imshow_kwargs: Additional keyword arguments to pass to plotly.express.imshow.
+                        Common options include:
+                        - aspect: 'auto', 'equal', or a number for aspect ratio
+                        - zmin, zmax: Minimum and maximum values for color scale
+                        - labels: Dict to customize axis labels
 
     Returns:
         A Plotly figure object containing the heatmap visualization.
@@ -2323,16 +2329,21 @@ def heatmap_with_plotly(
     if animate_by:
         common_args['animation_frame'] = animate_by
 
+    # Merge in additional imshow kwargs
+    common_args.update(imshow_kwargs)
+
     try:
         fig = px.imshow(**common_args)
     except Exception as e:
         logger.error(f'Error creating imshow plot: {e}. Falling back to basic heatmap.')
         # Fallback: create a simple heatmap without faceting
-        fig = px.imshow(
-            data.values,
-            color_continuous_scale=colors if isinstance(colors, str) else 'viridis',
-            title=title,
-        )
+        fallback_args = {
+            'img': data.values,
+            'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+            'title': title,
+        }
+        fallback_args.update(imshow_kwargs)
+        fig = px.imshow(**fallback_args)
 
     # Update layout with basic styling
     fig.update_layout(
@@ -2357,6 +2368,7 @@ def heatmap_with_matplotlib(
     vmax: float | None = None,
     imshow_kwargs: dict[str, Any] | None = None,
     cbar_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot a heatmap visualization using Matplotlib's imshow.
@@ -2382,6 +2394,11 @@ def heatmap_with_matplotlib(
                       Use this to customize image properties (e.g., interpolation, aspect).
         cbar_kwargs: Optional dict of parameters to pass to plt.colorbar().
                     Use this to customize colorbar properties (e.g., orientation, label).
+        **kwargs: Additional keyword arguments passed to ax.imshow().
+                 Common options include:
+                 - interpolation: 'nearest', 'bilinear', 'bicubic', etc.
+                 - alpha: Transparency level (0-1)
+                 - extent: [left, right, bottom, top] for axis limits
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -2408,6 +2425,10 @@ def heatmap_with_matplotlib(
         imshow_kwargs = {}
     if cbar_kwargs is None:
         cbar_kwargs = {}
+
+    # Merge any additional kwargs into imshow_kwargs
+    # This allows users to pass imshow options directly
+    imshow_kwargs.update(kwargs)
 
     # Handle empty data
     if data.size == 0:
