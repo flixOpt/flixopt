@@ -36,7 +36,7 @@ if __name__ == '__main__':
     data_import = pd.read_csv(
         pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
     ).sort_index()
-    filtered_data = data_import['2020-01-01':'2020-01-02 23:45:00']
+    filtered_data = data_import['2020-01-01':'2020-01-07 23:45:00']
     # filtered_data = data_import[0:500]  # Alternatively filter by index
 
     filtered_data.index = pd.to_datetime(filtered_data.index)
