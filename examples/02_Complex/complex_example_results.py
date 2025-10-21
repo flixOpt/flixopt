@@ -19,13 +19,13 @@ if __name__ == '__main__':
         ) from e
 
     # --- Configure Color Mapping for Consistent Plot Colors ---
-    # Create a color mapper to automatically assign consistent colors to components
+    # Create a color manager to automatically assign consistent colors to components
     # based on naming patterns. This ensures visual grouping in all plots.
     mapper = results.create_color_manager()
 
     # --- Basic overview ---
     results.plot_network(show=True)
-    # All plots below automatically use the color mapper (colors='auto' is the default)
+    # All plots below automatically use the color manager
     results['Fernwärme'].plot_node_balance()
 
     # --- Detailed Plots ---

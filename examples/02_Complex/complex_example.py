@@ -209,7 +209,7 @@ if __name__ == '__main__':
     calculation.results.create_color_manager()
 
     # Plot results with automatic color mapping
-    calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')  # Heatmap uses continuous colors (not ColorMapper)
-    calculation.results['BHKW2'].plot_node_balance()  # Uses ColorMapper
-    calculation.results['Speicher'].plot_charge_state()  # Uses ColorMapper
-    calculation.results['Fernwärme'].plot_node_balance_pie()  # Uses ColorMapper
+    calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')  # Heatmap uses continuous colors (not ColorManager)
+    calculation.results['BHKW2'].plot_node_balance()  # Uses ColorManager
+    calculation.results['Speicher'].plot_charge_state()  # Uses ColorManager
+    calculation.results['Fernwärme'].plot_node_balance_pie()  # Uses ColorManager
