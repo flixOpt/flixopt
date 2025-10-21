@@ -206,13 +206,7 @@ if __name__ == '__main__':
     calculation.results.to_file()
 
     # Configure color mapping for consistent plot colors
-    mapper = calculation.results.create_color_mapper()
-    mapper.add_rule('BHKW', '#FF8C00', 'prefix')  # All CHP units: dark orange
-    mapper.add_rule('Kessel', '#DC143C', 'prefix')  # All boilers: crimson
-    mapper.add_rule('Speicher', '#32CD32', 'prefix')  # All storage: lime green
-    mapper.add_rule('last', 'skyblue', 'contains')  # All loads/demands: skyblue
-    mapper.add_rule('tarif', 'greys', 'contains')  # Tariffs cycle through grey shades
-    mapper.add_rule('Einspeisung', '#9370DB', 'prefix')  # Feed-in: medium purple
+    calculation.results.create_color_manager()
 
     # Plot results with automatic color mapping
     calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')  # Heatmap uses continuous colors (not ColorMapper)

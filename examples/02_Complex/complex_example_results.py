@@ -21,13 +21,7 @@ if __name__ == '__main__':
     # --- Configure Color Mapping for Consistent Plot Colors ---
     # Create a color mapper to automatically assign consistent colors to components
     # based on naming patterns. This ensures visual grouping in all plots.
-    mapper = results.create_color_mapper()
-    mapper.add_rule('BHKW', '#FF8C00', 'prefix')  # All CHP units: dark orange
-    mapper.add_rule('Kessel', '#DC143C', 'prefix')  # All boilers: crimson
-    mapper.add_rule('Speicher', '#32CD32', 'prefix')  # All storage: lime green
-    mapper.add_rule('last', 'skyblue', 'contains')  # All loads/demands: skyblue
-    mapper.add_rule('tarif', 'greys', 'contains')  # Tariffs cycle through grey shades
-    mapper.add_rule('Einspeisung', '#9370DB', 'prefix')  # Feed-in: medium purple
+    mapper = results.create_color_manager()
 
     # --- Basic overview ---
     results.plot_network(show=True)
@@ -37,8 +31,9 @@ if __name__ == '__main__':
     # --- Detailed Plots ---
     # In depth plot for individual flow rates ('__' is used as the delimiter between Component and Flow
     results.plot_heatmap('Wärmelast(Q_th_Last)|flow_rate')
-    for flow_rate in results['BHKW2'].inputs + results['BHKW2'].outputs:
-        results.plot_heatmap(flow_rate)
+    for bus in results.buses.values():
+        bus.plot_node_balance_pie()
+        bus.plot_node_balance()
 
     # --- Plotting internal variables manually ---
     results.plot_heatmap('BHKW2(Q_th)|on')

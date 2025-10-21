@@ -140,7 +140,7 @@ class TestGroupingRules:
 
         assert manager._grouping_rules[0]['match_type'] == 'regex'
 
-    def test_auto_group_components(self):
+    def test_apply_colors(self):
         """Test auto-grouping components based on rules."""
         components = ['Solar_PV', 'Solar_Thermal', 'Wind_Onshore', 'Wind_Offshore', 'Coal_Plant']
         manager = ComponentColorManager(components)
@@ -148,7 +148,7 @@ class TestGroupingRules:
         manager.add_grouping_rule('Solar', 'renewables_solar', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'renewables_wind', 'blues', match_type='prefix')
         manager.add_grouping_rule('Coal', 'fossil', 'greys', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         # Check that components got colors from appropriate families
         solar_color = manager.get_color('Solar_PV')
@@ -166,7 +166,7 @@ class TestGroupingRules:
 
         manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'wind', 'blues', match_type='contains')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         # Should match 'Solar' rule first (prefix match)
         color = manager.get_color('Solar_Wind_Hybrid')
@@ -184,7 +184,7 @@ class TestColorStability:
 
         manager.add_grouping_rule('Solar', 'renewables_solar', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'renewables_wind', 'blues', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         # Get colors multiple times
         color1 = manager.get_color('Solar_PV')
@@ -202,7 +202,7 @@ class TestColorStability:
         manager.add_grouping_rule('Wind', 'wind', 'blues', match_type='prefix')
         manager.add_grouping_rule('Coal', 'fossil_coal', 'greys', match_type='prefix')
         manager.add_grouping_rule('Gas', 'fossil_gas', 'reds', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         # Dataset 1: Only Solar and Wind
         dataset1 = xr.Dataset(
@@ -280,7 +280,7 @@ class TestVariableColorResolution:
         components = ['Solar_PV', 'Wind_Onshore']
         manager = ComponentColorManager(components)
         manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         variable = 'Solar_PV(Bus)|flow_rate'
         color = manager.get_variable_color(variable)
@@ -294,7 +294,7 @@ class TestVariableColorResolution:
         manager = ComponentColorManager(components)
         manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'wind', 'blues', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         variables = ['Solar_PV(Bus)|flow_rate', 'Wind_Onshore(Bus)|flow_rate', 'Coal_Plant(Bus)|flow_rate']
 
@@ -324,7 +324,7 @@ class TestOverrides:
         components = ['Solar_PV', 'Wind_Onshore']
         manager = ComponentColorManager(components)
         manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         # Override Solar_PV color
         manager.override({'Solar_PV': '#FF0000'})
@@ -336,7 +336,7 @@ class TestOverrides:
         """Test multiple overrides."""
         components = ['Solar_PV', 'Wind_Onshore', 'Coal_Plant']
         manager = ComponentColorManager(components)
-        manager.auto_group_components()
+        manager.apply_colors()
 
         manager.override({'Solar_PV': '#FF0000', 'Wind_Onshore': '#00FF00'})
 
@@ -348,7 +348,7 @@ class TestOverrides:
         components = ['Solar_PV']
         manager = ComponentColorManager(components)
         manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         original_color = manager.get_color('Solar_PV')
 
@@ -368,7 +368,7 @@ class TestIntegrationWithResolveColors:
         manager = ComponentColorManager(components)
         manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'wind', 'blues', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         dataset = xr.Dataset(
             {
@@ -428,7 +428,7 @@ class TestToDictMethod:
         components = ['Solar_PV', 'Solar_Thermal', 'Wind_Onshore']
         manager = ComponentColorManager(components)
         manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         color_dict = manager.to_dict()
 
@@ -614,8 +614,8 @@ class TestCaching:
         assert color1 == color2
         assert len(manager._variable_cache) == 1
 
-    def test_cache_cleared_on_auto_group_components(self):
-        """Test that cache is cleared when auto_group_components is called."""
+    def test_cache_cleared_on_apply_colors(self):
+        """Test that cache is cleared when apply_colors is called."""
         components = ['Solar_PV', 'Wind_Onshore']
         manager = ComponentColorManager(components)
 
@@ -624,8 +624,8 @@ class TestCaching:
         manager.get_variable_color('Wind_Onshore(Bus)|flow_rate')
         assert len(manager._variable_cache) == 2
 
-        # Call auto_group_components
-        manager.auto_group_components()
+        # Call apply_colors
+        manager.apply_colors()
 
         # Cache should be cleared
         assert len(manager._variable_cache) == 0
