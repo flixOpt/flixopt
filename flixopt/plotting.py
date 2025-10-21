@@ -406,7 +406,7 @@ class ComponentColorManager:
         'darkmint': px.colors.sequential.Darkmint[1:8],
     }
 
-    def __init__(self, components: list[str], default_colormap: str = 'Plotly') -> None:
+    def __init__(self, components: list[str], default_colormap: str = 'Dark24') -> None:
         """Initialize component color manager.
 
         Args:
@@ -726,8 +726,8 @@ class ComponentColorManager:
             colors = processor._generate_colors_from_colormap(colormap_name, 10)
             return colors
         except Exception:
-            logger.warning(f"Colormap '{colormap_name}' not found, using 'Plotly' instead")
-            return px.colors.qualitative.Plotly
+            logger.warning(f"Colormap '{colormap_name}' not found, using 'Dark24' instead")
+            return px.colors.qualitative.Dark24
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
