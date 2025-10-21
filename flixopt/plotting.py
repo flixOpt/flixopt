@@ -703,6 +703,69 @@ class XarrayColorMapper:
         return groups
 
 
+def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
+    """
+    Ensure the input data is an xarray Dataset, converting from DataFrame if needed.
+
+    Args:
+        data: Input data, either xarray Dataset or pandas DataFrame.
+
+    Returns:
+        xarray Dataset.
+
+    Raises:
+        TypeError: If data is neither Dataset nor DataFrame.
+    """
+    if isinstance(data, xr.Dataset):
+        return data
+    elif isinstance(data, pd.DataFrame):
+        # Convert DataFrame to Dataset
+        return data.to_xarray()
+    else:
+        raise TypeError(f'Data must be xr.Dataset or pd.DataFrame, got {type(data).__name__}')
+
+
+def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None:
+    """
+    Validate input data for plotting and raise clear errors for common issues.
+
+    Args:
+        data: xarray Dataset to validate.
+        allow_empty: Whether to allow empty datasets (no variables).
+
+    Raises:
+        ValueError: If data is invalid for plotting.
+        TypeError: If data contains non-numeric types.
+    """
+    # Check for empty data
+    if not allow_empty and len(data.data_vars) == 0:
+        raise ValueError('Empty Dataset provided (no variables). Cannot create plot.')
+
+    # Check if dataset has any data (xarray uses nbytes for total size)
+    if all(data[var].size == 0 for var in data.data_vars) if len(data.data_vars) > 0 else True:
+        if not allow_empty and len(data.data_vars) > 0:
+            raise ValueError('Dataset has zero size. Cannot create plot.')
+        if len(data.data_vars) == 0:
+            return  # Empty dataset, nothing to validate
+        return
+
+    # Check for non-numeric data types
+    for var in data.data_vars:
+        dtype = data[var].dtype
+        if not np.issubdtype(dtype, np.number):
+            raise TypeError(
+                f"Variable '{var}' has non-numeric dtype '{dtype}'. "
+                f'Plotting requires numeric data types (int, float, etc.).'
+            )
+
+    # Warn about NaN/Inf values
+    for var in data.data_vars:
+        if data[var].isnull().any():
+            logger.warning(f"Variable '{var}' contains NaN values which may affect visualization.")
+        if np.isinf(data[var].values).any():
+            logger.warning(f"Variable '{var}' contains Inf values which may affect visualization.")
+
+
 def resolve_colors(
     data: xr.Dataset,
     colors: ColorType | XarrayColorMapper,
@@ -757,7 +820,7 @@ def resolve_colors(
 
 
 def with_plotly(
-    data: xr.Dataset,
+    data: xr.Dataset | pd.DataFrame,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
@@ -769,6 +832,9 @@ def with_plotly(
     facet_cols: int = 3,
     shared_yaxes: bool = True,
     shared_xaxes: bool = True,
+    trace_kwargs: dict[str, Any] | None = None,
+    layout_kwargs: dict[str, Any] | None = None,
+    **px_kwargs: Any,
 ) -> go.Figure:
     """
     Plot data with Plotly using facets (subplots) and/or animation for multidimensional data.
@@ -798,6 +864,12 @@ def with_plotly(
         facet_cols: Number of columns in the facet grid (used when facet_by is single dimension).
         shared_yaxes: Whether subplots share y-axes.
         shared_xaxes: Whether subplots share x-axes.
+        trace_kwargs: Optional dict of parameters to pass to fig.update_traces().
+                     Use this to customize trace properties (e.g., marker style, line width).
+        layout_kwargs: Optional dict of parameters to pass to fig.update_layout().
+                      Use this to customize layout properties (e.g., width, height, legend position).
+        **px_kwargs: Additional keyword arguments passed to the underlying Plotly Express function
+                    (px.bar, px.line, px.area). These override default arguments if provided.
 
     Returns:
         A Plotly figure object containing the faceted/animated plot.
@@ -839,6 +911,10 @@ def with_plotly(
     """
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
+
+    # Ensure data is a Dataset and validate it
+    data = _ensure_dataset(data)
+    _validate_plotting_data(data, allow_empty=True)
 
     # Handle empty data
     if len(data.data_vars) == 0:
@@ -991,6 +1067,9 @@ def with_plotly(
     if facet_col and not facet_row:
         common_args['facet_col_wrap'] = facet_cols
 
+    # Apply user-provided Plotly Express kwargs (overrides defaults)
+    common_args.update(px_kwargs)
+
     if mode == 'stacked_bar':
         fig = px.bar(**common_args)
         fig.update_traces(marker_line_width=0)
@@ -1058,19 +1137,24 @@ def with_plotly(
     if not shared_xaxes:
         fig.update_xaxes(matches=None)
 
+    # Apply user-provided trace and layout customizations
+    if trace_kwargs:
+        fig.update_traces(**trace_kwargs)
+    if layout_kwargs:
+        fig.update_layout(**layout_kwargs)
+
     return fig
 
 
 def with_matplotlib(
-    data: xr.Dataset,
+    data: xr.Dataset | pd.DataFrame,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
     figsize: tuple[int, int] = (12, 6),
-    fig: plt.Figure | None = None,
-    ax: plt.Axes | None = None,
+    plot_kwargs: dict[str, Any] | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot data with Matplotlib using stacked bars or stepped lines.
@@ -1087,9 +1171,9 @@ def with_matplotlib(
         title: The title of the plot.
         ylabel: The ylabel of the plot.
         xlabel: The xlabel of the plot.
-        figsize: Specify the size of the figure
-        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
-        ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
+        figsize: Specify the size of the figure (width, height) in inches.
+        plot_kwargs: Optional dict of parameters to pass to ax.bar() or ax.step() plotting calls.
+                    Use this to customize plot properties (e.g., linewidth, alpha, edgecolor).
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -1112,8 +1196,16 @@ def with_matplotlib(
     if mode not in ('stacked_bar', 'line'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line'}} for matplotlib, got {mode!r}")
 
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+    # Ensure data is a Dataset and validate it
+    data = _ensure_dataset(data)
+    _validate_plotting_data(data, allow_empty=True)
+
+    # Create new figure and axes
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Initialize plot_kwargs if not provided
+    if plot_kwargs is None:
+        plot_kwargs = {}
 
     # Handle all-scalar datasets (where all variables have no dimensions)
     # This occurs when all variables are scalar values with dims=()
@@ -1128,14 +1220,20 @@ def with_matplotlib(
 
         # Create plot based on mode
         if mode == 'stacked_bar':
-            ax.bar(variables, values, color=colors_list)
+            ax.bar(variables, values, color=colors_list, **plot_kwargs)
         elif mode == 'line':
-            ax.plot(variables, values, marker='o', color=colors_list[0] if len(set(colors_list)) == 1 else None)
+            ax.plot(
+                variables,
+                values,
+                marker='o',
+                color=colors_list[0] if len(set(colors_list)) == 1 else None,
+                **plot_kwargs,
+            )
             # If different colors, plot each point separately
             if len(set(colors_list)) > 1:
                 ax.clear()
                 for i, (var, val) in enumerate(zip(variables, values, strict=False)):
-                    ax.plot([i], [val], marker='o', color=colors_list[i], label=var)
+                    ax.plot([i], [val], marker='o', color=colors_list[i], label=var, **plot_kwargs)
                 ax.set_xticks(range(len(variables)))
                 ax.set_xticklabels(variables)
 
@@ -1173,6 +1271,7 @@ def with_matplotlib(
                 label=column,
                 width=width,
                 align='center',
+                **plot_kwargs,
             )
             cumulative_positive += positive_values.values
             # Plot negative bars
@@ -1184,12 +1283,13 @@ def with_matplotlib(
                 label='',  # No label for negative bars
                 width=width,
                 align='center',
+                **plot_kwargs,
             )
             cumulative_negative += negative_values.values
 
     elif mode == 'line':
         for i, column in enumerate(df.columns):
-            ax.step(df.index, df[column], where='post', color=processed_colors[i], label=column)
+            ax.step(df.index, df[column], where='post', color=processed_colors[i], label=column, **plot_kwargs)
 
     # Aesthetics
     ax.set_xlabel(xlabel, ha='center')
@@ -1463,12 +1563,15 @@ def plot_network(
 
 
 def pie_with_plotly(
-    data: xr.Dataset,
+    data: xr.Dataset | pd.DataFrame,
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
     fig: go.Figure | None = None,
+    hover_template: str = '%{label}: %{value} (%{percent})',
+    text_info: str = 'percent+label+value',
+    text_position: str = 'inside',
 ) -> go.Figure:
     """
     Create a pie chart with Plotly to visualize the proportion of values in a Dataset.
@@ -1485,6 +1588,10 @@ def pie_with_plotly(
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
         fig: A Plotly figure object to plot on. If not provided, a new figure will be created.
+        hover_template: Template for hover text. Use %{label}, %{value}, %{percent}.
+        text_info: What to show on pie segments: 'label', 'percent', 'value', 'label+percent',
+                  'label+value', 'percent+value', 'label+percent+value', or 'none'.
+        text_position: Position of text: 'inside', 'outside', 'auto', or 'none'.
 
     Returns:
         A Plotly figure object containing the generated pie chart.
@@ -1510,6 +1617,10 @@ def pie_with_plotly(
         fig = pie_with_plotly(dataset, colors=mapper, title='Renewable Energy')
         ```
     """
+    # Ensure data is a Dataset and validate it
+    data = _ensure_dataset(data)
+    _validate_plotting_data(data, allow_empty=True)
+
     if len(data.data_vars) == 0:
         logger.error('Empty Dataset provided for pie chart. Returning empty figure.')
         return go.Figure()
@@ -1550,9 +1661,10 @@ def pie_with_plotly(
             values=values,
             hole=hole,
             marker=dict(colors=processed_colors),
-            textinfo='percent+label+value',
-            textposition='inside',
+            textinfo=text_info,
+            textposition=text_position,
             insidetextorientation='radial',
+            hovertemplate=hover_template,
         )
     )
 
@@ -1569,14 +1681,12 @@ def pie_with_plotly(
 
 
 def pie_with_matplotlib(
-    data: xr.Dataset,
+    data: xr.Dataset | pd.DataFrame,
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
     figsize: tuple[int, int] = (10, 8),
-    fig: plt.Figure | None = None,
-    ax: plt.Axes | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Create a pie chart with Matplotlib to visualize the proportion of values in a Dataset.
@@ -1593,8 +1703,6 @@ def pie_with_matplotlib(
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
         figsize: The size of the figure (width, height) in inches.
-        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
-        ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -1620,10 +1728,13 @@ def pie_with_matplotlib(
         fig, ax = pie_with_matplotlib(dataset, colors=mapper, title='Renewable Energy')
         ```
     """
+    # Ensure data is a Dataset and validate it
+    data = _ensure_dataset(data)
+    _validate_plotting_data(data, allow_empty=True)
+
     if len(data.data_vars) == 0:
         logger.error('Empty Dataset provided for pie chart. Returning empty figure.')
-        if fig is None or ax is None:
-            fig, ax = plt.subplots(figsize=figsize)
+        fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
 
     # Sum all dimensions for each variable to get total values
@@ -1652,9 +1763,8 @@ def pie_with_matplotlib(
     color_discrete_map = resolve_colors(data, colors, engine='matplotlib')
     processed_colors = [color_discrete_map.get(label, '#808080') for label in labels]
 
-    # Create figure and axis if not provided
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
 
     # Draw the pie chart
     wedges, texts, autotexts = ax.pie(
@@ -1702,8 +1812,8 @@ def pie_with_matplotlib(
 
 
 def dual_pie_with_plotly(
-    data_left: xr.Dataset,
-    data_right: xr.Dataset,
+    data_left: xr.Dataset | pd.DataFrame,
+    data_right: xr.Dataset | pd.DataFrame,
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
@@ -1739,6 +1849,12 @@ def dual_pie_with_plotly(
         A Plotly figure object containing the generated dual pie chart.
     """
     from plotly.subplots import make_subplots
+
+    # Ensure data is a Dataset and validate it
+    data_left = _ensure_dataset(data_left)
+    data_right = _ensure_dataset(data_right)
+    _validate_plotting_data(data_left, allow_empty=True)
+    _validate_plotting_data(data_right, allow_empty=True)
 
     # Check for empty data
     if len(data_left.data_vars) == 0 and len(data_right.data_vars) == 0:
@@ -2211,12 +2327,14 @@ def heatmap_with_matplotlib(
     colors: ColorType = 'viridis',
     title: str = '',
     figsize: tuple[float, float] = (12, 6),
-    fig: plt.Figure | None = None,
-    ax: plt.Axes | None = None,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
     | Literal['auto']
     | None = 'auto',
     fill: Literal['ffill', 'bfill'] | None = 'ffill',
+    vmin: float | None = None,
+    vmax: float | None = None,
+    imshow_kwargs: dict[str, Any] | None = None,
+    cbar_kwargs: dict[str, Any] | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot a heatmap visualization using Matplotlib's imshow.
@@ -2231,13 +2349,17 @@ def heatmap_with_matplotlib(
         colors: Color specification. Should be a colormap name (e.g., 'viridis', 'RdBu').
         title: The title of the heatmap.
         figsize: The size of the figure (width, height) in inches.
-        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
-        ax: A Matplotlib axes object to plot on. If not provided, a new axes will be created.
         reshape_time: Time reshaping configuration:
                      - 'auto' (default): Automatically applies ('D', 'h') if only 'time' dimension
                      - Tuple like ('D', 'h'): Explicit time reshaping (days vs hours)
                      - None: Disable time reshaping
         fill: Method to fill missing values when reshaping time: 'ffill' or 'bfill'. Default is 'ffill'.
+        vmin: Minimum value for color scale. If None, uses data minimum.
+        vmax: Maximum value for color scale. If None, uses data maximum.
+        imshow_kwargs: Optional dict of parameters to pass to ax.imshow().
+                      Use this to customize image properties (e.g., interpolation, aspect).
+        cbar_kwargs: Optional dict of parameters to pass to plt.colorbar().
+                    Use this to customize colorbar properties (e.g., orientation, label).
 
     Returns:
         A tuple containing the Matplotlib figure and axes objects used for the plot.
@@ -2259,10 +2381,15 @@ def heatmap_with_matplotlib(
         fig, ax = heatmap_with_matplotlib(data_array, reshape_time=('D', 'h'))
         ```
     """
+    # Initialize kwargs if not provided
+    if imshow_kwargs is None:
+        imshow_kwargs = {}
+    if cbar_kwargs is None:
+        cbar_kwargs = {}
+
     # Handle empty data
     if data.size == 0:
-        if fig is None or ax is None:
-            fig, ax = plt.subplots(figsize=figsize)
+        fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
 
     # Apply time reshaping using the new unified function
@@ -2275,9 +2402,8 @@ def heatmap_with_matplotlib(
         data = data.expand_dims({'variable': [var_name]})
         logger.debug(f'Only 1 dimension in data. Added variable dimension: {var_name}')
 
-    # Create figure and axes if not provided
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+    # Create figure and axes
+    fig, ax = plt.subplots(figsize=figsize)
 
     # Extract data values
     # If data has more than 2 dimensions, we need to reduce it
@@ -2305,12 +2431,19 @@ def heatmap_with_matplotlib(
     # Process colormap
     cmap = colors if isinstance(colors, str) else 'viridis'
 
-    # Create the heatmap using imshow
-    im = ax.imshow(values, cmap=cmap, aspect='auto', origin='upper')
+    # Create the heatmap using imshow with user customizations
+    imshow_defaults = {'cmap': cmap, 'aspect': 'auto', 'origin': 'upper', 'vmin': vmin, 'vmax': vmax}
+    imshow_defaults.update(imshow_kwargs)  # User kwargs override defaults
+    im = ax.imshow(values, **imshow_defaults)
 
-    # Add colorbar
-    cbar = plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.1, aspect=15, fraction=0.05)
-    cbar.set_label('Value')
+    # Add colorbar with user customizations
+    cbar_defaults = {'ax': ax, 'orientation': 'horizontal', 'pad': 0.1, 'aspect': 15, 'fraction': 0.05}
+    cbar_defaults.update(cbar_kwargs)  # User kwargs override defaults
+    cbar = plt.colorbar(im, **cbar_defaults)
+
+    # Set colorbar label if not overridden by user
+    if 'label' not in cbar_kwargs:
+        cbar.set_label('Value')
 
     # Set labels and title
     ax.set_xlabel(str(x_labels).capitalize())
@@ -2330,6 +2463,7 @@ def export_figure(
     user_path: pathlib.Path | None = None,
     show: bool = True,
     save: bool = False,
+    dpi: int = 300,
 ) -> go.Figure | tuple[plt.Figure, plt.Axes]:
     """
     Export a figure to a file and or show it.
@@ -2341,6 +2475,7 @@ def export_figure(
         user_path: An optional user-specified file path.
         show: Whether to display the figure (default: True).
         save: Whether to save the figure (default: False).
+        dpi: DPI (dots per inch) for saving Matplotlib figures (default: 300). Only applies to matplotlib figures.
 
     Raises:
         ValueError: If no default filetype is provided and the path doesn't specify a filetype.
@@ -2398,7 +2533,7 @@ def export_figure(
                 plt.show()
 
         if save:
-            fig.savefig(str(filename), dpi=300)
+            fig.savefig(str(filename), dpi=dpi)
             plt.close(fig)  # Close figure to free memory
 
         return fig, ax
