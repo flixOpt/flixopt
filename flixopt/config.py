@@ -57,10 +57,15 @@ _DEFAULTS = MappingProxyType(
         'plotting': MappingProxyType(
             {
                 'plotly_renderer': 'browser',
+                'plotly_template': 'plotly',
                 'matplotlib_backend': None,
                 'default_show': False,
                 'default_save_path': None,
                 'default_engine': 'plotly',
+                'default_dpi': 300,
+                'default_figure_width': None,
+                'default_figure_height': None,
+                'default_facet_cols': 3,
             }
         ),
     }
@@ -199,20 +204,28 @@ class CONFIG:
 
         Attributes:
             plotly_renderer: Plotly renderer to use.
+            plotly_template: Plotly theme/template applied to all plots.
             matplotlib_backend: Matplotlib backend to use.
             default_show: Default value for the `show` parameter in plot methods.
             default_save_path: Default directory for saving plots.
             default_engine: Default plotting engine.
+            default_dpi: Default DPI for saved plots.
+            default_figure_width: Default plot width in pixels.
+            default_figure_height: Default plot height in pixels.
+            default_facet_cols: Default number of columns for faceted plots.
 
         Examples:
             ```python
-            # Force browser rendering for Plotly and set matplotlib backend
+            # Set consistent theming and rendering
             CONFIG.Plotting.plotly_renderer = 'browser'
+            CONFIG.Plotting.plotly_template = 'plotly_dark'
             CONFIG.Plotting.matplotlib_backend = 'TkAgg'
             CONFIG.apply()
 
-            # Don't show plots by default
-            CONFIG.Plotting.default_show = False
+            # Configure default export settings
+            CONFIG.Plotting.default_dpi = 600
+            CONFIG.Plotting.default_figure_width = 1200
+            CONFIG.Plotting.default_figure_height = 800
             CONFIG.apply()
             ```
         """
@@ -220,6 +233,22 @@ class CONFIG:
         plotly_renderer: (
             Literal['browser', 'notebook', 'svg', 'png', 'pdf', 'jpeg', 'json', 'plotly_mimetype'] | None
         ) = _DEFAULTS['plotting']['plotly_renderer']
+        plotly_template: (
+            Literal[
+                'plotly',
+                'plotly_white',
+                'plotly_dark',
+                'ggplot2',
+                'seaborn',
+                'simple_white',
+                'none',
+                'gridon',
+                'presentation',
+                'xgridoff',
+                'ygridoff',
+            ]
+            | None
+        ) = _DEFAULTS['plotting']['plotly_template']
         matplotlib_backend: (
             Literal[
                 'TkAgg',
@@ -239,6 +268,10 @@ class CONFIG:
         default_show: bool = _DEFAULTS['plotting']['default_show']
         default_save_path: str | None = _DEFAULTS['plotting']['default_save_path']
         default_engine: Literal['plotly', 'matplotlib'] = _DEFAULTS['plotting']['default_engine']
+        default_dpi: int = _DEFAULTS['plotting']['default_dpi']
+        default_figure_width: int | None = _DEFAULTS['plotting']['default_figure_width']
+        default_figure_height: int | None = _DEFAULTS['plotting']['default_figure_height']
+        default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
 
     config_name: str = _DEFAULTS['config_name']
 
@@ -303,7 +336,9 @@ class CONFIG:
 
         # Apply plotting configuration
         _apply_plotting_config(
-            plotly_renderer=cls.Plotting.plotly_renderer, matplotlib_backend=cls.Plotting.matplotlib_backend
+            plotly_renderer=cls.Plotting.plotly_renderer,
+            plotly_template=cls.Plotting.plotly_template,
+            matplotlib_backend=cls.Plotting.matplotlib_backend,
         )
 
     @classmethod
@@ -387,10 +422,15 @@ class CONFIG:
             },
             'plotting': {
                 'plotly_renderer': cls.Plotting.plotly_renderer,
+                'plotly_template': cls.Plotting.plotly_template,
                 'matplotlib_backend': cls.Plotting.matplotlib_backend,
                 'default_show': cls.Plotting.default_show,
                 'default_save_path': cls.Plotting.default_save_path,
                 'default_engine': cls.Plotting.default_engine,
+                'default_dpi': cls.Plotting.default_dpi,
+                'default_figure_width': cls.Plotting.default_figure_width,
+                'default_figure_height': cls.Plotting.default_figure_height,
+                'default_facet_cols': cls.Plotting.default_facet_cols,
             },
         }
 
@@ -664,6 +704,20 @@ def _setup_logging(
 def _apply_plotting_config(
     plotly_renderer: Literal['browser', 'notebook', 'svg', 'png', 'pdf', 'jpeg', 'json', 'plotly_mimetype']
     | None = 'browser',
+    plotly_template: Literal[
+        'plotly',
+        'plotly_white',
+        'plotly_dark',
+        'ggplot2',
+        'seaborn',
+        'simple_white',
+        'none',
+        'gridon',
+        'presentation',
+        'xgridoff',
+        'ygridoff',
+    ]
+    | None = 'plotly',
     matplotlib_backend: Literal[
         'TkAgg', 'Qt5Agg', 'QtAgg', 'WXAgg', 'Agg', 'Cairo', 'PDF', 'PS', 'SVG', 'WebAgg', 'module://backend_interagg'
     ]
@@ -673,14 +727,18 @@ def _apply_plotting_config(
 
     Args:
         plotly_renderer: Plotly renderer to use.
+        plotly_template: Plotly template/theme to apply to all plots.
         matplotlib_backend: Matplotlib backend to use. If None, the existing backend is not changed.
     """
-    # Configure Plotly renderer
+    # Configure Plotly renderer and template
     try:
         import plotly.io as pio
 
         if plotly_renderer is not None:
             pio.renderers.default = plotly_renderer
+
+        if plotly_template is not None:
+            pio.templates.default = plotly_template
     except ImportError:
         # Plotly not installed, skip configuration
         pass

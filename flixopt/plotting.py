@@ -858,7 +858,7 @@ def with_plotly(
     fig: go.Figure | None = None,
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
-    facet_cols: int = 3,
+    facet_cols: int | None = None,
     shared_yaxes: bool = True,
     shared_xaxes: bool = True,
     trace_kwargs: dict[str, Any] | None = None,
@@ -941,6 +941,10 @@ def with_plotly(
     """
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
+
+    # Apply CONFIG defaults if not explicitly set
+    if facet_cols is None:
+        facet_cols = CONFIG.Plotting.default_facet_cols
 
     # Ensure data is a Dataset and validate it
     data = _ensure_dataset(data)
@@ -2175,7 +2179,7 @@ def heatmap_with_plotly(
     title: str = '',
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
-    facet_cols: int = 3,
+    facet_cols: int | None = None,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
     | Literal['auto']
     | None = 'auto',
@@ -2255,6 +2259,10 @@ def heatmap_with_plotly(
         fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period', reshape_time=('W', 'D'))
         ```
     """
+    # Apply CONFIG defaults if not explicitly set
+    if facet_cols is None:
+        facet_cols = CONFIG.Plotting.default_facet_cols
+
     # Handle empty data
     if data.size == 0:
         return go.Figure()
@@ -2539,7 +2547,7 @@ def export_figure(
     user_path: pathlib.Path | None = None,
     show: bool | None = None,
     save: bool = False,
-    dpi: int = 300,
+    dpi: int | None = None,
 ) -> go.Figure | tuple[plt.Figure, plt.Axes]:
     """
     Export a figure to a file and or show it.
@@ -2551,7 +2559,7 @@ def export_figure(
         user_path: An optional user-specified file path.
         show: Whether to display the figure. If None, uses CONFIG.Plotting.default_show (default: None).
         save: Whether to save the figure (default: False).
-        dpi: DPI (dots per inch) for saving Matplotlib figures (default: 300). Only applies to matplotlib figures.
+        dpi: DPI (dots per inch) for saving Matplotlib figures. If None, uses CONFIG.Plotting.default_dpi.
 
     Raises:
         ValueError: If no default filetype is provided and the path doesn't specify a filetype.
@@ -2560,6 +2568,9 @@ def export_figure(
     # Apply CONFIG defaults if not explicitly set
     if show is None:
         show = CONFIG.Plotting.default_show
+
+    if dpi is None:
+        dpi = CONFIG.Plotting.default_dpi
 
     filename = user_path or default_path
     filename = filename.with_name(filename.name.replace('|', '__'))
@@ -2570,6 +2581,16 @@ def export_figure(
 
     if isinstance(figure_like, plotly.graph_objs.Figure):
         fig = figure_like
+
+        # Apply default dimensions if configured
+        layout_updates = {}
+        if CONFIG.Plotting.default_figure_width is not None:
+            layout_updates['width'] = CONFIG.Plotting.default_figure_width
+        if CONFIG.Plotting.default_figure_height is not None:
+            layout_updates['height'] = CONFIG.Plotting.default_figure_height
+        if layout_updates:
+            fig.update_layout(**layout_updates)
+
         if filename.suffix != '.html':
             logger.warning(f'To save a Plotly figure, using .html. Adjusting suffix for {filename}')
             filename = filename.with_suffix('.html')

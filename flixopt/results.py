@@ -759,7 +759,7 @@ class CalculationResults:
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
         | None = 'auto',
@@ -1067,7 +1067,7 @@ class _NodeResults(_ElementResults):
         drop_suffix: bool = True,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
@@ -1195,7 +1195,7 @@ class _NodeResults(_ElementResults):
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
 
         # Extract dpi for export_figure
-        dpi = plot_kwargs.pop('dpi', 300)
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
         # Don't pass select/indexer to node_balance - we'll apply it afterwards
         ds = self.node_balance(with_last_timestep=False, unit_type=unit_type, drop_suffix=drop_suffix)
@@ -1337,7 +1337,7 @@ class _NodeResults(_ElementResults):
             select = indexer
 
         # Extract dpi for export_figure
-        dpi = plot_kwargs.pop('dpi', 300)
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
@@ -1545,7 +1545,7 @@ class ComponentResults(_NodeResults):
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
@@ -1630,7 +1630,7 @@ class ComponentResults(_NodeResults):
             select = indexer
 
         # Extract dpi for export_figure
-        dpi = plot_kwargs.pop('dpi', 300)
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
@@ -2087,7 +2087,7 @@ class SegmentedCalculationResults:
         engine: plotting.PlottingEngine = 'plotly',
         facet_by: str | list[str] | None = None,
         animate_by: str | None = None,
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         fill: Literal['ffill', 'bfill'] | None = 'ffill',
         # Deprecated parameters (kept for backwards compatibility)
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
