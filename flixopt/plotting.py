@@ -842,6 +842,7 @@ def with_plotly(
 
     # Handle empty data
     if len(data.data_vars) == 0:
+        logger.error('"with_plotly() got an empty Dataset.')
         return go.Figure()
 
     # Handle all-scalar datasets (where all variables have no dimensions)
@@ -2106,12 +2107,26 @@ def heatmap_with_plotly(
     heatmap_dims = [dim for dim in available_dims if dim not in facet_dims]
 
     if len(heatmap_dims) < 2:
-        # Need at least 2 dimensions for a heatmap
-        logger.error(
-            f'Heatmap requires at least 2 dimensions for rows and columns. '
-            f'After faceting/animation, only {len(heatmap_dims)} dimension(s) remain: {heatmap_dims}'
-        )
-        return go.Figure()
+        # Handle single-dimension case by adding variable name as a dimension
+        if len(heatmap_dims) == 1:
+            # Get the variable name, or use a default
+            var_name = data.name if data.name else 'value'
+
+            # Expand the DataArray by adding a new dimension with the variable name
+            data = data.expand_dims({'variable': [var_name]})
+
+            # Update available dimensions
+            available_dims = list(data.dims)
+            heatmap_dims = [dim for dim in available_dims if dim not in facet_dims]
+
+            logger.debug(f'Only 1 dimension remaining for heatmap. Added variable dimension: {var_name}')
+        else:
+            # No dimensions at all - cannot create a heatmap
+            logger.error(
+                f'Heatmap requires at least 1 dimension. '
+                f'After faceting/animation, {len(heatmap_dims)} dimension(s) remain: {heatmap_dims}'
+            )
+            return go.Figure()
 
     # Setup faceting parameters for Plotly Express
     # Note: px.imshow only supports facet_col, not facet_row
@@ -2231,6 +2246,12 @@ def heatmap_with_matplotlib(
     # Apply time reshaping using the new unified function
     # Matplotlib doesn't support faceting/animation, so we pass None for those
     data = reshape_data_for_heatmap(data, reshape_time=reshape_time, facet_by=None, animate_by=None, fill=fill)
+
+    # Handle single-dimension case by adding variable name as a dimension
+    if isinstance(data, xr.DataArray) and len(data.dims) == 1:
+        var_name = data.name if data.name else 'value'
+        data = data.expand_dims({'variable': [var_name]})
+        logger.debug(f'Only 1 dimension in data. Added variable dimension: {var_name}')
 
     # Create figure and axes if not provided
     if fig is None or ax is None:
