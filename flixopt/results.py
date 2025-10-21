@@ -120,7 +120,7 @@ class CalculationResults:
         manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
         manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='prefix')
         manager.add_grouping_rule('Gas', 'fossil', 'reds', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         # All plots automatically use the manager (colors='auto' is the default)
         results['ElectricityBus'].plot_node_balance()  # Uses configured colors
@@ -349,14 +349,14 @@ class CalculationResults:
             >>> manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
             >>> manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
             >>> manager.add_grouping_rule('Gas', 'fossil', 'reds', match_type='prefix')
-            >>> manager.auto_group_components()
+            >>> manager.apply_colors()
             >>> results['ElectricityBus'].plot_node_balance()  # Uses manager automatically
 
             Or assign an existing manager:
 
             >>> my_manager = plotting.ComponentColorManager(list(results.components.keys()))
             >>> my_manager.add_grouping_rule('Renewable', 'renewables', 'greens', match_type='prefix')
-            >>> my_manager.auto_group_components()
+            >>> my_manager.apply_colors()
             >>> results.color_manager = my_manager
 
             Override with explicit colors if needed:
@@ -365,7 +365,7 @@ class CalculationResults:
         """
         component_names = list(self.components.keys())
         self.color_manager = plotting.ComponentColorManager(component_names)
-        self.color_manager.auto_group_components()
+        self.color_manager.apply_colors()
         return self.color_manager
 
     def filter_solution(
@@ -1935,7 +1935,7 @@ class SegmentedCalculationResults:
         manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
         manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         # Plot using any segment - colors are consistent across all segments
         results.segment_results[0]['ElectricityBus'].plot_node_balance()
@@ -2047,7 +2047,7 @@ class SegmentedCalculationResults:
             >>> manager = segmented_results.create_color_manager()
             >>> manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
             >>> manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-            >>> manager.auto_group_components()
+            >>> manager.apply_colors()
             >>> # The manager is now available on all segments
             >>> segmented_results.segment_results[0]['ElectricityBus'].plot_node_balance()
         """

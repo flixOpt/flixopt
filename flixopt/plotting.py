@@ -368,7 +368,7 @@ class ComponentColorManager:
         manager.add_grouping_rule('Boiler', 'Heat_Producers', 'reds', 'prefix')
         manager.add_grouping_rule('CHP', 'Heat_Producers', 'reds', 'prefix')
         manager.add_grouping_rule('Storage', 'Storage', 'blues', 'contains')
-        manager.auto_group_components()
+        manager.apply_colors()
 
         # Boiler1, Boiler2, CHP1 get different shades of red
         # Storage1 gets blue
@@ -529,7 +529,7 @@ class ComponentColorManager:
         )
         return self
 
-    def auto_group_components(self) -> None:
+    def apply_colors(self) -> None:
         """Apply grouping rules and assign colors to all components.
 
         This recomputes colors for all components based on current grouping rules.
@@ -788,9 +788,9 @@ def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None
     # Warn about NaN/Inf values
     for var in data.data_vars:
         if data[var].isnull().any():
-            logger.warning(f"Variable '{var}' contains NaN values which may affect visualization.")
+            logger.debug(f"Variable '{var}' contains NaN values which may affect visualization.")
         if np.isinf(data[var].values).any():
-            logger.warning(f"Variable '{var}' contains Inf values which may affect visualization.")
+            logger.debug(f"Variable '{var}' contains Inf values which may affect visualization.")
 
 
 def resolve_colors(
@@ -933,7 +933,7 @@ def with_plotly(
         manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
         manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='contains')
-        manager.auto_group_components()
+        manager.apply_colors()
         fig = with_plotly(dataset, colors=manager, mode='area')
         ```
     """
@@ -1218,7 +1218,7 @@ def with_matplotlib(
         manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
         manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
         fig, ax = with_matplotlib(dataset, colors=manager, mode='line')
         ```
     """
@@ -1643,7 +1643,7 @@ def pie_with_plotly(
         manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
         manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
         fig = pie_with_plotly(dataset, colors=manager, title='Renewable Energy')
         ```
     """
@@ -1755,7 +1755,7 @@ def pie_with_matplotlib(
         manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
         manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
         manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.auto_group_components()
+        manager.apply_colors()
         fig, ax = pie_with_matplotlib(dataset, colors=manager, title='Renewable Energy')
         ```
     """
