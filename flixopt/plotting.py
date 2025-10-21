@@ -844,6 +844,15 @@ def with_plotly(
     if len(data.data_vars) == 0:
         return go.Figure()
 
+    # Handle all-scalar datasets (where all variables have no dimensions)
+    # This occurs when all variables are scalar values with dims=()
+    if all(len(data[var].dims) == 0 for var in data.data_vars):
+        # Expand scalars by adding a dummy dimension to make them plottable
+        expanded_data = xr.Dataset()
+        for var in data.data_vars:
+            expanded_data[var] = xr.DataArray([data[var].values], dims=['_scalar_index'], coords={'_scalar_index': [0]})
+        data = expanded_data
+
     # Warn if fig parameter is used with faceting
     if fig is not None and (facet_by is not None or animate_by is not None):
         logger.warning('The fig parameter is ignored when using faceting or animation. Creating a new figure.')
@@ -908,10 +917,32 @@ def with_plotly(
     # Get unique variable names for area plot processing
     all_vars = df_long['variable'].unique().tolist()
 
+    # Determine which dimension to use for x-axis
+    # Collect dimensions used for faceting and animation
+    used_dims = set()
+    if facet_row:
+        used_dims.add(facet_row)
+    if facet_col:
+        used_dims.add(facet_col)
+    if animate_by:
+        used_dims.add(animate_by)
+
+    # Find available dimensions for x-axis (not used for faceting/animation)
+    x_candidates = [d for d in available_dims if d not in used_dims]
+
+    # Use 'time' if available, otherwise use the first available dimension
+    if 'time' in x_candidates:
+        x_dim = 'time'
+    elif len(x_candidates) > 0:
+        x_dim = x_candidates[0]
+    else:
+        # Fallback: use the first dimension (shouldn't happen in normal cases)
+        x_dim = available_dims[0] if available_dims else 'time'
+
     # Create plot using Plotly Express based on mode
     common_args = {
         'data_frame': df_long,
-        'x': 'time',
+        'x': x_dim,
         'y': 'value',
         'color': 'variable',
         'facet_row': facet_row,
@@ -919,7 +950,7 @@ def with_plotly(
         'animation_frame': animate_by,
         'color_discrete_map': color_discrete_map,
         'title': title,
-        'labels': {'value': ylabel, 'time': xlabel, 'variable': ''},
+        'labels': {'value': ylabel, x_dim: xlabel, 'variable': ''},
     }
 
     # Add facet_col_wrap for single facet dimension
@@ -1049,6 +1080,15 @@ def with_matplotlib(
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize)
+
+    # Handle all-scalar datasets (where all variables have no dimensions)
+    # This occurs when all variables are scalar values with dims=()
+    if all(len(data[var].dims) == 0 for var in data.data_vars):
+        # Expand scalars by adding a dummy dimension to make them plottable
+        expanded_data = xr.Dataset()
+        for var in data.data_vars:
+            expanded_data[var] = xr.DataArray([data[var].values], dims=['_scalar_index'], coords={'_scalar_index': [0]})
+        data = expanded_data
 
     # Resolve colors first (includes validation)
     color_discrete_map = resolve_colors(data, colors, engine='matplotlib')
