@@ -186,12 +186,14 @@ class ColorProcessor:
 
     """
 
-    def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str = 'viridis'):
+    def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str | None = None):
         """Initialize the color processor with specified backend and defaults."""
         if engine not in ['plotly', 'matplotlib']:
             raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
         self.engine = engine
-        self.default_colormap = default_colormap
+        self.default_colormap = (
+            default_colormap if default_colormap is not None else CONFIG.Plotting.default_qualitative_colorscale
+        )
 
     def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> list[Any]:
         """
@@ -851,7 +853,7 @@ def resolve_colors(
 def with_plotly(
     data: xr.Dataset | pd.DataFrame,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
-    colors: ColorType | ComponentColorManager = 'viridis',
+    colors: ColorType | ComponentColorManager | None = None,
     title: str = '',
     ylabel: str = '',
     xlabel: str = '',
@@ -939,6 +941,9 @@ def with_plotly(
         fig = with_plotly(dataset, colors=manager, mode='area')
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
 
@@ -1183,7 +1188,7 @@ def with_plotly(
 def with_matplotlib(
     data: xr.Dataset | pd.DataFrame,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
-    colors: ColorType | ComponentColorManager = 'viridis',
+    colors: ColorType | ComponentColorManager | None = None,
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -1228,6 +1233,9 @@ def with_matplotlib(
         fig, ax = with_matplotlib(dataset, colors=manager, mode='line')
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     if mode not in ('stacked_bar', 'line'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line'}} for matplotlib, got {mode!r}")
 
@@ -1599,7 +1607,7 @@ def plot_network(
 
 def pie_with_plotly(
     data: xr.Dataset | pd.DataFrame,
-    colors: ColorType | ComponentColorManager = 'viridis',
+    colors: ColorType | ComponentColorManager | None = None,
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
@@ -1653,6 +1661,9 @@ def pie_with_plotly(
         fig = pie_with_plotly(dataset, colors=manager, title='Renewable Energy')
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     # Ensure data is a Dataset and validate it
     data = _ensure_dataset(data)
     _validate_plotting_data(data, allow_empty=True)
@@ -1718,7 +1729,7 @@ def pie_with_plotly(
 
 def pie_with_matplotlib(
     data: xr.Dataset | pd.DataFrame,
-    colors: ColorType | ComponentColorManager = 'viridis',
+    colors: ColorType | ComponentColorManager | None = None,
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
@@ -1765,6 +1776,9 @@ def pie_with_matplotlib(
         fig, ax = pie_with_matplotlib(dataset, colors=manager, title='Renewable Energy')
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     # Ensure data is a Dataset and validate it
     data = _ensure_dataset(data)
     _validate_plotting_data(data, allow_empty=True)
@@ -1851,7 +1865,7 @@ def pie_with_matplotlib(
 def dual_pie_with_plotly(
     data_left: xr.Dataset | pd.DataFrame,
     data_right: xr.Dataset | pd.DataFrame,
-    colors: ColorType | ComponentColorManager = 'viridis',
+    colors: ColorType | ComponentColorManager | None = None,
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1885,6 +1899,9 @@ def dual_pie_with_plotly(
     Returns:
         A Plotly figure object containing the generated dual pie chart.
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     from plotly.subplots import make_subplots
 
     # Ensure data is a Dataset and validate it
@@ -1992,7 +2009,7 @@ def dual_pie_with_plotly(
 def dual_pie_with_matplotlib(
     data_left: pd.Series,
     data_right: pd.Series,
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -2020,6 +2037,9 @@ def dual_pie_with_matplotlib(
     Returns:
         A tuple containing the Matplotlib figure and list of axes objects used for the plot.
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     # Create figure and axes
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
@@ -2175,7 +2195,7 @@ def dual_pie_with_matplotlib(
 
 def heatmap_with_plotly(
     data: xr.DataArray,
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
@@ -2259,6 +2279,9 @@ def heatmap_with_plotly(
         fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period', reshape_time=('W', 'D'))
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_sequential_colorscale
+
     # Apply CONFIG defaults if not explicitly set
     if facet_cols is None:
         facet_cols = CONFIG.Plotting.default_facet_cols
@@ -2356,7 +2379,7 @@ def heatmap_with_plotly(
     # Create the imshow plot - px.imshow can work directly with xarray DataArrays
     common_args = {
         'img': data,
-        'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+        'color_continuous_scale': colors if isinstance(colors, str) else CONFIG.Plotting.default_sequential_colorscale,
         'title': title,
     }
 
@@ -2380,7 +2403,9 @@ def heatmap_with_plotly(
         # Fallback: create a simple heatmap without faceting
         fallback_args = {
             'img': data.values,
-            'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+            'color_continuous_scale': colors
+            if isinstance(colors, str)
+            else CONFIG.Plotting.default_sequential_colorscale,
             'title': title,
         }
         fallback_args.update(imshow_kwargs)
@@ -2398,7 +2423,7 @@ def heatmap_with_plotly(
 
 def heatmap_with_matplotlib(
     data: xr.DataArray,
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     figsize: tuple[float, float] = (12, 6),
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
@@ -2461,6 +2486,9 @@ def heatmap_with_matplotlib(
         fig, ax = heatmap_with_matplotlib(data_array, reshape_time=('D', 'h'))
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_sequential_colorscale
+
     # Initialize kwargs if not provided
     if imshow_kwargs is None:
         imshow_kwargs = {}
@@ -2513,7 +2541,7 @@ def heatmap_with_matplotlib(
         y_labels = 'y'
 
     # Process colormap
-    cmap = colors if isinstance(colors, str) else 'viridis'
+    cmap = colors if isinstance(colors, str) else CONFIG.Plotting.default_sequential_colorscale
 
     # Create the heatmap using imshow with user customizations
     imshow_defaults = {'cmap': cmap, 'aspect': 'auto', 'origin': 'upper', 'vmin': vmin, 'vmax': vmax}
