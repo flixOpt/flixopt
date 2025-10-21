@@ -1304,8 +1304,8 @@ class _NodeResults(_ElementResults):
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
-                data_left=inputs.to_pandas(),
-                data_right=outputs.to_pandas(),
+                data_left=inputs,
+                data_right=outputs,
                 colors=resolved_colors,
                 title=title,
                 text_info=text_info,

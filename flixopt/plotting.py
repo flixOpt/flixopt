@@ -1463,23 +1463,24 @@ def plot_network(
 
 
 def pie_with_plotly(
-    data: pd.DataFrame,
-    colors: ColorType = 'viridis',
+    data: xr.Dataset,
+    colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
     fig: go.Figure | None = None,
 ) -> go.Figure:
     """
-    Create a pie chart with Plotly to visualize the proportion of values in a DataFrame.
+    Create a pie chart with Plotly to visualize the proportion of values in a Dataset.
 
     Args:
-        data: A DataFrame containing the data to plot. If multiple rows exist,
-              they will be summed unless a specific index value is passed.
+        data: An xarray Dataset containing the data to plot. All dimensions will be summed
+              to get the total for each variable.
         colors: Color specification, can be:
             - A string with a colorscale name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
-            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
+            - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
+            - An XarrayColorMapper instance for pattern-based color rules
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -1490,35 +1491,54 @@ def pie_with_plotly(
 
     Notes:
         - Negative values are not appropriate for pie charts and will be converted to absolute values with a warning.
-        - If the data contains very small values (less than 1% of the total), they can be grouped into an "Other" category
-          for better readability.
-        - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
+        - All dimensions are summed to get total values for each variable.
+        - Scalar variables (with no dimensions) are used directly.
 
+    Examples:
+        Simple pie chart:
+
+        ```python
+        fig = pie_with_plotly(dataset, colors='viridis', title='Energy Mix')
+        ```
+
+        With XarrayColorMapper:
+
+        ```python
+        mapper = XarrayColorMapper()
+        mapper.add_rule('Solar', 'oranges', 'prefix')
+        mapper.add_rule('Wind', 'blues', 'prefix')
+        fig = pie_with_plotly(dataset, colors=mapper, title='Renewable Energy')
+        ```
     """
-    if data.empty:
-        logger.error('Empty DataFrame provided for pie chart. Returning empty figure.')
+    if len(data.data_vars) == 0:
+        logger.error('Empty Dataset provided for pie chart. Returning empty figure.')
         return go.Figure()
 
-    # Create a copy to avoid modifying the original DataFrame
-    data_copy = data.copy()
+    # Sum all dimensions for each variable to get total values
+    labels = []
+    values = []
 
-    # Check if any negative values and warn
-    if (data_copy < 0).any().any():
-        logger.error('Negative values detected in data. Using absolute values for pie chart.')
-        data_copy = data_copy.abs()
+    for var in data.data_vars:
+        var_data = data[var]
 
-    # If data has multiple rows, sum them to get total for each column
-    if len(data_copy) > 1:
-        data_sum = data_copy.sum()
-    else:
-        data_sum = data_copy.iloc[0]
+        # Sum across all dimensions to get total
+        if len(var_data.dims) > 0:
+            total_value = var_data.sum().item()
+        else:
+            # Scalar variable
+            total_value = var_data.item()
 
-    # Get labels (column names) and values
-    labels = data_sum.index.tolist()
-    values = data_sum.values.tolist()
+        # Check for negative values
+        if total_value < 0:
+            logger.warning(f'Negative value detected for {var}: {total_value}. Using absolute value.')
+            total_value = abs(total_value)
 
-    # Apply color mapping using the unified color processor
-    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, labels)
+        labels.append(str(var))
+        values.append(total_value)
+
+    # Use resolve_colors for consistent color handling
+    color_discrete_map = resolve_colors(data, colors, engine='plotly')
+    processed_colors = [color_discrete_map.get(label, '#636EFA') for label in labels]
 
     # Create figure if not provided
     fig = fig if fig is not None else go.Figure()
@@ -1549,8 +1569,8 @@ def pie_with_plotly(
 
 
 def pie_with_matplotlib(
-    data: pd.DataFrame,
-    colors: ColorType = 'viridis',
+    data: xr.Dataset,
+    colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
@@ -1559,15 +1579,16 @@ def pie_with_matplotlib(
     ax: plt.Axes | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
-    Create a pie chart with Matplotlib to visualize the proportion of values in a DataFrame.
+    Create a pie chart with Matplotlib to visualize the proportion of values in a Dataset.
 
     Args:
-        data: A DataFrame containing the data to plot. If multiple rows exist,
-              they will be summed unless a specific index value is passed.
+        data: An xarray Dataset containing the data to plot. All dimensions will be summed
+              to get the total for each variable.
         colors: Color specification, can be:
             - A string with a colormap name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
-            - A dictionary mapping column names to colors (e.g., {'Column1': '#ff0000'})
+            - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
+            - An XarrayColorMapper instance for pattern-based color rules
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -1580,37 +1601,56 @@ def pie_with_matplotlib(
 
     Notes:
         - Negative values are not appropriate for pie charts and will be converted to absolute values with a warning.
-        - If the data contains very small values (less than 1% of the total), they can be grouped into an "Other" category
-          for better readability.
-        - By default, the sum of all columns is used for the pie chart. For time series data, consider preprocessing.
+        - All dimensions are summed to get total values for each variable.
+        - Scalar variables (with no dimensions) are used directly.
 
+    Examples:
+        Simple pie chart:
+
+        ```python
+        fig, ax = pie_with_matplotlib(dataset, colors='viridis', title='Energy Mix')
+        ```
+
+        With XarrayColorMapper:
+
+        ```python
+        mapper = XarrayColorMapper()
+        mapper.add_rule('Solar', 'oranges', 'prefix')
+        mapper.add_rule('Wind', 'blues', 'prefix')
+        fig, ax = pie_with_matplotlib(dataset, colors=mapper, title='Renewable Energy')
+        ```
     """
-    if data.empty:
-        logger.error('Empty DataFrame provided for pie chart. Returning empty figure.')
+    if len(data.data_vars) == 0:
+        logger.error('Empty Dataset provided for pie chart. Returning empty figure.')
         if fig is None or ax is None:
             fig, ax = plt.subplots(figsize=figsize)
         return fig, ax
 
-    # Create a copy to avoid modifying the original DataFrame
-    data_copy = data.copy()
+    # Sum all dimensions for each variable to get total values
+    labels = []
+    values = []
 
-    # Check if any negative values and warn
-    if (data_copy < 0).any().any():
-        logger.error('Negative values detected in data. Using absolute values for pie chart.')
-        data_copy = data_copy.abs()
+    for var in data.data_vars:
+        var_data = data[var]
 
-    # If data has multiple rows, sum them to get total for each column
-    if len(data_copy) > 1:
-        data_sum = data_copy.sum()
-    else:
-        data_sum = data_copy.iloc[0]
+        # Sum across all dimensions to get total
+        if len(var_data.dims) > 0:
+            total_value = var_data.sum().item()
+        else:
+            # Scalar variable
+            total_value = var_data.item()
 
-    # Get labels (column names) and values
-    labels = data_sum.index.tolist()
-    values = data_sum.values.tolist()
+        # Check for negative values
+        if total_value < 0:
+            logger.warning(f'Negative value detected for {var}: {total_value}. Using absolute value.')
+            total_value = abs(total_value)
 
-    # Apply color mapping using the unified color processor
-    processed_colors = ColorProcessor(engine='matplotlib').process_colors(colors, labels)
+        labels.append(str(var))
+        values.append(total_value)
+
+    # Use resolve_colors for consistent color handling
+    color_discrete_map = resolve_colors(data, colors, engine='matplotlib')
+    processed_colors = [color_discrete_map.get(label, '#808080') for label in labels]
 
     # Create figure and axis if not provided
     if fig is None or ax is None:
@@ -1662,9 +1702,9 @@ def pie_with_matplotlib(
 
 
 def dual_pie_with_plotly(
-    data_left: pd.Series,
-    data_right: pd.Series,
-    colors: ColorType = 'viridis',
+    data_left: xr.Dataset,
+    data_right: xr.Dataset,
+    colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1678,12 +1718,13 @@ def dual_pie_with_plotly(
     Create two pie charts side by side with Plotly, with consistent coloring across both charts.
 
     Args:
-        data_left: Series for the left pie chart.
-        data_right: Series for the right pie chart.
+        data_left: Dataset for the left pie chart. Variables are summed across all dimensions.
+        data_right: Dataset for the right pie chart. Variables are summed across all dimensions.
         colors: Color specification, can be:
             - A string with a colorscale name (e.g., 'viridis', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
-            - A dictionary mapping category names to colors (e.g., {'Category1': '#ff0000'})
+            - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
+            - An XarrayColorMapper instance for pattern-based color rules
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
@@ -1700,7 +1741,7 @@ def dual_pie_with_plotly(
     from plotly.subplots import make_subplots
 
     # Check for empty data
-    if data_left.empty and data_right.empty:
+    if len(data_left.data_vars) == 0 and len(data_right.data_vars) == 0:
         logger.error('Both datasets are empty. Returning empty figure.')
         return go.Figure()
 
@@ -1709,71 +1750,52 @@ def dual_pie_with_plotly(
         rows=1, cols=2, specs=[[{'type': 'pie'}, {'type': 'pie'}]], subplot_titles=subtitles, horizontal_spacing=0.05
     )
 
-    # Process series to handle negative values and apply minimum percentage threshold
-    def preprocess_series(series: pd.Series):
-        """
-        Preprocess a series for pie chart display by handling negative values
-        and grouping the smallest parts together if they collectively represent
-        less than the specified percentage threshold.
+    # Helper function to extract labels and values from Dataset
+    def dataset_to_pie_data(dataset):
+        labels = []
+        values = []
 
-        Args:
-            series: The series to preprocess
+        for var in dataset.data_vars:
+            var_data = dataset[var]
 
-        Returns:
-            A preprocessed pandas Series
-        """
-        # Handle negative values
-        if (series < 0).any():
-            logger.error('Negative values detected in data. Using absolute values for pie chart.')
-            series = series.abs()
+            # Sum across all dimensions
+            if len(var_data.dims) > 0:
+                total_value = float(var_data.sum().values)
+            else:
+                total_value = float(var_data.values)
 
-        # Remove zeros
-        series = series[series > 0]
+            # Handle negative values
+            if total_value < 0:
+                logger.warning(f'Negative value for {var}: {total_value}. Using absolute value.')
+                total_value = abs(total_value)
 
-        # Apply minimum percentage threshold if needed
-        if lower_percentage_group and not series.empty:
-            total = series.sum()
-            if total > 0:
-                # Sort series by value (ascending)
-                sorted_series = series.sort_values()
+            # Only include if value > 0
+            if total_value > 0:
+                labels.append(str(var))
+                values.append(total_value)
 
-                # Calculate cumulative percentage contribution
-                cumulative_percent = (sorted_series.cumsum() / total) * 100
+        return labels, values
 
-                # Find entries that collectively make up less than lower_percentage_group
-                to_group = cumulative_percent <= lower_percentage_group
+    # Get data for left and right
+    left_labels, left_values = dataset_to_pie_data(data_left)
+    right_labels, right_values = dataset_to_pie_data(data_right)
 
-                if to_group.sum() > 1:
-                    # Create "Other" category for the smallest values that together are < threshold
-                    other_sum = sorted_series[to_group].sum()
+    # Get unique set of all labels for consistent coloring across both pies
+    # Merge both datasets for color resolution
+    combined_vars = list(set(data_left.data_vars) | set(data_right.data_vars))
+    combined_ds = xr.Dataset(
+        {var: data_left[var] if var in data_left.data_vars else data_right[var] for var in combined_vars}
+    )
 
-                    # Keep only values that aren't in the "Other" group
-                    result_series = series[~series.index.isin(sorted_series[to_group].index)]
-
-                    # Add the "Other" category if it has a value
-                    if other_sum > 0:
-                        result_series['Other'] = other_sum
-
-                    return result_series
-
-        return series
-
-    data_left_processed = preprocess_series(data_left)
-    data_right_processed = preprocess_series(data_right)
-
-    # Get unique set of all labels for consistent coloring
-    all_labels = sorted(set(data_left_processed.index) | set(data_right_processed.index))
-
-    # Get consistent color mapping for both charts using our unified function
-    color_map = ColorProcessor(engine='plotly').process_colors(colors, all_labels, return_mapping=True)
+    # Use resolve_colors for consistent color handling
+    color_discrete_map = resolve_colors(combined_ds, colors, engine='plotly')
+    color_map = {label: color_discrete_map.get(label, '#636EFA') for label in left_labels + right_labels}
 
     # Function to create a pie trace with consistently mapped colors
-    def create_pie_trace(data_series, side):
-        if data_series.empty:
+    def create_pie_trace(labels, values, side):
+        if not labels:
             return None
 
-        labels = data_series.index.tolist()
-        values = data_series.values.tolist()
         trace_colors = [color_map[label] for label in labels]
 
         return go.Pie(
@@ -1790,13 +1812,13 @@ def dual_pie_with_plotly(
         )
 
     # Add left pie if data exists
-    left_trace = create_pie_trace(data_left_processed, subtitles[0])
+    left_trace = create_pie_trace(left_labels, left_values, subtitles[0])
     if left_trace:
         left_trace.domain = dict(x=[0, 0.48])
         fig.add_trace(left_trace, row=1, col=1)
 
     # Add right pie if data exists
-    right_trace = create_pie_trace(data_right_processed, subtitles[1])
+    right_trace = create_pie_trace(right_labels, right_values, subtitles[1])
     if right_trace:
         right_trace.domain = dict(x=[0.52, 1])
         fig.add_trace(right_trace, row=1, col=2)
