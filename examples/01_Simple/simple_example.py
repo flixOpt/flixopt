@@ -110,9 +110,9 @@ if __name__ == '__main__':
 
     # --- Solve the Calculation and Save Results ---
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
-    calculation.results.create_color_manager().apply_colors()
 
     # --- Analyze Results ---
+    calculation.results.setup_colors()
     calculation.results['Fernwärme'].plot_node_balance_pie()
     calculation.results['Fernwärme'].plot_node_balance()
     calculation.results['Storage'].plot_charge_state()

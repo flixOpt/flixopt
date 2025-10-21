@@ -205,10 +205,9 @@ if __name__ == '__main__':
     # You can analyze results directly or save them to file and reload them later.
     calculation.results.to_file()
 
-    # Configure color mapping for consistent plot colors
-    calculation.results.create_color_manager()
+    calculation.results.setup_colors()
 
-    # Plot results with automatic color mapping
+    # Plot results (colors are automatically assigned to components)
     calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')  # Heatmap uses continuous colors (not ColorManager)
     calculation.results['BHKW2'].plot_node_balance()  # Uses ColorManager
     calculation.results['Speicher'].plot_charge_state()  # Uses ColorManager
