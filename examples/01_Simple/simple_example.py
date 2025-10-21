@@ -114,7 +114,7 @@ if __name__ == '__main__':
     # --- Analyze Results ---
     calculation.results['Fernwärme'].plot_node_balance_pie()
     calculation.results['Fernwärme'].plot_node_balance()
-    calculation.results['Storage'].plot_node_balance()
+    calculation.results['Storage'].plot_charge_state()
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # Convert the results for the storage component to a dataframe and display
