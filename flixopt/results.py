@@ -365,6 +365,7 @@ class CalculationResults:
         """
         component_names = list(self.components.keys())
         self.color_manager = plotting.ComponentColorManager(component_names)
+        self.color_manager.auto_group_components()
         return self.color_manager
 
     def filter_solution(
