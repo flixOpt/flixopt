@@ -207,10 +207,22 @@ class ColorProcessor:
             list of colors in the format appropriate for the engine
         """
         if self.engine == 'plotly':
+            # First try qualitative color sequences (Dark24, Plotly, Set1, etc.)
+            if hasattr(px.colors.qualitative, colormap_name):
+                color_list = getattr(px.colors.qualitative, colormap_name)
+                # Cycle through colors if we need more than available
+                return [color_list[i % len(color_list)] for i in range(num_colors)]
+
+            # Then try sequential/continuous colorscales (viridis, plasma, etc.)
             try:
                 colorscale = px.colors.get_colorscale(colormap_name)
             except PlotlyError as e:
                 logger.error(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
+                # Try default as qualitative first
+                if hasattr(px.colors.qualitative, self.default_colormap):
+                    color_list = getattr(px.colors.qualitative, self.default_colormap)
+                    return [color_list[i % len(color_list)] for i in range(num_colors)]
+                # Otherwise use default as sequential
                 colorscale = px.colors.get_colorscale(self.default_colormap)
 
             # Generate evenly spaced points
