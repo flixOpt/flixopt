@@ -350,6 +350,105 @@ class ColorProcessor:
 MatchType = Literal['prefix', 'suffix', 'contains', 'glob', 'regex']
 
 
+def _hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
+    """Convert hex or rgb color to RGB (0-1 range).
+
+    Args:
+        hex_color: Hex color string (e.g., '#FF0000' or 'FF0000') or 'rgb(255, 0, 0)'
+
+    Returns:
+        Tuple of (r, g, b) values in range [0, 1]
+    """
+    # Handle rgb(r, g, b) format from Plotly
+    if hex_color.startswith('rgb('):
+        rgb_values = hex_color[4:-1].split(',')
+        return tuple(float(v.strip()) / 255.0 for v in rgb_values)
+
+    # Handle hex format
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+
+def _rgb_to_hsl(r: float, g: float, b: float) -> tuple[float, float, float]:
+    """Convert RGB to HSL color space.
+
+    Args:
+        r, g, b: RGB values in range [0, 1]
+
+    Returns:
+        Tuple of (h, s, lightness) where h in [0, 360], s and lightness in [0, 1]
+    """
+    max_c = max(r, g, b)
+    min_c = min(r, g, b)
+    lightness = (max_c + min_c) / 2.0
+
+    if max_c == min_c:
+        h = s = 0.0  # achromatic
+    else:
+        d = max_c - min_c
+        s = d / (2.0 - max_c - min_c) if lightness > 0.5 else d / (max_c + min_c)
+
+        if max_c == r:
+            h = (g - b) / d + (6.0 if g < b else 0.0)
+        elif max_c == g:
+            h = (b - r) / d + 2.0
+        else:
+            h = (r - g) / d + 4.0
+        h /= 6.0
+
+    return h * 360.0, s, lightness
+
+
+def _hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[float, float, float]:
+    """Convert HSL to RGB color space.
+
+    Args:
+        h: Hue in range [0, 360]
+        s: Saturation in range [0, 1]
+        lightness: Lightness in range [0, 1]
+
+    Returns:
+        Tuple of (r, g, b) values in range [0, 1]
+    """
+    h = h / 360.0  # Normalize to [0, 1]
+
+    def hue_to_rgb(p, q, t):
+        if t < 0:
+            t += 1
+        if t > 1:
+            t -= 1
+        if t < 1 / 6:
+            return p + (q - p) * 6 * t
+        if t < 1 / 2:
+            return q
+        if t < 2 / 3:
+            return p + (q - p) * (2 / 3 - t) * 6
+        return p
+
+    if s == 0:
+        r = g = b = lightness  # achromatic
+    else:
+        q = lightness * (1 + s) if lightness < 0.5 else lightness + s - lightness * s
+        p = 2 * lightness - q
+        r = hue_to_rgb(p, q, h + 1 / 3)
+        g = hue_to_rgb(p, q, h)
+        b = hue_to_rgb(p, q, h - 1 / 3)
+
+    return r, g, b
+
+
+def _rgb_to_hex(r: float, g: float, b: float) -> str:
+    """Convert RGB to hex color string.
+
+    Args:
+        r, g, b: RGB values in range [0, 1]
+
+    Returns:
+        Hex color string (e.g., '#FF0000')
+    """
+    return f'#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}'
+
+
 class ComponentColorManager:
     """Manage stable colors for flow system components with pattern-based grouping.
 
@@ -423,16 +522,39 @@ class ComponentColorManager:
         'darkmint': px.colors.sequential.Darkmint[1:8],
     }
 
-    def __init__(self, components: list[str], default_colormap: str = 'Dark24') -> None:
+    def __init__(
+        self,
+        components: list[str] | None = None,
+        flows: dict[str, list[str]] | None = None,
+        enable_flow_shading: bool = False,
+        flow_variation_strength: float = 0.08,
+        default_colormap: str = 'Dark24',
+    ) -> None:
         """Initialize component color manager.
 
         Args:
-            components: List of all component names in the system
-            default_colormap: Default colormap for ungrouped components (default: 'tab10')
+            components: List of all component names in the system (optional if flows provided)
+            flows: Dict mapping component names to their flow labels (e.g., {'Boiler': ['Q_th', 'Q_fu']})
+            enable_flow_shading: If True, create subtle color variations for flows of same component
+            flow_variation_strength: Lightness variation per flow (0.05-0.15, default: 0.08 = 8%)
+            default_colormap: Default colormap for ungrouped components (default: 'Dark24')
         """
-        self.components = sorted(set(components))  # Stable sorted order, remove duplicates
+        # Extract components from flows dict if provided
+        if flows is not None:
+            self.flows = {comp: sorted(set(flow_list)) for comp, flow_list in flows.items()}
+            self.components = sorted(self.flows.keys())
+        elif components is not None:
+            self.components = sorted(set(components))
+            self.flows = {}
+        else:
+            raise ValueError('Must provide either components or flows parameter')
+
         self.default_colormap = default_colormap
         self.color_families = self.DEFAULT_FAMILIES.copy()
+
+        # Flow shading settings
+        self.enable_flow_shading = enable_flow_shading
+        self.flow_variation_strength = flow_variation_strength
 
         # Pattern-based grouping rules
         self._grouping_rules: list[dict[str, str]] = []
@@ -451,11 +573,12 @@ class ComponentColorManager:
 
     def __repr__(self) -> str:
         """Return detailed representation of ComponentColorManager."""
+        flow_info = f', flow_shading={self.enable_flow_shading}' if self.enable_flow_shading else ''
         return (
             f'ComponentColorManager(components={len(self.components)}, '
             f'rules={len(self._grouping_rules)}, '
             f'overrides={len(self._overrides)}, '
-            f"default_colormap='{self.default_colormap}')"
+            f"default_colormap='{self.default_colormap}'{flow_info})"
         )
 
     def __str__(self) -> str:
@@ -494,6 +617,45 @@ class ComponentColorManager:
         lines.append(f'  Default colormap: {self.default_colormap}')
 
         return '\n'.join(lines)
+
+    @classmethod
+    def from_flow_system(cls, flow_system, enable_flow_shading: bool = False, **kwargs):
+        """Create ComponentColorManager from a FlowSystem.
+
+        Automatically extracts all components and their flows from the FlowSystem.
+
+        Args:
+            flow_system: FlowSystem instance to extract components and flows from
+            enable_flow_shading: Enable subtle color variations for flows (default: False)
+            **kwargs: Additional arguments passed to ComponentColorManager.__init__
+
+        Returns:
+            ComponentColorManager instance
+
+        Examples:
+            ```python
+            # Basic usage
+            manager = ComponentColorManager.from_flow_system(flow_system)
+
+            # With flow shading
+            manager = ComponentColorManager.from_flow_system(
+                flow_system, enable_flow_shading=True, flow_variation_strength=0.10
+            )
+            ```
+        """
+        from .flow_system import FlowSystem
+
+        if not isinstance(flow_system, FlowSystem):
+            raise TypeError(f'Expected FlowSystem, got {type(flow_system).__name__}')
+
+        # Extract flows from all components
+        flows = {}
+        for component_label, component in flow_system.components.items():
+            flow_labels = [flow.label for flow in component.inputs + component.outputs]
+            if flow_labels:  # Only add if component has flows
+                flows[component_label] = flow_labels
+
+        return cls(flows=flows, enable_flow_shading=enable_flow_shading, **kwargs)
 
     def add_custom_family(self, name: str, colors: list[str]) -> ComponentColorManager:
         """Add a custom color family.
@@ -640,17 +802,48 @@ class ComponentColorManager:
             extract_component('Storage')  # Returns: 'Storage'
             ```
         """
-        # Try "Component(Bus)|type" format
-        if '(' in variable:
-            return variable.split('(')[0]
-        # Try "Component|type" format
-        elif '|' in variable:
-            return variable.split('|')[0]
-        # Just use the variable name itself
-        return variable
+        component, _ = self._extract_component_and_flow(variable)
+        return component
+
+    def _extract_component_and_flow(self, variable: str) -> tuple[str, str | None]:
+        """Extract both component and flow name from variable name.
+
+        Parses variable formats:
+        - 'Component(Flow)|attribute' → ('Component', 'Flow')
+        - 'Component|attribute' → ('Component', None)
+        - 'Component' → ('Component', None)
+
+        Args:
+            variable: Variable name
+
+        Returns:
+            Tuple of (component_name, flow_name or None)
+
+        Examples:
+            ```python
+            _extract_component_and_flow('Boiler(Q_th)|flow_rate')  # ('Boiler', 'Q_th')
+            _extract_component_and_flow('CHP(P_el)|flow_rate')  # ('CHP', 'P_el')
+            _extract_component_and_flow('Boiler|investment')  # ('Boiler', None)
+            ```
+        """
+        # Try "Component(Flow)|attribute" format
+        if '(' in variable and ')' in variable:
+            component = variable.split('(')[0]
+            flow = variable.split('(')[1].split(')')[0]
+            return component, flow
+
+        # Try "Component|attribute" format (no flow)
+        if '|' in variable:
+            return variable.split('|')[0], None
+
+        # Just the component name itself
+        return variable, None
 
     def get_variable_color(self, variable: str) -> str:
         """Get color for a variable (extracts component automatically).
+
+        If flow_shading is enabled, generates subtle color variations for different
+        flows of the same component.
 
         Args:
             variable: Variable name
@@ -662,9 +855,32 @@ class ComponentColorManager:
         if variable in self._variable_cache:
             return self._variable_cache[variable]
 
-        # Compute and cache
-        component = self.extract_component(variable)
-        color = self.get_color(component)
+        # Extract component and flow
+        component, flow = self._extract_component_and_flow(variable)
+
+        # Get base color for component
+        base_color = self.get_color(component)
+
+        # Apply flow shading if enabled and flow is present
+        if self.enable_flow_shading and flow is not None and component in self.flows:
+            # Get sorted flow list for this component
+            component_flows = self.flows[component]
+
+            if flow in component_flows and len(component_flows) > 1:
+                # Generate shades for all flows
+                shades = self._create_flow_shades(base_color, len(component_flows))
+
+                # Assign shade based on flow's position in sorted list
+                flow_idx = component_flows.index(flow)
+                color = shades[flow_idx]
+            else:
+                # Flow not in predefined list or only one flow - use base color
+                color = base_color
+        else:
+            # No flow shading or no flow info - use base color
+            color = base_color
+
+        # Cache and return
         self._variable_cache[variable] = color
         return color
 
@@ -747,6 +963,39 @@ class ComponentColorManager:
         except Exception:
             logger.warning(f"Colormap '{colormap_name}' not found, using 'Dark24' instead")
             return px.colors.qualitative.Dark24
+
+    def _create_flow_shades(self, base_color: str, num_flows: int) -> list[str]:
+        """Generate subtle color variations from a single base color using HSL.
+
+        Args:
+            base_color: Hex color (e.g., '#D62728')
+            num_flows: Number of distinct shades needed
+
+        Returns:
+            List of hex colors with subtle lightness variations
+        """
+        if num_flows == 1:
+            return [base_color]
+
+        # Convert to HSL
+        r, g, b = _hex_to_rgb(base_color)
+        h, s, lightness = _rgb_to_hsl(r, g, b)
+
+        # Create symmetric variations around base lightness
+        # For 3 flows with strength 0.08: [-0.08, 0, +0.08]
+        # For 5 flows: [-0.16, -0.08, 0, +0.08, +0.16]
+        center_idx = (num_flows - 1) / 2
+        shades = []
+
+        for idx in range(num_flows):
+            delta_lightness = (idx - center_idx) * self.flow_variation_strength
+            new_lightness = np.clip(lightness + delta_lightness, 0.1, 0.9)  # Stay within valid range
+
+            # Convert back to hex
+            r_new, g_new, b_new = _hsl_to_rgb(h, s, new_lightness)
+            shades.append(_rgb_to_hex(r_new, g_new, b_new))
+
+        return shades
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:

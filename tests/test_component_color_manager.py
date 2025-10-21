@@ -286,7 +286,7 @@ class TestMethodChaining:
         """Test full method chaining."""
         components = ['Solar_PV', 'Wind_Onshore', 'Gas_Plant']
         manager = (
-            ComponentColorManager(components)
+            ComponentColorManager(components=components)
             .add_custom_family('ocean', ['#003f5c', '#2f4b7c'])
             .add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
             .add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
@@ -294,3 +294,115 @@ class TestMethodChaining:
 
         assert 'ocean' in manager.color_families
         assert len(manager._grouping_rules) == 2
+
+
+class TestFlowShading:
+    """Test flow-level color distinction."""
+
+    def test_initialization_with_flows_dict(self):
+        """Test initialization with flows parameter."""
+        flows = {
+            'Boiler': ['Q_th', 'Q_fu'],
+            'CHP': ['P_el', 'Q_th', 'Q_fu'],
+        }
+        manager = ComponentColorManager(flows=flows, enable_flow_shading=True)
+
+        assert len(manager.components) == 2
+        assert manager.flows == {'Boiler': ['Q_fu', 'Q_th'], 'CHP': ['P_el', 'Q_fu', 'Q_th']}  # Sorted
+        assert manager.enable_flow_shading is True
+
+    def test_flow_extraction(self):
+        """Test _extract_component_and_flow method."""
+        manager = ComponentColorManager(components=['Boiler'])
+
+        # Test Component(Flow)|attribute format
+        comp, flow = manager._extract_component_and_flow('Boiler(Q_th)|flow_rate')
+        assert comp == 'Boiler'
+        assert flow == 'Q_th'
+
+        # Test Component|attribute format (no flow)
+        comp, flow = manager._extract_component_and_flow('Boiler|investment')
+        assert comp == 'Boiler'
+        assert flow is None
+
+        # Test plain component name
+        comp, flow = manager._extract_component_and_flow('Boiler')
+        assert comp == 'Boiler'
+        assert flow is None
+
+    def test_flow_shading_disabled(self):
+        """Test that flow shading is disabled by default."""
+        flows = {'Boiler': ['Q_th', 'Q_fu']}
+        manager = ComponentColorManager(flows=flows, enable_flow_shading=False)
+
+        # Both flows should get the same color
+        color1 = manager.get_variable_color('Boiler(Q_th)|flow_rate')
+        color2 = manager.get_variable_color('Boiler(Q_fu)|flow_rate')
+
+        assert color1 == color2
+
+    def test_flow_shading_enabled(self):
+        """Test that flow shading creates distinct colors."""
+        flows = {'Boiler': ['Q_th', 'Q_fu', 'Q_el']}
+        manager = ComponentColorManager(flows=flows, enable_flow_shading=True)
+
+        # Get colors for all three flows
+        color_th = manager.get_variable_color('Boiler(Q_th)|flow_rate')
+        color_fu = manager.get_variable_color('Boiler(Q_fu)|flow_rate')
+        color_el = manager.get_variable_color('Boiler(Q_el)|flow_rate')
+
+        # All colors should be different
+        assert color_th != color_fu
+        assert color_fu != color_el
+        assert color_th != color_el
+
+        # All colors should be valid hex
+        assert color_th.startswith('#')
+        assert color_fu.startswith('#')
+        assert color_el.startswith('#')
+
+    def test_flow_shading_stability(self):
+        """Test that flow shading produces stable colors."""
+        flows = {'Boiler': ['Q_th', 'Q_fu']}
+        manager = ComponentColorManager(flows=flows, enable_flow_shading=True)
+
+        # Get color multiple times
+        color1 = manager.get_variable_color('Boiler(Q_th)|flow_rate')
+        color2 = manager.get_variable_color('Boiler(Q_th)|flow_rate')
+        color3 = manager.get_variable_color('Boiler(Q_th)|flow_rate')
+
+        assert color1 == color2 == color3
+
+    def test_single_flow_no_shading(self):
+        """Test that single flow gets base color (no shading needed)."""
+        flows = {'Storage': ['Q_th_load']}
+        manager = ComponentColorManager(flows=flows, enable_flow_shading=True)
+
+        # Single flow should get base color
+        color = manager.get_variable_color('Storage(Q_th_load)|flow_rate')
+        base_color = manager.get_color('Storage')
+
+        assert color == base_color
+
+    def test_flow_variation_strength(self):
+        """Test that variation strength parameter works."""
+        flows = {'Boiler': ['Q_th', 'Q_fu']}
+
+        # Low variation
+        manager_low = ComponentColorManager(flows=flows, enable_flow_shading=True, flow_variation_strength=0.02)
+        color_low_1 = manager_low.get_variable_color('Boiler(Q_th)|flow_rate')
+        color_low_2 = manager_low.get_variable_color('Boiler(Q_fu)|flow_rate')
+
+        # High variation
+        manager_high = ComponentColorManager(flows=flows, enable_flow_shading=True, flow_variation_strength=0.15)
+        color_high_1 = manager_high.get_variable_color('Boiler(Q_th)|flow_rate')
+        color_high_2 = manager_high.get_variable_color('Boiler(Q_fu)|flow_rate')
+
+        # Colors should be different
+        assert color_low_1 != color_low_2
+        assert color_high_1 != color_high_2
+
+        # High variation should have larger difference (this is approximate test)
+        # We can't easily measure color distance, so just check they're all different
+        assert color_low_1 != color_high_1
+        assert color_low_2 != color_high_2
