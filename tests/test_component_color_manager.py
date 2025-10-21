@@ -16,7 +16,7 @@ class TestBasicFunctionality:
         manager = ComponentColorManager(components)
 
         assert len(manager.components) == 3
-        assert manager.default_colormap == 'viridis'
+        assert manager.default_colormap == 'Dark24'
         assert 'Solar_PV' in manager.components
         assert 'Wind_Onshore' in manager.components
         assert 'Coal_Plant' in manager.components
@@ -479,7 +479,7 @@ class TestStringRepresentation:
         assert 'components=3' in repr_str
         assert 'rules=0' in repr_str
         assert 'overrides=0' in repr_str
-        assert "default_colormap='viridis'" in repr_str
+        assert "default_colormap='Dark24'" in repr_str
 
     def test_repr_with_rules_and_overrides(self):
         """Test __repr__ with rules and overrides."""
@@ -508,7 +508,7 @@ class TestStringRepresentation:
         assert 'Comp3' in str_output
         assert 'Grouping rules: 0' in str_output
         assert 'Overrides: 0' in str_output
-        assert 'Default colormap: viridis' in str_output
+        assert 'Default colormap: Dark24' in str_output
 
     def test_str_with_many_components(self):
         """Test __str__ with many components (truncation)."""
