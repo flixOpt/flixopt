@@ -1962,12 +1962,9 @@ def dual_pie_with_matplotlib(
     hole: float = 0.2,
     lower_percentage_group: float = 5.0,
     figsize: tuple[int, int] = (14, 7),
-    fig: plt.Figure | None = None,
-    axes: list[plt.Axes] | None = None,
 ) -> tuple[plt.Figure, list[plt.Axes]]:
     """
     Create two pie charts side by side with Matplotlib, with consistent coloring across both charts.
-    Leverages the existing pie_with_matplotlib function.
 
     Args:
         data_left: Series for the left pie chart.
@@ -1982,22 +1979,17 @@ def dual_pie_with_matplotlib(
         hole: Size of the hole in the center for creating donut charts (0.0 to 1.0).
         lower_percentage_group: Whether to group small segments (below percentage) into an "Other" category.
         figsize: The size of the figure (width, height) in inches.
-        fig: A Matplotlib figure object to plot on. If not provided, a new figure will be created.
-        axes: A list of Matplotlib axes objects to plot on. If not provided, new axes will be created.
 
     Returns:
         A tuple containing the Matplotlib figure and list of axes objects used for the plot.
     """
+    # Create figure and axes
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+
     # Check for empty data
     if data_left.empty and data_right.empty:
         logger.error('Both datasets are empty. Returning empty figure.')
-        if fig is None:
-            fig, axes = plt.subplots(1, 2, figsize=figsize)
         return fig, axes
-
-    # Create figure and axes if not provided
-    if fig is None or axes is None:
-        fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     # Process series to handle negative values and apply minimum percentage threshold
     def preprocess_series(series: pd.Series):
@@ -2060,19 +2052,49 @@ def dual_pie_with_matplotlib(
     left_colors = [color_map[col] for col in df_left.columns] if not df_left.empty else []
     right_colors = [color_map[col] for col in df_right.columns] if not df_right.empty else []
 
+    # Helper function to draw pie chart on a specific axis
+    def draw_pie_on_axis(ax, data_series, colors_list, subtitle, hole_size):
+        """Draw a pie chart on a specific matplotlib axis."""
+        if data_series.empty:
+            ax.set_title(subtitle)
+            ax.axis('off')
+            return
+
+        labels = list(data_series.index)
+        values = list(data_series.values)
+
+        # Draw the pie chart
+        wedges, texts, autotexts = ax.pie(
+            values,
+            labels=labels,
+            colors=colors_list,
+            autopct='%1.1f%%',
+            startangle=90,
+            shadow=False,
+            wedgeprops=dict(width=0.5) if hole_size > 0 else None,
+        )
+
+        # Adjust hole size
+        if hole_size > 0:
+            wedge_width = 1 - hole_size
+            for wedge in wedges:
+                wedge.set_width(wedge_width)
+
+        # Customize text
+        for autotext in autotexts:
+            autotext.set_fontsize(10)
+            autotext.set_color('white')
+
+        # Set aspect ratio and title
+        ax.set_aspect('equal')
+        if subtitle:
+            ax.set_title(subtitle, fontsize=14)
+
     # Create left pie chart
-    if not df_left.empty:
-        pie_with_matplotlib(data=df_left, colors=left_colors, title=subtitles[0], hole=hole, fig=fig, ax=axes[0])
-    else:
-        axes[0].set_title(subtitles[0])
-        axes[0].axis('off')
+    draw_pie_on_axis(axes[0], data_left_processed, left_colors, subtitles[0], hole)
 
     # Create right pie chart
-    if not df_right.empty:
-        pie_with_matplotlib(data=df_right, colors=right_colors, title=subtitles[1], hole=hole, fig=fig, ax=axes[1])
-    else:
-        axes[1].set_title(subtitles[1])
-        axes[1].axis('off')
+    draw_pie_on_axis(axes[1], data_right_processed, right_colors, subtitles[1], hole)
 
     # Add main title
     if title:
