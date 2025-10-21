@@ -15,6 +15,7 @@ import yaml
 
 from . import io as fx_io
 from . import plotting
+from .config import CONFIG
 from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
@@ -752,7 +753,7 @@ class CalculationResults:
         self,
         variable_name: str | list[str],
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         colors: plotting.ColorType = 'viridis',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
@@ -869,6 +870,10 @@ class CalculationResults:
             ...     imshow_kwargs={'interpolation': 'bilinear', 'aspect': 'auto'},
             ... )
         """
+        # Use CONFIG default if show is not explicitly set
+        if show is None:
+            show = CONFIG.Plotting.default_show
+
         # Delegate to module-level plot_heatmap function
         return plot_heatmap(
             data=self.solution[variable_name],
@@ -1057,7 +1062,7 @@ class _NodeResults(_ElementResults):
     def plot_node_balance(
         self,
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         colors: plotting.ColorType | Literal['auto'] = 'auto',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
@@ -1173,6 +1178,10 @@ class _NodeResults(_ElementResults):
 
             >>> results['Boiler'].plot_node_balance(engine='matplotlib', plot_kwargs={'linewidth': 3, 'alpha': 0.7})
         """
+        # Use CONFIG default if show is not explicitly set
+        if show is None:
+            show = CONFIG.Plotting.default_show
+
         # Handle deprecated indexer parameter
         if indexer is not None:
             # Check for conflict with new parameter
@@ -1264,7 +1273,7 @@ class _NodeResults(_ElementResults):
         colors: plotting.ColorType | Literal['auto'] = 'auto',
         text_info: str = 'percent+label+value',
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         # Deprecated parameter (kept for backwards compatibility)
@@ -1318,6 +1327,10 @@ class _NodeResults(_ElementResults):
 
             >>> results['Bus'].plot_node_balance_pie(save='figure.png', dpi=600)
         """
+        # Use CONFIG default if show is not explicitly set
+        if show is None:
+            show = CONFIG.Plotting.default_show
+
         # Handle deprecated indexer parameter
         if indexer is not None:
             # Check for conflict with new parameter
@@ -1537,7 +1550,7 @@ class ComponentResults(_NodeResults):
     def plot_charge_state(
         self,
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         colors: plotting.ColorType | Literal['auto'] = 'auto',
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'area',
@@ -1611,6 +1624,10 @@ class ComponentResults(_NodeResults):
 
             >>> results['Storage'].plot_charge_state(save='storage.png', dpi=600)
         """
+        # Use CONFIG default if show is not explicitly set
+        if show is None:
+            show = CONFIG.Plotting.default_show
+
         # Handle deprecated indexer parameter
         if indexer is not None:
             # Check for conflict with new parameter
@@ -2082,7 +2099,7 @@ class SegmentedCalculationResults:
         | None = 'auto',
         colors: str = 'portland',
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         facet_by: str | list[str] | None = None,
         animate_by: str | None = None,
@@ -2128,6 +2145,10 @@ class SegmentedCalculationResults:
         Returns:
             Figure object.
         """
+        # Use CONFIG default if show is not explicitly set
+        if show is None:
+            show = CONFIG.Plotting.default_show
+
         # Handle deprecated parameters
         if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
             # Check for conflict with new parameter
@@ -2213,7 +2234,7 @@ def plot_heatmap(
     folder: pathlib.Path | None = None,
     colors: plotting.ColorType = 'viridis',
     save: bool | pathlib.Path = False,
-    show: bool = True,
+    show: bool | None = None,
     engine: plotting.PlottingEngine = 'plotly',
     select: dict[str, Any] | None = None,
     facet_by: str | list[str] | None = None,
@@ -2276,6 +2297,10 @@ def plot_heatmap(
 
         >>> plot_heatmap(dataset, animate_by='variable', reshape_time=('D', 'h'))
     """
+    # Use CONFIG default if show is not explicitly set
+    if show is None:
+        show = CONFIG.Plotting.default_show
+
     # Handle deprecated heatmap time parameters
     if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
         # Check for conflict with new parameter

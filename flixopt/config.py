@@ -54,6 +54,14 @@ _DEFAULTS = MappingProxyType(
                 'big_binary_bound': 100_000,
             }
         ),
+        'plotting': MappingProxyType(
+            {
+                'renderer': 'browser',
+                'default_show': False,
+                'default_save_path': None,
+                'default_engine': 'plotly',
+            }
+        ),
     }
 )
 
@@ -185,6 +193,33 @@ class CONFIG:
         epsilon: float = _DEFAULTS['modeling']['epsilon']
         big_binary_bound: int = _DEFAULTS['modeling']['big_binary_bound']
 
+    class Plotting:
+        """Plotting configuration.
+
+        Attributes:
+            renderer: Plotly renderer to use. Options: 'browser' (opens in browser), 'notebook' (Jupyter),
+                'svg', 'png', 'pdf' (static images), or None (auto-detect).
+            default_show: Default value for the `show` parameter in plot methods.
+            default_save_path: Default directory for saving plots (None for no default).
+            default_engine: Default plotting engine ('plotly' or 'matplotlib').
+
+        Examples:
+            ```python
+            # Force browser rendering for all Plotly plots
+            CONFIG.Plotting.renderer = 'browser'
+            CONFIG.apply()
+
+            # Don't show plots by default
+            CONFIG.Plotting.default_show = False
+            CONFIG.apply()
+            ```
+        """
+
+        renderer: str | None = _DEFAULTS['plotting']['renderer']
+        default_show: bool = _DEFAULTS['plotting']['default_show']
+        default_save_path: str | None = _DEFAULTS['plotting']['default_save_path']
+        default_engine: Literal['plotly', 'matplotlib'] = _DEFAULTS['plotting']['default_engine']
+
     config_name: str = _DEFAULTS['config_name']
 
     @classmethod
@@ -201,12 +236,15 @@ class CONFIG:
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
 
+        for key, value in _DEFAULTS['plotting'].items():
+            setattr(cls.Plotting, key, value)
+
         cls.config_name = _DEFAULTS['config_name']
         cls.apply()
 
     @classmethod
     def apply(cls):
-        """Apply current configuration to logging system."""
+        """Apply current configuration to logging and plotting systems."""
         # Convert Colors class attributes to dict
         colors_dict = {
             'DEBUG': cls.Logging.Colors.DEBUG,
@@ -242,6 +280,9 @@ class CONFIG:
             show_logger_name=cls.Logging.show_logger_name,
             colors=colors_dict,
         )
+
+        # Apply plotting configuration
+        _apply_plotting_config(renderer=cls.Plotting.renderer)
 
     @classmethod
     def load_from_file(cls, config_file: str | Path):
@@ -282,6 +323,9 @@ class CONFIG:
             elif key == 'modeling' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     setattr(cls.Modeling, nested_key, nested_value)
+            elif key == 'plotting' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Plotting, nested_key, nested_value)
             elif hasattr(cls, key):
                 setattr(cls, key, value)
 
@@ -318,6 +362,12 @@ class CONFIG:
                 'big': cls.Modeling.big,
                 'epsilon': cls.Modeling.epsilon,
                 'big_binary_bound': cls.Modeling.big_binary_bound,
+            },
+            'plotting': {
+                'renderer': cls.Plotting.renderer,
+                'default_show': cls.Plotting.default_show,
+                'default_save_path': cls.Plotting.default_save_path,
+                'default_engine': cls.Plotting.default_engine,
             },
         }
 
@@ -586,6 +636,22 @@ def _setup_logging(
     # Library best practice: NullHandler if no handlers configured
     if not logger.handlers:
         logger.addHandler(logging.NullHandler())
+
+
+def _apply_plotting_config(renderer: str | None = 'browser') -> None:
+    """Apply plotting configuration to plotly.
+
+    Args:
+        renderer: Plotly renderer to use. Options: 'browser', 'notebook', 'svg', 'png', 'pdf', or None.
+    """
+    try:
+        import plotly.io as pio
+
+        if renderer is not None:
+            pio.renderers.default = renderer
+    except ImportError:
+        # Plotly not installed, skip configuration
+        pass
 
 
 def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
