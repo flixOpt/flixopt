@@ -870,10 +870,6 @@ class CalculationResults:
             ...     imshow_kwargs={'interpolation': 'bilinear', 'aspect': 'auto'},
             ... )
         """
-        # Use CONFIG default if show is not explicitly set
-        if show is None:
-            show = CONFIG.Plotting.default_show
-
         # Delegate to module-level plot_heatmap function
         return plot_heatmap(
             data=self.solution[variable_name],
@@ -1178,10 +1174,6 @@ class _NodeResults(_ElementResults):
 
             >>> results['Boiler'].plot_node_balance(engine='matplotlib', plot_kwargs={'linewidth': 3, 'alpha': 0.7})
         """
-        # Use CONFIG default if show is not explicitly set
-        if show is None:
-            show = CONFIG.Plotting.default_show
-
         # Handle deprecated indexer parameter
         if indexer is not None:
             # Check for conflict with new parameter
@@ -1327,10 +1319,6 @@ class _NodeResults(_ElementResults):
 
             >>> results['Bus'].plot_node_balance_pie(save='figure.png', dpi=600)
         """
-        # Use CONFIG default if show is not explicitly set
-        if show is None:
-            show = CONFIG.Plotting.default_show
-
         # Handle deprecated indexer parameter
         if indexer is not None:
             # Check for conflict with new parameter
@@ -1624,10 +1612,6 @@ class ComponentResults(_NodeResults):
 
             >>> results['Storage'].plot_charge_state(save='storage.png', dpi=600)
         """
-        # Use CONFIG default if show is not explicitly set
-        if show is None:
-            show = CONFIG.Plotting.default_show
-
         # Handle deprecated indexer parameter
         if indexer is not None:
             # Check for conflict with new parameter
@@ -2145,10 +2129,6 @@ class SegmentedCalculationResults:
         Returns:
             Figure object.
         """
-        # Use CONFIG default if show is not explicitly set
-        if show is None:
-            show = CONFIG.Plotting.default_show
-
         # Handle deprecated parameters
         if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
             # Check for conflict with new parameter
@@ -2297,10 +2277,6 @@ def plot_heatmap(
 
         >>> plot_heatmap(dataset, animate_by='variable', reshape_time=('D', 'h'))
     """
-    # Use CONFIG default if show is not explicitly set
-    if show is None:
-        show = CONFIG.Plotting.default_show
-
     # Handle deprecated heatmap time parameters
     if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
         # Check for conflict with new parameter

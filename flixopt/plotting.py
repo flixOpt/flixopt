@@ -45,6 +45,8 @@ import plotly.offline
 import xarray as xr
 from plotly.exceptions import PlotlyError
 
+from .config import CONFIG
+
 if TYPE_CHECKING:
     import pyvis
 
@@ -2535,7 +2537,7 @@ def export_figure(
     default_path: pathlib.Path,
     default_filetype: str | None = None,
     user_path: pathlib.Path | None = None,
-    show: bool = True,
+    show: bool | None = None,
     save: bool = False,
     dpi: int = 300,
 ) -> go.Figure | tuple[plt.Figure, plt.Axes]:
@@ -2547,7 +2549,7 @@ def export_figure(
         default_path: The default file path if no user filename is provided.
         default_filetype: The default filetype if the path doesnt end with a filetype.
         user_path: An optional user-specified file path.
-        show: Whether to display the figure (default: True).
+        show: Whether to display the figure. If None, uses CONFIG.Plotting.default_show (default: None).
         save: Whether to save the figure (default: False).
         dpi: DPI (dots per inch) for saving Matplotlib figures (default: 300). Only applies to matplotlib figures.
 
@@ -2555,6 +2557,10 @@ def export_figure(
         ValueError: If no default filetype is provided and the path doesn't specify a filetype.
         TypeError: If the figure type is not supported.
     """
+    # Apply CONFIG defaults if not explicitly set
+    if show is None:
+        show = CONFIG.Plotting.default_show
+
     filename = user_path or default_path
     filename = filename.with_name(filename.name.replace('|', '__'))
     if filename.suffix == '':
