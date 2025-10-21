@@ -847,11 +847,45 @@ def with_plotly(
     # Handle all-scalar datasets (where all variables have no dimensions)
     # This occurs when all variables are scalar values with dims=()
     if all(len(data[var].dims) == 0 for var in data.data_vars):
-        # Expand scalars by adding a dummy dimension to make them plottable
-        expanded_data = xr.Dataset()
-        for var in data.data_vars:
-            expanded_data[var] = xr.DataArray([data[var].values], dims=['_scalar_index'], coords={'_scalar_index': [0]})
-        data = expanded_data
+        # Create a simple DataFrame with variable names as x-axis
+        variables = list(data.data_vars.keys())
+        values = [float(data[var].values) for var in data.data_vars]
+
+        # Resolve colors
+        color_discrete_map = resolve_colors(data, colors, engine='plotly')
+        marker_colors = [color_discrete_map.get(var, '#636EFA') for var in variables]
+
+        # Create simple plot based on mode using go (not px) for better color control
+        if mode in ('stacked_bar', 'grouped_bar'):
+            fig = go.Figure(data=[go.Bar(x=variables, y=values, marker_color=marker_colors)])
+        elif mode == 'line':
+            fig = go.Figure(
+                data=[
+                    go.Scatter(
+                        x=variables,
+                        y=values,
+                        mode='lines+markers',
+                        marker=dict(color=marker_colors, size=8),
+                        line=dict(color='lightgray'),
+                    )
+                ]
+            )
+        elif mode == 'area':
+            fig = go.Figure(
+                data=[
+                    go.Scatter(
+                        x=variables,
+                        y=values,
+                        fill='tozeroy',
+                        marker=dict(color=marker_colors, size=8),
+                        line=dict(color='lightgray'),
+                    )
+                ]
+            )
+
+        # Update layout
+        fig.update_layout(title=title, xaxis_title=xlabel, yaxis_title=ylabel, showlegend=False)
+        return fig
 
     # Warn if fig parameter is used with faceting
     if fig is not None and (facet_by is not None or animate_by is not None):
@@ -1084,11 +1118,35 @@ def with_matplotlib(
     # Handle all-scalar datasets (where all variables have no dimensions)
     # This occurs when all variables are scalar values with dims=()
     if all(len(data[var].dims) == 0 for var in data.data_vars):
-        # Expand scalars by adding a dummy dimension to make them plottable
-        expanded_data = xr.Dataset()
-        for var in data.data_vars:
-            expanded_data[var] = xr.DataArray([data[var].values], dims=['_scalar_index'], coords={'_scalar_index': [0]})
-        data = expanded_data
+        # Create simple bar/line plot with variable names as x-axis
+        variables = list(data.data_vars.keys())
+        values = [float(data[var].values) for var in data.data_vars]
+
+        # Resolve colors
+        color_discrete_map = resolve_colors(data, colors, engine='matplotlib')
+        colors_list = [color_discrete_map.get(var, '#808080') for var in variables]
+
+        # Create plot based on mode
+        if mode == 'stacked_bar':
+            ax.bar(variables, values, color=colors_list)
+        elif mode == 'line':
+            ax.plot(variables, values, marker='o', color=colors_list[0] if len(set(colors_list)) == 1 else None)
+            # If different colors, plot each point separately
+            if len(set(colors_list)) > 1:
+                ax.clear()
+                for i, (var, val) in enumerate(zip(variables, values, strict=False)):
+                    ax.plot([i], [val], marker='o', color=colors_list[i], label=var)
+                ax.set_xticks(range(len(variables)))
+                ax.set_xticklabels(variables)
+
+        # Aesthetics
+        ax.set_xlabel(xlabel, ha='center')
+        ax.set_ylabel(ylabel, va='center')
+        ax.set_title(title)
+        ax.grid(color='lightgrey', linestyle='-', linewidth=0.5, axis='y')
+        fig.tight_layout()
+
+        return fig, ax
 
     # Resolve colors first (includes validation)
     color_discrete_map = resolve_colors(data, colors, engine='matplotlib')
