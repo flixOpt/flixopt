@@ -56,7 +56,8 @@ _DEFAULTS = MappingProxyType(
         ),
         'plotting': MappingProxyType(
             {
-                'renderer': 'browser',
+                'plotly_renderer': 'browser',
+                'matplotlib_backend': None,
                 'default_show': False,
                 'default_save_path': None,
                 'default_engine': 'plotly',
@@ -197,16 +198,17 @@ class CONFIG:
         """Plotting configuration.
 
         Attributes:
-            renderer: Plotly renderer to use. Options: 'browser' (opens in browser), 'notebook' (Jupyter),
-                'svg', 'png', 'pdf' (static images), or None (auto-detect).
+            plotly_renderer: Plotly renderer to use.
+            matplotlib_backend: Matplotlib backend to use.
             default_show: Default value for the `show` parameter in plot methods.
-            default_save_path: Default directory for saving plots (None for no default).
-            default_engine: Default plotting engine ('plotly' or 'matplotlib').
+            default_save_path: Default directory for saving plots.
+            default_engine: Default plotting engine.
 
         Examples:
             ```python
-            # Force browser rendering for all Plotly plots
-            CONFIG.Plotting.renderer = 'browser'
+            # Force browser rendering for Plotly and set matplotlib backend
+            CONFIG.Plotting.plotly_renderer = 'browser'
+            CONFIG.Plotting.matplotlib_backend = 'TkAgg'
             CONFIG.apply()
 
             # Don't show plots by default
@@ -215,7 +217,25 @@ class CONFIG:
             ```
         """
 
-        renderer: str | None = _DEFAULTS['plotting']['renderer']
+        plotly_renderer: (
+            Literal['browser', 'notebook', 'svg', 'png', 'pdf', 'jpeg', 'json', 'plotly_mimetype'] | None
+        ) = _DEFAULTS['plotting']['plotly_renderer']
+        matplotlib_backend: (
+            Literal[
+                'TkAgg',
+                'Qt5Agg',
+                'QtAgg',
+                'WXAgg',
+                'Agg',
+                'Cairo',
+                'PDF',
+                'PS',
+                'SVG',
+                'WebAgg',
+                'module://backend_interagg',
+            ]
+            | None
+        ) = _DEFAULTS['plotting']['matplotlib_backend']
         default_show: bool = _DEFAULTS['plotting']['default_show']
         default_save_path: str | None = _DEFAULTS['plotting']['default_save_path']
         default_engine: Literal['plotly', 'matplotlib'] = _DEFAULTS['plotting']['default_engine']
@@ -282,7 +302,9 @@ class CONFIG:
         )
 
         # Apply plotting configuration
-        _apply_plotting_config(renderer=cls.Plotting.renderer)
+        _apply_plotting_config(
+            plotly_renderer=cls.Plotting.plotly_renderer, matplotlib_backend=cls.Plotting.matplotlib_backend
+        )
 
     @classmethod
     def load_from_file(cls, config_file: str | Path):
@@ -364,7 +386,8 @@ class CONFIG:
                 'big_binary_bound': cls.Modeling.big_binary_bound,
             },
             'plotting': {
-                'renderer': cls.Plotting.renderer,
+                'plotly_renderer': cls.Plotting.plotly_renderer,
+                'matplotlib_backend': cls.Plotting.matplotlib_backend,
                 'default_show': cls.Plotting.default_show,
                 'default_save_path': cls.Plotting.default_save_path,
                 'default_engine': cls.Plotting.default_engine,
@@ -638,20 +661,42 @@ def _setup_logging(
         logger.addHandler(logging.NullHandler())
 
 
-def _apply_plotting_config(renderer: str | None = 'browser') -> None:
-    """Apply plotting configuration to plotly.
+def _apply_plotting_config(
+    plotly_renderer: Literal['browser', 'notebook', 'svg', 'png', 'pdf', 'jpeg', 'json', 'plotly_mimetype']
+    | None = 'browser',
+    matplotlib_backend: Literal[
+        'TkAgg', 'Qt5Agg', 'QtAgg', 'WXAgg', 'Agg', 'Cairo', 'PDF', 'PS', 'SVG', 'WebAgg', 'module://backend_interagg'
+    ]
+    | None = None,
+) -> None:
+    """Apply plotting configuration to plotly and matplotlib.
 
     Args:
-        renderer: Plotly renderer to use. Options: 'browser', 'notebook', 'svg', 'png', 'pdf', or None.
+        plotly_renderer: Plotly renderer to use.
+        matplotlib_backend: Matplotlib backend to use. If None, the existing backend is not changed.
     """
+    # Configure Plotly renderer
     try:
         import plotly.io as pio
 
-        if renderer is not None:
-            pio.renderers.default = renderer
+        if plotly_renderer is not None:
+            pio.renderers.default = plotly_renderer
     except ImportError:
         # Plotly not installed, skip configuration
         pass
+
+    # Configure Matplotlib backend
+    if matplotlib_backend is not None:
+        try:
+            import matplotlib
+
+            # Only set backend if it's different from current
+            current_backend = matplotlib.get_backend()
+            if current_backend != matplotlib_backend:
+                matplotlib.use(matplotlib_backend, force=True)
+        except ImportError:
+            # Matplotlib not installed, skip configuration
+            pass
 
 
 def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
