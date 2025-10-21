@@ -230,7 +230,7 @@ if __name__ == '__main__':
     ).update_layout(barmode='group').write_html('results/Total Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]),
+        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]).to_xarray(),
         mode='stacked_bar',
     ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
         'results/Speed Comparison.html'
