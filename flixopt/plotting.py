@@ -208,6 +208,7 @@ class ColorProcessor:
         """
         if self.engine == 'plotly':
             # First try qualitative color sequences (Dark24, Plotly, Set1, etc.)
+            colormap_name = colormap_name.title()
             if hasattr(px.colors.qualitative, colormap_name):
                 color_list = getattr(px.colors.qualitative, colormap_name)
                 # Cycle through colors if we need more than available
