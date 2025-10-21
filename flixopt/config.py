@@ -66,6 +66,8 @@ _DEFAULTS = MappingProxyType(
                 'default_figure_width': None,
                 'default_figure_height': None,
                 'default_facet_cols': 3,
+                'default_continuous_colorscale': 'viridis',
+                'default_categorical_colormap': 'auto',
             }
         ),
     }
@@ -213,6 +215,8 @@ class CONFIG:
             default_figure_width: Default plot width in pixels.
             default_figure_height: Default plot height in pixels.
             default_facet_cols: Default number of columns for faceted plots.
+            default_continuous_colorscale: Default colorscale for heatmaps and continuous data.
+            default_categorical_colormap: Default colormap for categorical plots (bar/line/area charts).
 
         Examples:
             ```python
@@ -222,10 +226,12 @@ class CONFIG:
             CONFIG.Plotting.matplotlib_backend = 'TkAgg'
             CONFIG.apply()
 
-            # Configure default export settings
+            # Configure default export and color settings
             CONFIG.Plotting.default_dpi = 600
             CONFIG.Plotting.default_figure_width = 1200
             CONFIG.Plotting.default_figure_height = 800
+            CONFIG.Plotting.default_continuous_colorscale = 'plasma'
+            CONFIG.Plotting.default_categorical_colormap = 'Dark24'
             CONFIG.apply()
             ```
         """
@@ -272,6 +278,8 @@ class CONFIG:
         default_figure_width: int | None = _DEFAULTS['plotting']['default_figure_width']
         default_figure_height: int | None = _DEFAULTS['plotting']['default_figure_height']
         default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
+        default_continuous_colorscale: str = _DEFAULTS['plotting']['default_continuous_colorscale']
+        default_categorical_colormap: str | Literal['auto'] = _DEFAULTS['plotting']['default_categorical_colormap']
 
     config_name: str = _DEFAULTS['config_name']
 
@@ -431,6 +439,8 @@ class CONFIG:
                 'default_figure_width': cls.Plotting.default_figure_width,
                 'default_figure_height': cls.Plotting.default_figure_height,
                 'default_facet_cols': cls.Plotting.default_facet_cols,
+                'default_continuous_colorscale': cls.Plotting.default_continuous_colorscale,
+                'default_categorical_colormap': cls.Plotting.default_categorical_colormap,
             },
         }
 

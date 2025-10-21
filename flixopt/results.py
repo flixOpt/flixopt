@@ -754,7 +754,7 @@ class CalculationResults:
         variable_name: str | list[str],
         save: bool | pathlib.Path = False,
         show: bool | None = None,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
@@ -786,7 +786,8 @@ class CalculationResults:
                 with a new 'variable' dimension.
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
-            colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
+            colors: Color scheme for the heatmap (default: None uses CONFIG.Plotting.default_continuous_colorscale).
+                See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
                 Applied BEFORE faceting/animation/reshaping.
@@ -1059,7 +1060,7 @@ class _NodeResults(_ElementResults):
         self,
         save: bool | pathlib.Path = False,
         show: bool | None = None,
-        colors: plotting.ColorType | Literal['auto'] = 'auto',
+        colors: plotting.ColorType | Literal['auto'] | None = 'auto',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
@@ -1079,7 +1080,8 @@ class _NodeResults(_ElementResults):
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. Options:
-                - 'auto' (default): Use `self.color_manager` if configured, else fall back to 'viridis'
+                - 'auto' (default): Use `self.color_manager` if configured, else fall back to CONFIG.Plotting.default_categorical_colormap
+                - None: Uses CONFIG.Plotting.default_categorical_colormap
                 - Colormap name string (e.g., 'viridis', 'plasma')
                 - List of color strings
                 - Dict mapping variable names to colors
@@ -1202,11 +1204,15 @@ class _NodeResults(_ElementResults):
 
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
+        # Apply CONFIG default if colors is None
+        if colors is None:
+            colors = CONFIG.Plotting.default_categorical_colormap
+
         # Resolve colors to a dict (handles auto, mapper, etc.)
         colors_to_use = (
             self._calculation_results.color_manager
             if colors == 'auto' and self._calculation_results.color_manager is not None
-            else 'viridis'
+            else CONFIG.Plotting.default_categorical_colormap
             if colors == 'auto'
             else colors
         )
@@ -1262,7 +1268,7 @@ class _NodeResults(_ElementResults):
     def plot_node_balance_pie(
         self,
         lower_percentage_group: float = 5,
-        colors: plotting.ColorType | Literal['auto'] = 'auto',
+        colors: plotting.ColorType | Literal['auto'] | None = 'auto',
         text_info: str = 'percent+label+value',
         save: bool | pathlib.Path = False,
         show: bool | None = None,
@@ -1283,7 +1289,8 @@ class _NodeResults(_ElementResults):
 
         Args:
             lower_percentage_group: Percentage threshold for "Others" grouping.
-            colors: Color scheme. Also see plotly.
+            colors: Color scheme (default: 'auto' uses color_manager if configured,
+                else falls back to CONFIG.Plotting.default_categorical_colormap).
             text_info: Information to display on pie slices.
             save: Whether to save plot.
             show: Whether to display plot.
@@ -1399,7 +1406,7 @@ class _NodeResults(_ElementResults):
         colors_to_use = (
             self._calculation_results.color_manager
             if colors == 'auto' and self._calculation_results.color_manager is not None
-            else 'viridis'
+            else CONFIG.Plotting.default_categorical_colormap
             if colors == 'auto'
             else colors
         )
@@ -1539,7 +1546,7 @@ class ComponentResults(_NodeResults):
         self,
         save: bool | pathlib.Path = False,
         show: bool | None = None,
-        colors: plotting.ColorType | Literal['auto'] = 'auto',
+        colors: plotting.ColorType | Literal['auto'] | None = 'auto',
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'area',
         select: dict[FlowSystemDimensions, Any] | None = None,
@@ -1555,7 +1562,8 @@ class ComponentResults(_NodeResults):
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
-            colors: Color scheme. Also see plotly.
+            colors: Color scheme (default: 'auto' uses color_manager if configured,
+                else falls back to CONFIG.Plotting.default_categorical_colormap).
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
@@ -1654,7 +1662,7 @@ class ComponentResults(_NodeResults):
         colors_to_use = (
             self._calculation_results.color_manager
             if colors == 'auto' and self._calculation_results.color_manager is not None
-            else 'viridis'
+            else CONFIG.Plotting.default_categorical_colormap
             if colors == 'auto'
             else colors
         )
@@ -2081,7 +2089,7 @@ class SegmentedCalculationResults:
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
         | None = 'auto',
-        colors: str = 'portland',
+        colors: str | None = None,
         save: bool | pathlib.Path = False,
         show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
@@ -2103,7 +2111,8 @@ class SegmentedCalculationResults:
                 - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
                 - Tuple like ('D', 'h'): Explicit reshaping (days vs hours)
                 - None: Disable time reshaping
-            colors: Color scheme. See plotting.ColorType for options.
+            colors: Color scheme (default: None uses CONFIG.Plotting.default_continuous_colorscale).
+                See plotting.ColorType for options.
             save: Whether to save plot.
             show: Whether to display plot.
             engine: Plotting engine.
@@ -2152,7 +2161,7 @@ class SegmentedCalculationResults:
 
         if color_map is not None:
             # Check for conflict with new parameter
-            if colors != 'portland':  # Check if user explicitly set colors
+            if colors is not None:  # Check if user explicitly set colors
                 raise ValueError(
                     "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
                 )
@@ -2212,7 +2221,7 @@ def plot_heatmap(
     data: xr.DataArray | xr.Dataset,
     name: str | None = None,
     folder: pathlib.Path | None = None,
-    colors: plotting.ColorType = 'viridis',
+    colors: plotting.ColorType | None = None,
     save: bool | pathlib.Path = False,
     show: bool | None = None,
     engine: plotting.PlottingEngine = 'plotly',
@@ -2242,7 +2251,8 @@ def plot_heatmap(
         name: Optional name for the title. If not provided, uses the DataArray name or
             generates a default title for Datasets.
         folder: Save folder for the plot. Defaults to current directory if not provided.
-        colors: Color scheme for the heatmap. See `flixopt.plotting.ColorType` for options.
+        colors: Color scheme for the heatmap (default: None uses CONFIG.Plotting.default_continuous_colorscale).
+            See `flixopt.plotting.ColorType` for options.
         save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
         show: Whether to show the plot or not.
         engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
@@ -2301,7 +2311,7 @@ def plot_heatmap(
     # Handle deprecated color_map parameter
     if color_map is not None:
         # Check for conflict with new parameter
-        if colors != 'viridis':  # User explicitly set colors
+        if colors is not None:  # User explicitly set colors
             raise ValueError(
                 "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
             )
@@ -2384,8 +2394,12 @@ def plot_heatmap(
         timeframes, timesteps_per_frame = reshape_time
         title += f' ({timeframes} vs {timesteps_per_frame})'
 
+    # Apply CONFIG default if colors is None
+    if colors is None:
+        colors = CONFIG.Plotting.default_continuous_colorscale
+
     # Extract dpi before passing to plotting functions
-    dpi = plot_kwargs.pop('dpi', 300)
+    dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
     # Plot with appropriate engine
     if engine == 'plotly':
