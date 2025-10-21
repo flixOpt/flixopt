@@ -1557,6 +1557,7 @@ class ComponentResults(_NodeResults):
             for trace in charge_state_fig.data:
                 trace.line.width = 2  # Make charge_state line more prominent
                 trace.line.shape = 'linear'  # Smooth line for charge state (not stepped like flows)
+                trace.line.color = 'black'
                 figure_like.add_trace(trace)
 
             # Also add traces from animation frames if they exist
