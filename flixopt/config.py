@@ -66,8 +66,8 @@ _DEFAULTS = MappingProxyType(
                 'default_figure_width': None,
                 'default_figure_height': None,
                 'default_facet_cols': 3,
-                'default_continuous_colorscale': 'viridis',
-                'default_categorical_colormap': 'auto',
+                'default_sequential_colorscale': 'viridis',
+                'default_qualitative_colorscale': 'dark24',
             }
         ),
     }
@@ -77,28 +77,28 @@ _DEFAULTS = MappingProxyType(
 class CONFIG:
     """Configuration for flixopt library.
 
-    Always call ``CONFIG.apply()`` after changes.
+        Always call ``CONFIG.apply()`` after changes.
+    c
+        Attributes:
+            Logging: Logging configuration.
+            Modeling: Optimization modeling parameters.
+            config_name: Configuration name.
 
-    Attributes:
-        Logging: Logging configuration.
-        Modeling: Optimization modeling parameters.
-        config_name: Configuration name.
+        Examples:
+            ```python
+            CONFIG.Logging.console = True
+            CONFIG.Logging.level = 'DEBUG'
+            CONFIG.apply()
+            ```
 
-    Examples:
-        ```python
-        CONFIG.Logging.console = True
-        CONFIG.Logging.level = 'DEBUG'
-        CONFIG.apply()
-        ```
+            Load from YAML file:
 
-        Load from YAML file:
-
-        ```yaml
-        logging:
-          level: DEBUG
-          console: true
-          file: app.log
-        ```
+            ```yaml
+            logging:
+              level: DEBUG
+              console: true
+              file: app.log
+            ```
     """
 
     class Logging:
@@ -215,8 +215,8 @@ class CONFIG:
             default_figure_width: Default plot width in pixels.
             default_figure_height: Default plot height in pixels.
             default_facet_cols: Default number of columns for faceted plots.
-            default_continuous_colorscale: Default colorscale for heatmaps and continuous data.
-            default_categorical_colormap: Default colormap for categorical plots (bar/line/area charts).
+            default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
+            default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
 
         Examples:
             ```python
@@ -230,8 +230,8 @@ class CONFIG:
             CONFIG.Plotting.default_dpi = 600
             CONFIG.Plotting.default_figure_width = 1200
             CONFIG.Plotting.default_figure_height = 800
-            CONFIG.Plotting.default_continuous_colorscale = 'plasma'
-            CONFIG.Plotting.default_categorical_colormap = 'Dark24'
+            CONFIG.Plotting.default_sequential_colorscale = 'plasma'
+            CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
             CONFIG.apply()
             ```
         """
@@ -278,8 +278,8 @@ class CONFIG:
         default_figure_width: int | None = _DEFAULTS['plotting']['default_figure_width']
         default_figure_height: int | None = _DEFAULTS['plotting']['default_figure_height']
         default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
-        default_continuous_colorscale: str = _DEFAULTS['plotting']['default_continuous_colorscale']
-        default_categorical_colormap: str | Literal['auto'] = _DEFAULTS['plotting']['default_categorical_colormap']
+        default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
+        default_qualitative_colorscale: str | Literal['auto'] = _DEFAULTS['plotting']['default_qualitative_colorscale']
 
     config_name: str = _DEFAULTS['config_name']
 
@@ -439,8 +439,8 @@ class CONFIG:
                 'default_figure_width': cls.Plotting.default_figure_width,
                 'default_figure_height': cls.Plotting.default_figure_height,
                 'default_facet_cols': cls.Plotting.default_facet_cols,
-                'default_continuous_colorscale': cls.Plotting.default_continuous_colorscale,
-                'default_categorical_colormap': cls.Plotting.default_categorical_colormap,
+                'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
+                'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
             },
         }
 

@@ -21,6 +21,7 @@ except ImportError:
     TSAM_AVAILABLE = False
 
 from .components import Storage
+from .config import CONFIG
 from .structure import (
     FlowSystemModel,
     Submodel,
@@ -141,7 +142,7 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
+    def plot(self, colormap: str | None = None, show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
         from . import plotting
 
         df_org = self.original_data.copy().rename(
@@ -150,10 +151,20 @@ class Aggregation:
         df_agg = self.aggregated_data.copy().rename(
             columns={col: f'Aggregated - {col}' for col in self.aggregated_data.columns}
         )
-        fig = plotting.with_plotly(df_org.to_xarray(), 'line', colors=colormap, xlabel='Time in h')
+        fig = plotting.with_plotly(
+            df_org.to_xarray(),
+            'line',
+            colors=colormap or CONFIG.Plotting.default_qualitative_colorscale,
+            xlabel='Time in h',
+        )
         for trace in fig.data:
             trace.update(dict(line=dict(dash='dash')))
-        fig2 = plotting.with_plotly(df_agg.to_xarray(), 'line', colors=colormap, xlabel='Time in h')
+        fig2 = plotting.with_plotly(
+            df_agg.to_xarray(),
+            'line',
+            colors=colormap or CONFIG.Plotting.default_qualitative_colorscale,
+            xlabel='Time in h',
+        )
         for trace in fig2.data:
             fig.add_trace(trace)
 

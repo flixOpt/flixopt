@@ -786,7 +786,7 @@ class CalculationResults:
                 with a new 'variable' dimension.
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
-            colors: Color scheme for the heatmap (default: None uses CONFIG.Plotting.default_continuous_colorscale).
+            colors: Color scheme for the heatmap (default: None uses CONFIG.Plotting.default_sequential_colorscale).
                 See `flixopt.plotting.ColorType` for options.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
@@ -1080,8 +1080,8 @@ class _NodeResults(_ElementResults):
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. Options:
-                - 'auto' (default): Use `self.color_manager` if configured, else fall back to CONFIG.Plotting.default_categorical_colormap
-                - None: Uses CONFIG.Plotting.default_categorical_colormap
+                - 'auto' (default): Use `self.color_manager` if configured, else fall back to CONFIG.Plotting.default_qualitative_colorscale
+                - None: Uses CONFIG.Plotting.default_qualitative_colorscale
                 - Colormap name string (e.g., 'viridis', 'plasma')
                 - List of color strings
                 - Dict mapping variable names to colors
@@ -1206,13 +1206,13 @@ class _NodeResults(_ElementResults):
 
         # Apply CONFIG default if colors is None
         if colors is None:
-            colors = CONFIG.Plotting.default_categorical_colormap
+            colors = CONFIG.Plotting.default_qualitative_colorscale
 
         # Resolve colors to a dict (handles auto, mapper, etc.)
         colors_to_use = (
             self._calculation_results.color_manager
             if colors == 'auto' and self._calculation_results.color_manager is not None
-            else CONFIG.Plotting.default_categorical_colormap
+            else CONFIG.Plotting.default_qualitative_colorscale
             if colors == 'auto'
             else colors
         )
@@ -1290,7 +1290,7 @@ class _NodeResults(_ElementResults):
         Args:
             lower_percentage_group: Percentage threshold for "Others" grouping.
             colors: Color scheme (default: 'auto' uses color_manager if configured,
-                else falls back to CONFIG.Plotting.default_categorical_colormap).
+                else falls back to CONFIG.Plotting.default_qualitative_colorscale).
             text_info: Information to display on pie slices.
             save: Whether to save plot.
             show: Whether to display plot.
@@ -1406,7 +1406,7 @@ class _NodeResults(_ElementResults):
         colors_to_use = (
             self._calculation_results.color_manager
             if colors == 'auto' and self._calculation_results.color_manager is not None
-            else CONFIG.Plotting.default_categorical_colormap
+            else CONFIG.Plotting.default_qualitative_colorscale
             if colors == 'auto'
             else colors
         )
@@ -1563,7 +1563,7 @@ class ComponentResults(_NodeResults):
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             colors: Color scheme (default: 'auto' uses color_manager if configured,
-                else falls back to CONFIG.Plotting.default_categorical_colormap).
+                else falls back to CONFIG.Plotting.default_qualitative_colorscale).
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
@@ -1662,7 +1662,7 @@ class ComponentResults(_NodeResults):
         colors_to_use = (
             self._calculation_results.color_manager
             if colors == 'auto' and self._calculation_results.color_manager is not None
-            else CONFIG.Plotting.default_categorical_colormap
+            else CONFIG.Plotting.default_qualitative_colorscale
             if colors == 'auto'
             else colors
         )
@@ -2111,7 +2111,7 @@ class SegmentedCalculationResults:
                 - 'auto': Automatically applies ('D', 'h') when only 'time' dimension remains
                 - Tuple like ('D', 'h'): Explicit reshaping (days vs hours)
                 - None: Disable time reshaping
-            colors: Color scheme (default: None uses CONFIG.Plotting.default_continuous_colorscale).
+            colors: Color scheme (default: None uses CONFIG.Plotting.default_sequential_colorscale).
                 See plotting.ColorType for options.
             save: Whether to save plot.
             show: Whether to display plot.
@@ -2251,7 +2251,7 @@ def plot_heatmap(
         name: Optional name for the title. If not provided, uses the DataArray name or
             generates a default title for Datasets.
         folder: Save folder for the plot. Defaults to current directory if not provided.
-        colors: Color scheme for the heatmap (default: None uses CONFIG.Plotting.default_continuous_colorscale).
+        colors: Color scheme for the heatmap (default: None uses CONFIG.Plotting.default_sequential_colorscale).
             See `flixopt.plotting.ColorType` for options.
         save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
         show: Whether to show the plot or not.
@@ -2396,7 +2396,7 @@ def plot_heatmap(
 
     # Apply CONFIG default if colors is None
     if colors is None:
-        colors = CONFIG.Plotting.default_continuous_colorscale
+        colors = CONFIG.Plotting.default_sequential_colorscale
 
     # Extract dpi before passing to plotting functions
     dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
