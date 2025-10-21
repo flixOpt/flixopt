@@ -578,6 +578,112 @@ class TestStringRepresentation:
         assert 'Overrides: 0' in str_output
 
 
+class TestCaching:
+    """Test caching functionality."""
+
+    def test_cache_stores_variable_colors(self):
+        """Test that cache stores variable-to-color mappings."""
+        components = ['Solar_PV', 'Wind_Onshore']
+        manager = ComponentColorManager(components)
+
+        # Cache should be empty initially
+        assert len(manager._variable_cache) == 0
+
+        # Get color for variable
+        variable = 'Solar_PV(Bus)|flow_rate'
+        color = manager.get_variable_color(variable)
+
+        # Cache should now contain the variable
+        assert len(manager._variable_cache) == 1
+        assert variable in manager._variable_cache
+        assert manager._variable_cache[variable] == color
+
+    def test_cache_reuses_stored_colors(self):
+        """Test that subsequent calls use cached colors."""
+        components = ['Solar_PV']
+        manager = ComponentColorManager(components)
+
+        variable = 'Solar_PV(Bus)|flow_rate'
+
+        # First call
+        color1 = manager.get_variable_color(variable)
+
+        # Second call should return same color from cache
+        color2 = manager.get_variable_color(variable)
+
+        assert color1 == color2
+        assert len(manager._variable_cache) == 1
+
+    def test_cache_cleared_on_auto_group_components(self):
+        """Test that cache is cleared when auto_group_components is called."""
+        components = ['Solar_PV', 'Wind_Onshore']
+        manager = ComponentColorManager(components)
+
+        # Populate cache
+        manager.get_variable_color('Solar_PV(Bus)|flow_rate')
+        manager.get_variable_color('Wind_Onshore(Bus)|flow_rate')
+        assert len(manager._variable_cache) == 2
+
+        # Call auto_group_components
+        manager.auto_group_components()
+
+        # Cache should be cleared
+        assert len(manager._variable_cache) == 0
+
+    def test_cache_cleared_on_override(self):
+        """Test that cache is cleared when override is called."""
+        components = ['Solar_PV', 'Wind_Onshore']
+        manager = ComponentColorManager(components)
+
+        # Populate cache
+        manager.get_variable_color('Solar_PV(Bus)|flow_rate')
+        manager.get_variable_color('Wind_Onshore(Bus)|flow_rate')
+        assert len(manager._variable_cache) == 2
+
+        # Call override
+        manager.override({'Solar_PV': '#FF0000'})
+
+        # Cache should be cleared
+        assert len(manager._variable_cache) == 0
+
+    def test_cache_returns_updated_colors_after_override(self):
+        """Test that cache returns new colors after override."""
+        components = ['Solar_PV']
+        manager = ComponentColorManager(components)
+
+        variable = 'Solar_PV(Bus)|flow_rate'
+
+        # Get original color
+        color_before = manager.get_variable_color(variable)
+
+        # Override color
+        manager.override({'Solar_PV': '#FF0000'})
+
+        # Get new color (cache was cleared, so this will recompute)
+        color_after = manager.get_variable_color(variable)
+
+        assert color_before != color_after
+        assert color_after == '#FF0000'
+
+    def test_get_variable_colors_populates_cache(self):
+        """Test that get_variable_colors populates cache."""
+        components = ['Solar_PV', 'Wind_Onshore', 'Coal_Plant']
+        manager = ComponentColorManager(components)
+
+        variables = ['Solar_PV(Bus)|flow_rate', 'Wind_Onshore(Bus)|flow_rate', 'Coal_Plant(Bus)|flow_rate']
+
+        # Cache should be empty
+        assert len(manager._variable_cache) == 0
+
+        # Get colors for all variables
+        manager.get_variable_colors(variables)
+
+        # Cache should now contain all variables
+        assert len(manager._variable_cache) == 3
+        for var in variables:
+            assert var in manager._variable_cache
+
+
 class TestMethodChaining:
     """Test method chaining."""
 
