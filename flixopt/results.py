@@ -1192,7 +1192,7 @@ class _NodeResults(_ElementResults):
         dpi = plot_kwargs.pop('dpi', 300)
 
         # Don't pass select/indexer to node_balance - we'll apply it afterwards
-        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
+        ds = self.node_balance(with_last_timestep=False, unit_type=unit_type, drop_suffix=drop_suffix)
 
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
@@ -1630,7 +1630,7 @@ class ComponentResults(_NodeResults):
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
         # Get node balance and charge state
-        ds = self.node_balance(with_last_timestep=True)
+        ds = self.node_balance(with_last_timestep=True).fillna(0)
         charge_state_da = self.charge_state
 
         # Apply select filtering
