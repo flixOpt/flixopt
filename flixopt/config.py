@@ -279,7 +279,7 @@ class CONFIG:
         default_figure_height: int | None = _DEFAULTS['plotting']['default_figure_height']
         default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
-        default_qualitative_colorscale: str | Literal['auto'] = _DEFAULTS['plotting']['default_qualitative_colorscale']
+        default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
 
     config_name: str = _DEFAULTS['config_name']
 
