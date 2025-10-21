@@ -1158,6 +1158,7 @@ class _NodeResults(_ElementResults):
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
+                xlabel='Time in h',
             )
             default_filetype = '.html'
         else:
@@ -1533,6 +1534,7 @@ class ComponentResults(_NodeResults):
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
+                xlabel='Time in h',
             )
 
             # Prepare charge_state as Dataset for plotting
@@ -1547,6 +1549,7 @@ class ComponentResults(_NodeResults):
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
+                xlabel='Time in h',
             )
 
             # Add charge_state traces to the main figure

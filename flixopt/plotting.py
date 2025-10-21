@@ -762,7 +762,7 @@ def with_plotly(
     colors: ColorType | XarrayColorMapper = 'viridis',
     title: str = '',
     ylabel: str = '',
-    xlabel: str = 'Time in h',
+    xlabel: str = '',
     fig: go.Figure | None = None,
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
@@ -883,7 +883,6 @@ def with_plotly(
                 ]
             )
 
-        # Update layout
         fig.update_layout(title=title, xaxis_title=xlabel, yaxis_title=ylabel, showlegend=False)
         return fig
 
@@ -1139,7 +1138,6 @@ def with_matplotlib(
                 ax.set_xticks(range(len(variables)))
                 ax.set_xticklabels(variables)
 
-        # Aesthetics
         ax.set_xlabel(xlabel, ha='center')
         ax.set_ylabel(ylabel, va='center')
         ax.set_title(title)
