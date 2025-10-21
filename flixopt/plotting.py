@@ -406,7 +406,7 @@ class ComponentColorManager:
         'darkmint': px.colors.sequential.Darkmint[1:8],
     }
 
-    def __init__(self, components: list[str], default_colormap: str = 'viridis') -> None:
+    def __init__(self, components: list[str], default_colormap: str = 'Plotly') -> None:
         """Initialize component color manager.
 
         Args:
@@ -706,27 +706,28 @@ class ComponentColorManager:
         return False
 
     def _get_colormap_colors(self, colormap_name: str) -> list[str]:
-        """Get list of colors from colormap name.
+        """Get list of colors from colormap name."""
 
-        Args:
-            colormap_name: Name of colormap ('reds', 'blues', 'tab10', 'viridis', etc.)
-
-        Returns:
-            List of hex color strings
-        """
-        # Check if it's a known family
+        # Check custom families first
         if colormap_name in self.color_families:
             return self.color_families[colormap_name]
 
-        # Otherwise use ColorProcessor to generate from matplotlib/plotly colormaps
+        # Try qualitative palettes (best for discrete components)
+        if hasattr(px.colors.qualitative, colormap_name.title()):
+            return getattr(px.colors.qualitative, colormap_name.title())
+
+        # Try sequential palettes
+        if hasattr(px.colors.sequential, colormap_name.title()):
+            return getattr(px.colors.sequential, colormap_name.title())
+
+        # Fall back to ColorProcessor for matplotlib colormaps
         processor = ColorProcessor(engine='plotly')
         try:
             colors = processor._generate_colors_from_colormap(colormap_name, 10)
             return colors
         except Exception:
-            # Fallback to greys if colormap not found
-            logger.warning(f"Colormap '{colormap_name}' not found, using 'greys' instead")
-            return self.color_families['greys']
+            logger.warning(f"Colormap '{colormap_name}' not found, using 'Plotly' instead")
+            return px.colors.qualitative.Plotly
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
