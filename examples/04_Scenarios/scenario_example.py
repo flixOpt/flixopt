@@ -8,6 +8,8 @@ import pandas as pd
 import flixopt as fx
 
 if __name__ == '__main__':
+    fx.CONFIG.Plotting.default_show = True
+    fx.CONFIG.apply()
     # Create datetime array starting from '2020-01-01' for one week
     timesteps = pd.date_range('2020-01-01', periods=24 * 7, freq='h')
     scenarios = pd.Index(['Base Case', 'High Demand'])
@@ -195,6 +197,8 @@ if __name__ == '__main__':
 
     # --- Solve the Calculation and Save Results ---
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
+
+    calculation.results.setup_colors()
 
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 

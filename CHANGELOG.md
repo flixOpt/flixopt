@@ -63,6 +63,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### ♻️ Changed
 - Plotting methods now use `color_manager` by default if configured
 - Color management implementation simplified: Uses explicit component grouping instead of pattern matching for better clarity and maintainability (65% code reduction)
+- Consolidated colormap lookup logic: `ComponentColorManager` now delegates to `ColorProcessor` for consistent colormap handling across the codebase
 
 ### 🗑️ Deprecated
 

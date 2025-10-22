@@ -837,40 +837,22 @@ class ComponentColorManager:
         return config
 
     def _sample_colors_from_colorscale(self, colorscale_name: str, num_colors: int) -> list[str]:
-        """Sample N colors from a colorscale (cycling if needed)."""
+        """Sample N colors from a colorscale (cycling if needed).
 
-        # Get the base colorscale
-        color_list = None
-
-        # 1. Check custom families first
+        Delegates to ColorProcessor for consistent colormap handling across the codebase.
+        """
+        # Check custom families first (ComponentColorManager-specific feature)
         if colorscale_name in self.color_families:
             color_list = self.color_families[colorscale_name]
+            # Cycle through colors if needed
+            if len(color_list) >= num_colors:
+                return color_list[:num_colors]
+            else:
+                return [color_list[i % len(color_list)] for i in range(num_colors)]
 
-        # 2. Try qualitative palettes (best for discrete components)
-        elif hasattr(px.colors.qualitative, colorscale_name.title()):
-            color_list = getattr(px.colors.qualitative, colorscale_name.title())
-
-        # 3. Try sequential palettes
-        elif hasattr(px.colors.sequential, colorscale_name.title()):
-            color_list = getattr(px.colors.sequential, colorscale_name.title())
-
-        # 4. Fall back to ColorProcessor for other colormaps
-        else:
-            processor = ColorProcessor(engine='plotly')
-            try:
-                color_list = processor._generate_colors_from_colormap(colorscale_name, max(num_colors, 10))
-            except Exception:
-                logger.warning(f"Colormap '{colorscale_name}' not found, using default instead")
-                default_title = CONFIG.Plotting.default_qualitative_colorscale.title()
-                color_list = getattr(px.colors.qualitative, default_title)
-
-        # Sample/cycle to get exactly num_colors
-        if len(color_list) >= num_colors:
-            # Take first N colors if we have enough
-            return color_list[:num_colors]
-        else:
-            # Cycle through colors if we need more than available
-            return [color_list[i % len(color_list)] for i in range(num_colors)]
+        # Delegate everything else to ColorProcessor (handles qualitative, sequential, fallbacks, cycling)
+        processor = ColorProcessor(engine='plotly', default_colorscale=self.default_colorscale)
+        return processor._generate_colors_from_colormap(colorscale_name, num_colors)
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
