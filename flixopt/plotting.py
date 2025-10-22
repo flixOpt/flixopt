@@ -446,22 +446,23 @@ class ComponentColorManager:
         ```
     """
 
-    # Class-level colorscale family defaults (Plotly sequential palettes)
+    # Class-level colorscale family defaults (Plotly sequential palettes, reversed)
+    # Reversed so darker colors come first when assigning to components
     DEFAULT_FAMILIES = {
-        'blues': px.colors.sequential.Blues[7:2],
-        'greens': px.colors.sequential.Greens[7:2],
-        'reds': px.colors.sequential.Reds[7:2],
-        'purples': px.colors.sequential.Purples[7:2],
-        'oranges': px.colors.sequential.Oranges[7:2],
-        'teals': px.colors.sequential.Teal[7:2],
-        'greys': px.colors.sequential.Greys[7:2],
-        'pinks': px.colors.sequential.Pinkyl[7:2],
-        'peach': px.colors.sequential.Peach[7:2],
-        'burg': px.colors.sequential.Burg[7:2],
-        'sunsetdark': px.colors.sequential.Sunsetdark[7:2],
-        'mint': px.colors.sequential.Mint[7:2],
-        'emrld': px.colors.sequential.Emrld[7:2],
-        'darkmint': px.colors.sequential.Darkmint[7:2],
+        'blues': px.colors.sequential.Blues[7:0:-1],
+        'greens': px.colors.sequential.Greens[7:0:-1],
+        'reds': px.colors.sequential.Reds[7:0:-1],
+        'purples': px.colors.sequential.Purples[7:0:-1],
+        'oranges': px.colors.sequential.Oranges[7:0:-1],
+        'teals': px.colors.sequential.Teal[7:0:-1],
+        'greys': px.colors.sequential.Greys[7:0:-1],
+        'pinks': px.colors.sequential.Pinkyl[7:0:-1],
+        'peach': px.colors.sequential.Peach[7:0:-1],
+        'burg': px.colors.sequential.Burg[7:0:-1],
+        'sunsetdark': px.colors.sequential.Sunsetdark[7:0:-1],
+        'mint': px.colors.sequential.Mint[7:0:-1],
+        'emrld': px.colors.sequential.Emrld[7:0:-1],
+        'darkmint': px.colors.sequential.Darkmint[7:0:-1],
     }
 
     def __init__(
