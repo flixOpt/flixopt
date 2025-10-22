@@ -587,10 +587,15 @@ class ComponentColorManager:
         self.color_families[name] = colors
         return self
 
-    def add_rule(self, pattern: str, colormap: str) -> ComponentColorManager:
-        """Add color rule with auto-detected match type (simplified API).
+    def add_rule(
+        self, pattern: str, colormap: str, match_type: MatchType | None = None, group_name: str | None = None
+    ) -> ComponentColorManager:
+        """Add color rule with optional auto-detection (flexible API).
 
-        Automatically detects the matching strategy from pattern syntax:
+        By default, automatically detects the matching strategy from pattern syntax.
+        Optionally override with explicit match_type and group_name for full control.
+
+        Auto-detection rules:
             - 'Solar' → prefix matching
             - 'Solar*' → glob matching
             - '~Storage' → contains matching (strip ~)
@@ -600,21 +605,38 @@ class ComponentColorManager:
         Colors are automatically applied after adding the rule.
 
         Args:
-            pattern: Pattern to match components (auto-detects match type)
-            colormap: Colormap name ('reds', 'blues', 'greens', etc.)
+            pattern: Pattern to match components
+            colormap: Colormap name ('reds', 'blues', 'greens', etc.')
+            match_type: Optional explicit match type. If None (default), auto-detects from pattern.
+                Options: 'prefix', 'suffix', 'contains', 'glob', 'regex'
+            group_name: Optional group name for organization. If None, auto-generates from pattern.
 
         Returns:
             Self for method chaining
 
         Examples:
-            Simple patterns:
+            Simple auto-detection (most common):
 
             ```python
-            manager.add_rule('Solar', 'oranges')         # Matches Solar, Solar1, Solar2, ...
-            manager.add_rule('Wind*', 'blues')           # Glob: Wind1, WindPark, ...
-            manager.add_rule('~Storage', 'greens')       # Contains: Storage, BatteryStorage, ...
-            manager.add_rule('Gas$', 'reds')             # Suffix: NaturalGas, BiogasGas
-            manager.add_rule('.*Battery.*', 'teals')     # Regex: Any with 'Battery'
+            manager.add_rule('Solar', 'oranges')         # Auto: prefix
+            manager.add_rule('Wind*', 'blues')           # Auto: glob
+            manager.add_rule('~Storage', 'greens')       # Auto: contains
+            ```
+
+            Override auto-detection when needed:
+
+            ```python
+            # Force prefix matching even though it has special chars
+            manager.add_rule('Solar*', 'oranges', match_type='prefix')
+
+            # Explicit regex when pattern is ambiguous
+            manager.add_rule('Solar.+', 'oranges', match_type='regex')
+            ```
+
+            Full explicit control:
+
+            ```python
+            manager.add_rule('Solar', 'oranges', 'prefix', 'renewables')
             ```
 
             Chained configuration:
@@ -622,40 +644,31 @@ class ComponentColorManager:
             ```python
             manager.add_rule('Solar*', 'oranges')\
                    .add_rule('Wind*', 'blues')\
-                   .add_rule('Battery', 'greens')
+                   .add_rule('Battery', 'greens', 'prefix', 'storage')
             ```
-
-        Note:
-            This is the simplified API. For explicit control over match type and group names,
-            use `add_grouping_rule()` instead.
         """
-        # Auto-detect match type
-        match_type = self._detect_match_type(pattern)
+        # Auto-detect match type if not provided
+        if match_type is None:
+            match_type = self._detect_match_type(pattern)
 
-        # Clean pattern based on detected type
+        # Clean pattern based on match type (strip special markers)
         clean_pattern = pattern
         if match_type == 'contains' and pattern.startswith('~'):
             clean_pattern = pattern[1:]  # Strip ~ prefix
-        elif match_type == 'suffix' and pattern.endswith('$'):
-            clean_pattern = pattern[:-1]  # Strip $ suffix
+        elif match_type == 'suffix' and pattern.endswith('$') and not any(c in pattern for c in r'.[]()^|+\\'):
+            clean_pattern = pattern[:-1]  # Strip $ suffix (only if not part of regex)
 
-        # Generate group name from pattern (for internal organization)
-        group_name = clean_pattern.replace('*', '').replace('?', '').replace('.', '')[:20]
+        # Auto-generate group name if not provided
+        if group_name is None:
+            group_name = clean_pattern.replace('*', '').replace('?', '').replace('.', '')[:20]
 
-        # Delegate to add_grouping_rule
-        return self.add_grouping_rule(clean_pattern, group_name, colormap, match_type)
+        # Delegate to _add_grouping_rule
+        return self._add_grouping_rule(clean_pattern, group_name, colormap, match_type)
 
-    def add_grouping_rule(
+    def _add_grouping_rule(
         self, pattern: str, group_name: str, colormap: str, match_type: MatchType = 'prefix'
     ) -> ComponentColorManager:
-        """Add pattern rule for grouping components.
-
-        .. note::
-            This is the explicit API with full control. For simpler usage, consider `add_rule()`
-            which auto-detects match_type and doesn't require group_name.
-
-        Components matching the pattern are assigned to the specified group,
-        and colors are drawn from the group's colormap.
+        """Add pattern rule for grouping components (low-level API).
 
         Args:
             pattern: Pattern to match component names against
@@ -667,25 +680,6 @@ class ComponentColorManager:
                 - 'contains': Match if pattern appears in component name
                 - 'glob': Unix wildcards (* and ?)
                 - 'regex': Regular expression matching
-
-        Returns:
-            Self for method chaining
-
-        Examples:
-            Explicit control (this method):
-
-            ```python
-            manager.add_grouping_rule('Boiler', 'Heat_Production', 'reds', 'prefix')
-            manager.add_grouping_rule('CHP', 'Heat_Production', 'oranges', 'prefix')
-            manager.add_grouping_rule('.*Storage.*', 'Storage', 'blues', 'regex')
-            ```
-
-            Simpler alternative (recommended):
-
-            ```python
-            manager.add_rule('Boiler', 'reds')  # Auto-detects prefix
-            manager.add_rule('.*Storage.*', 'blues')  # Auto-detects regex
-            ```
         """
         valid_types = ('prefix', 'suffix', 'contains', 'glob', 'regex')
         if match_type not in valid_types:
