@@ -67,7 +67,7 @@ _DEFAULTS = MappingProxyType(
                 'default_figure_height': None,
                 'default_facet_cols': 3,
                 'default_sequential_colorscale': 'turbo',
-                'default_qualitative_colorscale': 'dark24',
+                'default_qualitative_colorscale': 'plotly',
             }
         ),
     }

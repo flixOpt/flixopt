@@ -384,8 +384,7 @@ class CalculationResults:
             results.color_manager = None  # Plots use default colorscales
             ```
         """
-        if self.color_manager is None:
-            self.color_manager = plotting.ComponentColorManager.from_flow_system(self.flow_system)
+        self.color_manager = plotting.ComponentColorManager.from_flow_system(self.flow_system)
 
         # Apply configuration if provided
         if config is not None:
