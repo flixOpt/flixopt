@@ -26,12 +26,10 @@ accessible for standalone data visualization tasks.
 
 from __future__ import annotations
 
-import fnmatch
 import itertools
 import logging
 import os
 import pathlib
-import re
 from typing import TYPE_CHECKING, Any, Literal
 
 import matplotlib
@@ -46,14 +44,6 @@ import xarray as xr
 from plotly.exceptions import PlotlyError
 
 from .config import CONFIG
-
-# Optional dependency for flow-level color shading
-try:
-    from colour import Color
-
-    HAS_COLOUR = True
-except ImportError:
-    HAS_COLOUR = False
 
 if TYPE_CHECKING:
     import pyvis
@@ -406,55 +396,46 @@ class ColorProcessor:
             return color_list
 
 
-# Type aliases for ComponentColorManager
-MatchType = Literal['prefix', 'suffix', 'contains', 'glob', 'regex']
-
-
 class ComponentColorManager:
-    """Manage stable colors for flow system components with pattern-based grouping.
+    """Manage consistent colors for flow system components with explicit grouping.
 
-    This class provides component-centric color management where each component gets
-    a stable color assigned once, ensuring consistent coloring across all plots.
-    Components can be grouped using pattern matching, and each group uses a different colormap.
+    This class provides simple, explicit color management where components are either
+    assigned direct colors or grouped together to get shades from a colorscale.
 
     Key Features:
-        - **Stable colors**: Components assigned colors once based on sorted order
-        - **Pattern-based grouping**: Auto-group components using patterns (prefix, contains, regex, etc.)
+        - **Explicit grouping**: Map colorscales to component lists for clear control
+        - **Direct colors**: Assign specific colors to individual components
+        - **Stable colors**: Components assigned colors once, ensuring consistency across all plots
         - **Variable extraction**: Auto-extract component names from variable names
-        - **Flexible colormaps**: Use Plotly sequential palettes or custom colors
-        - **Override support**: Manually override specific component colors
         - **Zero configuration**: Works automatically with sensible defaults
 
-    Available Color Families (14 single-hue palettes):
+    Available Colorscale Families (14 single-hue sequential palettes):
         Cool: blues, greens, teals, purples, mint, emrld, darkmint
         Warm: reds, oranges, peach, pinks, burg, sunsetdark
         Neutral: greys
 
     Example Usage:
-        Basic usage (automatic, each component gets distinct color):
+        Setup with mixed direct and grouped colors:
 
         ```python
-        manager = ComponentColorManager(components=['Boiler1', 'Boiler2', 'CHP1'])
-        color = manager.get_color('Boiler1')  # Always same color
+        manager = ComponentColorManager()
+        manager.configure(
+            {
+                # Direct colors (component → color)
+                'Boiler1': '#FF0000',
+                'CHP': 'darkred',
+                # Grouped colors (colorscale → list of components)
+                'oranges': ['Solar1', 'Solar2', 'SolarPV'],
+                'blues': ['Wind1', 'Wind2'],
+                'greens': ['Battery1', 'Battery2', 'Battery3'],
+            }
+        )
         ```
 
-        Grouped coloring (components in same group get shades of same color):
+        Or from YAML file:
 
         ```python
-        manager = ComponentColorManager(components=['Boiler1', 'Boiler2', 'CHP1', 'Storage1'])
-        manager.add_grouping_rule('Boiler', 'Heat_Producers', 'reds', 'prefix')
-        manager.add_grouping_rule('CHP', 'Heat_Producers', 'reds', 'prefix')
-        manager.add_grouping_rule('Storage', 'Storage', 'blues', 'contains')
-        manager.apply_colors()
-
-        # Boiler1, Boiler2, CHP1 get different shades of red
-        # Storage1 gets blue
-        ```
-
-        Override specific components:
-
-        ```python
-        manager.override({'Boiler1': '#FF0000'})  # Force Boiler1 to red
+        manager.configure('colors.yaml')
         ```
 
         Get colors for variables (extracts component automatically):
@@ -465,7 +446,7 @@ class ComponentColorManager:
         ```
     """
 
-    # Class-level color family defaults
+    # Class-level colorscale family defaults (Plotly sequential palettes)
     DEFAULT_FAMILIES = {
         'blues': px.colors.sequential.Blues[1:8],
         'greens': px.colors.sequential.Greens[1:8],
@@ -486,67 +467,36 @@ class ComponentColorManager:
     def __init__(
         self,
         components: list[str] | None = None,
-        flows: dict[str, list[str]] | None = None,
-        flow_variation: float | None = None,
-        default_colormap: str = 'Dark24',
+        default_colormap: str | None = None,
     ) -> None:
         """Initialize component color manager.
 
         Args:
-            components: List of all component names in the system (optional if flows provided)
-            flows: Dict mapping component names to their flow labels (e.g., {'Boiler': ['Q_th', 'Q_fu']})
-            flow_variation: Lightness variation strength per flow (0.02-0.15).
-                None or 0 disables flow shading (default: None)
-            default_colormap: Default colormap for ungrouped components (default: 'Dark24')
+            components: Optional list of all component names. If not provided,
+                components will be discovered from configure() calls.
+            default_colormap: Default colormap for ungrouped components.
+                If None, uses CONFIG.Plotting.default_qualitative_colorscale.
         """
-        # Extract components from flows dict if provided
-        if flows is not None:
-            self.flows = {comp: sorted(set(flow_list)) for comp, flow_list in flows.items()}
-            self.components = sorted(self.flows.keys())
-        elif components is not None:
-            self.components = sorted(set(components))
-            self.flows = {}
-        else:
-            raise ValueError('Must provide either components or flows parameter')
-
-        self.default_colormap = default_colormap
+        self.components = sorted(set(components)) if components else []
+        self.default_colormap = default_colormap or CONFIG.Plotting.default_qualitative_colorscale
         self.color_families = self.DEFAULT_FAMILIES.copy()
-
-        # Flow shading settings (requires optional 'colour' library)
-        # flow_variation serves as both the enable flag and the variation strength
-        if flow_variation and not HAS_COLOUR:
-            logger.error(
-                'Flow shading requested but optional dependency "colour" is not installed. '
-                'Install it with: pip install flixopt[flow_colors]\n'
-                'Flow shading will be disabled.'
-            )
-            self.flow_variation = None
-        else:
-            self.flow_variation = flow_variation
-
-        # Pattern-based grouping rules
-        self._grouping_rules: list[dict[str, str]] = []
 
         # Computed colors: {component_name: color}
         self._component_colors: dict[str, str] = {}
 
-        # Manual overrides (highest priority)
-        self._overrides: dict[str, str] = {}
-
         # Variable color cache for performance: {variable_name: color}
         self._variable_cache: dict[str, str] = {}
 
-        # Auto-assign default colors
-        self._assign_default_colors()
+        # Auto-assign default colors if components provided
+        if self.components:
+            self._assign_default_colors()
 
     def __repr__(self) -> str:
         """Return detailed representation of ComponentColorManager."""
-        flow_info = f', flow_variation={self.flow_variation}' if self.flow_variation else ''
         return (
             f'ComponentColorManager(components={len(self.components)}, '
-            f'rules={len(self._grouping_rules)}, '
-            f'overrides={len(self._overrides)}, '
-            f"default_colormap='{self.default_colormap}'{flow_info})"
+            f'colors_configured={len(self._component_colors)}, '
+            f"default_colormap='{self.default_colormap}')"
         )
 
     def __str__(self) -> str:
@@ -565,37 +515,25 @@ class ComponentColorManager:
                 sample_str = ', '.join(sample)
             lines.append(f'    [{sample_str}]')
 
-        lines.append(f'  Grouping rules: {len(self._grouping_rules)}')
-        if self._grouping_rules:
-            for rule in self._grouping_rules[:3]:  # Show first 3 rules
-                lines.append(
-                    f"    - {rule['match_type']}('{rule['pattern']}') → "
-                    f"group '{rule['group_name']}' ({rule['colormap']})"
-                )
-            if len(self._grouping_rules) > 3:
-                lines.append(f'    ... and {len(self._grouping_rules) - 3} more')
-
-        lines.append(f'  Overrides: {len(self._overrides)}')
-        if self._overrides:
-            for comp, color in list(self._overrides.items())[:3]:
+        lines.append(f'  Colors configured: {len(self._component_colors)}')
+        if self._component_colors:
+            for comp, color in list(self._component_colors.items())[:3]:
                 lines.append(f'    - {comp}: {color}')
-            if len(self._overrides) > 3:
-                lines.append(f'    ... and {len(self._overrides) - 3} more')
+            if len(self._component_colors) > 3:
+                lines.append(f'    ... and {len(self._component_colors) - 3} more')
 
         lines.append(f'  Default colormap: {self.default_colormap}')
 
         return '\n'.join(lines)
 
     @classmethod
-    def from_flow_system(cls, flow_system, flow_variation: float | None = None, **kwargs):
+    def from_flow_system(cls, flow_system, **kwargs):
         """Create ComponentColorManager from a FlowSystem.
 
-        Automatically extracts all components and their flows from the FlowSystem.
+        Automatically extracts all component names from the FlowSystem.
 
         Args:
-            flow_system: FlowSystem instance to extract components and flows from
-            flow_variation: Lightness variation strength per flow (0.02-0.15).
-                None or 0 disables flow shading (default: None)
+            flow_system: FlowSystem instance to extract components from
             **kwargs: Additional arguments passed to ComponentColorManager.__init__
 
         Returns:
@@ -603,11 +541,8 @@ class ComponentColorManager:
 
         Examples:
             ```python
-            # Basic usage (no flow shading)
             manager = ComponentColorManager.from_flow_system(flow_system)
-
-            # With flow shading
-            manager = ComponentColorManager.from_flow_system(flow_system, flow_variation=0.10)
+            manager.configure({'oranges': ['Solar1', 'Solar2']})
             ```
         """
         from .flow_system import FlowSystem
@@ -615,223 +550,109 @@ class ComponentColorManager:
         if not isinstance(flow_system, FlowSystem):
             raise TypeError(f'Expected FlowSystem, got {type(flow_system).__name__}')
 
-        # Extract flows from all components
-        flows = {}
-        for component_label, component in flow_system.components.items():
-            flow_labels = [flow.label for flow in component.inputs + component.outputs]
-            if flow_labels:  # Only add if component has flows
-                flows[component_label] = flow_labels
+        # Extract component names
+        components = list(flow_system.components.keys())
 
-        return cls(flows=flows, flow_variation=flow_variation, **kwargs)
+        return cls(components=components, **kwargs)
 
-    def add_custom_family(self, name: str, colors: list[str]) -> ComponentColorManager:
-        """Add a custom color family.
+    def configure(self, config: dict[str, str | list[str]] | str | pathlib.Path) -> ComponentColorManager:
+        """Configure component colors with explicit grouping or from file.
 
-        Args:
-            name: Name for the color family.
-            colors: List of hex color codes.
-
-        Returns:
-            Self for method chaining.
-        """
-        self.color_families[name] = colors
-        return self
-
-    def add_rule(
-        self, pattern: str, colormap: str, match_type: MatchType | None = None, group_name: str | None = None
-    ) -> ComponentColorManager:
-        """Add color rule with optional auto-detection (flexible API).
-
-        By default, automatically detects the matching strategy from pattern syntax.
-        Optionally override with explicit match_type and group_name for full control.
-
-        **Smart Color Detection:** If `colormap` is actually an explicit color (e.g., 'red',
-        '#FF0000'), and `pattern` is an exact component name (no wildcards), this method
-        automatically uses `override()` instead of pattern matching.
-
-        Auto-detection rules:
-            - 'Solar' → prefix matching
-            - 'Solar*' → glob matching
-            - '~Storage' → contains matching (strip ~)
-            - 'Solar$' → suffix matching (strip $)
-            - '.*Solar.*' → regex matching
-
-        Colors are automatically applied after adding the rule.
+        Supports two mapping types in the config dict:
+            1. Component → color (str → str): Direct color assignment
+            2. Colorscale → components (str → list[str]): Group gets shades from colorscale
 
         Args:
-            pattern: Pattern to match components, or exact component name for explicit colors
-            colormap: Colormap name ('reds', 'blues', 'greens', etc.) OR explicit color
-                ('red', 'orange', '#FF5733', 'rgb(255,0,0)', etc.)
-            match_type: Optional explicit match type. If None (default), auto-detects from pattern.
-                Options: 'prefix', 'suffix', 'contains', 'glob', 'regex'
-            group_name: Optional group name for organization. If None, auto-generates from pattern.
+            config: Color configuration as dict or path to YAML file.
+                Dict format: {key: value} where:
+                    - str → str: Direct color assignment (e.g., 'Boiler1': '#FF0000')
+                    - str → list[str]: Colorscale mapping (e.g., 'oranges': ['Solar1', 'Solar2'])
 
         Returns:
             Self for method chaining
 
         Examples:
-            Explicit color mapping (exact component names):
+            Dict-based configuration (mixed direct + grouped):
 
             ```python
-            manager.add_rule('Boiler', 'orange')      # Exact component → explicit color
-            manager.add_rule('Storage', '#00FF00')    # Hex color
-            manager.add_rule('CHP', 'rgb(255,0,0)')   # RGB color
+            manager.configure(
+                {
+                    # Direct colors
+                    'Boiler1': '#FF0000',
+                    'CHP': 'darkred',
+                    # Grouped colors (shades from colorscale)
+                    'oranges': ['Solar1', 'Solar2', 'SolarPV'],
+                    'blues': ['Wind1', 'Wind2'],
+                    'greens': ['Battery1', 'Battery2', 'Battery3'],
+                }
+            )
             ```
 
-            Pattern-based colormap rules:
+            From YAML file:
 
             ```python
-            manager.add_rule('Solar', 'oranges')         # Auto: prefix
-            manager.add_rule('Wind*', 'blues')           # Auto: glob
-            manager.add_rule('~Storage', 'greens')       # Auto: contains
+            manager.configure('colors.yaml')
             ```
 
-            Override auto-detection when needed:
+            YAML file example (colors.yaml):
+            ```yaml
+            # Direct colors
+            Boiler1: '#FF0000'
+            CHP: darkred
 
-            ```python
-            # Force prefix matching even though it has special chars
-            manager.add_rule('Solar*', 'oranges', match_type='prefix')
-
-            # Explicit regex when pattern is ambiguous
-            manager.add_rule('Solar.+', 'oranges', match_type='regex')
-            ```
-
-            Chained configuration (mixed):
-
-            ```python
-            manager.add_rule('Boiler', 'orange')\
-                   .add_rule('Solar*', 'oranges')\
-                   .add_rule('Wind*', 'blues')
+            # Grouped colors
+            oranges:
+              - Solar1
+              - Solar2
+              - SolarPV
+            blues:
+              - Wind1
+              - Wind2
             ```
         """
-        # Check if colormap is actually an explicit color
-        if mcolors.is_color_like(colormap):
-            # It's an explicit color, not a colormap name
-            # Check if pattern looks like an exact component name (no wildcards/special chars)
-            has_wildcards = any(char in pattern for char in '*?~$[]()^|+\\.')
+        # Load from file if path provided
+        if isinstance(config, (str, pathlib.Path)):
+            config = self._load_config_from_file(config)
 
-            if not has_wildcards:
-                # Exact component name → use override for direct color assignment
-                self.override({pattern: colormap})
-                return self
+        if not isinstance(config, dict):
+            raise TypeError(f'Config must be dict or file path, got {type(config).__name__}')
+
+        # Process config: distinguish between direct colors and grouped colors
+        for key, value in config.items():
+            if isinstance(value, str):
+                # Direct assignment: component → color
+                self._component_colors[key] = value
+                # Add to components list if not already there
+                if key not in self.components:
+                    self.components.append(key)
+                    self.components.sort()
+
+            elif isinstance(value, list):
+                # Group assignment: colorscale → [components]
+                colorscale_name = key
+                components = value
+
+                # Sample N colors from the colorscale
+                colors = self._sample_colors_from_colorscale(colorscale_name, len(components))
+
+                # Assign each component a color
+                for component, color in zip(components, colors, strict=False):
+                    self._component_colors[component] = color
+                    # Add to components list if not already there
+                    if component not in self.components:
+                        self.components.append(component)
+                        self.components.sort()
+
             else:
-                # Pattern with wildcards but explicit color - this is ambiguous
-                logger.warning(
-                    f"Pattern '{pattern}' has wildcards but '{colormap}' is an explicit color, not a colormap. "
-                    f'Explicit colors should be used with exact component names. '
-                    f"Applying as override to component '{pattern}' (treating as literal name)."
+                raise TypeError(
+                    f'Invalid config value type for key "{key}". '
+                    f'Expected str (color) or list[str] (components), got {type(value).__name__}'
                 )
-                self.override({pattern: colormap})
-                return self
 
-        # colormap is a colormap name - proceed with pattern-based rule logic
-        # Auto-detect match type if not provided
-        if match_type is None:
-            match_type = self._detect_match_type(pattern)
+        # Clear cache since colors changed
+        self._variable_cache.clear()
 
-        # Clean pattern based on match type (strip special markers)
-        clean_pattern = pattern
-        if match_type == 'contains' and pattern.startswith('~'):
-            clean_pattern = pattern[1:]  # Strip ~ prefix
-        elif match_type == 'suffix' and pattern.endswith('$') and not any(c in pattern for c in r'.[]()^|+\\'):
-            clean_pattern = pattern[:-1]  # Strip $ suffix (only if not part of regex)
-
-        # Auto-generate group name if not provided
-        if group_name is None:
-            group_name = clean_pattern.replace('*', '').replace('?', '').replace('.', '')[:20]
-
-        # Delegate to _add_grouping_rule
-        return self._add_grouping_rule(clean_pattern, group_name, colormap, match_type)
-
-    def _add_grouping_rule(
-        self, pattern: str, group_name: str, colormap: str, match_type: MatchType = 'prefix'
-    ) -> ComponentColorManager:
-        """Add pattern rule for grouping components (low-level API).
-
-        Args:
-            pattern: Pattern to match component names against
-            group_name: Name of the group (used for organization)
-            colormap: Colormap name for this group ('reds', 'blues', etc.')
-            match_type: Type of pattern matching (default: 'prefix')
-                - 'prefix': Match if component starts with pattern
-                - 'suffix': Match if component ends with pattern
-                - 'contains': Match if pattern appears in component name
-                - 'glob': Unix wildcards (* and ?)
-                - 'regex': Regular expression matching
-        """
-        valid_types = ('prefix', 'suffix', 'contains', 'glob', 'regex')
-        if match_type not in valid_types:
-            raise ValueError(f"match_type must be one of {valid_types}, got '{match_type}'")
-
-        self._grouping_rules.append(
-            {'pattern': pattern, 'group_name': group_name, 'colormap': colormap, 'match_type': match_type}
-        )
-        # Auto-apply colors after adding rule for immediate effect
-        self.apply_colors()
         return self
-
-    def apply_colors(self) -> None:
-        """Apply grouping rules and assign colors to all components.
-
-        This recomputes colors for all components based on current grouping rules.
-        Components are grouped, then within each group they get sequential colors
-        from the group's colormap (based on sorted order for stability).
-
-        Call this after adding/changing grouping rules to update colors.
-        """
-        # Group components by matching rules
-        groups: dict[str, dict] = {}
-
-        for component in self.components:
-            matched = False
-            for rule in self._grouping_rules:
-                if self._match_pattern(component, rule['pattern'], rule['match_type']):
-                    group_name = rule['group_name']
-                    if group_name not in groups:
-                        groups[group_name] = {'components': [], 'colormap': rule['colormap']}
-                    groups[group_name]['components'].append(component)
-                    matched = True
-                    break  # First match wins
-
-            if not matched:
-                # Unmatched components go to default group
-                if '_ungrouped' not in groups:
-                    groups['_ungrouped'] = {'components': [], 'colormap': self.default_colormap}
-                groups['_ungrouped']['components'].append(component)
-
-        # Assign colors within each group (stable sorted order)
-        self._component_colors = {}
-        for group_data in groups.values():
-            colormap = self._get_colormap_colors(group_data['colormap'])
-            sorted_components = sorted(group_data['components'])  # Stable!
-
-            for idx, component in enumerate(sorted_components):
-                self._component_colors[component] = colormap[idx % len(colormap)]
-
-        # Apply overrides (highest priority)
-        self._component_colors.update(self._overrides)
-
-        # Clear variable cache since colors have changed
-        self._variable_cache.clear()
-
-    def override(self, component_colors: dict[str, str]) -> None:
-        """Override colors for specific components.
-
-        These overrides have highest priority and persist even after regrouping.
-
-        Args:
-            component_colors: Dict mapping component names to colors
-
-        Examples:
-            ```python
-            manager.override({'Boiler1': '#FF0000', 'CHP1': '#00FF00'})
-            ```
-        """
-        self._overrides.update(component_colors)
-        self._component_colors.update(component_colors)
-
-        # Clear variable cache since colors have changed
-        self._variable_cache.clear()
 
     def get_color(self, component: str) -> str:
         """Get color for a component.
@@ -902,43 +723,27 @@ class ComponentColorManager:
     def get_variable_color(self, variable: str) -> str:
         """Get color for a variable (extracts component automatically).
 
-        If flow_shading is enabled, generates subtle color variations for different
-        flows of the same component.
-
         Args:
-            variable: Variable name
+            variable: Variable name (e.g., 'Boiler1(Bus_A)|flow_rate')
 
         Returns:
             Hex color string
+
+        Examples:
+            ```python
+            color = manager.get_variable_color('Boiler1(Q_th)|flow_rate')
+            # Returns the color assigned to 'Boiler1'
+            ```
         """
         # Check cache first
         if variable in self._variable_cache:
             return self._variable_cache[variable]
 
-        # Extract component and flow
-        component, flow = self._extract_component_and_flow(variable)
+        # Extract component name from variable
+        component = self.extract_component(variable)
 
-        # Get base color for component
-        base_color = self.get_color(component)
-
-        # Apply flow shading if enabled and flow is present
-        if self.flow_variation and flow is not None and component in self.flows:
-            # Get sorted flow list for this component
-            component_flows = self.flows[component]
-
-            if flow in component_flows and len(component_flows) > 1:
-                # Generate shades for all flows
-                shades = self._create_flow_shades(base_color, len(component_flows))
-
-                # Assign shade based on flow's position in sorted list
-                flow_idx = component_flows.index(flow)
-                color = shades[flow_idx]
-            else:
-                # Flow not in predefined list or only one flow - use base color
-                color = base_color
-        else:
-            # No flow shading or no flow info - use base color
-            color = base_color
+        # Get color for component
+        color = self.get_color(component)
 
         # Cache and return
         self._variable_cache[variable] = color
@@ -968,216 +773,104 @@ class ComponentColorManager:
     # ==================== INTERNAL METHODS ====================
 
     def _assign_default_colors(self) -> None:
-        """Assign default colors to all components (no grouping)."""
-        colormap = self._get_colormap_colors(self.default_colormap)
+        """Assign default colors to all components using default colormap."""
+        colors = self._sample_colors_from_colorscale(self.default_colormap, len(self.components))
 
-        for idx, component in enumerate(self.components):
-            self._component_colors[component] = colormap[idx % len(colormap)]
-
-    def _detect_match_type(self, pattern: str) -> MatchType:
-        """Auto-detect match type from pattern syntax.
-
-        Detection logic:
-            - Contains '~' prefix → 'contains' (strip ~ from pattern)
-            - Ends with '$' → 'suffix'
-            - Contains '*' or '?' → 'glob'
-            - Contains regex special chars (^[]().|+\\) → 'regex'
-            - Otherwise → 'prefix' (default)
-
-        Args:
-            pattern: Pattern string to analyze
-
-        Returns:
-            Detected match type
-
-        Examples:
-            >>> _detect_match_type('Solar')  # 'prefix'
-            >>> _detect_match_type('Solar*')  # 'glob'
-            >>> _detect_match_type('~Storage')  # 'contains'
-            >>> _detect_match_type('.*Solar.*')  # 'regex'
-            >>> _detect_match_type('Solar$')  # 'suffix'
-        """
-        # Check for explicit contains marker
-        if pattern.startswith('~'):
-            return 'contains'
-
-        # Check for suffix marker (but only if not a regex pattern)
-        if pattern.endswith('$') and len(pattern) > 1 and not any(c in pattern for c in r'.[]()^|+\\'):
-            return 'suffix'
-
-        # Check for regex special characters (before glob, since .* is regex not glob)
-        # Exclude * and ? which are also glob chars
-        regex_only_chars = r'.[]()^|+\\'
-        if any(char in pattern for char in regex_only_chars):
-            return 'regex'
-
-        # Check for simple glob wildcards
-        if '*' in pattern or '?' in pattern:
-            return 'glob'
-
-        # Default to prefix matching
-        return 'prefix'
+        for component, color in zip(self.components, colors, strict=False):
+            self._component_colors[component] = color
 
     @staticmethod
-    def _load_config_from_file(file_path: str | pathlib.Path) -> dict[str, str]:
-        """Load color configuration from YAML or JSON file.
+    def _load_config_from_file(file_path: str | pathlib.Path) -> dict[str, str | list[str]]:
+        """Load color configuration from YAML file.
 
         Args:
-            file_path: Path to YAML or JSON configuration file
+            file_path: Path to YAML configuration file
 
         Returns:
-            Dictionary mapping patterns to colormaps
+            Dictionary with color configuration (supports both str and list values)
 
         Raises:
             FileNotFoundError: If file doesn't exist
             ValueError: If file format is unsupported or invalid
+            ImportError: If PyYAML is not installed
 
         Examples:
             YAML file (colors.yaml):
             ```yaml
-            Solar*: oranges
-            Wind*: blues
-            Battery: greens
-            ~Storage: teals
-            ```
+            # Direct colors
+            Boiler1: '#FF0000'
+            CHP: darkred
 
-            JSON file (colors.json):
-            ```json
-            {
-                "Solar*": "oranges",
-                "Wind*": "blues",
-                "Battery": "greens"
-            }
+            # Grouped colors
+            oranges:
+              - Solar1
+              - Solar2
+            blues:
+              - Wind1
+              - Wind2
             ```
         """
-        import json
-
         file_path = pathlib.Path(file_path)
 
         if not file_path.exists():
             raise FileNotFoundError(f'Color configuration file not found: {file_path}')
 
-        # Determine file type from extension
+        # Only support YAML
         suffix = file_path.suffix.lower()
+        if suffix not in ['.yaml', '.yml']:
+            raise ValueError(f'Unsupported file format: {suffix}. Only YAML (.yaml, .yml) is supported.')
 
-        if suffix in ['.yaml', '.yml']:
-            try:
-                import yaml
-            except ImportError as e:
-                raise ImportError(
-                    'PyYAML is required to load YAML config files. Install it with: pip install pyyaml'
-                ) from e
+        try:
+            import yaml
+        except ImportError as e:
+            raise ImportError(
+                'PyYAML is required to load YAML config files. Install it with: pip install pyyaml'
+            ) from e
 
-            with open(file_path, encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-
-        elif suffix == '.json':
-            with open(file_path, encoding='utf-8') as f:
-                config = json.load(f)
-
-        else:
-            raise ValueError(f'Unsupported file format: {suffix}. Supported formats: .yaml, .yml, .json')
+        with open(file_path, encoding='utf-8') as f:
+            config = yaml.safe_load(f)
 
         # Validate config structure
         if not isinstance(config, dict):
             raise ValueError(f'Invalid config file structure. Expected dict, got {type(config).__name__}')
 
-        # Ensure all values are strings
-        for key, value in config.items():
-            if not isinstance(key, str) or not isinstance(value, str):
-                raise ValueError(f'Invalid config entry: {key}: {value}. Both keys and values must be strings.')
-
         return config
 
-    def _match_pattern(self, value: str, pattern: str, match_type: str) -> bool:
-        """Check if value matches pattern.
+    def _sample_colors_from_colorscale(self, colorscale_name: str, num_colors: int) -> list[str]:
+        """Sample N colors from a colorscale (cycling if needed)."""
 
-        Args:
-            value: String to test
-            pattern: Pattern to match against
-            match_type: Type of matching
+        # Get the base colorscale
+        color_list = None
 
-        Returns:
-            True if matches
-        """
-        if match_type == 'prefix':
-            return value.startswith(pattern)
-        elif match_type == 'suffix':
-            return value.endswith(pattern)
-        elif match_type == 'contains':
-            return pattern in value
-        elif match_type == 'glob':
-            return fnmatch.fnmatch(value, pattern)
-        elif match_type == 'regex':
+        # 1. Check custom families first
+        if colorscale_name in self.color_families:
+            color_list = self.color_families[colorscale_name]
+
+        # 2. Try qualitative palettes (best for discrete components)
+        elif hasattr(px.colors.qualitative, colorscale_name.title()):
+            color_list = getattr(px.colors.qualitative, colorscale_name.title())
+
+        # 3. Try sequential palettes
+        elif hasattr(px.colors.sequential, colorscale_name.title()):
+            color_list = getattr(px.colors.sequential, colorscale_name.title())
+
+        # 4. Fall back to ColorProcessor for other colormaps
+        else:
+            processor = ColorProcessor(engine='plotly')
             try:
-                return bool(re.search(pattern, value))
-            except re.error as e:
-                raise ValueError(f"Invalid regex pattern '{pattern}': {e}") from e
-        return False
+                color_list = processor._generate_colors_from_colormap(colorscale_name, max(num_colors, 10))
+            except Exception:
+                logger.warning(f"Colormap '{colorscale_name}' not found, using default instead")
+                default_title = CONFIG.Plotting.default_qualitative_colorscale.title()
+                color_list = getattr(px.colors.qualitative, default_title)
 
-    def _get_colormap_colors(self, colormap_name: str) -> list[str]:
-        """Get list of colors from colormap name."""
-
-        # Check custom families first
-        if colormap_name in self.color_families:
-            return self.color_families[colormap_name]
-
-        # Try qualitative palettes (best for discrete components)
-        if hasattr(px.colors.qualitative, colormap_name.title()):
-            return getattr(px.colors.qualitative, colormap_name.title())
-
-        # Try sequential palettes
-        if hasattr(px.colors.sequential, colormap_name.title()):
-            return getattr(px.colors.sequential, colormap_name.title())
-
-        # Fall back to ColorProcessor for matplotlib colormaps
-        processor = ColorProcessor(engine='plotly')
-        try:
-            colors = processor._generate_colors_from_colormap(colormap_name, 10)
-            return colors
-        except Exception:
-            logger.warning(f"Colormap '{colormap_name}' not found, using 'Dark24' instead")
-            return px.colors.qualitative.Dark24
-
-    def _create_flow_shades(self, base_color: str, num_flows: int) -> list[str]:
-        """Generate subtle color variations from a single base color using HSL.
-
-        Uses the `colour` library for robust color manipulation. If `colour` is not
-        available, returns the base color for all flows.
-
-        Args:
-            base_color: Color string (hex like '#D62728' or rgb like 'rgb(255, 0, 0)')
-            num_flows: Number of distinct shades needed
-
-        Returns:
-            List of hex colors with subtle lightness variations
-        """
-        if num_flows == 1:
-            return [base_color]
-
-        # Fallback if colour library not available (defensive check)
-        if not HAS_COLOUR:
-            return [base_color] * num_flows
-
-        # Parse color using colour library (handles hex, rgb(), etc.)
-        color = Color(base_color)
-        h, s, lightness = color.hsl
-
-        # Create symmetric variations around base lightness
-        # For 3 flows with strength 0.08: [-0.08, 0, +0.08]
-        # For 5 flows: [-0.16, -0.08, 0, +0.08, +0.16]
-        center_idx = (num_flows - 1) / 2
-        shades = []
-
-        for idx in range(num_flows):
-            delta_lightness = (idx - center_idx) * self.flow_variation
-            new_lightness = np.clip(lightness + delta_lightness, 0.1, 0.9)
-
-            # Create new color with adjusted lightness
-            new_color = Color(hsl=(h, s, new_lightness))
-            shades.append(new_color.hex_l)
-
-        return shades
+        # Sample/cycle to get exactly num_colors
+        if len(color_list) >= num_colors:
+            # Take first N colors if we have enough
+            return color_list[:num_colors]
+        else:
+            # Cycle through colors if we need more than available
+            return [color_list[i % len(color_list)] for i in range(num_colors)]
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:

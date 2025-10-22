@@ -332,35 +332,38 @@ class CalculationResults:
         return self._flow_system
 
     def setup_colors(
-        self, config: dict[str, str] | str | pathlib.Path | None = None, flow_variation: float | None = None
+        self, config: dict[str, str | list[str]] | str | pathlib.Path | None = None
     ) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager for configuring plot colors.
 
         Convenience method that creates a ComponentColorManager with all components
         registered and assigns it to `self.color_manager`. Optionally load configuration
-        from a dict or file. Colors are automatically applied when adding rules.
+        from a dict or file.
 
         Args:
             config: Optional color configuration:
-                - dict: {pattern: colormap} mapping
-                - str/Path: Path to YAML or JSON file
+                - dict: Mixed {component: color} or {colorscale: [components]} mapping
+                - str/Path: Path to YAML file
                 - None: Create empty manager for manual config (default)
-            flow_variation: Lightness variation strength per flow (0.02-0.15).
-                None or 0 disables flow shading (default: None)
 
         Returns:
             ComponentColorManager instance ready for configuration.
 
         Examples:
-            Dict-based configuration (simplest):
+            Dict-based configuration (mixed direct + grouped):
 
             ```python
-            results.setup_colors({
-                'Solar*': 'oranges',
-                'Wind*': 'blues',
-                'Battery': 'greens',
-                '~Storage': 'teals'
-            })
+            results.setup_colors(
+                {
+                    # Direct colors
+                    'Boiler1': '#FF0000',
+                    'CHP': 'darkred',
+                    # Grouped colors
+                    'oranges': ['Solar1', 'Solar2'],
+                    'blues': ['Wind1', 'Wind2'],
+                    'greens': ['Battery1', 'Battery2', 'Battery3'],
+                }
+            )
             results['ElectricityBus'].plot_node_balance()
             ```
 
@@ -368,17 +371,11 @@ class CalculationResults:
 
             ```python
             # colors.yaml contains:
-            # Solar*: oranges
-            # Wind*: blues
+            # Boiler1: '#FF0000'
+            # oranges:
+            #   - Solar1
+            #   - Solar2
             results.setup_colors('colors.yaml')
-            ```
-
-            Programmatic configuration:
-
-            ```python
-            results.setup_colors()\
-                .add_rule('Solar*', 'oranges')\
-                .add_rule('Wind*', 'blues')
             ```
 
             Disable automatic coloring:
@@ -387,23 +384,12 @@ class CalculationResults:
             results.color_manager = None  # Plots use default colorscales
             ```
         """
-        import pathlib
-
         if self.color_manager is None:
-            self.color_manager = plotting.ComponentColorManager.from_flow_system(
-                self.flow_system, flow_variation=flow_variation
-            )
+            self.color_manager = plotting.ComponentColorManager.from_flow_system(self.flow_system)
 
         # Apply configuration if provided
         if config is not None:
-            # Load from file if string/Path
-            if isinstance(config, (str, pathlib.Path)):
-                config = plotting.ComponentColorManager._load_config_from_file(config)
-
-            # Apply dict configuration - add_rule() now handles both colors and colormaps
-            if isinstance(config, dict):
-                for pattern, colormap in config.items():
-                    self.color_manager.add_rule(pattern, colormap)
+            self.color_manager.configure(config)
 
         return self.color_manager
 
@@ -2088,31 +2074,34 @@ class SegmentedCalculationResults:
         return [segment.name for segment in self.segment_results]
 
     def setup_colors(
-        self, config: dict[str, str] | str | pathlib.Path | None = None, flow_variation: float | None = None
+        self, config: dict[str, str | list[str]] | str | pathlib.Path | None = None
     ) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager that propagates to all segments.
 
         Convenience method that creates a ComponentColorManager with all components
         registered and assigns it to `self.color_manager` and all segment results.
-        Optionally load configuration from a dict or file. Colors are automatically
-        applied when adding rules.
+        Optionally load configuration from a dict or file.
 
         Args:
             config: Optional color configuration:
-                - dict: {pattern: colormap} mapping
-                - str/Path: Path to YAML or JSON file
+                - dict: Mixed {component: color} or {colorscale: [components]} mapping
+                - str/Path: Path to YAML file
                 - None: Create empty manager for manual config (default)
-            flow_variation: Lightness variation strength per flow (0.02-0.15).
-                None or 0 disables flow shading (default: None)
 
         Returns:
             ComponentColorManager instance ready for configuration (propagated to all segments).
 
         Examples:
-            Dict-based configuration:
+            Dict-based configuration (mixed direct + grouped):
 
             ```python
-            results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues'})
+            results.setup_colors(
+                {
+                    'Boiler1': '#FF0000',
+                    'oranges': ['Solar1', 'Solar2'],
+                    'blues': ['Wind1', 'Wind2'],
+                }
+            )
 
             # All segments use the same colors
             results.segment_results[0]['ElectricityBus'].plot_node_balance()
@@ -2124,31 +2113,16 @@ class SegmentedCalculationResults:
             ```python
             results.setup_colors('colors.yaml')
             ```
-
-            Programmatic configuration:
-
-            ```python
-            results.setup_colors().add_rule('Solar*', 'oranges')
-            ```
         """
         if self.color_manager is None:
-            self.color_manager = plotting.ComponentColorManager.from_flow_system(
-                self.flow_system, flow_variation=flow_variation
-            )
+            self.color_manager = plotting.ComponentColorManager.from_flow_system(self.flow_system)
             # Propagate to all segment results for consistent coloring
             for segment in self.segment_results:
                 segment.color_manager = self.color_manager
 
         # Apply configuration if provided
         if config is not None:
-            # Load from file if string/Path
-            if isinstance(config, (str, pathlib.Path)):
-                config = plotting.ComponentColorManager._load_config_from_file(config)
-
-            # Apply dict configuration - add_rule() now handles both colors and colormaps
-            if isinstance(config, dict):
-                for pattern, colormap in config.items():
-                    self.color_manager.add_rule(pattern, colormap)
+            self.color_manager.configure(config)
 
         return self.color_manager
 

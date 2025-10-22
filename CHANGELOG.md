@@ -53,14 +53,16 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-- **Smart color management**: Configure consistent plot colors by pattern matching component names
-  - Dict: `results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues'})`
-  - File: `results.setup_colors('colors.yaml')` (supports YAML/JSON)
-  - Programmatic: `results.setup_colors().add_rule('Solar*', 'oranges')`
+- **Simplified color management**: Configure consistent plot colors with explicit component grouping
+  - Direct colors: `results.setup_colors({'Boiler1': '#FF0000', 'CHP': 'darkred'})`
+  - Grouped colors: `results.setup_colors({'oranges': ['Solar1', 'Solar2'], 'blues': ['Wind1', 'Wind2']})`
+  - Mixed approach: Combine direct and grouped colors in a single call
+  - File-based: `results.setup_colors('colors.yaml')` (YAML only)
 - **Heatmap fill control**: Control missing value handling with `fill='ffill'` or `fill='bfill'`
 
 ### ♻️ Changed
 - Plotting methods now use `color_manager` by default if configured
+- Color management implementation simplified: Uses explicit component grouping instead of pattern matching for better clarity and maintainability (65% code reduction)
 
 ### 🗑️ Deprecated
 

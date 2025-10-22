@@ -52,11 +52,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Flow-level color shading (enables subtle color variations for flows)
-flow_colors = [
-    "colour >= 0.1.5, < 0.2",
-]
-
 # Interactive network visualization with enhanced color picker
 network_viz = [
     "dash >= 3.0.0, < 4",
@@ -73,7 +68,6 @@ full = [
     "tsam >= 2.3.1, < 3",   # Time series aggregation
     "scipy >= 1.15.1, < 2", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
     "gurobipy >= 10.0.0, < 13",
-    "colour >= 0.1.5, < 0.2",  # Flow-level color shading
     "dash >= 3.0.0, < 4",  # Visualizing FlowSystem Network as app
     "dash-cytoscape >= 1.0.0, < 2",  # Visualizing FlowSystem Network as app
     "dash-daq >= 0.6.0, < 1",  # Visualizing FlowSystem Network as app
