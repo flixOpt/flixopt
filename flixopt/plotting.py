@@ -448,20 +448,20 @@ class ComponentColorManager:
 
     # Class-level colorscale family defaults (Plotly sequential palettes)
     DEFAULT_FAMILIES = {
-        'blues': px.colors.sequential.Blues[1:8],
-        'greens': px.colors.sequential.Greens[1:8],
-        'reds': px.colors.sequential.Reds[1:8],
-        'purples': px.colors.sequential.Purples[1:8],
-        'oranges': px.colors.sequential.Oranges[1:8],
-        'teals': px.colors.sequential.Teal[1:8],
-        'greys': px.colors.sequential.Greys[1:8],
-        'pinks': px.colors.sequential.Pinkyl[1:8],
-        'peach': px.colors.sequential.Peach[1:8],
-        'burg': px.colors.sequential.Burg[1:8],
-        'sunsetdark': px.colors.sequential.Sunsetdark[1:8],
-        'mint': px.colors.sequential.Mint[1:8],
-        'emrld': px.colors.sequential.Emrld[1:8],
-        'darkmint': px.colors.sequential.Darkmint[1:8],
+        'blues': px.colors.sequential.Blues[7:2],
+        'greens': px.colors.sequential.Greens[7:2],
+        'reds': px.colors.sequential.Reds[7:2],
+        'purples': px.colors.sequential.Purples[7:2],
+        'oranges': px.colors.sequential.Oranges[7:2],
+        'teals': px.colors.sequential.Teal[7:2],
+        'greys': px.colors.sequential.Greys[7:2],
+        'pinks': px.colors.sequential.Pinkyl[7:2],
+        'peach': px.colors.sequential.Peach[7:2],
+        'burg': px.colors.sequential.Burg[7:2],
+        'sunsetdark': px.colors.sequential.Sunsetdark[7:2],
+        'mint': px.colors.sequential.Mint[7:2],
+        'emrld': px.colors.sequential.Emrld[7:2],
+        'darkmint': px.colors.sequential.Darkmint[7:2],
     }
 
     def __init__(
