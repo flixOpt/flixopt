@@ -332,7 +332,7 @@ class CalculationResults:
                 logger.level = old_level
         return self._flow_system
 
-    def setup_colors(self) -> plotting.ComponentColorManager:
+    def setup_colors(self, enable_flow_shading=False) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager for configuring plot colors.
 
         Convenience method that creates a ComponentColorManager with all components
@@ -374,8 +374,9 @@ class CalculationResults:
             ```
         """
         if self.color_manager is None:
-            component_names = list(self.components.keys())
-            self.color_manager = plotting.ComponentColorManager(component_names)
+            self.color_manager = plotting.ComponentColorManager.from_flow_system(
+                self.flow_system, enable_flow_shading=enable_flow_shading
+            )
         return self.color_manager
 
     def filter_solution(
@@ -2047,7 +2048,7 @@ class SegmentedCalculationResults:
     def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
 
-    def setup_colors(self) -> plotting.ComponentColorManager:
+    def setup_colors(self, enable_flow_shading: bool = False) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager that propagates to all segments.
 
         Convenience method that creates a ComponentColorManager with all components
@@ -2082,9 +2083,9 @@ class SegmentedCalculationResults:
             ```
         """
         if self.color_manager is None:
-            # Get component names from first segment (all segments should have same components)
-            component_names = list(self.segment_results[0].components.keys()) if self.segment_results else []
-            self.color_manager = plotting.ComponentColorManager(component_names)
+            self.color_manager = plotting.ComponentColorManager.from_flow_system(
+                self.flow_system, enable_flow_shading=enable_flow_shading
+            )
             # Propagate to all segment results for consistent coloring
             for segment in self.segment_results:
                 segment.color_manager = self.color_manager
