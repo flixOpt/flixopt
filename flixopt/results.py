@@ -2078,7 +2078,9 @@ class SegmentedCalculationResults:
         return [segment.name for segment in self.segment_results]
 
     def setup_colors(
-        self, config: dict[str, str | list[str]] | str | pathlib.Path | None = None
+        self,
+        config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        default_colorscale: str | None = None,
     ) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager that propagates to all segments.
 
@@ -2091,6 +2093,7 @@ class SegmentedCalculationResults:
                 - dict: Mixed {component: color} or {colorscale: [components]} mapping
                 - str/Path: Path to YAML file
                 - None: Create empty manager for manual config (default)
+            default_colorscale: Optional default colorscale to use. Defaults to CONFIG.Plotting.default_default_qualitative_colorscale
 
         Returns:
             ComponentColorManager instance ready for configuration (propagated to all segments).
@@ -2118,11 +2121,12 @@ class SegmentedCalculationResults:
             results.setup_colors('colors.yaml')
             ```
         """
-        if self.color_manager is None:
-            self.color_manager = plotting.ComponentColorManager.from_flow_system(self.flow_system)
-            # Propagate to all segment results for consistent coloring
-            for segment in self.segment_results:
-                segment.color_manager = self.color_manager
+        self.color_manager = plotting.ComponentColorManager.from_flow_system(
+            self.flow_system, default_colorscale=default_colorscale
+        )
+        # Propagate to all segment results for consistent coloring
+        for segment in self.segment_results:
+            segment.color_manager = self.color_manager
 
         # Apply configuration if provided
         if config is not None:
