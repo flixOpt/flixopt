@@ -43,6 +43,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.offline
 import xarray as xr
+from colour import Color
 from plotly.exceptions import PlotlyError
 
 from .config import CONFIG
@@ -348,105 +349,6 @@ class ColorProcessor:
 
 # Type aliases for ComponentColorManager
 MatchType = Literal['prefix', 'suffix', 'contains', 'glob', 'regex']
-
-
-def _hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
-    """Convert hex or rgb color to RGB (0-1 range).
-
-    Args:
-        hex_color: Hex color string (e.g., '#FF0000' or 'FF0000') or 'rgb(255, 0, 0)'
-
-    Returns:
-        Tuple of (r, g, b) values in range [0, 1]
-    """
-    # Handle rgb(r, g, b) format from Plotly
-    if hex_color.startswith('rgb('):
-        rgb_values = hex_color[4:-1].split(',')
-        return tuple(float(v.strip()) / 255.0 for v in rgb_values)
-
-    # Handle hex format
-    hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
-
-
-def _rgb_to_hsl(r: float, g: float, b: float) -> tuple[float, float, float]:
-    """Convert RGB to HSL color space.
-
-    Args:
-        r, g, b: RGB values in range [0, 1]
-
-    Returns:
-        Tuple of (h, s, lightness) where h in [0, 360], s and lightness in [0, 1]
-    """
-    max_c = max(r, g, b)
-    min_c = min(r, g, b)
-    lightness = (max_c + min_c) / 2.0
-
-    if max_c == min_c:
-        h = s = 0.0  # achromatic
-    else:
-        d = max_c - min_c
-        s = d / (2.0 - max_c - min_c) if lightness > 0.5 else d / (max_c + min_c)
-
-        if max_c == r:
-            h = (g - b) / d + (6.0 if g < b else 0.0)
-        elif max_c == g:
-            h = (b - r) / d + 2.0
-        else:
-            h = (r - g) / d + 4.0
-        h /= 6.0
-
-    return h * 360.0, s, lightness
-
-
-def _hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[float, float, float]:
-    """Convert HSL to RGB color space.
-
-    Args:
-        h: Hue in range [0, 360]
-        s: Saturation in range [0, 1]
-        lightness: Lightness in range [0, 1]
-
-    Returns:
-        Tuple of (r, g, b) values in range [0, 1]
-    """
-    h = h / 360.0  # Normalize to [0, 1]
-
-    def hue_to_rgb(p, q, t):
-        if t < 0:
-            t += 1
-        if t > 1:
-            t -= 1
-        if t < 1 / 6:
-            return p + (q - p) * 6 * t
-        if t < 1 / 2:
-            return q
-        if t < 2 / 3:
-            return p + (q - p) * (2 / 3 - t) * 6
-        return p
-
-    if s == 0:
-        r = g = b = lightness  # achromatic
-    else:
-        q = lightness * (1 + s) if lightness < 0.5 else lightness + s - lightness * s
-        p = 2 * lightness - q
-        r = hue_to_rgb(p, q, h + 1 / 3)
-        g = hue_to_rgb(p, q, h)
-        b = hue_to_rgb(p, q, h - 1 / 3)
-
-    return r, g, b
-
-
-def _rgb_to_hex(r: float, g: float, b: float) -> str:
-    """Convert RGB to hex color string.
-
-    Args:
-        r, g, b: RGB values in range [0, 1]
-
-    Returns:
-        Hex color string (e.g., '#FF0000')
-    """
-    return f'#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}'
 
 
 class ComponentColorManager:
@@ -967,8 +869,10 @@ class ComponentColorManager:
     def _create_flow_shades(self, base_color: str, num_flows: int) -> list[str]:
         """Generate subtle color variations from a single base color using HSL.
 
+        Uses the `colour` library for robust color manipulation.
+
         Args:
-            base_color: Hex color (e.g., '#D62728')
+            base_color: Color string (hex like '#D62728' or rgb like 'rgb(255, 0, 0)')
             num_flows: Number of distinct shades needed
 
         Returns:
@@ -977,9 +881,9 @@ class ComponentColorManager:
         if num_flows == 1:
             return [base_color]
 
-        # Convert to HSL
-        r, g, b = _hex_to_rgb(base_color)
-        h, s, lightness = _rgb_to_hsl(r, g, b)
+        # Parse color using colour library (handles hex, rgb(), etc.)
+        color = Color(base_color)
+        h, s, lightness = color.hsl
 
         # Create symmetric variations around base lightness
         # For 3 flows with strength 0.08: [-0.08, 0, +0.08]
@@ -989,11 +893,11 @@ class ComponentColorManager:
 
         for idx in range(num_flows):
             delta_lightness = (idx - center_idx) * self.flow_variation_strength
-            new_lightness = np.clip(lightness + delta_lightness, 0.1, 0.9)  # Stay within valid range
+            new_lightness = np.clip(lightness + delta_lightness, 0.1, 0.9)
 
-            # Convert back to hex
-            r_new, g_new, b_new = _hsl_to_rgb(h, s, new_lightness)
-            shades.append(_rgb_to_hex(r_new, g_new, b_new))
+            # Create new color with adjusted lightness
+            new_color = Color(hsl=(h, s, new_lightness))
+            shades.append(new_color.hex_l)
 
         return shades
 

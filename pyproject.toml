@@ -47,6 +47,7 @@ dependencies = [
     # Visualization
     "matplotlib >= 3.5.2, < 4",
     "plotly >= 5.15.0, < 7",
+    "colour >= 0.1.5, < 0.2",  # Color manipulation for flow shading
     # Fix for numexpr compatibility issue with numpy 1.26.4 on Python 3.10
     "numexpr >= 2.8.4, < 2.14; python_version < '3.11'", # Avoid 2.14.0 on older Python
 ]
