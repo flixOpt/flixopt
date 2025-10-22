@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import warnings
 from logging.handlers import RotatingFileHandler
@@ -758,10 +759,42 @@ def _apply_plotting_config(
         try:
             import matplotlib
 
-            # Only set backend if it's different from current
-            current_backend = matplotlib.get_backend()
-            if current_backend != matplotlib_backend:
-                matplotlib.use(matplotlib_backend, force=True)
+            # Check if pyplot has been imported yet
+            pyplot_imported = 'matplotlib.pyplot' in sys.modules
+
+            if not pyplot_imported:
+                # Safe path: Set environment variable before pyplot import
+                # This is the preferred method as it avoids runtime backend switching
+                os.environ['MPLBACKEND'] = matplotlib_backend
+                logger.debug(f"Set MPLBACKEND environment variable to '{matplotlib_backend}'")
+            else:
+                # pyplot is already imported - check if we need to switch
+                current_backend = matplotlib.get_backend()
+
+                if current_backend == matplotlib_backend:
+                    logger.debug(f"matplotlib backend already set to '{matplotlib_backend}'")
+                else:
+                    # Need to switch backend - check if it's safe
+                    import matplotlib.pyplot as plt
+
+                    if len(plt.get_fignums()) > 0:
+                        logger.warning(
+                            f"Cannot switch matplotlib backend from '{current_backend}' to '{matplotlib_backend}': "
+                            f'There are {len(plt.get_fignums())} open figures. Close all figures before changing backend, '
+                            f'or set CONFIG.Plotting.matplotlib_backend before importing matplotlib.pyplot.'
+                        )
+                    else:
+                        # No open figures - attempt safe backend switch
+                        try:
+                            plt.switch_backend(matplotlib_backend)
+                            logger.info(
+                                f"Switched matplotlib backend from '{current_backend}' to '{matplotlib_backend}'"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to switch matplotlib backend from '{current_backend}' to '{matplotlib_backend}': {e}. "
+                                f'Set CONFIG.Plotting.matplotlib_backend before importing matplotlib.pyplot to avoid this issue.'
+                            )
         except ImportError:
             # Matplotlib not installed, skip configuration
             pass
