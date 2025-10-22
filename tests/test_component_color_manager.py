@@ -16,7 +16,7 @@ class TestBasicFunctionality:
         manager = ComponentColorManager(components)
 
         assert len(manager.components) == 3
-        assert manager.default_colorscale == 'Plotly'
+        assert manager.default_colorscale == 'plotly'
         assert 'Solar_PV' in manager.components
 
     def test_sorted_components(self):
@@ -38,6 +38,75 @@ class TestBasicFunctionality:
             assert color is not None
             assert isinstance(color, str)
 
+    def test_empty_initialization(self):
+        """Test initialization without components."""
+        manager = ComponentColorManager()
+        assert len(manager.components) == 0
+
+
+class TestConfigureAPI:
+    """Test the configure() method with various inputs."""
+
+    def test_configure_direct_colors(self):
+        """Test direct color assignment (component → color)."""
+        manager = ComponentColorManager()
+        manager.configure({'Boiler1': '#FF0000', 'CHP': 'darkred', 'Storage': 'green'})
+
+        assert manager.get_color('Boiler1') == '#FF0000'
+        assert manager.get_color('CHP') == 'darkred'
+        assert manager.get_color('Storage') == 'green'
+
+    def test_configure_grouped_colors(self):
+        """Test grouped color assignment (colorscale → list of components)."""
+        manager = ComponentColorManager()
+        manager.configure(
+            {
+                'oranges': ['Solar1', 'Solar2'],
+                'blues': ['Wind1', 'Wind2'],
+            }
+        )
+
+        # All should have colors
+        assert manager.get_color('Solar1') is not None
+        assert manager.get_color('Solar2') is not None
+        assert manager.get_color('Wind1') is not None
+        assert manager.get_color('Wind2') is not None
+
+        # Solar components should have different shades
+        assert manager.get_color('Solar1') != manager.get_color('Solar2')
+
+        # Wind components should have different shades
+        assert manager.get_color('Wind1') != manager.get_color('Wind2')
+
+    def test_configure_mixed(self):
+        """Test mixed direct and grouped colors."""
+        manager = ComponentColorManager()
+        manager.configure(
+            {
+                'Boiler1': '#FF0000',
+                'oranges': ['Solar1', 'Solar2'],
+                'blues': ['Wind1', 'Wind2'],
+            }
+        )
+
+        # Direct color
+        assert manager.get_color('Boiler1') == '#FF0000'
+
+        # Grouped colors
+        assert manager.get_color('Solar1') is not None
+        assert manager.get_color('Wind1') is not None
+
+    def test_configure_updates_components_list(self):
+        """Test that configure() adds components to the list."""
+        manager = ComponentColorManager()
+        assert len(manager.components) == 0
+
+        manager.configure({'Boiler1': '#FF0000', 'CHP': 'red'})
+
+        assert len(manager.components) == 2
+        assert 'Boiler1' in manager.components
+        assert 'CHP' in manager.components
+
 
 class TestColorFamilies:
     """Test color family functionality."""
@@ -51,62 +120,19 @@ class TestColorFamilies:
         assert 'greens' in manager.color_families
         assert 'reds' in manager.color_families
 
-    def test_add_custom_family(self):
-        """Test adding a custom color family."""
-        manager = ComponentColorManager([])
-        custom_colors = ['#FF0000', '#00FF00', '#0000FF']
-
-        result = manager.add_custom_family('ocean', custom_colors)
-
-        assert 'ocean' in manager.color_families
-        assert manager.color_families['ocean'] == custom_colors
-        assert result is manager  # Check method chaining
-
-
-class TestGroupingRules:
-    """Test grouping rule functionality."""
-
-    def test_add_grouping_rule_prefix(self):
-        """Test adding a prefix grouping rule."""
-        components = ['Solar_PV', 'Solar_Thermal', 'Wind_Onshore']
-        manager = ComponentColorManager(components)
-
-        result = manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
-
-        assert len(manager._grouping_rules) == 1
-        assert result is manager  # Check method chaining
-
-    def test_apply_colors(self):
-        """Test auto-grouping components based on rules."""
-        components = ['Solar_PV', 'Solar_Thermal', 'Wind_Onshore', 'Wind_Offshore', 'Coal_Plant']
-        manager = ComponentColorManager(components)
-
-        manager.add_grouping_rule('Solar', 'renewables_solar', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'renewables_wind', 'blues', match_type='prefix')
-        manager.add_grouping_rule('Coal', 'fossil', 'greys', match_type='prefix')
-        manager.apply_colors()
-
-        # Check that components got colors from appropriate families
-        solar_color = manager.get_color('Solar_PV')
-        wind_color = manager.get_color('Wind_Onshore')
-
-        assert solar_color is not None
-        assert wind_color is not None
-        # Colors should be different (from different families)
-        assert solar_color != wind_color
-
 
 class TestColorStability:
     """Test color stability across different datasets."""
 
     def test_same_component_same_color(self):
         """Test that same component always gets same color."""
-        components = ['Solar_PV', 'Wind_Onshore', 'Coal_Plant', 'Gas_Plant']
-        manager = ComponentColorManager(components)
-
-        manager.add_grouping_rule('Solar', 'renewables_solar', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'renewables_wind', 'blues', match_type='prefix')
-        manager.apply_colors()
+        manager = ComponentColorManager()
+        manager.configure(
+            {
+                'oranges': ['Solar_PV'],
+                'blues': ['Wind_Onshore'],
+            }
+        )
 
         # Get colors multiple times
         color1 = manager.get_color('Solar_PV')
@@ -117,14 +143,15 @@ class TestColorStability:
 
     def test_color_stability_with_different_datasets(self):
         """Test that colors remain stable across different variable subsets."""
-        components = ['Solar_PV', 'Wind_Onshore', 'Coal_Plant', 'Gas_Plant']
-        manager = ComponentColorManager(components)
-
-        manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'wind', 'blues', match_type='prefix')
-        manager.add_grouping_rule('Coal', 'fossil_coal', 'greys', match_type='prefix')
-        manager.add_grouping_rule('Gas', 'fossil_gas', 'reds', match_type='prefix')
-        manager.apply_colors()
+        manager = ComponentColorManager()
+        manager.configure(
+            {
+                'oranges': ['Solar_PV'],
+                'blues': ['Wind_Onshore'],
+                'greys': ['Coal_Plant'],
+                'reds': ['Gas_Plant'],
+            }
+        )
 
         # Dataset 1: Only Solar and Wind
         dataset1 = xr.Dataset(
@@ -166,6 +193,15 @@ class TestVariableExtraction:
 
         assert component == 'Solar_PV'
 
+    def test_extract_component_with_pipe(self):
+        """Test extracting component from variable with pipe."""
+        manager = ComponentColorManager([])
+
+        variable = 'Solar_PV|investment'
+        component = manager.extract_component(variable)
+
+        assert component == 'Solar_PV'
+
     def test_extract_component_no_separators(self):
         """Test extracting component from variable without separators."""
         manager = ComponentColorManager([])
@@ -181,10 +217,8 @@ class TestVariableColorResolution:
 
     def test_get_variable_color(self):
         """Test getting color for a single variable."""
-        components = ['Solar_PV', 'Wind_Onshore']
-        manager = ComponentColorManager(components)
-        manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.apply_colors()
+        manager = ComponentColorManager()
+        manager.configure({'oranges': ['Solar_PV']})
 
         variable = 'Solar_PV(Bus)|flow_rate'
         color = manager.get_variable_color(variable)
@@ -194,11 +228,14 @@ class TestVariableColorResolution:
 
     def test_get_variable_colors_multiple(self):
         """Test getting colors for multiple variables."""
-        components = ['Solar_PV', 'Wind_Onshore', 'Coal_Plant']
-        manager = ComponentColorManager(components)
-        manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'wind', 'blues', match_type='prefix')
-        manager.apply_colors()
+        manager = ComponentColorManager()
+        manager.configure(
+            {
+                'oranges': ['Solar_PV'],
+                'blues': ['Wind_Onshore'],
+                'greys': ['Coal_Plant'],
+            }
+        )
 
         variables = ['Solar_PV(Bus)|flow_rate', 'Wind_Onshore(Bus)|flow_rate', 'Coal_Plant(Bus)|flow_rate']
 
@@ -208,37 +245,17 @@ class TestVariableColorResolution:
         assert all(var in colors for var in variables)
         assert all(isinstance(color, str) for color in colors.values())
 
+    def test_variable_extraction_in_color_resolution(self):
+        """Test that variable names are properly extracted to component names."""
+        manager = ComponentColorManager()
+        manager.configure({'Solar_PV': '#FF0000'})
 
-class TestOverrides:
-    """Test override functionality."""
+        # Variable format with flow
+        variable_color = manager.get_variable_color('Solar_PV(Bus)|flow_rate')
+        component_color = manager.get_color('Solar_PV')
 
-    def test_simple_override(self):
-        """Test simple color override."""
-        components = ['Solar_PV', 'Wind_Onshore']
-        manager = ComponentColorManager(components)
-        manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.apply_colors()
-
-        # Override Solar_PV color
-        manager.override({'Solar_PV': '#FF0000'})
-
-        color = manager.get_color('Solar_PV')
-        assert color == '#FF0000'
-
-    def test_override_precedence(self):
-        """Test that overrides take precedence over grouping rules."""
-        components = ['Solar_PV']
-        manager = ComponentColorManager(components)
-        manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.apply_colors()
-
-        original_color = manager.get_color('Solar_PV')
-
-        manager.override({'Solar_PV': '#FFD700'})
-
-        new_color = manager.get_color('Solar_PV')
-        assert new_color == '#FFD700'
-        assert new_color != original_color
+        # Should be the same color
+        assert variable_color == component_color
 
 
 class TestIntegrationWithResolveColors:
@@ -246,11 +263,13 @@ class TestIntegrationWithResolveColors:
 
     def test_resolve_colors_with_manager(self):
         """Test resolve_colors with ComponentColorManager."""
-        components = ['Solar_PV', 'Wind_Onshore', 'Coal_Plant']
-        manager = ComponentColorManager(components)
-        manager.add_grouping_rule('Solar', 'solar', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'wind', 'blues', match_type='prefix')
-        manager.apply_colors()
+        manager = ComponentColorManager()
+        manager.configure(
+            {
+                'oranges': ['Solar_PV'],
+                'blues': ['Wind_Onshore'],
+            }
+        )
 
         dataset = xr.Dataset(
             {
@@ -282,127 +301,77 @@ class TestIntegrationWithResolveColors:
 class TestMethodChaining:
     """Test method chaining."""
 
-    def test_full_chaining(self):
-        """Test full method chaining."""
-        components = ['Solar_PV', 'Wind_Onshore', 'Gas_Plant']
-        manager = (
-            ComponentColorManager(components=components)
-            .add_custom_family('ocean', ['#003f5c', '#2f4b7c'])
-            .add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
-            .add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        )
+    def test_configure_returns_self(self):
+        """Test that configure() returns self for chaining."""
+        manager = ComponentColorManager()
+        result = manager.configure({'Boiler': 'red'})
 
-        assert 'ocean' in manager.color_families
-        assert len(manager._grouping_rules) == 2
+        assert result is manager
 
-
-class TestFlowShading:
-    """Test flow-level color distinction."""
-
-    def test_initialization_with_flows_dict(self):
-        """Test initialization with flows parameter."""
-        flows = {
-            'Boiler': ['Q_th', 'Q_fu'],
-            'CHP': ['P_el', 'Q_th', 'Q_fu'],
-        }
-        manager = ComponentColorManager(flows=flows, flow_variation=0.04)
+    def test_chaining_with_initialization(self):
+        """Test method chaining with initialization."""
+        # Test chaining configure() after __init__
+        manager = ComponentColorManager(components=['Solar_PV', 'Wind_Onshore'])
+        manager.configure({'oranges': ['Solar_PV']})
 
         assert len(manager.components) == 2
-        assert manager.flows == {'Boiler': ['Q_fu', 'Q_th'], 'CHP': ['P_el', 'Q_fu', 'Q_th']}  # Sorted
-        assert manager.flow_variation == 0.04
+        assert manager.get_color('Solar_PV') is not None
 
-    def test_flow_extraction(self):
-        """Test _extract_component_and_flow method."""
-        manager = ComponentColorManager(components=['Boiler'])
 
-        # Test Component(Flow)|attribute format
-        comp, flow = manager._extract_component_and_flow('Boiler(Q_th)|flow_rate')
-        assert comp == 'Boiler'
-        assert flow == 'Q_th'
+class TestUnknownComponents:
+    """Test behavior with unknown components."""
 
-        # Test Component|attribute format (no flow)
-        comp, flow = manager._extract_component_and_flow('Boiler|investment')
-        assert comp == 'Boiler'
-        assert flow is None
+    def test_get_color_unknown_component(self):
+        """Test that unknown components get a default grey color."""
+        manager = ComponentColorManager()
+        manager.configure({'Boiler': 'red'})
 
-        # Test plain component name
-        comp, flow = manager._extract_component_and_flow('Boiler')
-        assert comp == 'Boiler'
-        assert flow is None
+        # Unknown component
+        color = manager.get_color('UnknownComponent')
 
-    def test_flow_shading_disabled(self):
-        """Test that flow shading is disabled by default."""
-        flows = {'Boiler': ['Q_th', 'Q_fu']}
-        manager = ComponentColorManager(flows=flows, flow_variation=None)
+        # Should return grey default
+        assert color == '#808080'
 
-        # Both flows should get the same color
-        color1 = manager.get_variable_color('Boiler(Q_th)|flow_rate')
-        color2 = manager.get_variable_color('Boiler(Q_fu)|flow_rate')
+    def test_get_variable_color_unknown_component(self):
+        """Test that unknown components in variables get default color."""
+        manager = ComponentColorManager()
+        manager.configure({'Boiler': 'red'})
+
+        # Unknown component
+        color = manager.get_variable_color('UnknownComponent(Bus)|flow')
+
+        # Should return grey default
+        assert color == '#808080'
+
+
+class TestColorCaching:
+    """Test that variable color caching works."""
+
+    def test_cache_is_used(self):
+        """Test that cache is used for repeated variable lookups."""
+        manager = ComponentColorManager()
+        manager.configure({'Solar_PV': '#FF0000'})
+
+        # First call populates cache
+        color1 = manager.get_variable_color('Solar_PV(Bus)|flow_rate')
+
+        # Second call should hit cache
+        color2 = manager.get_variable_color('Solar_PV(Bus)|flow_rate')
 
         assert color1 == color2
+        assert 'Solar_PV(Bus)|flow_rate' in manager._variable_cache
 
-    def test_flow_shading_enabled(self):
-        """Test that flow shading creates distinct colors."""
-        flows = {'Boiler': ['Q_th', 'Q_fu', 'Q_el']}
-        manager = ComponentColorManager(flows=flows, flow_variation=0.04)
+    def test_cache_cleared_on_configure(self):
+        """Test that cache is cleared when colors are reconfigured."""
+        manager = ComponentColorManager()
+        manager.configure({'Solar_PV': '#FF0000'})
 
-        # Get colors for all three flows
-        color_th = manager.get_variable_color('Boiler(Q_th)|flow_rate')
-        color_fu = manager.get_variable_color('Boiler(Q_fu)|flow_rate')
-        color_el = manager.get_variable_color('Boiler(Q_el)|flow_rate')
+        # Populate cache
+        manager.get_variable_color('Solar_PV(Bus)|flow_rate')
+        assert len(manager._variable_cache) > 0
 
-        # All colors should be different
-        assert color_th != color_fu
-        assert color_fu != color_el
-        assert color_th != color_el
+        # Reconfigure
+        manager.configure({'Solar_PV': '#00FF00'})
 
-        # All colors should be valid hex
-        assert color_th.startswith('#')
-        assert color_fu.startswith('#')
-        assert color_el.startswith('#')
-
-    def test_flow_shading_stability(self):
-        """Test that flow shading produces stable colors."""
-        flows = {'Boiler': ['Q_th', 'Q_fu']}
-        manager = ComponentColorManager(flows=flows, flow_variation=0.04)
-
-        # Get color multiple times
-        color1 = manager.get_variable_color('Boiler(Q_th)|flow_rate')
-        color2 = manager.get_variable_color('Boiler(Q_th)|flow_rate')
-        color3 = manager.get_variable_color('Boiler(Q_th)|flow_rate')
-
-        assert color1 == color2 == color3
-
-    def test_single_flow_no_shading(self):
-        """Test that single flow gets base color (no shading needed)."""
-        flows = {'Storage': ['Q_th_load']}
-        manager = ComponentColorManager(flows=flows, flow_variation=0.04)
-
-        # Single flow should get base color
-        color = manager.get_variable_color('Storage(Q_th_load)|flow_rate')
-        base_color = manager.get_color('Storage')
-
-        assert color == base_color
-
-    def test_flow_variation_strength(self):
-        """Test that variation strength parameter works."""
-        flows = {'Boiler': ['Q_th', 'Q_fu']}
-
-        # Low variation
-        manager_low = ComponentColorManager(flows=flows, flow_variation=0.02)
-        color_low_1 = manager_low.get_variable_color('Boiler(Q_th)|flow_rate')
-        color_low_2 = manager_low.get_variable_color('Boiler(Q_fu)|flow_rate')
-
-        # High variation
-        manager_high = ComponentColorManager(flows=flows, flow_variation=0.15)
-        color_high_1 = manager_high.get_variable_color('Boiler(Q_th)|flow_rate')
-        color_high_2 = manager_high.get_variable_color('Boiler(Q_fu)|flow_rate')
-
-        # Colors should be different
-        assert color_low_1 != color_low_2
-        assert color_high_1 != color_high_2
-
-        # High variation should have larger difference (this is approximate test)
-        # We can't easily measure color distance, so just check they're all different
-        assert color_low_1 != color_high_1
-        assert color_low_2 != color_high_2
+        # Cache should be cleared
+        assert len(manager._variable_cache) == 0
