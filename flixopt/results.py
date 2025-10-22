@@ -332,7 +332,7 @@ class CalculationResults:
         return self._flow_system
 
     def setup_colors(
-        self, config: dict[str, str] | str | pathlib.Path | None = None, enable_flow_shading: bool = False
+        self, config: dict[str, str] | str | pathlib.Path | None = None, flow_variation: float | None = None
     ) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager for configuring plot colors.
 
@@ -345,7 +345,8 @@ class CalculationResults:
                 - dict: {pattern: colormap} mapping
                 - str/Path: Path to YAML or JSON file
                 - None: Create empty manager for manual config (default)
-            enable_flow_shading: Enable subtle color variations for different flows (default: False)
+            flow_variation: Lightness variation strength per flow (0.02-0.15).
+                None or 0 disables flow shading (default: None)
 
         Returns:
             ComponentColorManager instance ready for configuration.
@@ -390,7 +391,7 @@ class CalculationResults:
 
         if self.color_manager is None:
             self.color_manager = plotting.ComponentColorManager.from_flow_system(
-                self.flow_system, enable_flow_shading=enable_flow_shading
+                self.flow_system, flow_variation=flow_variation
             )
 
         # Apply configuration if provided
@@ -2087,7 +2088,7 @@ class SegmentedCalculationResults:
         return [segment.name for segment in self.segment_results]
 
     def setup_colors(
-        self, config: dict[str, str] | str | pathlib.Path | None = None, enable_flow_shading: bool = False
+        self, config: dict[str, str] | str | pathlib.Path | None = None, flow_variation: float | None = None
     ) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager that propagates to all segments.
 
@@ -2101,7 +2102,8 @@ class SegmentedCalculationResults:
                 - dict: {pattern: colormap} mapping
                 - str/Path: Path to YAML or JSON file
                 - None: Create empty manager for manual config (default)
-            enable_flow_shading: Enable subtle color variations for different flows (default: False)
+            flow_variation: Lightness variation strength per flow (0.02-0.15).
+                None or 0 disables flow shading (default: None)
 
         Returns:
             ComponentColorManager instance ready for configuration (propagated to all segments).
@@ -2131,7 +2133,7 @@ class SegmentedCalculationResults:
         """
         if self.color_manager is None:
             self.color_manager = plotting.ComponentColorManager.from_flow_system(
-                self.flow_system, enable_flow_shading=enable_flow_shading
+                self.flow_system, flow_variation=flow_variation
             )
             # Propagate to all segment results for consistent coloring
             for segment in self.segment_results:

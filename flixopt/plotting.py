@@ -435,8 +435,7 @@ class ComponentColorManager:
         self,
         components: list[str] | None = None,
         flows: dict[str, list[str]] | None = None,
-        enable_flow_shading: bool = False,
-        flow_variation_strength: float = 0.04,
+        flow_variation: float | None = None,
         default_colormap: str = 'Dark24',
     ) -> None:
         """Initialize component color manager.
@@ -444,8 +443,8 @@ class ComponentColorManager:
         Args:
             components: List of all component names in the system (optional if flows provided)
             flows: Dict mapping component names to their flow labels (e.g., {'Boiler': ['Q_th', 'Q_fu']})
-            enable_flow_shading: If True, create subtle color variations for flows of same component
-            flow_variation_strength: Lightness variation per flow (0.05-0.15, default: 0.08 = 8%)
+            flow_variation: Lightness variation strength per flow (0.02-0.15).
+                None or 0 disables flow shading (default: None)
             default_colormap: Default colormap for ungrouped components (default: 'Dark24')
         """
         # Extract components from flows dict if provided
@@ -462,16 +461,16 @@ class ComponentColorManager:
         self.color_families = self.DEFAULT_FAMILIES.copy()
 
         # Flow shading settings (requires optional 'colour' library)
-        if enable_flow_shading and not HAS_COLOUR:
+        # flow_variation serves as both the enable flag and the variation strength
+        if flow_variation and not HAS_COLOUR:
             logger.error(
                 'Flow shading requested but optional dependency "colour" is not installed. '
                 'Install it with: pip install flixopt[flow_colors]\n'
                 'Flow shading will be disabled.'
             )
-            self.enable_flow_shading = False
+            self.flow_variation = None
         else:
-            self.enable_flow_shading = enable_flow_shading
-        self.flow_variation_strength = flow_variation_strength
+            self.flow_variation = flow_variation
 
         # Pattern-based grouping rules
         self._grouping_rules: list[dict[str, str]] = []
@@ -490,7 +489,7 @@ class ComponentColorManager:
 
     def __repr__(self) -> str:
         """Return detailed representation of ComponentColorManager."""
-        flow_info = f', flow_shading={self.enable_flow_shading}' if self.enable_flow_shading else ''
+        flow_info = f', flow_variation={self.flow_variation}' if self.flow_variation else ''
         return (
             f'ComponentColorManager(components={len(self.components)}, '
             f'rules={len(self._grouping_rules)}, '
@@ -536,14 +535,15 @@ class ComponentColorManager:
         return '\n'.join(lines)
 
     @classmethod
-    def from_flow_system(cls, flow_system, enable_flow_shading: bool = False, **kwargs):
+    def from_flow_system(cls, flow_system, flow_variation: float | None = None, **kwargs):
         """Create ComponentColorManager from a FlowSystem.
 
         Automatically extracts all components and their flows from the FlowSystem.
 
         Args:
             flow_system: FlowSystem instance to extract components and flows from
-            enable_flow_shading: Enable subtle color variations for flows (default: False)
+            flow_variation: Lightness variation strength per flow (0.02-0.15).
+                None or 0 disables flow shading (default: None)
             **kwargs: Additional arguments passed to ComponentColorManager.__init__
 
         Returns:
@@ -551,13 +551,11 @@ class ComponentColorManager:
 
         Examples:
             ```python
-            # Basic usage
+            # Basic usage (no flow shading)
             manager = ComponentColorManager.from_flow_system(flow_system)
 
             # With flow shading
-            manager = ComponentColorManager.from_flow_system(
-                flow_system, enable_flow_shading=True, flow_variation_strength=0.10
-            )
+            manager = ComponentColorManager.from_flow_system(flow_system, flow_variation=0.10)
             ```
         """
         from .flow_system import FlowSystem
@@ -572,7 +570,7 @@ class ComponentColorManager:
             if flow_labels:  # Only add if component has flows
                 flows[component_label] = flow_labels
 
-        return cls(flows=flows, enable_flow_shading=enable_flow_shading, **kwargs)
+        return cls(flows=flows, flow_variation=flow_variation, **kwargs)
 
     def add_custom_family(self, name: str, colors: list[str]) -> ComponentColorManager:
         """Add a custom color family.
@@ -872,7 +870,7 @@ class ComponentColorManager:
         base_color = self.get_color(component)
 
         # Apply flow shading if enabled and flow is present
-        if self.enable_flow_shading and flow is not None and component in self.flows:
+        if self.flow_variation and flow is not None and component in self.flows:
             # Get sorted flow list for this component
             component_flows = self.flows[component]
 
@@ -1120,7 +1118,7 @@ class ComponentColorManager:
         shades = []
 
         for idx in range(num_flows):
-            delta_lightness = (idx - center_idx) * self.flow_variation_strength
+            delta_lightness = (idx - center_idx) * self.flow_variation
             new_lightness = np.clip(lightness + delta_lightness, 0.1, 0.9)
 
             # Create new color with adjusted lightness
