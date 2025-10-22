@@ -11,7 +11,6 @@ import flixopt as fx
 if __name__ == '__main__':
     # Enable console logging
     fx.CONFIG.Logging.console = True
-    fx.CONFIG.Plotting.default_show = True
     fx.CONFIG.apply()
     # --- Define the Flow System, that will hold all elements, and the time steps you want to model ---
     timesteps = pd.date_range('2020-01-01', periods=3, freq='h')

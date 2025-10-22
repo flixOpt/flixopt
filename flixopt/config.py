@@ -60,7 +60,7 @@ _DEFAULTS = MappingProxyType(
                 'plotly_renderer': 'browser',
                 'plotly_template': 'plotly_white',
                 'matplotlib_backend': None,
-                'default_show': False,
+                'default_show': True,
                 'default_save_path': None,
                 'default_engine': 'plotly',
                 'default_dpi': 300,

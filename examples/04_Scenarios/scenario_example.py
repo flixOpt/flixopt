@@ -8,8 +8,6 @@ import pandas as pd
 import flixopt as fx
 
 if __name__ == '__main__':
-    fx.CONFIG.Plotting.default_show = True
-    fx.CONFIG.apply()
     # Create datetime array starting from '2020-01-01' for one week
     timesteps = pd.date_range('2020-01-01', periods=24 * 7, freq='h')
     scenarios = pd.Index(['Base Case', 'High Demand'])
