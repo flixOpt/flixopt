@@ -143,38 +143,10 @@ class ColorProcessor:
         - **Color Lists**: ['red', 'blue', 'green'] or ['#FF0000', '#0000FF', '#00FF00']
         - **Label Dictionaries**: {'Generator': 'red', 'Storage': 'blue', 'Load': 'green'}
 
-    Examples:
-        Basic color processing:
-
+    Example:
         ```python
-        # Initialize for Plotly backend
         processor = ColorProcessor(engine='plotly', default_colorscale='turbo')
-
-        # Process different color specifications
         colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
-        colors = processor.process_colors(['red', 'blue', 'green'], ['A', 'B', 'C'])
-        colors = processor.process_colors({'Wind': 'skyblue', 'Solar': 'gold'}, ['Wind', 'Solar', 'Gas'])
-
-        # Switch to Matplotlib
-        processor = ColorProcessor(engine='matplotlib')
-        mpl_colors = processor.process_colors('tab10', component_labels)
-        ```
-
-        Energy system visualization:
-
-        ```python
-        # Specialized energy system palette
-        energy_colors = {
-            'Natural_Gas': '#8B4513',  # Brown
-            'Electricity': '#FFD700',  # Gold
-            'Heat': '#FF4500',  # Red-orange
-            'Cooling': '#87CEEB',  # Sky blue
-            'Hydrogen': '#E6E6FA',  # Lavender
-            'Battery': '#32CD32',  # Lime green
-        }
-
-        processor = ColorProcessor('plotly')
-        flow_colors = processor.process_colors(energy_colors, flow_labels)
         ```
 
     Args:
@@ -194,16 +166,6 @@ class ColorProcessor:
         )
 
     def _get_sequential_colorscale(self, colormap_name: str, num_colors: int) -> list[str] | None:
-        """
-        Get colors from a sequential/continuous Plotly colorscale.
-
-        Args:
-            colormap_name: Name of the colorscale to sample from
-            num_colors: Number of colors to sample
-
-        Returns:
-            List of color strings (hex format), or None if colorscale not found
-        """
         try:
             colorscale = px.colors.get_colorscale(colormap_name)
             # Generate evenly spaced points
@@ -213,16 +175,6 @@ class ColorProcessor:
             return None
 
     def _get_plotly_colormap_robust(self, colormap_name: str, num_colors: int) -> list[str]:
-        """
-        Robustly get colors from Plotly colormaps with multiple fallback levels.
-
-        Args:
-            colormap_name: Name of the colormap to try
-            num_colors: Number of colors needed
-
-        Returns:
-            List of color strings (hex format)
-        """
         # First try qualitative color sequences (Dark24, Plotly, Set1, etc.)
         colormap_title = colormap_name.title()
         if hasattr(px.colors.qualitative, colormap_title):
@@ -397,52 +349,21 @@ class ColorProcessor:
 
 
 class ComponentColorManager:
-    """Manage consistent colors for flow system components with explicit grouping.
+    """Manage consistent colors for flow system components.
 
-    This class provides simple, explicit color management where components are either
-    assigned direct colors or grouped together to get shades from a colorscale.
+    Assign direct colors or group components to get shades from colorscales.
+    Colorscale families: blues, greens, oranges, reds, purples, teals, greys, etc.
 
-    Key Features:
-        - **Explicit grouping**: Map colorscales to component lists for clear control
-        - **Direct colors**: Assign specific colors to individual components
-        - **Stable colors**: Components assigned colors once, ensuring consistency across all plots
-        - **Variable extraction**: Auto-extract component names from variable names
-        - **Zero configuration**: Works automatically with sensible defaults
-
-    Available Colorscale Families (14 single-hue sequential palettes):
-        Cool: blues, greens, teals, purples, mint, emrld, darkmint
-        Warm: reds, oranges, peach, pinks, burg, sunsetdark
-        Neutral: greys
-
-    Example Usage:
-        Setup with mixed direct and grouped colors:
-
+    Example:
         ```python
         manager = ComponentColorManager()
         manager.configure(
             {
-                # Direct colors (component → color)
-                'Boiler1': '#FF0000',
-                'CHP': 'darkred',
-                # Grouped colors (colorscale → list of components)
-                'oranges': ['Solar1', 'Solar2', 'SolarPV'],
-                'blues': ['Wind1', 'Wind2'],
-                'greens': ['Battery1', 'Battery2', 'Battery3'],
+                'Boiler1': '#FF0000',  # Direct color
+                'oranges': ['Solar1', 'Solar2'],  # Group gets orange shades
             }
         )
-        ```
-
-        Or from YAML file:
-
-        ```python
-        manager.configure('colors.yaml')
-        ```
-
-        Get colors for variables (extracts component automatically):
-
-        ```python
-        colors = manager.get_variable_colors(['Boiler1(Bus_A)|flow', 'CHP1(Bus_B)|flow'])
-        # Returns: {'Boiler1(Bus_A)|flow': '#...', 'CHP1(Bus_B)|flow': '#...'}
+        colors = manager.get_variable_colors(['Boiler1(Bus_A)|flow'])
         ```
     """
 
@@ -493,7 +414,6 @@ class ComponentColorManager:
             self._assign_default_colors()
 
     def __repr__(self) -> str:
-        """Return detailed representation of ComponentColorManager."""
         return (
             f'ComponentColorManager(components={len(self.components)}, '
             f'colors_configured={len(self._component_colors)}, '
@@ -501,7 +421,6 @@ class ComponentColorManager:
         )
 
     def __str__(self) -> str:
-        """Return human-readable summary of ComponentColorManager."""
         lines = [
             'ComponentColorManager',
             f'  Components: {len(self.components)}',
@@ -529,23 +448,7 @@ class ComponentColorManager:
 
     @classmethod
     def from_flow_system(cls, flow_system, **kwargs):
-        """Create ComponentColorManager from a FlowSystem.
-
-        Automatically extracts all component names from the FlowSystem.
-
-        Args:
-            flow_system: FlowSystem instance to extract components from
-            **kwargs: Additional arguments passed to ComponentColorManager.__init__
-
-        Returns:
-            ComponentColorManager instance
-
-        Examples:
-            ```python
-            manager = ComponentColorManager.from_flow_system(flow_system)
-            manager.configure({'oranges': ['Solar1', 'Solar2']})
-            ```
-        """
+        """Create ComponentColorManager from a FlowSystem."""
         from .flow_system import FlowSystem
 
         if not isinstance(flow_system, FlowSystem):
@@ -557,59 +460,11 @@ class ComponentColorManager:
         return cls(components=components, **kwargs)
 
     def configure(self, config: dict[str, str | list[str]] | str | pathlib.Path) -> ComponentColorManager:
-        """Configure component colors with explicit grouping or from file.
-
-        Supports two mapping types in the config dict:
-            1. Component → color (str → str): Direct color assignment
-            2. Colorscale → components (str → list[str]): Group gets shades from colorscale
+        """Configure component colors from dict or YAML file.
 
         Args:
-            config: Color configuration as dict or path to YAML file.
-                Dict format: {key: value} where:
-                    - str → str: Direct color assignment (e.g., 'Boiler1': '#FF0000')
-                    - str → list[str]: Colorscale mapping (e.g., 'oranges': ['Solar1', 'Solar2'])
-
-        Returns:
-            Self for method chaining
-
-        Examples:
-            Dict-based configuration (mixed direct + grouped):
-
-            ```python
-            manager.configure(
-                {
-                    # Direct colors
-                    'Boiler1': '#FF0000',
-                    'CHP': 'darkred',
-                    # Grouped colors (shades from colorscale)
-                    'oranges': ['Solar1', 'Solar2', 'SolarPV'],
-                    'blues': ['Wind1', 'Wind2'],
-                    'greens': ['Battery1', 'Battery2', 'Battery3'],
-                }
-            )
-            ```
-
-            From YAML file:
-
-            ```python
-            manager.configure('colors.yaml')
-            ```
-
-            YAML file example (colors.yaml):
-            ```yaml
-            # Direct colors
-            Boiler1: '#FF0000'
-            CHP: darkred
-
-            # Grouped colors
-            oranges:
-              - Solar1
-              - Solar2
-              - SolarPV
-            blues:
-              - Wind1
-              - Wind2
-            ```
+            config: Dict with 'component': 'color' or 'colorscale': ['comp1', 'comp2'],
+                or path to YAML file with same format.
         """
         # Load from file if path provided
         if isinstance(config, (str, pathlib.Path)):
@@ -656,58 +511,15 @@ class ComponentColorManager:
         return self
 
     def get_color(self, component: str) -> str:
-        """Get color for a component.
-
-        Args:
-            component: Component name
-
-        Returns:
-            Hex color string (defaults to grey if component unknown)
-        """
+        """Get color for a component (defaults to grey if unknown)."""
         return self._component_colors.get(component, '#808080')
 
     def extract_component(self, variable: str) -> str:
-        """Extract component name from variable name.
-
-        Uses default extraction logic: split on '(' or '|' to get component.
-
-        Args:
-            variable: Variable name (e.g., 'Boiler1(Bus_A)|flow_rate')
-
-        Returns:
-            Component name (e.g., 'Boiler1')
-
-        Examples:
-            ```python
-            extract_component('Boiler1(Bus_A)|flow')  # Returns: 'Boiler1'
-            extract_component('CHP1|power')  # Returns: 'CHP1'
-            extract_component('Storage')  # Returns: 'Storage'
-            ```
-        """
+        """Extract component name from variable name (e.g., 'Boiler1(Bus_A)|flow' → 'Boiler1')."""
         component, _ = self._extract_component_and_flow(variable)
         return component
 
     def _extract_component_and_flow(self, variable: str) -> tuple[str, str | None]:
-        """Extract both component and flow name from variable name.
-
-        Parses variable formats:
-        - 'Component(Flow)|attribute' → ('Component', 'Flow')
-        - 'Component|attribute' → ('Component', None)
-        - 'Component' → ('Component', None)
-
-        Args:
-            variable: Variable name
-
-        Returns:
-            Tuple of (component_name, flow_name or None)
-
-        Examples:
-            ```python
-            _extract_component_and_flow('Boiler(Q_th)|flow_rate')  # ('Boiler', 'Q_th')
-            _extract_component_and_flow('CHP(P_el)|flow_rate')  # ('CHP', 'P_el')
-            _extract_component_and_flow('Boiler|investment')  # ('Boiler', None)
-            ```
-        """
         # Try "Component(Flow)|attribute" format
         if '(' in variable and ')' in variable:
             component = variable.split('(')[0]
@@ -722,20 +534,7 @@ class ComponentColorManager:
         return variable, None
 
     def get_variable_color(self, variable: str) -> str:
-        """Get color for a variable (extracts component automatically).
-
-        Args:
-            variable: Variable name (e.g., 'Boiler1(Bus_A)|flow_rate')
-
-        Returns:
-            Hex color string
-
-        Examples:
-            ```python
-            color = manager.get_variable_color('Boiler1(Q_th)|flow_rate')
-            # Returns the color assigned to 'Boiler1'
-            ```
-        """
+        """Get color for a variable (extracts component automatically)."""
         # Check cache first
         if variable in self._variable_cache:
             return self._variable_cache[variable]
@@ -751,30 +550,16 @@ class ComponentColorManager:
         return color
 
     def get_variable_colors(self, variables: list[str]) -> dict[str, str]:
-        """Get colors for multiple variables.
-
-        This is the main API used by plotting functions.
-
-        Args:
-            variables: List of variable names
-
-        Returns:
-            Dict mapping variable names to colors
-        """
+        """Get colors for multiple variables (main API for plotting functions)."""
         return {var: self.get_variable_color(var) for var in variables}
 
     def to_dict(self) -> dict[str, str]:
-        """Get complete component→color mapping.
-
-        Returns:
-            Dict of all components and their assigned colors
-        """
+        """Get complete component→color mapping."""
         return self._component_colors.copy()
 
     # ==================== INTERNAL METHODS ====================
 
     def _assign_default_colors(self) -> None:
-        """Assign default colors to all components using default colormap."""
         colors = self._sample_colors_from_colorscale(self.default_colorscale, len(self.components))
 
         for component, color in zip(self.components, colors, strict=False):
@@ -782,35 +567,7 @@ class ComponentColorManager:
 
     @staticmethod
     def _load_config_from_file(file_path: str | pathlib.Path) -> dict[str, str | list[str]]:
-        """Load color configuration from YAML file.
-
-        Args:
-            file_path: Path to YAML configuration file
-
-        Returns:
-            Dictionary with color configuration (supports both str and list values)
-
-        Raises:
-            FileNotFoundError: If file doesn't exist
-            ValueError: If file format is unsupported or invalid
-            ImportError: If PyYAML is not installed
-
-        Examples:
-            YAML file (colors.yaml):
-            ```yaml
-            # Direct colors
-            Boiler1: '#FF0000'
-            CHP: darkred
-
-            # Grouped colors
-            oranges:
-              - Solar1
-              - Solar2
-            blues:
-              - Wind1
-              - Wind2
-            ```
-        """
+        """Load color configuration from YAML file."""
         file_path = pathlib.Path(file_path)
 
         if not file_path.exists():
@@ -838,10 +595,6 @@ class ComponentColorManager:
         return config
 
     def _sample_colors_from_colorscale(self, colorscale_name: str, num_colors: int) -> list[str]:
-        """Sample N colors from a colorscale (cycling if needed).
-
-        Delegates to ColorProcessor for consistent colormap handling across the codebase.
-        """
         # Check custom families first (ComponentColorManager-specific feature)
         if colorscale_name in self.color_families:
             color_list = self.color_families[colorscale_name]
@@ -857,18 +610,7 @@ class ComponentColorManager:
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
-    """
-    Ensure the input data is an xarray Dataset, converting from DataFrame if needed.
-
-    Args:
-        data: Input data, either xarray Dataset or pandas DataFrame.
-
-    Returns:
-        xarray Dataset.
-
-    Raises:
-        TypeError: If data is neither Dataset nor DataFrame.
-    """
+    """Convert DataFrame to Dataset if needed."""
     if isinstance(data, xr.Dataset):
         return data
     elif isinstance(data, pd.DataFrame):
@@ -879,17 +621,7 @@ def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
 
 
 def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None:
-    """
-    Validate input data for plotting and raise clear errors for common issues.
-
-    Args:
-        data: xarray Dataset to validate.
-        allow_empty: Whether to allow empty datasets (no variables).
-
-    Raises:
-        ValueError: If data is invalid for plotting.
-        TypeError: If data contains non-numeric types.
-    """
+    """Validate dataset for plotting (checks for empty data, non-numeric types, etc.)."""
     # Check for empty data
     if not allow_empty and len(data.data_vars) == 0:
         raise ValueError('Empty Dataset provided (no variables). Cannot create plot.')
@@ -924,35 +656,7 @@ def resolve_colors(
     colors: ColorType | ComponentColorManager,
     engine: PlottingEngine = 'plotly',
 ) -> dict[str, str]:
-    """Resolve colors parameter to a color mapping dict.
-
-    This public utility function handles all color parameter types and applies the
-    color manager intelligently based on the data structure. Can be used standalone
-    or as part of CalculationResults.
-
-    Args:
-        data: Dataset to create colors for. Variable names from data_vars are used as labels.
-        colors: Color specification or a ComponentColorManager to use
-        engine: Plotting engine ('plotly' or 'matplotlib')
-
-    Returns:
-        Dictionary mapping variable names to colors
-
-    Examples:
-        With CalculationResults:
-
-        >>> resolved_colors = resolve_colors(data, results.color_manager)
-
-        Standalone usage:
-
-        >>> manager = plotting.ComponentColorManager(['Solar', 'Wind', 'Coal'])
-        >>> manager.add_rule('Solar', 'oranges')
-        >>> resolved_colors = resolve_colors(data, manager)
-
-        Without manager:
-
-        >>> resolved_colors = resolve_colors(data, 'turbo')
-    """
+    """Resolve colors parameter to a dict mapping variable names to colors."""
     # Get variable names from Dataset (always strings and unique)
     labels = list(data.data_vars.keys())
 
