@@ -115,17 +115,15 @@ class CalculationResults:
         Configure automatic color management for plots:
 
         ```python
-        # Create and configure a color manager for pattern-based coloring
-        manager = results.setup_colors()
-        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='prefix')
-        manager.add_grouping_rule('Gas', 'fossil', 'reds', match_type='prefix')
-        manager.apply_colors()
+        # Dict-based configuration (simplest):
+        results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues', 'Battery': 'greens'})
 
-        # All plots automatically use the manager (colors='auto' is the default)
-        results['ElectricityBus'].plot_node_balance()  # Uses configured colors
-        results['Battery'].plot_charge_state()  # Also uses configured colors
+        # Or programmatically:
+        results.setup_colors().add_rule('Solar*', 'oranges').add_rule('Wind*', 'blues')
+
+        # All plots automatically use configured colors (colors='auto' is the default)
+        results['ElectricityBus'].plot_node_balance()
+        results['Battery'].plot_charge_state()
 
         # Override when needed
         results['ElectricityBus'].plot_node_balance(colors='viridis')  # Ignores mapper
@@ -1974,16 +1972,12 @@ class SegmentedCalculationResults:
         Configure color management for consistent plotting across segments:
 
         ```python
-        # Create and configure a color manager
-        manager = results.setup_colors()
-        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='prefix')
-        manager.apply_colors()
+        # Dict-based configuration (simplest):
+        results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues', 'Battery': 'greens'})
 
-        # Plot using any segment - colors are consistent across all segments
+        # Colors automatically propagate to all segments
         results.segment_results[0]['ElectricityBus'].plot_node_balance()
-        results.segment_results[1]['ElectricityBus'].plot_node_balance()
+        results.segment_results[1]['ElectricityBus'].plot_node_balance()  # Same colors
         ```
 
     Design Considerations:

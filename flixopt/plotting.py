@@ -1192,7 +1192,7 @@ def resolve_colors(
         Standalone usage:
 
         >>> manager = plotting.ComponentColorManager(['Solar', 'Wind', 'Coal'])
-        >>> manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
+        >>> manager.add_rule('Solar', 'oranges')
         >>> resolved_colors = resolve_colors(data, manager)
 
         Without manager:
