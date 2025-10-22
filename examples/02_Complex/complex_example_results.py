@@ -19,11 +19,12 @@ if __name__ == '__main__':
         ) from e
 
     # --- Configure Color Mapping for Consistent Plot Colors (Optional) ---
-    results.setup_colors()
+    results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues'})  # Dict (simplest)
+    # results.setup_colors('colors.yaml')  # Or from file
+    # results.setup_colors().add_rule('Solar*', 'oranges')  # Or programmatic
 
     # --- Basic overview ---
     results.plot_network(show=True)
-    # All plots automatically use default colors (or configured color manager if rules were added)
     results['Fernwärme'].plot_node_balance()
 
     # --- Detailed Plots ---

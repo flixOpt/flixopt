@@ -205,7 +205,8 @@ if __name__ == '__main__':
     # You can analyze results directly or save them to file and reload them later.
     calculation.results.to_file()
 
-    calculation.results.setup_colors()
+    # Optional: Configure custom colors (dict is simplest):
+    calculation.results.setup_colors({'BHKW*': 'oranges', 'Speicher': 'greens'})
 
     # Plot results (colors are automatically assigned to components)
     calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')  # Heatmap uses continuous colors (not ColorManager)

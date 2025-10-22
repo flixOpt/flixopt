@@ -10,6 +10,7 @@ import flixopt as fx
 if __name__ == '__main__':
     # Enable console logging
     fx.CONFIG.Logging.console = True
+    fx.CONFIG.Plotting.default_show = True
     fx.CONFIG.apply()
     # --- Create Time Series Data ---
     # Heat demand profile (e.g., kW) over time and corresponding power prices
@@ -45,11 +46,9 @@ if __name__ == '__main__':
 
     # --- Define Flow System Components ---
     # Boiler: Converts fuel (gas) into thermal energy (heat)
-    boiler = fx.linear_converters.Boiler(
+    boiler = fx.Source(
         label='Boiler',
-        eta=0.5,
-        Q_th=fx.Flow(label='Q_th', bus='Fernwärme', size=50, relative_minimum=0.1, relative_maximum=1),
-        Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
+        outputs=[fx.Flow(label=str(i), bus='Fernwärme', size=5) for i in range(10)],
     )
 
     # Combined Heat and Power (CHP): Generates both electricity and heat from fuel
@@ -112,7 +111,9 @@ if __name__ == '__main__':
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
     # --- Analyze Results ---
-    calculation.results.setup_colors()
+    # Colors are automatically assigned using default colormap
+    # Optional: Configure custom colors with
+    calculation.results.setup_colors({'Boiler': 'oranges', 'Storage': 'greens'})
     calculation.results['Fernwärme'].plot_node_balance_pie()
     calculation.results['Fernwärme'].plot_node_balance()
     calculation.results['Storage'].plot_charge_state()
