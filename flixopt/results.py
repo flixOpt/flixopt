@@ -126,7 +126,7 @@ class CalculationResults:
         results['Battery'].plot_charge_state()
 
         # Override when needed
-        results['ElectricityBus'].plot_node_balance(colors='viridis')  # Ignores mapper
+        results['ElectricityBus'].plot_node_balance(colors='turbo')  # Ignores mapper
         ```
 
     Design Patterns:
@@ -1133,7 +1133,7 @@ class _NodeResults(_ElementResults):
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. Options:
                 - None (default): Use `self.color_manager` if configured, else fall back to CONFIG.Plotting.default_qualitative_colorscale
-                - Colormap name string (e.g., 'viridis', 'plasma')
+                - Colormap name string (e.g., 'turbo', 'plasma')
                 - List of color strings
                 - Dict mapping variable names to colors
                 Set `results.color_manager` to a `ComponentColorManager` for automatic component-based grouping.

@@ -85,7 +85,7 @@ ColorType = str | list[str] | dict[str, str]
 Color specifications can take several forms to accommodate different use cases:
 
 **Named Colormaps** (str):
-    - Standard colormaps: 'viridis', 'plasma', 'cividis', 'tab10', 'Set1'
+    - Standard colormaps: 'turbo', 'plasma', 'cividis', 'tab10', 'Set1'
     - Energy-focused: 'portland' (custom flixopt colormap for energy systems)
     - Backend-specific maps available in Plotly and Matplotlib
 
@@ -102,7 +102,7 @@ Color specifications can take several forms to accommodate different use cases:
 Examples:
     ```python
     # Named colormap
-    colors = 'viridis'  # Automatic color generation
+    colors = 'turbo'  # Automatic color generation
 
     # Explicit color list
     colors = ['red', 'blue', 'green', '#FFD700']
@@ -149,7 +149,7 @@ class ColorProcessor:
         **Energy System Colors**: Built-in palettes optimized for energy system visualization
 
     Color Input Types:
-        - **Named Colormaps**: 'viridis', 'plasma', 'portland', 'tab10', etc.
+        - **Named Colormaps**: 'turbo', 'plasma', 'portland', etc.
         - **Color Lists**: ['red', 'blue', 'green'] or ['#FF0000', '#0000FF', '#00FF00']
         - **Label Dictionaries**: {'Generator': 'red', 'Storage': 'blue', 'Load': 'green'}
 
@@ -158,7 +158,7 @@ class ColorProcessor:
 
         ```python
         # Initialize for Plotly backend
-        processor = ColorProcessor(engine='plotly', default_colormap='viridis')
+        processor = ColorProcessor(engine='plotly', default_colormap='turbo')
 
         # Process different color specifications
         colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
@@ -190,7 +190,7 @@ class ColorProcessor:
     Args:
         engine: Plotting backend ('plotly' or 'matplotlib'). Determines output color format.
         default_colormap: Fallback colormap when requested palettes are unavailable.
-            Common options: 'viridis', 'plasma', 'tab10', 'portland'.
+            Common options: 'turbo', 'plasma', 'portland'.
 
     """
 
@@ -222,7 +222,7 @@ class ColorProcessor:
                 # Cycle through colors if we need more than available
                 return [color_list[i % len(color_list)] for i in range(num_colors)]
 
-            # Then try sequential/continuous colorscales (viridis, plasma, etc.)
+            # Then try sequential/continuous colorscales (turbo, plasma, etc.)
             try:
                 colorscale = px.colors.get_colorscale(colormap_name)
             except PlotlyError as e:
@@ -1197,7 +1197,7 @@ def resolve_colors(
 
         Without manager:
 
-        >>> resolved_colors = resolve_colors(data, 'viridis')
+        >>> resolved_colors = resolve_colors(data, 'turbo')
     """
     # Get variable names from Dataset (always strings and unique)
     labels = list(data.data_vars.keys())
@@ -1246,7 +1246,7 @@ def with_plotly(
         mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for lines,
               'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
         colors: Color specification. Can be:
-            - A colormap name (e.g., 'viridis', 'plasma')
+            - A colormap name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dict mapping labels to colors (e.g., {'Solar': '#FFD700'})
             - A ComponentColorManager instance for pattern-based color rules with component grouping
@@ -1571,7 +1571,7 @@ def with_matplotlib(
               the index represents time and each column represents a separate data series (variables).
         mode: Plotting mode. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification. Can be:
-            - A colormap name (e.g., 'viridis', 'plasma')
+            - A colormap name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dict mapping column names to colors (e.g., {'Column1': '#ff0000'})
             - A ComponentColorManager instance for pattern-based color rules with grouping and sorting
@@ -1991,7 +1991,7 @@ def pie_with_plotly(
         data: An xarray Dataset containing the data to plot. All dimensions will be summed
               to get the total for each variable.
         colors: Color specification, can be:
-            - A string with a colorscale name (e.g., 'viridis', 'plasma')
+            - A string with a colorscale name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
             - A ComponentColorManager instance for pattern-based color rules
@@ -2016,7 +2016,7 @@ def pie_with_plotly(
         Simple pie chart:
 
         ```python
-        fig = pie_with_plotly(dataset, colors='viridis', title='Energy Mix')
+        fig = pie_with_plotly(dataset, colors='turbo', title='Energy Mix')
         ```
 
         With ComponentColorManager:
@@ -2110,7 +2110,7 @@ def pie_with_matplotlib(
         data: An xarray Dataset containing the data to plot. All dimensions will be summed
               to get the total for each variable.
         colors: Color specification, can be:
-            - A string with a colormap name (e.g., 'viridis', 'plasma')
+            - A string with a colormap name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
             - A ComponentColorManager instance for pattern-based color rules
@@ -2131,7 +2131,7 @@ def pie_with_matplotlib(
         Simple pie chart:
 
         ```python
-        fig, ax = pie_with_matplotlib(dataset, colors='viridis', title='Energy Mix')
+        fig, ax = pie_with_matplotlib(dataset, colors='turbo', title='Energy Mix')
         ```
 
         With ComponentColorManager:
@@ -2250,7 +2250,7 @@ def dual_pie_with_plotly(
         data_left: Dataset for the left pie chart. Variables are summed across all dimensions.
         data_right: Dataset for the right pie chart. Variables are summed across all dimensions.
         colors: Color specification, can be:
-            - A string with a colorscale name (e.g., 'viridis', 'plasma')
+            - A string with a colorscale name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
             - A ComponentColorManager instance for pattern-based color rules
@@ -2392,7 +2392,7 @@ def dual_pie_with_matplotlib(
         data_left: Series for the left pie chart.
         data_right: Series for the right pie chart.
         colors: Color specification, can be:
-            - A string with a colormap name (e.g., 'viridis', 'plasma')
+            - A string with a colormap name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping category names to colors (e.g., {'Category1': '#ff0000'})
         title: The main title of the plot.
@@ -2591,7 +2591,7 @@ def heatmap_with_plotly(
         data: An xarray DataArray containing the data to visualize. Should have at least
               2 dimensions, or a 'time' dimension that can be reshaped into 2D.
         colors: Color specification (colormap name, list, or dict). Common options:
-                'viridis', 'plasma', 'RdBu', 'portland'.
+                'turbo', 'plasma', 'RdBu', 'portland'.
         title: The main title of the heatmap.
         facet_by: Dimension to create facets for. Creates a subplot grid.
                   Can be a single dimension name or list (only first dimension used).
@@ -2814,7 +2814,7 @@ def heatmap_with_matplotlib(
         data: An xarray DataArray containing the data to visualize. Should have at least
               2 dimensions. If more than 2 dimensions exist, additional dimensions will
               be reduced by taking the first slice.
-        colors: Color specification. Should be a colormap name (e.g., 'viridis', 'RdBu').
+        colors: Color specification. Should be a colormap name (e.g., 'turbo', 'RdBu').
         title: The title of the heatmap.
         figsize: The size of the figure (width, height) in inches.
         reshape_time: Time reshaping configuration:
