@@ -43,10 +43,17 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.offline
 import xarray as xr
-from colour import Color
 from plotly.exceptions import PlotlyError
 
 from .config import CONFIG
+
+# Optional dependency for flow-level color shading
+try:
+    from colour import Color
+
+    HAS_COLOUR = True
+except ImportError:
+    HAS_COLOUR = False
 
 if TYPE_CHECKING:
     import pyvis
@@ -454,8 +461,16 @@ class ComponentColorManager:
         self.default_colormap = default_colormap
         self.color_families = self.DEFAULT_FAMILIES.copy()
 
-        # Flow shading settings
-        self.enable_flow_shading = enable_flow_shading
+        # Flow shading settings (requires optional 'colour' library)
+        if enable_flow_shading and not HAS_COLOUR:
+            logger.error(
+                'Flow shading requested but optional dependency "colour" is not installed. '
+                'Install it with: pip install flixopt[flow_colors]\n'
+                'Flow shading will be disabled.'
+            )
+            self.enable_flow_shading = False
+        else:
+            self.enable_flow_shading = enable_flow_shading
         self.flow_variation_strength = flow_variation_strength
 
         # Pattern-based grouping rules
@@ -869,7 +884,8 @@ class ComponentColorManager:
     def _create_flow_shades(self, base_color: str, num_flows: int) -> list[str]:
         """Generate subtle color variations from a single base color using HSL.
 
-        Uses the `colour` library for robust color manipulation.
+        Uses the `colour` library for robust color manipulation. If `colour` is not
+        available, returns the base color for all flows.
 
         Args:
             base_color: Color string (hex like '#D62728' or rgb like 'rgb(255, 0, 0)')
@@ -880,6 +896,10 @@ class ComponentColorManager:
         """
         if num_flows == 1:
             return [base_color]
+
+        # Fallback if colour library not available (defensive check)
+        if not HAS_COLOUR:
+            return [base_color] * num_flows
 
         # Parse color using colour library (handles hex, rgb(), etc.)
         color = Color(base_color)
