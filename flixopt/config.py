@@ -77,28 +77,28 @@ _DEFAULTS = MappingProxyType(
 class CONFIG:
     """Configuration for flixopt library.
 
-        Always call ``CONFIG.apply()`` after changes.
-    c
-        Attributes:
-            Logging: Logging configuration.
-            Modeling: Optimization modeling parameters.
-            config_name: Configuration name.
+    Always call ``CONFIG.apply()`` after changes.
 
-        Examples:
-            ```python
-            CONFIG.Logging.console = True
-            CONFIG.Logging.level = 'DEBUG'
-            CONFIG.apply()
-            ```
+    Attributes:
+        Logging: Logging configuration.
+        Modeling: Optimization modeling parameters.
+        config_name: Configuration name.
 
-            Load from YAML file:
+    Examples:
+        ```python
+        CONFIG.Logging.console = True
+        CONFIG.Logging.level = 'DEBUG'
+        CONFIG.apply()
+        ```
 
-            ```yaml
-            logging:
-              level: DEBUG
-              console: true
-              file: app.log
-            ```
+        Load from YAML file:
+
+        ```yaml
+        logging:
+          level: DEBUG
+          console: true
+          file: app.log
+        ```
     """
 
     class Logging:
