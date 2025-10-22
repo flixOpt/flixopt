@@ -595,6 +595,10 @@ class ComponentColorManager:
         By default, automatically detects the matching strategy from pattern syntax.
         Optionally override with explicit match_type and group_name for full control.
 
+        **Smart Color Detection:** If `colormap` is actually an explicit color (e.g., 'red',
+        '#FF0000'), and `pattern` is an exact component name (no wildcards), this method
+        automatically uses `override()` instead of pattern matching.
+
         Auto-detection rules:
             - 'Solar' → prefix matching
             - 'Solar*' → glob matching
@@ -605,8 +609,9 @@ class ComponentColorManager:
         Colors are automatically applied after adding the rule.
 
         Args:
-            pattern: Pattern to match components
-            colormap: Colormap name ('reds', 'blues', 'greens', etc.')
+            pattern: Pattern to match components, or exact component name for explicit colors
+            colormap: Colormap name ('reds', 'blues', 'greens', etc.) OR explicit color
+                ('red', 'orange', '#FF5733', 'rgb(255,0,0)', etc.)
             match_type: Optional explicit match type. If None (default), auto-detects from pattern.
                 Options: 'prefix', 'suffix', 'contains', 'glob', 'regex'
             group_name: Optional group name for organization. If None, auto-generates from pattern.
@@ -615,7 +620,15 @@ class ComponentColorManager:
             Self for method chaining
 
         Examples:
-            Simple auto-detection (most common):
+            Explicit color mapping (exact component names):
+
+            ```python
+            manager.add_rule('Boiler', 'orange')      # Exact component → explicit color
+            manager.add_rule('Storage', '#00FF00')    # Hex color
+            manager.add_rule('CHP', 'rgb(255,0,0)')   # RGB color
+            ```
+
+            Pattern-based colormap rules:
 
             ```python
             manager.add_rule('Solar', 'oranges')         # Auto: prefix
@@ -633,20 +646,35 @@ class ComponentColorManager:
             manager.add_rule('Solar.+', 'oranges', match_type='regex')
             ```
 
-            Full explicit control:
+            Chained configuration (mixed):
 
             ```python
-            manager.add_rule('Solar', 'oranges', 'prefix', 'renewables')
-            ```
-
-            Chained configuration:
-
-            ```python
-            manager.add_rule('Solar*', 'oranges')\
-                   .add_rule('Wind*', 'blues')\
-                   .add_rule('Battery', 'greens', 'prefix', 'storage')
+            manager.add_rule('Boiler', 'orange')\
+                   .add_rule('Solar*', 'oranges')\
+                   .add_rule('Wind*', 'blues')
             ```
         """
+        # Check if colormap is actually an explicit color
+        if mcolors.is_color_like(colormap):
+            # It's an explicit color, not a colormap name
+            # Check if pattern looks like an exact component name (no wildcards/special chars)
+            has_wildcards = any(char in pattern for char in '*?~$[]()^|+\\.')
+
+            if not has_wildcards:
+                # Exact component name → use override for direct color assignment
+                self.override({pattern: colormap})
+                return self
+            else:
+                # Pattern with wildcards but explicit color - this is ambiguous
+                logger.warning(
+                    f"Pattern '{pattern}' has wildcards but '{colormap}' is an explicit color, not a colormap. "
+                    f'Explicit colors should be used with exact component names. '
+                    f"Applying as override to component '{pattern}' (treating as literal name)."
+                )
+                self.override({pattern: colormap})
+                return self
+
+        # colormap is a colormap name - proceed with pattern-based rule logic
         # Auto-detect match type if not provided
         if match_type is None:
             match_type = self._detect_match_type(pattern)

@@ -399,28 +399,9 @@ class CalculationResults:
             if isinstance(config, (str, pathlib.Path)):
                 config = plotting.ComponentColorManager._load_config_from_file(config)
 
-            # Apply dict configuration
+            # Apply dict configuration - add_rule() now handles both colors and colormaps
             if isinstance(config, dict):
-                import matplotlib.colors as mcolors
-
-                # Separate explicit colors from colormap patterns
-                explicit_colors = {}
-                pattern_rules = {}
-
-                for key, value in config.items():
-                    if mcolors.is_color_like(value):
-                        # Value is an explicit color (e.g., 'red', '#FF0000', 'rgb(255,0,0)')
-                        explicit_colors[key] = value
-                    else:
-                        # Value is a colormap name (e.g., 'reds', 'blues', 'oranges')
-                        pattern_rules[key] = value
-
-                # Apply explicit color overrides first
-                if explicit_colors:
-                    self.color_manager.override(explicit_colors)
-
-                # Then apply pattern-based rules
-                for pattern, colormap in pattern_rules.items():
+                for pattern, colormap in config.items():
                     self.color_manager.add_rule(pattern, colormap)
 
         return self.color_manager
@@ -2162,28 +2143,9 @@ class SegmentedCalculationResults:
             if isinstance(config, (str, pathlib.Path)):
                 config = plotting.ComponentColorManager._load_config_from_file(config)
 
-            # Apply dict configuration
+            # Apply dict configuration - add_rule() now handles both colors and colormaps
             if isinstance(config, dict):
-                import matplotlib.colors as mcolors
-
-                # Separate explicit colors from colormap patterns
-                explicit_colors = {}
-                pattern_rules = {}
-
-                for key, value in config.items():
-                    if mcolors.is_color_like(value):
-                        # Value is an explicit color (e.g., 'red', '#FF0000', 'rgb(255,0,0)')
-                        explicit_colors[key] = value
-                    else:
-                        # Value is a colormap name (e.g., 'reds', 'blues', 'oranges')
-                        pattern_rules[key] = value
-
-                # Apply explicit color overrides first
-                if explicit_colors:
-                    self.color_manager.override(explicit_colors)
-
-                # Then apply pattern-based rules
-                for pattern, colormap in pattern_rules.items():
+                for pattern, colormap in config.items():
                     self.color_manager.add_rule(pattern, colormap)
 
         return self.color_manager
