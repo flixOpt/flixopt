@@ -53,48 +53,20 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-- **Pattern-based color mapping with `ComponentColorManager`**: New color mapping system for automatic, semantically meaningful plot colors based on component naming patterns
-  - `ComponentColorManager` class provides pattern-based color assignment using prefix, suffix, contains, glob, and regex matching
-  - **Discrete color support**: Directly assign single colors (hex, rgb, named) to patterns for consistent coloring across all matching items (e.g., all Solar components get exact same orange)
-  - Color families from Plotly sequential palettes: 14 single-hue families (blues, greens, reds, purples, oranges, teals, greys, pinks, peach, burg, sunsetdark, mint, emrld, darkmint)
-  - Support for custom color families and explicit color overrides for special cases
-  - `CalculationResults.create_color_manager()` factory method for easy setup
-  - `CalculationResults.color_manager` attribute automatically applies colors to all plots when `colors='auto'` (the default)
-  - **`SegmentedCalculationResults.create_color_manager()`**: ColorManager support for segmented results, automatically propagates to all segments for consistent coloring
-  - `resolve_colors()` utility function in `plotting` module for standalone color resolution
-- **Faceting and animation support for plots**: All plotting methods now support `facet_by` and `animate_by` parameters for creating subplot grids and animations with multidimensional data (scenarios, periods, etc.)
-- **New `select` parameter**: Added to all plotting methods for flexible data selection using single values, lists, slices, and index arrays
-- **Heatmap `fill` parameter**: Added `fill` parameter to heatmap plotting methods to control how missing values are filled after reshaping ('ffill' or 'bfill')
-- **Dashed line styling**: Area plots now automatically style "mixed" variables (containing both positive and negative values) with dashed lines, while only stacking purely positive or negative variables
-
-### 💥 Breaking Changes
+- **Smart color management**: Configure consistent plot colors by pattern matching component names
+  - Dict: `results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues'})`
+  - File: `results.setup_colors('colors.yaml')` (supports YAML/JSON)
+  - Programmatic: `results.setup_colors().add_rule('Solar*', 'oranges')`
+- **Heatmap fill control**: Control missing value handling with `fill='ffill'` or `fill='bfill'`
 
 ### ♻️ Changed
-- **Plotting color defaults**: All plotting methods now default to using `CalculationResults.color_manager` if configured, otherwise falls back to defaults. Explicit colors (dict, string, list) still work as before
-- **Selection behavior**: Changed default selection behavior in plotting methods - no longer automatically selects first value for non-time dimensions. Use `select` parameter for explicit selection
-- **Improved error messages**: Enhanced error messages when using matplotlib engine with multidimensional data, providing clearer guidance on dimension requirements
-- Improved `scenario_example.py`
+- Plotting methods now use `color_manager` by default if configured
 
 ### 🗑️ Deprecated
-- **`indexer` parameter**: The `indexer` parameter in all plotting methods is deprecated in favor of the new `select` parameter with enhanced functionality
-
-### 🔥 Removed
 
 ### 🐛 Fixed
-- Fixed error handling in `plot_heatmap()` method for better dimension validation
-
-### 🔒 Security
-
-### 📦 Dependencies
-
-### 📝 Docs
-- Updated `complex_example.py` and `complex_example_results.py` to demonstrate ColorManager usage with discrete colors
-
-### 👷 Development
-- Fixed concurrency issue in CI
-- Renamed `_apply_indexer_to_data()` to `_apply_selection_to_data()` for consistency with new API
-
-### 🚧 Known Issues
+- Improved error messages for matplotlib with multidimensional data
+- Better dimension validation in `plot_heatmap()`
 
 ---
 
