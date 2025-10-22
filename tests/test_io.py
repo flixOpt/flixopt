@@ -1,3 +1,6 @@
+import uuid
+
+import numpy as np
 import pytest
 
 import flixopt as fx
@@ -31,8 +34,13 @@ def flow_system(request):
 
 
 @pytest.mark.slow
-def test_flow_system_file_io(flow_system, highs_solver):
-    calculation_0 = fx.FullCalculation('IO', flow_system=flow_system)
+def test_flow_system_file_io(flow_system, highs_solver, request):
+    # Use UUID to ensure unique names across parallel test workers
+    unique_id = uuid.uuid4().hex[:12]
+    worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
+    test_id = f'{worker_id}-{unique_id}'
+
+    calculation_0 = fx.FullCalculation(f'IO-{test_id}', flow_system=flow_system)
     calculation_0.do_modeling()
     calculation_0.solve(highs_solver)
     calculation_0.flow_system.plot_network()
@@ -41,7 +49,7 @@ def test_flow_system_file_io(flow_system, highs_solver):
     paths = CalculationResultsPaths(calculation_0.folder, calculation_0.name)
     flow_system_1 = fx.FlowSystem.from_netcdf(paths.flow_system)
 
-    calculation_1 = fx.FullCalculation('Loaded_IO', flow_system=flow_system_1)
+    calculation_1 = fx.FullCalculation(f'Loaded_IO-{test_id}', flow_system=flow_system_1)
     calculation_1.do_modeling()
     calculation_1.solve(highs_solver)
     calculation_1.flow_system.plot_network()

@@ -480,19 +480,17 @@ class EffectCollection:
     def create_effect_values_dict(
         self, effect_values_user: PeriodicEffectsUser | TemporalEffectsUser
     ) -> dict[str, Scalar | TemporalDataUser] | None:
-        """
-        Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
+        """Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
-        Examples
-        --------
-        effect_values_user = 20                               -> {'<standard_effect_label>': 20}
-        effect_values_user = {None: 20}                       -> {'<standard_effect_label>': 20}
-        effect_values_user = None                             -> None
-        effect_values_user = {'effect1': 20, 'effect2': 0.3}  -> {'effect1': 20, 'effect2': 0.3}
+        Examples:
+            ```python
+            effect_values_user = 20                               -> {'<standard_effect_label>': 20}
+            effect_values_user = {None: 20}                       -> {'<standard_effect_label>': 20}
+            effect_values_user = None                             -> None
+            effect_values_user = {'effect1': 20, 'effect2': 0.3}  -> {'effect1': 20, 'effect2': 0.3}
+            ```
 
-        Returns
-        -------
-        dict or None
+        Returns:
             A dictionary keyed by effect label, or None if input is None.
             Note: a standard effect must be defined when passing scalars or None labels.
         """
