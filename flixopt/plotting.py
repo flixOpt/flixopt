@@ -1284,13 +1284,6 @@ def with_plotly(
                 if hasattr(trace, 'fill'):
                     trace.fill = None
 
-    # Update layout with basic styling (Plotly Express handles sizing automatically)
-    fig.update_layout(
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(size=12),
-    )
-
     # Update axes to share if requested (Plotly Express already handles this, but we can customize)
     if not shared_yaxes:
         fig.update_yaxes(matches=None)
@@ -1836,13 +1829,10 @@ def pie_with_plotly(
         )
     )
 
-    # Update layout for better aesthetics
+    # Update layout with plot-specific properties
     fig.update_layout(
         title=title,
         legend_title=legend_title,
-        plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
-        paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
-        font=dict(size=14),  # Increase font size for better readability
     )
 
     return fig
@@ -2114,13 +2104,10 @@ def dual_pie_with_plotly(
         right_trace.domain = dict(x=[0.52, 1])
         fig.add_trace(right_trace, row=1, col=2)
 
-    # Update layout
+    # Update layout with plot-specific properties
     fig.update_layout(
         title=title,
         legend_title=legend_title,
-        plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
-        paper_bgcolor='rgba(0,0,0,0)',  # Transparent paper background
-        font=dict(size=14),
         margin=dict(t=80, b=50, l=30, r=30),
     )
 
@@ -2531,13 +2518,6 @@ def heatmap_with_plotly(
         }
         fallback_args.update(imshow_kwargs)
         fig = px.imshow(**fallback_args)
-
-    # Update layout with basic styling
-    fig.update_layout(
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(size=12),
-    )
 
     return fig
 
