@@ -69,6 +69,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Moved `linked_periods` into correct section of the docstring (was in deprecated params)
 
 ### 👷 Development
 - Fixed concurrency issue in CI

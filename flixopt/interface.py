@@ -712,6 +712,8 @@ class InvestParameters(Interface):
             Combinable with effects_of_investment and effects_of_investment_per_size.
         effects_of_retirement: Costs incurred if NOT investing (demolition, penalties).
             Dict: {'effect_name': value}.
+        linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
+            For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
 
     Deprecated Args:
         fix_effects: **Deprecated**. Use `effects_of_investment` instead.
@@ -724,7 +726,6 @@ class InvestParameters(Interface):
             Will be removed in version 4.0.
         optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
             Will be removed in version 4.0.
-        linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
