@@ -18,6 +18,11 @@ if __name__ == '__main__':
             f'Original error: {e}'
         ) from e
 
+    # --- Configure Color Mapping for Consistent Plot Colors (Optional) ---
+    results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues'})  # Dict (simplest)
+    # results.setup_colors('colors.yaml')  # Or from file
+    # results.setup_colors().add_rule('Solar*', 'oranges')  # Or programmatic
+
     # --- Basic overview ---
     results.plot_network(show=True)
     results['Fernwärme'].plot_node_balance()
@@ -25,8 +30,9 @@ if __name__ == '__main__':
     # --- Detailed Plots ---
     # In depth plot for individual flow rates ('__' is used as the delimiter between Component and Flow
     results.plot_heatmap('Wärmelast(Q_th_Last)|flow_rate')
-    for flow_rate in results['BHKW2'].inputs + results['BHKW2'].outputs:
-        results.plot_heatmap(flow_rate)
+    for bus in results.buses.values():
+        bus.plot_node_balance_pie()
+        bus.plot_node_balance()
 
     # --- Plotting internal variables manually ---
     results.plot_heatmap('BHKW2(Q_th)|on')

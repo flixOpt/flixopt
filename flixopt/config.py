@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import warnings
 from logging.handlers import RotatingFileHandler
@@ -52,6 +53,22 @@ _DEFAULTS = MappingProxyType(
                 'big': 10_000_000,
                 'epsilon': 1e-5,
                 'big_binary_bound': 100_000,
+            }
+        ),
+        'plotting': MappingProxyType(
+            {
+                'plotly_renderer': 'browser',
+                'plotly_template': 'plotly_white',
+                'matplotlib_backend': None,
+                'default_show': False,
+                'default_save_path': None,
+                'default_engine': 'plotly',
+                'default_dpi': 300,
+                'default_figure_width': None,
+                'default_figure_height': None,
+                'default_facet_cols': 3,
+                'default_sequential_colorscale': 'turbo',
+                'default_qualitative_colorscale': 'plotly',
             }
         ),
     }
@@ -185,6 +202,86 @@ class CONFIG:
         epsilon: float = _DEFAULTS['modeling']['epsilon']
         big_binary_bound: int = _DEFAULTS['modeling']['big_binary_bound']
 
+    class Plotting:
+        """Plotting configuration.
+
+        Attributes:
+            plotly_renderer: Plotly renderer to use.
+            plotly_template: Plotly theme/template applied to all plots.
+            matplotlib_backend: Matplotlib backend to use.
+            default_show: Default value for the `show` parameter in plot methods.
+            default_save_path: Default directory for saving plots.
+            default_engine: Default plotting engine.
+            default_dpi: Default DPI for saved plots.
+            default_figure_width: Default plot width in pixels.
+            default_figure_height: Default plot height in pixels.
+            default_facet_cols: Default number of columns for faceted plots.
+            default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
+            default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
+
+        Examples:
+            ```python
+            # Set consistent theming and rendering
+            CONFIG.Plotting.plotly_renderer = 'browser'
+            CONFIG.Plotting.plotly_template = 'plotly_dark'
+            CONFIG.Plotting.matplotlib_backend = 'TkAgg'
+            CONFIG.apply()
+
+            # Configure default export and color settings
+            CONFIG.Plotting.default_dpi = 600
+            CONFIG.Plotting.default_figure_width = 1200
+            CONFIG.Plotting.default_figure_height = 800
+            CONFIG.Plotting.default_sequential_colorscale = 'plasma'
+            CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
+            CONFIG.apply()
+            ```
+        """
+
+        plotly_renderer: (
+            Literal['browser', 'notebook', 'svg', 'png', 'pdf', 'jpeg', 'json', 'plotly_mimetype'] | None
+        ) = _DEFAULTS['plotting']['plotly_renderer']
+        plotly_template: (
+            Literal[
+                'plotly',
+                'plotly_white',
+                'plotly_dark',
+                'ggplot2',
+                'seaborn',
+                'simple_white',
+                'none',
+                'gridon',
+                'presentation',
+                'xgridoff',
+                'ygridoff',
+            ]
+            | None
+        ) = _DEFAULTS['plotting']['plotly_template']
+        matplotlib_backend: (
+            Literal[
+                'TkAgg',
+                'Qt5Agg',
+                'QtAgg',
+                'WXAgg',
+                'Agg',
+                'Cairo',
+                'PDF',
+                'PS',
+                'SVG',
+                'WebAgg',
+                'module://backend_interagg',
+            ]
+            | None
+        ) = _DEFAULTS['plotting']['matplotlib_backend']
+        default_show: bool = _DEFAULTS['plotting']['default_show']
+        default_save_path: str | None = _DEFAULTS['plotting']['default_save_path']
+        default_engine: Literal['plotly', 'matplotlib'] = _DEFAULTS['plotting']['default_engine']
+        default_dpi: int = _DEFAULTS['plotting']['default_dpi']
+        default_figure_width: int | None = _DEFAULTS['plotting']['default_figure_width']
+        default_figure_height: int | None = _DEFAULTS['plotting']['default_figure_height']
+        default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
+        default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
+        default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
+
     config_name: str = _DEFAULTS['config_name']
 
     @classmethod
@@ -201,12 +298,15 @@ class CONFIG:
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
 
+        for key, value in _DEFAULTS['plotting'].items():
+            setattr(cls.Plotting, key, value)
+
         cls.config_name = _DEFAULTS['config_name']
         cls.apply()
 
     @classmethod
     def apply(cls):
-        """Apply current configuration to logging system."""
+        """Apply current configuration to logging and plotting systems."""
         # Convert Colors class attributes to dict
         colors_dict = {
             'DEBUG': cls.Logging.Colors.DEBUG,
@@ -241,6 +341,13 @@ class CONFIG:
             show_path=cls.Logging.show_path,
             show_logger_name=cls.Logging.show_logger_name,
             colors=colors_dict,
+        )
+
+        # Apply plotting configuration
+        _apply_plotting_config(
+            plotly_renderer=cls.Plotting.plotly_renderer,
+            plotly_template=cls.Plotting.plotly_template,
+            matplotlib_backend=cls.Plotting.matplotlib_backend,
         )
 
     @classmethod
@@ -282,6 +389,9 @@ class CONFIG:
             elif key == 'modeling' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     setattr(cls.Modeling, nested_key, nested_value)
+            elif key == 'plotting' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Plotting, nested_key, nested_value)
             elif hasattr(cls, key):
                 setattr(cls, key, value)
 
@@ -318,6 +428,20 @@ class CONFIG:
                 'big': cls.Modeling.big,
                 'epsilon': cls.Modeling.epsilon,
                 'big_binary_bound': cls.Modeling.big_binary_bound,
+            },
+            'plotting': {
+                'plotly_renderer': cls.Plotting.plotly_renderer,
+                'plotly_template': cls.Plotting.plotly_template,
+                'matplotlib_backend': cls.Plotting.matplotlib_backend,
+                'default_show': cls.Plotting.default_show,
+                'default_save_path': cls.Plotting.default_save_path,
+                'default_engine': cls.Plotting.default_engine,
+                'default_dpi': cls.Plotting.default_dpi,
+                'default_figure_width': cls.Plotting.default_figure_width,
+                'default_figure_height': cls.Plotting.default_figure_height,
+                'default_facet_cols': cls.Plotting.default_facet_cols,
+                'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
+                'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
             },
         }
 
@@ -586,6 +710,94 @@ def _setup_logging(
     # Library best practice: NullHandler if no handlers configured
     if not logger.handlers:
         logger.addHandler(logging.NullHandler())
+
+
+def _apply_plotting_config(
+    plotly_renderer: Literal['browser', 'notebook', 'svg', 'png', 'pdf', 'jpeg', 'json', 'plotly_mimetype']
+    | None = 'browser',
+    plotly_template: Literal[
+        'plotly',
+        'plotly_white',
+        'plotly_dark',
+        'ggplot2',
+        'seaborn',
+        'simple_white',
+        'none',
+        'gridon',
+        'presentation',
+        'xgridoff',
+        'ygridoff',
+    ]
+    | None = 'plotly',
+    matplotlib_backend: Literal[
+        'TkAgg', 'Qt5Agg', 'QtAgg', 'WXAgg', 'Agg', 'Cairo', 'PDF', 'PS', 'SVG', 'WebAgg', 'module://backend_interagg'
+    ]
+    | None = None,
+) -> None:
+    """Apply plotting configuration to plotly and matplotlib.
+
+    Args:
+        plotly_renderer: Plotly renderer to use.
+        plotly_template: Plotly template/theme to apply to all plots.
+        matplotlib_backend: Matplotlib backend to use. If None, the existing backend is not changed.
+    """
+    # Configure Plotly renderer and template
+    try:
+        import plotly.io as pio
+
+        if plotly_renderer is not None:
+            pio.renderers.default = plotly_renderer
+
+        if plotly_template is not None:
+            pio.templates.default = plotly_template
+    except ImportError:
+        # Plotly not installed, skip configuration
+        pass
+
+    # Configure Matplotlib backend
+    if matplotlib_backend is not None:
+        try:
+            import matplotlib
+
+            # Check if pyplot has been imported yet
+            pyplot_imported = 'matplotlib.pyplot' in sys.modules
+
+            if not pyplot_imported:
+                # Safe path: Set environment variable before pyplot import
+                # This is the preferred method as it avoids runtime backend switching
+                os.environ['MPLBACKEND'] = matplotlib_backend
+                logger.debug(f"Set MPLBACKEND environment variable to '{matplotlib_backend}'")
+            else:
+                # pyplot is already imported - check if we need to switch
+                current_backend = matplotlib.get_backend()
+
+                if current_backend == matplotlib_backend:
+                    logger.debug(f"matplotlib backend already set to '{matplotlib_backend}'")
+                else:
+                    # Need to switch backend - check if it's safe
+                    import matplotlib.pyplot as plt
+
+                    if len(plt.get_fignums()) > 0:
+                        logger.warning(
+                            f"Cannot switch matplotlib backend from '{current_backend}' to '{matplotlib_backend}': "
+                            f'There are {len(plt.get_fignums())} open figures. Close all figures before changing backend, '
+                            f'or set CONFIG.Plotting.matplotlib_backend before importing matplotlib.pyplot.'
+                        )
+                    else:
+                        # No open figures - attempt safe backend switch
+                        try:
+                            plt.switch_backend(matplotlib_backend)
+                            logger.info(
+                                f"Switched matplotlib backend from '{current_backend}' to '{matplotlib_backend}'"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to switch matplotlib backend from '{current_backend}' to '{matplotlib_backend}': {e}. "
+                                f'Set CONFIG.Plotting.matplotlib_backend before importing matplotlib.pyplot to avoid this issue.'
+                            )
+        except ImportError:
+            # Matplotlib not installed, skip configuration
+            pass
 
 
 def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
