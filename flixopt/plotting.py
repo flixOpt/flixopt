@@ -203,6 +203,25 @@ class ColorProcessor:
             default_colormap if default_colormap is not None else CONFIG.Plotting.default_qualitative_colorscale
         )
 
+    def _get_sequential_colorscale(self, colormap_name: str, num_colors: int) -> list[str] | None:
+        """
+        Get colors from a sequential/continuous Plotly colorscale.
+
+        Args:
+            colormap_name: Name of the colorscale to sample from
+            num_colors: Number of colors to sample
+
+        Returns:
+            List of color strings (hex format), or None if colorscale not found
+        """
+        try:
+            colorscale = px.colors.get_colorscale(colormap_name)
+            # Generate evenly spaced points
+            color_points = [i / (num_colors - 1) for i in range(num_colors)] if num_colors > 1 else [0]
+            return px.colors.sample_colorscale(colorscale, color_points)
+        except PlotlyError:
+            return None
+
     def _get_plotly_colormap_robust(self, colormap_name: str, num_colors: int) -> list[str]:
         """
         Robustly get colors from Plotly colormaps with multiple fallback levels.
@@ -222,13 +241,9 @@ class ColorProcessor:
             return [color_list[i % len(color_list)] for i in range(num_colors)]
 
         # Then try sequential/continuous colorscales (turbo, plasma, etc.)
-        try:
-            colorscale = px.colors.get_colorscale(colormap_name)
-            # Generate evenly spaced points
-            color_points = [i / (num_colors - 1) for i in range(num_colors)] if num_colors > 1 else [0]
-            return px.colors.sample_colorscale(colorscale, color_points)
-        except PlotlyError:
-            pass  # Will try fallbacks below
+        colors = self._get_sequential_colorscale(colormap_name, num_colors)
+        if colors is not None:
+            return colors
 
         # Fallback to default_colormap
         logger.warning(f"Colormap '{colormap_name}' not found in Plotly. Trying default '{self.default_colormap}'")
@@ -240,12 +255,9 @@ class ColorProcessor:
             return [color_list[i % len(color_list)] for i in range(num_colors)]
 
         # Try default as sequential
-        try:
-            colorscale = px.colors.get_colorscale(self.default_colormap)
-            color_points = [i / (num_colors - 1) for i in range(num_colors)] if num_colors > 1 else [0]
-            return px.colors.sample_colorscale(colorscale, color_points)
-        except PlotlyError:
-            pass
+        colors = self._get_sequential_colorscale(self.default_colormap, num_colors)
+        if colors is not None:
+            return colors
 
         # Ultimate fallback: use built-in Plotly qualitative colormap
         logger.warning(
