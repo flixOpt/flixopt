@@ -332,39 +332,53 @@ class CalculationResults:
                 logger.level = old_level
         return self._flow_system
 
-    def setup_colors(self, enable_flow_shading=False) -> plotting.ComponentColorManager:
+    def setup_colors(
+        self, config: dict[str, str] | str | pathlib.Path | None = None, enable_flow_shading: bool = False
+    ) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager for configuring plot colors.
 
         Convenience method that creates a ComponentColorManager with all components
-        registered and assigns it to `self.color_manager`. Colors are automatically
-        applied when adding grouping rules via `add_grouping_rule()`.
+        registered and assigns it to `self.color_manager`. Optionally load configuration
+        from a dict or file. Colors are automatically applied when adding rules.
+
+        Args:
+            config: Optional color configuration:
+                - dict: {pattern: colormap} mapping
+                - str/Path: Path to YAML or JSON file
+                - None: Create empty manager for manual config (default)
+            enable_flow_shading: Enable subtle color variations for different flows (default: False)
 
         Returns:
             ComponentColorManager instance ready for configuration.
 
         Examples:
-            Simple chained configuration:
+            Dict-based configuration (simplest):
+
+            ```python
+            results.setup_colors({
+                'Solar*': 'oranges',
+                'Wind*': 'blues',
+                'Battery': 'greens',
+                '~Storage': 'teals'
+            })
+            results['ElectricityBus'].plot_node_balance()
+            ```
+
+            Load from YAML file:
+
+            ```python
+            # colors.yaml contains:
+            # Solar*: oranges
+            # Wind*: blues
+            results.setup_colors('colors.yaml')
+            ```
+
+            Programmatic configuration:
 
             ```python
             results.setup_colors()\
-                .add_grouping_rule('Solar', 'renewables', 'oranges')\
-                .add_grouping_rule('Wind', 'renewables', 'blues')
-            results['ElectricityBus'].plot_node_balance()  # Uses configured colors
-            ```
-
-            Or step-by-step:
-
-            ```python
-            mgr = results.setup_colors()
-            mgr.add_grouping_rule('Solar', 'renewables', 'oranges')
-            mgr.add_grouping_rule('Battery', 'storage', 'greens')
-            ```
-
-            Manual creation (alternative):
-
-            ```python
-            results.color_manager = ComponentColorManager(list(results.components.keys()))
-            results.color_manager.add_grouping_rule('Storage', 'storage', 'greens')
+                .add_rule('Solar*', 'oranges')\
+                .add_rule('Wind*', 'blues')
             ```
 
             Disable automatic coloring:
@@ -373,10 +387,24 @@ class CalculationResults:
             results.color_manager = None  # Plots use default colorscales
             ```
         """
+        import pathlib
+
         if self.color_manager is None:
             self.color_manager = plotting.ComponentColorManager.from_flow_system(
                 self.flow_system, enable_flow_shading=enable_flow_shading
             )
+
+        # Apply configuration if provided
+        if config is not None:
+            # Load from file if string/Path
+            if isinstance(config, (str, pathlib.Path)):
+                config = plotting.ComponentColorManager._load_config_from_file(config)
+
+            # Apply dict configuration
+            if isinstance(config, dict):
+                for pattern, colormap in config.items():
+                    self.color_manager.add_rule(pattern, colormap)
+
         return self.color_manager
 
     def filter_solution(
@@ -2048,38 +2076,47 @@ class SegmentedCalculationResults:
     def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
 
-    def setup_colors(self, enable_flow_shading: bool = False) -> plotting.ComponentColorManager:
+    def setup_colors(
+        self, config: dict[str, str] | str | pathlib.Path | None = None, enable_flow_shading: bool = False
+    ) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager that propagates to all segments.
 
         Convenience method that creates a ComponentColorManager with all components
         registered and assigns it to `self.color_manager` and all segment results.
-        Colors are automatically applied when adding grouping rules.
+        Optionally load configuration from a dict or file. Colors are automatically
+        applied when adding rules.
+
+        Args:
+            config: Optional color configuration:
+                - dict: {pattern: colormap} mapping
+                - str/Path: Path to YAML or JSON file
+                - None: Create empty manager for manual config (default)
+            enable_flow_shading: Enable subtle color variations for different flows (default: False)
 
         Returns:
-            ComponentColorManager instance ready for configuration.
+            ComponentColorManager instance ready for configuration (propagated to all segments).
 
         Examples:
-            Simple chained configuration:
+            Dict-based configuration:
 
             ```python
-            results.setup_colors()\
-                .add_grouping_rule('Solar', 'renewables', 'oranges')\
-                .add_grouping_rule('Wind', 'renewables', 'blues')
+            results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues'})
 
             # All segments use the same colors
             results.segment_results[0]['ElectricityBus'].plot_node_balance()
             results.segment_results[1]['ElectricityBus'].plot_node_balance()
             ```
 
-            Manual assignment (you must propagate yourself):
+            Load from file:
 
             ```python
-            mgr = ComponentColorManager(list(results.segment_results[0].components.keys()))
-            mgr.add_grouping_rule('Storage', 'storage', 'greens')
-            results.color_manager = mgr
-            # Propagate to all segments
-            for segment in results.segment_results:
-                segment.color_manager = mgr
+            results.setup_colors('colors.yaml')
+            ```
+
+            Programmatic configuration:
+
+            ```python
+            results.setup_colors().add_rule('Solar*', 'oranges')
             ```
         """
         if self.color_manager is None:
@@ -2089,6 +2126,18 @@ class SegmentedCalculationResults:
             # Propagate to all segment results for consistent coloring
             for segment in self.segment_results:
                 segment.color_manager = self.color_manager
+
+        # Apply configuration if provided
+        if config is not None:
+            # Load from file if string/Path
+            if isinstance(config, (str, pathlib.Path)):
+                config = plotting.ComponentColorManager._load_config_from_file(config)
+
+            # Apply dict configuration
+            if isinstance(config, dict):
+                for pattern, colormap in config.items():
+                    self.color_manager.add_rule(pattern, colormap)
+
         return self.color_manager
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:

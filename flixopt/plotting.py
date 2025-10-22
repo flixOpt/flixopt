@@ -587,10 +587,72 @@ class ComponentColorManager:
         self.color_families[name] = colors
         return self
 
+    def add_rule(self, pattern: str, colormap: str) -> ComponentColorManager:
+        """Add color rule with auto-detected match type (simplified API).
+
+        Automatically detects the matching strategy from pattern syntax:
+            - 'Solar' → prefix matching
+            - 'Solar*' → glob matching
+            - '~Storage' → contains matching (strip ~)
+            - 'Solar$' → suffix matching (strip $)
+            - '.*Solar.*' → regex matching
+
+        Colors are automatically applied after adding the rule.
+
+        Args:
+            pattern: Pattern to match components (auto-detects match type)
+            colormap: Colormap name ('reds', 'blues', 'greens', etc.)
+
+        Returns:
+            Self for method chaining
+
+        Examples:
+            Simple patterns:
+
+            ```python
+            manager.add_rule('Solar', 'oranges')         # Matches Solar, Solar1, Solar2, ...
+            manager.add_rule('Wind*', 'blues')           # Glob: Wind1, WindPark, ...
+            manager.add_rule('~Storage', 'greens')       # Contains: Storage, BatteryStorage, ...
+            manager.add_rule('Gas$', 'reds')             # Suffix: NaturalGas, BiogasGas
+            manager.add_rule('.*Battery.*', 'teals')     # Regex: Any with 'Battery'
+            ```
+
+            Chained configuration:
+
+            ```python
+            manager.add_rule('Solar*', 'oranges')\
+                   .add_rule('Wind*', 'blues')\
+                   .add_rule('Battery', 'greens')
+            ```
+
+        Note:
+            This is the simplified API. For explicit control over match type and group names,
+            use `add_grouping_rule()` instead.
+        """
+        # Auto-detect match type
+        match_type = self._detect_match_type(pattern)
+
+        # Clean pattern based on detected type
+        clean_pattern = pattern
+        if match_type == 'contains' and pattern.startswith('~'):
+            clean_pattern = pattern[1:]  # Strip ~ prefix
+        elif match_type == 'suffix' and pattern.endswith('$'):
+            clean_pattern = pattern[:-1]  # Strip $ suffix
+
+        # Generate group name from pattern (for internal organization)
+        group_name = clean_pattern.replace('*', '').replace('?', '').replace('.', '')[:20]
+
+        # Delegate to add_grouping_rule
+        return self.add_grouping_rule(clean_pattern, group_name, colormap, match_type)
+
     def add_grouping_rule(
         self, pattern: str, group_name: str, colormap: str, match_type: MatchType = 'prefix'
     ) -> ComponentColorManager:
         """Add pattern rule for grouping components.
+
+        .. note::
+            This is the explicit API with full control. For simpler usage, consider `add_rule()`
+            which auto-detects match_type and doesn't require group_name.
 
         Components matching the pattern are assigned to the specified group,
         and colors are drawn from the group's colormap.
@@ -598,7 +660,7 @@ class ComponentColorManager:
         Args:
             pattern: Pattern to match component names against
             group_name: Name of the group (used for organization)
-            colormap: Colormap name for this group ('reds', 'blues', etc.)
+            colormap: Colormap name for this group ('reds', 'blues', etc.')
             match_type: Type of pattern matching (default: 'prefix')
                 - 'prefix': Match if component starts with pattern
                 - 'suffix': Match if component ends with pattern
@@ -610,10 +672,19 @@ class ComponentColorManager:
             Self for method chaining
 
         Examples:
+            Explicit control (this method):
+
             ```python
             manager.add_grouping_rule('Boiler', 'Heat_Production', 'reds', 'prefix')
             manager.add_grouping_rule('CHP', 'Heat_Production', 'oranges', 'prefix')
             manager.add_grouping_rule('.*Storage.*', 'Storage', 'blues', 'regex')
+            ```
+
+            Simpler alternative (recommended):
+
+            ```python
+            manager.add_rule('Boiler', 'reds')  # Auto-detects prefix
+            manager.add_rule('.*Storage.*', 'blues')  # Auto-detects regex
             ```
         """
         valid_types = ('prefix', 'suffix', 'contains', 'glob', 'regex')
@@ -830,6 +901,121 @@ class ComponentColorManager:
 
         for idx, component in enumerate(self.components):
             self._component_colors[component] = colormap[idx % len(colormap)]
+
+    def _detect_match_type(self, pattern: str) -> MatchType:
+        """Auto-detect match type from pattern syntax.
+
+        Detection logic:
+            - Contains '~' prefix → 'contains' (strip ~ from pattern)
+            - Ends with '$' → 'suffix'
+            - Contains '*' or '?' → 'glob'
+            - Contains regex special chars (^[]().|+\\) → 'regex'
+            - Otherwise → 'prefix' (default)
+
+        Args:
+            pattern: Pattern string to analyze
+
+        Returns:
+            Detected match type
+
+        Examples:
+            >>> _detect_match_type('Solar')  # 'prefix'
+            >>> _detect_match_type('Solar*')  # 'glob'
+            >>> _detect_match_type('~Storage')  # 'contains'
+            >>> _detect_match_type('.*Solar.*')  # 'regex'
+            >>> _detect_match_type('Solar$')  # 'suffix'
+        """
+        # Check for explicit contains marker
+        if pattern.startswith('~'):
+            return 'contains'
+
+        # Check for suffix marker (but only if not a regex pattern)
+        if pattern.endswith('$') and len(pattern) > 1 and not any(c in pattern for c in r'.[]()^|+\\'):
+            return 'suffix'
+
+        # Check for regex special characters (before glob, since .* is regex not glob)
+        # Exclude * and ? which are also glob chars
+        regex_only_chars = r'.[]()^|+\\'
+        if any(char in pattern for char in regex_only_chars):
+            return 'regex'
+
+        # Check for simple glob wildcards
+        if '*' in pattern or '?' in pattern:
+            return 'glob'
+
+        # Default to prefix matching
+        return 'prefix'
+
+    @staticmethod
+    def _load_config_from_file(file_path: str | pathlib.Path) -> dict[str, str]:
+        """Load color configuration from YAML or JSON file.
+
+        Args:
+            file_path: Path to YAML or JSON configuration file
+
+        Returns:
+            Dictionary mapping patterns to colormaps
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValueError: If file format is unsupported or invalid
+
+        Examples:
+            YAML file (colors.yaml):
+            ```yaml
+            Solar*: oranges
+            Wind*: blues
+            Battery: greens
+            ~Storage: teals
+            ```
+
+            JSON file (colors.json):
+            ```json
+            {
+                "Solar*": "oranges",
+                "Wind*": "blues",
+                "Battery": "greens"
+            }
+            ```
+        """
+        import json
+
+        file_path = pathlib.Path(file_path)
+
+        if not file_path.exists():
+            raise FileNotFoundError(f'Color configuration file not found: {file_path}')
+
+        # Determine file type from extension
+        suffix = file_path.suffix.lower()
+
+        if suffix in ['.yaml', '.yml']:
+            try:
+                import yaml
+            except ImportError as e:
+                raise ImportError(
+                    'PyYAML is required to load YAML config files. Install it with: pip install pyyaml'
+                ) from e
+
+            with open(file_path, encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+
+        elif suffix == '.json':
+            with open(file_path, encoding='utf-8') as f:
+                config = json.load(f)
+
+        else:
+            raise ValueError(f'Unsupported file format: {suffix}. Supported formats: .yaml, .yml, .json')
+
+        # Validate config structure
+        if not isinstance(config, dict):
+            raise ValueError(f'Invalid config file structure. Expected dict, got {type(config).__name__}')
+
+        # Ensure all values are strings
+        for key, value in config.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise ValueError(f'Invalid config entry: {key}: {value}. Both keys and values must be strings.')
+
+        return config
 
     def _match_pattern(self, value: str, pattern: str, match_type: str) -> bool:
         """Check if value matches pattern.
