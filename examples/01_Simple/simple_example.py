@@ -113,7 +113,7 @@ if __name__ == '__main__':
     # --- Analyze Results ---
     # Colors are automatically assigned using default colormap
     # Optional: Configure custom colors with
-    calculation.results.setup_colors({'Boiler': 'oranges', 'Storage': 'greens'})
+    calculation.results.setup_colors({'CHP': 'red'})
     calculation.results['Fernwärme'].plot_node_balance_pie()
     calculation.results['Fernwärme'].plot_node_balance()
     calculation.results['Storage'].plot_charge_state()
