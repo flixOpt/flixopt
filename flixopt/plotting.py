@@ -203,6 +203,58 @@ class ColorProcessor:
             default_colormap if default_colormap is not None else CONFIG.Plotting.default_qualitative_colorscale
         )
 
+    def _get_plotly_colormap_robust(self, colormap_name: str, num_colors: int) -> list[str]:
+        """
+        Robustly get colors from Plotly colormaps with multiple fallback levels.
+
+        Args:
+            colormap_name: Name of the colormap to try
+            num_colors: Number of colors needed
+
+        Returns:
+            List of color strings (hex format)
+        """
+        # First try qualitative color sequences (Dark24, Plotly, Set1, etc.)
+        colormap_title = colormap_name.title()
+        if hasattr(px.colors.qualitative, colormap_title):
+            color_list = getattr(px.colors.qualitative, colormap_title)
+            # Cycle through colors if we need more than available
+            return [color_list[i % len(color_list)] for i in range(num_colors)]
+
+        # Then try sequential/continuous colorscales (turbo, plasma, etc.)
+        try:
+            colorscale = px.colors.get_colorscale(colormap_name)
+            # Generate evenly spaced points
+            color_points = [i / (num_colors - 1) for i in range(num_colors)] if num_colors > 1 else [0]
+            return px.colors.sample_colorscale(colorscale, color_points)
+        except PlotlyError:
+            pass  # Will try fallbacks below
+
+        # Fallback to default_colormap
+        logger.warning(f"Colormap '{colormap_name}' not found in Plotly. Trying default '{self.default_colormap}'")
+
+        # Try default as qualitative
+        default_title = self.default_colormap.title()
+        if hasattr(px.colors.qualitative, default_title):
+            color_list = getattr(px.colors.qualitative, default_title)
+            return [color_list[i % len(color_list)] for i in range(num_colors)]
+
+        # Try default as sequential
+        try:
+            colorscale = px.colors.get_colorscale(self.default_colormap)
+            color_points = [i / (num_colors - 1) for i in range(num_colors)] if num_colors > 1 else [0]
+            return px.colors.sample_colorscale(colorscale, color_points)
+        except PlotlyError:
+            pass
+
+        # Ultimate fallback: use built-in Plotly qualitative colormap
+        logger.warning(
+            f"Both '{colormap_name}' and default '{self.default_colormap}' not found. "
+            f"Using hardcoded fallback 'Plotly' colormap"
+        )
+        color_list = px.colors.qualitative.Plotly
+        return [color_list[i % len(color_list)] for i in range(num_colors)]
+
     def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> list[Any]:
         """
         Generate colors from a named colormap.
@@ -215,35 +267,23 @@ class ColorProcessor:
             list of colors in the format appropriate for the engine
         """
         if self.engine == 'plotly':
-            # First try qualitative color sequences (Dark24, Plotly, Set1, etc.)
-            colormap_name = colormap_name.title()
-            if hasattr(px.colors.qualitative, colormap_name):
-                color_list = getattr(px.colors.qualitative, colormap_name)
-                # Cycle through colors if we need more than available
-                return [color_list[i % len(color_list)] for i in range(num_colors)]
-
-            # Then try sequential/continuous colorscales (turbo, plasma, etc.)
-            try:
-                colorscale = px.colors.get_colorscale(colormap_name)
-            except PlotlyError as e:
-                logger.error(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
-                # Try default as qualitative first
-                if hasattr(px.colors.qualitative, self.default_colormap):
-                    color_list = getattr(px.colors.qualitative, self.default_colormap)
-                    return [color_list[i % len(color_list)] for i in range(num_colors)]
-                # Otherwise use default as sequential
-                colorscale = px.colors.get_colorscale(self.default_colormap)
-
-            # Generate evenly spaced points
-            color_points = [i / (num_colors - 1) for i in range(num_colors)] if num_colors > 1 else [0]
-            return px.colors.sample_colorscale(colorscale, color_points)
+            return self._get_plotly_colormap_robust(colormap_name, num_colors)
 
         else:  # matplotlib
             try:
                 cmap = plt.get_cmap(colormap_name, num_colors)
             except ValueError as e:
-                logger.error(f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}")
-                cmap = plt.get_cmap(self.default_colormap, num_colors)
+                logger.warning(
+                    f"Colormap '{colormap_name}' not found in Matplotlib. Trying default '{self.default_colormap}': {e}"
+                )
+                try:
+                    cmap = plt.get_cmap(self.default_colormap, num_colors)
+                except ValueError:
+                    logger.warning(
+                        f"Default colormap '{self.default_colormap}' also not found in Matplotlib. "
+                        f"Using hardcoded fallback 'tab10'"
+                    )
+                    cmap = plt.get_cmap('tab10', num_colors)
 
             return [cmap(i) for i in range(num_colors)]
 
