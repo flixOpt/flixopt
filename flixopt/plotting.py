@@ -148,7 +148,7 @@ class ColorProcessor:
 
         ```python
         # Initialize for Plotly backend
-        processor = ColorProcessor(engine='plotly', default_colormap='turbo')
+        processor = ColorProcessor(engine='plotly', default_colorscale='turbo')
 
         # Process different color specifications
         colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
@@ -179,18 +179,18 @@ class ColorProcessor:
 
     Args:
         engine: Plotting backend ('plotly' or 'matplotlib'). Determines output color format.
-        default_colormap: Fallback colormap when requested palettes are unavailable.
+        default_colorscale: Fallback colormap when requested palettes are unavailable.
             Common options: 'turbo', 'plasma', 'portland'.
 
     """
 
-    def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str | None = None):
+    def __init__(self, engine: PlottingEngine = 'plotly', default_colorscale: str | None = None):
         """Initialize the color processor with specified backend and defaults."""
         if engine not in ['plotly', 'matplotlib']:
             raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
         self.engine = engine
-        self.default_colormap = (
-            default_colormap if default_colormap is not None else CONFIG.Plotting.default_qualitative_colorscale
+        self.default_colorscale = (
+            default_colorscale if default_colorscale is not None else CONFIG.Plotting.default_qualitative_colorscale
         )
 
     def _get_sequential_colorscale(self, colormap_name: str, num_colors: int) -> list[str] | None:
@@ -235,23 +235,23 @@ class ColorProcessor:
         if colors is not None:
             return colors
 
-        # Fallback to default_colormap
-        logger.warning(f"Colormap '{colormap_name}' not found in Plotly. Trying default '{self.default_colormap}'")
+        # Fallback to default_colorscale
+        logger.warning(f"Colormap '{colormap_name}' not found in Plotly. Trying default '{self.default_colorscale}'")
 
         # Try default as qualitative
-        default_title = self.default_colormap.title()
+        default_title = self.default_colorscale.title()
         if hasattr(px.colors.qualitative, default_title):
             color_list = getattr(px.colors.qualitative, default_title)
             return [color_list[i % len(color_list)] for i in range(num_colors)]
 
         # Try default as sequential
-        colors = self._get_sequential_colorscale(self.default_colormap, num_colors)
+        colors = self._get_sequential_colorscale(self.default_colorscale, num_colors)
         if colors is not None:
             return colors
 
         # Ultimate fallback: use built-in Plotly qualitative colormap
         logger.warning(
-            f"Both '{colormap_name}' and default '{self.default_colormap}' not found. "
+            f"Both '{colormap_name}' and default '{self.default_colorscale}' not found. "
             f"Using hardcoded fallback 'Plotly' colormap"
         )
         color_list = px.colors.qualitative.Plotly
@@ -276,13 +276,13 @@ class ColorProcessor:
                 cmap = plt.get_cmap(colormap_name, num_colors)
             except ValueError as e:
                 logger.warning(
-                    f"Colormap '{colormap_name}' not found in Matplotlib. Trying default '{self.default_colormap}': {e}"
+                    f"Colormap '{colormap_name}' not found in Matplotlib. Trying default '{self.default_colorscale}': {e}"
                 )
                 try:
-                    cmap = plt.get_cmap(self.default_colormap, num_colors)
+                    cmap = plt.get_cmap(self.default_colorscale, num_colors)
                 except ValueError:
                     logger.warning(
-                        f"Default colormap '{self.default_colormap}' also not found in Matplotlib. "
+                        f"Default colormap '{self.default_colorscale}' also not found in Matplotlib. "
                         f"Using hardcoded fallback 'tab10'"
                     )
                     cmap = plt.get_cmap('tab10', num_colors)
@@ -301,8 +301,8 @@ class ColorProcessor:
             list of colors matching the number of labels
         """
         if len(colors) == 0:
-            logger.error(f'Empty color list provided. Using {self.default_colormap} instead.')
-            return self._generate_colors_from_colormap(self.default_colormap, num_labels)
+            logger.error(f'Empty color list provided. Using {self.default_colorscale} instead.')
+            return self._generate_colors_from_colormap(self.default_colorscale, num_labels)
 
         if len(colors) < num_labels:
             logger.warning(
@@ -331,18 +331,18 @@ class ColorProcessor:
             list of colors in the same order as labels
         """
         if len(colors) == 0:
-            logger.warning(f'Empty color dictionary provided. Using {self.default_colormap} instead.')
-            return self._generate_colors_from_colormap(self.default_colormap, len(labels))
+            logger.warning(f'Empty color dictionary provided. Using {self.default_colorscale} instead.')
+            return self._generate_colors_from_colormap(self.default_colorscale, len(labels))
 
         # Find missing labels
         missing_labels = sorted(set(labels) - set(colors.keys()))
         if missing_labels:
             logger.warning(
-                f'Some labels have no color specified: {missing_labels}. Using {self.default_colormap} for these.'
+                f'Some labels have no color specified: {missing_labels}. Using {self.default_colorscale} for these.'
             )
 
             # Generate colors for missing labels
-            missing_colors = self._generate_colors_from_colormap(self.default_colormap, len(missing_labels))
+            missing_colors = self._generate_colors_from_colormap(self.default_colorscale, len(missing_labels))
 
             # Create a copy to avoid modifying the original
             colors_copy = colors.copy()
@@ -385,9 +385,9 @@ class ColorProcessor:
             color_list = self._handle_color_dict(colors, labels)
         else:
             logger.error(
-                f'Unsupported color specification type: {type(colors)}. Using {self.default_colormap} instead.'
+                f'Unsupported color specification type: {type(colors)}. Using {self.default_colorscale} instead.'
             )
-            color_list = self._generate_colors_from_colormap(self.default_colormap, len(labels))
+            color_list = self._generate_colors_from_colormap(self.default_colorscale, len(labels))
 
         # Return either a list or a mapping
         if return_mapping:
@@ -467,18 +467,18 @@ class ComponentColorManager:
     def __init__(
         self,
         components: list[str] | None = None,
-        default_colormap: str | None = None,
+        default_colorscale: str | None = None,
     ) -> None:
         """Initialize component color manager.
 
         Args:
             components: Optional list of all component names. If not provided,
                 components will be discovered from configure() calls.
-            default_colormap: Default colormap for ungrouped components.
+            default_colorscale: Default colormap for ungrouped components.
                 If None, uses CONFIG.Plotting.default_qualitative_colorscale.
         """
         self.components = sorted(set(components)) if components else []
-        self.default_colormap = default_colormap or CONFIG.Plotting.default_qualitative_colorscale
+        self.default_colorscale = default_colorscale or CONFIG.Plotting.default_qualitative_colorscale
         self.color_families = self.DEFAULT_FAMILIES.copy()
 
         # Computed colors: {component_name: color}
@@ -496,7 +496,7 @@ class ComponentColorManager:
         return (
             f'ComponentColorManager(components={len(self.components)}, '
             f'colors_configured={len(self._component_colors)}, '
-            f"default_colormap='{self.default_colormap}')"
+            f"default_colorscale='{self.default_colorscale}')"
         )
 
     def __str__(self) -> str:
@@ -522,7 +522,7 @@ class ComponentColorManager:
             if len(self._component_colors) > 3:
                 lines.append(f'    ... and {len(self._component_colors) - 3} more')
 
-        lines.append(f'  Default colormap: {self.default_colormap}')
+        lines.append(f'  Default colormap: {self.default_colorscale}')
 
         return '\n'.join(lines)
 
@@ -774,7 +774,7 @@ class ComponentColorManager:
 
     def _assign_default_colors(self) -> None:
         """Assign default colors to all components using default colormap."""
-        colors = self._sample_colors_from_colorscale(self.default_colormap, len(self.components))
+        colors = self._sample_colors_from_colorscale(self.default_colorscale, len(self.components))
 
         for component, color in zip(self.components, colors, strict=False):
             self._component_colors[component] = color

@@ -16,7 +16,7 @@ class TestBasicFunctionality:
         manager = ComponentColorManager(components)
 
         assert len(manager.components) == 3
-        assert manager.default_colormap == 'Dark24'
+        assert manager.default_colorscale == 'Plotly'
         assert 'Solar_PV' in manager.components
 
     def test_sorted_components(self):

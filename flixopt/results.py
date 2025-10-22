@@ -332,7 +332,9 @@ class CalculationResults:
         return self._flow_system
 
     def setup_colors(
-        self, config: dict[str, str | list[str]] | str | pathlib.Path | None = None
+        self,
+        config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        default_colorscale: str | None = None,
     ) -> plotting.ComponentColorManager:
         """Initialize and return a ColorManager for configuring plot colors.
 
@@ -345,6 +347,7 @@ class CalculationResults:
                 - dict: Mixed {component: color} or {colorscale: [components]} mapping
                 - str/Path: Path to YAML file
                 - None: Create empty manager for manual config (default)
+            default_colorscale: Optional default colorscale to use. Defaults to CONFIG.Plotting.default_default_qualitative_colorscale
 
         Returns:
             ComponentColorManager instance ready for configuration.
@@ -384,7 +387,9 @@ class CalculationResults:
             results.color_manager = None  # Plots use default colorscales
             ```
         """
-        self.color_manager = plotting.ComponentColorManager.from_flow_system(self.flow_system)
+        self.color_manager = plotting.ComponentColorManager.from_flow_system(
+            self.flow_system, default_colorscale=default_colorscale
+        )
 
         # Apply configuration if provided
         if config is not None:
