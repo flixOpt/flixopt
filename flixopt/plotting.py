@@ -1362,7 +1362,7 @@ def dual_pie_with_plotly(
     )
 
     # Helper function to extract labels and values from Dataset
-    def dataset_to_pie_data(dataset):
+    def dataset_to_pie_data(dataset: xr.Dataset, lower_percentage_group=None):
         labels = []
         values = []
 
@@ -1385,11 +1385,48 @@ def dual_pie_with_plotly(
                 labels.append(str(var))
                 values.append(total_value)
 
+        # Apply minimum percentage threshold if needed
+        if lower_percentage_group and len(values) > 0:
+            total = sum(values)
+            if total > 0:
+                # Create list of (label, value) pairs and sort by value (ascending)
+                sorted_data = sorted(zip(labels, values, strict=False), key=lambda x: x[1])
+
+                # Calculate cumulative percentage contribution
+                cumulative_sum = 0
+                to_group_indices = []
+
+                for i, (_, value) in enumerate(sorted_data):
+                    new_cumulative = cumulative_sum + value
+                    new_cumulative_percent = (new_cumulative / total) * 100
+
+                    # Only add to group if adding this item keeps us at or below threshold
+                    if new_cumulative_percent <= lower_percentage_group:
+                        to_group_indices.append(i)
+                        cumulative_sum = new_cumulative
+                    else:
+                        # Stop once we would exceed the threshold
+                        break
+
+                # Only group if there are at least 2 items to group
+                if len(to_group_indices) > 1:
+                    # Calculate "Other" sum
+                    other_sum = sum(sorted_data[i][1] for i in to_group_indices)
+
+                    # Keep only values that aren't in the "Other" group
+                    labels = [sorted_data[i][0] for i in range(len(sorted_data)) if i not in to_group_indices]
+                    values = [sorted_data[i][1] for i in range(len(sorted_data)) if i not in to_group_indices]
+
+                    # Add the "Other" category
+                    if other_sum > 0:
+                        labels.append('Other')
+                        values.append(other_sum)
+
         return labels, values
 
     # Get data for left and right
-    left_labels, left_values = dataset_to_pie_data(data_left)
-    right_labels, right_values = dataset_to_pie_data(data_right)
+    left_labels, left_values = dataset_to_pie_data(data_left, lower_percentage_group)
+    right_labels, right_values = dataset_to_pie_data(data_right, lower_percentage_group)
 
     # Get unique set of all labels for consistent coloring across both pies
     # Merge both datasets for color resolution
