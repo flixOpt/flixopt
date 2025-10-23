@@ -1094,7 +1094,7 @@ def plot_network(
 
 def pie_with_plotly(
     data: xr.Dataset | pd.DataFrame,
-    colors: ColorType | None = None,
+    colors: ColorType = 'viridis',
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
@@ -1129,24 +1129,7 @@ def pie_with_plotly(
         - Negative values are not appropriate for pie charts and will be converted to absolute values with a warning.
         - All dimensions are summed to get total values for each variable.
         - Scalar variables (with no dimensions) are used directly.
-
-    Examples:
-        Simple pie chart:
-
-        ```python
-        fig = pie_with_plotly(dataset, colors='turbo', title='Energy Mix')
-        ```
-
-        Custom color mapping:
-
-        ```python
-        colors = {'Solar': 'orange', 'Wind': 'blue', 'Coal': 'red'}
-        fig = pie_with_plotly(dataset, colors=colors, title='Renewable Energy')
-        ```
     """
-    if colors is None:
-        colors = CONFIG.Plotting.default_qualitative_colorscale
-
     # Ensure data is a Dataset and validate it
     data = _ensure_dataset(data)
     _validate_plotting_data(data, allow_empty=True)
@@ -1209,7 +1192,7 @@ def pie_with_plotly(
 
 def pie_with_matplotlib(
     data: xr.Dataset | pd.DataFrame,
-    colors: ColorType | None = None,
+    colors: ColorType = 'viridis',
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
@@ -1237,20 +1220,6 @@ def pie_with_matplotlib(
         - Negative values are not appropriate for pie charts and will be converted to absolute values with a warning.
         - All dimensions are summed to get total values for each variable.
         - Scalar variables (with no dimensions) are used directly.
-
-    Examples:
-        Simple pie chart:
-
-        ```python
-        fig, ax = pie_with_matplotlib(dataset, colors='turbo', title='Energy Mix')
-        ```
-
-        Custom color mapping:
-
-        ```python
-        colors = {'Solar': 'orange', 'Wind': 'blue', 'Coal': 'red'}
-        fig, ax = pie_with_matplotlib(dataset, colors=colors, title='Renewable Energy')
-        ```
     """
     if colors is None:
         colors = CONFIG.Plotting.default_qualitative_colorscale
@@ -1341,7 +1310,7 @@ def pie_with_matplotlib(
 def dual_pie_with_plotly(
     data_left: xr.Dataset | pd.DataFrame,
     data_right: xr.Dataset | pd.DataFrame,
-    colors: ColorType | None = None,
+    colors: ColorType = 'viridis',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1374,9 +1343,6 @@ def dual_pie_with_plotly(
     Returns:
         A Plotly figure object containing the generated dual pie chart.
     """
-    if colors is None:
-        colors = CONFIG.Plotting.default_qualitative_colorscale
-
     from plotly.subplots import make_subplots
 
     # Ensure data is a Dataset and validate it
@@ -1481,7 +1447,7 @@ def dual_pie_with_plotly(
 def dual_pie_with_matplotlib(
     data_left: pd.Series,
     data_right: pd.Series,
-    colors: ColorType | None = None,
+    colors: ColorType = 'viridis',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1509,9 +1475,6 @@ def dual_pie_with_matplotlib(
     Returns:
         A tuple containing the Matplotlib figure and list of axes objects used for the plot.
     """
-    if colors is None:
-        colors = CONFIG.Plotting.default_qualitative_colorscale
-
     # Create figure and axes
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
@@ -1667,11 +1630,11 @@ def dual_pie_with_matplotlib(
 
 def heatmap_with_plotly(
     data: xr.DataArray,
-    colors: ColorType | None = None,
+    colors: ColorType = 'viridis',
     title: str = '',
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
-    facet_cols: int | None = None,
+    facet_cols: int = 3,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
     | Literal['auto']
     | None = 'auto',
@@ -1695,7 +1658,7 @@ def heatmap_with_plotly(
         data: An xarray DataArray containing the data to visualize. Should have at least
               2 dimensions, or a 'time' dimension that can be reshaped into 2D.
         colors: Color specification (colormap name, list, or dict). Common options:
-                'turbo', 'plasma', 'RdBu', 'portland'.
+                'viridis', 'plasma', 'RdBu', 'portland'.
         title: The main title of the heatmap.
         facet_by: Dimension to create facets for. Creates a subplot grid.
                   Can be a single dimension name or list (only first dimension used).
@@ -1751,13 +1714,6 @@ def heatmap_with_plotly(
         fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period', reshape_time=('W', 'D'))
         ```
     """
-    if colors is None:
-        colors = CONFIG.Plotting.default_sequential_colorscale
-
-    # Apply CONFIG defaults if not explicitly set
-    if facet_cols is None:
-        facet_cols = CONFIG.Plotting.default_facet_cols
-
     # Handle empty data
     if data.size == 0:
         return go.Figure()
@@ -1851,7 +1807,7 @@ def heatmap_with_plotly(
     # Create the imshow plot - px.imshow can work directly with xarray DataArrays
     common_args = {
         'img': data,
-        'color_continuous_scale': colors if isinstance(colors, str) else CONFIG.Plotting.default_sequential_colorscale,
+        'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
         'title': title,
     }
 
@@ -1875,9 +1831,7 @@ def heatmap_with_plotly(
         # Fallback: create a simple heatmap without faceting
         fallback_args = {
             'img': data.values,
-            'color_continuous_scale': colors
-            if isinstance(colors, str)
-            else CONFIG.Plotting.default_sequential_colorscale,
+            'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
             'title': title,
         }
         fallback_args.update(imshow_kwargs)
@@ -1888,7 +1842,7 @@ def heatmap_with_plotly(
 
 def heatmap_with_matplotlib(
     data: xr.DataArray,
-    colors: ColorType | None = None,
+    colors: ColorType = 'viridis',
     title: str = '',
     figsize: tuple[float, float] = (12, 6),
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
@@ -1951,9 +1905,6 @@ def heatmap_with_matplotlib(
         fig, ax = heatmap_with_matplotlib(data_array, reshape_time=('D', 'h'))
         ```
     """
-    if colors is None:
-        colors = CONFIG.Plotting.default_sequential_colorscale
-
     # Initialize kwargs if not provided
     if imshow_kwargs is None:
         imshow_kwargs = {}
@@ -2006,7 +1957,7 @@ def heatmap_with_matplotlib(
         y_labels = 'y'
 
     # Process colormap
-    cmap = colors if isinstance(colors, str) else CONFIG.Plotting.default_sequential_colorscale
+    cmap = colors if isinstance(colors, str) else 'viridis'
 
     # Create the heatmap using imshow with user customizations
     imshow_defaults = {'cmap': cmap, 'aspect': 'auto', 'origin': 'upper', 'vmin': vmin, 'vmax': vmax}
@@ -2038,9 +1989,9 @@ def export_figure(
     default_path: pathlib.Path,
     default_filetype: str | None = None,
     user_path: pathlib.Path | None = None,
-    show: bool | None = None,
+    show: bool = True,
     save: bool = False,
-    dpi: int | None = None,
+    dpi: int = 300,
 ) -> go.Figure | tuple[plt.Figure, plt.Axes]:
     """
     Export a figure to a file and or show it.
@@ -2058,13 +2009,6 @@ def export_figure(
         ValueError: If no default filetype is provided and the path doesn't specify a filetype.
         TypeError: If the figure type is not supported.
     """
-    # Apply CONFIG defaults if not explicitly set
-    if show is None:
-        show = CONFIG.Plotting.default_show
-
-    if dpi is None:
-        dpi = CONFIG.Plotting.default_dpi
-
     filename = user_path or default_path
     filename = filename.with_name(filename.name.replace('|', '__'))
     if filename.suffix == '':
@@ -2074,32 +2018,30 @@ def export_figure(
 
     if isinstance(figure_like, plotly.graph_objs.Figure):
         fig = figure_like
-
-        # Apply default dimensions if configured
-        layout_updates = {}
-        if CONFIG.Plotting.default_figure_width is not None:
-            layout_updates['width'] = CONFIG.Plotting.default_figure_width
-        if CONFIG.Plotting.default_figure_height is not None:
-            layout_updates['height'] = CONFIG.Plotting.default_figure_height
-        if layout_updates:
-            fig.update_layout(**layout_updates)
-
         if filename.suffix != '.html':
             logger.warning(f'To save a Plotly figure, using .html. Adjusting suffix for {filename}')
             filename = filename.with_suffix('.html')
 
         try:
-            # Respect show and save flags (tests should set CONFIG.Plotting.default_show=False)
-            if save and show:
-                # Save and auto-open in browser
-                plotly.offline.plot(fig, filename=str(filename))
-            elif save and not show:
-                # Save without opening
-                fig.write_html(str(filename))
-            elif show and not save:
-                # Show interactively without saving
-                fig.show()
-            # If neither save nor show: do nothing
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+
+            if is_test_env:
+                # Test environment: never open browser, only save if requested
+                if save:
+                    fig.write_html(str(filename))
+                # Ignore show flag in tests
+            else:
+                # Production environment: respect show and save flags
+                if save and show:
+                    # Save and auto-open in browser
+                    plotly.offline.plot(fig, filename=str(filename))
+                elif save and not show:
+                    # Save without opening
+                    fig.write_html(str(filename))
+                elif show and not save:
+                    # Show interactively without saving
+                    fig.show()
+                # If neither save nor show: do nothing
         finally:
             # Cleanup to prevent socket warnings
             if hasattr(fig, '_renderer'):
@@ -2110,11 +2052,12 @@ def export_figure(
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
         if show:
-            # Only show if using interactive backend (tests should set CONFIG.Plotting.default_show=False)
+            # Only show if using interactive backend and not in test environment
             backend = matplotlib.get_backend().lower()
             is_interactive = backend not in {'agg', 'pdf', 'ps', 'svg', 'template'}
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
 
-            if is_interactive:
+            if is_interactive and not is_test_env:
                 plt.show()
 
         if save:
