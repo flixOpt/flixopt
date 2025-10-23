@@ -1092,51 +1092,66 @@ def plot_network(
             )
 
 
-def preprocess_series_for_pie(series: pd.Series, lower_percentage_threshold: float = 5.0) -> pd.Series:
+def preprocess_dataset_for_pie(data: xr.Dataset, lower_percentage_threshold: float = 5.0) -> xr.Dataset:
     """
-    Preprocess a series for pie chart display.
+    Preprocess data for pie chart display.
 
     Groups items that are individually below the threshold percentage into an "Other" category.
+    Works with xarray Datasets by summing all dimensions for each variable.
 
     Args:
-        series: Input series with category names as index and values
+        data: Input data (xarray Dataset, DataFrame, or Series)
         lower_percentage_threshold: Percentage threshold - items below this are grouped into "Other"
 
     Returns:
-        Processed series with small items grouped into "Other"
+        Processed xarray Dataset with small items grouped into "Other"
     """
-    # Handle negative values
-    if (series < 0).any():
-        print('Warning: Negative values detected. Using absolute values.')
-        series = series.abs()
+    dataset = _ensure_dataset(data)
+    _validate_plotting_data(dataset, allow_empty=True)
 
-    # Remove zeros
-    series = series[series > 0]
+    # Sum all dimensions for each variable to get total values
+    values = {}
+    for var in data.data_vars:
+        var_data = data[var]
+        # Sum across all dimensions to get total
+        if len(var_data.dims) > 0:
+            total_value = float(var_data.sum().item())
+        else:
+            total_value = float(var_data.item())
 
-    if series.empty or lower_percentage_threshold <= 0:
-        return series
+        # Handle negative values
+        if total_value < 0:
+            print(f'Warning: Negative value for {var}: {total_value}. Using absolute value.')
+            total_value = abs(total_value)
 
-    # Calculate percentage for each item
-    total = series.sum()
-    percentages = (series / total) * 100
+        # Only keep positive values
+        if total_value > 0:
+            values[var] = total_value
 
-    # Find items below the threshold
-    below_threshold = percentages < lower_percentage_threshold
+    if not values or lower_percentage_threshold <= 0:
+        return data
+
+    # Calculate total and percentages
+    total = sum(values.values())
+    percentages = {name: (val / total) * 100 for name, val in values.items()}
+
+    # Find items below threshold
+    below_threshold = {name: val for name, val in values.items() if percentages[name] < lower_percentage_threshold}
+    above_threshold = {name: val for name, val in values.items() if percentages[name] >= lower_percentage_threshold}
 
     # Only group if there are at least 2 items below threshold
-    if below_threshold.sum() > 1:
+    if len(below_threshold) > 1:
         # Sum up the small items
-        other_sum = series[below_threshold].sum()
+        other_sum = sum(below_threshold.values())
 
-        # Keep items above threshold
-        result = series[~below_threshold].copy()
+        # Create new dataset with items above threshold + "Other"
+        result_dict = above_threshold.copy()
+        result_dict['Other'] = other_sum
 
-        # Add "Other" category
-        result['Other'] = other_sum
+        # Convert back to Dataset
+        return xr.Dataset({name: xr.DataArray(val) for name, val in result_dict.items()})
 
-        return result
-
-    return series
+    return data
 
 
 def dual_pie_with_plotly(
@@ -1148,9 +1163,9 @@ def dual_pie_with_plotly(
     legend_title: str = '',
     hole: float = 0.2,
     lower_percentage_group: float = 5.0,
-    hover_template: str = '%{label}: %{value} (%{percent})',
     text_info: str = 'percent+label',
     text_position: str = 'inside',
+    hover_template: str = '%{label}: %{value} (%{percent})',
 ) -> go.Figure:
     """
     Create two pie charts side by side with Plotly.
@@ -1158,10 +1173,7 @@ def dual_pie_with_plotly(
     Args:
         data_left: Dataset for the left pie chart. Variables are summed across all dimensions.
         data_right: Dataset for the right pie chart. Variables are summed across all dimensions.
-        colors: Color specification, can be:
-            - A string with a colorscale name (e.g., 'turbo', 'plasma')
-            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
-            - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
+        colors: Color specification (colorscale name, list of colors, or dict mapping)
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
@@ -1175,44 +1187,46 @@ def dual_pie_with_plotly(
     Returns:
         Plotly Figure object
     """
-    data_left = _ensure_dataset(data_left)
-    data_right = _ensure_dataset(data_right)
-    _validate_plotting_data(data_left, allow_empty=True)
-    _validate_plotting_data(data_right, allow_empty=True)
+    # Preprocess data (converts to Dataset and groups small items)
+    left_processed = preprocess_dataset_for_pie(data_left, lower_percentage_group)
+    right_processed = preprocess_dataset_for_pie(data_right, lower_percentage_group)
 
-    # Preprocess data
-    left_processed = preprocess_series_for_pie(data_left, lower_percentage_group)
-    right_processed = preprocess_series_for_pie(data_right, lower_percentage_group)
+    # Extract labels and values from Datasets
+    def extract_from_dataset(ds):
+        labels = []
+        values = []
+        for var in ds.data_vars:
+            var_data = ds[var]
+            if len(var_data.dims) > 0:
+                val = float(var_data.sum().item())
+            else:
+                val = float(var_data.item())
+            labels.append(str(var))
+            values.append(val)
+        return labels, values
+
+    left_labels, left_values = extract_from_dataset(left_processed)
+    right_labels, right_values = extract_from_dataset(right_processed)
 
     # Get all unique labels for consistent coloring
-    all_labels = sorted(set(left_processed.index) | set(right_processed.index))
+    all_labels = sorted(set(left_labels) | set(right_labels))
 
     # Create color map
-    if isinstance(colors, dict):
-        color_map = colors
-    elif isinstance(colors, list):
-        color_map = {label: colors[i % len(colors)] for i, label in enumerate(all_labels)}
-    else:
-        # Use plotly's color sequence
-        import plotly.express as px
+    color_map = ColorProcessor(engine='matplotlib').process_colors(colors, all_labels, return_mapping=True)
 
-        color_sequence = getattr(px.colors.qualitative, colors.capitalize(), px.colors.qualitative.Plotly)
-        color_map = {label: color_sequence[i % len(color_sequence)] for i, label in enumerate(all_labels)}
-
-    # Create figure with subplots
+    # Create figure
     fig = go.Figure()
 
     # Add left pie
-    if not left_processed.empty:
+    if left_labels:
         fig.add_trace(
             go.Pie(
-                labels=list(left_processed.index),
-                values=list(left_processed.values),
+                labels=left_labels,
+                values=left_values,
                 name=subtitles[0],
-                marker=dict(colors=[color_map.get(label, '#636EFA') for label in left_processed.index]),
+                marker=dict(colors=[color_map.get(label, '#636EFA') for label in left_labels]),
                 hole=hole,
                 textinfo=text_info,
-                insidetextorientation='radial',
                 textposition=text_position,
                 hovertemplate=hover_template,
                 domain=dict(x=[0, 0.48]),
@@ -1220,17 +1234,16 @@ def dual_pie_with_plotly(
         )
 
     # Add right pie
-    if not right_processed.empty:
+    if right_labels:
         fig.add_trace(
             go.Pie(
-                labels=list(right_processed.index),
-                values=list(right_processed.values),
+                labels=right_labels,
+                values=right_values,
                 name=subtitles[1],
-                marker=dict(colors=[color_map.get(label, '#636EFA') for label in right_processed.index]),
+                marker=dict(colors=[color_map.get(label, '#636EFA') for label in right_labels]),
                 hole=hole,
                 textinfo=text_info,
                 textposition=text_position,
-                insidetextorientation='radial',
                 hovertemplate=hover_template,
                 domain=dict(x=[0.52, 1]),
             )
@@ -1247,8 +1260,8 @@ def dual_pie_with_plotly(
 
 
 def dual_pie_with_matplotlib(
-    data_left: pd.Series,
-    data_right: pd.Series,
+    data_left: xr.Dataset | pd.DataFrame | pd.Series,
+    data_right: xr.Dataset | pd.DataFrame | pd.Series,
     colors: ColorType = 'viridis',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
@@ -1263,10 +1276,7 @@ def dual_pie_with_matplotlib(
     Args:
         data_left: Series for the left pie chart.
         data_right: Series for the right pie chart.
-        colors: Color specification, can be:
-            - A string with a colormap name (e.g., 'turbo', 'plasma')
-            - A list of color strings (e.g., ['#ff0000', '#00ff00'])
-            - A dictionary mapping category names to colors (e.g., {'Category1': '#ff0000'})
+        colors: Color specification (colormap name, list of colors, or dict mapping)
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
@@ -1277,12 +1287,29 @@ def dual_pie_with_matplotlib(
     Returns:
         Tuple of (Figure, list of Axes)
     """
-    # Preprocess data
-    left_processed = preprocess_series_for_pie(data_left, lower_percentage_group)
-    right_processed = preprocess_series_for_pie(data_right, lower_percentage_group)
+    # Preprocess data (converts to Dataset and groups small items)
+    left_processed = preprocess_dataset_for_pie(data_left, lower_percentage_group)
+    right_processed = preprocess_dataset_for_pie(data_right, lower_percentage_group)
+
+    # Extract labels and values from Datasets
+    def extract_from_dataset(ds):
+        labels = []
+        values = []
+        for var in ds.data_vars:
+            var_data = ds[var]
+            if len(var_data.dims) > 0:
+                val = float(var_data.sum().item())
+            else:
+                val = float(var_data.item())
+            labels.append(str(var))
+            values.append(val)
+        return labels, values
+
+    left_labels, left_values = extract_from_dataset(left_processed)
+    right_labels, right_values = extract_from_dataset(right_processed)
 
     # Get all unique labels for consistent coloring
-    all_labels = sorted(set(left_processed.index) | set(right_processed.index))
+    all_labels = sorted(set(left_labels) | set(right_labels))
 
     # Create color map
     color_map = ColorProcessor(engine='matplotlib').process_colors(colors, all_labels, return_mapping=True)
@@ -1290,15 +1317,13 @@ def dual_pie_with_matplotlib(
     # Create figure
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
-    def draw_pie(ax, data_series, subtitle):
+    def draw_pie(ax, labels, values, subtitle):
         """Draw a single pie chart."""
-        if data_series.empty:
+        if not labels:
             ax.set_title(subtitle)
             ax.axis('off')
             return
 
-        labels = list(data_series.index)
-        values = list(data_series.values)
         chart_colors = [color_map[label] for label in labels]
 
         # Draw pie
@@ -1321,15 +1346,15 @@ def dual_pie_with_matplotlib(
         ax.set_title(subtitle, fontsize=14, pad=20)
 
     # Draw both pies
-    draw_pie(axes[0], left_processed, subtitles[0])
-    draw_pie(axes[1], right_processed, subtitles[1])
+    draw_pie(axes[0], left_labels, left_values, subtitles[0])
+    draw_pie(axes[1], right_labels, right_values, subtitles[1])
 
     # Add main title
     if title:
         fig.suptitle(title, fontsize=16, y=0.98)
 
     # Create unified legend
-    if not left_processed.empty or not right_processed.empty:
+    if left_labels or right_labels:
         handles = [
             plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[label], markersize=10)
             for label in all_labels
