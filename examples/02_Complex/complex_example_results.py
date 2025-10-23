@@ -18,9 +18,6 @@ if __name__ == '__main__':
             f'Original error: {e}'
         ) from e
 
-    # --- Configure Color Mapping for Consistent Plot Colors (Optional) ---
-    results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues'})  # Dict (simplest)
-
     # --- Basic overview ---
     results.plot_network(show=True)
     results['Fernwärme'].plot_node_balance()

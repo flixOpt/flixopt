@@ -142,7 +142,7 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str | None = None, show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
+    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
         from . import plotting
 
         df_org = self.original_data.copy().rename(
