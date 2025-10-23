@@ -424,13 +424,8 @@ class ElementColorResolver:
         if isinstance(config, (str, pathlib.Path)):
             config = load_yaml_config(config)
 
-        # Extract existing element colors for merging (if reset=False)
-        existing_element_colors = None
-        if not reset and existing_colors:
-            existing_element_colors = self.extract_element_colors(existing_colors, self.elements)
-
         # Resolve element colors (with pattern matching)
-        element_colors = self._resolve_element_colors(config, reset, existing_element_colors)
+        element_colors = self._resolve_element_colors(config)
 
         # Expand to variables
         variable_colors = self._expand_to_variables(element_colors)
@@ -447,15 +442,11 @@ class ElementColorResolver:
     def _resolve_element_colors(
         self,
         config: dict[str, str | list[str]] | None,
-        reset: bool,
-        existing_element_colors: dict[str, str] | None,
     ) -> dict[str, str]:
         """Resolve config to element→color dict with pattern matching.
 
         Args:
             config: Configuration dict or None
-            reset: Whether to reset existing colors
-            existing_element_colors: Existing element colors (for reset=False)
 
         Returns:
             dict[str, str]: Element name → color mapping
@@ -463,7 +454,7 @@ class ElementColorResolver:
         import fnmatch
 
         element_names = list(self.elements.keys())
-        element_colors = {} if reset else (existing_element_colors or {})
+        element_colors = {}
 
         # If no config, use default colorscale for all elements
         if config is None:
@@ -520,36 +511,6 @@ class ElementColorResolver:
                 for var in self.elements[element_name]._variable_names:
                     variable_colors[var] = color
         return variable_colors
-
-    @staticmethod
-    def extract_element_colors(variable_colors: dict[str, str], elements: dict) -> dict[str, str]:
-        """Extract element→color from variable→color dict.
-
-        Reverse operation: given a variable→color mapping, extract the corresponding
-        element→color mapping by looking at the first variable of each element.
-
-        Args:
-            variable_colors: Variable name → color mapping
-            elements: Dict of element_label → element object
-
-        Returns:
-            dict[str, str]: Element name → color mapping
-
-        Example:
-            ```python
-            var_colors = {'Solar1(Bus)|flow': 'orange', 'Solar1(Bus)|size': 'orange'}
-            elem_colors = extract_element_colors(var_colors, results.components)
-            # Returns: {'Solar1': 'orange'}
-            ```
-        """
-        if not variable_colors:
-            return {}
-        element_colors = {}
-        for elem_name, elem_obj in elements.items():
-            var_names = elem_obj._variable_names
-            if var_names and var_names[0] in variable_colors:
-                element_colors[elem_name] = variable_colors[var_names[0]]
-        return element_colors
 
 
 def load_yaml_config(path: str | pathlib.Path) -> dict[str, str | list[str]]:

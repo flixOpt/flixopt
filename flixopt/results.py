@@ -426,23 +426,6 @@ class CalculationResults:
 
         return self.colors
 
-    def get_component_colors(self) -> dict[str, str]:
-        """Extract component→color from variable→color dict.
-
-        Returns:
-            dict[str, str]: Component name → color mapping
-
-        Example:
-            ```python
-            results.setup_colors({'Boiler1': 'red', 'Solar1': 'orange'})
-            comp_colors = results.get_component_colors()
-            # Returns: {'Boiler1': 'red', 'Solar1': 'orange', ...}
-            ```
-        """
-        if not self.colors:
-            return {}
-        return plotting.ElementColorResolver.extract_element_colors(self.colors, self.components)
-
     def filter_solution(
         self,
         variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
