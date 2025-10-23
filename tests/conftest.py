@@ -838,7 +838,6 @@ def set_test_environment():
     This fixture runs once per test session to:
     - Set matplotlib to use non-interactive 'Agg' backend
     - Set plotly to use non-interactive 'json' renderer
-    - Configure flixopt to not show plots by default
     - Prevent GUI windows from opening during tests
     """
     import matplotlib
@@ -848,9 +847,5 @@ def set_test_environment():
     import plotly.io as pio
 
     pio.renderers.default = 'json'  # Use non-interactive renderer
-
-    # Configure flixopt to not show plots in tests
-    fx.CONFIG.Plotting.default_show = False
-    fx.CONFIG.apply()
 
     yield

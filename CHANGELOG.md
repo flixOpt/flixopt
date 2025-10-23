@@ -53,22 +53,9 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-- **Simplified color management**: Configure consistent plot colors with explicit component grouping
-  - Direct colors: `results.setup_colors({'Boiler1': '#FF0000', 'CHP': 'darkred'})`
-  - Grouped colors: `results.setup_colors({'oranges': ['Solar1', 'Solar2'], 'blues': ['Wind1', 'Wind2']})`
-  - Mixed approach: Combine direct and grouped colors in a single call
-  - File-based: `results.setup_colors('colors.yaml')` (YAML only)
-- **Heatmap fill control**: Control missing value handling with `fill='ffill'` or `fill='bfill'`
-- **New CONFIG options for plot styling**
-  - `CONFIG.Plotting.default_sequential_colorscale` - Falls back to template's sequential colorscale when `None`
-  - `CONFIG.Plotting.default_qualitative_colorscale` - Falls back to template's colorway when `None`
-  - `CONFIG.Plotting.default_show` defaults to `True` - set to None to prevent unwanted GUI windows
 
 ### ♻️ Changed
 - **Template integration**: Plotly templates now fully control plot styling without hardcoded overrides
-  - Removed hardcoded `plot_bgcolor`, `paper_bgcolor`, and `font` settings from plotting functions
-  - Change template via `CONFIG.Plotting.plotly_template = 'plotly_dark'; CONFIG.apply()`
-- Plotting methods now use `color_manager` by default if configured
 
 ### 🗑️ Deprecated
 

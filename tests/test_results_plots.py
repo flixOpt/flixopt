@@ -28,7 +28,7 @@ def plotting_engine(request):
 
 @pytest.fixture(
     params=[
-        'turbo',  # Test string colormap
+        'viridis',  # Test string colormap
         ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'],  # Test color list
         {
             'Boiler(Q_th)|flow_rate': '#ff0000',
@@ -51,7 +51,7 @@ def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
     # Matplotlib doesn't support faceting/animation, so disable them for matplotlib engine
     heatmap_kwargs = {
         'reshape_time': ('D', 'h'),
-        'colors': 'turbo',  # Note: heatmap only accepts string colormap
+        'colors': 'viridis',  # Note: heatmap only accepts string colormap
         'save': save,
         'show': show,
         'engine': plotting_engine,
