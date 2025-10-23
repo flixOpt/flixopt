@@ -68,8 +68,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Template integration**: Plotly templates now fully control plot styling without hardcoded overrides
   - Removed hardcoded `plot_bgcolor`, `paper_bgcolor`, and `font` settings from plotting functions
   - Change template via `CONFIG.Plotting.plotly_template = 'plotly_dark'; CONFIG.apply()`
-- **backend switching**:
-  - Set plotly and matplotlib backend via CONFIG
 - Plotting methods now use `color_manager` by default if configured
 
 ### 🗑️ Deprecated

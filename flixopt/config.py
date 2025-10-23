@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import warnings
 from logging.handlers import RotatingFileHandler
@@ -57,9 +56,7 @@ _DEFAULTS = MappingProxyType(
         ),
         'plotting': MappingProxyType(
             {
-                'plotly_renderer': 'browser',
                 'plotly_template': 'plotly_white',
-                'matplotlib_backend': None,
                 'default_show': True,
                 'default_save_path': None,
                 'default_engine': 'plotly',
@@ -205,10 +202,12 @@ class CONFIG:
     class Plotting:
         """Plotting configuration.
 
+        Configure backends via environment variables:
+        - Matplotlib: Set `MPLBACKEND` environment variable (e.g., 'Agg', 'TkAgg')
+        - Plotly: Set `PLOTLY_RENDERER` or use `plotly.io.renderers.default`
+
         Attributes:
-            plotly_renderer: Plotly renderer to use.
             plotly_template: Plotly theme/template applied to all plots.
-            matplotlib_backend: Matplotlib backend to use.
             default_show: Default value for the `show` parameter in plot methods.
             default_save_path: Default directory for saving plots.
             default_engine: Default plotting engine.
@@ -221,10 +220,8 @@ class CONFIG:
 
         Examples:
             ```python
-            # Set consistent theming and rendering
-            CONFIG.Plotting.plotly_renderer = 'browser'
+            # Set consistent theming
             CONFIG.Plotting.plotly_template = 'plotly_dark'
-            CONFIG.Plotting.matplotlib_backend = 'TkAgg'
             CONFIG.apply()
 
             # Configure default export and color settings
@@ -237,9 +234,6 @@ class CONFIG:
             ```
         """
 
-        plotly_renderer: (
-            Literal['browser', 'notebook', 'svg', 'png', 'pdf', 'jpeg', 'json', 'plotly_mimetype'] | None
-        ) = _DEFAULTS['plotting']['plotly_renderer']
         plotly_template: (
             Literal[
                 'plotly',
@@ -256,22 +250,6 @@ class CONFIG:
             ]
             | None
         ) = _DEFAULTS['plotting']['plotly_template']
-        matplotlib_backend: (
-            Literal[
-                'TkAgg',
-                'Qt5Agg',
-                'QtAgg',
-                'WXAgg',
-                'Agg',
-                'Cairo',
-                'PDF',
-                'PS',
-                'SVG',
-                'WebAgg',
-                'module://backend_interagg',
-            ]
-            | None
-        ) = _DEFAULTS['plotting']['matplotlib_backend']
         default_show: bool = _DEFAULTS['plotting']['default_show']
         default_save_path: str | None = _DEFAULTS['plotting']['default_save_path']
         default_engine: Literal['plotly', 'matplotlib'] = _DEFAULTS['plotting']['default_engine']
@@ -345,9 +323,7 @@ class CONFIG:
 
         # Apply plotting configuration
         _apply_plotting_config(
-            plotly_renderer=cls.Plotting.plotly_renderer,
             plotly_template=cls.Plotting.plotly_template,
-            matplotlib_backend=cls.Plotting.matplotlib_backend,
         )
 
     @classmethod
@@ -713,8 +689,6 @@ def _setup_logging(
 
 
 def _apply_plotting_config(
-    plotly_renderer: Literal['browser', 'notebook', 'svg', 'png', 'pdf', 'jpeg', 'json', 'plotly_mimetype']
-    | None = 'browser',
     plotly_template: Literal[
         'plotly',
         'plotly_white',
@@ -729,75 +703,26 @@ def _apply_plotting_config(
         'ygridoff',
     ]
     | None = 'plotly',
-    matplotlib_backend: Literal[
-        'TkAgg', 'Qt5Agg', 'QtAgg', 'WXAgg', 'Agg', 'Cairo', 'PDF', 'PS', 'SVG', 'WebAgg', 'module://backend_interagg'
-    ]
-    | None = None,
 ) -> None:
-    """Apply plotting configuration to plotly and matplotlib.
+    """Apply plotting configuration to plotly.
 
     Args:
-        plotly_renderer: Plotly renderer to use.
         plotly_template: Plotly template/theme to apply to all plots.
-        matplotlib_backend: Matplotlib backend to use. If None, the existing backend is not changed.
+
+    Note:
+        Configure backends via environment variables:
+        - Matplotlib: Set MPLBACKEND environment variable before importing matplotlib
+        - Plotly: Set PLOTLY_RENDERER or use plotly.io.renderers.default directly
     """
-    # Configure Plotly renderer and template
+    # Configure Plotly template
     try:
         import plotly.io as pio
-
-        if plotly_renderer is not None:
-            pio.renderers.default = plotly_renderer
 
         if plotly_template is not None:
             pio.templates.default = plotly_template
     except ImportError:
         # Plotly not installed, skip configuration
         pass
-
-    # Configure Matplotlib backend
-    if matplotlib_backend is not None:
-        try:
-            import matplotlib
-
-            # Check if pyplot has been imported yet
-            pyplot_imported = 'matplotlib.pyplot' in sys.modules
-
-            if not pyplot_imported:
-                # Safe path: Set environment variable before pyplot import
-                # This is the preferred method as it avoids runtime backend switching
-                os.environ['MPLBACKEND'] = matplotlib_backend
-                logger.debug(f"Set MPLBACKEND environment variable to '{matplotlib_backend}'")
-            else:
-                # pyplot is already imported - check if we need to switch
-                current_backend = matplotlib.get_backend()
-
-                if current_backend == matplotlib_backend:
-                    logger.debug(f"matplotlib backend already set to '{matplotlib_backend}'")
-                else:
-                    # Need to switch backend - check if it's safe
-                    import matplotlib.pyplot as plt
-
-                    if len(plt.get_fignums()) > 0:
-                        logger.warning(
-                            f"Cannot switch matplotlib backend from '{current_backend}' to '{matplotlib_backend}': "
-                            f'There are {len(plt.get_fignums())} open figures. Close all figures before changing backend, '
-                            f'or set CONFIG.Plotting.matplotlib_backend before importing matplotlib.pyplot.'
-                        )
-                    else:
-                        # No open figures - attempt safe backend switch
-                        try:
-                            plt.switch_backend(matplotlib_backend)
-                            logger.info(
-                                f"Switched matplotlib backend from '{current_backend}' to '{matplotlib_backend}'"
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to switch matplotlib backend from '{current_backend}' to '{matplotlib_backend}': {e}. "
-                                f'Set CONFIG.Plotting.matplotlib_backend before importing matplotlib.pyplot to avoid this issue.'
-                            )
-        except ImportError:
-            # Matplotlib not installed, skip configuration
-            pass
 
 
 def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
