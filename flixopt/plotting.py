@@ -509,7 +509,7 @@ class ElementColorResolver:
             if element_name in self.elements:
                 # Access _variable_names from element object (ComponentResults, BusResults, etc.)
                 variable_colors[element_name] = color
-                for var in self.elements[element_name]._variables:
+                for var in self.elements[element_name]._variable_names:
                     variable_colors[var] = color
         return variable_colors
 
