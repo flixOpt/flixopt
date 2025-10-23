@@ -1163,8 +1163,6 @@ class _NodeResults(_ElementResults):
 
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
-        resolved_colors = plotting.resolve_colors(ds, colors, engine=engine)
-
         # Matplotlib requires only 'time' dimension; check for extras after selection
         if engine == 'matplotlib':
             extra_dims = [d for d in ds.dims if d != 'time']
@@ -1184,7 +1182,7 @@ class _NodeResults(_ElementResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=resolved_colors,
+                colors=colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1195,7 +1193,7 @@ class _NodeResults(_ElementResults):
         else:
             figure_like = plotting.with_matplotlib(
                 ds,
-                colors=resolved_colors,
+                colors=colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
@@ -1347,16 +1345,11 @@ class _NodeResults(_ElementResults):
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
         title = f'{self.label} (total flow hours){suffix}'
 
-        # Combine inputs and outputs to resolve colors for all variables
-        combined_ds = xr.Dataset({**inputs.data_vars, **outputs.data_vars})
-
-        resolved_colors = plotting.resolve_colors(combined_ds, colors, engine=engine)
-
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
                 data_left=inputs,
                 data_right=outputs,
-                colors=resolved_colors,
+                colors=colors,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
@@ -1370,7 +1363,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_matplotlib(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=resolved_colors,
+                colors=colors,
                 title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -1593,20 +1586,13 @@ class ComponentResults(_NodeResults):
 
         title = f'Operation Balance of {self.label}{suffix}'
 
-        # Combine flow balance and charge state for color resolution
-        # We need to include both in the color map for consistency
-        combined_ds = ds.assign({self._charge_state: charge_state_da})
-
-        # Resolve colors: None -> colors dict if set -> CONFIG default -> explicit value
-        resolved_colors = plotting.resolve_colors(combined_ds, colors, engine=engine)
-
         if engine == 'plotly':
             # Plot flows (node balance) with the specified mode
             figure_like = plotting.with_plotly(
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=resolved_colors,
+                colors=colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1622,7 +1608,7 @@ class ComponentResults(_NodeResults):
                 charge_state_ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=resolved_colors,
+                colors=colors,
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
@@ -1661,7 +1647,7 @@ class ComponentResults(_NodeResults):
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
                 ds,
-                colors=resolved_colors,
+                colors=colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
