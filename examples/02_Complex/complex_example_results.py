@@ -20,8 +20,6 @@ if __name__ == '__main__':
 
     # --- Configure Color Mapping for Consistent Plot Colors (Optional) ---
     results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues'})  # Dict (simplest)
-    # results.setup_colors('colors.yaml')  # Or from file
-    # results.setup_colors().add_rule('Solar*', 'oranges')  # Or programmatic
 
     # --- Basic overview ---
     results.plot_network(show=True)

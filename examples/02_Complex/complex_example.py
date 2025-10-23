@@ -205,11 +205,10 @@ if __name__ == '__main__':
     # You can analyze results directly or save them to file and reload them later.
     calculation.results.to_file()
 
+    # But let's plot some results anyway
     # Optional: Configure custom colors (dict is simplest):
-    calculation.results.setup_colors({'BHKW': 'orange', 'Speicher': 'green'})
-
-    # Plot results (colors are automatically assigned to components)
-    calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')  # Heatmap uses continuous colors (not ColorManager)
-    calculation.results['BHKW2'].plot_node_balance()  # Uses ColorManager
-    calculation.results['Speicher'].plot_charge_state()  # Uses ColorManager
-    calculation.results['Fernwärme'].plot_node_balance_pie()  # Uses ColorManager
+    calculation.results.setup_colors({'BHKW*': 'orange', 'Speicher': 'blue'})
+    calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
+    calculation.results['BHKW2'].plot_node_balance()
+    calculation.results['Speicher'].plot_charge_state()
+    calculation.results['Fernwärme'].plot_node_balance_pie()

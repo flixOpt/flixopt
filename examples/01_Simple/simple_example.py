@@ -45,9 +45,11 @@ if __name__ == '__main__':
 
     # --- Define Flow System Components ---
     # Boiler: Converts fuel (gas) into thermal energy (heat)
-    boiler = fx.Source(
+    boiler = fx.linear_converters.Boiler(
         label='Boiler',
-        outputs=[fx.Flow(label=str(i), bus='Fernwärme', size=5) for i in range(10)],
+        eta=0.5,
+        Q_th=fx.Flow(label='Q_th', bus='Fernwärme', size=50, relative_minimum=0.1, relative_maximum=1),
+        Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
     )
 
     # Combined Heat and Power (CHP): Generates both electricity and heat from fuel
@@ -110,9 +112,8 @@ if __name__ == '__main__':
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
     # --- Analyze Results ---
-    # Colors are automatically assigned using default colormap
     # Optional: Configure custom colors with
-    calculation.results.setup_colors({'CHP': 'red'})
+    calculation.results.setup_colors({'CHP': 'red', 'Boiler': 'orange'})
     calculation.results['Fernwärme'].plot_node_balance_pie()
     calculation.results['Fernwärme'].plot_node_balance()
     calculation.results['Storage'].plot_charge_state()
