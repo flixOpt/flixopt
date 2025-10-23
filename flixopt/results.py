@@ -70,10 +70,10 @@ class CalculationResults:
         effects: Dictionary mapping effect names to EffectResults objects
         timesteps_extra: Extended time index including boundary conditions
         hours_per_timestep: Duration of each timestep for proper energy calculations
-        color_manager: Optional ComponentColorManager for automatic component-based coloring in plots.
-            When set, all plotting methods automatically use this manager when colors='auto'
-            (the default). Use `setup_colors()` to create and configure one, or assign
-            an existing manager directly. Set to None to disable automatic coloring.
+        colors: Optional dict mapping variable names to colors for automatic coloring in plots.
+            When set, all plotting methods automatically use these colors when colors=None
+            (the default). Use `setup_colors()` to configure colors, which returns this dict.
+            Set to None to disable automatic coloring.
 
     Examples:
         Load and analyze saved results:
@@ -115,18 +115,15 @@ class CalculationResults:
         Configure automatic color management for plots:
 
         ```python
-        # Dict-based configuration (simplest):
-        results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues', 'Battery': 'greens'})
+        # Dict-based configuration:
+        results.setup_colors({'Solar*': 'Oranges', 'Wind*': 'Blues', 'Battery': 'green'})
 
-        # Or programmatically:
-        results.setup_colors().add_rule('Solar*', 'oranges').add_rule('Wind*', 'blues')
-
-        # All plots automatically use configured colors (colors='auto' is the default)
+        # All plots automatically use configured colors (colors=None is the default)
         results['ElectricityBus'].plot_node_balance()
         results['Battery'].plot_charge_state()
 
         # Override when needed
-        results['ElectricityBus'].plot_node_balance(colors='turbo')  # Ignores mapper
+        results['ElectricityBus'].plot_node_balance(colors='turbo')  # Ignores setup
         ```
 
     Design Patterns:
@@ -262,8 +259,8 @@ class CalculationResults:
         self._sizes = None
         self._effects_per_component = None
 
-        # Color manager for intelligent plot coloring - None by default, user configures explicitly
-        self.color_manager: plotting.ComponentColorManager | None = None
+        # Color dict for intelligent plot coloring - None by default, user configures explicitly
+        self.colors: dict[str, str] | None = None
 
     def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
@@ -334,47 +331,66 @@ class CalculationResults:
     def setup_colors(
         self,
         config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        *,
         default_colorscale: str | None = None,
-    ) -> plotting.ComponentColorManager:
-        """Initialize and return a ColorManager for configuring plot colors.
+        reset: bool = True,
+    ) -> dict[str, str]:
+        """Configure colors for plotting. Returns variable→color dict.
 
-        Convenience method that creates a ComponentColorManager with all components
-        registered and assigns it to `self.color_manager`. Optionally load configuration
-        from a dict or file.
+        Supports multiple configuration styles:
+        - Direct assignment: {'Boiler1': 'red'}
+        - Pattern matching: {'Solar*': 'orange'} or {'Solar*': 'Oranges'}
+        - Family grouping: {'oranges': ['Solar1', 'Solar2']}
 
         Args:
             config: Optional color configuration:
-                - dict: Mixed {component: color} or {colorscale: [components]} mapping
+                - dict: Component/pattern to color/colorscale mapping
                 - str/Path: Path to YAML file
-                - None: Create empty manager for manual config (default)
-            default_colorscale: Optional default colorscale to use. Defaults to CONFIG.Plotting.default_default_qualitative_colorscale
+                - None: Use default colorscale for all components
+            default_colorscale: Default colorscale for unmapped components.
+                Defaults to CONFIG.Plotting.default_qualitative_colorscale
+            reset: If True, reset all existing colors before applying config.
+                If False, only update/add specified components (default: True)
 
         Returns:
-            ComponentColorManager instance ready for configuration.
+            dict[str, str]: Complete variable→color mapping
 
         Examples:
-            Dict-based configuration (mixed direct + grouped):
+            Direct color assignment:
+
+            ```python
+            results.setup_colors({'Boiler1': 'red', 'CHP': 'darkred'})
+            ```
+
+            Pattern matching with color:
+
+            ```python
+            results.setup_colors({'Solar*': 'orange', 'Wind*': 'blue'})
+            ```
+
+            Pattern matching with colorscale (generates shades):
+
+            ```python
+            results.setup_colors({'Solar*': 'Oranges', 'Wind*': 'Blues'})
+            ```
+
+            Family grouping (colorscale samples):
 
             ```python
             results.setup_colors(
                 {
-                    # Direct colors
-                    'Boiler1': '#FF0000',
-                    'CHP': 'darkred',
-                    # Grouped colors
                     'oranges': ['Solar1', 'Solar2'],
                     'blues': ['Wind1', 'Wind2'],
-                    'greens': ['Battery1', 'Battery2', 'Battery3'],
                 }
             )
-            results['ElectricityBus'].plot_node_balance()
             ```
 
             Load from YAML file:
 
             ```python
-            # colors.yaml contains:
-            # Boiler1: '#FF0000'
+            # colors.yaml:
+            # Boiler1: red
+            # Solar*: Oranges
             # oranges:
             #   - Solar1
             #   - Solar2
@@ -384,18 +400,152 @@ class CalculationResults:
             Disable automatic coloring:
 
             ```python
-            results.color_manager = None  # Plots use default colorscales
+            results.colors = None  # Plots use default colorscales
             ```
         """
-        self.color_manager = plotting.ComponentColorManager.from_flow_system(
-            self.flow_system, default_colorscale=default_colorscale
-        )
+        if default_colorscale is None:
+            default_colorscale = CONFIG.Plotting.default_qualitative_colorscale
 
-        # Apply configuration if provided
-        if config is not None:
-            self.color_manager.configure(config)
+        if isinstance(config, (str, pathlib.Path)):
+            config = self._load_yaml(config)
 
-        return self.color_manager
+        component_colors = self._expand_component_colors(config, default_colorscale, reset)
+        self.colors = self._expand_to_variables(component_colors)
+        return self.colors
+
+    def _expand_component_colors(
+        self, config: dict[str, str | list[str]] | None, default_colorscale: str, reset: bool
+    ) -> dict[str, str]:
+        """Expand pattern matching and colorscale sampling to component→color dict."""
+        import fnmatch
+
+        component_names = list(self.components.keys())
+        component_colors = {} if reset else self.get_component_colors()
+
+        # If no config, use default colorscale for all components
+        if config is None:
+            colors = self._sample_colorscale(default_colorscale, len(component_names))
+            return dict(zip(component_names, colors, strict=False))
+
+        # Process config entries
+        for key, value in config.items():
+            if isinstance(value, str):
+                # Check if key is a pattern or direct component name
+                if '*' in key or '?' in key:
+                    # Pattern matching
+                    matched = [c for c in component_names if fnmatch.fnmatch(c, key)]
+                    if self._is_colorscale(value):
+                        # Sample colorscale for matched components
+                        colors = self._sample_colorscale(value, len(matched))
+                        component_colors.update(zip(matched, colors, strict=False))
+                    else:
+                        # Apply same color to all matched components
+                        for comp in matched:
+                            component_colors[comp] = value
+                else:
+                    # Direct component→color assignment
+                    component_colors[key] = value
+
+            elif isinstance(value, list):
+                # Family grouping: colorscale → [components]
+                colors = self._sample_colorscale(key, len(value))
+                component_colors.update(zip(value, colors, strict=False))
+
+        # Fill in missing components with default colorscale
+        missing = [c for c in component_names if c not in component_colors]
+        if missing:
+            colors = self._sample_colorscale(default_colorscale, len(missing))
+            component_colors.update(zip(missing, colors, strict=False))
+
+        return component_colors
+
+    def _expand_to_variables(self, component_colors: dict[str, str]) -> dict[str, str]:
+        """Map component colors to all their variables."""
+        variable_colors = {}
+        for component, color in component_colors.items():
+            if component in self.components:
+                for var in self.components[component]._variable_names:
+                    variable_colors[var] = color
+        return variable_colors
+
+    def get_component_colors(self) -> dict[str, str]:
+        """Extract component→color from variable→color dict."""
+        if not self.colors:
+            return {}
+        component_colors = {}
+        for comp in self.components:
+            var_names = self.components[comp]._variable_names
+            if var_names and var_names[0] in self.colors:
+                component_colors[comp] = self.colors[var_names[0]]
+        return component_colors
+
+    def _is_colorscale(self, name: str) -> bool:
+        """Check if string is a colorscale vs direct color."""
+        # Direct color patterns
+        if name.startswith('#') or name.startswith('rgb'):
+            return False
+        # Check if it's a known CSS color (lowercase, common colors)
+        common_colors = {
+            'red',
+            'blue',
+            'green',
+            'yellow',
+            'orange',
+            'purple',
+            'pink',
+            'brown',
+            'black',
+            'white',
+            'gray',
+            'grey',
+            'cyan',
+            'magenta',
+            'lime',
+            'navy',
+            'teal',
+            'aqua',
+            'maroon',
+            'olive',
+            'silver',
+            'gold',
+            'indigo',
+            'violet',
+        }
+        if name.lower() in common_colors:
+            return False
+        # Check Plotly colorscales (qualitative or sequential)
+        import plotly.express as px
+
+        if hasattr(px.colors.qualitative, name.title()) or hasattr(px.colors.sequential, name.title()):
+            return True
+        # Check matplotlib colorscales
+        try:
+            import matplotlib.pyplot as plt
+
+            return name in plt.colormaps()
+        except Exception:
+            return False
+
+    def _sample_colorscale(self, name: str, n: int) -> list[str]:
+        """Sample n colors from a colorscale using ColorProcessor."""
+        processor = plotting.ColorProcessor(engine='plotly', default_colorscale=name)
+        return processor._generate_colors_from_colormap(name, n)
+
+    def _load_yaml(self, path: str | pathlib.Path) -> dict[str, str | list[str]]:
+        """Load YAML config file."""
+        import yaml
+
+        path = pathlib.Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f'Color configuration file not found: {path}')
+
+        with open(path, encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+
+        if not isinstance(config, dict):
+            raise ValueError(f'Invalid config file structure. Expected dict, got {type(config).__name__}')
+
+        return config
 
     def filter_solution(
         self,
@@ -1123,11 +1273,11 @@ class _NodeResults(_ElementResults):
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
             colors: The colors to use for the plot. Options:
-                - None (default): Use `self.color_manager` if configured, else fall back to CONFIG.Plotting.default_qualitative_colorscale
+                - None (default): Use `self.colors` dict if configured, else fall back to CONFIG.Plotting.default_qualitative_colorscale
                 - Colormap name string (e.g., 'turbo', 'plasma')
                 - List of color strings
                 - Dict mapping variable names to colors
-                Set `results.color_manager` to a `ComponentColorManager` for automatic component-based grouping.
+                Use `results.setup_colors()` to configure automatic component-based coloring.
             engine: The engine to use for plotting. Can be either 'plotly' or 'matplotlib'.
             select: Optional data selection dict. Supports:
                 - Single values: {'scenario': 'base', 'period': 2024}
@@ -1246,14 +1396,8 @@ class _NodeResults(_ElementResults):
 
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
-        # Resolve colors: None -> color_manager if set -> CONFIG default -> explicit value
-        colors_to_use = (
-            self._calculation_results.color_manager
-            if colors is None and self._calculation_results.color_manager is not None
-            else CONFIG.Plotting.default_qualitative_colorscale
-            if colors is None
-            else colors
-        )
+        # Resolve colors: None -> colors dict if set -> CONFIG default -> explicit value
+        colors_to_use = colors or self._calculation_results.colors or CONFIG.Plotting.default_qualitative_colorscale
         resolved_colors = plotting.resolve_colors(ds, colors_to_use, engine=engine)
 
         # Matplotlib requires only 'time' dimension; check for extras after selection
@@ -1327,7 +1471,7 @@ class _NodeResults(_ElementResults):
 
         Args:
             lower_percentage_group: Percentage threshold for "Others" grouping.
-            colors: Color scheme (default: None uses color_manager if configured,
+            colors: Color scheme (default: None uses colors dict if configured,
                 else falls back to CONFIG.Plotting.default_qualitative_colorscale).
             text_info: Information to display on pie slices.
             save: Whether to save plot.
@@ -1442,14 +1586,8 @@ class _NodeResults(_ElementResults):
         # Combine inputs and outputs to resolve colors for all variables
         combined_ds = xr.Dataset({**inputs.data_vars, **outputs.data_vars})
 
-        # Resolve colors: None -> color_manager if set -> CONFIG default -> explicit value
-        colors_to_use = (
-            self._calculation_results.color_manager
-            if colors is None and self._calculation_results.color_manager is not None
-            else CONFIG.Plotting.default_qualitative_colorscale
-            if colors is None
-            else colors
-        )
+        # Resolve colors: None -> colors dict if set -> CONFIG default -> explicit value
+        colors_to_use = colors or self._calculation_results.colors or CONFIG.Plotting.default_qualitative_colorscale
         resolved_colors = plotting.resolve_colors(combined_ds, colors_to_use, engine=engine)
 
         if engine == 'plotly':
@@ -1602,7 +1740,7 @@ class ComponentResults(_NodeResults):
         Args:
             save: Whether to save the plot or not. If a path is provided, the plot will be saved at that location.
             show: Whether to show the plot or not.
-            colors: Color scheme (default: None uses color_manager if configured,
+            colors: Color scheme (default: None uses colors dict if configured,
                 else falls back to CONFIG.Plotting.default_qualitative_colorscale).
             engine: Plotting engine to use. Only 'plotly' is implemented atm.
             mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for stepped lines, or 'area' for stacked area charts.
@@ -1698,14 +1836,8 @@ class ComponentResults(_NodeResults):
         # We need to include both in the color map for consistency
         combined_ds = ds.assign({self._charge_state: charge_state_da})
 
-        # Resolve colors: None -> color_manager if set -> CONFIG default -> explicit value
-        colors_to_use = (
-            self._calculation_results.color_manager
-            if colors is None and self._calculation_results.color_manager is not None
-            else CONFIG.Plotting.default_qualitative_colorscale
-            if colors is None
-            else colors
-        )
+        # Resolve colors: None -> colors dict if set -> CONFIG default -> explicit value
+        colors_to_use = colors or self._calculation_results.colors or CONFIG.Plotting.default_qualitative_colorscale
         resolved_colors = plotting.resolve_colors(combined_ds, colors_to_use, engine=engine)
 
         if engine == 'plotly':
@@ -1916,10 +2048,10 @@ class SegmentedCalculationResults:
         name: Identifier for this segmented calculation
         folder: Directory path for result storage and loading
         hours_per_timestep: Duration of each timestep
-        color_manager: Optional ComponentColorManager for automatic component-based coloring in plots.
+        colors: Optional dict mapping variable names to colors for automatic coloring in plots.
             When set, it is automatically propagated to all segment results, ensuring
-            consistent coloring across segments. Use `setup_colors()` to create
-            and configure one, or assign an existing manager directly.
+            consistent coloring across segments. Use `setup_colors()` to configure
+            colors across all segments.
 
     Examples:
         Load and analyze segmented results:
@@ -1979,8 +2111,8 @@ class SegmentedCalculationResults:
         Configure color management for consistent plotting across segments:
 
         ```python
-        # Dict-based configuration (simplest):
-        results.setup_colors({'Solar*': 'oranges', 'Wind*': 'blues', 'Battery': 'greens'})
+        # Dict-based configuration:
+        results.setup_colors({'Solar*': 'Oranges', 'Wind*': 'Blues', 'Battery': 'green'})
 
         # Colors automatically propagate to all segments
         results.segment_results[0]['ElectricityBus'].plot_node_balance()
@@ -2061,8 +2193,8 @@ class SegmentedCalculationResults:
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
 
-        # Color manager for intelligent plot coloring - None by default, user configures explicitly
-        self.color_manager: plotting.ComponentColorManager | None = None
+        # Color dict for intelligent plot coloring - None by default, user configures explicitly
+        self.colors: dict[str, str] | None = None
 
     @property
     def meta_data(self) -> dict[str, int | list[str]]:
@@ -2080,33 +2212,37 @@ class SegmentedCalculationResults:
     def setup_colors(
         self,
         config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        *,
         default_colorscale: str | None = None,
-    ) -> plotting.ComponentColorManager:
-        """Initialize and return a ColorManager that propagates to all segments.
+        reset: bool = True,
+    ) -> dict[str, str]:
+        """Configure colors for all segments. Returns variable→color dict.
 
-        Convenience method that creates a ComponentColorManager with all components
-        registered and assigns it to `self.color_manager` and all segment results.
-        Optionally load configuration from a dict or file.
+        Colors are set on the first segment and then propagated to all other
+        segments for consistent coloring across the entire segmented calculation.
 
         Args:
             config: Optional color configuration:
-                - dict: Mixed {component: color} or {colorscale: [components]} mapping
+                - dict: Component/pattern to color/colorscale mapping
                 - str/Path: Path to YAML file
-                - None: Create empty manager for manual config (default)
-            default_colorscale: Optional default colorscale to use. Defaults to CONFIG.Plotting.default_default_qualitative_colorscale
+                - None: Use default colorscale for all components
+            default_colorscale: Default colorscale for unmapped components.
+                Defaults to CONFIG.Plotting.default_qualitative_colorscale
+            reset: If True, reset all existing colors before applying config.
+                If False, only update/add specified components (default: True)
 
         Returns:
-            ComponentColorManager instance ready for configuration (propagated to all segments).
+            dict[str, str]: Complete variable→color mapping
 
         Examples:
-            Dict-based configuration (mixed direct + grouped):
+            Dict-based configuration:
 
             ```python
             results.setup_colors(
                 {
-                    'Boiler1': '#FF0000',
+                    'Boiler1': 'red',
+                    'Solar*': 'Oranges',
                     'oranges': ['Solar1', 'Solar2'],
-                    'blues': ['Wind1', 'Wind2'],
                 }
             )
 
@@ -2121,18 +2257,17 @@ class SegmentedCalculationResults:
             results.setup_colors('colors.yaml')
             ```
         """
-        self.color_manager = plotting.ComponentColorManager.from_flow_system(
-            self.flow_system, default_colorscale=default_colorscale
-        )
-        # Propagate to all segment results for consistent coloring
-        for segment in self.segment_results:
-            segment.color_manager = self.color_manager
+        # Setup colors on first segment
+        self.segment_results[0].setup_colors(config, default_colorscale=default_colorscale, reset=reset)
 
-        # Apply configuration if provided
-        if config is not None:
-            self.color_manager.configure(config)
+        # Propagate to all other segments
+        for segment in self.segment_results[1:]:
+            segment.colors = self.segment_results[0].colors
 
-        return self.color_manager
+        # Store reference
+        self.colors = self.segment_results[0].colors
+
+        return self.colors
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Get variable solution removing segment overlaps.

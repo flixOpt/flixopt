@@ -8,8 +8,7 @@ and statistical analyses commonly needed in energy system modeling.
 Key Features:
     **Dual Backend Support**: Seamless switching between Plotly and Matplotlib
     **Energy System Focus**: Specialized plots for power flows, storage states, emissions
-    **Color Management**: Intelligent color processing with ColorProcessor and component-based
-                         ComponentColorManager for stable, pattern-matched coloring
+    **Color Management**: Intelligent color processing with ColorProcessor for flexible coloring
     **Export Capabilities**: High-quality export for reports and publications
     **Integration Ready**: Designed for use with CalculationResults and standalone analysis
 
@@ -348,267 +347,6 @@ class ColorProcessor:
             return color_list
 
 
-class ComponentColorManager:
-    """Manage consistent colors for flow system components.
-
-    Assign direct colors or group components to get shades from colorscales.
-    Colorscale families: blues, greens, oranges, reds, purples, teals, greys, etc.
-
-    Example:
-        ```python
-        manager = ComponentColorManager()
-        manager.configure(
-            {
-                'Boiler1': '#FF0000',  # Direct color
-                'oranges': ['Solar1', 'Solar2'],  # Group gets orange shades
-            }
-        )
-        colors = manager.get_variable_colors(['Boiler1(Bus_A)|flow'])
-        ```
-    """
-
-    # Class-level colorscale family defaults (Plotly sequential palettes, reversed)
-    # Reversed so darker colors come first when assigning to components
-    DEFAULT_FAMILIES = {
-        'blues': px.colors.sequential.Blues[7:0:-1],
-        'greens': px.colors.sequential.Greens[7:0:-1],
-        'reds': px.colors.sequential.Reds[7:0:-1],
-        'purples': px.colors.sequential.Purples[7:0:-1],
-        'oranges': px.colors.sequential.Oranges[7:0:-1],
-        'teals': px.colors.sequential.Teal[7:0:-1],
-        'greys': px.colors.sequential.Greys[7:0:-1],
-        'pinks': px.colors.sequential.Pinkyl[7:0:-1],
-        'peach': px.colors.sequential.Peach[7:0:-1],
-        'burg': px.colors.sequential.Burg[7:0:-1],
-        'sunsetdark': px.colors.sequential.Sunsetdark[7:0:-1],
-        'mint': px.colors.sequential.Mint[7:0:-1],
-        'emrld': px.colors.sequential.Emrld[7:0:-1],
-        'darkmint': px.colors.sequential.Darkmint[7:0:-1],
-    }
-
-    def __init__(
-        self,
-        components: list[str] | None = None,
-        default_colorscale: str | None = None,
-    ) -> None:
-        """Initialize component color manager.
-
-        Args:
-            components: Optional list of all component names. If not provided,
-                components will be discovered from configure() calls.
-            default_colorscale: Default colormap for ungrouped components.
-                If None, uses CONFIG.Plotting.default_qualitative_colorscale.
-        """
-        self.components = sorted(set(components)) if components else []
-        self.default_colorscale = default_colorscale or CONFIG.Plotting.default_qualitative_colorscale
-        self.color_families = self.DEFAULT_FAMILIES.copy()
-
-        # Computed colors: {component_name: color}
-        self._component_colors: dict[str, str] = {}
-
-        # Variable color cache for performance: {variable_name: color}
-        self._variable_cache: dict[str, str] = {}
-
-        # Auto-assign default colors if components provided
-        if self.components:
-            self._assign_default_colors()
-
-    def __repr__(self) -> str:
-        return (
-            f'ComponentColorManager(components={len(self.components)}, '
-            f'colors_configured={len(self._component_colors)}, '
-            f"default_colorscale='{self.default_colorscale}')"
-        )
-
-    def __str__(self) -> str:
-        lines = [
-            'ComponentColorManager',
-            f'  Components: {len(self.components)}',
-        ]
-
-        # Show first few components as examples
-        if self.components:
-            sample = self.components[:5]
-            if len(self.components) > 5:
-                sample_str = ', '.join(sample) + f', ... ({len(self.components) - 5} more)'
-            else:
-                sample_str = ', '.join(sample)
-            lines.append(f'    [{sample_str}]')
-
-        lines.append(f'  Colors configured: {len(self._component_colors)}')
-        if self._component_colors:
-            for comp, color in list(self._component_colors.items())[:3]:
-                lines.append(f'    - {comp}: {color}')
-            if len(self._component_colors) > 3:
-                lines.append(f'    ... and {len(self._component_colors) - 3} more')
-
-        lines.append(f'  Default colormap: {self.default_colorscale}')
-
-        return '\n'.join(lines)
-
-    @classmethod
-    def from_flow_system(cls, flow_system, **kwargs):
-        """Create ComponentColorManager from a FlowSystem."""
-        from .flow_system import FlowSystem
-
-        if not isinstance(flow_system, FlowSystem):
-            raise TypeError(f'Expected FlowSystem, got {type(flow_system).__name__}')
-
-        # Extract component names
-        components = list(flow_system.components.keys())
-
-        return cls(components=components, **kwargs)
-
-    def configure(self, config: dict[str, str | list[str]] | str | pathlib.Path) -> ComponentColorManager:
-        """Configure component colors from dict or YAML file.
-
-        Args:
-            config: Dict with 'component': 'color' or 'colorscale': ['comp1', 'comp2'],
-                or path to YAML file with same format.
-        """
-        # Load from file if path provided
-        if isinstance(config, (str, pathlib.Path)):
-            config = self._load_config_from_file(config)
-
-        if not isinstance(config, dict):
-            raise TypeError(f'Config must be dict or file path, got {type(config).__name__}')
-
-        # Process config: distinguish between direct colors and grouped colors
-        for key, value in config.items():
-            if isinstance(value, str):
-                # Direct assignment: component → color
-                self._component_colors[key] = value
-                # Add to components list if not already there
-                if key not in self.components:
-                    self.components.append(key)
-                    self.components.sort()
-
-            elif isinstance(value, list):
-                # Group assignment: colorscale → [components]
-                colorscale_name = key
-                components = value
-
-                # Sample N colors from the colorscale
-                colors = self._sample_colors_from_colorscale(colorscale_name, len(components))
-
-                # Assign each component a color
-                for component, color in zip(components, colors, strict=False):
-                    self._component_colors[component] = color
-                    # Add to components list if not already there
-                    if component not in self.components:
-                        self.components.append(component)
-                        self.components.sort()
-
-            else:
-                raise TypeError(
-                    f'Invalid config value type for key "{key}". '
-                    f'Expected str (color) or list[str] (components), got {type(value).__name__}'
-                )
-
-        # Clear cache since colors changed
-        self._variable_cache.clear()
-
-        return self
-
-    def get_color(self, component: str) -> str:
-        """Get color for a component (defaults to grey if unknown)."""
-        return self._component_colors.get(component, '#808080')
-
-    def extract_component(self, variable: str) -> str:
-        """Extract component name from variable name (e.g., 'Boiler1(Bus_A)|flow' → 'Boiler1')."""
-        component, _ = self._extract_component_and_flow(variable)
-        return component
-
-    def _extract_component_and_flow(self, variable: str) -> tuple[str, str | None]:
-        # Try "Component(Flow)|attribute" format
-        if '(' in variable and ')' in variable:
-            component = variable.split('(')[0]
-            flow = variable.split('(')[1].split(')')[0]
-            return component, flow
-
-        # Try "Component|attribute" format (no flow)
-        if '|' in variable:
-            return variable.split('|')[0], None
-
-        # Just the component name itself
-        return variable, None
-
-    def get_variable_color(self, variable: str) -> str:
-        """Get color for a variable (extracts component automatically)."""
-        # Check cache first
-        if variable in self._variable_cache:
-            return self._variable_cache[variable]
-
-        # Extract component name from variable
-        component = self.extract_component(variable)
-
-        # Get color for component
-        color = self.get_color(component)
-
-        # Cache and return
-        self._variable_cache[variable] = color
-        return color
-
-    def get_variable_colors(self, variables: list[str]) -> dict[str, str]:
-        """Get colors for multiple variables (main API for plotting functions)."""
-        return {var: self.get_variable_color(var) for var in variables}
-
-    def to_dict(self) -> dict[str, str]:
-        """Get complete component→color mapping."""
-        return self._component_colors.copy()
-
-    # ==================== INTERNAL METHODS ====================
-
-    def _assign_default_colors(self) -> None:
-        colors = self._sample_colors_from_colorscale(self.default_colorscale, len(self.components))
-
-        for component, color in zip(self.components, colors, strict=False):
-            self._component_colors[component] = color
-
-    @staticmethod
-    def _load_config_from_file(file_path: str | pathlib.Path) -> dict[str, str | list[str]]:
-        """Load color configuration from YAML file."""
-        file_path = pathlib.Path(file_path)
-
-        if not file_path.exists():
-            raise FileNotFoundError(f'Color configuration file not found: {file_path}')
-
-        # Only support YAML
-        suffix = file_path.suffix.lower()
-        if suffix not in ['.yaml', '.yml']:
-            raise ValueError(f'Unsupported file format: {suffix}. Only YAML (.yaml, .yml) is supported.')
-
-        try:
-            import yaml
-        except ImportError as e:
-            raise ImportError(
-                'PyYAML is required to load YAML config files. Install it with: pip install pyyaml'
-            ) from e
-
-        with open(file_path, encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-
-        # Validate config structure
-        if not isinstance(config, dict):
-            raise ValueError(f'Invalid config file structure. Expected dict, got {type(config).__name__}')
-
-        return config
-
-    def _sample_colors_from_colorscale(self, colorscale_name: str, num_colors: int) -> list[str]:
-        # Check custom families first (ComponentColorManager-specific feature)
-        if colorscale_name in self.color_families:
-            color_list = self.color_families[colorscale_name]
-            # Cycle through colors if needed
-            if len(color_list) >= num_colors:
-                return color_list[:num_colors]
-            else:
-                return [color_list[i % len(color_list)] for i in range(num_colors)]
-
-        # Delegate everything else to ColorProcessor (handles qualitative, sequential, fallbacks, cycling)
-        processor = ColorProcessor(engine='plotly', default_colorscale=self.default_colorscale)
-        return processor._generate_colors_from_colormap(colorscale_name, num_colors)
-
-
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
     """Convert DataFrame to Dataset if needed."""
     if isinstance(data, xr.Dataset):
@@ -653,7 +391,7 @@ def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None
 
 def resolve_colors(
     data: xr.Dataset,
-    colors: ColorType | ComponentColorManager,
+    colors: ColorType,
     engine: PlottingEngine = 'plotly',
 ) -> dict[str, str]:
     """Resolve colors parameter to a dict mapping variable names to colors."""
@@ -669,17 +407,13 @@ def resolve_colors(
         processor = ColorProcessor(engine=engine)
         return processor.process_colors(colors, labels, return_mapping=True)
 
-    if isinstance(colors, ComponentColorManager):
-        # Use color manager to resolve colors for variables
-        return colors.get_variable_colors(labels)
-
     raise TypeError(f'Wrong type passed to resolve_colors(): {type(colors)}')
 
 
 def with_plotly(
     data: xr.Dataset | pd.DataFrame,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
-    colors: ColorType | ComponentColorManager | None = None,
+    colors: ColorType | None = None,
     title: str = '',
     ylabel: str = '',
     xlabel: str = '',
@@ -707,7 +441,6 @@ def with_plotly(
             - A colormap name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dict mapping labels to colors (e.g., {'Solar': '#FFD700'})
-            - A ComponentColorManager instance for pattern-based color rules with component grouping
         title: The main title of the plot.
         ylabel: The label for the y-axis.
         xlabel: The label for the x-axis.
@@ -756,15 +489,11 @@ def with_plotly(
         fig = with_plotly(dataset, facet_by='scenario', animate_by='period')
         ```
 
-        Pattern-based colors with ComponentColorManager:
+        Custom color mapping:
 
         ```python
-        manager = ComponentColorManager(['Solar', 'Wind', 'Battery', 'Gas'])
-        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.add_grouping_rule('Battery', 'storage', 'greens', match_type='contains')
-        manager.apply_colors()
-        fig = with_plotly(dataset, colors=manager, mode='area')
+        colors = {'Solar': 'orange', 'Wind': 'blue', 'Battery': 'green', 'Gas': 'red'}
+        fig = with_plotly(dataset, colors=colors, mode='area')
         ```
     """
     if colors is None:
@@ -1007,7 +736,7 @@ def with_plotly(
 def with_matplotlib(
     data: xr.Dataset | pd.DataFrame,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
-    colors: ColorType | ComponentColorManager | None = None,
+    colors: ColorType | None = None,
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -1025,7 +754,6 @@ def with_matplotlib(
             - A colormap name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dict mapping column names to colors (e.g., {'Column1': '#ff0000'})
-            - A ComponentColorManager instance for pattern-based color rules with grouping and sorting
         title: The title of the plot.
         ylabel: The ylabel of the plot.
         xlabel: The xlabel of the plot.
@@ -1042,14 +770,11 @@ def with_matplotlib(
         - If `mode` is 'line', stepped lines are drawn for each data series.
 
     Examples:
-        With ComponentColorManager:
+        Custom color mapping:
 
         ```python
-        manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
-        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.apply_colors()
-        fig, ax = with_matplotlib(dataset, colors=manager, mode='line')
+        colors = {'Solar': 'orange', 'Wind': 'blue', 'Coal': 'red'}
+        fig, ax = with_matplotlib(dataset, colors=colors, mode='line')
         ```
     """
     if colors is None:
@@ -1426,7 +1151,7 @@ def plot_network(
 
 def pie_with_plotly(
     data: xr.Dataset | pd.DataFrame,
-    colors: ColorType | ComponentColorManager | None = None,
+    colors: ColorType | None = None,
     title: str = '',
     legend_title: str = '',
     hole: float = 0.0,
@@ -1445,7 +1170,6 @@ def pie_with_plotly(
             - A string with a colorscale name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
-            - A ComponentColorManager instance for pattern-based color rules
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -1470,14 +1194,11 @@ def pie_with_plotly(
         fig = pie_with_plotly(dataset, colors='turbo', title='Energy Mix')
         ```
 
-        With ComponentColorManager:
+        Custom color mapping:
 
         ```python
-        manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
-        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.apply_colors()
-        fig = pie_with_plotly(dataset, colors=manager, title='Renewable Energy')
+        colors = {'Solar': 'orange', 'Wind': 'blue', 'Coal': 'red'}
+        fig = pie_with_plotly(dataset, colors=colors, title='Renewable Energy')
         ```
     """
     if colors is None:
@@ -1545,7 +1266,7 @@ def pie_with_plotly(
 
 def pie_with_matplotlib(
     data: xr.Dataset | pd.DataFrame,
-    colors: ColorType | ComponentColorManager | None = None,
+    colors: ColorType | None = None,
     title: str = '',
     legend_title: str = 'Categories',
     hole: float = 0.0,
@@ -1561,7 +1282,6 @@ def pie_with_matplotlib(
             - A string with a colormap name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
-            - A ComponentColorManager instance for pattern-based color rules
         title: The title of the plot.
         legend_title: The title for the legend.
         hole: Size of the hole in the center for creating a donut chart (0.0 to 1.0).
@@ -1582,14 +1302,11 @@ def pie_with_matplotlib(
         fig, ax = pie_with_matplotlib(dataset, colors='turbo', title='Energy Mix')
         ```
 
-        With ComponentColorManager:
+        Custom color mapping:
 
         ```python
-        manager = ComponentColorManager(['Solar', 'Wind', 'Coal'])
-        manager.add_grouping_rule('Solar', 'renewables', 'oranges', match_type='prefix')
-        manager.add_grouping_rule('Wind', 'renewables', 'blues', match_type='prefix')
-        manager.apply_colors()
-        fig, ax = pie_with_matplotlib(dataset, colors=manager, title='Renewable Energy')
+        colors = {'Solar': 'orange', 'Wind': 'blue', 'Coal': 'red'}
+        fig, ax = pie_with_matplotlib(dataset, colors=colors, title='Renewable Energy')
         ```
     """
     if colors is None:
@@ -1681,7 +1398,7 @@ def pie_with_matplotlib(
 def dual_pie_with_plotly(
     data_left: xr.Dataset | pd.DataFrame,
     data_right: xr.Dataset | pd.DataFrame,
-    colors: ColorType | ComponentColorManager | None = None,
+    colors: ColorType | None = None,
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1701,7 +1418,6 @@ def dual_pie_with_plotly(
             - A string with a colorscale name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dictionary mapping variable names to colors (e.g., {'Solar': '#ff0000'})
-            - A ComponentColorManager instance for pattern-based color rules
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
