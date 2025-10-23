@@ -397,155 +397,51 @@ class CalculationResults:
             results.setup_colors('colors.yaml')
             ```
 
+            Merge with existing colors:
+
+            ```python
+            results.setup_colors({'Boiler1': 'red'})
+            results.setup_colors({'CHP': 'blue'}, reset=False)  # Keeps Boiler1 red
+            ```
+
             Disable automatic coloring:
 
             ```python
             results.colors = None  # Plots use default colorscales
             ```
         """
-        if default_colorscale is None:
-            default_colorscale = CONFIG.Plotting.default_qualitative_colorscale
+        # Create resolver and delegate
+        resolver = plotting.ElementColorResolver(
+            self.components,
+            default_colorscale=default_colorscale,
+            engine='plotly',
+        )
 
-        if isinstance(config, (str, pathlib.Path)):
-            config = self._load_yaml(config)
+        # Resolve colors (with variable-level merging if reset=False)
+        self.colors = resolver.resolve(
+            config=config,
+            reset=reset,
+            existing_colors=None if reset else self.colors,
+        )
 
-        component_colors = self._expand_component_colors(config, default_colorscale, reset)
-        self.colors = self._expand_to_variables(component_colors)
         return self.colors
 
-    def _expand_component_colors(
-        self, config: dict[str, str | list[str]] | None, default_colorscale: str, reset: bool
-    ) -> dict[str, str]:
-        """Expand pattern matching and colorscale sampling to component→color dict."""
-        import fnmatch
-
-        component_names = list(self.components.keys())
-        component_colors = {} if reset else self.get_component_colors()
-
-        # If no config, use default colorscale for all components
-        if config is None:
-            colors = self._sample_colorscale(default_colorscale, len(component_names))
-            return dict(zip(component_names, colors, strict=False))
-
-        # Process config entries
-        for key, value in config.items():
-            if isinstance(value, str):
-                # Check if key is a pattern or direct component name
-                if '*' in key or '?' in key:
-                    # Pattern matching
-                    matched = [c for c in component_names if fnmatch.fnmatch(c, key)]
-                    if self._is_colorscale(value):
-                        # Sample colorscale for matched components
-                        colors = self._sample_colorscale(value, len(matched))
-                        component_colors.update(zip(matched, colors, strict=False))
-                    else:
-                        # Apply same color to all matched components
-                        for comp in matched:
-                            component_colors[comp] = value
-                else:
-                    # Direct component→color assignment
-                    component_colors[key] = value
-
-            elif isinstance(value, list):
-                # Family grouping: colorscale → [components]
-                colors = self._sample_colorscale(key, len(value))
-                component_colors.update(zip(value, colors, strict=False))
-
-        # Fill in missing components with default colorscale
-        missing = [c for c in component_names if c not in component_colors]
-        if missing:
-            colors = self._sample_colorscale(default_colorscale, len(missing))
-            component_colors.update(zip(missing, colors, strict=False))
-
-        return component_colors
-
-    def _expand_to_variables(self, component_colors: dict[str, str]) -> dict[str, str]:
-        """Map component colors to all their variables."""
-        variable_colors = {}
-        for component, color in component_colors.items():
-            if component in self.components:
-                for var in self.components[component]._variable_names:
-                    variable_colors[var] = color
-        return variable_colors
-
     def get_component_colors(self) -> dict[str, str]:
-        """Extract component→color from variable→color dict."""
+        """Extract component→color from variable→color dict.
+
+        Returns:
+            dict[str, str]: Component name → color mapping
+
+        Example:
+            ```python
+            results.setup_colors({'Boiler1': 'red', 'Solar1': 'orange'})
+            comp_colors = results.get_component_colors()
+            # Returns: {'Boiler1': 'red', 'Solar1': 'orange', ...}
+            ```
+        """
         if not self.colors:
             return {}
-        component_colors = {}
-        for comp in self.components:
-            var_names = self.components[comp]._variable_names
-            if var_names and var_names[0] in self.colors:
-                component_colors[comp] = self.colors[var_names[0]]
-        return component_colors
-
-    def _is_colorscale(self, name: str) -> bool:
-        """Check if string is a colorscale vs direct color."""
-        # Direct color patterns
-        if name.startswith('#') or name.startswith('rgb'):
-            return False
-        # Check if it's a known CSS color (lowercase, common colors)
-        common_colors = {
-            'red',
-            'blue',
-            'green',
-            'yellow',
-            'orange',
-            'purple',
-            'pink',
-            'brown',
-            'black',
-            'white',
-            'gray',
-            'grey',
-            'cyan',
-            'magenta',
-            'lime',
-            'navy',
-            'teal',
-            'aqua',
-            'maroon',
-            'olive',
-            'silver',
-            'gold',
-            'indigo',
-            'violet',
-        }
-        if name.lower() in common_colors:
-            return False
-        # Check Plotly colorscales (qualitative or sequential)
-        import plotly.express as px
-
-        if hasattr(px.colors.qualitative, name.title()) or hasattr(px.colors.sequential, name.title()):
-            return True
-        # Check matplotlib colorscales
-        try:
-            import matplotlib.pyplot as plt
-
-            return name in plt.colormaps()
-        except Exception:
-            return False
-
-    def _sample_colorscale(self, name: str, n: int) -> list[str]:
-        """Sample n colors from a colorscale using ColorProcessor."""
-        processor = plotting.ColorProcessor(engine='plotly', default_colorscale=name)
-        return processor._generate_colors_from_colormap(name, n)
-
-    def _load_yaml(self, path: str | pathlib.Path) -> dict[str, str | list[str]]:
-        """Load YAML config file."""
-        import yaml
-
-        path = pathlib.Path(path)
-        if not path.exists():
-            raise FileNotFoundError(f'Color configuration file not found: {path}')
-
-        with open(path, encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-
-        if not isinstance(config, dict):
-            raise ValueError(f'Invalid config file structure. Expected dict, got {type(config).__name__}')
-
-        return config
+        return plotting.ElementColorResolver.extract_element_colors(self.colors, self.components)
 
     def filter_solution(
         self,

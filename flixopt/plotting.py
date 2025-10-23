@@ -347,6 +347,320 @@ class ColorProcessor:
             return color_list
 
 
+class ElementColorResolver:
+    """Resolve colors for flow system elements with pattern matching and colorscale support.
+
+    Works with any element type (components, buses, flows) that has a _variable_names attribute.
+    Handles pattern matching, colorscale detection/sampling, and variable expansion.
+
+    This centralizes all color resolution logic in the plotting module, keeping it separate
+    from the CalculationResults class.
+
+    Example:
+        ```python
+        resolver = ElementColorResolver(results.components)
+        colors = resolver.resolve({'Solar*': 'Oranges', 'Wind*': 'Blues'})
+        # Returns: {'Solar1(Bus)|flow_rate': '#ff8c00', 'Solar2(Bus)|flow_rate': '#ff7700', ...}
+        ```
+    """
+
+    def __init__(
+        self,
+        elements: dict,
+        default_colorscale: str | None = None,
+        engine: PlottingEngine = 'plotly',
+    ):
+        """Initialize resolver.
+
+        Args:
+            elements: Dict of element_label → element object (must have _variable_names attribute)
+            default_colorscale: Default colorscale for unmapped elements
+            engine: Plotting engine for ColorProcessor ('plotly' or 'matplotlib')
+        """
+        self.elements = elements
+        self.processor = ColorProcessor(
+            engine=engine,
+            default_colorscale=default_colorscale or CONFIG.Plotting.default_qualitative_colorscale,
+        )
+
+    def resolve(
+        self,
+        config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        reset: bool = True,
+        existing_colors: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Resolve config to variable→color dict.
+
+        Args:
+            config: Color configuration:
+                - dict: Component/pattern to color/colorscale mapping
+                - str/Path: Path to YAML file
+                - None: Use default colorscale for all elements
+            reset: If True, reset all existing colors. If False, merge with existing at variable level.
+            existing_colors: Existing variable→color dict (for variable-level merging when reset=False)
+
+        Returns:
+            dict[str, str]: Complete variable→color mapping
+
+        Examples:
+            ```python
+            # Direct assignment
+            resolver.resolve({'Boiler1': 'red'})
+
+            # Pattern with color
+            resolver.resolve({'Solar*': 'orange'})
+
+            # Pattern with colorscale
+            resolver.resolve({'Solar*': 'Oranges'})
+
+            # Family grouping
+            resolver.resolve({'oranges': ['Solar1', 'Solar2']})
+
+            # Merge mode (preserves existing)
+            resolver.resolve({'NewComp': 'blue'}, reset=False, existing_colors=existing)
+            ```
+        """
+        # Load from file if needed
+        if isinstance(config, (str, pathlib.Path)):
+            config = load_yaml_config(config)
+
+        # Extract existing element colors for merging (if reset=False)
+        existing_element_colors = None
+        if not reset and existing_colors:
+            existing_element_colors = self.extract_element_colors(existing_colors, self.elements)
+
+        # Resolve element colors (with pattern matching)
+        element_colors = self._resolve_element_colors(config, reset, existing_element_colors)
+
+        # Expand to variables
+        variable_colors = self._expand_to_variables(element_colors)
+
+        # Variable-level merge: preserve existing variable colors not in new mapping
+        if not reset and existing_colors:
+            # Start with existing, then update with new
+            merged = existing_colors.copy()
+            merged.update(variable_colors)
+            return merged
+
+        return variable_colors
+
+    def _resolve_element_colors(
+        self,
+        config: dict[str, str | list[str]] | None,
+        reset: bool,
+        existing_element_colors: dict[str, str] | None,
+    ) -> dict[str, str]:
+        """Resolve config to element→color dict with pattern matching.
+
+        Args:
+            config: Configuration dict or None
+            reset: Whether to reset existing colors
+            existing_element_colors: Existing element colors (for reset=False)
+
+        Returns:
+            dict[str, str]: Element name → color mapping
+        """
+        import fnmatch
+
+        element_names = list(self.elements.keys())
+        element_colors = {} if reset else (existing_element_colors or {})
+
+        # If no config, use default colorscale for all elements
+        if config is None:
+            colors = self.processor._generate_colors_from_colormap(
+                self.processor.default_colorscale, len(element_names)
+            )
+            return dict(zip(element_names, colors, strict=False))
+
+        # Process config entries
+        for key, value in config.items():
+            if isinstance(value, str):
+                # Check if key is a pattern or direct element name
+                if '*' in key or '?' in key:
+                    # Pattern matching
+                    matched = [e for e in element_names if fnmatch.fnmatch(e, key)]
+                    if is_colorscale(value):
+                        # Sample colorscale for matched elements
+                        colors = self.processor._generate_colors_from_colormap(value, len(matched))
+                        element_colors.update(zip(matched, colors, strict=False))
+                    else:
+                        # Apply same color to all matched elements
+                        for elem in matched:
+                            element_colors[elem] = value
+                else:
+                    # Direct element→color assignment
+                    element_colors[key] = value
+
+            elif isinstance(value, list):
+                # Family grouping: colorscale → [elements]
+                colors = self.processor._generate_colors_from_colormap(key, len(value))
+                element_colors.update(zip(value, colors, strict=False))
+
+        # Fill in missing elements with default colorscale
+        missing = [e for e in element_names if e not in element_colors]
+        if missing:
+            colors = self.processor._generate_colors_from_colormap(self.processor.default_colorscale, len(missing))
+            element_colors.update(zip(missing, colors, strict=False))
+
+        return element_colors
+
+    def _expand_to_variables(self, element_colors: dict[str, str]) -> dict[str, str]:
+        """Map element colors to all their variables.
+
+        Args:
+            element_colors: Element name → color mapping
+
+        Returns:
+            dict[str, str]: Variable name → color mapping
+        """
+        variable_colors = {}
+        for element_name, color in element_colors.items():
+            if element_name in self.elements:
+                # Access _variable_names from element object (ComponentResults, BusResults, etc.)
+                for var in self.elements[element_name]._variable_names:
+                    variable_colors[var] = color
+        return variable_colors
+
+    @staticmethod
+    def extract_element_colors(variable_colors: dict[str, str], elements: dict) -> dict[str, str]:
+        """Extract element→color from variable→color dict.
+
+        Reverse operation: given a variable→color mapping, extract the corresponding
+        element→color mapping by looking at the first variable of each element.
+
+        Args:
+            variable_colors: Variable name → color mapping
+            elements: Dict of element_label → element object
+
+        Returns:
+            dict[str, str]: Element name → color mapping
+
+        Example:
+            ```python
+            var_colors = {'Solar1(Bus)|flow': 'orange', 'Solar1(Bus)|size': 'orange'}
+            elem_colors = extract_element_colors(var_colors, results.components)
+            # Returns: {'Solar1': 'orange'}
+            ```
+        """
+        if not variable_colors:
+            return {}
+        element_colors = {}
+        for elem_name, elem_obj in elements.items():
+            var_names = elem_obj._variable_names
+            if var_names and var_names[0] in variable_colors:
+                element_colors[elem_name] = variable_colors[var_names[0]]
+        return element_colors
+
+
+def load_yaml_config(path: str | pathlib.Path) -> dict[str, str | list[str]]:
+    """Load YAML color configuration file.
+
+    Args:
+        path: Path to YAML file
+
+    Returns:
+        dict: Color configuration
+
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        ValueError: If file is not valid YAML dict
+
+    Example:
+        ```python
+        # colors.yaml:
+        # Boiler1: red
+        # Solar*: Oranges
+        # oranges:
+        #   - Solar1
+        #   - Solar2
+
+        config = load_yaml_config('colors.yaml')
+        ```
+    """
+    import yaml
+
+    path = pathlib.Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f'Color configuration file not found: {path}')
+
+    with open(path, encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+
+    if not isinstance(config, dict):
+        raise ValueError(f'Invalid config file structure. Expected dict, got {type(config).__name__}')
+
+    return config
+
+
+def is_colorscale(name: str) -> bool:
+    """Check if string is a colorscale name vs a direct color.
+
+    Args:
+        name: Color or colorscale name
+
+    Returns:
+        bool: True if it's a colorscale, False if it's a direct color
+
+    Examples:
+        ```python
+        is_colorscale('#FF0000')  # False (hex color)
+        is_colorscale('red')  # False (CSS color)
+        is_colorscale('Oranges')  # True (Plotly colorscale)
+        is_colorscale('viridis')  # True (matplotlib colormap)
+        ```
+    """
+    # Direct color patterns
+    if name.startswith('#') or name.startswith('rgb'):
+        return False
+
+    # Check if it's a known CSS color (common colors)
+    common_colors = {
+        'red',
+        'blue',
+        'green',
+        'yellow',
+        'orange',
+        'purple',
+        'pink',
+        'brown',
+        'black',
+        'white',
+        'gray',
+        'grey',
+        'cyan',
+        'magenta',
+        'lime',
+        'navy',
+        'teal',
+        'aqua',
+        'maroon',
+        'olive',
+        'silver',
+        'gold',
+        'indigo',
+        'violet',
+    }
+    if name.lower() in common_colors:
+        return False
+
+    # Check Plotly colorscales
+    try:
+        import plotly.express as px
+
+        if hasattr(px.colors.qualitative, name.title()) or hasattr(px.colors.sequential, name.title()):
+            return True
+    except Exception:
+        pass
+
+    # Check matplotlib colorscales
+    try:
+        import matplotlib.pyplot as plt
+
+        return name in plt.colormaps()
+    except Exception:
+        return False
+
+
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
     """Convert DataFrame to Dataset if needed."""
     if isinstance(data, xr.Dataset):
