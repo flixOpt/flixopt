@@ -54,11 +54,15 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### ✨ Added
 
+### 💥 Breaking Changes
+
 ### ♻️ Changed
 - **Template integration**: Plotly templates now fully control plot styling without hardcoded overrides
 - **Dataset first plotting**: Underlying plotting methods in plotting.py now use `xr.Dataset` as the main datatype, converting to it if they get a DataFrame passed
 
 ### 🗑️ Deprecated
+
+### 🔥 Removed
 
 ### 🐛 Fixed
 - Improved error messages for matplotlib with multidimensional data
