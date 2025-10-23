@@ -406,9 +406,7 @@ class CONFIG:
                 'big_binary_bound': cls.Modeling.big_binary_bound,
             },
             'plotting': {
-                'plotly_renderer': cls.Plotting.plotly_renderer,
                 'plotly_template': cls.Plotting.plotly_template,
-                'matplotlib_backend': cls.Plotting.matplotlib_backend,
                 'default_show': cls.Plotting.default_show,
                 'default_save_path': cls.Plotting.default_save_path,
                 'default_engine': cls.Plotting.default_engine,
