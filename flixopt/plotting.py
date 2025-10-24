@@ -370,7 +370,7 @@ def with_plotly(
     # Process colors
     all_vars = df_long['variable'].unique().tolist()
     color_discrete_map = process_colors(
-        list(data.data_vars), colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        all_vars, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
     )
 
     # Determine which dimension to use for x-axis
