@@ -256,7 +256,7 @@ class CalculationResults:
         self._sizes = None
         self._effects_per_component = None
 
-        self.colors: dict[str, str] | None = None
+        self.colors: dict[str, str] = {}
 
     def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
@@ -961,7 +961,7 @@ class CalculationResults:
             data=self.solution[variable_name],
             name=variable_name if isinstance(variable_name, str) else None,
             folder=self.folder,
-            colors=colors,
+            colors=self.colors or colors,
             save=save,
             show=show,
             engine=engine,
@@ -1303,7 +1303,7 @@ class _NodeResults(_ElementResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=self._calculation_results.colors or colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1314,7 +1314,7 @@ class _NodeResults(_ElementResults):
         else:
             figure_like = plotting.with_matplotlib(
                 ds,
-                colors=colors,
+                colors=self._calculation_results.colors or colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
@@ -1471,7 +1471,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_plotly(
                 data_left=inputs,
                 data_right=outputs,
-                colors=colors,
+                colors=self._calculation_results.colors or colors,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
@@ -1485,7 +1485,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_matplotlib(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=colors,
+                colors=self._calculation_results.colors or colors,
                 title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -1721,7 +1721,7 @@ class ComponentResults(_NodeResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=self._calculation_results.colors or colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1737,7 +1737,7 @@ class ComponentResults(_NodeResults):
                 charge_state_ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=self._calculation_results.colors or colors,
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
@@ -1777,7 +1777,7 @@ class ComponentResults(_NodeResults):
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
                 ds,
-                colors=colors,
+                colors=self._calculation_results.colors or colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
@@ -2178,7 +2178,7 @@ class SegmentedCalculationResults:
             name=variable_name,
             folder=self.folder,
             reshape_time=reshape_time,
-            colors=colors,
+            colors=self._calculation_results.colors or colors,
             save=save,
             show=show,
             engine=engine,
