@@ -99,3 +99,23 @@ def test_all_data_types_and_modes(engine, mode):
             fig, ax = plotting.with_matplotlib(data, mode=mode)
             assert fig is not None
             assert ax is not None
+
+
+@pytest.mark.parametrize('engine', ['plotly', 'matplotlib'])
+def test_pie_plots_all_data_types(engine):
+    """Test that dual pie charts work with Dataset, DataFrame, and Series."""
+    # Create data for pie charts (summed values)
+    dataset = xr.Dataset({'A': xr.DataArray(10), 'B': xr.DataArray(20), 'C': xr.DataArray(30)})
+    dataframe = pd.DataFrame({'A': [10], 'B': [20], 'C': [30]})
+    series = pd.Series({'A': 10, 'B': 20, 'C': 30})
+
+    # Test all three data types
+    for data_left, data_right in [(dataset, dataset), (dataframe, dataframe), (series, series)]:
+        if engine == 'plotly':
+            fig = plotting.dual_pie_with_plotly(data_left, data_right)
+            assert fig is not None
+            assert len(fig.data) >= 2  # At least 2 pie charts
+        else:
+            fig, axes = plotting.dual_pie_with_matplotlib(data_left, data_right)
+            assert fig is not None
+            assert len(axes) == 2  # Two pie charts side by side
