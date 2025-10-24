@@ -14,9 +14,6 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from plotly.exceptions import PlotlyError
 
-if TYPE_CHECKING:
-    from .plotting import ComponentColorManager
-
 logger = logging.getLogger('flixopt')
 
 
@@ -110,7 +107,7 @@ def process_colors(
 
 def resolve_colors(
     labels: list[str],
-    colors: None | str | list[str] | dict[str, str] | ComponentColorManager,
+    colors: None | str | list[str] | dict[str, str],
     default_colorscale: str = 'turbo',
 ) -> dict[str, str]:
     """Temporary wrapper"""
