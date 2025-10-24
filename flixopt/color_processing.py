@@ -7,7 +7,6 @@ into a label-to-color mapping dictionary, without needing to know about the plot
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt

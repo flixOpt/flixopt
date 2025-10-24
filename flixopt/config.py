@@ -57,7 +57,6 @@ _DEFAULTS = MappingProxyType(
         'plotting': MappingProxyType(
             {
                 'default_show': True,
-                'default_save_path': None,
                 'default_engine': 'plotly',
                 'default_dpi': 300,
                 'default_facet_cols': 3,
