@@ -225,28 +225,9 @@ class CONFIG:
             ```
         """
 
-        plotly_template: (
-            Literal[
-                'plotly',
-                'plotly_white',
-                'plotly_dark',
-                'ggplot2',
-                'seaborn',
-                'simple_white',
-                'none',
-                'gridon',
-                'presentation',
-                'xgridoff',
-                'ygridoff',
-            ]
-            | None
-        ) = _DEFAULTS['plotting']['plotly_template']
         default_show: bool = _DEFAULTS['plotting']['default_show']
-        default_save_path: str | None = _DEFAULTS['plotting']['default_save_path']
         default_engine: Literal['plotly', 'matplotlib'] = _DEFAULTS['plotting']['default_engine']
         default_dpi: int = _DEFAULTS['plotting']['default_dpi']
-        default_figure_width: int | None = _DEFAULTS['plotting']['default_figure_width']
-        default_figure_height: int | None = _DEFAULTS['plotting']['default_figure_height']
         default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
