@@ -65,9 +65,19 @@ def test_ensure_dataset_invalid_type():
         plotting.with_plotly([1, 2, 3], mode='line')
 
 
-@pytest.mark.parametrize('engine', ['plotly', 'matplotlib'])
-def test_all_data_types_supported(engine):
-    """Test that Dataset, DataFrame, and Series all work with both plotting engines."""
+@pytest.mark.parametrize(
+    'engine,mode',
+    [
+        ('plotly', 'stacked_bar'),
+        ('plotly', 'line'),
+        ('plotly', 'area'),
+        ('plotly', 'grouped_bar'),
+        ('matplotlib', 'stacked_bar'),
+        ('matplotlib', 'line'),
+    ],
+)
+def test_all_data_types_and_modes(engine, mode):
+    """Test that Dataset, DataFrame, and Series work with all plotting modes."""
     time = pd.date_range('2020-01-01', periods=5, freq='h')
 
     # Create Dataset
@@ -79,13 +89,13 @@ def test_all_data_types_supported(engine):
     # Create Series
     series = pd.Series([1, 2, 3, 4, 5], index=time, name='A')
 
-    # Test all three types
+    # Test all three data types with the specified mode
     for data in [dataset, dataframe, series]:
         if engine == 'plotly':
-            fig = plotting.with_plotly(data, mode='line')
+            fig = plotting.with_plotly(data, mode=mode)
             assert fig is not None
             assert len(fig.data) > 0
         else:
-            fig, ax = plotting.with_matplotlib(data, mode='line')
+            fig, ax = plotting.with_matplotlib(data, mode=mode)
             assert fig is not None
             assert ax is not None
