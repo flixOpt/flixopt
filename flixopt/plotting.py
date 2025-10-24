@@ -414,7 +414,6 @@ def with_plotly(
     Plot data with Plotly using facets (subplots) and/or animation for multidimensional data.
 
     Uses Plotly Express for convenient faceting and animation with automatic styling.
-    For simple plots without faceting, can optionally add to an existing figure.
 
     Args:
         data: An xarray Dataset, pandas DataFrame, or pandas Series to plot.
@@ -424,8 +423,6 @@ def with_plotly(
         title: The main title of the plot.
         ylabel: The label for the y-axis.
         xlabel: The label for the x-axis.
-        fig: A Plotly figure object to plot on (only for simple plots without faceting).
-             If not provided, a new figure will be created.
         facet_by: Dimension(s) to create facets for. Creates a subplot grid.
               Can be a single dimension name or list of dimensions (max 2 for facet_row and facet_col).
               If the dimension doesn't exist in the data, it will be silently ignored.
@@ -621,7 +618,12 @@ def with_plotly(
     if facet_col and not facet_row:
         common_args['facet_col_wrap'] = facet_cols
 
-    # Allow callers to pass any px.* keyword args (e.g., category_orders, range_x/y)
+    # Add mode-specific defaults (before px_kwargs so they can be overridden)
+    if mode in ('line', 'area'):
+        common_args['line_shape'] = 'hv'  # Stepped lines by default
+
+    # Allow callers to pass any px.* keyword args (e.g., category_orders, range_x/y, line_shape)
+    # These will override the defaults set above
     if px_kwargs:
         common_args.update(px_kwargs)
 
@@ -633,10 +635,10 @@ def with_plotly(
         fig = px.bar(**common_args)
         fig.update_layout(barmode='group', bargap=0.2, bargroupgap=0)
     elif mode == 'line':
-        fig = px.line(**common_args, line_shape='hv')  # Stepped lines
+        fig = px.line(**common_args)
     elif mode == 'area':
         # Use Plotly Express to create the area plot (preserves animation, legends, faceting)
-        fig = px.area(**common_args, line_shape='hv')
+        fig = px.area(**common_args)
 
         # Classify each variable based on its values
         variable_classification = {}
