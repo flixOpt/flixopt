@@ -328,15 +328,18 @@ class ColorProcessor:
             return color_list
 
 
-def _ensure_dataset(data: xr.Dataset | pd.DataFrame) -> xr.Dataset:
-    """Convert DataFrame to Dataset if needed."""
+def _ensure_dataset(data: xr.Dataset | pd.DataFrame | pd.Series) -> xr.Dataset:
+    """Convert DataFrame or Series to Dataset if needed."""
     if isinstance(data, xr.Dataset):
         return data
     elif isinstance(data, pd.DataFrame):
         # Convert DataFrame to Dataset
         return data.to_xarray()
+    elif isinstance(data, pd.Series):
+        # Convert Series to DataFrame first, then to Dataset
+        return data.to_frame().to_xarray()
     else:
-        raise TypeError(f'Data must be xr.Dataset or pd.DataFrame, got {type(data).__name__}')
+        raise TypeError(f'Data must be xr.Dataset, pd.DataFrame, or pd.Series, got {type(data).__name__}')
 
 
 def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None:
