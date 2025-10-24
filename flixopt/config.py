@@ -54,6 +54,17 @@ _DEFAULTS = MappingProxyType(
                 'big_binary_bound': 100_000,
             }
         ),
+        'plotting': MappingProxyType(
+            {
+                'default_show': True,
+                'default_save_path': None,
+                'default_engine': 'plotly',
+                'default_dpi': 300,
+                'default_facet_cols': 3,
+                'default_sequential_colorscale': 'turbo',
+                'default_qualitative_colorscale': 'plotly',
+            }
+        ),
     }
 )
 
@@ -184,6 +195,61 @@ class CONFIG:
         big: int = _DEFAULTS['modeling']['big']
         epsilon: float = _DEFAULTS['modeling']['epsilon']
         big_binary_bound: int = _DEFAULTS['modeling']['big_binary_bound']
+
+    class Plotting:
+        """Plotting configuration.
+
+        Configure backends via environment variables:
+        - Matplotlib: Set `MPLBACKEND` environment variable (e.g., 'Agg', 'TkAgg')
+        - Plotly: Set `PLOTLY_RENDERER` or use `plotly.io.renderers.default`
+
+        Attributes:
+            default_show: Default value for the `show` parameter in plot methods.
+            default_engine: Default plotting engine.
+            default_dpi: Default DPI for saved plots.
+            default_facet_cols: Default number of columns for faceted plots.
+            default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
+            default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
+
+        Examples:
+            ```python
+            # Set consistent theming
+            CONFIG.Plotting.plotly_template = 'plotly_dark'
+            CONFIG.apply()
+
+            # Configure default export and color settings
+            CONFIG.Plotting.default_dpi = 600
+            CONFIG.Plotting.default_sequential_colorscale = 'plasma'
+            CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
+            CONFIG.apply()
+            ```
+        """
+
+        plotly_template: (
+            Literal[
+                'plotly',
+                'plotly_white',
+                'plotly_dark',
+                'ggplot2',
+                'seaborn',
+                'simple_white',
+                'none',
+                'gridon',
+                'presentation',
+                'xgridoff',
+                'ygridoff',
+            ]
+            | None
+        ) = _DEFAULTS['plotting']['plotly_template']
+        default_show: bool = _DEFAULTS['plotting']['default_show']
+        default_save_path: str | None = _DEFAULTS['plotting']['default_save_path']
+        default_engine: Literal['plotly', 'matplotlib'] = _DEFAULTS['plotting']['default_engine']
+        default_dpi: int = _DEFAULTS['plotting']['default_dpi']
+        default_figure_width: int | None = _DEFAULTS['plotting']['default_figure_width']
+        default_figure_height: int | None = _DEFAULTS['plotting']['default_figure_height']
+        default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
+        default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
+        default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
 
     config_name: str = _DEFAULTS['config_name']
 
@@ -318,6 +384,14 @@ class CONFIG:
                 'big': cls.Modeling.big,
                 'epsilon': cls.Modeling.epsilon,
                 'big_binary_bound': cls.Modeling.big_binary_bound,
+            },
+            'plotting': {
+                'default_show': cls.Plotting.default_show,
+                'default_engine': cls.Plotting.default_engine,
+                'default_dpi': cls.Plotting.default_dpi,
+                'default_facet_cols': cls.Plotting.default_facet_cols,
+                'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
+                'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
             },
         }
 
