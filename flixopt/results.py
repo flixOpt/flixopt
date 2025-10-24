@@ -254,6 +254,8 @@ class CalculationResults:
         self._sizes = None
         self._effects_per_component = None
 
+        self.colors: dict[str, str] | None = None
+
     def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
             return self.components[key]
@@ -319,6 +321,72 @@ class CalculationResults:
             finally:
                 logger.level = old_level
         return self._flow_system
+
+    def setup_colors(
+        self,
+        config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        default_colorscale: str | None = None,
+    ) -> plotting.ComponentColorManager:
+        """Initialize and return a ColorManager for configuring plot colors.
+
+        Convenience method that creates a ComponentColorManager with all components
+        registered and assigns it to `self.color_manager`. Optionally load configuration
+        from a dict or file.
+
+        Args:
+            config: Optional color configuration:
+                - dict: Mixed {component: color} or {colorscale: [components]} mapping
+                - str/Path: Path to YAML file
+                - None: Create empty manager for manual config (default)
+            default_colorscale: Optional default colorscale to use. Defaults to CONFIG.Plotting.default_default_qualitative_colorscale
+
+        Returns:
+            ComponentColorManager instance ready for configuration.
+
+        Examples:
+            Dict-based configuration (mixed direct + grouped):
+
+            ```python
+            results.setup_colors(
+                {
+                    # Direct colors
+                    'Boiler1': '#FF0000',
+                    'CHP': 'darkred',
+                    # Grouped colors
+                    'oranges': ['Solar1', 'Solar2'],
+                    'blues': ['Wind1', 'Wind2'],
+                    'greens': ['Battery1', 'Battery2', 'Battery3'],
+                }
+            )
+            results['ElectricityBus'].plot_node_balance()
+            ```
+
+            Load from YAML file:
+
+            ```python
+            # colors.yaml contains:
+            # Boiler1: '#FF0000'
+            # oranges:
+            #   - Solar1
+            #   - Solar2
+            results.setup_colors('colors.yaml')
+            ```
+
+            Disable automatic coloring:
+
+            ```python
+            results.color_manager = None  # Plots use default colorscales
+            ```
+        """
+        self.color_manager = plotting.ComponentColorManager.from_flow_system(
+            self.flow_system, default_colorscale=default_colorscale
+        )
+
+        # Apply configuration if provided
+        if config is not None:
+            self.color_manager.configure(config)
+
+        return self.color_manager
 
     def filter_solution(
         self,
