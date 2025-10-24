@@ -331,7 +331,7 @@ class CalculationResults:
         default_colorscale: str | None = None,
     ) -> dict[str, str]:
         """
-        Setup colors for all variables across all elements.
+        Setup colors for all variables across all elements. Overwrites existing ones.
 
         Args:
             config: Configuration for color assignment. Can be:
@@ -453,6 +453,8 @@ class CalculationResults:
             component_colors.update(default_colors)
 
         # Step 3: Build variable-to-color mapping
+        # Clear existing colors to avoid stale keys
+        self.colors = {}
         # Each component's variables all get the same color as the component
         for component, color in component_colors.items():
             variable_names = get_all_variable_names(component)
@@ -2095,7 +2097,7 @@ class SegmentedCalculationResults:
 
     @colors.setter
     def colors(self, colors: dict[str, str]):
-        """Applys colors to all segements"""
+        """Applies colors to all segments"""
         self._colors = colors
         for segment in self.segment_results:
             segment.colors = copy.deepcopy(colors)
