@@ -119,3 +119,39 @@ def test_pie_plots_all_data_types(engine):
             fig, axes = plotting.dual_pie_with_matplotlib(data_left, data_right)
             assert fig is not None
             assert len(axes) == 2  # Two pie charts side by side
+
+
+@pytest.mark.parametrize('engine', ['plotly', 'matplotlib'])
+def test_pie_plots_automatic_summing(engine):
+    """Test that pie charts correctly sum multi-dimensional data."""
+    time = pd.date_range('2020-01-01', periods=5, freq='h')
+
+    # Create multi-dimensional Dataset (should sum over time)
+    dataset = xr.Dataset(
+        {'A': (['time'], [1, 2, 3, 4, 5]), 'B': (['time'], [5, 5, 5, 5, 5])}, coords={'time': time}
+    )  # A should sum to 15, B should sum to 25
+
+    # Create multi-row DataFrame (should sum across rows)
+    dataframe = pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [5, 5, 5, 5, 5]}, index=time)
+
+    # Test both data types
+    for data in [dataset, dataframe]:
+        if engine == 'plotly':
+            fig = plotting.dual_pie_with_plotly(data, data)
+            assert fig is not None
+            # Verify that traces exist for both pies
+            assert len(fig.data) >= 2
+
+            # Check that values were summed (each pie should have A=15, B=25)
+            for trace in fig.data[:2]:  # First two traces are the left and right pies
+                values = trace.values
+                assert sum(values) == 40  # 15 + 25 = 40
+        else:
+            fig, axes = plotting.dual_pie_with_matplotlib(data, data)
+            assert fig is not None
+            assert len(axes) == 2
+
+            # Verify wedges were created (matplotlib creates wedges for pie slices)
+            for ax in axes:
+                wedges = [c for c in ax.get_children() if hasattr(c, 'theta1')]  # Pie wedges
+                assert len(wedges) == 2  # Two slices: A and B
