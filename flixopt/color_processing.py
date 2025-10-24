@@ -113,6 +113,7 @@ def resolve_colors(
     colors: None | str | list[str] | dict[str, str] | ComponentColorManager,
     default_colorscale: str = 'turbo',
 ) -> dict[str, str]:
+    """Temporary wrapper"""
     return process_colors(colors, labels, default_colorscale)
 
 
