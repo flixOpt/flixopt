@@ -58,9 +58,10 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   - Supports flexible color inputs: colorscale names (e.g., 'turbo', 'plasma'), color lists, and label-to-color dictionaries
   - Automatic fallback handling when requested colorscales are unavailable
   - Seamless integration with both Plotly and Matplotlib colorscales
-- **Component color grouping**: Added `CalculationResults.setup_colors()` method to create color mappings with similar colors for all variables of a component (and its flows)
+- **Component color grouping**: Added `setup_colors()` method to `CalculationResults` and `SegmentedCalculationResults` to create color mappings with similar colors for all variables of a component
   - Allows grouping components by custom colorscales: `{'CHP': 'red', 'Greys': ['Gastarif', 'Einspeisung'], 'Storage': 'blue'}`
   - Colors are automatically assigned using default colorscale if not specified
+  - For segmented calculations, colors are propagated to all segments for consistent visualization
 - **Plotting configuration**: New `CONFIG.Plotting` section with extensive customization options:
   - `default_show`: Control default visibility of plots
   - `default_engine`: Choose between 'plotly' or 'matplotlib'

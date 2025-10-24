@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import datetime
 import json
 import logging
@@ -2073,6 +2074,7 @@ class SegmentedCalculationResults:
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
+        self._colors = {}
 
     @property
     def meta_data(self) -> dict[str, int | list[str]]:
@@ -2086,6 +2088,64 @@ class SegmentedCalculationResults:
     @property
     def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
+
+    @property
+    def colors(self) -> dict[str, str]:
+        return self._colors
+
+    @colors.setter
+    def colors(self, colors: dict[str, str]):
+        """Applys colors to all segements"""
+        self._colors = colors
+        for segment in self.segment_results:
+            segment.colors = copy.deepcopy(colors)
+
+    def setup_colors(
+        self,
+        config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        default_colorscale: str | None = None,
+    ) -> dict[str, str]:
+        """
+        Setup colors for all variables across all segment results.
+
+        This method applies the same color configuration to all segments, ensuring
+        consistent visualization across the entire segmented calculation. The color
+        mapping is propagated to each segment's CalculationResults instance.
+
+        Args:
+            config: Configuration for color assignment. Can be:
+                - dict: Maps components to colors/colorscales:
+                    * 'component1': 'red'  # Single component to single color
+                    * 'component1': '#FF0000'  # Single component to hex color
+                    - OR maps colorscales to multiple components:
+                    * 'colorscale_name': ['component1', 'component2']  # Colorscale across components
+                - str: Path to a JSON/YAML config file or a colorscale name to apply to all
+                - Path: Path to a JSON/YAML config file
+                - None: Use default_colorscale for all components
+            default_colorscale: Default colorscale for unconfigured components (default: 'turbo')
+
+        Examples:
+            ```python
+            # Apply colors to all segments
+            segmented_results.setup_colors(
+                {
+                    'CHP': 'red',
+                    'Blues': ['Storage1', 'Storage2'],
+                    'Oranges': ['Solar1', 'Solar2'],
+                }
+            )
+
+            # Use a single colorscale for all components in all segments
+            segmented_results.setup_colors('portland')
+            ```
+
+        Returns:
+            Complete variable-to-color mapping dictionary from the first segment
+            (all segments will have the same mapping)
+        """
+        self.colors = self.segment_results[0].setup_colors(config=config, default_colorscale=default_colorscale)
+
+        return self.colors
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Get variable solution removing segment overlaps.
