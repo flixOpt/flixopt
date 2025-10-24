@@ -32,6 +32,57 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
+def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
+    """Load color mapping from JSON or YAML file.
+
+    Tries loader based on file suffix first, with fallback to the other format.
+
+    Args:
+        path: Path to config file (.json or .yaml/.yml)
+
+    Returns:
+        Dictionary mapping components to colors or colorscales to component lists
+
+    Raises:
+        ValueError: If file cannot be loaded as JSON or YAML
+    """
+    suffix = path.suffix.lower()
+
+    if suffix == '.json':
+        # Try JSON first, fallback to YAML
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            try:
+                with open(path) as f:
+                    return yaml.safe_load(f)
+            except Exception:
+                raise ValueError(f'Could not load config from {path}') from None
+    elif suffix in {'.yaml', '.yml'}:
+        # Try YAML first, fallback to JSON
+        try:
+            with open(path) as f:
+                return yaml.safe_load(f)
+        except yaml.YAMLError:
+            try:
+                with open(path) as f:
+                    return json.load(f)
+            except Exception:
+                raise ValueError(f'Could not load config from {path}') from None
+    else:
+        # Unknown extension, try both starting with JSON
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            try:
+                with open(path) as f:
+                    return yaml.safe_load(f)
+            except Exception:
+                raise ValueError(f'Could not load config from {path}') from None
+
+
 class _FlowSystemRestorationError(Exception):
     """Exception raised when a FlowSystem cannot be restored from dataset."""
 
@@ -380,21 +431,8 @@ class CalculationResults:
             # Try to load from file first
             config_path = pathlib.Path(config)
             if config_path.exists():
-                # Load config from file
-                import json
-
-                try:
-                    with open(config_path) as f:
-                        config_dict = json.load(f)
-                except json.JSONDecodeError:
-                    # Try YAML if available
-                    try:
-                        import yaml
-
-                        with open(config_path) as f:
-                            config_dict = yaml.safe_load(f)
-                    except (ImportError, Exception):
-                        raise ValueError(f'Could not load config from {config_path}') from None
+                # Load config from file using helper
+                config_dict = load_mapping_from_file(config_path)
             else:
                 # Treat as colorscale name to apply to all components
                 all_components = list(self.components.keys())
