@@ -367,7 +367,7 @@ def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None
 
     # Warn about NaN/Inf values
     for var in data.data_vars:
-        if data[var].isnull().any():
+        if np.isnan(data[var].values).any():
             logger.debug(f"Variable '{var}' contains NaN values which may affect visualization.")
         if np.isinf(data[var].values).any():
             logger.debug(f"Variable '{var}' contains Inf values which may affect visualization.")
