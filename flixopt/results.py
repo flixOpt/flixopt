@@ -719,13 +719,13 @@ class CalculationResults:
         self,
         variable_name: str | list[str],
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         colors: plotting.ColorType | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
         | None = 'auto',
@@ -1024,7 +1024,7 @@ class _NodeResults(_ElementResults):
     def plot_node_balance(
         self,
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         colors: plotting.ColorType | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
@@ -1033,7 +1033,7 @@ class _NodeResults(_ElementResults):
         drop_suffix: bool = True,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
@@ -1217,7 +1217,7 @@ class _NodeResults(_ElementResults):
         colors: plotting.ColorType | None = None,
         text_info: str = 'percent+label+value',
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         # Deprecated parameter (kept for backwards compatibility)
@@ -1480,14 +1480,14 @@ class ComponentResults(_NodeResults):
     def plot_charge_state(
         self,
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         colors: plotting.ColorType | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'area',
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
@@ -1968,13 +1968,13 @@ class SegmentedCalculationResults:
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
         | None = 'auto',
-        colors: str = 'portland',
+        colors: plotting.ColorType | None = None,
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         facet_by: str | list[str] | None = None,
         animate_by: str | None = None,
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         fill: Literal['ffill', 'bfill'] | None = 'ffill',
         # Deprecated parameters (kept for backwards compatibility)
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
@@ -2039,7 +2039,7 @@ class SegmentedCalculationResults:
 
         if color_map is not None:
             # Check for conflict with new parameter
-            if colors != 'portland':  # Check if user explicitly set colors
+            if colors is not None:  # Check if user explicitly set colors
                 raise ValueError(
                     "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
                 )
@@ -2101,12 +2101,12 @@ def plot_heatmap(
     folder: pathlib.Path | None = None,
     colors: plotting.ColorType | None = None,
     save: bool | pathlib.Path = False,
-    show: bool = True,
+    show: bool | None = None,
     engine: plotting.PlottingEngine = 'plotly',
     select: dict[str, Any] | None = None,
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
-    facet_cols: int = 3,
+    facet_cols: int | None = None,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
     | Literal['auto']
     | None = 'auto',
