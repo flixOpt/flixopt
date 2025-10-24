@@ -42,6 +42,7 @@ import plotly.offline
 import xarray as xr
 from plotly.exceptions import PlotlyError
 
+from .color_processing import process_colors, resolve_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
@@ -120,187 +121,6 @@ References:
 
 PlottingEngine = Literal['plotly', 'matplotlib']
 """Identifier for the plotting engine to use."""
-
-
-class ColorProcessor:
-    """Intelligent color management system for consistent multi-backend visualization.
-
-    This class provides unified color processing across Plotly and Matplotlib backends,
-    ensuring consistent visual appearance regardless of the plotting engine used.
-    It handles color palette generation, named colorscale translation, and intelligent
-    color cycling for complex datasets with many categories.
-
-    Key Features:
-        **Backend Agnostic**: Automatic color format conversion between engines
-        **Palette Management**: Support for named colorscales, custom palettes, and color lists
-        **Intelligent Cycling**: Smart color assignment for datasets with many categories
-        **Fallback Handling**: Graceful degradation when requested colorscales are unavailable
-        **Energy System Colors**: Built-in palettes optimized for energy system visualization
-
-    Color Input Types:
-        - **Named colorscales**: 'turbo', 'plasma', 'portland', etc.
-        - **Color Lists**: ['red', 'blue', 'green'] or ['#FF0000', '#0000FF', '#00FF00']
-        - **Label Dictionaries**: {'Generator': 'red', 'Storage': 'blue', 'Load': 'green'}
-
-    Example:
-        ```python
-        processor = ColorProcessor(engine='plotly', default_colorscale='turbo')
-        colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
-        ```
-
-    Args:
-        engine: Plotting backend ('plotly' or 'matplotlib'). Determines output color format.
-        default_colorscale: Fallback colorscale when requested palettes are unavailable.
-            Common options: 'turbo', 'plasma', 'portland'.
-
-    """
-
-    def __init__(self, engine: PlottingEngine = 'plotly', default_colorscale: str | None = None):
-        """Initialize the color processor with specified backend and defaults."""
-        if engine not in ['plotly', 'matplotlib']:
-            raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
-        self.engine = engine
-        self.default_colorscale = (
-            default_colorscale if default_colorscale is not None else CONFIG.Plotting.default_qualitative_colorscale
-        )
-
-    def _generate_colors_from_colorscale(self, colorscale_name: str, num_colors: int) -> list[Any]:
-        """
-        Generate colors from a named colorscale.
-
-        Args:
-            colorscale_name: Name of the colorscale
-            num_colors: Number of colors to generate
-
-        Returns:
-            list of colors in the format appropriate for the engine
-        """
-        if self.engine == 'plotly':
-            return self._get_plotly_colormap_robust(colorscale_name, num_colors)
-
-        else:  # matplotlib
-            try:
-                cmap = plt.get_cmap(colorscale_name, num_colors)
-            except ValueError as e:
-                logger.warning(
-                    f"Colormap '{colorscale_name}' not found in Matplotlib. Trying default '{self.default_colorscale}': {e}"
-                )
-                try:
-                    cmap = plt.get_cmap(self.default_colorscale, num_colors)
-                except ValueError:
-                    logger.warning(
-                        f"Default colormap '{self.default_colorscale}' also not found in Matplotlib. "
-                        f"Using hardcoded fallback 'tab10'"
-                    )
-                    cmap = plt.get_cmap('tab10', num_colors)
-
-            return [cmap(i) for i in range(num_colors)]
-
-    def _handle_color_list(self, colors: list[str], num_labels: int) -> list[str]:
-        """
-        Handle a list of colors, cycling if necessary.
-
-        Args:
-            colors: list of color strings
-            num_labels: Number of labels that need colors
-
-        Returns:
-            list of colors matching the number of labels
-        """
-        if len(colors) == 0:
-            logger.error(f'Empty color list provided. Using {self.default_colorscale} instead.')
-            return self._generate_colors_from_colorscale(self.default_colorscale, num_labels)
-
-        if len(colors) < num_labels:
-            logger.warning(
-                f'Not enough colors provided ({len(colors)}) for all labels ({num_labels}). Colors will cycle.'
-            )
-            # Cycle through the colors
-            color_iter = itertools.cycle(colors)
-            return [next(color_iter) for _ in range(num_labels)]
-        else:
-            # Trim if necessary
-            if len(colors) > num_labels:
-                logger.warning(
-                    f'More colors provided ({len(colors)}) than labels ({num_labels}). Extra colors will be ignored.'
-                )
-            return colors[:num_labels]
-
-    def _handle_color_dict(self, colors: dict[str, str], labels: list[str]) -> list[str]:
-        """
-        Handle a dictionary mapping labels to colors.
-
-        Args:
-            colors: Dictionary mapping labels to colors
-            labels: list of labels that need colors
-
-        Returns:
-            list of colors in the same order as labels
-        """
-        if len(colors) == 0:
-            logger.warning(f'Empty color dictionary provided. Using {self.default_colorscale} instead.')
-            return self._generate_colors_from_colorscale(self.default_colorscale, len(labels))
-
-        # Find missing labels
-        missing_labels = sorted(set(labels) - set(colors.keys()))
-        if missing_labels:
-            logger.warning(
-                f'Some labels have no color specified: {missing_labels}. Using {self.default_colorscale} for these.'
-            )
-
-            # Generate colors for missing labels
-            missing_colors = self._generate_colors_from_colorscale(self.default_colorscale, len(missing_labels))
-
-            # Create a copy to avoid modifying the original
-            colors_copy = colors.copy()
-            for i, label in enumerate(missing_labels):
-                colors_copy[label] = missing_colors[i]
-        else:
-            colors_copy = colors
-
-        # Create color list in the same order as labels
-        return [colors_copy[label] for label in labels]
-
-    def process_colors(
-        self,
-        colors: ColorType,
-        labels: list[str],
-        return_mapping: bool = False,
-    ) -> list[Any] | dict[str, Any]:
-        """
-        Process colors for the specified labels.
-
-        Args:
-            colors: Color specification (colorscale name, list of colors, or label-to-color mapping)
-            labels: list of data labels that need colors assigned
-            return_mapping: If True, returns a dictionary mapping labels to colors;
-                           if False, returns a list of colors in the same order as labels
-
-        Returns:
-            Either a list of colors or a dictionary mapping labels to colors
-        """
-        if len(labels) == 0:
-            logger.error('No labels provided for color assignment.')
-            return {} if return_mapping else []
-
-        # Process based on type of colors input
-        if isinstance(colors, str):
-            color_list = self._generate_colors_from_colorscale(colors, len(labels))
-        elif isinstance(colors, list):
-            color_list = self._handle_color_list(colors, len(labels))
-        elif isinstance(colors, dict):
-            color_list = self._handle_color_dict(colors, labels)
-        else:
-            logger.error(
-                f'Unsupported color specification type: {type(colors)}. Using {self.default_colorscale} instead.'
-            )
-            color_list = self._generate_colors_from_colorscale(self.default_colorscale, len(labels))
-
-        # Return either a list or a mapping
-        if return_mapping:
-            return {label: color_list[i] for i, label in enumerate(labels)}
-        else:
-            return color_list
 
 
 class ComponentColorManager:
@@ -559,9 +379,11 @@ class ComponentColorManager:
             else:
                 return [color_list[i % len(color_list)] for i in range(num_colors)]
 
-        # Delegate everything else to ColorProcessor (handles qualitative, sequential, fallbacks, cycling)
-        processor = ColorProcessor(engine='plotly', default_colorscale=self.default_colorscale)
-        return processor._generate_colors_from_colormap(colorscale_name, num_colors)
+        # Delegate to the simplified color processing (handles qualitative, sequential, fallbacks, cycling)
+        # Use dummy labels since we just need the color values
+        dummy_labels = [f'_{i}' for i in range(num_colors)]
+        color_map = process_colors(colorscale_name, dummy_labels, default_colorscale=self.default_colorscale)
+        return list(color_map.values())
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame | pd.Series) -> xr.Dataset:
@@ -607,28 +429,6 @@ def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None
             logger.debug(f"Variable '{var}' contains NaN values which may affect visualization.")
         if np.isinf(data[var].values).any():
             logger.debug(f"Variable '{var}' contains Inf values which may affect visualization.")
-
-
-def resolve_colors(
-    labels: list[str],
-    colors: ColorType | ComponentColorManager,
-    engine: PlottingEngine = 'plotly',
-) -> dict[str, str]:
-    """Resolve colors parameter to a dict mapping variable names to colors."""
-    # If explicit dict provided, use it directly
-    if isinstance(colors, dict):
-        return colors
-
-    # If string or list, use ColorProcessor (traditional behavior)
-    if isinstance(colors, (str, list)):
-        processor = ColorProcessor(engine=engine)
-        return processor.process_colors(colors, labels, return_mapping=True)
-
-    if isinstance(colors, ComponentColorManager):
-        # Use color manager to resolve colors for variables
-        return colors.get_variable_colors(labels)
-
-    raise TypeError(f'Wrong type passed to resolve_colors(): {type(colors)}')
 
 
 def with_plotly(
@@ -740,7 +540,9 @@ def with_plotly(
         values = [float(data[var].values) for var in data.data_vars]
 
         # Resolve colors
-        color_discrete_map = resolve_colors(variables, colors, engine='plotly')
+        color_discrete_map = resolve_colors(
+            variables, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        )
         marker_colors = [color_discrete_map.get(var, '#636EFA') for var in variables]
 
         # Create simple plot based on mode using go (not px) for better color control
@@ -831,7 +633,9 @@ def with_plotly(
 
     # Process colors
     all_vars = df_long['variable'].unique().tolist()
-    color_discrete_map = resolve_colors(list(data.data_vars), colors, engine='plotly')
+    color_discrete_map = resolve_colors(
+        list(data.data_vars), colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+    )
 
     # Determine which dimension to use for x-axis
     # Collect dimensions used for faceting and animation
@@ -1006,7 +810,9 @@ def with_matplotlib(
         values = [float(data[var].values) for var in data.data_vars]
 
         # Resolve colors
-        color_discrete_map = resolve_colors(variables, colors, engine='matplotlib')
+        color_discrete_map = resolve_colors(
+            variables, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        )
         colors_list = [color_discrete_map.get(var, '#808080') for var in variables]
 
         # Create plot based on mode
@@ -1037,7 +843,9 @@ def with_matplotlib(
         return fig, ax
 
     # Resolve colors first (includes validation)
-    color_discrete_map = resolve_colors(list(data.data_vars), colors, engine='matplotlib')
+    color_discrete_map = resolve_colors(
+        list(data.data_vars), colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+    )
 
     # Convert Dataset to DataFrame for matplotlib plotting (naturally wide-form)
     df = data.to_dataframe()
@@ -1493,7 +1301,7 @@ def dual_pie_with_plotly(
     all_labels = sorted(set(left_labels) | set(right_labels))
 
     # Create color map
-    color_map = resolve_colors(all_labels, colors, engine='plotly')
+    color_map = resolve_colors(all_labels, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
 
     # Create figure
     fig = go.Figure()
@@ -1585,8 +1393,8 @@ def dual_pie_with_matplotlib(
     # Get all unique labels for consistent coloring
     all_labels = sorted(set(left_labels) | set(right_labels))
 
-    # Create color map
-    color_map = ColorProcessor(engine='matplotlib').process_colors(colors, all_labels, return_mapping=True)
+    # Create color map (process_colors always returns a dict)
+    color_map = process_colors(colors, all_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
 
     # Create figure
     fig, axes = plt.subplots(1, 2, figsize=figsize)
