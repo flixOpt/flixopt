@@ -277,7 +277,7 @@ def with_plotly(
 
         # Resolve colors
         color_discrete_map = process_colors(
-            variables, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+            colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
         )
         marker_colors = [color_discrete_map.get(var, '#636EFA') for var in variables]
 
@@ -370,7 +370,7 @@ def with_plotly(
     # Process colors
     all_vars = df_long['variable'].unique().tolist()
     color_discrete_map = process_colors(
-        all_vars, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        colors, all_vars, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
     )
 
     # Determine which dimension to use for x-axis
@@ -547,7 +547,7 @@ def with_matplotlib(
 
         # Resolve colors
         color_discrete_map = process_colors(
-            variables, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+            colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
         )
         colors_list = [color_discrete_map.get(var, '#808080') for var in variables]
 
@@ -580,7 +580,7 @@ def with_matplotlib(
 
     # Resolve colors first (includes validation)
     color_discrete_map = process_colors(
-        list(data.data_vars), colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        colors, list(data.data_vars), default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
     )
 
     # Convert Dataset to DataFrame for matplotlib plotting (naturally wide-form)
@@ -1037,7 +1037,7 @@ def dual_pie_with_plotly(
     all_labels = sorted(set(left_labels) | set(right_labels))
 
     # Create color map
-    color_map = process_colors(all_labels, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
+    color_map = process_colors(colors, all_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
 
     # Create figure
     fig = go.Figure()
