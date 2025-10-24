@@ -16,6 +16,7 @@ import yaml
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
+from .config import CONFIG
 from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
@@ -332,21 +333,25 @@ class CalculationResults:
         Setup colors for all variables across all elements.
 
         Args:
-            config: Optional configuration dictionary mapping colors/colorscales to Components:
-                - 'color_name': 'component1'  # Single color to single object
-                - 'color_name': ['component1', 'component1']  # Single color to multiple objects
-                - 'colorscale_name': ['component1', 'component1']  # Colorscale across objects
-            default_colorscale: Default colorscale for unconfigured objects
+            config: Configuration for color assignment. Can be:
+                - dict: Maps colors/colorscales to component(s):
+                    * 'color_name': 'component1'  # Single color to single component
+                    * 'color_name': ['component1', 'component2']  # Single color to multiple components
+                    * 'colorscale_name': ['component1', 'component2']  # Colorscale across components
+                - str: Path to a JSON/YAML config file or a colorscale name to apply to all
+                - Path: Path to a JSON/YAML config file
+                - None: Use default_colorscale for all components
+            default_colorscale: Default colorscale for unconfigured components (default: 'turbo')
 
         Examples:
             setup_colors({
                 # Direct colors
-                'Boiler1': '#FF0000',
-                'CHP': 'darkred',
+                '#FF0000': 'Boiler1',
+                'darkred': 'CHP',
                 # Grouped by colorscale
-                'oranges': ['Solar1', 'Solar2'],
-                'blues': ['Wind1', 'Wind2'],
-                'greens': ['Battery1', 'Battery2', 'Battery3'],
+                'Oranges': ['Solar1', 'Solar2'],
+                'Blues': ['Wind1', 'Wind2'],
+                'Greens': ['Battery1', 'Battery2', 'Battery3'],
             })
 
         Returns:
@@ -354,43 +359,84 @@ class CalculationResults:
         """
 
         def get_all_variable_names(comp: str) -> list[str]:
-            # Collect all variables from the component, including its own name and the name of its flows, and flow_hours
+            """Collect all variables from the component, including flows and flow_hours."""
             comp_object = self.components[comp]
             var_names = [comp] + list(comp_object._variable_names)
             for flow in comp_object.flows:
                 var_names.extend([flow, f'{flow}|flow_hours'])
-
             return var_names
 
-        config = config or {}
+        # Set default colorscale if not provided
+        if default_colorscale is None:
+            default_colorscale = CONFIG.Plotting.default_qualitative_colorscale
 
-        # Track which objects have been configured
+        # Handle different config input types
+        if config is None:
+            # Apply default colorscale to all components
+            config_dict = {}
+        elif isinstance(config, (str, pathlib.Path)):
+            # Try to load from file first
+            config_path = pathlib.Path(config)
+            if config_path.exists():
+                # Load config from file
+                import json
+
+                try:
+                    with open(config_path) as f:
+                        config_dict = json.load(f)
+                except json.JSONDecodeError:
+                    # Try YAML if available
+                    try:
+                        import yaml
+
+                        with open(config_path) as f:
+                            config_dict = yaml.safe_load(f)
+                    except (ImportError, Exception):
+                        raise ValueError(f'Could not load config from {config_path}') from None
+            else:
+                # Treat as colorscale name to apply to all components
+                all_components = list(self.components.keys())
+                config_dict = {config: all_components}
+        elif isinstance(config, dict):
+            config_dict = config
+        else:
+            raise TypeError(f'config must be dict, str, Path, or None, got {type(config)}')
+
+        # Step 1: Build component-to-color mapping
+        component_colors: dict[str, str] = {}
+
+        # Track which components are configured
         configured_components = set()
 
         # Process each configuration entry
-        for color_spec, component_spec in config.items():
+        for color_spec, component_spec in config_dict.items():
+            # Normalize to list of component names
             components: list[str] = [component_spec] if isinstance(component_spec, str) else list(component_spec)
 
-            configured_components.update(components)
-
-            # Collect all variables from these objects
-            all_variables = []
+            # Validate components exist
             for component in components:
                 if component not in self.components:
                     raise ValueError(f"Component '{component}' not found")
-                all_variables.extend(get_all_variable_names(component))
 
-            # Use process_colors to assign colors to these variables
-            color_mapping = process_colors(color_spec, all_variables)
-            self.colors.update(color_mapping)
+            configured_components.update(components)
 
-        # Assign defaults to remaining objects
-        remaining_components = set(self.components.keys()) - configured_components
+            # Get colors for these components using process_colors
+            colors_for_components = process_colors(color_spec, components)
+            component_colors.update(colors_for_components)
+
+        # Step 2: Assign colors to remaining unconfigured components
+        remaining_components = list(set(self.components.keys()) - configured_components)
         if remaining_components:
-            all_remaining_variables = []
-            for remaining_component in remaining_components:
-                all_remaining_variables.extend(get_all_variable_names(remaining_component))
-            self.colors.update(process_colors(default_colorscale, all_remaining_variables))
+            # Use default colorscale to assign one color per remaining component
+            default_colors = process_colors(default_colorscale, remaining_components)
+            component_colors.update(default_colors)
+
+        # Step 3: Build variable-to-color mapping
+        # Each component's variables all get the same color as the component
+        for component, color in component_colors.items():
+            variable_names = get_all_variable_names(component)
+            for var_name in variable_names:
+                self.colors[var_name] = color
 
         return self.colors
 
