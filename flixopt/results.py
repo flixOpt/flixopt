@@ -15,6 +15,7 @@ import yaml
 
 from . import io as fx_io
 from . import plotting
+from .color_processing import process_colors
 from .flow_system import FlowSystem
 
 if TYPE_CHECKING:
@@ -326,67 +327,72 @@ class CalculationResults:
         self,
         config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
         default_colorscale: str | None = None,
-    ) -> plotting.ComponentColorManager:
-        """Initialize and return a ColorManager for configuring plot colors.
-
-        Convenience method that creates a ComponentColorManager with all components
-        registered and assigns it to `self.color_manager`. Optionally load configuration
-        from a dict or file.
+    ) -> dict[str, str]:
+        """
+        Setup colors for all variables across all elements.
 
         Args:
-            config: Optional color configuration:
-                - dict: Mixed {component: color} or {colorscale: [components]} mapping
-                - str/Path: Path to YAML file
-                - None: Create empty manager for manual config (default)
-            default_colorscale: Optional default colorscale to use. Defaults to CONFIG.Plotting.default_default_qualitative_colorscale
-
-        Returns:
-            ComponentColorManager instance ready for configuration.
+            config: Optional configuration dictionary mapping colors/colorscales to Components:
+                - 'color_name': 'component1'  # Single color to single object
+                - 'color_name': ['component1', 'component1']  # Single color to multiple objects
+                - 'colorscale_name': ['component1', 'component1']  # Colorscale across objects
+            default_colorscale: Default colorscale for unconfigured objects
 
         Examples:
-            Dict-based configuration (mixed direct + grouped):
+            setup_colors({
+                # Direct colors
+                'Boiler1': '#FF0000',
+                'CHP': 'darkred',
+                # Grouped by colorscale
+                'oranges': ['Solar1', 'Solar2'],
+                'blues': ['Wind1', 'Wind2'],
+                'greens': ['Battery1', 'Battery2', 'Battery3'],
+            })
 
-            ```python
-            results.setup_colors(
-                {
-                    # Direct colors
-                    'Boiler1': '#FF0000',
-                    'CHP': 'darkred',
-                    # Grouped colors
-                    'oranges': ['Solar1', 'Solar2'],
-                    'blues': ['Wind1', 'Wind2'],
-                    'greens': ['Battery1', 'Battery2', 'Battery3'],
-                }
-            )
-            results['ElectricityBus'].plot_node_balance()
-            ```
-
-            Load from YAML file:
-
-            ```python
-            # colors.yaml contains:
-            # Boiler1: '#FF0000'
-            # oranges:
-            #   - Solar1
-            #   - Solar2
-            results.setup_colors('colors.yaml')
-            ```
-
-            Disable automatic coloring:
-
-            ```python
-            results.color_manager = None  # Plots use default colorscales
-            ```
+        Returns:
+            Complete variable-to-color mapping dictionary
         """
-        self.color_manager = plotting.ComponentColorManager.from_flow_system(
-            self.flow_system, default_colorscale=default_colorscale
-        )
 
-        # Apply configuration if provided
-        if config is not None:
-            self.color_manager.configure(config)
+        def get_all_variable_names(comp: str) -> list[str]:
+            # Collect all variables from the component, including its own name and the name of its flows, and flow_hours
+            comp_object = self.components[comp]
+            var_names = [comp] + list(comp_object._variable_names)
+            for flow in comp_object.flows:
+                var_names.extend([flow, f'{flow}|flow_hours'])
 
-        return self.color_manager
+            return var_names
+
+        config = config or {}
+
+        # Track which objects have been configured
+        configured_components = set()
+
+        # Process each configuration entry
+        for color_spec, component_spec in config.items():
+            components: list[str] = [component_spec] if isinstance(component_spec, str) else list(component_spec)
+
+            configured_components.update(components)
+
+            # Collect all variables from these objects
+            all_variables = []
+            for component in components:
+                if component not in self.components:
+                    raise ValueError(f"Component '{component}' not found")
+                all_variables.extend(get_all_variable_names(component))
+
+            # Use process_colors to assign colors to these variables
+            color_mapping = process_colors(color_spec, all_variables)
+            self.colors.update(color_mapping)
+
+        # Assign defaults to remaining objects
+        remaining_components = set(self.components.keys()) - configured_components
+        if remaining_components:
+            all_remaining_variables = []
+            for remaining_component in remaining_components:
+                all_remaining_variables.extend(get_all_variable_names(remaining_component))
+            self.colors.update(process_colors(default_colorscale, all_remaining_variables))
+
+        return self.colors
 
     def filter_solution(
         self,
