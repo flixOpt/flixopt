@@ -1095,71 +1095,87 @@ def plot_network(
             )
 
 
-def preprocess_dataset_for_pie(data: xr.Dataset, lower_percentage_threshold: float = 5.0) -> xr.Dataset:
+def preprocess_data_for_pie(
+    data: xr.Dataset | pd.DataFrame | pd.Series,
+    lower_percentage_threshold: float = 5.0,
+) -> pd.Series:
     """
     Preprocess data for pie chart display.
 
     Groups items that are individually below the threshold percentage into an "Other" category.
-    Works with xarray Datasets by summing all dimensions for each variable.
+    Converts various input types to a pandas Series for uniform handling.
 
     Args:
         data: Input data (xarray Dataset, DataFrame, or Series)
         lower_percentage_threshold: Percentage threshold - items below this are grouped into "Other"
 
     Returns:
-        Processed xarray Dataset with small items grouped into "Other"
+        Processed pandas Series with small items grouped into "Other"
     """
-    dataset = _ensure_dataset(data)
-    _validate_plotting_data(dataset, allow_empty=True)
+    # Convert to Series
+    if isinstance(data, xr.Dataset):
+        # Sum all dimensions for each variable to get total values
+        values = {}
+        for var in data.data_vars:
+            var_data = data[var]
+            if len(var_data.dims) > 0:
+                total_value = float(var_data.sum().item())
+            else:
+                total_value = float(var_data.item())
 
-    # Sum all dimensions for each variable to get total values
-    values = {}
-    for var in dataset.data_vars:
-        var_data = dataset[var]
-        # Sum across all dimensions to get total
-        if len(var_data.dims) > 0:
-            total_value = float(var_data.sum().item())
-        else:
-            total_value = float(var_data.item())
+            # Handle negative values
+            if total_value < 0:
+                logger.warning(f'Negative value for {var}: {total_value}. Using absolute value.')
+                total_value = abs(total_value)
 
-        # Handle negative values
-        if total_value < 0:
-            logger.warning(f'Negative value for {var}: {total_value}. Using absolute value.')
-            total_value = abs(total_value)
-
-        # Only keep positive values
-        if total_value > 0:
             values[var] = total_value
 
-    if not values or lower_percentage_threshold <= 0:
-        return dataset
+        series = pd.Series(values)
 
-    # Calculate total and percentages
-    total = sum(values.values())
-    percentages = {name: (val / total) * 100 for name, val in values.items()}
+    elif isinstance(data, pd.DataFrame):
+        # Sum across all columns if DataFrame
+        series = data.sum(axis=0)
+        # Handle negative values
+        negative_mask = series < 0
+        if negative_mask.any():
+            logger.warning(f'Negative values found: {series[negative_mask].to_dict()}. Using absolute values.')
+            series = series.abs()
 
-    # Find items below threshold
-    below_threshold = {name: val for name, val in values.items() if percentages[name] < lower_percentage_threshold}
-    above_threshold = {name: val for name, val in values.items() if percentages[name] >= lower_percentage_threshold}
+    else:  # pd.Series
+        series = data.copy()
+        # Handle negative values
+        negative_mask = series < 0
+        if negative_mask.any():
+            logger.warning(f'Negative values found: {series[negative_mask].to_dict()}. Using absolute values.')
+            series = series.abs()
+
+    # Only keep positive values
+    series = series[series > 0]
+
+    if series.empty or lower_percentage_threshold <= 0:
+        return series
+
+    # Calculate percentages
+    total = series.sum()
+    percentages = (series / total) * 100
+
+    # Find items below and above threshold
+    below_threshold = series[percentages < lower_percentage_threshold]
+    above_threshold = series[percentages >= lower_percentage_threshold]
 
     # Only group if there are at least 2 items below threshold
     if len(below_threshold) > 1:
-        # Sum up the small items
-        other_sum = sum(below_threshold.values())
+        # Create new series with items above threshold + "Other"
+        result = above_threshold.copy()
+        result['Other'] = below_threshold.sum()
+        return result
 
-        # Create new dataset with items above threshold + "Other"
-        result_dict = above_threshold.copy()
-        result_dict['Other'] = other_sum
-
-        # Convert back to Dataset
-        return xr.Dataset({name: xr.DataArray(val) for name, val in result_dict.items()})
-
-    return dataset
+    return series
 
 
 def dual_pie_with_plotly(
-    data_left: xr.Dataset | pd.DataFrame,
-    data_right: xr.Dataset | pd.DataFrame,
+    data_left: xr.Dataset | pd.DataFrame | pd.Series,
+    data_right: xr.Dataset | pd.DataFrame | pd.Series,
     colors: ColorType = 'viridis',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
@@ -1174,8 +1190,8 @@ def dual_pie_with_plotly(
     Create two pie charts side by side with Plotly.
 
     Args:
-        data_left: Dataset for the left pie chart. Variables are summed across all dimensions.
-        data_right: Dataset for the right pie chart. Variables are summed across all dimensions.
+        data_left: Data for the left pie chart. Variables are summed across all dimensions.
+        data_right: Data for the right pie chart. Variables are summed across all dimensions.
         colors: Color specification (colorscale name, list of colors, or dict mapping)
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
@@ -1190,26 +1206,16 @@ def dual_pie_with_plotly(
     Returns:
         Plotly Figure object
     """
-    # Preprocess data (converts to Dataset and groups small items)
-    left_processed = preprocess_dataset_for_pie(data_left, lower_percentage_group)
-    right_processed = preprocess_dataset_for_pie(data_right, lower_percentage_group)
+    # Preprocess data to Series
+    left_series = preprocess_data_for_pie(data_left, lower_percentage_group)
+    right_series = preprocess_data_for_pie(data_right, lower_percentage_group)
 
-    # Extract labels and values from Datasets
-    def extract_from_dataset(ds):
-        labels = []
-        values = []
-        for var in ds.data_vars:
-            var_data = ds[var]
-            if len(var_data.dims) > 0:
-                val = float(var_data.sum().item())
-            else:
-                val = float(var_data.item())
-            labels.append(str(var))
-            values.append(val)
-        return labels, values
+    # Extract labels and values
+    left_labels = left_series.index.tolist()
+    left_values = left_series.values.tolist()
 
-    left_labels, left_values = extract_from_dataset(left_processed)
-    right_labels, right_values = extract_from_dataset(right_processed)
+    right_labels = right_series.index.tolist()
+    right_values = right_series.values.tolist()
 
     # Get all unique labels for consistent coloring
     all_labels = sorted(set(left_labels) | set(right_labels))
@@ -1277,8 +1283,8 @@ def dual_pie_with_matplotlib(
     Create two pie charts side by side with Matplotlib.
 
     Args:
-        data_left: Series for the left pie chart.
-        data_right: Series for the right pie chart.
+        data_left: Data for the left pie chart.
+        data_right: Data for the right pie chart.
         colors: Color specification (colormap name, list of colors, or dict mapping)
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
@@ -1290,26 +1296,16 @@ def dual_pie_with_matplotlib(
     Returns:
         Tuple of (Figure, list of Axes)
     """
-    # Preprocess data (converts to Dataset and groups small items)
-    left_processed = preprocess_dataset_for_pie(data_left, lower_percentage_group)
-    right_processed = preprocess_dataset_for_pie(data_right, lower_percentage_group)
+    # Preprocess data to Series
+    left_series = preprocess_data_for_pie(data_left, lower_percentage_group)
+    right_series = preprocess_data_for_pie(data_right, lower_percentage_group)
 
-    # Extract labels and values from Datasets
-    def extract_from_dataset(ds):
-        labels = []
-        values = []
-        for var in ds.data_vars:
-            var_data = ds[var]
-            if len(var_data.dims) > 0:
-                val = float(var_data.sum().item())
-            else:
-                val = float(var_data.item())
-            labels.append(str(var))
-            values.append(val)
-        return labels, values
+    # Extract labels and values
+    left_labels = left_series.index.tolist()
+    left_values = left_series.values.tolist()
 
-    left_labels, left_values = extract_from_dataset(left_processed)
-    right_labels, right_values = extract_from_dataset(right_processed)
+    right_labels = right_series.index.tolist()
+    right_values = right_series.values.tolist()
 
     # Get all unique labels for consistent coloring
     all_labels = sorted(set(left_labels) | set(right_labels))
