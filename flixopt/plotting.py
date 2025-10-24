@@ -621,6 +621,10 @@ def with_plotly(
     if facet_col and not facet_row:
         common_args['facet_col_wrap'] = facet_cols
 
+    # Allow callers to pass any px.* keyword args (e.g., category_orders, range_x/y)
+    if px_kwargs:
+        common_args.update(px_kwargs)
+
     if mode == 'stacked_bar':
         fig = px.bar(**common_args)
         fig.update_traces(marker_line_width=0)
