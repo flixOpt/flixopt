@@ -1306,8 +1306,9 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_selection_to_data(inputs, select=select, drop=True)
-        outputs, suffix_parts = _apply_selection_to_data(outputs, select=select, drop=True)
+        inputs, suffix_parts_in = _apply_selection_to_data(inputs, select=select, drop=True)
+        outputs, suffix_parts_out = _apply_selection_to_data(outputs, select=select, drop=True)
+        suffix_parts = suffix_parts_in + suffix_parts_out
 
         # Sum over time dimension
         inputs = inputs.sum('time')
@@ -1335,15 +1336,15 @@ class _NodeResults(_ElementResults):
                     f'Use select={{"{dim}": value}} to choose a different value.'
                 )
 
-            # Apply auto-selection
-            inputs = inputs.sel(auto_select)
-            outputs = outputs.sel(auto_select)
+            # Apply auto-selection only for coords present in each dataset
+            inputs = inputs.sel({k: v for k, v in auto_select.items() if k in inputs.coords})
+            outputs = outputs.sel({k: v for k, v in auto_select.items() if k in outputs.coords})
 
             # Update suffix with auto-selected values
             auto_suffix_parts = [f'{dim}={val}' for dim, val in auto_select.items()]
             suffix_parts.extend(auto_suffix_parts)
 
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        suffix = '--' + '-'.join(sorted(set(suffix_parts))) if suffix_parts else ''
         title = f'{self.label} (total flow hours){suffix}'
 
         if engine == 'plotly':
@@ -1641,6 +1642,7 @@ class ComponentResults(_NodeResults):
                         for trace in frame.data:
                             trace.line.width = 2
                             trace.line.shape = 'linear'  # Smooth line for charge state
+                            trace.line.color = overlay_color
                             figure_like.frames[i].data = figure_like.frames[i].data + (trace,)
 
             default_filetype = '.html'
@@ -1670,7 +1672,16 @@ class ComponentResults(_NodeResults):
                 linewidth=2,
                 color=overlay_color,
             )
-            ax.legend()
+            # Recreate legend with the same styling as with_matplotlib
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(
+                handles,
+                labels,
+                loc='upper center',
+                bbox_to_anchor=(0.5, -0.15),
+                ncol=5,
+                frameon=False,
+            )
             fig.tight_layout()
 
             figure_like = fig, ax

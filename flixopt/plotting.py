@@ -485,7 +485,7 @@ def with_plotly(
 
     # Handle empty data
     if len(data.data_vars) == 0:
-        logger.error('"with_plotly() got an empty Dataset.')
+        logger.error('with_plotly() got an empty Dataset.')
         return go.Figure()
 
     # Handle all-scalar datasets (where all variables have no dimensions)
@@ -802,11 +802,22 @@ def with_matplotlib(
     if mode == 'stacked_bar':
         cumulative_positive = np.zeros(len(df))
         cumulative_negative = np.zeros(len(df))
-        width = df.index.to_series().diff().dropna().min()  # Minimum time difference
+
+        # Robust bar width: handle datetime-like, numeric, and single-point indexes
+        if len(df.index) > 1:
+            delta = pd.Index(df.index).to_series().diff().dropna().min()
+            if hasattr(delta, 'total_seconds'):  # datetime-like
+                width = delta.total_seconds() / 86400.0  # Matplotlib date units = days
+            else:
+                width = float(delta)
+        else:
+            width = 0.8  # reasonable default for a single bar
 
         for i, column in enumerate(df.columns):
-            positive_values = np.clip(df[column], 0, None)  # Keep only positive values
-            negative_values = np.clip(df[column], None, 0)  # Keep only negative values
+            # Fill NaNs to avoid breaking stacking math
+            series = df[column].fillna(0)
+            positive_values = np.clip(series, 0, None)  # Keep only positive values
+            negative_values = np.clip(series, None, 0)  # Keep only negative values
             # Plot positive bars
             ax.bar(
                 df.index,
@@ -1760,9 +1771,9 @@ def export_figure(
         default_path: The default file path if no user filename is provided.
         default_filetype: The default filetype if the path doesnt end with a filetype.
         user_path: An optional user-specified file path.
-        show: Whether to display the figure. If None, uses CONFIG.Plotting.default_show (default: None).
+        show: Whether to display the figure (default: True).
         save: Whether to save the figure (default: False).
-        dpi: DPI (dots per inch) for saving Matplotlib figures. If None, uses CONFIG.Plotting.default_dpi.
+        dpi: DPI (dots per inch) for saving Matplotlib figures. If None, Matplotlib rcParams are used.
 
     Raises:
         ValueError: If no default filetype is provided and the path doesn't specify a filetype.
