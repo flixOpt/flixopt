@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import datetime
-import json
 import logging
 import pathlib
 import warnings
@@ -12,7 +11,6 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
-import yaml
 
 from . import io as fx_io
 from . import plotting
@@ -46,41 +44,7 @@ def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
     Raises:
         ValueError: If file cannot be loaded as JSON or YAML
     """
-    suffix = path.suffix.lower()
-
-    if suffix == '.json':
-        # Try JSON first, fallback to YAML
-        try:
-            with open(path) as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            try:
-                with open(path) as f:
-                    return yaml.safe_load(f)
-            except Exception:
-                raise ValueError(f'Could not load config from {path}') from None
-    elif suffix in {'.yaml', '.yml'}:
-        # Try YAML first, fallback to JSON
-        try:
-            with open(path) as f:
-                return yaml.safe_load(f)
-        except yaml.YAMLError:
-            try:
-                with open(path) as f:
-                    return json.load(f)
-            except Exception:
-                raise ValueError(f'Could not load config from {path}') from None
-    else:
-        # Unknown extension, try both starting with JSON
-        try:
-            with open(path) as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            try:
-                with open(path) as f:
-                    return yaml.safe_load(f)
-            except Exception:
-                raise ValueError(f'Could not load config from {path}') from None
+    return fx_io.load_config_file(path)
 
 
 class _FlowSystemRestorationError(Exception):
@@ -205,8 +169,7 @@ class CalculationResults:
             except Exception as e:
                 logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
-        with open(paths.summary, encoding='utf-8') as f:
-            summary = yaml.load(f, Loader=yaml.FullLoader)
+        summary = fx_io.load_yaml(paths.summary, safe=False)
 
         return cls(
             solution=fx_io.load_dataset_from_netcdf(paths.solution),
@@ -1093,8 +1056,7 @@ class CalculationResults:
         fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system_data, paths.flow_system, compression=compression)
 
-        with open(paths.summary, 'w', encoding='utf-8') as f:
-            yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
+        fx_io.save_yaml(self.summary, paths.summary)
 
         if save_linopy_model:
             if self.model is None:
@@ -2085,8 +2047,7 @@ class SegmentedCalculationResults:
         folder = pathlib.Path(folder)
         path = folder / name
         logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
-        with open(path.with_suffix('.json'), encoding='utf-8') as f:
-            meta_data = json.load(f)
+        meta_data = fx_io.load_json(path.with_suffix('.json'))
         return cls(
             [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
             all_timesteps=pd.DatetimeIndex(
@@ -2330,8 +2291,7 @@ class SegmentedCalculationResults:
         for segment in self.segment_results:
             segment.to_file(folder=folder, name=segment.name, compression=compression)
 
-        with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
-            json.dump(self.meta_data, f, indent=4, ensure_ascii=False)
+        fx_io.save_json(self.meta_data, path.with_suffix('.json'))
         logger.info(f'Saved calculation "{name}" to {path}')
 
 

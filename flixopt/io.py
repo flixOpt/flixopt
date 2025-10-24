@@ -34,6 +34,170 @@ def remove_none_and_empty(obj):
         return obj
 
 
+# ============================================================================
+# Centralized JSON and YAML I/O Functions
+# ============================================================================
+
+
+def load_json(path: str | pathlib.Path) -> dict | list:
+    """
+    Load data from a JSON file.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        Loaded data (typically dict or list).
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        json.JSONDecodeError: If the file is not valid JSON.
+    """
+    path = pathlib.Path(path)
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def save_json(
+    data: dict | list,
+    path: str | pathlib.Path,
+    indent: int = 4,
+    ensure_ascii: bool = False,
+    **kwargs,
+) -> None:
+    """
+    Save data to a JSON file with consistent formatting.
+
+    Args:
+        data: Data to save (dict or list).
+        path: Path to save the JSON file.
+        indent: Number of spaces for indentation (default: 4).
+        ensure_ascii: If False, allow Unicode characters (default: False).
+        **kwargs: Additional arguments to pass to json.dump().
+    """
+    path = pathlib.Path(path)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii, **kwargs)
+
+
+def load_yaml(path: str | pathlib.Path, safe: bool = True) -> dict | list:
+    """
+    Load data from a YAML file.
+
+    Args:
+        path: Path to the YAML file.
+        safe: If True, use safe_load for security (default: True).
+              If False, use FullLoader (allows arbitrary Python objects).
+
+    Returns:
+        Loaded data (typically dict or list), or empty dict if file is empty.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        yaml.YAMLError: If the file is not valid YAML.
+    """
+    path = pathlib.Path(path)
+    with open(path, encoding='utf-8') as f:
+        if safe:
+            return yaml.safe_load(f) or {}
+        else:
+            return yaml.load(f, Loader=yaml.FullLoader) or {}
+
+
+def save_yaml(
+    data: dict | list,
+    path: str | pathlib.Path,
+    indent: int = 4,
+    width: int = 1000,
+    allow_unicode: bool = True,
+    sort_keys: bool = False,
+    **kwargs,
+) -> None:
+    """
+    Save data to a YAML file with consistent formatting.
+
+    Args:
+        data: Data to save (dict or list).
+        path: Path to save the YAML file.
+        indent: Number of spaces for indentation (default: 4).
+        width: Maximum line width (default: 1000).
+        allow_unicode: If True, allow Unicode characters (default: True).
+        sort_keys: If True, sort dictionary keys (default: False).
+        **kwargs: Additional arguments to pass to yaml.dump().
+    """
+    path = pathlib.Path(path)
+    with open(path, 'w', encoding='utf-8') as f:
+        yaml.dump(
+            data,
+            f,
+            indent=indent,
+            width=width,
+            allow_unicode=allow_unicode,
+            sort_keys=sort_keys,
+            default_flow_style=False,
+            **kwargs,
+        )
+
+
+def load_config_file(path: str | pathlib.Path) -> dict:
+    """
+    Load a configuration file, automatically detecting JSON or YAML format.
+
+    This function intelligently tries to load the file based on its extension,
+    with fallback support if the primary format fails.
+
+    Supported extensions:
+    - .json: Tries JSON first, falls back to YAML
+    - .yaml, .yml: Tries YAML first, falls back to JSON
+    - Others: Tries YAML, then JSON
+
+    Args:
+        path: Path to the configuration file.
+
+    Returns:
+        Loaded configuration as a dictionary.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If neither JSON nor YAML parsing succeeds.
+    """
+    path = pathlib.Path(path)
+
+    if not path.exists():
+        raise FileNotFoundError(f'Configuration file not found: {path}')
+
+    # Try based on file extension
+    if path.suffix == '.json':
+        try:
+            return load_json(path)
+        except json.JSONDecodeError:
+            logger.warning(f'Failed to parse {path} as JSON, trying YAML')
+            try:
+                return load_yaml(path, safe=True)
+            except yaml.YAMLError as e:
+                raise ValueError(f'Failed to parse {path} as JSON or YAML') from e
+
+    elif path.suffix in ['.yaml', '.yml']:
+        try:
+            return load_yaml(path, safe=True)
+        except yaml.YAMLError:
+            logger.warning(f'Failed to parse {path} as YAML, trying JSON')
+            try:
+                return load_json(path)
+            except json.JSONDecodeError as e:
+                raise ValueError(f'Failed to parse {path} as YAML or JSON') from e
+
+    else:
+        # Unknown extension, try YAML first (more common for config)
+        try:
+            return load_yaml(path, safe=True)
+        except yaml.YAMLError:
+            try:
+                return load_json(path)
+            except json.JSONDecodeError as e:
+                raise ValueError(f'Failed to parse {path} as YAML or JSON') from e
+
+
 def _save_to_yaml(data, output_file='formatted_output.yaml'):
     """
     Save dictionary data to YAML with proper multi-line string formatting.
