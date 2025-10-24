@@ -1364,7 +1364,7 @@ class _NodeResults(_ElementResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=self._calculation_results.colors or colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1375,7 +1375,7 @@ class _NodeResults(_ElementResults):
         else:
             figure_like = plotting.with_matplotlib(
                 ds,
-                colors=self._calculation_results.colors or colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
@@ -1532,7 +1532,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_plotly(
                 data_left=inputs,
                 data_right=outputs,
-                colors=self._calculation_results.colors or colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
@@ -1546,7 +1546,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_matplotlib(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=self._calculation_results.colors or colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -1782,7 +1782,7 @@ class ComponentResults(_NodeResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=self._calculation_results.colors or colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1798,7 +1798,7 @@ class ComponentResults(_NodeResults):
                 charge_state_ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=self._calculation_results.colors or colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
@@ -1838,7 +1838,7 @@ class ComponentResults(_NodeResults):
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
                 ds,
-                colors=self._calculation_results.colors or colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
