@@ -196,6 +196,15 @@ if __name__ == '__main__':
     # --- Solve the Calculation and Save Results ---
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
+    calculation.results.setup_colors(
+        {
+            'CHP': 'red',
+            'Greys': ['Gastarif', 'Einspeisung', 'Heat Demand'],
+            'Storage': 'blue',
+            'Boiler': 'orange',
+        }
+    )
+
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # --- Analyze Results ---

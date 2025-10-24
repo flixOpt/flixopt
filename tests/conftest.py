@@ -848,4 +848,6 @@ def set_test_environment():
 
     pio.renderers.default = 'json'  # Use non-interactive renderer
 
+    fx.CONFIG.Plotting.default_show = False
+
     yield

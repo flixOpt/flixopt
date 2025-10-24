@@ -4,7 +4,6 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
-import json
 import logging
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, Optional
@@ -13,6 +12,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .config import CONFIG
 from .core import (
     ConversionError,
     DataConverter,
@@ -484,7 +484,7 @@ class FlowSystem(Interface):
         | list[
             Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
         ] = True,
-        show: bool = False,
+        show: bool | None = None,
     ) -> pyvis.network.Network | None:
         """
         Visualizes the network structure of a FlowSystem using PyVis, saving it as an interactive HTML file.
@@ -514,7 +514,9 @@ class FlowSystem(Interface):
         from . import plotting
 
         node_infos, edge_infos = self.network_infos()
-        return plotting.plot_network(node_infos, edge_infos, path, controls, show)
+        return plotting.plot_network(
+            node_infos, edge_infos, path, controls, show if show is not None else CONFIG.Plotting.default_show
+        )
 
     def start_network_app(self):
         """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.

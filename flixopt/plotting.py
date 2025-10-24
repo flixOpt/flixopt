@@ -40,8 +40,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.offline
 import xarray as xr
-from plotly.exceptions import PlotlyError
 
+from .color_processing import process_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('flixopt')
 
-# Define the colors for the 'portland' colormap in matplotlib
+# Define the colors for the 'portland' colorscale in matplotlib
 _portland_colors = [
     [12 / 255, 51 / 255, 131 / 255],  # Dark blue
     [10 / 255, 136 / 255, 186 / 255],  # Light blue
@@ -58,7 +58,7 @@ _portland_colors = [
     [217 / 255, 30 / 255, 30 / 255],  # Red
 ]
 
-# Check if the colormap already exists before registering it
+# Check if the colorscale already exists before registering it
 if hasattr(plt, 'colormaps'):  # Matplotlib >= 3.7
     registry = plt.colormaps
     if 'portland' not in registry:
@@ -73,9 +73,9 @@ ColorType = str | list[str] | dict[str, str]
 
 Color specifications can take several forms to accommodate different use cases:
 
-**Named Colormaps** (str):
-    - Standard colormaps: 'viridis', 'plasma', 'cividis', 'tab10', 'Set1'
-    - Energy-focused: 'portland' (custom flixopt colormap for energy systems)
+**Named colorscales** (str):
+    - Standard colorscales: 'turbo', 'plasma', 'cividis', 'tab10', 'Set1'
+    - Energy-focused: 'portland' (custom flixopt colorscale for energy systems)
     - Backend-specific maps available in Plotly and Matplotlib
 
 **Color Lists** (list[str]):
@@ -90,8 +90,8 @@ Color specifications can take several forms to accommodate different use cases:
 
 Examples:
     ```python
-    # Named colormap
-    colors = 'viridis'  # Automatic color generation
+    # Named colorscale
+    colors = 'turbo'  # Automatic color generation
 
     # Explicit color list
     colors = ['red', 'blue', 'green', '#FFD700']
@@ -114,218 +114,12 @@ Color Format Support:
 
 References:
     - HTML Color Names: https://htmlcolorcodes.com/color-names/
-    - Matplotlib Colormaps: https://matplotlib.org/stable/tutorials/colors/colormaps.html
+    - Matplotlib colorscales: https://matplotlib.org/stable/tutorials/colors/colorscales.html
     - Plotly Built-in Colorscales: https://plotly.com/python/builtin-colorscales/
 """
 
 PlottingEngine = Literal['plotly', 'matplotlib']
 """Identifier for the plotting engine to use."""
-
-
-class ColorProcessor:
-    """Intelligent color management system for consistent multi-backend visualization.
-
-    This class provides unified color processing across Plotly and Matplotlib backends,
-    ensuring consistent visual appearance regardless of the plotting engine used.
-    It handles color palette generation, named colormap translation, and intelligent
-    color cycling for complex datasets with many categories.
-
-    Key Features:
-        **Backend Agnostic**: Automatic color format conversion between engines
-        **Palette Management**: Support for named colormaps, custom palettes, and color lists
-        **Intelligent Cycling**: Smart color assignment for datasets with many categories
-        **Fallback Handling**: Graceful degradation when requested colormaps are unavailable
-        **Energy System Colors**: Built-in palettes optimized for energy system visualization
-
-    Color Input Types:
-        - **Named Colormaps**: 'viridis', 'plasma', 'portland', 'tab10', etc.
-        - **Color Lists**: ['red', 'blue', 'green'] or ['#FF0000', '#0000FF', '#00FF00']
-        - **Label Dictionaries**: {'Generator': 'red', 'Storage': 'blue', 'Load': 'green'}
-
-    Examples:
-        Basic color processing:
-
-        ```python
-        # Initialize for Plotly backend
-        processor = ColorProcessor(engine='plotly', default_colormap='viridis')
-
-        # Process different color specifications
-        colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
-        colors = processor.process_colors(['red', 'blue', 'green'], ['A', 'B', 'C'])
-        colors = processor.process_colors({'Wind': 'skyblue', 'Solar': 'gold'}, ['Wind', 'Solar', 'Gas'])
-
-        # Switch to Matplotlib
-        processor = ColorProcessor(engine='matplotlib')
-        mpl_colors = processor.process_colors('tab10', component_labels)
-        ```
-
-        Energy system visualization:
-
-        ```python
-        # Specialized energy system palette
-        energy_colors = {
-            'Natural_Gas': '#8B4513',  # Brown
-            'Electricity': '#FFD700',  # Gold
-            'Heat': '#FF4500',  # Red-orange
-            'Cooling': '#87CEEB',  # Sky blue
-            'Hydrogen': '#E6E6FA',  # Lavender
-            'Battery': '#32CD32',  # Lime green
-        }
-
-        processor = ColorProcessor('plotly')
-        flow_colors = processor.process_colors(energy_colors, flow_labels)
-        ```
-
-    Args:
-        engine: Plotting backend ('plotly' or 'matplotlib'). Determines output color format.
-        default_colormap: Fallback colormap when requested palettes are unavailable.
-            Common options: 'viridis', 'plasma', 'tab10', 'portland'.
-
-    """
-
-    def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str = 'viridis'):
-        """Initialize the color processor with specified backend and defaults."""
-        if engine not in ['plotly', 'matplotlib']:
-            raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
-        self.engine = engine
-        self.default_colormap = default_colormap
-
-    def _generate_colors_from_colormap(self, colormap_name: str, num_colors: int) -> list[Any]:
-        """
-        Generate colors from a named colormap.
-
-        Args:
-            colormap_name: Name of the colormap
-            num_colors: Number of colors to generate
-
-        Returns:
-            list of colors in the format appropriate for the engine
-        """
-        if self.engine == 'plotly':
-            try:
-                colorscale = px.colors.get_colorscale(colormap_name)
-            except PlotlyError as e:
-                logger.error(f"Colorscale '{colormap_name}' not found in Plotly. Using {self.default_colormap}: {e}")
-                colorscale = px.colors.get_colorscale(self.default_colormap)
-
-            # Generate evenly spaced points
-            color_points = [i / (num_colors - 1) for i in range(num_colors)] if num_colors > 1 else [0]
-            return px.colors.sample_colorscale(colorscale, color_points)
-
-        else:  # matplotlib
-            try:
-                cmap = plt.get_cmap(colormap_name, num_colors)
-            except ValueError as e:
-                logger.error(f"Colormap '{colormap_name}' not found in Matplotlib. Using {self.default_colormap}: {e}")
-                cmap = plt.get_cmap(self.default_colormap, num_colors)
-
-            return [cmap(i) for i in range(num_colors)]
-
-    def _handle_color_list(self, colors: list[str], num_labels: int) -> list[str]:
-        """
-        Handle a list of colors, cycling if necessary.
-
-        Args:
-            colors: list of color strings
-            num_labels: Number of labels that need colors
-
-        Returns:
-            list of colors matching the number of labels
-        """
-        if len(colors) == 0:
-            logger.error(f'Empty color list provided. Using {self.default_colormap} instead.')
-            return self._generate_colors_from_colormap(self.default_colormap, num_labels)
-
-        if len(colors) < num_labels:
-            logger.warning(
-                f'Not enough colors provided ({len(colors)}) for all labels ({num_labels}). Colors will cycle.'
-            )
-            # Cycle through the colors
-            color_iter = itertools.cycle(colors)
-            return [next(color_iter) for _ in range(num_labels)]
-        else:
-            # Trim if necessary
-            if len(colors) > num_labels:
-                logger.warning(
-                    f'More colors provided ({len(colors)}) than labels ({num_labels}). Extra colors will be ignored.'
-                )
-            return colors[:num_labels]
-
-    def _handle_color_dict(self, colors: dict[str, str], labels: list[str]) -> list[str]:
-        """
-        Handle a dictionary mapping labels to colors.
-
-        Args:
-            colors: Dictionary mapping labels to colors
-            labels: list of labels that need colors
-
-        Returns:
-            list of colors in the same order as labels
-        """
-        if len(colors) == 0:
-            logger.warning(f'Empty color dictionary provided. Using {self.default_colormap} instead.')
-            return self._generate_colors_from_colormap(self.default_colormap, len(labels))
-
-        # Find missing labels
-        missing_labels = sorted(set(labels) - set(colors.keys()))
-        if missing_labels:
-            logger.warning(
-                f'Some labels have no color specified: {missing_labels}. Using {self.default_colormap} for these.'
-            )
-
-            # Generate colors for missing labels
-            missing_colors = self._generate_colors_from_colormap(self.default_colormap, len(missing_labels))
-
-            # Create a copy to avoid modifying the original
-            colors_copy = colors.copy()
-            for i, label in enumerate(missing_labels):
-                colors_copy[label] = missing_colors[i]
-        else:
-            colors_copy = colors
-
-        # Create color list in the same order as labels
-        return [colors_copy[label] for label in labels]
-
-    def process_colors(
-        self,
-        colors: ColorType,
-        labels: list[str],
-        return_mapping: bool = False,
-    ) -> list[Any] | dict[str, Any]:
-        """
-        Process colors for the specified labels.
-
-        Args:
-            colors: Color specification (colormap name, list of colors, or label-to-color mapping)
-            labels: list of data labels that need colors assigned
-            return_mapping: If True, returns a dictionary mapping labels to colors;
-                           if False, returns a list of colors in the same order as labels
-
-        Returns:
-            Either a list of colors or a dictionary mapping labels to colors
-        """
-        if len(labels) == 0:
-            logger.error('No labels provided for color assignment.')
-            return {} if return_mapping else []
-
-        # Process based on type of colors input
-        if isinstance(colors, str):
-            color_list = self._generate_colors_from_colormap(colors, len(labels))
-        elif isinstance(colors, list):
-            color_list = self._handle_color_list(colors, len(labels))
-        elif isinstance(colors, dict):
-            color_list = self._handle_color_dict(colors, labels)
-        else:
-            logger.error(
-                f'Unsupported color specification type: {type(colors)}. Using {self.default_colormap} instead.'
-            )
-            color_list = self._generate_colors_from_colormap(self.default_colormap, len(labels))
-
-        # Return either a list or a mapping
-        if return_mapping:
-            return {label: color_list[i] for i, label in enumerate(labels)}
-        else:
-            return color_list
 
 
 def _ensure_dataset(data: xr.Dataset | pd.DataFrame | pd.Series) -> xr.Dataset:
@@ -373,31 +167,10 @@ def _validate_plotting_data(data: xr.Dataset, allow_empty: bool = False) -> None
             logger.debug(f"Variable '{var}' contains Inf values which may affect visualization.")
 
 
-def resolve_colors(
-    data: xr.Dataset,
-    colors: ColorType,
-    engine: PlottingEngine = 'plotly',
-) -> dict[str, str]:
-    """Resolve colors parameter to a dict mapping variable names to colors."""
-    # Get variable names from Dataset (always strings and unique)
-    labels = list(data.data_vars.keys())
-
-    # If explicit dict provided, use it directly
-    if isinstance(colors, dict):
-        return colors
-
-    # If string or list, use ColorProcessor (traditional behavior)
-    if isinstance(colors, (str, list)):
-        processor = ColorProcessor(engine=engine)
-        return processor.process_colors(colors, labels, return_mapping=True)
-
-    raise TypeError(f'Wrong type passed to resolve_colors(): {type(colors)}')
-
-
 def with_plotly(
     data: xr.Dataset | pd.DataFrame | pd.Series,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     ylabel: str = '',
     xlabel: str = '',
@@ -417,7 +190,7 @@ def with_plotly(
         data: An xarray Dataset, pandas DataFrame, or pandas Series to plot.
         mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for lines,
               'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
-        colors: Color specification (colormap, list, or dict mapping labels to colors).
+        colors: Color specification (colorscale, list, or dict mapping labels to colors).
         title: The main title of the plot.
         ylabel: The label for the y-axis.
         xlabel: The label for the x-axis.
@@ -476,8 +249,15 @@ def with_plotly(
         fig.update_layout(template='plotly_dark', width=1200, height=600)
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line','area', 'grouped_bar'}}, got {mode!r}")
+
+    # Apply CONFIG defaults if not explicitly set
+    if facet_cols is None:
+        facet_cols = CONFIG.Plotting.default_facet_cols
 
     # Ensure data is a Dataset and validate it
     data = _ensure_dataset(data)
@@ -496,7 +276,9 @@ def with_plotly(
         values = [float(data[var].values) for var in data.data_vars]
 
         # Resolve colors
-        color_discrete_map = resolve_colors(data, colors, engine='plotly')
+        color_discrete_map = process_colors(
+            colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        )
         marker_colors = [color_discrete_map.get(var, '#636EFA') for var in variables]
 
         # Create simple plot based on mode using go (not px) for better color control
@@ -587,8 +369,9 @@ def with_plotly(
 
     # Process colors
     all_vars = df_long['variable'].unique().tolist()
-    processed_colors = ColorProcessor(engine='plotly').process_colors(colors, all_vars)
-    color_discrete_map = {var: color for var, color in zip(all_vars, processed_colors, strict=True)}
+    color_discrete_map = process_colors(
+        colors, all_vars, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+    )
 
     # Determine which dimension to use for x-axis
     # Collect dimensions used for faceting and animation
@@ -705,7 +488,7 @@ def with_plotly(
 def with_matplotlib(
     data: xr.Dataset | pd.DataFrame | pd.Series,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -720,7 +503,7 @@ def with_matplotlib(
               the index represents time and each column represents a separate data series (variables).
         mode: Plotting mode. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification. Can be:
-            - A colormap name (e.g., 'turbo', 'plasma')
+            - A colorscale name (e.g., 'turbo', 'plasma')
             - A list of color strings (e.g., ['#ff0000', '#00ff00'])
             - A dict mapping column names to colors (e.g., {'Column1': '#ff0000'})
         title: The title of the plot.
@@ -738,6 +521,9 @@ def with_matplotlib(
           Negative values are stacked separately without extra labels in the legend.
         - If `mode` is 'line', stepped lines are drawn for each data series.
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     if mode not in ('stacked_bar', 'line'):
         raise ValueError(f"'mode' must be one of {{'stacked_bar','line'}} for matplotlib, got {mode!r}")
 
@@ -760,7 +546,9 @@ def with_matplotlib(
         values = [float(data[var].values) for var in data.data_vars]
 
         # Resolve colors
-        color_discrete_map = resolve_colors(data, colors, engine='matplotlib')
+        color_discrete_map = process_colors(
+            colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        )
         colors_list = [color_discrete_map.get(var, '#808080') for var in variables]
 
         # Create plot based on mode
@@ -791,7 +579,9 @@ def with_matplotlib(
         return fig, ax
 
     # Resolve colors first (includes validation)
-    color_discrete_map = resolve_colors(data, colors, engine='matplotlib')
+    color_discrete_map = process_colors(
+        colors, list(data.data_vars), default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+    )
 
     # Convert Dataset to DataFrame for matplotlib plotting (naturally wide-form)
     df = data.to_dataframe()
@@ -1199,7 +989,7 @@ def preprocess_data_for_pie(
 def dual_pie_with_plotly(
     data_left: xr.Dataset | pd.DataFrame | pd.Series,
     data_right: xr.Dataset | pd.DataFrame | pd.Series,
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1229,6 +1019,9 @@ def dual_pie_with_plotly(
     Returns:
         Plotly Figure object
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     # Preprocess data to Series
     left_series = preprocess_data_for_pie(data_left, lower_percentage_group)
     right_series = preprocess_data_for_pie(data_right, lower_percentage_group)
@@ -1244,7 +1037,7 @@ def dual_pie_with_plotly(
     all_labels = sorted(set(left_labels) | set(right_labels))
 
     # Create color map
-    color_map = ColorProcessor(engine='plotly').process_colors(colors, all_labels, return_mapping=True)
+    color_map = process_colors(colors, all_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
 
     # Create figure
     fig = go.Figure()
@@ -1294,7 +1087,7 @@ def dual_pie_with_plotly(
 def dual_pie_with_matplotlib(
     data_left: xr.Dataset | pd.DataFrame | pd.Series,
     data_right: xr.Dataset | pd.DataFrame | pd.Series,
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1308,7 +1101,7 @@ def dual_pie_with_matplotlib(
     Args:
         data_left: Data for the left pie chart.
         data_right: Data for the right pie chart.
-        colors: Color specification (colormap name, list of colors, or dict mapping)
+        colors: Color specification (colorscale name, list of colors, or dict mapping)
         title: The main title of the plot.
         subtitles: Tuple containing the subtitles for (left, right) charts.
         legend_title: The title for the legend.
@@ -1319,6 +1112,9 @@ def dual_pie_with_matplotlib(
     Returns:
         Tuple of (Figure, list of Axes)
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_qualitative_colorscale
+
     # Preprocess data to Series
     left_series = preprocess_data_for_pie(data_left, lower_percentage_group)
     right_series = preprocess_data_for_pie(data_right, lower_percentage_group)
@@ -1333,8 +1129,8 @@ def dual_pie_with_matplotlib(
     # Get all unique labels for consistent coloring
     all_labels = sorted(set(left_labels) | set(right_labels))
 
-    # Create color map
-    color_map = ColorProcessor(engine='matplotlib').process_colors(colors, all_labels, return_mapping=True)
+    # Create color map (process_colors always returns a dict)
+    color_map = process_colors(colors, all_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
 
     # Create figure
     fig, axes = plt.subplots(1, 2, figsize=figsize)
@@ -1400,11 +1196,11 @@ def dual_pie_with_matplotlib(
 
 def heatmap_with_plotly(
     data: xr.DataArray,
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
-    facet_cols: int = 3,
+    facet_cols: int | None = None,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
     | Literal['auto']
     | None = 'auto',
@@ -1427,8 +1223,8 @@ def heatmap_with_plotly(
     Args:
         data: An xarray DataArray containing the data to visualize. Should have at least
               2 dimensions, or a 'time' dimension that can be reshaped into 2D.
-        colors: Color specification (colormap name, list, or dict). Common options:
-                'viridis', 'plasma', 'RdBu', 'portland'.
+        colors: Color specification (colorscale name, list, or dict). Common options:
+                'turbo', 'plasma', 'RdBu', 'portland'.
         title: The main title of the heatmap.
         facet_by: Dimension to create facets for. Creates a subplot grid.
                   Can be a single dimension name or list (only first dimension used).
@@ -1484,6 +1280,13 @@ def heatmap_with_plotly(
         fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period', reshape_time=('W', 'D'))
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_sequential_colorscale
+
+    # Apply CONFIG defaults if not explicitly set
+    if facet_cols is None:
+        facet_cols = CONFIG.Plotting.default_facet_cols
+
     # Handle empty data
     if data.size == 0:
         return go.Figure()
@@ -1577,7 +1380,7 @@ def heatmap_with_plotly(
     # Create the imshow plot - px.imshow can work directly with xarray DataArrays
     common_args = {
         'img': data,
-        'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+        'color_continuous_scale': colors,
         'title': title,
     }
 
@@ -1601,7 +1404,7 @@ def heatmap_with_plotly(
         # Fallback: create a simple heatmap without faceting
         fallback_args = {
             'img': data.values,
-            'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+            'color_continuous_scale': colors,
             'title': title,
         }
         fallback_args.update(imshow_kwargs)
@@ -1612,7 +1415,7 @@ def heatmap_with_plotly(
 
 def heatmap_with_matplotlib(
     data: xr.DataArray,
-    colors: ColorType = 'viridis',
+    colors: ColorType | None = None,
     title: str = '',
     figsize: tuple[float, float] = (12, 6),
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
@@ -1635,7 +1438,7 @@ def heatmap_with_matplotlib(
         data: An xarray DataArray containing the data to visualize. Should have at least
               2 dimensions. If more than 2 dimensions exist, additional dimensions will
               be reduced by taking the first slice.
-        colors: Color specification. Should be a colormap name (e.g., 'turbo', 'RdBu').
+        colors: Color specification. Should be a colorscale name (e.g., 'turbo', 'RdBu').
         title: The title of the heatmap.
         figsize: The size of the figure (width, height) in inches.
         reshape_time: Time reshaping configuration:
@@ -1675,6 +1478,9 @@ def heatmap_with_matplotlib(
         fig, ax = heatmap_with_matplotlib(data_array, reshape_time=('D', 'h'))
         ```
     """
+    if colors is None:
+        colors = CONFIG.Plotting.default_sequential_colorscale
+
     # Initialize kwargs if not provided
     if imshow_kwargs is None:
         imshow_kwargs = {}
@@ -1726,11 +1532,8 @@ def heatmap_with_matplotlib(
         x_labels = 'x'
         y_labels = 'y'
 
-    # Process colormap
-    cmap = colors if isinstance(colors, str) else 'viridis'
-
     # Create the heatmap using imshow with user customizations
-    imshow_defaults = {'cmap': cmap, 'aspect': 'auto', 'origin': 'upper', 'vmin': vmin, 'vmax': vmax}
+    imshow_defaults = {'cmap': colors, 'aspect': 'auto', 'origin': 'upper', 'vmin': vmin, 'vmax': vmax}
     imshow_defaults.update(imshow_kwargs)  # User kwargs override defaults
     im = ax.imshow(values, **imshow_defaults)
 
@@ -1759,9 +1562,9 @@ def export_figure(
     default_path: pathlib.Path,
     default_filetype: str | None = None,
     user_path: pathlib.Path | None = None,
-    show: bool = True,
+    show: bool | None = None,
     save: bool = False,
-    dpi: int = 300,
+    dpi: int | None = None,
 ) -> go.Figure | tuple[plt.Figure, plt.Axes]:
     """
     Export a figure to a file and or show it.
@@ -1771,14 +1574,21 @@ def export_figure(
         default_path: The default file path if no user filename is provided.
         default_filetype: The default filetype if the path doesnt end with a filetype.
         user_path: An optional user-specified file path.
-        show: Whether to display the figure (default: True).
+        show: Whether to display the figure. If None, uses CONFIG.Plotting.default_show (default: None).
         save: Whether to save the figure (default: False).
-        dpi: DPI (dots per inch) for saving Matplotlib figures. If None, Matplotlib rcParams are used.
+        dpi: DPI (dots per inch) for saving Matplotlib figures. If None, uses CONFIG.Plotting.default_dpi.
 
     Raises:
         ValueError: If no default filetype is provided and the path doesn't specify a filetype.
         TypeError: If the figure type is not supported.
     """
+    # Apply CONFIG defaults if not explicitly set
+    if show is None:
+        show = CONFIG.Plotting.default_show
+
+    if dpi is None:
+        dpi = CONFIG.Plotting.default_dpi
+
     filename = user_path or default_path
     filename = filename.with_name(filename.name.replace('|', '__'))
     if filename.suffix == '':
@@ -1793,25 +1603,17 @@ def export_figure(
             filename = filename.with_suffix('.html')
 
         try:
-            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
-
-            if is_test_env:
-                # Test environment: never open browser, only save if requested
-                if save:
-                    fig.write_html(str(filename))
-                # Ignore show flag in tests
-            else:
-                # Production environment: respect show and save flags
-                if save and show:
-                    # Save and auto-open in browser
-                    plotly.offline.plot(fig, filename=str(filename))
-                elif save and not show:
-                    # Save without opening
-                    fig.write_html(str(filename))
-                elif show and not save:
-                    # Show interactively without saving
-                    fig.show()
-                # If neither save nor show: do nothing
+            # Respect show and save flags (tests should set CONFIG.Plotting.default_show=False)
+            if save and show:
+                # Save and auto-open in browser
+                plotly.offline.plot(fig, filename=str(filename))
+            elif save and not show:
+                # Save without opening
+                fig.write_html(str(filename))
+            elif show and not save:
+                # Show interactively without saving
+                fig.show()
+            # If neither save nor show: do nothing
         finally:
             # Cleanup to prevent socket warnings
             if hasattr(fig, '_renderer'):
@@ -1822,12 +1624,11 @@ def export_figure(
     elif isinstance(figure_like, tuple):
         fig, ax = figure_like
         if show:
-            # Only show if using interactive backend and not in test environment
+            # Only show if using interactive backend (tests should set CONFIG.Plotting.default_show=False)
             backend = matplotlib.get_backend().lower()
             is_interactive = backend not in {'agg', 'pdf', 'ps', 'svg', 'template'}
-            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
 
-            if is_interactive and not is_test_env:
+            if is_interactive:
                 plt.show()
 
         if save:
