@@ -20,6 +20,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
+def _rgb_string_to_hex(color: str) -> str:
+    """Convert Plotly RGB string format to hex.
+
+    Args:
+        color: Color in format 'rgb(R, G, B)' or already in hex
+
+    Returns:
+        Color in hex format '#RRGGBB'
+    """
+    if color.startswith('rgb('):
+        # Extract RGB values from 'rgb(R, G, B)' format
+        rgb_str = color[4:-1]  # Remove 'rgb(' and ')'
+        r, g, b = map(int, rgb_str.split(','))
+        return f'#{r:02x}{g:02x}{b:02x}'
+    return color
+
+
 def process_colors(
     colors: None | str | list[str] | dict[str, str],
     labels: list[str],
@@ -96,26 +113,6 @@ def resolve_colors(
     colors: None | str | list[str] | dict[str, str] | ComponentColorManager,
     default_colorscale: str = 'turbo',
 ) -> dict[str, str]:
-    """Resolve colors parameter to a dict mapping variable names to colors.
-
-    This is the unified interface that supports both simple color specifications
-    and ComponentColorManager instances.
-
-    Args:
-        labels: List of labels/variables that need colors
-        colors: Color specification (None, str, list, dict) or ComponentColorManager
-        default_colorscale: Fallback colorscale name
-
-    Returns:
-        Dictionary mapping each label to a color string
-    """
-    # Import here to avoid circular dependency
-    from .plotting import ComponentColorManager
-
-    if isinstance(colors, ComponentColorManager):
-        return colors.get_variable_colors(labels)
-
-    # Use the simplified process_colors for everything else
     return process_colors(colors, labels, default_colorscale)
 
 
@@ -217,7 +214,8 @@ def _try_get_colorscale(colorscale_name: str, num_colors: int) -> list[str] | No
     colorscale_title = colorscale_name.title()
     if hasattr(px.colors.qualitative, colorscale_title):
         color_list = getattr(px.colors.qualitative, colorscale_title)
-        return [color_list[i % len(color_list)] for i in range(num_colors)]
+        # Convert to hex format for matplotlib compatibility
+        return [_rgb_string_to_hex(color_list[i % len(color_list)]) for i in range(num_colors)]
 
     # Then try Plotly sequential/continuous colorscales
     try:
@@ -227,7 +225,9 @@ def _try_get_colorscale(colorscale_name: str, num_colors: int) -> list[str] | No
             sample_points = [0.5]
         else:
             sample_points = [i / (num_colors - 1) for i in range(num_colors)]
-        return px.colors.sample_colorscale(colorscale, sample_points)
+        colors = px.colors.sample_colorscale(colorscale, sample_points)
+        # Convert to hex format for matplotlib compatibility
+        return [_rgb_string_to_hex(c) for c in colors]
     except PlotlyError:
         pass
 
