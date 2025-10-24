@@ -2306,10 +2306,11 @@ def plot_heatmap(
             reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
 
     # Handle deprecated color_map parameter
-    if color_map is not None and colors is not None:  # User explicitly set colors
-        raise ValueError(
-            "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
-        )
+    if color_map is not None:
+        if colors is not None:  # User explicitly set colors
+            raise ValueError(
+                "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
+            )
 
         import warnings
 
