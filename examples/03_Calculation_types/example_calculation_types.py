@@ -206,6 +206,7 @@ if __name__ == '__main__':
         mode='line',
         title='Charge State Comparison',
         ylabel='Charge state',
+        xlabel='Time in h',
     ).write_html('results/Charge State.html')
 
     fx.plotting.with_plotly(
@@ -213,6 +214,7 @@ if __name__ == '__main__':
         mode='line',
         title='BHKW2(Q_th) Flow Rate Comparison',
         ylabel='Flow rate',
+        xlabel='Time in h',
     ).write_html('results/BHKW2 Thermal Power.html')
 
     fx.plotting.with_plotly(
@@ -220,6 +222,7 @@ if __name__ == '__main__':
         mode='line',
         title='Operation Cost Comparison',
         ylabel='Costs [€]',
+        xlabel='Time in h',
     ).write_html('results/Operation Costs.html')
 
     fx.plotting.with_plotly(

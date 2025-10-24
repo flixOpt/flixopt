@@ -58,15 +58,15 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### ♻️ Changed
 - **Template integration**: Plotly templates now fully control plot styling without hardcoded overrides
-- **Dataset first plotting**: Underlying plotting methods in plotting.py now use `xr.Dataset` as the main datatype, converting to it if they get a DataFrame passed
+- **Dataset first plotting**: Underlying plotting methods in `plotting.py` now use `xr.Dataset` as the main datatype. DataFrames are automatically converted via `_ensure_dataset()`. Both DataFrames and Datasets can be passed to plotting functions without code changes.
 
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
 
 ### 🐛 Fixed
-- Improved error messages for matplotlib with multidimensional data
-- Better dimension validation in `plot_heatmap()`
+- Improved error messages for `engine='matplotlib'` with multidimensional data
+- Better dimension validation in `results.plot_heatmap()`
 
 ### 🔒 Security
 
