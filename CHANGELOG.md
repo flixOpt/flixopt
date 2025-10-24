@@ -54,6 +54,8 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### ✨ Added
 - Support for plotting kwargs in `results.py`, passed to plotly express and matplotlib.
+- Added method `setup_colors()` to create a colormapping with similar colors for all variables of a Component. THis is used by default to produce plots with `CalculationResults`
+- More Config options
 
 ### 💥 Breaking Changes
 
