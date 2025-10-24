@@ -1212,7 +1212,7 @@ def dual_pie_with_plotly(
     all_labels = sorted(set(left_labels) | set(right_labels))
 
     # Create color map
-    color_map = ColorProcessor(engine='matplotlib').process_colors(colors, all_labels, return_mapping=True)
+    color_map = ColorProcessor(engine='plotly').process_colors(colors, all_labels, return_mapping=True)
 
     # Create figure
     fig = go.Figure()
