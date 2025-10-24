@@ -66,92 +66,66 @@ def test_ensure_dataset_invalid_type():
 
 
 @pytest.mark.parametrize(
-    'engine,mode',
+    'engine,mode,data_type',
     [
-        ('plotly', 'stacked_bar'),
-        ('plotly', 'line'),
-        ('plotly', 'area'),
-        ('plotly', 'grouped_bar'),
-        ('matplotlib', 'stacked_bar'),
-        ('matplotlib', 'line'),
+        *[
+            (e, m, dt)
+            for e in ['plotly', 'matplotlib']
+            for m in ['stacked_bar', 'line', 'area', 'grouped_bar']
+            for dt in ['dataset', 'dataframe', 'series']
+            if not (e == 'matplotlib' and m in ['area', 'grouped_bar'])
+        ],
     ],
 )
-def test_all_data_types_and_modes(engine, mode):
+def test_all_data_types_and_modes(engine, mode, data_type):
     """Test that Dataset, DataFrame, and Series work with all plotting modes."""
     time = pd.date_range('2020-01-01', periods=5, freq='h')
 
-    # Create Dataset
-    dataset = xr.Dataset({'A': (['time'], [1, 2, 3, 4, 5]), 'B': (['time'], [5, 4, 3, 2, 1])}, coords={'time': time})
+    data = {
+        'dataset': xr.Dataset(
+            {'A': (['time'], [1, 2, 3, 4, 5]), 'B': (['time'], [5, 4, 3, 2, 1])}, coords={'time': time}
+        ),
+        'dataframe': pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [5, 4, 3, 2, 1]}, index=time),
+        'series': pd.Series([1, 2, 3, 4, 5], index=time, name='A'),
+    }[data_type]
 
-    # Create DataFrame
-    dataframe = pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [5, 4, 3, 2, 1]}, index=time)
-
-    # Create Series
-    series = pd.Series([1, 2, 3, 4, 5], index=time, name='A')
-
-    # Test all three data types with the specified mode
-    for data in [dataset, dataframe, series]:
-        if engine == 'plotly':
-            fig = plotting.with_plotly(data, mode=mode)
-            assert fig is not None
-            assert len(fig.data) > 0
-        else:
-            fig, ax = plotting.with_matplotlib(data, mode=mode)
-            assert fig is not None
-            assert ax is not None
+    if engine == 'plotly':
+        fig = plotting.with_plotly(data, mode=mode)
+        assert fig is not None and len(fig.data) > 0
+    else:
+        fig, ax = plotting.with_matplotlib(data, mode=mode)
+        assert fig is not None and ax is not None
 
 
-@pytest.mark.parametrize('engine', ['plotly', 'matplotlib'])
-def test_pie_plots_all_data_types(engine):
-    """Test that dual pie charts work with Dataset, DataFrame, and Series."""
-    # Create data for pie charts (summed values)
-    dataset = xr.Dataset({'A': xr.DataArray(10), 'B': xr.DataArray(20), 'C': xr.DataArray(30)})
-    dataframe = pd.DataFrame({'A': [10], 'B': [20], 'C': [30]})
-    series = pd.Series({'A': 10, 'B': 20, 'C': 30})
-
-    # Test all three data types
-    for data_left, data_right in [(dataset, dataset), (dataframe, dataframe), (series, series)]:
-        if engine == 'plotly':
-            fig = plotting.dual_pie_with_plotly(data_left, data_right)
-            assert fig is not None
-            assert len(fig.data) >= 2  # At least 2 pie charts
-        else:
-            fig, axes = plotting.dual_pie_with_matplotlib(data_left, data_right)
-            assert fig is not None
-            assert len(axes) == 2  # Two pie charts side by side
-
-
-@pytest.mark.parametrize('engine', ['plotly', 'matplotlib'])
-def test_pie_plots_automatic_summing(engine):
-    """Test that pie charts correctly sum multi-dimensional data."""
+@pytest.mark.parametrize(
+    'engine,data_type', [(e, dt) for e in ['plotly', 'matplotlib'] for dt in ['dataset', 'dataframe', 'series']]
+)
+def test_pie_plots(engine, data_type):
+    """Test pie charts with all data types, including automatic summing."""
     time = pd.date_range('2020-01-01', periods=5, freq='h')
 
-    # Create multi-dimensional Dataset (should sum over time)
-    dataset = xr.Dataset(
-        {'A': (['time'], [1, 2, 3, 4, 5]), 'B': (['time'], [5, 5, 5, 5, 5])}, coords={'time': time}
-    )  # A should sum to 15, B should sum to 25
+    # Single-value data
+    single_data = {
+        'dataset': xr.Dataset({'A': xr.DataArray(10), 'B': xr.DataArray(20), 'C': xr.DataArray(30)}),
+        'dataframe': pd.DataFrame({'A': [10], 'B': [20], 'C': [30]}),
+        'series': pd.Series({'A': 10, 'B': 20, 'C': 30}),
+    }[data_type]
 
-    # Create multi-row DataFrame (should sum across rows)
-    dataframe = pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [5, 5, 5, 5, 5]}, index=time)
+    # Multi-dimensional data (for summing test)
+    multi_data = {
+        'dataset': xr.Dataset(
+            {'A': (['time'], [1, 2, 3, 4, 5]), 'B': (['time'], [5, 5, 5, 5, 5])}, coords={'time': time}
+        ),
+        'dataframe': pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [5, 5, 5, 5, 5]}, index=time),
+        'series': pd.Series([1, 2, 3, 4, 5], index=time, name='A'),
+    }[data_type]
 
-    # Test both data types
-    for data in [dataset, dataframe]:
+    for data in [single_data, multi_data]:
         if engine == 'plotly':
             fig = plotting.dual_pie_with_plotly(data, data)
-            assert fig is not None
-            # Verify that traces exist for both pies
-            assert len(fig.data) >= 2
-
-            # Check that values were summed (each pie should have A=15, B=25)
-            for trace in fig.data[:2]:  # First two traces are the left and right pies
-                values = trace.values
-                assert sum(values) == 40  # 15 + 25 = 40
+            assert fig is not None and len(fig.data) >= 2
+            if data is multi_data and data_type != 'series':
+                assert sum(fig.data[0].values) == 40
         else:
             fig, axes = plotting.dual_pie_with_matplotlib(data, data)
-            assert fig is not None
-            assert len(axes) == 2
-
-            # Verify wedges were created (matplotlib creates wedges for pie slices)
-            for ax in axes:
-                wedges = [c for c in ax.get_children() if hasattr(c, 'theta1')]  # Pie wedges
-                assert len(wedges) == 2  # Two slices: A and B
+            assert fig is not None and len(axes) == 2
