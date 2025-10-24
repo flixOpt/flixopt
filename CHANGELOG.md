@@ -53,6 +53,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
+- Support for plotting kwargs in `results.py`, passed to plotly express and matplotlib.
 
 ### 💥 Breaking Changes
 
@@ -63,6 +64,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
+- Removed  `plotting.pie_with_plotly()` method as it was not used
 
 ### 🐛 Fixed
 - Improved error messages for `engine='matplotlib'` with multidimensional data
