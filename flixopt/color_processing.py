@@ -241,7 +241,7 @@ def _try_get_colorscale(colorscale_name: str, num_colors: int) -> list[str] | No
         colors = px.colors.sample_colorscale(colorscale, sample_points)
         # Convert to hex format for matplotlib compatibility
         return [_rgb_string_to_hex(c) for c in colors]
-    except PlotlyError:
+    except (PlotlyError, ValueError):
         pass
 
     # Finally try Matplotlib colorscales
