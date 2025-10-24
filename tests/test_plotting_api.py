@@ -63,3 +63,29 @@ def test_ensure_dataset_invalid_type():
     """Test that invalid types raise error via the public API."""
     with pytest.raises(TypeError, match='xr\\.Dataset|pd\\.DataFrame'):
         plotting.with_plotly([1, 2, 3], mode='line')
+
+
+@pytest.mark.parametrize('engine', ['plotly', 'matplotlib'])
+def test_all_data_types_supported(engine):
+    """Test that Dataset, DataFrame, and Series all work with both plotting engines."""
+    time = pd.date_range('2020-01-01', periods=5, freq='h')
+
+    # Create Dataset
+    dataset = xr.Dataset({'A': (['time'], [1, 2, 3, 4, 5]), 'B': (['time'], [5, 4, 3, 2, 1])}, coords={'time': time})
+
+    # Create DataFrame
+    dataframe = pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [5, 4, 3, 2, 1]}, index=time)
+
+    # Create Series
+    series = pd.Series([1, 2, 3, 4, 5], index=time, name='A')
+
+    # Test all three types
+    for data in [dataset, dataframe, series]:
+        if engine == 'plotly':
+            fig = plotting.with_plotly(data, mode='line')
+            assert fig is not None
+            assert len(fig.data) > 0
+        else:
+            fig, ax = plotting.with_matplotlib(data, mode='line')
+            assert fig is not None
+            assert ax is not None
