@@ -11,12 +11,13 @@ from flixopt import plotting
 @pytest.fixture
 def sample_dataset():
     """Create a sample xarray Dataset for testing."""
+    rng = np.random.default_rng(0)
     time = np.arange(10)
     data = xr.Dataset(
         {
-            'var1': (['time'], np.random.rand(10)),
-            'var2': (['time'], np.random.rand(10)),
-            'var3': (['time'], np.random.rand(10)),
+            'var1': (['time'], rng.random(10)),
+            'var2': (['time'], rng.random(10)),
+            'var3': (['time'], rng.random(10)),
         },
         coords={'time': time},
     )
@@ -26,8 +27,9 @@ def sample_dataset():
 @pytest.fixture
 def sample_dataframe():
     """Create a sample pandas DataFrame for testing."""
+    rng = np.random.default_rng(1)
     time = np.arange(10)
-    df = pd.DataFrame({'var1': np.random.rand(10), 'var2': np.random.rand(10), 'var3': np.random.rand(10)}, index=time)
+    df = pd.DataFrame({'var1': rng.random(10), 'var2': rng.random(10), 'var3': rng.random(10)}, index=time)
     df.index.name = 'time'
     return df
 
@@ -130,7 +132,7 @@ def test_pie_plots(engine, data_type):
             fig = plotting.dual_pie_with_plotly(data, data)
             assert fig is not None and len(fig.data) >= 2
             if data is multi_data and data_type != 'series':
-                assert sum(fig.data[0].values) == 40
+                assert sum(fig.data[0].values) == pytest.approx(40)
         else:
             fig, axes = plotting.dual_pie_with_matplotlib(data, data)
             assert fig is not None and len(axes) == 2
