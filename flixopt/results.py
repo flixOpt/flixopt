@@ -334,9 +334,10 @@ class CalculationResults:
 
         Args:
             config: Configuration for color assignment. Can be:
-                - dict: Maps colors/colorscales to component(s):
-                    * 'color_name': 'component1'  # Single color to single component
-                    * 'color_name': ['component1', 'component2']  # Single color to multiple components
+                - dict: Maps components to colors/colorscales:
+                    * 'component1': 'red'  # Single component to single color
+                    * 'component1': '#FF0000'  # Single component to hex color
+                    - OR maps colorscales to multiple components:
                     * 'colorscale_name': ['component1', 'component2']  # Colorscale across components
                 - str: Path to a JSON/YAML config file or a colorscale name to apply to all
                 - Path: Path to a JSON/YAML config file
@@ -345,10 +346,10 @@ class CalculationResults:
 
         Examples:
             setup_colors({
-                # Direct colors
-                '#FF0000': 'Boiler1',
-                'darkred': 'CHP',
-                # Grouped by colorscale
+                # Direct component-to-color mappings
+                'Boiler1': '#FF0000',
+                'CHP': 'darkred',
+                # Colorscale for multiple components
                 'Oranges': ['Solar1', 'Solar2'],
                 'Blues': ['Wind1', 'Wind2'],
                 'Greens': ['Battery1', 'Battery2', 'Battery3'],
@@ -409,20 +410,39 @@ class CalculationResults:
         configured_components = set()
 
         # Process each configuration entry
-        for color_spec, component_spec in config_dict.items():
-            # Normalize to list of component names
-            components: list[str] = [component_spec] if isinstance(component_spec, str) else list(component_spec)
+        for key, value in config_dict.items():
+            # Check if value is a list (colorscale -> [components])
+            # or a string (component -> color OR colorscale -> [components])
 
-            # Validate components exist
-            for component in components:
-                if component not in self.components:
-                    raise ValueError(f"Component '{component}' not found")
+            if isinstance(value, list):
+                # key is colorscale, value is list of components
+                # Format: 'Blues': ['Wind1', 'Wind2']
+                components = value
+                colorscale_name = key
 
-            configured_components.update(components)
+                # Validate components exist
+                for component in components:
+                    if component not in self.components:
+                        raise ValueError(f"Component '{component}' not found")
 
-            # Get colors for these components using process_colors
-            colors_for_components = process_colors(color_spec, components)
-            component_colors.update(colors_for_components)
+                configured_components.update(components)
+
+                # Use process_colors to get one color per component from the colorscale
+                colors_for_components = process_colors(colorscale_name, components)
+                component_colors.update(colors_for_components)
+
+            elif isinstance(value, str):
+                # Check if key is an existing component
+                if key in self.components:
+                    # Format: 'CHP': 'red' (component -> color)
+                    component, color = key, value
+
+                    configured_components.add(component)
+                    component_colors[component] = color
+                else:
+                    raise ValueError(f"Component '{key}' not found")
+            else:
+                raise TypeError(f'Config value must be str or list, got {type(value)}')
 
         # Step 2: Assign colors to remaining unconfigured components
         remaining_components = list(set(self.components.keys()) - configured_components)
