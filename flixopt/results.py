@@ -720,7 +720,7 @@ class CalculationResults:
         variable_name: str | list[str],
         save: bool | pathlib.Path = False,
         show: bool = True,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType = 'turbo',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
@@ -1025,7 +1025,7 @@ class _NodeResults(_ElementResults):
         self,
         save: bool | pathlib.Path = False,
         show: bool = True,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType = 'turbo',
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
@@ -1214,7 +1214,7 @@ class _NodeResults(_ElementResults):
     def plot_node_balance_pie(
         self,
         lower_percentage_group: float = 5,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType = 'turbo',
         text_info: str = 'percent+label+value',
         save: bool | pathlib.Path = False,
         show: bool = True,
@@ -1481,7 +1481,7 @@ class ComponentResults(_NodeResults):
         self,
         save: bool | pathlib.Path = False,
         show: bool = True,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType = 'turbo',
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'area',
         select: dict[FlowSystemDimensions, Any] | None = None,
@@ -2099,7 +2099,7 @@ def plot_heatmap(
     data: xr.DataArray | xr.Dataset,
     name: str | None = None,
     folder: pathlib.Path | None = None,
-    colors: plotting.ColorType = 'viridis',
+    colors: plotting.ColorType = 'turbo',
     save: bool | pathlib.Path = False,
     show: bool = True,
     engine: plotting.PlottingEngine = 'plotly',
@@ -2188,7 +2188,7 @@ def plot_heatmap(
     # Handle deprecated color_map parameter
     if color_map is not None:
         # Check for conflict with new parameter
-        if colors != 'viridis':  # User explicitly set colors
+        if colors != 'turbo':  # User explicitly set colors
             raise ValueError(
                 "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
             )

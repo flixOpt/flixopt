@@ -74,7 +74,7 @@ ColorType = str | list[str] | dict[str, str]
 Color specifications can take several forms to accommodate different use cases:
 
 **Named Colormaps** (str):
-    - Standard colormaps: 'viridis', 'plasma', 'cividis', 'tab10', 'Set1'
+    - Standard colormaps: 'turbo', 'plasma', 'cividis', 'tab10', 'Set1'
     - Energy-focused: 'portland' (custom flixopt colormap for energy systems)
     - Backend-specific maps available in Plotly and Matplotlib
 
@@ -91,7 +91,7 @@ Color specifications can take several forms to accommodate different use cases:
 Examples:
     ```python
     # Named colormap
-    colors = 'viridis'  # Automatic color generation
+    colors = 'turbo'  # Automatic color generation
 
     # Explicit color list
     colors = ['red', 'blue', 'green', '#FFD700']
@@ -138,7 +138,7 @@ class ColorProcessor:
         **Energy System Colors**: Built-in palettes optimized for energy system visualization
 
     Color Input Types:
-        - **Named Colormaps**: 'viridis', 'plasma', 'portland', 'tab10', etc.
+        - **Named Colormaps**: 'turbo', 'plasma', 'portland', 'tab10', etc.
         - **Color Lists**: ['red', 'blue', 'green'] or ['#FF0000', '#0000FF', '#00FF00']
         - **Label Dictionaries**: {'Generator': 'red', 'Storage': 'blue', 'Load': 'green'}
 
@@ -147,7 +147,7 @@ class ColorProcessor:
 
         ```python
         # Initialize for Plotly backend
-        processor = ColorProcessor(engine='plotly', default_colormap='viridis')
+        processor = ColorProcessor(engine='plotly', default_colormap='turbo')
 
         # Process different color specifications
         colors = processor.process_colors('plasma', ['Gen1', 'Gen2', 'Storage'])
@@ -179,11 +179,11 @@ class ColorProcessor:
     Args:
         engine: Plotting backend ('plotly' or 'matplotlib'). Determines output color format.
         default_colormap: Fallback colormap when requested palettes are unavailable.
-            Common options: 'viridis', 'plasma', 'tab10', 'portland'.
+            Common options: 'turbo', 'plasma', 'tab10', 'portland'.
 
     """
 
-    def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str = 'viridis'):
+    def __init__(self, engine: PlottingEngine = 'plotly', default_colormap: str = 'turbo'):
         """Initialize the color processor with specified backend and defaults."""
         if engine not in ['plotly', 'matplotlib']:
             raise TypeError(f'engine must be "plotly" or "matplotlib", but is {engine}')
@@ -397,7 +397,7 @@ def resolve_colors(
 def with_plotly(
     data: xr.Dataset | pd.DataFrame | pd.Series,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
-    colors: ColorType = 'viridis',
+    colors: ColorType = 'turbo',
     title: str = '',
     ylabel: str = '',
     xlabel: str = '',
@@ -705,7 +705,7 @@ def with_plotly(
 def with_matplotlib(
     data: xr.Dataset | pd.DataFrame | pd.Series,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
-    colors: ColorType = 'viridis',
+    colors: ColorType = 'turbo',
     title: str = '',
     ylabel: str = '',
     xlabel: str = 'Time in h',
@@ -1199,7 +1199,7 @@ def preprocess_data_for_pie(
 def dual_pie_with_plotly(
     data_left: xr.Dataset | pd.DataFrame | pd.Series,
     data_right: xr.Dataset | pd.DataFrame | pd.Series,
-    colors: ColorType = 'viridis',
+    colors: ColorType = 'turbo',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1294,7 +1294,7 @@ def dual_pie_with_plotly(
 def dual_pie_with_matplotlib(
     data_left: xr.Dataset | pd.DataFrame | pd.Series,
     data_right: xr.Dataset | pd.DataFrame | pd.Series,
-    colors: ColorType = 'viridis',
+    colors: ColorType = 'turbo',
     title: str = '',
     subtitles: tuple[str, str] = ('Left Chart', 'Right Chart'),
     legend_title: str = '',
@@ -1400,7 +1400,7 @@ def dual_pie_with_matplotlib(
 
 def heatmap_with_plotly(
     data: xr.DataArray,
-    colors: ColorType = 'viridis',
+    colors: ColorType = 'turbo',
     title: str = '',
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
@@ -1428,7 +1428,7 @@ def heatmap_with_plotly(
         data: An xarray DataArray containing the data to visualize. Should have at least
               2 dimensions, or a 'time' dimension that can be reshaped into 2D.
         colors: Color specification (colormap name, list, or dict). Common options:
-                'viridis', 'plasma', 'RdBu', 'portland'.
+                'turbo', 'plasma', 'RdBu', 'portland'.
         title: The main title of the heatmap.
         facet_by: Dimension to create facets for. Creates a subplot grid.
                   Can be a single dimension name or list (only first dimension used).
@@ -1577,7 +1577,7 @@ def heatmap_with_plotly(
     # Create the imshow plot - px.imshow can work directly with xarray DataArrays
     common_args = {
         'img': data,
-        'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+        'color_continuous_scale': colors if isinstance(colors, str) else 'turbo',
         'title': title,
     }
 
@@ -1601,7 +1601,7 @@ def heatmap_with_plotly(
         # Fallback: create a simple heatmap without faceting
         fallback_args = {
             'img': data.values,
-            'color_continuous_scale': colors if isinstance(colors, str) else 'viridis',
+            'color_continuous_scale': colors if isinstance(colors, str) else 'turbo',
             'title': title,
         }
         fallback_args.update(imshow_kwargs)
@@ -1612,7 +1612,7 @@ def heatmap_with_plotly(
 
 def heatmap_with_matplotlib(
     data: xr.DataArray,
-    colors: ColorType = 'viridis',
+    colors: ColorType = 'turbo',
     title: str = '',
     figsize: tuple[float, float] = (12, 6),
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
@@ -1727,7 +1727,7 @@ def heatmap_with_matplotlib(
         y_labels = 'y'
 
     # Process colormap
-    cmap = colors if isinstance(colors, str) else 'viridis'
+    cmap = colors if isinstance(colors, str) else 'turbo'
 
     # Create the heatmap using imshow with user customizations
     imshow_defaults = {'cmap': cmap, 'aspect': 'auto', 'origin': 'upper', 'vmin': vmin, 'vmax': vmax}
