@@ -406,8 +406,6 @@ def with_plotly(
     facet_cols: int | None = None,
     shared_yaxes: bool = True,
     shared_xaxes: bool = True,
-    trace_kwargs: dict[str, Any] | None = None,
-    layout_kwargs: dict[str, Any] | None = None,
     **px_kwargs: Any,
 ) -> go.Figure:
     """
@@ -431,15 +429,13 @@ def with_plotly(
         facet_cols: Number of columns in the facet grid (used when facet_by is single dimension).
         shared_yaxes: Whether subplots share y-axes.
         shared_xaxes: Whether subplots share x-axes.
-        trace_kwargs: Optional dict of parameters to pass to fig.update_traces().
-                     Use this to customize trace properties (e.g., marker style, line width).
-        layout_kwargs: Optional dict of parameters to pass to fig.update_layout().
-                      Use this to customize layout properties (e.g., width, height, legend position).
         **px_kwargs: Additional keyword arguments passed to the underlying Plotly Express function
                     (px.bar, px.line, px.area). These override default arguments if provided.
+                    Examples: range_x=[0, 100], range_y=[0, 50], category_orders={...}, line_shape='linear'
 
     Returns:
-        A Plotly figure object containing the faceted/animated plot.
+        A Plotly figure object containing the faceted/animated plot. You can further customize
+        the returned figure using Plotly's methods (e.g., fig.update_traces(), fig.update_layout()).
 
     Examples:
         Simple plot:
@@ -464,6 +460,20 @@ def with_plotly(
 
         ```python
         fig = with_plotly(dataset, facet_by='scenario', animate_by='period')
+        ```
+
+        Customize with Plotly Express kwargs:
+
+        ```python
+        fig = with_plotly(dataset, range_y=[0, 100], line_shape='linear')
+        ```
+
+        Further customize the returned figure:
+
+        ```python
+        fig = with_plotly(dataset, mode='line')
+        fig.update_traces(line={'width': 5, 'dash': 'dot'})
+        fig.update_layout(template='plotly_dark', width=1200, height=600)
         ```
     """
     if mode not in ('stacked_bar', 'line', 'area', 'grouped_bar'):
@@ -688,12 +698,6 @@ def with_plotly(
         fig.update_yaxes(matches=None)
     if not shared_xaxes:
         fig.update_xaxes(matches=None)
-
-    # Apply user-provided trace and layout customizations
-    if trace_kwargs:
-        fig.update_traces(**trace_kwargs)
-    if layout_kwargs:
-        fig.update_layout(**layout_kwargs)
 
     return fig
 

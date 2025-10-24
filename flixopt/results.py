@@ -1072,11 +1072,8 @@ class _NodeResults(_ElementResults):
 
                 **For Plotly engine** (`engine='plotly'`):
 
-                - **trace_kwargs** (dict): Customize traces via `fig.update_traces()`.
-                  Example: `trace_kwargs={'line': {'width': 5, 'dash': 'dot'}}`
-                - **layout_kwargs** (dict): Customize layout via `fig.update_layout()`.
-                  Example: `layout_kwargs={'width': 1200, 'height': 600, 'template': 'plotly_dark'}`
                 - Any Plotly Express parameter for px.bar()/px.line()/px.area()
+                  Example: `range_y=[0, 100]`, `line_shape='linear'`
 
                 **For Matplotlib engine** (`engine='matplotlib'`):
 
@@ -1085,6 +1082,9 @@ class _NodeResults(_ElementResults):
 
                 See :func:`flixopt.plotting.with_plotly` and :func:`flixopt.plotting.with_matplotlib`
                 for complete parameter reference.
+
+                Note: For Plotly, you can further customize the returned figure using `fig.update_traces()`
+                and `fig.update_layout()` after calling this method.
 
         Examples:
             Basic plot (current behavior):
@@ -1121,19 +1121,20 @@ class _NodeResults(_ElementResults):
 
             >>> results['Boiler'].plot_node_balance(engine='matplotlib', save='figure.png', dpi=600)
 
-            Custom Plotly theme and layout:
+            Plotly Express customization (e.g., set y-axis range):
 
-            >>> results['Boiler'].plot_node_balance(
-            ...     layout_kwargs={'template': 'plotly_dark', 'width': 1200, 'height': 600}
-            ... )
-
-            Custom line styling:
-
-            >>> results['Boiler'].plot_node_balance(mode='line', trace_kwargs={'line': {'width': 5, 'dash': 'dot'}})
+            >>> results['Boiler'].plot_node_balance(range_y=[0, 100])
 
             Custom matplotlib appearance:
 
             >>> results['Boiler'].plot_node_balance(engine='matplotlib', plot_kwargs={'linewidth': 3, 'alpha': 0.7})
+
+            Further customize Plotly figure after creation:
+
+            >>> fig = results['Boiler'].plot_node_balance(mode='line', show=False)
+            >>> fig.update_traces(line={'width': 5, 'dash': 'dot'})
+            >>> fig.update_layout(template='plotly_dark', width=1200, height=600)
+            >>> fig.show()
         """
         # Handle deprecated indexer parameter
         if indexer is not None:
@@ -1513,9 +1514,8 @@ class ComponentResults(_NodeResults):
 
                 **For Plotly engine:**
 
-                - **trace_kwargs** (dict): Customize traces via `fig.update_traces()`.
-                - **layout_kwargs** (dict): Customize layout via `fig.update_layout()`.
                 - Any Plotly Express parameter for px.bar()/px.line()/px.area()
+                  Example: `range_y=[0, 100]`, `line_shape='linear'`
 
                 **For Matplotlib engine:**
 
@@ -1523,6 +1523,9 @@ class ComponentResults(_NodeResults):
 
                 See :func:`flixopt.plotting.with_plotly` and :func:`flixopt.plotting.with_matplotlib`
                 for complete parameter reference.
+
+                Note: For Plotly, you can further customize the returned figure using `fig.update_traces()`
+                and `fig.update_layout()` after calling this method.
 
         Raises:
             ValueError: If component is not a storage.
@@ -1544,9 +1547,11 @@ class ComponentResults(_NodeResults):
 
             >>> results['Storage'].plot_charge_state(facet_by='scenario', animate_by='period')
 
-            Custom layout:
+            Custom layout after creation:
 
-            >>> results['Storage'].plot_charge_state(layout_kwargs={'template': 'plotly_dark', 'height': 800})
+            >>> fig = results['Storage'].plot_charge_state(show=False)
+            >>> fig.update_layout(template='plotly_dark', height=800)
+            >>> fig.show()
 
             High-resolution export:
 

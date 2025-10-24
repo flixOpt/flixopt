@@ -33,13 +33,18 @@ def sample_dataframe():
 
 
 def test_kwargs_passthrough_plotly(sample_dataset):
-    """Test that backend-specific kwargs are passed through correctly."""
+    """Test that px_kwargs are passed through and figure can be customized after creation."""
+    # Test that px_kwargs are passed through
     fig = plotting.with_plotly(
         sample_dataset,
         mode='line',
-        trace_kwargs={'line': {'width': 5}},
-        layout_kwargs={'width': 1200, 'height': 600},
+        range_y=[0, 100],
     )
+    assert list(fig.layout.yaxis.range) == [0, 100]
+
+    # Test that figure can be customized after creation
+    fig.update_traces(line={'width': 5})
+    fig.update_layout(width=1200, height=600)
     assert fig.layout.width == 1200
     assert fig.layout.height == 600
     assert all(getattr(t, 'line', None) and t.line.width == 5 for t in fig.data)
