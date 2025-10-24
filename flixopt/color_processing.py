@@ -17,20 +17,45 @@ logger = logging.getLogger('flixopt')
 
 
 def _rgb_string_to_hex(color: str) -> str:
-    """Convert Plotly RGB string format to hex.
+    """Convert Plotly RGB/RGBA string format to hex.
 
     Args:
-        color: Color in format 'rgb(R, G, B)' or already in hex
+        color: Color in format 'rgb(R, G, B)', 'rgba(R, G, B, A)' or already in hex
 
     Returns:
         Color in hex format '#RRGGBB'
     """
-    if color.startswith('rgb('):
-        # Extract RGB values from 'rgb(R, G, B)' format
-        rgb_str = color[4:-1]  # Remove 'rgb(' and ')'
-        r, g, b = map(int, rgb_str.split(','))
+    color = color.strip()
+
+    # If already hex, return as-is
+    if color.startswith('#'):
+        return color
+
+    # Try to parse rgb() or rgba()
+    try:
+        if color.startswith('rgb('):
+            # Extract RGB values from 'rgb(R, G, B)' format
+            rgb_str = color[4:-1]  # Remove 'rgb(' and ')'
+        elif color.startswith('rgba('):
+            # Extract RGBA values from 'rgba(R, G, B, A)' format
+            rgb_str = color[5:-1]  # Remove 'rgba(' and ')'
+        else:
+            return color
+
+        # Split on commas and parse first three components
+        components = rgb_str.split(',')
+        if len(components) < 3:
+            return color
+
+        # Parse and clamp the first three components
+        r = max(0, min(255, int(round(float(components[0].strip())))))
+        g = max(0, min(255, int(round(float(components[1].strip())))))
+        b = max(0, min(255, int(round(float(components[2].strip())))))
+
         return f'#{r:02x}{g:02x}{b:02x}'
-    return color
+    except (ValueError, IndexError):
+        # If parsing fails, return original
+        return color
 
 
 def process_colors(
