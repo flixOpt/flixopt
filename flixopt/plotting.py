@@ -40,9 +40,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.offline
 import xarray as xr
-from plotly.exceptions import PlotlyError
 
-from .color_processing import process_colors, resolve_colors
+from .color_processing import process_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
@@ -277,7 +276,7 @@ def with_plotly(
         values = [float(data[var].values) for var in data.data_vars]
 
         # Resolve colors
-        color_discrete_map = resolve_colors(
+        color_discrete_map = process_colors(
             variables, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
         )
         marker_colors = [color_discrete_map.get(var, '#636EFA') for var in variables]
@@ -370,7 +369,7 @@ def with_plotly(
 
     # Process colors
     all_vars = df_long['variable'].unique().tolist()
-    color_discrete_map = resolve_colors(
+    color_discrete_map = process_colors(
         list(data.data_vars), colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
     )
 
@@ -547,7 +546,7 @@ def with_matplotlib(
         values = [float(data[var].values) for var in data.data_vars]
 
         # Resolve colors
-        color_discrete_map = resolve_colors(
+        color_discrete_map = process_colors(
             variables, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
         )
         colors_list = [color_discrete_map.get(var, '#808080') for var in variables]
@@ -580,7 +579,7 @@ def with_matplotlib(
         return fig, ax
 
     # Resolve colors first (includes validation)
-    color_discrete_map = resolve_colors(
+    color_discrete_map = process_colors(
         list(data.data_vars), colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
     )
 
@@ -1038,7 +1037,7 @@ def dual_pie_with_plotly(
     all_labels = sorted(set(left_labels) | set(right_labels))
 
     # Create color map
-    color_map = resolve_colors(all_labels, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
+    color_map = process_colors(all_labels, colors, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
 
     # Create figure
     fig = go.Figure()

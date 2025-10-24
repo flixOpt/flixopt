@@ -105,15 +105,6 @@ def process_colors(
     raise TypeError(f'colors must be None, str, list, or dict, got {type(colors)}')
 
 
-def resolve_colors(
-    labels: list[str],
-    colors: None | str | list[str] | dict[str, str],
-    default_colorscale: str = 'turbo',
-) -> dict[str, str]:
-    """Temporary wrapper"""
-    return process_colors(colors, labels, default_colorscale)
-
-
 def _fill_missing_colors(
     color_mapping: dict[str, str],
     labels: list[str],
