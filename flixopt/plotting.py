@@ -395,7 +395,7 @@ def resolve_colors(
 
 
 def with_plotly(
-    data: xr.Dataset | pd.DataFrame,
+    data: xr.Dataset | pd.DataFrame | pd.Series,
     mode: Literal['stacked_bar', 'line', 'area', 'grouped_bar'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
@@ -417,7 +417,7 @@ def with_plotly(
     For simple plots without faceting, can optionally add to an existing figure.
 
     Args:
-        data: An xarray Dataset to plot.
+        data: An xarray Dataset, pandas DataFrame, or pandas Series to plot.
         mode: The plotting mode. Use 'stacked_bar' for stacked bar charts, 'line' for lines,
               'area' for stacked area charts, or 'grouped_bar' for grouped bar charts.
         colors: Color specification (colormap, list, or dict mapping labels to colors).
@@ -691,7 +691,7 @@ def with_plotly(
 
 
 def with_matplotlib(
-    data: xr.Dataset | pd.DataFrame,
+    data: xr.Dataset | pd.DataFrame | pd.Series,
     mode: Literal['stacked_bar', 'line'] = 'stacked_bar',
     colors: ColorType = 'viridis',
     title: str = '',
@@ -704,7 +704,7 @@ def with_matplotlib(
     Plot data with Matplotlib using stacked bars or stepped lines.
 
     Args:
-        data: An xarray Dataset to plot. After conversion to DataFrame,
+        data: An xarray Dataset, pandas DataFrame, or pandas Series to plot. After conversion to DataFrame,
               the index represents time and each column represents a separate data series (variables).
         mode: Plotting mode. Use 'stacked_bar' for stacked bar charts or 'line' for stepped lines.
         colors: Color specification. Can be:
