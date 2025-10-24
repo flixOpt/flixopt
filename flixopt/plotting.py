@@ -1111,8 +1111,8 @@ def preprocess_dataset_for_pie(data: xr.Dataset, lower_percentage_threshold: flo
 
     # Sum all dimensions for each variable to get total values
     values = {}
-    for var in data.data_vars:
-        var_data = data[var]
+    for var in dataset.data_vars:
+        var_data = dataset[var]
         # Sum across all dimensions to get total
         if len(var_data.dims) > 0:
             total_value = float(var_data.sum().item())
@@ -1129,7 +1129,7 @@ def preprocess_dataset_for_pie(data: xr.Dataset, lower_percentage_threshold: flo
             values[var] = total_value
 
     if not values or lower_percentage_threshold <= 0:
-        return data
+        return dataset
 
     # Calculate total and percentages
     total = sum(values.values())
@@ -1151,7 +1151,7 @@ def preprocess_dataset_for_pie(data: xr.Dataset, lower_percentage_threshold: flo
         # Convert back to Dataset
         return xr.Dataset({name: xr.DataArray(val) for name, val in result_dict.items()})
 
-    return data
+    return dataset
 
 
 def dual_pie_with_plotly(
