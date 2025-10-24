@@ -107,6 +107,20 @@ class CalculationResults:
         ).mean()
         ```
 
+        Configure automatic color management for plots:
+
+        ```python
+        # Dict-based configuration:
+        results.setup_colors({'Solar*': 'Oranges', 'Wind*': 'Blues', 'Battery': 'green'})
+
+        # All plots automatically use configured colors (colors=None is the default)
+        results['ElectricityBus'].plot_node_balance()
+        results['Battery'].plot_charge_state()
+
+        # Override when needed
+        results['ElectricityBus'].plot_node_balance(colors='turbo')  # Ignores setup
+        ```
+
     Design Patterns:
         **Factory Methods**: Use `from_file()` and `from_calculation()` for creation or access directly from `Calculation.results`
         **Dictionary Access**: Use `results[element_label]` for element-specific results
@@ -721,6 +735,7 @@ class CalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
         color_map: str | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap visualization of a variable using imshow or time-based reshaping.
@@ -754,6 +769,20 @@ class CalculationResults:
                 Supported timeframes: 'YS', 'MS', 'W', 'D', 'h', '15min', 'min'
             fill: Method to fill missing values after reshape: 'ffill' (forward fill) or 'bfill' (backward fill).
                 Default is 'ffill'.
+            **plot_kwargs: Additional plotting customization options.
+                Common options:
+
+                - **dpi** (int): Export resolution for saved plots. Default: 300.
+
+                For heatmaps specifically:
+
+                - **vmin** (float): Minimum value for color scale (both engines).
+                - **vmax** (float): Maximum value for color scale (both engines).
+
+                For Matplotlib heatmaps:
+
+                - **imshow_kwargs** (dict): Additional kwargs for matplotlib's imshow (e.g., interpolation, aspect).
+                - **cbar_kwargs** (dict): Additional kwargs for colorbar customization.
 
         Examples:
             Direct imshow mode (default):
@@ -794,6 +823,18 @@ class CalculationResults:
             ...     animate_by='period',
             ...     reshape_time=('D', 'h'),
             ... )
+
+            High-resolution export with custom color range:
+
+            >>> results.plot_heatmap('Battery|charge_state', save=True, dpi=600, vmin=0, vmax=100)
+
+            Matplotlib heatmap with custom imshow settings:
+
+            >>> results.plot_heatmap(
+            ...     'Boiler(Q_th)|flow_rate',
+            ...     engine='matplotlib',
+            ...     imshow_kwargs={'interpolation': 'bilinear', 'aspect': 'auto'},
+            ... )
         """
         # Delegate to module-level plot_heatmap function
         return plot_heatmap(
@@ -814,6 +855,7 @@ class CalculationResults:
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
             color_map=color_map,
+            **plot_kwargs,
         )
 
     def plot_network(
@@ -994,6 +1036,7 @@ class _NodeResults(_ElementResults):
         facet_cols: int = 3,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots the node balance of the Component or Bus with optional faceting and animation.
@@ -1021,6 +1064,27 @@ class _NodeResults(_ElementResults):
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
             facet_cols: Number of columns in the facet grid layout (default: 3).
+            **plot_kwargs: Additional plotting customization options passed to underlying plotting functions.
+
+                Common options:
+
+                - **dpi** (int): Export resolution in dots per inch. Default: 300.
+
+                **For Plotly engine** (`engine='plotly'`):
+
+                - Any Plotly Express parameter for px.bar()/px.line()/px.area()
+                  Example: `range_y=[0, 100]`, `line_shape='linear'`
+
+                **For Matplotlib engine** (`engine='matplotlib'`):
+
+                - **plot_kwargs** (dict): Customize plot via `ax.bar()` or `ax.step()`.
+                  Example: `plot_kwargs={'linewidth': 3, 'alpha': 0.7, 'edgecolor': 'black'}`
+
+                See :func:`flixopt.plotting.with_plotly` and :func:`flixopt.plotting.with_matplotlib`
+                for complete parameter reference.
+
+                Note: For Plotly, you can further customize the returned figure using `fig.update_traces()`
+                and `fig.update_layout()` after calling this method.
 
         Examples:
             Basic plot (current behavior):
@@ -1052,6 +1116,25 @@ class _NodeResults(_ElementResults):
             Time range selection (summer months only):
 
             >>> results['Boiler'].plot_node_balance(select={'time': slice('2024-06', '2024-08')}, facet_by='scenario')
+
+            High-resolution export for publication:
+
+            >>> results['Boiler'].plot_node_balance(engine='matplotlib', save='figure.png', dpi=600)
+
+            Plotly Express customization (e.g., set y-axis range):
+
+            >>> results['Boiler'].plot_node_balance(range_y=[0, 100])
+
+            Custom matplotlib appearance:
+
+            >>> results['Boiler'].plot_node_balance(engine='matplotlib', plot_kwargs={'linewidth': 3, 'alpha': 0.7})
+
+            Further customize Plotly figure after creation:
+
+            >>> fig = results['Boiler'].plot_node_balance(mode='line', show=False)
+            >>> fig.update_traces(line={'width': 5, 'dash': 'dot'})
+            >>> fig.update_layout(template='plotly_dark', width=1200, height=600)
+            >>> fig.show()
         """
         # Handle deprecated indexer parameter
         if indexer is not None:
@@ -1073,8 +1156,11 @@ class _NodeResults(_ElementResults):
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
 
+        # Extract dpi for export_figure
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+
         # Don't pass select/indexer to node_balance - we'll apply it afterwards
-        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
+        ds = self.node_balance(with_last_timestep=False, unit_type=unit_type, drop_suffix=drop_suffix)
 
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
@@ -1101,14 +1187,17 @@ class _NodeResults(_ElementResults):
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
+                xlabel='Time in h',
+                **plot_kwargs,
             )
             default_filetype = '.html'
         else:
             figure_like = plotting.with_matplotlib(
-                ds.to_dataframe(),
+                ds,
                 colors=colors,
                 mode=mode,
                 title=title,
+                **plot_kwargs,
             )
             default_filetype = '.png'
 
@@ -1119,6 +1208,7 @@ class _NodeResults(_ElementResults):
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
+            dpi=dpi,
         )
 
     def plot_node_balance_pie(
@@ -1132,6 +1222,7 @@ class _NodeResults(_ElementResults):
         select: dict[FlowSystemDimensions, Any] | None = None,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
 
@@ -1151,6 +1242,17 @@ class _NodeResults(_ElementResults):
             engine: Plotting engine ('plotly' or 'matplotlib').
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
                 Use this to select specific scenario/period before creating the pie chart.
+            **plot_kwargs: Additional plotting customization options.
+
+                Common options:
+
+                - **dpi** (int): Export resolution in dots per inch. Default: 300.
+                - **hover_template** (str): Hover text template (Plotly only).
+                  Example: `hover_template='%{label}: %{value} (%{percent})'`
+                - **text_position** (str): Text position ('inside', 'outside', 'auto').
+                - **hole** (float): Size of donut hole (0.0 to 1.0).
+
+                See :func:`flixopt.plotting.dual_pie_with_plotly` for complete reference.
 
         Examples:
             Basic usage (auto-selects first scenario/period if present):
@@ -1160,6 +1262,14 @@ class _NodeResults(_ElementResults):
             Explicitly select a scenario and period:
 
             >>> results['Bus'].plot_node_balance_pie(select={'scenario': 'high_demand', 'period': 2030})
+
+            Create a donut chart with custom hover text:
+
+            >>> results['Bus'].plot_node_balance_pie(hole=0.4, hover_template='%{label}: %{value:.2f} (%{percent})')
+
+            High-resolution export:
+
+            >>> results['Bus'].plot_node_balance_pie(save='figure.png', dpi=600)
         """
         # Handle deprecated indexer parameter
         if indexer is not None:
@@ -1178,6 +1288,9 @@ class _NodeResults(_ElementResults):
             )
             select = indexer
 
+        # Extract dpi for export_figure
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
@@ -1193,8 +1306,9 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_selection_to_data(inputs, select=select, drop=True)
-        outputs, suffix_parts = _apply_selection_to_data(outputs, select=select, drop=True)
+        inputs, suffix_parts_in = _apply_selection_to_data(inputs, select=select, drop=True)
+        outputs, suffix_parts_out = _apply_selection_to_data(outputs, select=select, drop=True)
+        suffix_parts = suffix_parts_in + suffix_parts_out
 
         # Sum over time dimension
         inputs = inputs.sum('time')
@@ -1204,7 +1318,7 @@ class _NodeResults(_ElementResults):
         # Pie charts need scalar data, so we automatically reduce extra dimensions
         extra_dims_inputs = [dim for dim in inputs.dims if dim != 'time']
         extra_dims_outputs = [dim for dim in outputs.dims if dim != 'time']
-        extra_dims = list(set(extra_dims_inputs + extra_dims_outputs))
+        extra_dims = sorted(set(extra_dims_inputs + extra_dims_outputs))
 
         if extra_dims:
             auto_select = {}
@@ -1222,27 +1336,28 @@ class _NodeResults(_ElementResults):
                     f'Use select={{"{dim}": value}} to choose a different value.'
                 )
 
-            # Apply auto-selection
-            inputs = inputs.sel(auto_select)
-            outputs = outputs.sel(auto_select)
+            # Apply auto-selection only for coords present in each dataset
+            inputs = inputs.sel({k: v for k, v in auto_select.items() if k in inputs.coords})
+            outputs = outputs.sel({k: v for k, v in auto_select.items() if k in outputs.coords})
 
             # Update suffix with auto-selected values
             auto_suffix_parts = [f'{dim}={val}' for dim, val in auto_select.items()]
             suffix_parts.extend(auto_suffix_parts)
 
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        suffix = '--' + '-'.join(sorted(set(suffix_parts))) if suffix_parts else ''
         title = f'{self.label} (total flow hours){suffix}'
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
-                data_left=inputs.to_pandas(),
-                data_right=outputs.to_pandas(),
+                data_left=inputs,
+                data_right=outputs,
                 colors=colors,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
                 lower_percentage_group=lower_percentage_group,
+                **plot_kwargs,
             )
             default_filetype = '.html'
         elif engine == 'matplotlib':
@@ -1255,6 +1370,7 @@ class _NodeResults(_ElementResults):
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
                 lower_percentage_group=lower_percentage_group,
+                **plot_kwargs,
             )
             default_filetype = '.png'
         else:
@@ -1267,6 +1383,7 @@ class _NodeResults(_ElementResults):
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
+            dpi=dpi,
         )
 
     def node_balance(
@@ -1373,6 +1490,7 @@ class ComponentResults(_NodeResults):
         facet_cols: int = 3,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance with optional faceting and animation.
 
@@ -1389,6 +1507,26 @@ class ComponentResults(_NodeResults):
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
             facet_cols: Number of columns in the facet grid layout (default: 3).
+            **plot_kwargs: Additional plotting customization options passed to underlying plotting functions.
+
+                Common options:
+
+                - **dpi** (int): Export resolution in dots per inch. Default: 300.
+
+                **For Plotly engine:**
+
+                - Any Plotly Express parameter for px.bar()/px.line()/px.area()
+                  Example: `range_y=[0, 100]`, `line_shape='linear'`
+
+                **For Matplotlib engine:**
+
+                - **plot_kwargs** (dict): Customize plot via `ax.bar()` or `ax.step()`.
+
+                See :func:`flixopt.plotting.with_plotly` and :func:`flixopt.plotting.with_matplotlib`
+                for complete parameter reference.
+
+                Note: For Plotly, you can further customize the returned figure using `fig.update_traces()`
+                and `fig.update_layout()` after calling this method.
 
         Raises:
             ValueError: If component is not a storage.
@@ -1409,6 +1547,16 @@ class ComponentResults(_NodeResults):
             Facet by scenario AND animate by period:
 
             >>> results['Storage'].plot_charge_state(facet_by='scenario', animate_by='period')
+
+            Custom layout after creation:
+
+            >>> fig = results['Storage'].plot_charge_state(show=False)
+            >>> fig.update_layout(template='plotly_dark', height=800)
+            >>> fig.show()
+
+            High-resolution export:
+
+            >>> results['Storage'].plot_charge_state(save='storage.png', dpi=600)
         """
         # Handle deprecated indexer parameter
         if indexer is not None:
@@ -1427,11 +1575,17 @@ class ComponentResults(_NodeResults):
             )
             select = indexer
 
+        # Extract dpi for export_figure
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+
+        # Extract charge state line color (for overlay customization)
+        overlay_color = plot_kwargs.pop('charge_state_line_color', 'black')
+
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
         # Get node balance and charge state
-        ds = self.node_balance(with_last_timestep=True)
+        ds = self.node_balance(with_last_timestep=True).fillna(0)
         charge_state_da = self.charge_state
 
         # Apply select filtering
@@ -1451,11 +1605,12 @@ class ComponentResults(_NodeResults):
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
+                xlabel='Time in h',
+                **plot_kwargs,
             )
 
-            # Create a dataset with just charge_state and plot it as lines
-            # This ensures proper handling of facets and animation
-            charge_state_ds = charge_state_da.to_dataset(name=self._charge_state)
+            # Prepare charge_state as Dataset for plotting
+            charge_state_ds = xr.Dataset({self._charge_state: charge_state_da})
 
             # Plot charge_state with mode='line' to get Scatter traces
             charge_state_fig = plotting.with_plotly(
@@ -1466,6 +1621,8 @@ class ComponentResults(_NodeResults):
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
+                xlabel='Time in h',
+                **plot_kwargs,
             )
 
             # Add charge_state traces to the main figure
@@ -1473,6 +1630,7 @@ class ComponentResults(_NodeResults):
             for trace in charge_state_fig.data:
                 trace.line.width = 2  # Make charge_state line more prominent
                 trace.line.shape = 'linear'  # Smooth line for charge state (not stepped like flows)
+                trace.line.color = overlay_color
                 figure_like.add_trace(trace)
 
             # Also add traces from animation frames if they exist
@@ -1484,6 +1642,7 @@ class ComponentResults(_NodeResults):
                         for trace in frame.data:
                             trace.line.width = 2
                             trace.line.shape = 'linear'  # Smooth line for charge state
+                            trace.line.color = overlay_color
                             figure_like.frames[i].data = figure_like.frames[i].data + (trace,)
 
             default_filetype = '.html'
@@ -1497,10 +1656,11 @@ class ComponentResults(_NodeResults):
                 )
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
-                ds.to_dataframe(),
+                ds,
                 colors=colors,
                 mode=mode,
                 title=title,
+                **plot_kwargs,
             )
 
             # Add charge_state as a line overlay
@@ -1510,9 +1670,18 @@ class ComponentResults(_NodeResults):
                 charge_state_df.values.flatten(),
                 label=self._charge_state,
                 linewidth=2,
-                color='black',
+                color=overlay_color,
             )
-            ax.legend()
+            # Recreate legend with the same styling as with_matplotlib
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(
+                handles,
+                labels,
+                loc='upper center',
+                bbox_to_anchor=(0.5, -0.15),
+                ncol=5,
+                frameon=False,
+            )
             fig.tight_layout()
 
             figure_like = fig, ax
@@ -1525,6 +1694,7 @@ class ComponentResults(_NodeResults):
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
+            dpi=dpi,
         )
 
     def node_balance_with_charge_state(
@@ -1810,6 +1980,7 @@ class SegmentedCalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
         color_map: str | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
@@ -1830,6 +2001,17 @@ class SegmentedCalculationResults:
             heatmap_timeframes: (Deprecated) Use reshape_time instead.
             heatmap_timesteps_per_frame: (Deprecated) Use reshape_time instead.
             color_map: (Deprecated) Use colors instead.
+            **plot_kwargs: Additional plotting customization options.
+                Common options:
+
+                - **dpi** (int): Export resolution for saved plots. Default: 300.
+                - **vmin** (float): Minimum value for color scale.
+                - **vmax** (float): Maximum value for color scale.
+
+                For Matplotlib heatmaps:
+
+                - **imshow_kwargs** (dict): Additional kwargs for matplotlib's imshow.
+                - **cbar_kwargs** (dict): Additional kwargs for colorbar customization.
 
         Returns:
             Figure object.
@@ -1884,6 +2066,7 @@ class SegmentedCalculationResults:
             animate_by=animate_by,
             facet_cols=facet_cols,
             fill=fill,
+            **plot_kwargs,
         )
 
     def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
@@ -1933,6 +2116,7 @@ def plot_heatmap(
     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
     color_map: str | None = None,
+    **plot_kwargs: Any,
 ):
     """Plot heatmap visualization with support for multi-variable, faceting, and animation.
 
@@ -2087,6 +2271,9 @@ def plot_heatmap(
         timeframes, timesteps_per_frame = reshape_time
         title += f' ({timeframes} vs {timesteps_per_frame})'
 
+    # Extract dpi before passing to plotting functions
+    dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+
     # Plot with appropriate engine
     if engine == 'plotly':
         figure_like = plotting.heatmap_with_plotly(
@@ -2098,6 +2285,7 @@ def plot_heatmap(
             facet_cols=facet_cols,
             reshape_time=reshape_time,
             fill=fill,
+            **plot_kwargs,
         )
         default_filetype = '.html'
     elif engine == 'matplotlib':
@@ -2107,6 +2295,7 @@ def plot_heatmap(
             title=title,
             reshape_time=reshape_time,
             fill=fill,
+            **plot_kwargs,
         )
         default_filetype = '.png'
     else:
@@ -2123,6 +2312,7 @@ def plot_heatmap(
         user_path=None if isinstance(save, bool) else pathlib.Path(save),
         show=show,
         save=True if save else False,
+        dpi=dpi,
     )
 
 
