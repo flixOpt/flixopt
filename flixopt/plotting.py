@@ -1121,7 +1121,7 @@ def preprocess_dataset_for_pie(data: xr.Dataset, lower_percentage_threshold: flo
 
         # Handle negative values
         if total_value < 0:
-            print(f'Warning: Negative value for {var}: {total_value}. Using absolute value.')
+            logger.warning(f'Negative value for {var}: {total_value}. Using absolute value.')
             total_value = abs(total_value)
 
         # Only keep positive values
