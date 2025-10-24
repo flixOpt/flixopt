@@ -516,6 +516,8 @@ def with_plotly(
                     )
                 ]
             )
+        else:
+            raise ValueError('"mode" must be one of "stacked_bar", "grouped_bar", "line", "area"')
 
         fig.update_layout(title=title, xaxis_title=xlabel, yaxis_title=ylabel, showlegend=False)
         return fig
