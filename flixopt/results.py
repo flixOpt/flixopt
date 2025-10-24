@@ -1316,7 +1316,7 @@ class _NodeResults(_ElementResults):
         # Pie charts need scalar data, so we automatically reduce extra dimensions
         extra_dims_inputs = [dim for dim in inputs.dims if dim != 'time']
         extra_dims_outputs = [dim for dim in outputs.dims if dim != 'time']
-        extra_dims = list(set(extra_dims_inputs + extra_dims_outputs))
+        extra_dims = sorted(set(extra_dims_inputs + extra_dims_outputs))
 
         if extra_dims:
             auto_select = {}
@@ -1572,6 +1572,9 @@ class ComponentResults(_NodeResults):
         # Extract dpi for export_figure
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
+        # Extract charge state line color (for overlay customization)
+        overlay_color = plot_kwargs.pop('charge_state_line_color', 'black')
+
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
@@ -1621,7 +1624,7 @@ class ComponentResults(_NodeResults):
             for trace in charge_state_fig.data:
                 trace.line.width = 2  # Make charge_state line more prominent
                 trace.line.shape = 'linear'  # Smooth line for charge state (not stepped like flows)
-                trace.line.color = 'black'
+                trace.line.color = overlay_color
                 figure_like.add_trace(trace)
 
             # Also add traces from animation frames if they exist
@@ -1660,7 +1663,7 @@ class ComponentResults(_NodeResults):
                 charge_state_df.values.flatten(),
                 label=self._charge_state,
                 linewidth=2,
-                color='black',
+                color=overlay_color,
             )
             ax.legend()
             fig.tight_layout()

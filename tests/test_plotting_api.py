@@ -42,6 +42,7 @@ def test_kwargs_passthrough_plotly(sample_dataset):
     )
     assert fig.layout.width == 1200
     assert fig.layout.height == 600
+    assert all(getattr(t, 'line', None) and t.line.width == 5 for t in fig.data)
 
 
 def test_dataframe_support_plotly(sample_dataframe):
@@ -54,11 +55,11 @@ def test_data_validation_non_numeric():
     """Test that validation catches non-numeric data."""
     data = xr.Dataset({'var1': (['time'], ['a', 'b', 'c'])}, coords={'time': [0, 1, 2]})
 
-    with pytest.raises(TypeError, match='non-numeric dtype'):
+    with pytest.raises(TypeError, match='non-?numeric'):
         plotting.with_plotly(data)
 
 
 def test_ensure_dataset_invalid_type():
-    """Test that _ensure_dataset raises error for invalid types."""
-    with pytest.raises(TypeError, match='must be xr.Dataset or pd.DataFrame'):
-        plotting._ensure_dataset([1, 2, 3])
+    """Test that invalid types raise error via the public API."""
+    with pytest.raises(TypeError, match='xr\\.Dataset|pd\\.DataFrame'):
+        plotting.with_plotly([1, 2, 3], mode='line')

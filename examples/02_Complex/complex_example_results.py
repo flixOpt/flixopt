@@ -26,8 +26,8 @@ if __name__ == '__main__':
     # In depth plot for individual flow rates ('__' is used as the delimiter between Component and Flow
     results.plot_heatmap('Wärmelast(Q_th_Last)|flow_rate')
     for bus in results.buses.values():
-        bus.plot_node_balance_pie()
-        bus.plot_node_balance()
+        bus.plot_node_balance_pie(show=False, save=f'results/{bus.label}--pie.html')
+        bus.plot_node_balance(show=False, save=f'results/{bus.label}--balance.html')
 
     # --- Plotting internal variables manually ---
     results.plot_heatmap('BHKW2(Q_th)|on')

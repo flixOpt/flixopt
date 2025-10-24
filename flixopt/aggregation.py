@@ -158,7 +158,9 @@ class Aggregation:
             fig.add_trace(trace)
 
         fig.update_layout(
-            title='Original vs Aggregated Data (original = ---)', xaxis_title='Index', yaxis_title='Value'
+            title='Original vs Aggregated Data (original = ---)',
+            xaxis_title='Time in h',
+            yaxis_title='Value',
         )
 
         plotting.export_figure(
