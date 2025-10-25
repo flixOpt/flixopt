@@ -87,7 +87,8 @@ def load_yaml(path: str | pathlib.Path, safe: bool = True) -> dict | list:
     Args:
         path: Path to the YAML file.
         safe: If True, use safe_load for security (default: True).
-              If False, use FullLoader (allows arbitrary Python objects).
+            If False, use FullLoader (allows arbitrary Python objects - SECURITY RISK).
+            Only use safe=False for trusted, internally-generated files.
 
     Returns:
         Loaded data (typically dict or list), or empty dict if file is empty.
@@ -95,6 +96,7 @@ def load_yaml(path: str | pathlib.Path, safe: bool = True) -> dict | list:
     Raises:
         FileNotFoundError: If the file does not exist.
         yaml.YAMLError: If the file is not valid YAML.
+        Note: Returns {} for empty YAML files instead of None.
     """
     path = pathlib.Path(path)
     with open(path, encoding='utf-8') as f:
