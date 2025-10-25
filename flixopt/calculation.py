@@ -144,7 +144,7 @@ class Calculation:
             ],
         }
 
-        return utils.round_nested_floats(main_results)
+        return fx_io.round_nested_floats(main_results)
 
     @property
     def summary(self):
@@ -253,7 +253,7 @@ class FullCalculation(Calculation):
             logger.info(
                 f'{" Main Results ":#^80}\n'
                 + yaml.dump(
-                    utils.round_nested_floats(self.main_results),
+                    fx_io.round_nested_floats(self.main_results),
                     default_flow_style=False,
                     sort_keys=False,
                     allow_unicode=True,
