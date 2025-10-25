@@ -81,7 +81,7 @@ class FlowSystem(Interface):
         periods: pd.Index | None = None,
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: float | None = None,
-        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        hours_of_previous_timesteps: TemporalDataUser | None = None,
         weights: PeriodicDataUser | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
@@ -930,7 +930,7 @@ class FlowSystem(Interface):
         time: str,
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
         hours_of_last_timestep: float | None = None,
-        hours_of_previous_timesteps: float | None = None,
+        hours_of_previous_timesteps: TemporalDataUser | None = None,
         **kwargs: Any,
     ) -> FlowSystem:
         """
