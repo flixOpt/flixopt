@@ -242,7 +242,7 @@ def load_config_file(path: str | pathlib.Path) -> dict:
                 raise ValueError(f'Failed to parse {path} as YAML or JSON') from e
 
 
-def _save_to_yaml(data, output_file='formatted_output.yaml'):
+def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
     """
     Save dictionary data to YAML with proper multi-line string formatting.
     Handles complex string patterns including backticks, special characters,
@@ -398,7 +398,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
     if path is not None:
         if path.suffix not in ['.yaml', '.yml']:
             raise ValueError(f'Invalid file extension for path {path}. Only .yaml and .yml are supported')
-        _save_to_yaml(documentation, str(path))
+        _save_yaml_multiline(documentation, str(path))
 
     return documentation
 
