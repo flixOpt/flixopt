@@ -929,6 +929,8 @@ class FlowSystem(Interface):
         self,
         time: str,
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
+        hours_of_last_timestep: float | None = None,
+        hours_of_previous_timesteps: float | None = None,
         **kwargs: Any,
     ) -> FlowSystem:
         """
@@ -938,10 +940,12 @@ class FlowSystem(Interface):
         Args:
             time: Resampling frequency (e.g., '3h', '2D', '1M')
             method: Resampling method. Recommended: 'mean', 'first', 'last', 'max', 'min'
+            hours_of_last_timestep: New duration of the last time step. Defaults to the last time interval o the new timesteps
+            hours_of_previous_timesteps: New duration of the previous timestep. Defaults to the first time increment of the new timesteps
             **kwargs: Additional arguments passed to xarray.resample()
 
         Returns:
-            FlowSystem: New FlowSystem with resampled data
+            FlowSystem: New resampled FlowSystem
         """
         if not self.connected_and_transformed:
             self.connect_and_transform()
@@ -974,6 +978,10 @@ class FlowSystem(Interface):
             resampled_dataset = xr.merge([resampled_time_data, non_time_dataset])
         else:
             resampled_dataset = resampled_time_data
+
+        # Let FlowSystem recalculate or use explicitly set value
+        resampled_dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
+        resampled_dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
 
         return self.__class__.from_dataset(resampled_dataset)
 
