@@ -940,7 +940,7 @@ class FlowSystem(Interface):
         Args:
             time: Resampling frequency (e.g., '3h', '2D', '1M')
             method: Resampling method. Recommended: 'mean', 'first', 'last', 'max', 'min'
-            hours_of_last_timestep: New duration of the last time step. Defaults to the last time interval o the new timesteps
+            hours_of_last_timestep: New duration of the last time step. Defaults to the last time interval of the new timesteps
             hours_of_previous_timesteps: New duration of the previous timestep. Defaults to the first time increment of the new timesteps
             **kwargs: Additional arguments passed to xarray.resample()
 
