@@ -6,7 +6,6 @@ These classes are not directly used by the end user, but are used by other modul
 from __future__ import annotations
 
 import inspect
-import json
 import logging
 from dataclasses import dataclass
 from io import StringIO
@@ -788,8 +787,7 @@ class Interface:
         try:
             # Use the stats mode for JSON export (cleaner output)
             data = self.get_structure(clean=True, stats=True)
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
+            fx_io.save_json(data, path)
         except Exception as e:
             raise OSError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
 
