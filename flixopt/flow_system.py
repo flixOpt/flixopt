@@ -718,9 +718,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _get_container_groups(self) -> dict[str, dict]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
+            'Effects': dict(self.effects),
             'Components': dict(self.components),
             'Buses': dict(self.buses),
-            'Effects': dict(self.effects),
             'Flows': dict(self.flows),
         }
 
