@@ -45,7 +45,7 @@ def test_independent_examples(example_script):
     This imitates behaviour of running the script directly.
     """
     with working_directory(example_script.parent):
-        timeout = 1200
+        timeout = 800
         try:
             result = subprocess.run(
                 [sys.executable, example_script.name],
