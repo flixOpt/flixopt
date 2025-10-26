@@ -1002,20 +1002,20 @@ class ElementContainer(dict[str, T]):
 
     def __repr__(self) -> str:
         """
-        Return a nice string representation similar to FlowSystem's format_elements.
-
-        Shows the count and first few element names.
+        Return a string representation similar to linopy.model.Variables.
         """
-        if not self:
-            return f'{self._element_type_name.capitalize()}: 0'
+        title = self._element_type_name.capitalize()
+        line = '-' * len(title)
+        r = f'{title}\n{line}\n'
 
-        # Get first 3 element names
-        element_names = list(self.keys())
-        name_list = ', '.join(element_names[:3])
-        if len(element_names) > 3:
-            name_list += f' ... (+{len(element_names) - 3} more)'
+        for name, element in self.items():
+            element_type = element.__class__.__name__
+            r += f' * {name} ({element_type})\n'
 
-        return f'{self._element_type_name.capitalize()}: {len(self)} ({name_list})'
+        if not len(list(self)):
+            r += '<empty>\n'
+
+        return r
 
 
 class Submodel(SubmodelsMixin):
