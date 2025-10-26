@@ -1124,8 +1124,6 @@ class CompositeContainerMixin(Generic[T_element]):
                 return container[key]
 
         # Element not found - provide helpful error
-        from difflib import get_close_matches
-
         all_elements = {}
         for container in self._get_container_groups().values():
             all_elements.update(container)
@@ -1163,11 +1161,17 @@ class CompositeContainerMixin(Generic[T_element]):
 
     def values(self) -> list[T_element]:
         """Return all element objects across all containers."""
-        return [self[key] for key in self]
+        vals = []
+        for container in self._get_container_groups().values():
+            vals.extend(container.values())
+        return vals
 
     def items(self) -> list[tuple[str, T_element]]:
         """Return (label, element) pairs for all elements."""
-        return [(key, self[key]) for key in self]
+        items = []
+        for container in self._get_container_groups().values():
+            items.extend(container.items())
+        return items
 
     def _format_grouped_containers(self, title: str | None = None) -> str:
         """
