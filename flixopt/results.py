@@ -238,13 +238,20 @@ class CalculationResults:
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.components = {
+
+        # Create ElementContainers for better access patterns
+        from .structure import ElementContainer
+
+        components_dict = {
             label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
+        self.components = ElementContainer(elements=components_dict, element_type_name='components')
 
-        self.buses = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        self.buses = ElementContainer(elements=buses_dict, element_type_name='buses')
 
-        self.effects = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        self.effects = ElementContainer(elements=effects_dict, element_type_name='effects')
 
         if 'Flows' not in self.solution.attrs:
             warnings.warn(
@@ -252,11 +259,12 @@ class CalculationResults:
                 'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
                 stacklevel=2,
             )
-            self.flows = {}
+            flows_dict = {}
         else:
-            self.flows = {
+            flows_dict = {
                 label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
             }
+        self.flows = ElementContainer(elements=flows_dict, element_type_name='flows')
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
@@ -273,7 +281,8 @@ class CalculationResults:
 
         self.colors: dict[str, str] = {}
 
-    def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
+    def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults | FlowResults:
+        """Get element results by label with helpful error messages."""
         if key in self.components:
             return self.components[key]
         if key in self.buses:
@@ -282,7 +291,24 @@ class CalculationResults:
             return self.effects[key]
         if key in self.flows:
             return self.flows[key]
-        raise KeyError(f'No element with label {key} found.')
+
+        # Provide helpful error with suggestions (matching ElementContainer style)
+        from difflib import get_close_matches
+
+        all_elements = {**self.components, **self.buses, **self.effects, **self.flows}
+        suggestions = get_close_matches(key, all_elements.keys(), n=3, cutoff=0.6)
+        error_msg = f'Element "{key}" not found in results.'
+
+        if suggestions:
+            error_msg += f' Did you mean: {", ".join(suggestions)}?'
+        else:
+            available = list(all_elements.keys())
+            if len(available) <= 5:
+                error_msg += f' Available: {", ".join(available)}'
+            else:
+                error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
+
+        raise KeyError(error_msg)
 
     @property
     def storages(self) -> list[ComponentResults]:
