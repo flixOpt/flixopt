@@ -22,7 +22,6 @@ import numpy as np
 import yaml
 
 from . import io as fx_io
-from . import utils as utils
 from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
