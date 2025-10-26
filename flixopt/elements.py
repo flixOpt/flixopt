@@ -87,7 +87,7 @@ class Component(Element):
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
         self._check_unique_flow_labels()
-        self._set_flow_labels()
+        self._connect_flows()
         self.on_off_parameters = on_off_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
@@ -116,9 +116,25 @@ class Component(Element):
     def _plausibility_checks(self) -> None:
         self._check_unique_flow_labels()
 
-    def _set_flow_labels(self):
-        for flow in self.inputs + self.outputs:
+    def _connect_flows(self):
+        # Inputs
+        for flow in self.inputs:
+            if flow.component not in ('UnknownComponent', self.label_full):
+                raise ValueError(
+                    f'Flow "{flow.label}" already assigned to component "{flow.component}". '
+                    f'Cannot attach to "{self.label_full}".'
+                )
             flow.component = self.label_full
+            flow.is_input_in_component = True
+        # Outputs
+        for flow in self.outputs:
+            if flow.component not in ('UnknownComponent', self.label_full):
+                raise ValueError(
+                    f'Flow "{flow.label}" already assigned to component "{flow.component}". '
+                    f'Cannot attach to "{self.label_full}".'
+                )
+            flow.component = self.label_full
+            flow.is_input_in_component = False
 
 
 @register_class_for_io
