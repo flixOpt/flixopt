@@ -21,8 +21,9 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 ## [Template] - ????-??-??
 
-If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+**Summary**:
 
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
 
@@ -50,70 +51,90 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
+**Summary**:
+
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-- Support for plotting kwargs in `results.py`, passed to plotly express and matplotlib.
-- **Color management system**: New `color_processing.py` module with `process_colors()` function for unified color handling across plotting backends
-  - Supports flexible color inputs: colorscale names (e.g., 'turbo', 'plasma'), color lists, and label-to-color dictionaries
-  - Automatic fallback handling when requested colorscales are unavailable
-  - Seamless integration with both Plotly and Matplotlib colorscales
-  - Automatic rgba→hex color conversion for Matplotlib compatibility
-- **Component color grouping**: Added `setup_colors()` method to `CalculationResults` and `SegmentedCalculationResults` to create color mappings with similar colors for all variables of a component
-  - Allows grouping components by custom colorscales: `{'CHP': 'red', 'Greys': ['Gastarif', 'Einspeisung'], 'Storage': 'blue'}`
-  - Colors are automatically assigned using default colorscale if not specified
-  - For segmented calculations, colors are propagated to all segments for consistent visualization
-  - Explicit `colors` arguments in plot methods override configured colors (when provided)
-- **Plotting configuration**: New `CONFIG.Plotting` section with extensive customization options:
-  - `default_show`: Control default visibility of plots
-  - `default_engine`: Choose between 'plotly' or 'matplotlib'
-  - `default_dpi`: Configure resolution for saved plots (with matplotlib)
-  - `default_facet_cols`: Set default columns for faceted plots
-  - `default_sequential_colorscale`: Default for heatmaps and continuous data (default: 'turbo')
-  - `default_qualitative_colorscale`: Default for categorical plots (default: 'plotly')
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
-- **Template integration**: Plotly templates now fully control plot styling without hardcoded overrides
-- **Dataset first plotting**: Underlying plotting methods in `plotting.py` now use `xr.Dataset` as the main datatype. DataFrames are automatically converted via `_ensure_dataset()`. Both DataFrames and Datasets can be passed to plotting functions without code changes.
-- **Color terminology**: Standardized terminology from "colormap" to "colorscale" throughout the codebase for consistency with Plotly conventions
-- **Default colorscales**: Changed default sequential colorscale from 'viridis' to 'turbo' for better perceptual uniformity; qualitative colorscale now defaults to 'plotly'
-- **Aggregation plotting**: `Aggregation.plot()` now respects `CONFIG.Plotting.default_qualitative_colorscale` and uses `process_colors()` for consistent color handling
-- **netcdf engine**: Following the xarray revert in `xarray==2025.09.2` and after running some benchmarks, we go back to using the netcdf4 engine
 
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
-- Removed `plotting.pie_with_plotly()` method as it was not used
-- Removed `ColorProcessor` class - replaced by simpler `process_colors()` function
-- Removed `resolve_colors()` helper function - color resolution now handled directly by `process_colors()`
 
 ### 🐛 Fixed
-- Improved error messages for `engine='matplotlib'` with multidimensional data
-- Better dimension validation in `results.plot_heatmap()`
 
 ### 🔒 Security
 
 ### 📦 Dependencies
 
 ### 📝 Docs
-- Moved `linked_periods` into correct section of the docstring (was in deprecated params)
-- Updated terminology in docstrings from "colormap" to "colorscale" for consistency
-- Enhanced examples to demonstrate `setup_colors()` usage:
-  - `simple_example.py`: Shows automatic color assignment and optional custom configuration
-  - `scenario_example.py`: Demonstrates component grouping with custom colorscales
 
 ### 👷 Development
-- Fixed concurrency issue in CI
-- **Code architecture**: Extracted color processing logic into dedicated `color_processing.py` module for better separation of concerns
-- Refactored from class-based (`ColorProcessor`) to function-based color handling for simpler API and reduced complexity
 
 ### 🚧 Known Issues
 
 ---
 
 Until here -->
+
+## [3.2.0] - 2025-10-26
+
+**Summary**: Enhanced plotting capabilities with consistent color management, custom plotting kwargs support, and centralized I/O handling.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+
+**Color management:**
+- **`setup_colors()` method** for `CalculationResults` and `SegmentedCalculationResults` to configure consistent colors across all plots
+  - Group components by colorscales: `results.setup_colors({'CHP': 'reds', 'Storage': 'blues', 'Greys': ['Grid', 'Demand']})`
+  - Automatically propagates to all segments in segmented calculations
+  - Colors persist across all plot calls unless explicitly overridden
+- **Flexible color inputs**: Supports colorscale names (e.g., 'turbo', 'plasma'), color lists, or label-to-color dictionaries
+- **Cross-backend compatibility**: Seamless color handling for both Plotly and Matplotlib
+
+**Plotting customization:**
+- **Plotting kwargs support**: Pass additional arguments to plotting backends via `px_kwargs`, `plot_kwargs`, and `backend_kwargs` parameters
+- **New `CONFIG.Plotting` configuration section**:
+  - `default_show`: Control default plot visibility
+  - `default_engine`: Choose 'plotly' or 'matplotlib'
+  - `default_dpi`: Set resolution for saved plots
+  - `default_facet_cols`: Configure default faceting columns
+  - `default_sequential_colorscale`: Default for heatmaps (now 'turbo')
+  - `default_qualitative_colorscale`: Default for categorical plots (now 'plotly')
+
+**I/O improvements:**
+- Centralized JSON/YAML I/O with auto-format detection
+- Enhanced NetCDF handling with consistent engine usage
+- Better numeric formatting in YAML exports
+
+### ♻️ Changed
+- **Default colorscale**: Changed from 'viridis' to 'turbo' for better perceptual uniformity
+- **Color terminology**: Standardized from "colormap" to "colorscale" throughout for Plotly consistency
+- **Plotting internals**: Now use `xr.Dataset` as primary data type (DataFrames automatically converted)
+- **NetCDF engine**: Switched back to netcdf4 engine following xarray updates and performance benchmarks
+
+### 🔥 Removed
+- Removed unused `plotting.pie_with_plotly()` method
+
+### 🐛 Fixed
+- Improved error messages when using `engine='matplotlib'` with multidimensional data
+- Better dimension validation in `results.plot_heatmap()`
+
+### 📝 Docs
+- Enhanced examples demonstrating `setup_colors()` usage
+- Updated terminology from "colormap" to "colorscale" in docstrings
+
+### 👷 Development
+- Fixed concurrency issue in CI
+- Centralized color processing logic into dedicated module
+- Refactored to function-based color handling for simpler API
+
+---
 
 ## [3.1.1] - 2025-10-20
 **Summary**: Fixed a bug when acessing the `effects_per_component` dataset in results without periodic effects.
