@@ -898,6 +898,13 @@ class Element(Interface):
         return label
 
 
+def _natural_sort_key(text):
+    """Sort key for natural ordering (e.g., bus1, bus2, bus10 instead of bus1, bus10, bus2)."""
+    import re
+
+    return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
+
+
 # Type variable for containers
 T = TypeVar('T')
 
@@ -997,7 +1004,7 @@ class ContainerMixin(dict[str, T]):
         line = '-' * len(title)
         r = f'{title}\n{line}\n'
 
-        for name in self.keys():
+        for name in sorted(self.keys(), key=_natural_sort_key):
             r += f' * {name}\n'
 
         if not len(list(self)):
@@ -1213,7 +1220,7 @@ class CompositeContainerMixin(Generic[T_element]):
                     lines.append('')
 
                 lines.append(f'{group_name}:')
-                for name in container.keys():
+                for name in sorted(container.keys(), key=_natural_sort_key):
                     lines.append(f' * {name}')
 
         return '\n'.join(lines)
