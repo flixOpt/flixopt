@@ -10,8 +10,10 @@ import time
 from pathlib import Path
 
 import numpy as np
+import plotly.graph_objects as go
 import xarray as xr
 import yaml
+from plotly.subplots import make_subplots
 
 
 def create_dataset(time_steps, n_vars):
@@ -65,6 +67,146 @@ def benchmark_read(filepath, engine):
     return elapsed
 
 
+def create_plots(results):
+    """Create interactive Plotly visualizations of benchmark results."""
+
+    # Extract data for plotting
+    config_names = [c['name'] for c in results['configurations']]
+
+    # Create subplots
+    fig = make_subplots(
+        rows=2,
+        cols=2,
+        subplot_titles=(
+            'Write Time Comparison',
+            'Read Time Comparison',
+            'File Size with Compression',
+            'Throughput Comparison',
+        ),
+        specs=[[{'secondary_y': False}, {'secondary_y': False}], [{'secondary_y': False}, {'secondary_y': False}]],
+    )
+
+    colors = {'h5netcdf': '#1f77b4', 'netcdf4': '#ff7f0e'}
+
+    compression_levels = [0, 4, 9]
+    engines = ['h5netcdf', 'netcdf4']
+
+    # Plot 1: Write times (compression level 4)
+    for engine in engines:
+        write_times = []
+        for config_name in config_names:
+            try:
+                time_val = results['benchmarks'][config_name]['compression_4'][engine]['write_time_seconds']
+                write_times.append(time_val)
+            except KeyError:
+                write_times.append(None)
+
+        fig.add_trace(
+            go.Scatter(
+                x=config_names,
+                y=write_times,
+                name=engine,
+                mode='lines+markers',
+                line=dict(color=colors[engine]),
+                legendgroup=engine,
+                showlegend=True,
+            ),
+            row=1,
+            col=1,
+        )
+
+    # Plot 2: Read times (compression level 4)
+    for engine in engines:
+        read_times = []
+        for config_name in config_names:
+            try:
+                time_val = results['benchmarks'][config_name]['compression_4'][engine]['read_time_seconds']
+                read_times.append(time_val)
+            except KeyError:
+                read_times.append(None)
+
+        fig.add_trace(
+            go.Scatter(
+                x=config_names,
+                y=read_times,
+                name=engine,
+                mode='lines+markers',
+                line=dict(color=colors[engine]),
+                legendgroup=engine,
+                showlegend=False,
+            ),
+            row=1,
+            col=2,
+        )
+
+    # Plot 3: File sizes for different compression levels
+    for comp_level in compression_levels:
+        for engine in engines:
+            file_sizes = []
+            for config_name in config_names:
+                try:
+                    size_val = results['benchmarks'][config_name][f'compression_{comp_level}'][engine]['file_size_mb']
+                    file_sizes.append(size_val)
+                except KeyError:
+                    file_sizes.append(None)
+
+            fig.add_trace(
+                go.Scatter(
+                    x=config_names,
+                    y=file_sizes,
+                    name=f'{engine} (comp={comp_level})',
+                    mode='lines+markers',
+                    line=dict(color=colors[engine], dash=['solid', 'dash', 'dot'][comp_level // 4]),
+                    legendgroup=f'{engine}_comp',
+                    showlegend=True,
+                ),
+                row=2,
+                col=1,
+            )
+
+    # Plot 4: Write throughput (compression level 4)
+    for engine in engines:
+        throughputs = []
+        for config_name in config_names:
+            try:
+                tp_val = results['benchmarks'][config_name]['compression_4'][engine]['write_throughput_mbps']
+                throughputs.append(tp_val)
+            except KeyError:
+                throughputs.append(None)
+
+        fig.add_trace(
+            go.Scatter(
+                x=config_names,
+                y=throughputs,
+                name=engine,
+                mode='lines+markers',
+                line=dict(color=colors[engine]),
+                legendgroup=engine,
+                showlegend=False,
+            ),
+            row=2,
+            col=2,
+        )
+
+    # Update axes labels
+    fig.update_xaxes(title_text='Dataset Size', row=1, col=1)
+    fig.update_xaxes(title_text='Dataset Size', row=1, col=2)
+    fig.update_xaxes(title_text='Dataset Size', row=2, col=1)
+    fig.update_xaxes(title_text='Dataset Size', row=2, col=2)
+
+    fig.update_yaxes(title_text='Time (seconds)', row=1, col=1)
+    fig.update_yaxes(title_text='Time (seconds)', row=1, col=2)
+    fig.update_yaxes(title_text='File Size (MB)', row=2, col=1)
+    fig.update_yaxes(title_text='Throughput (MB/s)', row=2, col=2)
+
+    # Update layout
+    fig.update_layout(
+        height=800, title_text='NetCDF Engine Benchmark: h5netcdf vs netcdf4', showlegend=True, hovermode='x unified'
+    )
+
+    return fig
+
+
 def run_benchmark():
     """Run the complete benchmark for multiple dataset sizes."""
 
@@ -75,8 +217,8 @@ def run_benchmark():
         (1000, 50, 'small'),
         (5000, 100, 'medium'),
         (10000, 200, 'large'),
-        # (20000, 300, 'xlarge'),
-        # (80000, 300, 'xxlarge'),
+        (20000, 300, 'xlarge'),
+        (80000, 300, 'xxlarge'),
     ]
 
     # Test compression levels
@@ -153,6 +295,10 @@ def main():
 
     with open(output_file, 'w') as f:
         yaml.dump(results, f, default_flow_style=False, sort_keys=False)
+
+    # Create and save plots
+    fig = create_plots(results)
+    fig.write_html('netcdf_benchmark_plots.html')
 
 
 if __name__ == '__main__':
