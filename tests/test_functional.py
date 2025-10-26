@@ -152,7 +152,7 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
     )
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
+    boiler = flow_system['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -193,7 +193,7 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
     )
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
+    boiler = flow_system['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -234,7 +234,7 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
     )
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
+    boiler = flow_system['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -289,8 +289,8 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
     )
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
-    boiler_optional = flow_system.all_elements['Boiler_optional']
+    boiler = flow_system['Boiler']
+    boiler_optional = flow_system['Boiler_optional']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -343,7 +343,7 @@ def test_on(solver_fixture, time_steps_fixture):
     )
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
+    boiler = flow_system['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -387,7 +387,7 @@ def test_off(solver_fixture, time_steps_fixture):
     )
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
+    boiler = flow_system['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -438,7 +438,7 @@ def test_switch_on_off(solver_fixture, time_steps_fixture):
     )
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
+    boiler = flow_system['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -502,7 +502,7 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
     )
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
+    boiler = flow_system['Boiler']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -555,13 +555,13 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
             ),
         ),
     )
-    flow_system.all_elements['Wärmelast'].inputs[0].fixed_relative_profile = np.array(
+    flow_system['Wärmelast'].inputs[0].fixed_relative_profile = np.array(
         [0, 10, 20, 0, 12]
     )  # Else its non deterministic
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
-    boiler_backup = flow_system.all_elements['Boiler_backup']
+    boiler = flow_system['Boiler']
+    boiler_backup = flow_system['Boiler_backup']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -624,12 +624,12 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
             Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100),
         ),
     )
-    flow_system.all_elements['Wärmelast'].inputs[0].fixed_relative_profile = np.array([5, 10, 20, 18, 12])
+    flow_system['Wärmelast'].inputs[0].fixed_relative_profile = np.array([5, 10, 20, 18, 12])
     # Else its non deterministic
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
-    boiler_backup = flow_system.all_elements['Boiler_backup']
+    boiler = flow_system['Boiler']
+    boiler_backup = flow_system['Boiler_backup']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),
@@ -686,13 +686,13 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
             ),
         ),
     )
-    flow_system.all_elements['Wärmelast'].inputs[0].fixed_relative_profile = np.array(
+    flow_system['Wärmelast'].inputs[0].fixed_relative_profile = np.array(
         [5, 0, 20, 18, 12]
     )  # Else its non deterministic
 
     solve_and_load(flow_system, solver_fixture)
-    boiler = flow_system.all_elements['Boiler']
-    boiler_backup = flow_system.all_elements['Boiler_backup']
+    boiler = flow_system['Boiler']
+    boiler_backup = flow_system['Boiler_backup']
     costs = flow_system.effects['costs']
     assert_allclose(
         costs.submodel.total.solution.item(),

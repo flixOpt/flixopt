@@ -631,11 +631,12 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
     def _assign_flow_coords(self, da: xr.DataArray):
         # Add start and end coordinates
+        flows_list = list(self.flows.values())
         da = da.assign_coords(
             {
-                'start': ('flow', [flow.start for flow in self.flows.values()]),
-                'end': ('flow', [flow.end for flow in self.flows.values()]),
-                'component': ('flow', [flow.component for flow in self.flows.values()]),
+                'start': ('flow', [flow.start for flow in flows_list]),
+                'end': ('flow', [flow.end for flow in flows_list]),
+                'component': ('flow', [flow.component for flow in flows_list]),
             }
         )
 

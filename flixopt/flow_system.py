@@ -633,7 +633,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 flow.is_input_in_component = True if flow in component.inputs else False
 
                 # Add Bus if not already added (deprecated)
-                if flow._bus_object is not None and flow._bus_object not in self.buses.values():
+                if flow._bus_object is not None and flow._bus_object.label_full not in self.buses:
                     warnings.warn(
                         f'The Bus {flow._bus_object.label_full} was added to the FlowSystem from {flow.label_full}.'
                         f'This is deprecated and will be removed in the future. '
