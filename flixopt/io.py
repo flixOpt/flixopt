@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import xarray as xr
@@ -428,7 +427,6 @@ def save_dataset_to_netcdf(
     ds: xr.Dataset,
     path: str | pathlib.Path,
     compression: int = 0,
-    engine: Literal['netcdf4', 'scipy', 'h5netcdf'] = 'h5netcdf',
 ) -> None:
     """
     Save a dataset to a netcdf file. Store all attrs as JSON strings in 'attrs' attributes.
@@ -444,16 +442,6 @@ def save_dataset_to_netcdf(
     path = pathlib.Path(path)
     if path.suffix not in ['.nc', '.nc4']:
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
-
-    apply_encoding = False
-    if compression != 0:
-        if importlib.util.find_spec(engine) is not None:
-            apply_encoding = True
-        else:
-            logger.warning(
-                f'Dataset was exported without compression due to missing dependency "{engine}".'
-                f'Install {engine} via `pip install {engine}`.'
-            )
 
     ds = ds.copy(deep=True)
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
@@ -471,9 +459,9 @@ def save_dataset_to_netcdf(
     ds.to_netcdf(
         path,
         encoding=None
-        if not apply_encoding
+        if compression == 0
         else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
-        engine=engine,
+        engine='h5netcdf',
     )
 
 
