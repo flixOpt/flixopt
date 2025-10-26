@@ -87,6 +87,7 @@ class Component(Element):
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
         self._check_unique_flow_labels()
+        self._set_flow_labels()
         self.on_off_parameters = on_off_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
@@ -114,6 +115,10 @@ class Component(Element):
 
     def _plausibility_checks(self) -> None:
         self._check_unique_flow_labels()
+
+    def _set_flow_labels(self):
+        for flow in self.inputs + self.outputs:
+            flow.component = self.label_full
 
 
 @register_class_for_io
