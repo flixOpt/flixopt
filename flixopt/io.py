@@ -65,6 +65,12 @@ def round_nested_floats(obj: dict | list | float | int | Any, decimals: int = 2)
         return {k: round_nested_floats(v, decimals) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [round_nested_floats(v, decimals) for v in obj]
+    elif isinstance(obj, np.floating):
+        return round(float(obj), decimals)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
     elif isinstance(obj, float):
         return round(obj, decimals)
     elif isinstance(obj, int):
