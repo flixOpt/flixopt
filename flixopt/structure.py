@@ -999,7 +999,11 @@ class ElementContainer(dict[str, T]):
             if suggestions:
                 error_msg += f' Did you mean: {", ".join(suggestions)}?'
             else:
-                error_msg += f' Got: {str(list(self))}'
+                available = list(self.keys())
+                if len(available) <= 5:
+                    error_msg += f' Available: {", ".join(available)}'
+                else:
+                    error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
             raise KeyError(error_msg) from None
 
     def __repr__(self) -> str:
