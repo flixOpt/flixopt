@@ -261,10 +261,12 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
                 stacklevel=2,
             )
             flows_dict = {}
+            self._has_flow_data = False
         else:
             flows_dict = {
                 label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
             }
+            self._has_flow_data = True
         self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results')
 
         self.timesteps_extra = self.solution.indexes['time']
@@ -558,6 +560,8 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
             >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
         """
+        if not self._has_flow_data:
+            raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._flow_rates is None:
             self._flow_rates = self._assign_flow_coords(
                 xr.concat(
@@ -619,6 +623,8 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
 
         """
+        if not self._has_flow_data:
+            raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._sizes is None:
             self._sizes = self._assign_flow_coords(
                 xr.concat(
