@@ -18,7 +18,7 @@ import xarray as xr
 
 from .core import PeriodicDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, FlowSystemModel, Submodel, register_class_for_io
+from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -448,13 +448,13 @@ PeriodicEffects = dict[str, Scalar]
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
 
 
-class EffectCollection:
+class EffectCollection(ElementContainer[Effect]):
     """
     Handling all Effects
     """
 
     def __init__(self, *effects: Effect):
-        self._effects = {}
+        super().__init__(element_type_name='effects')
         self._standard_effect: Effect | None = None
         self._objective_effect: Effect | None = None
 
@@ -474,7 +474,7 @@ class EffectCollection:
                 self.standard_effect = effect
             if effect.is_objective:
                 self.objective_effect = effect
-            self._effects[effect.label] = effect
+            self.add(effect)  # Use the inherited add() method from ElementContainer
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
@@ -521,7 +521,7 @@ class EffectCollection:
         temporal, periodic = self.calculate_effect_share_factors()
 
         # Validate all referenced sources exist
-        unknown = {src for src, _ in list(temporal.keys()) + list(periodic.keys()) if src not in self.effects}
+        unknown = {src for src, _ in list(temporal.keys()) + list(periodic.keys()) if src not in self}
         if unknown:
             raise KeyError(f'Unknown effects used in in effect share mappings: {sorted(unknown)}')
 
@@ -552,30 +552,28 @@ class EffectCollection:
             else:
                 raise KeyError(f'Effect {effect} not found!')
         try:
-            return self.effects[effect]
+            return super().__getitem__(effect)  # Use parent's __getitem__ for string keys
         except KeyError as e:
             raise KeyError(f'Effect "{effect}" not found! Add it to the FlowSystem first!') from e
 
     def __iter__(self) -> Iterator[Effect]:
-        return iter(self._effects.values())
+        return iter(self.values())  # Iterate over Effect objects, not keys
 
     def __len__(self) -> int:
-        return len(self._effects)
+        return super().__len__()
 
     def __contains__(self, item: str | Effect) -> bool:
         """Check if the effect exists. Checks for label or object"""
         if isinstance(item, str):
-            return item in self.effects  # Check if the label exists
+            return super().__contains__(item)  # Check if the label exists
         elif isinstance(item, Effect):
-            if item.label_full in self.effects:
+            # First check by label and object identity (O(1))
+            if item.label_full in self and self[item.label_full] is item:
                 return True
-            if item in self.effects.values():  # Check if the object exists
+            # Fallback to full object search (O(n)) for objects with unexpected labels
+            if item in self.values():
                 return True
         return False
-
-    @property
-    def effects(self) -> dict[str, Effect]:
-        return self._effects
 
     @property
     def standard_effect(self) -> Effect:
@@ -611,7 +609,7 @@ class EffectCollection:
         dict[tuple[str, str], xr.DataArray],
     ]:
         shares_periodic = {}
-        for name, effect in self.effects.items():
+        for name, effect in self.items():
             if effect.share_from_periodic:
                 for source, data in effect.share_from_periodic.items():
                     if source not in shares_periodic:
@@ -620,7 +618,7 @@ class EffectCollection:
         shares_periodic = calculate_all_conversion_paths(shares_periodic)
 
         shares_temporal = {}
-        for name, effect in self.effects.items():
+        for name, effect in self.items():
             if effect.share_from_temporal:
                 for source, data in effect.share_from_temporal.items():
                     if source not in shares_temporal:

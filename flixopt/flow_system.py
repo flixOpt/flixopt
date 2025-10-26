@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import numpy as np
@@ -433,7 +434,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.weights = self.fit_to_model_coords('weights', self.weights, dims=['period', 'scenario'])
 
         self._connect_network()
-        for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
+        for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data(self)
         self._connected_and_transformed = True
 
@@ -581,7 +582,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 'class': 'Bus' if isinstance(node, Bus) else 'Component',
                 'infos': node.__str__(),
             }
-            for node in list(self.components.values()) + list(self.buses.values())
+            for node in chain(self.components.values(), self.buses.values())
         }
 
         edges = {
@@ -719,7 +720,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return {
             'Components': dict(self.components),
             'Buses': dict(self.buses),
-            'Effects': self.effects.effects,
+            'Effects': dict(self.effects),
             'Flows': dict(self.flows),
         }
 
@@ -750,7 +751,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             DeprecationWarning,
             stacklevel=2,
         )
-        return {**self.components, **self.effects.effects, **self.flows, **self.buses}
+        return {**self.components, **self.effects, **self.flows, **self.buses}
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
