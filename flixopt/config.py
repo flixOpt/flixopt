@@ -305,7 +305,7 @@ class CONFIG:
         if not config_path.exists():
             raise FileNotFoundError(f'Config file not found: {config_file}')
 
-        config_dict = fx_io.load_yaml(config_path, safe=True)
+        config_dict = fx_io.load_yaml(config_path)
         cls._apply_config_dict(config_dict)
 
         cls.apply()

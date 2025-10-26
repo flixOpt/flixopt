@@ -128,15 +128,12 @@ def save_json(
         json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii, **kwargs)
 
 
-def load_yaml(path: str | pathlib.Path, safe: bool = True) -> dict | list:
+def load_yaml(path: str | pathlib.Path) -> dict | list:
     """
     Load data from a YAML file.
 
     Args:
         path: Path to the YAML file.
-        safe: If True, use safe_load for security (default: True).
-            If False, use FullLoader (allows arbitrary Python objects - SECURITY RISK).
-            Only use safe=False for trusted, internally-generated files.
 
     Returns:
         Loaded data (typically dict or list), or empty dict if file is empty.
@@ -148,10 +145,25 @@ def load_yaml(path: str | pathlib.Path, safe: bool = True) -> dict | list:
     """
     path = pathlib.Path(path)
     with open(path, encoding='utf-8') as f:
-        if safe:
-            return yaml.safe_load(f) or {}
-        else:
-            return yaml.load(f, Loader=yaml.FullLoader) or {}
+        return yaml.safe_load(f) or {}
+
+
+def _load_yaml_unsafe(path: str | pathlib.Path) -> dict | list:
+    """
+    INTERNAL: Load YAML allowing arbitrary tags. Do not use on untrusted input.
+
+    This function exists only for loading internally-generated files that may
+    contain custom YAML tags. Never use this on user-provided files.
+
+    Args:
+        path: Path to the YAML file.
+
+    Returns:
+        Loaded data (typically dict or list), or empty dict if file is empty.
+    """
+    path = pathlib.Path(path)
+    with open(path, encoding='utf-8') as f:
+        return yaml.unsafe_load(f) or {}
 
 
 def save_yaml(
@@ -173,11 +185,11 @@ def save_yaml(
         width: Maximum line width (default: 1000).
         allow_unicode: If True, allow Unicode characters (default: True).
         sort_keys: If True, sort dictionary keys (default: False).
-        **kwargs: Additional arguments to pass to yaml.dump().
+        **kwargs: Additional arguments to pass to yaml.safe_dump().
     """
     path = pathlib.Path(path)
     with open(path, 'w', encoding='utf-8') as f:
-        yaml.dump(
+        yaml.safe_dump(
             data,
             f,
             indent=indent,
@@ -217,19 +229,22 @@ def load_config_file(path: str | pathlib.Path) -> dict:
         raise FileNotFoundError(f'Configuration file not found: {path}')
 
     # Try based on file extension
-    if path.suffix == '.json':
+    # Normalize extension to lowercase for case-insensitive matching
+    suffix = path.suffix.lower()
+
+    if suffix == '.json':
         try:
             return load_json(path)
         except json.JSONDecodeError:
             logger.warning(f'Failed to parse {path} as JSON, trying YAML')
             try:
-                return load_yaml(path, safe=True)
+                return load_yaml(path)
             except yaml.YAMLError as e:
                 raise ValueError(f'Failed to parse {path} as JSON or YAML') from e
 
-    elif path.suffix in ['.yaml', '.yml']:
+    elif suffix in ['.yaml', '.yml']:
         try:
-            return load_yaml(path, safe=True)
+            return load_yaml(path)
         except yaml.YAMLError:
             logger.warning(f'Failed to parse {path} as YAML, trying JSON')
             try:
@@ -240,7 +255,7 @@ def load_config_file(path: str | pathlib.Path) -> dict:
     else:
         # Unknown extension, try YAML first (more common for config)
         try:
-            return load_yaml(path, safe=True)
+            return load_yaml(path)
         except yaml.YAMLError:
             try:
                 return load_json(path)
@@ -276,13 +291,13 @@ def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
         # Use plain style for simple strings
         return dumper.represent_scalar('tag:yaml.org,2002:str', data)
 
-    # Add the string representer to SafeDumper
-    yaml.add_representer(str, represent_str, Dumper=yaml.SafeDumper)
-
     # Configure dumper options for better formatting
     class CustomDumper(yaml.SafeDumper):
         def increase_indent(self, flow=False, indentless=False):
             return super().increase_indent(flow, False)
+
+    # Bind representer locally to CustomDumper to avoid global side effects
+    CustomDumper.add_representer(str, represent_str)
 
     # Write to file with settings that ensure proper formatting
     with open(output_file, 'w', encoding='utf-8') as file:

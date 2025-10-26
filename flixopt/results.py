@@ -169,7 +169,7 @@ class CalculationResults:
             except Exception as e:
                 logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
-        summary = fx_io.load_yaml(paths.summary, safe=True)
+        summary = fx_io.load_yaml(paths.summary)
 
         return cls(
             solution=fx_io.load_dataset_from_netcdf(paths.solution),
