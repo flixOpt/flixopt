@@ -252,7 +252,7 @@ class FullCalculation(Calculation):
             logger.info(
                 f'{" Main Results ":#^80}\n'
                 + yaml.dump(
-                    fx_io.round_nested_floats(self.main_results),
+                    self.main_results,
                     default_flow_style=False,
                     sort_keys=False,
                     allow_unicode=True,
