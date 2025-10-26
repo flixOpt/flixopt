@@ -659,47 +659,45 @@ class FlowSystem(Interface):
         )
 
     def __repr__(self) -> str:
-        def format_elements(element_names: list, label: str, alignment: int = 12):
-            name_list = ', '.join(element_names[:3])
-            if len(element_names) > 3:
-                name_list += f' ... (+{len(element_names) - 3} more)'
+        """Return a detailed string representation showing all containers."""
+        title = 'FlowSystem'
+        line = '-' * len(title)
 
-            suffix = f' ({name_list})' if element_names else ''
-            padding = alignment - len(label) - 1  # -1 for the colon
-            return f'{label}:{"":<{padding}} {len(element_names)}{suffix}'
-
+        # Timestep info
         time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
         freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
-
-        lines = [
-            f'Timesteps:   {len(self.timesteps)} ({freq_str}) [{time_period}]',
-        ]
+        r = f'{title}\n{line}\n'
+        r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
 
         # Add periods if present
         if self.periods is not None:
             period_names = ', '.join(str(p) for p in self.periods[:3])
             if len(self.periods) > 3:
                 period_names += f' ... (+{len(self.periods) - 3} more)'
-            lines.append(f'Periods:     {len(self.periods)} ({period_names})')
+            r += f'Periods: {len(self.periods)} ({period_names})\n'
 
         # Add scenarios if present
         if self.scenarios is not None:
             scenario_names = ', '.join(str(s) for s in self.scenarios[:3])
             if len(self.scenarios) > 3:
                 scenario_names += f' ... (+{len(self.scenarios) - 3} more)'
-            lines.append(f'Scenarios:   {len(self.scenarios)} ({scenario_names})')
+            r += f'Scenarios: {len(self.scenarios)} ({scenario_names})\n'
 
-        lines.extend(
-            [
-                format_elements(list(self.components.keys()), 'Components'),
-                format_elements(list(self.buses.keys()), 'Buses'),
-                format_elements(list(self.effects.effects.keys()), 'Effects'),
-                f'Status:      {"Connected & Transformed" if self.connected_and_transformed else "Not connected"}',
-            ]
-        )
-        lines = ['FlowSystem:', f'{"─" * max(len(line) for line in lines)}'] + lines
+        r += f'Status: {"Connected & Transformed" if self.connected_and_transformed else "Not connected"}\n'
 
-        return '\n'.join(lines)
+        # Add containers (using their nice repr)
+        r += '\n' + repr(self.components) + '\n'
+        r += '\n' + repr(self.buses) + '\n'
+
+        # Effects
+        r += '\nEffects\n-------\n'
+        for label, effect in self.effects.effects.items():
+            effect_type = effect.__class__.__name__
+            r += f' * {label} ({effect_type})\n'
+        if not self.effects.effects:
+            r += '<empty>\n'
+
+        return r
 
     def __eq__(self, other: FlowSystem):
         """Check if two FlowSystems are equal by comparing their dataset representations."""
@@ -724,16 +722,22 @@ class FlowSystem(Interface):
         if item in self.all_elements:
             return self.all_elements[item]
 
-        # Provide helpful error with suggestions
+        # Provide helpful error with suggestions (matching ElementContainer style)
         from difflib import get_close_matches
 
         suggestions = get_close_matches(item, self.all_elements.keys(), n=3, cutoff=0.6)
+        error_msg = f'Element "{item}" not found in FlowSystem.'
 
         if suggestions:
-            suggestion_str = ', '.join(f"'{s}'" for s in suggestions)
-            raise KeyError(f"Element '{item}' not found. Did you mean: {suggestion_str}?")
+            error_msg += f' Did you mean: {", ".join(suggestions)}?'
         else:
-            raise KeyError(f"Element '{item}' not found in FlowSystem")
+            available = list(self.all_elements.keys())
+            if len(available) <= 5:
+                error_msg += f' Available: {", ".join(available)}'
+            else:
+                error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
+
+        raise KeyError(error_msg)
 
     def __contains__(self, item: str) -> bool:
         """Check if element exists in the FlowSystem."""
