@@ -997,9 +997,8 @@ class ContainerMixin(dict[str, T]):
         line = '-' * len(title)
         r = f'{title}\n{line}\n'
 
-        for name, element in self.items():
-            element_type = element.__class__.__name__
-            r += f' * {name} ({element_type})\n'
+        for name in self.keys():
+            r += f' * {name}\n'
 
         if not len(list(self)):
             r += '<empty>\n'
