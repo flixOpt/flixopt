@@ -309,7 +309,7 @@ def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
             default_flow_style=False,  # Use block style for mappings
             width=1000,  # Set a reasonable line width
             allow_unicode=True,  # Support Unicode characters
-            indent=2,  # Set consistent indentation
+            indent=4,  # Set consistent indentation
         )
 
 
