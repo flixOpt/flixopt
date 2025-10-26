@@ -80,7 +80,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Color terminology**: Standardized terminology from "colormap" to "colorscale" throughout the codebase for consistency with Plotly conventions
 - **Default colorscales**: Changed default sequential colorscale from 'viridis' to 'turbo' for better perceptual uniformity; qualitative colorscale now defaults to 'plotly'
 - **Aggregation plotting**: `Aggregation.plot()` now respects `CONFIG.Plotting.default_qualitative_colorscale` and uses `process_colors()` for consistent color handling
-- **netcdf engine**: Following the xarray revert in `xarray==2025.09.02` and after running some benchmarks, we go back to using the netcdf4 engine
+- **netcdf engine**: Following the xarray revert in `xarray==2025.09.2` and after running some benchmarks, we go back to using the netcdf4 engine
 
 ### 🗑️ Deprecated
 
