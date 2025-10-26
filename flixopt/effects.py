@@ -559,9 +559,6 @@ class EffectCollection(ElementContainer[Effect]):
     def __iter__(self) -> Iterator[Effect]:
         return iter(self.values())  # Iterate over Effect objects, not keys
 
-    def __len__(self) -> int:
-        return super().__len__()
-
     def __contains__(self, item: str | Effect) -> bool:
         """Check if the effect exists. Checks for label or object"""
         if isinstance(item, str):
