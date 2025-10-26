@@ -19,6 +19,7 @@ from .effects import Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
+from .structure import ElementContainer
 
 __all__ = [
     'TimeSeriesData',
@@ -34,6 +35,7 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
+    'ElementContainer',
     'FullCalculation',
     'SegmentedCalculation',
     'AggregatedCalculation',

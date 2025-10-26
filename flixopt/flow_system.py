@@ -32,7 +32,7 @@ from .effects import (
     TemporalEffectsUser,
 )
 from .elements import Bus, Component, Flow
-from .structure import Element, FlowSystemModel, Interface
+from .structure import Element, ElementContainer, FlowSystemModel, Interface
 
 if TYPE_CHECKING:
     import pathlib
@@ -104,8 +104,8 @@ class FlowSystem(Interface):
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
         # Element collections
-        self.components: dict[str, Component] = {}
-        self.buses: dict[str, Bus] = {}
+        self.components: ElementContainer[Component] = ElementContainer(element_type_name='components')
+        self.buses: ElementContainer[Bus] = ElementContainer(element_type_name='buses')
         self.effects: EffectCollection = EffectCollection()
         self.model: FlowSystemModel | None = None
 
@@ -616,13 +616,13 @@ class FlowSystem(Interface):
         for new_component in list(components):
             logger.info(f'Registered new Component: {new_component.label_full}')
             self._check_if_element_is_unique(new_component)  # check if already exists:
-            self.components[new_component.label_full] = new_component  # Add to existing components
+            self.components.add(new_component)  # Add to existing components
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
             logger.info(f'Registered new Bus: {new_bus.label_full}')
             self._check_if_element_is_unique(new_bus)  # check if already exists:
-            self.buses[new_bus.label_full] = new_bus  # Add to existing components
+            self.buses.add(new_bus)  # Add to existing buses
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -750,7 +750,12 @@ class FlowSystem(Interface):
 
     @property
     def all_elements(self) -> dict[str, Element]:
-        return {**self.components, **self.effects.effects, **self.flows, **self.buses}
+        return {
+            **dict(self.components.items()),
+            **self.effects.effects,
+            **self.flows,
+            **dict(self.buses.items()),
+        }
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
