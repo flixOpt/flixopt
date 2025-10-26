@@ -239,19 +239,19 @@ class CalculationResults:
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
 
-        # Create ElementContainers for better access patterns
-        from .structure import ElementContainer
+        # Create ResultsContainers for better access patterns
+        from .structure import ResultsContainer
 
         components_dict = {
             label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
-        self.components = ElementContainer(elements=components_dict, element_type_name='components')
+        self.components = ResultsContainer(elements=components_dict, element_type_name='components')
 
         buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
-        self.buses = ElementContainer(elements=buses_dict, element_type_name='buses')
+        self.buses = ResultsContainer(elements=buses_dict, element_type_name='buses')
 
         effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
-        self.effects = ElementContainer(elements=effects_dict, element_type_name='effects')
+        self.effects = ResultsContainer(elements=effects_dict, element_type_name='effects')
 
         if 'Flows' not in self.solution.attrs:
             warnings.warn(
@@ -264,7 +264,7 @@ class CalculationResults:
             flows_dict = {
                 label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
             }
-        self.flows = ElementContainer(elements=flows_dict, element_type_name='flows')
+        self.flows = ResultsContainer(elements=flows_dict, element_type_name='flows')
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)

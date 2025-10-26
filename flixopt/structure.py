@@ -898,27 +898,15 @@ class Element(Interface):
         return label
 
 
-# Type variable for ElementContainer
-T = TypeVar('T', bound='Element')
+# Type variable for containers
+T = TypeVar('T')
 
 
-class ElementContainer(dict[str, T]):
+class ContainerMixin(dict[str, T]):
     """
-    A dict-based container for Elements with helpful access patterns and nice repr.
+    Mixin providing shared container functionality with nice repr and error messages.
 
-    Inherits from dict for full compatibility with serialization and type checking,
-    while adding:
-    - Helpful error messages with fuzzy matching suggestions
-    - Nice __repr__ similar to FlowSystem's formatting
-    - Type safety through generic typing
-    - Validation on assignment
-
-    Example:
-        >>> components = ElementContainer[Component](element_type_name='components')
-        >>> components.add(my_component)
-        >>> comp = components['my_label']
-        >>> for label in components:
-        ...     print(label)
+    Subclasses must implement _get_label() to extract the label from elements.
     """
 
     def __init__(
@@ -928,8 +916,8 @@ class ElementContainer(dict[str, T]):
     ):
         """
         Args:
-            elements: Initial elements to add (list or dict). If dict, keys are ignored and element.label_full is used.
-            element_type_name: Name of the element type for repr (e.g., 'components', 'buses', 'flows')
+            elements: Initial elements to add (list or dict)
+            element_type_name: Name for display (e.g., 'components', 'buses')
         """
         super().__init__()
         self._element_type_name = element_type_name
@@ -942,38 +930,35 @@ class ElementContainer(dict[str, T]):
                 for element in elements:
                     self.add(element)
 
-    def add(self, element: T) -> None:
+    def _get_label(self, element: T) -> str:
         """
-        Add an element to the container.
+        Extract label from element. Must be implemented by subclasses.
 
         Args:
-            element: Element to add
+            element: Element to get label from
 
-        Raises:
-            ValueError: If an element with the same label already exists
+        Returns:
+            Label string
         """
-        if element.label_full in self:
+        raise NotImplementedError('Subclasses must implement _get_label()')
+
+    def add(self, element: T) -> None:
+        """Add an element to the container."""
+        label = self._get_label(element)
+        if label in self:
             raise ValueError(
-                f'Element with label "{element.label_full}" already exists in {self._element_type_name}. '
+                f'Element with label "{label}" already exists in {self._element_type_name}. '
                 f'Each element must have a unique label.'
             )
-        self[element.label_full] = element
+        self[label] = element
 
     def __setitem__(self, label: str, element: T) -> None:
-        """
-        Set an element with validation.
-
-        Args:
-            label: Label for the element (should match element.label_full)
-            element: Element to add
-
-        Raises:
-            ValueError: If label doesn't match element.label_full
-        """
-        if label != element.label_full:
+        """Set element with validation."""
+        element_label = self._get_label(element)
+        if label != element_label:
             raise ValueError(
-                f'Key "{label}" does not match element.label_full "{element.label_full}". '
-                f'Use element.label_full as the key or use .add() method.'
+                f'Key "{label}" does not match element label "{element_label}". '
+                f'Use the correct label as key or use .add() method.'
             )
         super().__setitem__(label, element)
 
@@ -1007,9 +992,7 @@ class ElementContainer(dict[str, T]):
             raise KeyError(error_msg) from None
 
     def __repr__(self) -> str:
-        """
-        Return a string representation similar to linopy.model.Variables.
-        """
+        """Return a string representation similar to linopy.model.Variables."""
         title = self._element_type_name.capitalize()
         line = '-' * len(title)
         r = f'{title}\n{line}\n'
@@ -1022,6 +1005,30 @@ class ElementContainer(dict[str, T]):
             r += '<empty>\n'
 
         return r
+
+
+class ElementContainer(ContainerMixin[T]):
+    """
+    Container for Element objects (Component, Bus, Flow, Effect).
+
+    Uses element.label_full for keying.
+    """
+
+    def _get_label(self, element: T) -> str:
+        """Extract label_full from Element."""
+        return element.label_full
+
+
+class ResultsContainer(ContainerMixin[T]):
+    """
+    Container for Results objects (ComponentResults, BusResults, etc).
+
+    Uses element.label for keying.
+    """
+
+    def _get_label(self, element: T) -> str:
+        """Extract label from Results object."""
+        return element.label
 
 
 class Submodel(SubmodelsMixin):
