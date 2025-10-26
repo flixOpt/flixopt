@@ -603,10 +603,10 @@ class FlowSystem(Interface, CompositeContainerMixin):
         Args:
             element: new element to check
         """
-        if element in self.all_elements.values():
+        if element in self.values():
             raise ValueError(f'Element {element.label_full} already added to FlowSystem!')
         # check if name is already used:
-        if element.label_full in self.all_elements:
+        if element.label_full in self:
             raise ValueError(f'Label of Element {element.label_full} already used in another element!')
 
     def _add_effects(self, *args: Effect) -> None:
@@ -714,52 +714,6 @@ class FlowSystem(Interface, CompositeContainerMixin):
 
         return True
 
-    def __getitem__(self, item) -> Element:
-        """Get element by exact label with helpful error messages."""
-        if item in self.all_elements:
-            return self.all_elements[item]
-
-        # Provide helpful error with suggestions (matching ElementContainer style)
-        from difflib import get_close_matches
-
-        suggestions = get_close_matches(item, self.all_elements.keys(), n=3, cutoff=0.6)
-        error_msg = f'Element "{item}" not found in FlowSystem.'
-
-        if suggestions:
-            error_msg += f' Did you mean: {", ".join(suggestions)}?'
-        else:
-            available = list(self.all_elements.keys())
-            if len(available) <= 5:
-                error_msg += f' Available: {", ".join(available)}'
-            else:
-                error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
-
-        raise KeyError(error_msg)
-
-    def __contains__(self, item: str) -> bool:
-        """Check if element exists in the FlowSystem."""
-        return item in self.all_elements
-
-    def __iter__(self):
-        """Iterate over element labels."""
-        return iter(self.all_elements.keys())
-
-    def __len__(self) -> int:
-        """Return total count of all elements."""
-        return len(self.all_elements)
-
-    def keys(self):
-        """Return all element labels."""
-        return list(self.all_elements.keys())
-
-    def values(self):
-        """Return all element objects."""
-        return list(self.all_elements.values())
-
-    def items(self):
-        """Return (label, element) pairs for all elements."""
-        return list(self.all_elements.items())
-
     def _get_container_groups(self) -> dict[str, dict]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
@@ -777,6 +731,25 @@ class FlowSystem(Interface, CompositeContainerMixin):
 
     @property
     def all_elements(self) -> dict[str, Element]:
+        """
+        Get all elements as a dictionary.
+
+        .. deprecated:: 3.2.0
+            Use dict-like interface instead: `flow_system['element']`, `'element' in flow_system`,
+            `flow_system.keys()`, `flow_system.values()`, or `flow_system.items()`.
+            This property will be removed in v4.0.0.
+
+        Returns:
+            Dictionary mapping element labels to element objects.
+        """
+        warnings.warn(
+            "The 'all_elements' property is deprecated. Use dict-like interface instead: "
+            "flow_system['element'], 'element' in flow_system, flow_system.keys(), "
+            'flow_system.values(), or flow_system.items(). '
+            'This property will be removed in v4.0.0.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return {**self.components, **self.effects.effects, **self.flows, **self.buses}
 
     @property
