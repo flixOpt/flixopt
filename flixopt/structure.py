@@ -1030,6 +1030,182 @@ class ResultsContainer(ContainerMixin[T]):
         return element.label
 
 
+class CompositeContainerMixin:
+    """
+    Mixin providing unified dict-like access across multiple typed containers.
+
+    This mixin enables classes that manage multiple containers (e.g., components,
+    buses, effects, flows) to provide a unified interface for accessing elements
+    across all containers, as if they were a single collection.
+
+    Key Features:
+        - Dict-like access: `obj['element_name']` searches all containers
+        - Iteration: `for label in obj:` iterates over all elements
+        - Membership: `'element' in obj` checks across all containers
+        - Standard dict methods: keys(), values(), items()
+        - Grouped display: Formatted repr showing elements by type
+
+    Subclasses must implement:
+        _get_container_groups() -> dict[str, dict]:
+            Returns a dictionary mapping group names (e.g., 'Components', 'Buses')
+            to container dictionaries. Containers are displayed in the order returned.
+
+    Example:
+        ```python
+        class MySystem(CompositeContainerMixin):
+            def __init__(self):
+                self.components = {'Boiler': ..., 'CHP': ...}
+                self.buses = {'Heat': ..., 'Power': ...}
+
+            def _get_container_groups(self):
+                return {
+                    'Components': self.components,
+                    'Buses': self.buses,
+                }
+
+
+        system = MySystem()
+        system['Boiler']  # Returns Boiler component
+        'Heat' in system  # True
+        list(system)  # ['Boiler', 'CHP', 'Heat', 'Power']
+        ```
+
+    Integration with ContainerMixin:
+        This mixin is designed to work alongside ContainerMixin-based containers
+        (ElementContainer, ResultsContainer) by aggregating them into a unified
+        interface while preserving their individual functionality.
+    """
+
+    def _get_container_groups(self) -> dict[str, dict]:
+        """
+        Return ordered dict of container groups to aggregate.
+
+        Returns:
+            Dictionary mapping group names to container dicts.
+            Group names should be capitalized (e.g., 'Components', 'Buses').
+            Order determines display order in __repr__.
+
+        Example:
+            ```python
+            return {
+                'Components': self.components,
+                'Buses': self.buses,
+                'Effects': self.effects,
+            }
+            ```
+        """
+        raise NotImplementedError('Subclasses must implement _get_container_groups()')
+
+    def __getitem__(self, key: str):
+        """
+        Get element by label, searching all containers.
+
+        Args:
+            key: Element label to find
+
+        Returns:
+            The element with the given label
+
+        Raises:
+            KeyError: If element not found, with helpful suggestions
+        """
+        # Search all containers in order
+        for container in self._get_container_groups().values():
+            if key in container:
+                return container[key]
+
+        # Element not found - provide helpful error
+        from difflib import get_close_matches
+
+        all_elements = {}
+        for container in self._get_container_groups().values():
+            all_elements.update(container)
+
+        suggestions = get_close_matches(key, all_elements.keys(), n=3, cutoff=0.6)
+        error_msg = f'Element "{key}" not found.'
+
+        if suggestions:
+            error_msg += f' Did you mean: {", ".join(suggestions)}?'
+        else:
+            available = list(all_elements.keys())
+            if len(available) <= 5:
+                error_msg += f' Available: {", ".join(available)}'
+            else:
+                error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
+
+        raise KeyError(error_msg)
+
+    def __iter__(self):
+        """Iterate over all element labels across all containers."""
+        for container in self._get_container_groups().values():
+            yield from container.keys()
+
+    def __len__(self) -> int:
+        """Return total count of elements across all containers."""
+        return sum(len(container) for container in self._get_container_groups().values())
+
+    def __contains__(self, key: str) -> bool:
+        """Check if element exists in any container."""
+        return any(key in container for container in self._get_container_groups().values())
+
+    def keys(self):
+        """Return all element labels across all containers."""
+        return list(self)
+
+    def values(self):
+        """Return all element objects across all containers."""
+        return [self[key] for key in self]
+
+    def items(self):
+        """Return (label, element) pairs for all elements."""
+        return [(key, self[key]) for key in self]
+
+    def _format_grouped_containers(self, title: str | None = None) -> str:
+        """
+        Format containers as grouped string representation.
+
+        Args:
+            title: Optional title for the representation. If None, no title is shown.
+
+        Returns:
+            Formatted string with groups and their elements.
+            Empty groups are automatically hidden.
+
+        Example output:
+            ```
+            Components:
+             * Boiler
+             * CHP
+
+            Buses:
+             * Heat
+             * Power
+            ```
+        """
+        lines = []
+
+        if title:
+            lines.append(title)
+            lines.append('-' * len(title))
+
+        container_groups = self._get_container_groups()
+        for group_name, container in container_groups.items():
+            if container:  # Only show non-empty groups
+                if lines and not title:  # Add spacing between groups (but not before first)
+                    lines.append('')
+                elif title and group_name == list(container_groups.keys())[0]:
+                    # No spacing before first group when there's a title
+                    pass
+                else:
+                    lines.append('')
+
+                lines.append(f'{group_name}:')
+                for name in container.keys():
+                    lines.append(f' * {name}')
+
+        return '\n'.join(lines)
+
+
 class Submodel(SubmodelsMixin):
     """Stores Variables and Constraints. Its a subset of a FlowSystemModel.
     Variables and constraints are stored in the main FlowSystemModel, and are referenced here.

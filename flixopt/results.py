@@ -17,6 +17,7 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG
 from .flow_system import FlowSystem
+from .structure import CompositeContainerMixin
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -53,7 +54,7 @@ class _FlowSystemRestorationError(Exception):
     pass
 
 
-class CalculationResults:
+class CalculationResults(CompositeContainerMixin):
     """Comprehensive container for optimization calculation results and analysis tools.
 
     This class provides unified access to all optimization results including flow rates,
@@ -281,101 +282,18 @@ class CalculationResults:
 
         self.colors: dict[str, str] = {}
 
-    def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults | FlowResults:
-        """Get element results by label with helpful error messages."""
-        if key in self.components:
-            return self.components[key]
-        if key in self.buses:
-            return self.buses[key]
-        if key in self.effects:
-            return self.effects[key]
-        if key in self.flows:
-            return self.flows[key]
-
-        # Provide helpful error with suggestions (matching ElementContainer style)
-        from difflib import get_close_matches
-
-        all_elements = {**self.components, **self.buses, **self.effects, **self.flows}
-        suggestions = get_close_matches(key, all_elements.keys(), n=3, cutoff=0.6)
-        error_msg = f'Element "{key}" not found in results.'
-
-        if suggestions:
-            error_msg += f' Did you mean: {", ".join(suggestions)}?'
-        else:
-            available = list(all_elements.keys())
-            if len(available) <= 5:
-                error_msg += f' Available: {", ".join(available)}'
-            else:
-                error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
-
-        raise KeyError(error_msg)
-
-    def __iter__(self):
-        """Iterate over all element labels (components, buses, effects, flows)."""
-        yield from self.components.keys()
-        yield from self.buses.keys()
-        yield from self.effects.keys()
-        yield from self.flows.keys()
-
-    def __len__(self) -> int:
-        """Return total count of all elements."""
-        return len(self.components) + len(self.buses) + len(self.effects) + len(self.flows)
-
-    def __contains__(self, key: str) -> bool:
-        """Check if element exists in results."""
-        return key in self.components or key in self.buses or key in self.effects or key in self.flows
-
-    def keys(self):
-        """Return all element labels."""
-        return list(self)
-
-    def values(self):
-        """Return all element result objects."""
-        return [self[key] for key in self]
-
-    def items(self):
-        """Return (label, result) pairs for all elements."""
-        return [(key, self[key]) for key in self]
+    def _get_container_groups(self) -> dict[str, dict]:
+        """Return ordered container groups for CompositeContainerMixin."""
+        return {
+            'Components': self.components,
+            'Buses': self.buses,
+            'Effects': self.effects,
+            'Flows': self.flows,
+        }
 
     def __repr__(self) -> str:
         """Return grouped representation of all results."""
-        lines = []
-        lines.append('Calculation Results')
-        lines.append('-' * len('Calculation Results'))
-
-        # Components
-        if self.components:
-            lines.append('Components:')
-            for name in self.components.keys():
-                lines.append(f' * {name}')
-            lines.append('')
-
-        # Buses
-        if self.buses:
-            lines.append('Buses:')
-            for name in self.buses.keys():
-                lines.append(f' * {name}')
-            lines.append('')
-
-        # Effects
-        if self.effects:
-            lines.append('Effects:')
-            for name in self.effects.keys():
-                lines.append(f' * {name}')
-            lines.append('')
-
-        # Flows
-        if self.flows:
-            lines.append('Flows:')
-            for name in self.flows.keys():
-                lines.append(f' * {name}')
-            lines.append('')
-
-        # Remove trailing empty line if present
-        if lines and lines[-1] == '':
-            lines.pop()
-
-        return '\n'.join(lines)
+        return self._format_grouped_containers('Calculation Results')
 
     @property
     def storages(self) -> list[ComponentResults]:

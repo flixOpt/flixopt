@@ -32,7 +32,7 @@ from .effects import (
     TemporalEffectsUser,
 )
 from .elements import Bus, Component, Flow
-from .structure import Element, ElementContainer, FlowSystemModel, Interface
+from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 
 if TYPE_CHECKING:
     import pathlib
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
-class FlowSystem(Interface):
+class FlowSystem(Interface, CompositeContainerMixin):
     """
     A FlowSystem organizes the high level Elements (Components, Buses & Effects).
 
@@ -675,6 +675,8 @@ class FlowSystem(Interface):
             if len(self.periods) > 3:
                 period_names += f' ... (+{len(self.periods) - 3} more)'
             r += f'Periods: {len(self.periods)} ({period_names})\n'
+        else:
+            r += 'Periods: None\n'
 
         # Add scenarios if present
         if self.scenarios is not None:
@@ -682,20 +684,11 @@ class FlowSystem(Interface):
             if len(self.scenarios) > 3:
                 scenario_names += f' ... (+{len(self.scenarios) - 3} more)'
             r += f'Scenarios: {len(self.scenarios)} ({scenario_names})\n'
+        else:
+            r += 'Scenarios: None\n'
 
-        r += f'Status: {"Connected & Transformed" if self.connected_and_transformed else "Not connected"}\n'
-
-        # Add containers (using their nice repr)
-        r += '\n' + repr(self.components) + '\n'
-        r += '\n' + repr(self.buses) + '\n'
-
-        # Effects
-        r += '\nEffects\n-------\n'
-        for label, effect in self.effects.effects.items():
-            effect_type = effect.__class__.__name__
-            r += f' * {label} ({effect_type})\n'
-        if not self.effects.effects:
-            r += '<empty>\n'
+        # Add grouped container view
+        r += '\n' + self._format_grouped_containers()
 
         return r
 
@@ -746,6 +739,31 @@ class FlowSystem(Interface):
     def __iter__(self):
         """Iterate over element labels."""
         return iter(self.all_elements.keys())
+
+    def __len__(self) -> int:
+        """Return total count of all elements."""
+        return len(self.all_elements)
+
+    def keys(self):
+        """Return all element labels."""
+        return list(self.all_elements.keys())
+
+    def values(self):
+        """Return all element objects."""
+        return list(self.all_elements.values())
+
+    def items(self):
+        """Return (label, element) pairs for all elements."""
+        return list(self.all_elements.items())
+
+    def _get_container_groups(self) -> dict[str, dict]:
+        """Return ordered container groups for CompositeContainerMixin."""
+        return {
+            'Components': dict(self.components),
+            'Buses': dict(self.buses),
+            'Effects': self.effects.effects,
+            'Flows': dict(self.flows),
+        }
 
     @property
     def flows(self) -> ElementContainer[Flow]:
