@@ -659,21 +659,6 @@ class FlowSystem(Interface):
         )
 
     def __repr__(self) -> str:
-        """Compact representation for debugging."""
-        status = '✓' if self.connected_and_transformed else '⚠'
-
-        # Build dimension info
-        dims = f'{len(self.timesteps)} timesteps [{self.timesteps[0].strftime("%Y-%m-%d")} to {self.timesteps[-1].strftime("%Y-%m-%d")}]'
-        if self.periods is not None:
-            dims += f', {len(self.periods)} periods'
-        if self.scenarios is not None:
-            dims += f', {len(self.scenarios)} scenarios'
-
-        return f'FlowSystem({dims}, {len(self.components)} Components,  {len(self.buses)} Buses, {len(self.effects)} Effects, {status})'
-
-    def __str__(self) -> str:
-        """Structured summary for users."""
-
         def format_elements(element_names: list, label: str, alignment: int = 12):
             name_list = ', '.join(element_names[:3])
             if len(element_names) > 3:
@@ -683,7 +668,7 @@ class FlowSystem(Interface):
             padding = alignment - len(label) - 1  # -1 for the colon
             return f'{label}:{"":<{padding}} {len(element_names)}{suffix}'
 
-        time_period = f'Time period: {self.timesteps[0].date()} to {self.timesteps[-1].date()}'
+        time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
         freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
 
         lines = [
