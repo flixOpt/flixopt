@@ -245,13 +245,13 @@ class CalculationResults:
         components_dict = {
             label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
-        self.components = ResultsContainer(elements=components_dict, element_type_name='components')
+        self.components = ResultsContainer(elements=components_dict, element_type_name='component results')
 
         buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
-        self.buses = ResultsContainer(elements=buses_dict, element_type_name='buses')
+        self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results')
 
         effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
-        self.effects = ResultsContainer(elements=effects_dict, element_type_name='effects')
+        self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results')
 
         if 'Flows' not in self.solution.attrs:
             warnings.warn(
@@ -264,7 +264,7 @@ class CalculationResults:
             flows_dict = {
                 label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
             }
-        self.flows = ResultsContainer(elements=flows_dict, element_type_name='flows')
+        self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results')
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
