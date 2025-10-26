@@ -902,15 +902,16 @@ class Element(Interface):
 T = TypeVar('T', bound='Element')
 
 
-class ElementContainer(Generic[T]):
+class ElementContainer(dict[str, T]):
     """
-    A container for Elements providing dict-like access patterns with nice repr.
+    A dict-based container for Elements with helpful access patterns and nice repr.
 
-    This container provides:
-    - String-based access via __getitem__ with helpful error messages
-    - Iteration over labels and values
+    Inherits from dict for full compatibility with serialization and type checking,
+    while adding:
+    - Helpful error messages with fuzzy matching suggestions
     - Nice __repr__ similar to FlowSystem's formatting
     - Type safety through generic typing
+    - Validation on assignment
 
     Example:
         >>> components = ElementContainer[Component](element_type_name='components')
@@ -927,10 +928,10 @@ class ElementContainer(Generic[T]):
     ):
         """
         Args:
-            elements: Initial elements to add (list or dict). If dict, keys are ignored and element.label is used.
+            elements: Initial elements to add (list or dict). If dict, keys are ignored and element.label_full is used.
             element_type_name: Name of the element type for repr (e.g., 'components', 'buses', 'flows')
         """
-        self._elements: dict[str, T] = {}
+        super().__init__()
         self._element_type_name = element_type_name
 
         if elements is not None:
@@ -951,12 +952,30 @@ class ElementContainer(Generic[T]):
         Raises:
             ValueError: If an element with the same label already exists
         """
-        if element.label_full in self._elements:
+        if element.label_full in self:
             raise ValueError(
                 f'Element with label "{element.label_full}" already exists in {self._element_type_name}. '
                 f'Each element must have a unique label.'
             )
-        self._elements[element.label_full] = element
+        self[element.label_full] = element
+
+    def __setitem__(self, label: str, element: T) -> None:
+        """
+        Set an element with validation.
+
+        Args:
+            label: Label for the element (should match element.label_full)
+            element: Element to add
+
+        Raises:
+            ValueError: If label doesn't match element.label_full
+        """
+        if label != element.label_full:
+            raise ValueError(
+                f'Key "{label}" does not match element.label_full "{element.label_full}". '
+                f'Use element.label_full as the key or use .add() method.'
+            )
+        super().__setitem__(label, element)
 
     def __getitem__(self, label: str) -> T:
         """
@@ -971,52 +990,15 @@ class ElementContainer(Generic[T]):
         Raises:
             KeyError: If element is not found, with suggestions for similar labels
         """
-        if label in self._elements:
-            return self._elements[label]
-
-        # Provide helpful error with close matches suggestions
-        suggestions = get_close_matches(label, self._elements.keys(), n=3, cutoff=0.6)
-        error_msg = f'Element "{label}" not found in {self._element_type_name}.'
-        if suggestions:
-            error_msg += f' Did you mean: {", ".join(suggestions)}?'
-        raise KeyError(error_msg)
-
-    def __contains__(self, label: str) -> bool:
-        """Check if element exists in the container by label."""
-        return label in self._elements
-
-    def __iter__(self):
-        """Iterate over element labels."""
-        return iter(self._elements.keys())
-
-    def __len__(self) -> int:
-        """Return number of elements in the container."""
-        return len(self._elements)
-
-    def values(self):
-        """Return iterator over element values."""
-        return self._elements.values()
-
-    def items(self):
-        """Return iterator over (label, element) pairs."""
-        return self._elements.items()
-
-    def keys(self):
-        """Return iterator over element labels."""
-        return self._elements.keys()
-
-    def get(self, label: str, default=None) -> T | None:
-        """
-        Get element by label, returning default if not found.
-
-        Args:
-            label: Label of the element to retrieve
-            default: Value to return if element is not found
-
-        Returns:
-            The element if found, otherwise default
-        """
-        return self._elements.get(label, default)
+        try:
+            return super().__getitem__(label)
+        except KeyError:
+            # Provide helpful error with close matches suggestions
+            suggestions = get_close_matches(label, self.keys(), n=3, cutoff=0.6)
+            error_msg = f'Element "{label}" not found in {self._element_type_name}.'
+            if suggestions:
+                error_msg += f' Did you mean: {", ".join(suggestions)}?'
+            raise KeyError(error_msg) from None
 
     def __repr__(self) -> str:
         """
@@ -1024,16 +1006,16 @@ class ElementContainer(Generic[T]):
 
         Shows the count and first few element names.
         """
-        if not self._elements:
+        if not self:
             return f'{self._element_type_name.capitalize()}: 0'
 
         # Get first 3 element names
-        element_names = list(self._elements.keys())
+        element_names = list(self.keys())
         name_list = ', '.join(element_names[:3])
         if len(element_names) > 3:
             name_list += f' ... (+{len(element_names) - 3} more)'
 
-        return f'{self._element_type_name.capitalize()}: {len(self._elements)} ({name_list})'
+        return f'{self._element_type_name.capitalize()}: {len(self)} ({name_list})'
 
 
 class Submodel(SubmodelsMixin):

@@ -750,12 +750,7 @@ class FlowSystem(Interface):
 
     @property
     def all_elements(self) -> dict[str, Element]:
-        return {
-            **dict(self.components.items()),
-            **self.effects.effects,
-            **self.flows,
-            **dict(self.buses.items()),
-        }
+        return {**self.components, **self.effects.effects, **self.flows, **self.buses}
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
