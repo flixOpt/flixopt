@@ -998,6 +998,8 @@ class ElementContainer(dict[str, T]):
             error_msg = f'Element "{label}" not found in {self._element_type_name}.'
             if suggestions:
                 error_msg += f' Did you mean: {", ".join(suggestions)}?'
+            else:
+                error_msg += f' Got: {str(list(self))}'
             raise KeyError(error_msg) from None
 
     def __repr__(self) -> str:

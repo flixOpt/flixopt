@@ -744,9 +744,10 @@ class FlowSystem(Interface):
         return iter(self.all_elements.keys())
 
     @property
-    def flows(self) -> dict[str, Flow]:
+    def flows(self) -> ElementContainer[Flow]:
         set_of_flows = {flow for comp in self.components.values() for flow in comp.inputs + comp.outputs}
-        return {flow.label_full: flow for flow in set_of_flows}
+        flows_dict = {flow.label_full: flow for flow in set_of_flows}
+        return ElementContainer(elements=flows_dict, element_type_name='flows')
 
     @property
     def all_elements(self) -> dict[str, Element]:
