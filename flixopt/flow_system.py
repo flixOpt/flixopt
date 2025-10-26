@@ -687,6 +687,10 @@ class FlowSystem(Interface, CompositeContainerMixin):
         else:
             r += 'Scenarios: None\n'
 
+        # Add status
+        status = '✓' if self.connected_and_transformed else '⚠'
+        r += f'Status: {status}\n'
+
         # Add grouped container view
         r += '\n' + self._format_grouped_containers()
 
