@@ -310,6 +310,73 @@ class CalculationResults:
 
         raise KeyError(error_msg)
 
+    def __iter__(self):
+        """Iterate over all element labels (components, buses, effects, flows)."""
+        yield from self.components.keys()
+        yield from self.buses.keys()
+        yield from self.effects.keys()
+        yield from self.flows.keys()
+
+    def __len__(self) -> int:
+        """Return total count of all elements."""
+        return len(self.components) + len(self.buses) + len(self.effects) + len(self.flows)
+
+    def __contains__(self, key: str) -> bool:
+        """Check if element exists in results."""
+        return key in self.components or key in self.buses or key in self.effects or key in self.flows
+
+    def keys(self):
+        """Return all element labels."""
+        return list(self)
+
+    def values(self):
+        """Return all element result objects."""
+        return [self[key] for key in self]
+
+    def items(self):
+        """Return (label, result) pairs for all elements."""
+        return [(key, self[key]) for key in self]
+
+    def __repr__(self) -> str:
+        """Return grouped representation of all results."""
+        lines = []
+        lines.append('Calculation Results')
+        lines.append('-' * len('Calculation Results'))
+
+        # Components
+        if self.components:
+            lines.append('Components:')
+            for name in self.components.keys():
+                lines.append(f' * {name}')
+            lines.append('')
+
+        # Buses
+        if self.buses:
+            lines.append('Buses:')
+            for name in self.buses.keys():
+                lines.append(f' * {name}')
+            lines.append('')
+
+        # Effects
+        if self.effects:
+            lines.append('Effects:')
+            for name in self.effects.keys():
+                lines.append(f' * {name}')
+            lines.append('')
+
+        # Flows
+        if self.flows:
+            lines.append('Flows:')
+            for name in self.flows.keys():
+                lines.append(f' * {name}')
+            lines.append('')
+
+        # Remove trailing empty line if present
+        if lines and lines[-1] == '':
+            lines.pop()
+
+        return '\n'.join(lines)
+
     @property
     def storages(self) -> list[ComponentResults]:
         """Get all storage components in the results."""
