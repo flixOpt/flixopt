@@ -37,7 +37,7 @@ dependencies = [
     "xarray >= 2024.2.0, < 2026.0", # CalVer: allow through next calendar year
     # Optimization and data handling
     "linopy >= 0.5.1, < 0.6", # Widened from patch pin to minor range
-    "h5netcdf>=1.0.0, < 2",
+    "netcdf4 >= 1.6.1, < 2",
     # Utilities
     "pyyaml >= 6.0.0, < 7",
     "rich >= 13.0.0, < 15",

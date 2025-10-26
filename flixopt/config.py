@@ -8,7 +8,6 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 
-import yaml
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.style import Style
@@ -299,13 +298,15 @@ class CONFIG:
         Raises:
             FileNotFoundError: If the config file does not exist.
         """
+        # Import here to avoid circular import
+        from . import io as fx_io
+
         config_path = Path(config_file)
         if not config_path.exists():
             raise FileNotFoundError(f'Config file not found: {config_file}')
 
-        with config_path.open() as file:
-            config_dict = yaml.safe_load(file) or {}
-            cls._apply_config_dict(config_dict)
+        config_dict = fx_io.load_yaml(config_path)
+        cls._apply_config_dict(config_dict)
 
         cls.apply()
 
