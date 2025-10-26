@@ -1030,7 +1030,10 @@ class ResultsContainer(ContainerMixin[T]):
         return element.label
 
 
-class CompositeContainerMixin:
+T_element = TypeVar('T_element')
+
+
+class CompositeContainerMixin(Generic[T_element]):
     """
     Mixin providing unified dict-like access across multiple typed containers.
 
@@ -1038,12 +1041,17 @@ class CompositeContainerMixin:
     buses, effects, flows) to provide a unified interface for accessing elements
     across all containers, as if they were a single collection.
 
+    Type Parameter:
+        T_element: The type of elements stored in the containers. Can be a union type
+            for containers holding multiple types (e.g., 'ComponentResults | BusResults').
+
     Key Features:
         - Dict-like access: `obj['element_name']` searches all containers
         - Iteration: `for label in obj:` iterates over all elements
         - Membership: `'element' in obj` checks across all containers
         - Standard dict methods: keys(), values(), items()
         - Grouped display: Formatted repr showing elements by type
+        - Type hints: Full IDE and type checker support
 
     Subclasses must implement:
         _get_container_groups() -> dict[str, dict]:
@@ -1052,10 +1060,10 @@ class CompositeContainerMixin:
 
     Example:
         ```python
-        class MySystem(CompositeContainerMixin):
+        class MySystem(CompositeContainerMixin[Component | Bus]):
             def __init__(self):
-                self.components = {'Boiler': ..., 'CHP': ...}
-                self.buses = {'Heat': ..., 'Power': ...}
+                self.components = {'Boiler': Component(...), 'CHP': Component(...)}
+                self.buses = {'Heat': Bus(...), 'Power': Bus(...)}
 
             def _get_container_groups(self):
                 return {
@@ -1065,9 +1073,10 @@ class CompositeContainerMixin:
 
 
         system = MySystem()
-        system['Boiler']  # Returns Boiler component
+        comp = system['Boiler']  # Type: Component | Bus (with proper IDE support)
         'Heat' in system  # True
-        list(system)  # ['Boiler', 'CHP', 'Heat', 'Power']
+        labels = system.keys()  # Type: list[str]
+        elements = system.values()  # Type: list[Component | Bus]
         ```
 
     Integration with ContainerMixin:
@@ -1096,7 +1105,7 @@ class CompositeContainerMixin:
         """
         raise NotImplementedError('Subclasses must implement _get_container_groups()')
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key: str) -> T_element:
         """
         Get element by label, searching all containers.
 
@@ -1148,15 +1157,15 @@ class CompositeContainerMixin:
         """Check if element exists in any container."""
         return any(key in container for container in self._get_container_groups().values())
 
-    def keys(self):
+    def keys(self) -> list[str]:
         """Return all element labels across all containers."""
         return list(self)
 
-    def values(self):
+    def values(self) -> list[T_element]:
         """Return all element objects across all containers."""
         return [self[key] for key in self]
 
-    def items(self):
+    def items(self) -> list[tuple[str, T_element]]:
         """Return (label, element) pairs for all elements."""
         return [(key, self[key]) for key in self]
 

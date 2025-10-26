@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
-class FlowSystem(Interface, CompositeContainerMixin):
+class FlowSystem(Interface, CompositeContainerMixin[Element]):
     """
     A FlowSystem organizes the high level Elements (Components, Buses & Effects).
 

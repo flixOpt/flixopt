@@ -54,7 +54,7 @@ class _FlowSystemRestorationError(Exception):
     pass
 
 
-class CalculationResults(CompositeContainerMixin):
+class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults | EffectResults | FlowResults']):
     """Comprehensive container for optimization calculation results and analysis tools.
 
     This class provides unified access to all optimization results including flow rates,
