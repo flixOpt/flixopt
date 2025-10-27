@@ -361,6 +361,30 @@ class CalculationResults:
                 logger.level = old_level
         return self._flow_system
 
+    @property
+    def plot(self):
+        """Access plotting methods via .plot accessor.
+
+        Returns a plot accessor that provides convenient methods for creating
+        visualizations of calculation results.
+
+        Returns:
+            CalculationResultsPlotAccessor: Accessor with plotting methods
+
+        Examples:
+            >>> # Heatmap plots
+            >>> plotter = results.plot.heatmap('Boiler(Gas)|flow_rate')
+            >>> fig = plotter.heatmap(reshape_time=('D', 'h'))
+            >>> fig = plotter.heatmap(facet_by='scenario', animate_by='period')
+            >>>
+            >>> # Multiple variables
+            >>> plotter = results.plot.heatmap(['Var1', 'Var2', 'Var3'])
+            >>> fig = plotter.heatmap(facet_by='variable')
+        """
+        from .plotting_accessor import CalculationResultsPlotAccessor
+
+        return CalculationResultsPlotAccessor(self)
+
     def setup_colors(
         self,
         config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
@@ -1002,7 +1026,8 @@ class CalculationResults:
             ...     imshow_kwargs={'interpolation': 'bilinear', 'aspect': 'auto'},
             ... )
         """
-        # Delegate to module-level plot_heatmap function
+        # Handle deprecated parameters by delegating to module-level function
+        # which handles all deprecated parameter logic
         return plot_heatmap(
             data=self.solution[variable_name],
             name=variable_name if isinstance(variable_name, str) else None,
@@ -1318,62 +1343,30 @@ class _NodeResults(_ElementResults):
             )
             select = indexer
 
-        if engine not in {'plotly', 'matplotlib'}:
-            raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
+        # Use the new plotting architecture via accessor
+        plotter = self.plot.node_balance(unit_type=unit_type, drop_suffix=drop_suffix, select=select)
 
-        # Extract dpi for export_figure
-        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+        # Call the appropriate plotter method based on mode
+        plot_method = {
+            'stacked_bar': lambda: plotter.bar(mode='stacked', engine=engine),
+            'grouped_bar': lambda: plotter.bar(mode='grouped', engine=engine),
+            'line': lambda: plotter.line(engine=engine),
+            'area': lambda: plotter.area(engine=engine),
+        }.get(mode)
 
-        # Don't pass select/indexer to node_balance - we'll apply it afterwards
-        ds = self.node_balance(with_last_timestep=False, unit_type=unit_type, drop_suffix=drop_suffix)
+        if plot_method is None:
+            raise ValueError(f'Invalid mode: {mode}. Must be one of: stacked_bar, grouped_bar, line, area')
 
-        ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
-
-        # Matplotlib requires only 'time' dimension; check for extras after selection
-        if engine == 'matplotlib':
-            extra_dims = [d for d in ds.dims if d != 'time']
-            if extra_dims:
-                raise ValueError(
-                    f'Matplotlib engine only supports a single time axis, but found extra dimensions: {extra_dims}. '
-                    f'Please use select={{...}} to reduce dimensions or switch to engine="plotly" for faceting/animation.'
-                )
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
-
-        title = (
-            f'{self.label} (flow rates){suffix}' if unit_type == 'flow_rate' else f'{self.label} (flow hours){suffix}'
-        )
-
-        if engine == 'plotly':
-            figure_like = plotting.with_plotly(
-                ds,
-                facet_by=facet_by,
-                animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
-                mode=mode,
-                title=title,
-                facet_cols=facet_cols,
-                xlabel='Time in h',
-                **plot_kwargs,
-            )
-            default_filetype = '.html'
-        else:
-            figure_like = plotting.with_matplotlib(
-                ds,
-                colors=colors if colors is not None else self._calculation_results.colors,
-                mode=mode,
-                title=title,
-                **plot_kwargs,
-            )
-            default_filetype = '.png'
-
-        return plotting.export_figure(
-            figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
-            default_filetype=default_filetype,
-            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+        # Call plotter method with remaining parameters
+        return plot_method(
+            colors=colors,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            save=save,
             show=show,
-            save=True if save else False,
-            dpi=dpi,
+            dpi=plot_kwargs.pop('dpi', None),
+            **plot_kwargs,
         )
 
     def plot_node_balance_pie(
@@ -1453,102 +1446,19 @@ class _NodeResults(_ElementResults):
             )
             select = indexer
 
-        # Extract dpi for export_figure
-        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+        # Use the new plotting architecture via accessor
+        plotter = self.plot.node_balance_pie(select=select, threshold=1e-5)
 
-        inputs = sanitize_dataset(
-            ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
-            threshold=1e-5,
-            drop_small_vars=True,
-            zero_small_values=True,
-            drop_suffix='|',
-        )
-        outputs = sanitize_dataset(
-            ds=self.solution[self.outputs] * self._calculation_results.hours_per_timestep,
-            threshold=1e-5,
-            drop_small_vars=True,
-            zero_small_values=True,
-            drop_suffix='|',
-        )
-
-        inputs, suffix_parts_in = _apply_selection_to_data(inputs, select=select, drop=True)
-        outputs, suffix_parts_out = _apply_selection_to_data(outputs, select=select, drop=True)
-        suffix_parts = suffix_parts_in + suffix_parts_out
-
-        # Sum over time dimension
-        inputs = inputs.sum('time')
-        outputs = outputs.sum('time')
-
-        # Auto-select first value for any remaining dimensions (scenario, period, etc.)
-        # Pie charts need scalar data, so we automatically reduce extra dimensions
-        extra_dims_inputs = [dim for dim in inputs.dims if dim != 'time']
-        extra_dims_outputs = [dim for dim in outputs.dims if dim != 'time']
-        extra_dims = sorted(set(extra_dims_inputs + extra_dims_outputs))
-
-        if extra_dims:
-            auto_select = {}
-            for dim in extra_dims:
-                # Get first value of this dimension
-                if dim in inputs.coords:
-                    first_val = inputs.coords[dim].values[0]
-                elif dim in outputs.coords:
-                    first_val = outputs.coords[dim].values[0]
-                else:
-                    continue
-                auto_select[dim] = first_val
-                logger.info(
-                    f'Pie chart auto-selected {dim}={first_val} (first value). '
-                    f'Use select={{"{dim}": value}} to choose a different value.'
-                )
-
-            # Apply auto-selection only for coords present in each dataset
-            inputs = inputs.sel({k: v for k, v in auto_select.items() if k in inputs.coords})
-            outputs = outputs.sel({k: v for k, v in auto_select.items() if k in outputs.coords})
-
-            # Update suffix with auto-selected values
-            auto_suffix_parts = [f'{dim}={val}' for dim, val in auto_select.items()]
-            suffix_parts.extend(auto_suffix_parts)
-
-        suffix = '--' + '-'.join(sorted(set(suffix_parts))) if suffix_parts else ''
-        title = f'{self.label} (total flow hours){suffix}'
-
-        if engine == 'plotly':
-            figure_like = plotting.dual_pie_with_plotly(
-                data_left=inputs,
-                data_right=outputs,
-                colors=colors if colors is not None else self._calculation_results.colors,
-                title=title,
-                text_info=text_info,
-                subtitles=('Inputs', 'Outputs'),
-                legend_title='Flows',
-                lower_percentage_group=lower_percentage_group,
-                **plot_kwargs,
-            )
-            default_filetype = '.html'
-        elif engine == 'matplotlib':
-            logger.debug('Parameter text_info is not supported for matplotlib')
-            figure_like = plotting.dual_pie_with_matplotlib(
-                data_left=inputs.to_pandas(),
-                data_right=outputs.to_pandas(),
-                colors=colors if colors is not None else self._calculation_results.colors,
-                title=title,
-                subtitles=('Inputs', 'Outputs'),
-                legend_title='Flows',
-                lower_percentage_group=lower_percentage_group,
-                **plot_kwargs,
-            )
-            default_filetype = '.png'
-        else:
-            raise ValueError(f'Engine "{engine}" not supported. Use "plotly" or "matplotlib"')
-
-        return plotting.export_figure(
-            figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
-            default_filetype=default_filetype,
-            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+        # Call the pie plotter with remaining parameters
+        return plotter.pie(
+            lower_percentage_group=lower_percentage_group,
+            colors=colors,
+            text_info=text_info,
+            engine=engine,
+            save=save,
             show=show,
-            save=True if save else False,
-            dpi=dpi,
+            dpi=plot_kwargs.pop('dpi', None),
+            **plot_kwargs,
         )
 
     def node_balance(
@@ -1623,6 +1533,30 @@ class _NodeResults(_ElementResults):
 class BusResults(_NodeResults):
     """Results container for energy/material balance nodes in the system."""
 
+    @property
+    def plot(self):
+        """Access plotting methods via .plot accessor.
+
+        Returns a plot accessor that provides convenient methods for creating
+        visualizations of this bus's results.
+
+        Returns:
+            BusPlotAccessor: Accessor with plotting methods
+
+        Examples:
+            >>> # Node balance plots
+            >>> plotter = results['ElectricityBus'].plot.node_balance()
+            >>> fig = plotter.bar()
+            >>> fig = plotter.area(facet_by='scenario')
+            >>>
+            >>> # Pie charts
+            >>> plotter = results['ElectricityBus'].plot.node_balance_pie()
+            >>> fig = plotter.pie()
+        """
+        from .plotting_accessor import BusPlotAccessor
+
+        return BusPlotAccessor(self)
+
 
 class ComponentResults(_NodeResults):
     """Results container for individual system components with specialized analysis tools."""
@@ -1641,6 +1575,34 @@ class ComponentResults(_NodeResults):
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
         return self.solution[self._charge_state]
+
+    @property
+    def plot(self):
+        """Access plotting methods via .plot accessor.
+
+        Returns a plot accessor that provides convenient methods for creating
+        visualizations of this component's results.
+
+        Returns:
+            ComponentPlotAccessor: Accessor with plotting methods
+
+        Examples:
+            >>> # Node balance plots
+            >>> plotter = results['Boiler'].plot.node_balance()
+            >>> fig = plotter.bar()
+            >>> fig = plotter.area(facet_by='scenario')
+            >>>
+            >>> # Pie charts
+            >>> plotter = results['Bus'].plot.node_balance_pie()
+            >>> fig = plotter.pie()
+            >>>
+            >>> # Charge state (for storages)
+            >>> plotter = results['Storage'].plot.charge_state()
+            >>> fig = plotter.overlay(overlay_color='red')
+        """
+        from .plotting_accessor import ComponentPlotAccessor
+
+        return ComponentPlotAccessor(self)
 
     def plot_charge_state(
         self,
@@ -1740,126 +1702,37 @@ class ComponentResults(_NodeResults):
             )
             select = indexer
 
-        # Extract dpi for export_figure
-        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+        # Check if storage before creating plotter
+        if not self.is_storage:
+            raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
         # Extract charge state line color (for overlay customization)
         overlay_color = plot_kwargs.pop('charge_state_line_color', 'black')
 
-        if not self.is_storage:
-            raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
+        # Use the new plotting architecture via accessor
+        plotter = self.plot.charge_state(select=select)
 
-        # Get node balance and charge state
-        ds = self.node_balance(with_last_timestep=True).fillna(0)
-        charge_state_da = self.charge_state
+        # Call the appropriate plotter method based on mode
+        plot_method = {
+            'area': lambda: plotter.area(engine=engine),
+            'stacked_bar': lambda: plotter.bar(engine=engine),
+            'line': lambda: plotter.line(engine=engine),
+        }.get(mode)
 
-        # Apply select filtering
-        ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
-        charge_state_da, _ = _apply_selection_to_data(charge_state_da, select=select, drop=True)
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        if plot_method is None:
+            raise ValueError(f'Invalid mode: {mode}. Must be one of: area, stacked_bar, line')
 
-        title = f'Operation Balance of {self.label}{suffix}'
-
-        if engine == 'plotly':
-            # Plot flows (node balance) with the specified mode
-            figure_like = plotting.with_plotly(
-                ds,
-                facet_by=facet_by,
-                animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
-                mode=mode,
-                title=title,
-                facet_cols=facet_cols,
-                xlabel='Time in h',
-                **plot_kwargs,
-            )
-
-            # Prepare charge_state as Dataset for plotting
-            charge_state_ds = xr.Dataset({self._charge_state: charge_state_da})
-
-            # Plot charge_state with mode='line' to get Scatter traces
-            charge_state_fig = plotting.with_plotly(
-                charge_state_ds,
-                facet_by=facet_by,
-                animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
-                mode='line',  # Always line for charge_state
-                title='',  # No title needed for this temp figure
-                facet_cols=facet_cols,
-                xlabel='Time in h',
-                **plot_kwargs,
-            )
-
-            # Add charge_state traces to the main figure
-            # This preserves subplot assignments and animation frames
-            for trace in charge_state_fig.data:
-                trace.line.width = 2  # Make charge_state line more prominent
-                trace.line.shape = 'linear'  # Smooth line for charge state (not stepped like flows)
-                trace.line.color = overlay_color
-                figure_like.add_trace(trace)
-
-            # Also add traces from animation frames if they exist
-            # Both figures use the same animate_by parameter, so they should have matching frames
-            if hasattr(charge_state_fig, 'frames') and charge_state_fig.frames:
-                # Add charge_state traces to each frame
-                for i, frame in enumerate(charge_state_fig.frames):
-                    if i < len(figure_like.frames):
-                        for trace in frame.data:
-                            trace.line.width = 2
-                            trace.line.shape = 'linear'  # Smooth line for charge state
-                            trace.line.color = overlay_color
-                            figure_like.frames[i].data = figure_like.frames[i].data + (trace,)
-
-            default_filetype = '.html'
-        elif engine == 'matplotlib':
-            # Matplotlib requires only 'time' dimension; check for extras after selection
-            extra_dims = [d for d in ds.dims if d != 'time']
-            if extra_dims:
-                raise ValueError(
-                    f'Matplotlib engine only supports a single time axis, but found extra dimensions: {extra_dims}. '
-                    f'Please use select={{...}} to reduce dimensions or switch to engine="plotly" for faceting/animation.'
-                )
-            # For matplotlib, plot flows (node balance), then add charge_state as line
-            fig, ax = plotting.with_matplotlib(
-                ds,
-                colors=colors if colors is not None else self._calculation_results.colors,
-                mode=mode,
-                title=title,
-                **plot_kwargs,
-            )
-
-            # Add charge_state as a line overlay
-            charge_state_df = charge_state_da.to_dataframe()
-            ax.plot(
-                charge_state_df.index,
-                charge_state_df.values.flatten(),
-                label=self._charge_state,
-                linewidth=2,
-                color=overlay_color,
-            )
-            # Recreate legend with the same styling as with_matplotlib
-            handles, labels = ax.get_legend_handles_labels()
-            ax.legend(
-                handles,
-                labels,
-                loc='upper center',
-                bbox_to_anchor=(0.5, -0.15),
-                ncol=5,
-                frameon=False,
-            )
-            fig.tight_layout()
-
-            figure_like = fig, ax
-            default_filetype = '.png'
-
-        return plotting.export_figure(
-            figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
-            default_filetype=default_filetype,
-            user_path=None if isinstance(save, bool) else pathlib.Path(save),
+        # Call plotter method with remaining parameters
+        return plot_method(
+            overlay_color=overlay_color,
+            colors=colors,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            save=save,
             show=show,
-            save=True if save else False,
-            dpi=dpi,
+            dpi=plot_kwargs.pop('dpi', None),
+            **plot_kwargs,
         )
 
     def node_balance_with_charge_state(
@@ -2122,6 +1995,25 @@ class SegmentedCalculationResults:
         self._colors = colors
         for segment in self.segment_results:
             segment.colors = copy.deepcopy(colors)
+
+    @property
+    def plot(self):
+        """Access plotting methods via .plot accessor.
+
+        Returns a plot accessor that provides convenient methods for creating
+        visualizations of segmented calculation results.
+
+        Returns:
+            SegmentedCalculationResultsPlotAccessor: Accessor with plotting methods
+
+        Examples:
+            >>> # Heatmap plots across segments
+            >>> plotter = segmented_results.plot.heatmap('Variable')
+            >>> fig = plotter.heatmap(reshape_time=('D', 'h'))
+        """
+        from .plotting_accessor import SegmentedCalculationResultsPlotAccessor
+
+        return SegmentedCalculationResultsPlotAccessor(self)
 
     def setup_colors(
         self,

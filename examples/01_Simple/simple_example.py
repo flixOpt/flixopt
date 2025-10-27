@@ -126,3 +126,5 @@ if __name__ == '__main__':
 
     # Save results to file for later usage
     calculation.results.to_file()
+
+    calculation.results.statistics.flow_summary(aggregate_time=False).plot.line()
