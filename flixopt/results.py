@@ -1211,6 +1211,37 @@ class _NodeResults(_ElementResults):
         self.outputs = outputs
         self.flows = flows
 
+    @property
+    def statistics(self):
+        """Access statistics methods via .statistics accessor.
+
+        Returns a statistics accessor that provides convenient methods for
+        calculating and visualizing statistics for this node's results.
+
+        Returns:
+            NodeStatisticsAccessor: Accessor with statistics methods
+
+        Examples:
+            >>> # Flow summary statistics
+            >>> data = results['Boiler'].statistics.flow_summary()()
+            >>> fig = results['Boiler'].statistics.flow_summary().plot.bar()
+            >>>
+            >>> # Flow hours
+            >>> fig = results['Boiler'].statistics.flow_hours().plot.bar()
+            >>>
+            >>> # Capacity utilization
+            >>> fig = results['CHP'].statistics.capacity_utilization().plot.bar()
+            >>>
+            >>> # Storage metrics (for storages only)
+            >>> fig = results['Battery'].statistics.storage_metrics().plot.bar()
+            >>>
+            >>> # Temporal patterns
+            >>> fig = results['Boiler'].statistics.temporal_patterns(freq='D').plot.line()
+        """
+        from .statistics import NodeStatisticsAccessor
+
+        return NodeStatisticsAccessor(self)
+
     def plot_node_balance(
         self,
         save: bool | pathlib.Path = False,
