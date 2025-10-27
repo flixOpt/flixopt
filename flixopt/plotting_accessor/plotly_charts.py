@@ -1,11 +1,13 @@
 """Interactive Plotly-based plotting for xarray statistics.
 
-This module provides the InteractivePlotter class which implements actual
-visualization methods using Plotly for creating interactive charts from
-xarray datasets.
+This module provides plotter classes for creating interactive visualizations.
+Uses a base class with common functionality and specialized subclasses for
+domain-specific plot types, following the DRY (Don't Repeat Yourself) principle.
 
-This integrates with flixopt's existing plotting infrastructure to provide
-faceting, animation, and advanced color processing.
+Architecture:
+- InteractivePlotter: Base class with common plotting logic
+- Specialized plotters: Inherit and add domain-specific methods
+- Automatic plotter selection based on statistic method name
 """
 
 from __future__ import annotations
@@ -148,9 +150,98 @@ class InteractivePlotter:
             return title
         return self._method_name.replace('_', ' ').title()
 
-    def bar(
+    def _setup_plot_params(
+        self, colors: plotting.ColorType | None = None, title: str | None = None, **kwargs
+    ) -> tuple[plotting.ColorType | None, str, dict]:
+        """Setup common plot parameters with intelligent defaults.
+
+        This is a DRY helper that handles color and title setup consistently.
+
+        Args:
+            colors: Color specification (None uses parent colors)
+            title: Plot title (None auto-generates from method name)
+            **kwargs: Additional parameters to pass through
+
+        Returns:
+            Tuple of (colors, title, kwargs)
+        """
+        if colors is None:
+            colors = getattr(self._parent, 'colors', None)
+        if title is None:
+            title = self._make_title()
+        return colors, title, kwargs
+
+    def _combine_figures(
         self,
-        mode: Literal['stacked', 'grouped'] = 'stacked',
+        base_fig: go.Figure,
+        overlay_fig: go.Figure,
+        overlay_styling: dict[str, Any] | None = None,
+    ) -> go.Figure:
+        """Combine two figures by adding overlay traces to base figure.
+
+        This is a DRY helper that handles trace and animation frame merging,
+        used for creating mixed plot types (e.g., area + line overlay).
+
+        Args:
+            base_fig: Base figure to add traces to
+            overlay_fig: Figure whose traces will be added as overlay
+            overlay_styling: Optional styling to apply to overlay traces.
+                Can contain 'line', 'marker', etc. properties.
+
+        Returns:
+            Modified base figure with overlay traces added
+
+        Examples:
+            >>> # Add line overlay to area chart
+            >>> fig = self._combine_figures(
+            ...     area_fig, line_fig, overlay_styling={'line': {'width': 2, 'color': 'black'}}
+            ... )
+        """
+        import plotly.graph_objects as go
+
+        # Add overlay traces to base figure
+        for trace in overlay_fig.data:
+            # Apply custom styling if provided
+            if overlay_styling:
+                for attr, style in overlay_styling.items():
+                    if hasattr(trace, attr):
+                        # Update the attribute (e.g., trace.line)
+                        current = getattr(trace, attr)
+                        if isinstance(current, dict):
+                            current.update(style)
+                        else:
+                            # Create new dict-like object with updates
+                            for key, value in style.items():
+                                setattr(current, key, value)
+
+            base_fig.add_trace(trace)
+
+        # Handle animation frames if they exist
+        if hasattr(overlay_fig, 'frames') and overlay_fig.frames:
+            if not hasattr(base_fig, 'frames') or not base_fig.frames:
+                # Base fig has no frames, add them
+                base_fig.frames = overlay_fig.frames
+            else:
+                # Both have frames, merge them
+                for i, frame in enumerate(overlay_fig.frames):
+                    if i < len(base_fig.frames):
+                        # Apply styling to frame traces too
+                        for trace in frame.data:
+                            if overlay_styling:
+                                for attr, style in overlay_styling.items():
+                                    if hasattr(trace, attr):
+                                        current = getattr(trace, attr)
+                                        for key, value in style.items():
+                                            setattr(current, key, value)
+
+                            # Add trace to frame
+                            base_fig.frames[i].data = base_fig.frames[i].data + (trace,)
+
+        return base_fig
+
+    def plot(
+        self,
+        mode: Literal['stacked_bar', 'grouped_bar', 'line', 'area'] = 'stacked_bar',
         colors: plotting.ColorType | None = None,
         title: str | None = None,
         ylabel: str = '',
@@ -162,154 +253,91 @@ class InteractivePlotter:
         shared_xaxes: bool = True,
         **kwargs,
     ) -> go.Figure:
-        """Create an interactive bar chart with faceting and animation support.
+        """Create an interactive plot with the specified mode.
 
-        Uses flixopt's plotting.with_plotly() infrastructure for advanced features.
+        This is the main generic plotting method that wraps plotting.with_plotly().
+        Specialized plotters can use this as a building block.
 
         Args:
-            mode: Bar chart mode. Defaults to 'stacked'.
-                - 'stacked': Stacked bars
-                - 'grouped': Grouped bars side-by-side
-            colors: Color specification. Can be:
-                - None: Use parent's colors if available
-                - str: Single color for all bars
-                - dict: Mapping of categories to colors
-                - Sequence: List of colors to cycle through
-            title: Plot title. If None, derived from method name.
+            mode: Plot type - 'stacked_bar', 'grouped_bar', 'line', or 'area'
+            colors: Color specification (None uses parent colors)
+            title: Plot title (None auto-generates)
             ylabel: Y-axis label
             xlabel: X-axis label
-            facet_by: Dimension(s) to create subplots for. Can be:
-                - str: Single dimension (e.g., 'scenario')
-                - list[str]: Multiple dimensions (e.g., ['scenario', 'carrier'])
-            animate_by: Dimension to animate over (e.g., 'time')
-            facet_cols: Number of columns for facet grid. Defaults to auto.
-            shared_yaxes: Share y-axis range across facets. Defaults to True.
-            shared_xaxes: Share x-axis range across facets. Defaults to True.
-            **kwargs: Additional arguments passed to plotly.express
+            facet_by: Dimension(s) for subplots
+            animate_by: Dimension for animation
+            facet_cols: Number of subplot columns
+            shared_yaxes: Share y-axis across facets
+            shared_xaxes: Share x-axis across facets
+            **kwargs: Additional arguments for plotting.with_plotly()
+
+        Returns:
+            Interactive plotly figure
+
+        Examples:
+            >>> # Generic plotting
+            >>> fig = plotter.plot(mode='area', ylabel='Energy [MWh]')
+            >>>
+            >>> # With faceting
+            >>> fig = plotter.plot(mode='line', facet_by='scenario')
+        """
+        data = self._get_dataset()
+        colors, title, kwargs = self._setup_plot_params(colors, title, **kwargs)
+
+        return plotting.with_plotly(
+            data=data,
+            mode=mode,
+            colors=colors,
+            title=title,
+            ylabel=ylabel,
+            xlabel=xlabel,
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=facet_cols,
+            shared_yaxes=shared_yaxes,
+            shared_xaxes=shared_xaxes,
+            **kwargs,
+        )
+
+    def bar(
+        self,
+        mode: Literal['stacked', 'grouped'] = 'stacked',
+        **kwargs,
+    ) -> go.Figure:
+        """Create an interactive bar chart (convenience method).
+
+        Args:
+            mode: Bar chart mode - 'stacked' or 'grouped'. Defaults to 'stacked'.
+            **kwargs: All arguments from plot() method
 
         Returns:
             Interactive bar chart figure
 
         Examples:
-            >>> # Simple stacked bar chart
             >>> fig = plotter.bar()
-            >>> fig.show()
-            >>>
-            >>> # Grouped bars with custom colors
-            >>> fig = plotter.bar(mode='grouped', colors={'coal': 'black', 'gas': 'blue'})
-            >>>
-            >>> # Faceted by scenario with animation over time
+            >>> fig = plotter.bar(mode='grouped', colors={'coal': 'black'})
             >>> fig = plotter.bar(facet_by='scenario', animate_by='time')
         """
-        # Get dataset
-        data = self._get_dataset()
-
-        # Use parent colors if not specified
-        if colors is None:
-            colors = getattr(self._parent, 'colors', None)
-
-        # Create title if not provided
-        if title is None:
-            title = self._make_title()
-
-        # Map mode to plotting.with_plotly mode
         plotly_mode = 'stacked_bar' if mode == 'stacked' else 'grouped_bar'
+        return self.plot(mode=plotly_mode, **kwargs)
 
-        # Create figure using flixopt's plotting infrastructure
-        fig = plotting.with_plotly(
-            data=data,
-            mode=plotly_mode,
-            colors=colors,
-            title=title,
-            ylabel=ylabel,
-            xlabel=xlabel,
-            facet_by=facet_by,
-            animate_by=animate_by,
-            facet_cols=facet_cols,
-            shared_yaxes=shared_yaxes,
-            shared_xaxes=shared_xaxes,
-            **kwargs,
-        )
+    def line(self, **kwargs) -> go.Figure:
+        """Create an interactive line chart (convenience method).
 
-        return fig
-
-    def line(
-        self,
-        colors: plotting.ColorType | None = None,
-        title: str | None = None,
-        ylabel: str = '',
-        xlabel: str = '',
-        facet_by: str | list[str] | None = None,
-        animate_by: str | None = None,
-        facet_cols: int | None = None,
-        shared_yaxes: bool = True,
-        shared_xaxes: bool = True,
-        **kwargs,
-    ) -> go.Figure:
-        """Create an interactive line chart with faceting and animation support.
-
-        Particularly useful for time series data and multi-dimensional analysis.
+        Particularly useful for time series data.
 
         Args:
-            colors: Color specification. Can be:
-                - None: Use parent's colors if available
-                - str: Single color for all lines
-                - dict: Mapping of categories to colors
-                - Sequence: List of colors to cycle through
-            title: Plot title. If None, derived from method name.
-            ylabel: Y-axis label
-            xlabel: X-axis label
-            facet_by: Dimension(s) to create subplots for. Can be:
-                - str: Single dimension (e.g., 'component')
-                - list[str]: Multiple dimensions (e.g., ['component', 'carrier'])
-            animate_by: Dimension to animate over (e.g., 'scenario')
-            facet_cols: Number of columns for facet grid. Defaults to auto.
-            shared_yaxes: Share y-axis range across facets. Defaults to True.
-            shared_xaxes: Share x-axis range across facets. Defaults to True.
-            **kwargs: Additional arguments passed to plotly.express
+            **kwargs: All arguments from plot() method
 
         Returns:
             Interactive line chart figure
 
         Examples:
-            >>> # Simple time series line chart
             >>> fig = plotter.line()
-            >>> fig.show()
-            >>>
-            >>> # Multi-faceted time series by component
             >>> fig = plotter.line(facet_by='component', ylabel='Power [MW]')
-            >>>
-            >>> # Animated time series
             >>> fig = plotter.line(animate_by='scenario')
         """
-        # Get dataset
-        data = self._get_dataset()
-
-        # Use parent colors if not specified
-        if colors is None:
-            colors = getattr(self._parent, 'colors', None)
-
-        # Create title if not provided
-        if title is None:
-            title = self._make_title()
-
-        # Create figure using flixopt's plotting infrastructure
-        fig = plotting.with_plotly(
-            data=data,
-            mode='line',
-            colors=colors,
-            title=title,
-            ylabel=ylabel,
-            xlabel=xlabel,
-            facet_by=facet_by,
-            animate_by=animate_by,
-            facet_cols=facet_cols,
-            shared_yaxes=shared_yaxes,
-            shared_xaxes=shared_xaxes,
-            **kwargs,
-        )
-
-        return fig
+        return self.plot(mode='line', **kwargs)
 
     def scatter(
         self,
@@ -417,85 +445,181 @@ class InteractivePlotter:
 
         return fig
 
-    def area(
-        self,
-        colors: plotting.ColorType | None = None,
-        title: str | None = None,
-        ylabel: str = '',
-        xlabel: str = '',
-        facet_by: str | list[str] | None = None,
-        animate_by: str | None = None,
-        facet_cols: int | None = None,
-        shared_yaxes: bool = True,
-        shared_xaxes: bool = True,
-        **kwargs,
-    ) -> go.Figure:
-        """Create a stacked area chart with faceting and animation support.
+    def area(self, **kwargs) -> go.Figure:
+        """Create a stacked area chart (convenience method).
 
-        Useful for showing generation dispatch, component contributions over time,
-        or energy flows across different dimensions.
+        Useful for showing generation dispatch or energy flows over time.
 
         Args:
-            colors: Color specification. Can be:
-                - None: Use parent's colors if available
-                - str: Single color for all areas
-                - dict: Mapping of categories to colors
-                - Sequence: List of colors to cycle through
-            title: Plot title. If None, derived from method name.
-            ylabel: Y-axis label
-            xlabel: X-axis label
-            facet_by: Dimension(s) to create subplots for. Can be:
-                - str: Single dimension (e.g., 'scenario')
-                - list[str]: Multiple dimensions (e.g., ['scenario', 'carrier'])
-            animate_by: Dimension to animate over (e.g., 'period')
-            facet_cols: Number of columns for facet grid. Defaults to auto.
-            shared_yaxes: Share y-axis range across facets. Defaults to True.
-            shared_xaxes: Share x-axis range across facets. Defaults to True.
-            **kwargs: Additional arguments passed to plotly.express
+            **kwargs: All arguments from plot() method
 
         Returns:
             Interactive stacked area chart figure
 
         Examples:
-            >>> # Simple stacked area chart (e.g., dispatch over time)
             >>> fig = plotter.area()
-            >>> fig.show()
-            >>>
-            >>> # Faceted area chart by scenario
             >>> fig = plotter.area(facet_by='scenario', ylabel='Energy [MWh]')
-            >>>
-            >>> # Animated area chart with custom colors
-            >>> fig = plotter.area(animate_by='period', colors={'coal': 'black', 'gas': 'blue', 'wind': 'green'})
+            >>> fig = plotter.area(animate_by='period', colors={'coal': 'black'})
         """
-        # Get dataset
-        data = self._get_dataset()
-
-        # Use parent colors if not specified
-        if colors is None:
-            colors = getattr(self._parent, 'colors', None)
-
-        # Create title if not provided
-        if title is None:
-            title = self._make_title()
-
-        # Create figure using flixopt's plotting infrastructure
-        fig = plotting.with_plotly(
-            data=data,
-            mode='area',
-            colors=colors,
-            title=title,
-            ylabel=ylabel,
-            xlabel=xlabel,
-            facet_by=facet_by,
-            animate_by=animate_by,
-            facet_cols=facet_cols,
-            shared_yaxes=shared_yaxes,
-            shared_xaxes=shared_xaxes,
-            **kwargs,
-        )
-
-        return fig
+        return self.plot(mode='area', **kwargs)
 
     def __repr__(self) -> str:
         """String representation of the plotter."""
         return f"InteractivePlotter(method='{self._method_name}')"
+
+
+# ============================================================================
+# Specialized Plotter Classes
+# ============================================================================
+# These inherit from InteractivePlotter and add domain-specific methods
+# following the DRY principle - all common logic stays in the base class.
+
+
+class StorageStatePlotter(InteractivePlotter):
+    """Specialized plotter for storage state statistics.
+
+    Inherits all base plotting methods and adds storage-specific
+    visualization methods like charge state overlays.
+
+    Examples:
+        >>> # Via statistics accessor
+        >>> fig = results.statistics.storage_states().plot.charge_state_overlay()
+        >>> fig.show()
+    """
+
+    def charge_state_overlay(
+        self,
+        mode: Literal['area', 'stacked_bar'] = 'area',
+        overlay_color: str = 'black',
+        overlay_width: float = 2.0,
+        flow_vars: list[str] | None = None,
+        charge_var: str = 'charge_state',
+        **kwargs,
+    ) -> go.Figure:
+        """Plot flows with charge state as line overlay.
+
+        Creates a mixed visualization:
+        - Flow variables shown as area/stacked_bar
+        - Charge state shown as line overlay
+
+        This replicates the pattern from plot_charge_state() in results.py.
+
+        Args:
+            mode: Plot mode for flows - 'area' or 'stacked_bar'. Defaults to 'area'.
+            overlay_color: Color for charge state line. Defaults to 'black'.
+            overlay_width: Width of charge state line. Defaults to 2.0.
+            flow_vars: List of flow variable names. If None, auto-detects
+                (all vars except charge_var).
+            charge_var: Name of charge state variable. Defaults to 'charge_state'.
+            **kwargs: Additional arguments passed to plot() method
+                (colors, title, ylabel, xlabel, facet_by, animate_by, etc.)
+
+        Returns:
+            Interactive figure with flows and charge state overlay
+
+        Raises:
+            ValueError: If charge_var not found in dataset
+
+        Examples:
+            >>> # Basic usage
+            >>> fig = plotter.charge_state_overlay()
+            >>>
+            >>> # Custom styling
+            >>> fig = plotter.charge_state_overlay(mode='stacked_bar', overlay_color='red', overlay_width=3.0)
+            >>>
+            >>> # With faceting and animation
+            >>> fig = plotter.charge_state_overlay(facet_by='scenario', animate_by='period', ylabel='Energy [MWh]')
+        """
+        import xarray as xr
+
+        data = self._get_dataset()
+
+        # Validate charge state variable exists
+        if charge_var not in data.data_vars:
+            raise ValueError(
+                f"charge_state_overlay requires '{charge_var}' variable in dataset. "
+                f'Available variables: {list(data.data_vars)}'
+            )
+
+        # Auto-detect flow variables if not provided
+        if flow_vars is None:
+            flow_vars = [v for v in data.data_vars if v != charge_var]
+
+        # Split data: flows vs charge_state
+        flows_ds = data[flow_vars] if flow_vars else None
+        charge_state_ds = data[[charge_var]]
+
+        # Extract facet/animate parameters for both plots
+        facet_by = kwargs.get('facet_by', None)
+        animate_by = kwargs.get('animate_by', None)
+
+        # Create base figure with flows (if any)
+        if flows_ds is not None and len(flows_ds.data_vars) > 0:
+            # Use the base plot() method (DRY!)
+            base_fig = self.plot(mode=mode, **kwargs)
+        else:
+            # No flows, create empty figure
+            import plotly.graph_objects as go
+
+            base_fig = go.Figure()
+            colors, title, _ = self._setup_plot_params(kwargs.get('colors'), kwargs.get('title'))
+            base_fig.update_layout(title=title)
+
+        # Create temporary plotter for charge state
+        # (We need a separate plotter instance to plot just the charge state)
+        charge_plotter = InteractivePlotter(
+            data_getter=lambda: charge_state_ds,
+            method_name=self._method_name,
+            parent=self._parent,
+        )
+
+        # Create charge state figure (always as line)
+        charge_fig = charge_plotter.plot(
+            mode='line',
+            colors={charge_var: overlay_color},
+            title='',  # No title needed
+            facet_by=facet_by,
+            animate_by=animate_by,
+            facet_cols=kwargs.get('facet_cols', None),
+            shared_yaxes=kwargs.get('shared_yaxes', True),
+            shared_xaxes=kwargs.get('shared_xaxes', True),
+        )
+
+        # Combine figures using DRY helper!
+        overlay_styling = {'line': {'width': overlay_width, 'shape': 'linear', 'color': overlay_color}}
+
+        return self._combine_figures(base_fig, charge_fig, overlay_styling)
+
+
+# ============================================================================
+# Plotter Selection Mapping
+# ============================================================================
+# Map statistic method names to specialized plotter classes.
+# This enables automatic selection of the right plotter for each statistic.
+
+PLOTTER_CLASS_MAP: dict[str, type[InteractivePlotter]] = {
+    'storage_states': StorageStatePlotter,
+    # Add more mappings as you create specialized plotters:
+    # 'energy_balance': EnergyBalancePlotter,
+    # 'flow_summary': FlowSummaryPlotter,
+    # etc.
+}
+
+
+def get_plotter_class(method_name: str) -> type[InteractivePlotter]:
+    """Get the appropriate plotter class for a statistic method.
+
+    Args:
+        method_name: Name of the statistics method
+
+    Returns:
+        Plotter class (specialized if mapped, otherwise base InteractivePlotter)
+
+    Examples:
+        >>> plotter_cls = get_plotter_class('storage_states')
+        >>> # Returns StorageStatePlotter
+        >>>
+        >>> plotter_cls = get_plotter_class('energy_balance')
+        >>> # Returns InteractivePlotter (default)
+    """
+    return PLOTTER_CLASS_MAP.get(method_name, InteractivePlotter)

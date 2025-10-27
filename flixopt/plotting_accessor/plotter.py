@@ -134,17 +134,30 @@ class StatisticPlotter:
         Returns a plotting interface object with methods for creating
         various types of interactive visualizations using Plotly.
 
+        The plotter class is automatically selected based on the statistic method:
+        - Generic methods get InteractivePlotter (bar, line, area, scatter, plot)
+        - Specialized methods get domain-specific plotters with extra methods
+          (e.g., storage_states gets StorageStatePlotter with charge_state_overlay)
+
         Returns:
-            Object providing bar(), line(), scatter(), area(), heatmap(), etc.
+            Plotter object providing bar(), line(), scatter(), area(), plot(), etc.
+            May also provide specialized methods depending on the statistic type.
 
         Examples:
+            >>> # Generic plotting methods (available for all statistics)
             >>> results.statistics.energy_balance().plot.bar()
-            >>> results.statistics.capacity_factor().plot.scatter()
-            >>> results.statistics.generation_dispatch().plot.area()
+            >>> results.statistics.flow_summary().plot.line()
+            >>> results.statistics.component_effects().plot.area()
+            >>>
+            >>> # Specialized methods for specific statistics
+            >>> results.statistics.storage_states().plot.charge_state_overlay()
         """
-        from .plotly_charts import InteractivePlotter
+        from .plotly_charts import get_plotter_class
 
-        return InteractivePlotter(data_getter=self._get_data, method_name=self._method_name, parent=self._parent)
+        # Select the appropriate plotter class based on method name
+        plotter_class = get_plotter_class(self._method_name)
+
+        return plotter_class(data_getter=self._get_data, method_name=self._method_name, parent=self._parent)
 
     @property
     def iplot(self) -> InteractivePlotter:
