@@ -57,12 +57,12 @@ def demonstrate_statistics_accessor():
         print(f'Error: {e}')
         print()
 
-    # Example 2: Create a bar chart
+    # Example 2: Create a bar chart with enhanced API
     print('-' * 80)
     print('Example 2: Create interactive bar chart')
     print('-' * 80)
     try:
-        fig = results.statistics.flow_summary().plot.bar()
+        fig = results.statistics.flow_summary().plot.bar(title='Flow Summary', ylabel='Flow Rate [MW]')
         print(f'Figure created: {type(fig)}')
         print('Opening in browser...')
         fig.show()
@@ -159,6 +159,67 @@ def demonstrate_statistics_accessor():
         print(f'Error: {e}')
         print()
 
+    # Example 9: NEW - Faceting (subplots)
+    print('-' * 80)
+    print('Example 9: Faceting - Multiple subplots by dimension')
+    print('-' * 80)
+    try:
+        # Create faceted bar chart if scenarios exist
+        data = results.statistics.flow_summary(aggregate_scenarios=False).data
+        if 'scenario' in data.dims:
+            fig = results.statistics.flow_summary(aggregate_scenarios=False).plot.bar(
+                facet_by='scenario',
+                facet_cols=2,  # 2 columns of subplots
+                title='Flow Summary by Scenario',
+                ylabel='Flow Rate [MW]',
+            )
+            print('Faceted bar chart created (subplots by scenario)')
+            fig.show()
+        else:
+            print('No scenario dimension found - skipping faceting example')
+        print()
+    except Exception as e:
+        print(f'Error: {e}')
+        print()
+
+    # Example 10: NEW - Animation
+    print('-' * 80)
+    print('Example 10: Animation - Animated over dimension')
+    print('-' * 80)
+    try:
+        # Create animated chart over time
+        data = results.statistics.flow_summary(aggregate_time=False).data
+        if 'time' in data.dims and len(data.time) > 1:
+            fig = results.statistics.flow_summary(aggregate_time=False).plot.bar(
+                animate_by='time', title='Flow Summary Animation Over Time', ylabel='Flow Rate [MW]'
+            )
+            print('Animated bar chart created (animated over time)')
+            print('Use the play button in the browser to see animation')
+            fig.show()
+        else:
+            print('Not enough time steps for animation - skipping')
+        print()
+    except Exception as e:
+        print(f'Error: {e}')
+        print()
+
+    # Example 11: NEW - Combined faceting and custom colors
+    print('-' * 80)
+    print('Example 11: Advanced - Faceting with custom colors')
+    print('-' * 80)
+    try:
+        fig = results.statistics.energy_balance(aggregate_time=True).plot.bar(
+            mode='grouped',  # Grouped instead of stacked
+            ylabel='Energy [MWh]',
+            title='Energy Balance Comparison',
+        )
+        print('Grouped bar chart with custom settings created')
+        fig.show()
+        print()
+    except Exception as e:
+        print(f'Error: {e}')
+        print()
+
     print('=' * 80)
     print('Demo completed!')
     print('=' * 80)
@@ -168,8 +229,12 @@ def demonstrate_statistics_accessor():
     print('  ✓ Lazy evaluation: data computed only when needed')
     print('  ✓ Multiple plot types: bar, line, scatter, area')
     print('  ✓ Filtering and aggregation options')
-    print('  ✓ Access to raw data: plotter.data (or plotter())')
+    print('  ✓ Access to raw data: plotter.data')
     print('  ✓ Interactive Plotly visualizations')
+    print('  ✓ NEW: Multi-dimensional faceting (subplots)')
+    print('  ✓ NEW: Animation over dimensions')
+    print('  ✓ NEW: Integrated color processing')
+    print('  ✓ NEW: Consistent API across all plot types')
     print()
 
 
