@@ -1346,28 +1346,30 @@ class _NodeResults(_ElementResults):
         # Use the new plotting architecture via accessor
         plotter = self.plot.node_balance(unit_type=unit_type, drop_suffix=drop_suffix, select=select)
 
-        # Call the appropriate plotter method based on mode
-        plot_method = {
-            'stacked_bar': lambda: plotter.bar(mode='stacked', engine=engine),
-            'grouped_bar': lambda: plotter.bar(mode='grouped', engine=engine),
-            'line': lambda: plotter.line(engine=engine),
-            'area': lambda: plotter.area(engine=engine),
-        }.get(mode)
-
-        if plot_method is None:
-            raise ValueError(f'Invalid mode: {mode}. Must be one of: stacked_bar, grouped_bar, line, area')
-
-        # Call plotter method with remaining parameters
-        return plot_method(
-            colors=colors,
-            facet_by=facet_by,
-            animate_by=animate_by,
-            facet_cols=facet_cols,
-            save=save,
-            show=show,
-            dpi=plot_kwargs.pop('dpi', None),
+        # Prepare common parameters
+        common_params = {
+            'colors': colors,
+            'facet_by': facet_by,
+            'animate_by': animate_by,
+            'facet_cols': facet_cols,
+            'save': save,
+            'show': show,
+            'dpi': plot_kwargs.pop('dpi', None),
+            'engine': engine,
             **plot_kwargs,
-        )
+        }
+
+        # Call the appropriate plotter method based on mode
+        if mode == 'stacked_bar':
+            return plotter.bar(mode='stacked', **common_params)
+        elif mode == 'grouped_bar':
+            return plotter.bar(mode='grouped', **common_params)
+        elif mode == 'line':
+            return plotter.line(**common_params)
+        elif mode == 'area':
+            return plotter.area(**common_params)
+        else:
+            raise ValueError(f'Invalid mode: {mode}. Must be one of: stacked_bar, grouped_bar, line, area')
 
     def plot_node_balance_pie(
         self,
@@ -1712,28 +1714,29 @@ class ComponentResults(_NodeResults):
         # Use the new plotting architecture via accessor
         plotter = self.plot.charge_state(select=select)
 
-        # Call the appropriate plotter method based on mode
-        plot_method = {
-            'area': lambda: plotter.area(engine=engine),
-            'stacked_bar': lambda: plotter.bar(engine=engine),
-            'line': lambda: plotter.line(engine=engine),
-        }.get(mode)
-
-        if plot_method is None:
-            raise ValueError(f'Invalid mode: {mode}. Must be one of: area, stacked_bar, line')
-
-        # Call plotter method with remaining parameters
-        return plot_method(
-            overlay_color=overlay_color,
-            colors=colors,
-            facet_by=facet_by,
-            animate_by=animate_by,
-            facet_cols=facet_cols,
-            save=save,
-            show=show,
-            dpi=plot_kwargs.pop('dpi', None),
+        # Prepare common parameters
+        common_params = {
+            'overlay_color': overlay_color,
+            'colors': colors,
+            'facet_by': facet_by,
+            'animate_by': animate_by,
+            'facet_cols': facet_cols,
+            'save': save,
+            'show': show,
+            'dpi': plot_kwargs.pop('dpi', None),
+            'engine': engine,
             **plot_kwargs,
-        )
+        }
+
+        # Call the appropriate plotter method based on mode
+        if mode == 'area':
+            return plotter.area(**common_params)
+        elif mode == 'stacked_bar':
+            return plotter.bar(**common_params)
+        elif mode == 'line':
+            return plotter.line(**common_params)
+        else:
+            raise ValueError(f'Invalid mode: {mode}. Must be one of: area, stacked_bar, line')
 
     def node_balance_with_charge_state(
         self, negate_inputs: bool = True, negate_outputs: bool = False, threshold: float | None = 1e-5
