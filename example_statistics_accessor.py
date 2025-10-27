@@ -48,8 +48,8 @@ def demonstrate_statistics_accessor():
         plotter = results.statistics.flow_summary()
         print(f'Plotter object: {plotter}')
 
-        # Call the plotter to get raw data
-        data = plotter()
+        # Use .data property to get raw data (recommended)
+        data = plotter.data
         print(f'Data type: {type(data)}')
         print(f'Data variables: {list(data.data_vars)}')
         print()
@@ -168,7 +168,7 @@ def demonstrate_statistics_accessor():
     print('  ✓ Lazy evaluation: data computed only when needed')
     print('  ✓ Multiple plot types: bar, line, scatter, area')
     print('  ✓ Filtering and aggregation options')
-    print('  ✓ Access to raw data: plotter()')
+    print('  ✓ Access to raw data: plotter.data (or plotter())')
     print('  ✓ Interactive Plotly visualizations')
     print()
 

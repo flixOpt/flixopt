@@ -92,8 +92,8 @@ def test_accessor_integration():
 
                         # Try to get data
                         try:
-                            data = plotter()
-                            print(f'  ✓ Retrieved data: type={type(data)}')
+                            data = plotter.data  # Use .data property
+                            print(f'  ✓ Retrieved data via .data: type={type(data)}')
                         except Exception as e:
                             print(f'  ❌ Failed to retrieve data: {e}')
 
@@ -160,9 +160,9 @@ def test_wrapper_decorator():
             print('  ❌ Returned object is not StatisticPlotter')
             return False
 
-        # Test calling it
-        data = plotter()
-        print(f'  ✓ Plotter callable returned: {type(data)}')
+        # Test .data property
+        data = plotter.data
+        print(f'  ✓ Plotter.data returned: {type(data)}')
 
         # Test plot attribute
         if hasattr(plotter, 'plot'):

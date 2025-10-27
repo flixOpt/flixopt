@@ -30,6 +30,7 @@ class StatisticPlotter:
     - Access `.plot` property to get visualization interface: `plotter.plot.bar()`
 
     Attributes:
+        data: Property to access the calculated statistics as xarray.Dataset (recommended)
         plot: Plotly-based plotting interface providing bar(), line(), scatter(), area(), etc.
         iplot: Alias for plot property (for consistency with other libraries)
 
@@ -44,9 +45,12 @@ class StatisticPlotter:
         >>> # Typically created automatically via @MethodHandlerWrapper
         >>> plotter = results.statistics.energy_balance()
         >>>
-        >>> # Get raw data by calling
-        >>> data = plotter()
+        >>> # Get raw data (recommended way)
+        >>> data = plotter.data
         >>> print(data)
+        >>>
+        >>> # Alternative: call it (less intuitive)
+        >>> data = plotter()
         >>>
         >>> # Create visualization
         >>> fig = plotter.plot.bar(x='component', y='energy')
@@ -73,6 +77,8 @@ class StatisticPlotter:
     def __call__(self, *args, **kwargs) -> xr.Dataset:
         """Execute the statistics method and return the raw data.
 
+        Note: Using the `.data` property is more intuitive than calling `()`.
+
         This allows using the plotter as a function to get the underlying
         xarray.Dataset without plotting. Results are cached to avoid
         recomputation on subsequent calls.
@@ -82,8 +88,10 @@ class StatisticPlotter:
 
         Examples:
             >>> plotter = results.statistics.energy_balance()
-            >>> data = plotter()  # Get raw xarray.Dataset
-            >>> print(data)
+            >>> # Recommended:
+            >>> data = plotter.data
+            >>> # Alternative (works but less intuitive):
+            >>> data = plotter()
         """
         if self._cached_result is None:
             self._cached_result = self._bound_method(*args, **kwargs)
@@ -101,6 +109,23 @@ class StatisticPlotter:
         if self._cached_result is None:
             self._cached_result = self._bound_method()
         return self._cached_result
+
+    @property
+    def data(self) -> xr.Dataset:
+        """Get the calculated statistics as xarray.Dataset.
+
+        This is the recommended way to access the raw data instead of
+        using the callable interface `()`.
+
+        Returns:
+            The calculated statistics
+
+        Examples:
+            >>> plotter = results.statistics.energy_balance()
+            >>> data = plotter.data  # Cleaner than plotter()
+            >>> print(data)
+        """
+        return self._get_data()
 
     @property
     def plot(self) -> InteractivePlotter:
