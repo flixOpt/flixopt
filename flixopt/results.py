@@ -17,6 +17,7 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG
 from .flow_system import FlowSystem
+from .statistics import StatisticsAccessor
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -87,6 +88,7 @@ class CalculationResults:
         effects: Dictionary mapping effect names to EffectResults objects
         timesteps_extra: Extended time index including boundary conditions
         hours_per_timestep: Duration of each timestep for proper energy calculations
+        statistics: PyPSA-style accessor for calculating and plotting statistics
 
     Examples:
         Load and analyze saved results:
@@ -137,6 +139,23 @@ class CalculationResults:
 
         # Override when needed
         results['ElectricityBus'].plot_node_balance(colors='turbo')  # Ignores setup
+        ```
+
+        Use PyPSA-style statistics accessor for advanced analysis:
+
+        ```python
+        # Get raw statistics data
+        data = results.statistics.energy_balance()()
+
+        # Create interactive visualizations
+        fig = results.statistics.flow_summary().plot.bar()
+        fig.show()
+
+        # Time series analysis
+        results.statistics.storage_states().plot.line(x='time', y='charge_state')
+
+        # Component-specific analysis
+        results.statistics.component_effects().plot.bar(x='component', y='costs')
         ```
 
     Design Patterns:
@@ -272,6 +291,9 @@ class CalculationResults:
         self._effects_per_component = None
 
         self.colors: dict[str, str] = {}
+
+        # Initialize statistics accessor for PyPSA-style API
+        self.statistics = StatisticsAccessor(self)
 
     def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
