@@ -61,59 +61,6 @@ class NodeStatisticsAccessor:
         self._parent = parent
 
     @MethodHandlerWrapper(handler_class=StatisticPlotter)
-    def flow_summary(
-        self,
-        unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_hours',
-        aggregate_time: bool = True,
-    ) -> xr.Dataset:
-        """Calculate summary statistics of all flows at this node.
-
-        Provides min, max, mean, sum, and std statistics for all flows
-        connected to this node (inputs and outputs).
-
-        Args:
-            unit_type: Whether to analyze 'flow_rate' or 'flow_hours'. Defaults to 'flow_hours'.
-            aggregate_time: If True, aggregate over time dimension. Defaults to True.
-
-        Returns:
-            Dataset with flow statistics for this node
-
-        Examples:
-            >>> # Total flow hours for all flows
-            >>> results['Boiler'].statistics.flow_summary().plot.bar()
-            >>>
-            >>> # Time series of flow rates
-            >>> results['Boiler'].statistics.flow_summary(unit_type='flow_rate', aggregate_time=False).plot.line()
-        """
-        # Get node balance dataset
-        ds = self._parent.node_balance(
-            with_last_timestep=False, unit_type=unit_type, drop_suffix=True, negate_inputs=False
-        )
-
-        if aggregate_time:
-            # Calculate statistics over time for each variable
-            results = []
-            for var in ds.data_vars:
-                var_stats = xr.Dataset(
-                    {
-                        f'{var}_sum': ds[var].sum('time'),
-                        f'{var}_mean': ds[var].mean('time'),
-                        f'{var}_max': ds[var].max('time'),
-                        f'{var}_min': ds[var].min('time'),
-                        f'{var}_std': ds[var].std('time'),
-                    }
-                )
-                results.append(var_stats)
-
-            # Merge all variable stats
-            result = xr.merge(results)
-        else:
-            # Keep time dimension
-            result = ds
-
-        return result
-
-    @MethodHandlerWrapper(handler_class=StatisticPlotter)
     def flow_hours(self) -> xr.Dataset:
         """Calculate total flow hours for each flow at this node.
 
@@ -134,20 +81,24 @@ class NodeStatisticsAccessor:
         # Sum over time to get total flow hours
         result = ds.sum('time')
 
+        # Add better defaults for plotting
+        result.attrs['title'] = f'Total Flow Hours - {self._parent.label}'
+        result.attrs['ylabel'] = 'Flow Hours'
+
         return result
 
     @MethodHandlerWrapper(handler_class=StatisticPlotter)
     def capacity_utilization(self, nominal_capacity: dict[str, float] | None = None) -> xr.Dataset:
-        """Calculate capacity utilization for flows at this node.
+        """Calculate mean capacity utilization for flows at this node.
 
-        Shows what percentage of nominal capacity is being used.
+        Shows average percentage of nominal capacity being used over time.
 
         Args:
             nominal_capacity: Dict mapping flow names to nominal capacities.
                 If None, attempts to extract from flow_system data.
 
         Returns:
-            Dataset with capacity utilization statistics (mean, max)
+            Dataset with mean capacity utilization percentage per flow (0-100%)
 
         Examples:
             >>> # Capacity utilization with auto-detected capacities
@@ -171,7 +122,6 @@ class NodeStatisticsAccessor:
                 # Extract capacities from flows
                 for flow_name in ds.data_vars:
                     # Try to find corresponding flow in flow_system
-                    # This is a simplified approach - may need refinement
                     for flow in flow_system.flows.values():
                         if flow.label in flow_name:
                             if hasattr(flow, 'size') and flow.size is not None:
@@ -179,47 +129,35 @@ class NodeStatisticsAccessor:
             except Exception:
                 pass
 
-        # Calculate utilization
+        # Calculate mean utilization (simplified flat structure)
         utilization = xr.Dataset()
 
         for var in ds.data_vars:
             if var in nominal_capacity and nominal_capacity[var] > 0:
-                util = (ds[var] / nominal_capacity[var]) * 100.0
-                utilization[f'{var}_utilization'] = xr.Dataset(
-                    {
-                        'mean': util.mean('time'),
-                        'max': util.max('time'),
-                    }
-                ).to_array(dim='metric')
+                # Calculate mean utilization percentage
+                mean_util = float((ds[var] / nominal_capacity[var]).mean('time') * 100.0)
+                utilization[var] = xr.DataArray(mean_util)
+            else:
+                # No capacity available, just return mean flow rate
+                utilization[var] = xr.DataArray(float(ds[var].mean('time')))
 
-        if not utilization.data_vars:
-            # No capacities available, just return relative values
-            utilization = (
-                xr.Dataset(
-                    {
-                        'mean_flow': ds.mean('time'),
-                        'max_flow': ds.max('time'),
-                    }
-                )
-                .to_array(dim='metric')
-                .to_dataset(dim='variable')
-            )
+        utilization.attrs['title'] = f'Capacity Utilization - {self._parent.label}'
+        utilization.attrs['ylabel'] = 'Utilization (%)' if nominal_capacity else 'Mean Flow Rate'
 
         return utilization
 
     @MethodHandlerWrapper(handler_class=StatisticPlotter)
-    def peak_analysis(self, n_peaks: int = 10) -> xr.Dataset:
-        """Identify peak flow periods and their magnitudes.
+    def peak_flows(self) -> xr.Dataset:
+        """Get peak (maximum) flow rate for each flow at this node.
 
-        Args:
-            n_peaks: Number of top peaks to identify per flow. Defaults to 10.
+        Returns the absolute maximum flow rate value for each flow.
 
         Returns:
-            Dataset with peak flow information
+            Dataset with peak flow rates per flow
 
         Examples:
-            >>> # Top 10 peaks per flow
-            >>> results['Boiler'].statistics.peak_analysis().plot.bar()
+            >>> # Peak flow rates
+            >>> results['Boiler'].statistics.peak_flows().plot.bar()
         """
         # Get flow rates
         ds = self._parent.node_balance(
@@ -231,38 +169,76 @@ class NodeStatisticsAccessor:
         for var in ds.data_vars:
             # Get absolute values to handle negative flows
             abs_values = np.abs(ds[var].values)
-
-            # Find peak magnitude
             peak_value = float(np.nanmax(abs_values)) if abs_values.size > 0 else 0.0
+            peaks[var] = xr.DataArray(peak_value)
 
-            # Find average of top n_peaks
-            if abs_values.size >= n_peaks:
-                top_n = np.partition(abs_values.flatten(), -n_peaks)[-n_peaks:]
-                avg_top_n = float(np.nanmean(top_n))
-            else:
-                avg_top_n = float(np.nanmean(abs_values))
-
-            peaks[var] = xr.DataArray(
-                [peak_value, avg_top_n], dims=['metric'], coords={'metric': ['peak', f'avg_top_{n_peaks}']}
-            )
+        peaks.attrs['title'] = f'Peak Flow Rates - {self._parent.label}'
+        peaks.attrs['ylabel'] = 'Peak Flow Rate'
 
         return peaks
 
     @MethodHandlerWrapper(handler_class=StatisticPlotter)
-    def storage_metrics(self) -> xr.Dataset:
-        """Calculate storage-specific metrics (cycles, utilization, efficiency).
+    def average_peak_flows(self, n: int = 10) -> xr.Dataset:
+        """Calculate average of the top N peak flow values for each flow.
 
+        Useful for understanding sustained high-load periods rather than
+        instantaneous peaks.
+
+        Args:
+            n: Number of top values to average. Defaults to 10.
+
+        Returns:
+            Dataset with average of top N flow rates per flow
+
+        Examples:
+            >>> # Average of top 10 flow values
+            >>> results['Boiler'].statistics.average_peak_flows().plot.bar()
+            >>>
+            >>> # Average of top 20 values
+            >>> results['Boiler'].statistics.average_peak_flows(n=20).plot.bar()
+        """
+        # Get flow rates
+        ds = self._parent.node_balance(
+            with_last_timestep=False, unit_type='flow_rate', drop_suffix=True, negate_inputs=False
+        )
+
+        avg_peaks = xr.Dataset()
+
+        for var in ds.data_vars:
+            # Get absolute values to handle negative flows
+            abs_values = np.abs(ds[var].values)
+
+            # Find average of top n values
+            if abs_values.size >= n:
+                top_n = np.partition(abs_values.flatten(), -n)[-n:]
+                avg_top_n = float(np.nanmean(top_n))
+            else:
+                avg_top_n = float(np.nanmean(abs_values))
+
+            avg_peaks[var] = xr.DataArray(avg_top_n)
+
+        avg_peaks.attrs['title'] = f'Average Peak Flows (Top {n}) - {self._parent.label}'
+        avg_peaks.attrs['ylabel'] = 'Average Flow Rate'
+
+        return avg_peaks
+
+    @MethodHandlerWrapper(handler_class=StatisticPlotter)
+    def storage_cycles(self) -> xr.Dataset:
+        """Calculate estimated number of charge/discharge cycles.
+
+        Estimates full equivalent cycles by counting charge/discharge transitions.
         Only available for storage components.
 
         Returns:
-            Dataset with storage metrics
+            Dataset with estimated cycle count
 
         Raises:
             ValueError: If node is not a storage
 
         Examples:
-            >>> # Storage metrics
-            >>> results['Battery'].statistics.storage_metrics().plot.bar()
+            >>> # Get cycle count
+            >>> cycles = results['Battery'].statistics.storage_cycles()()
+            >>> print(cycles)
         """
         if not self._parent.is_storage:
             raise ValueError(f'Node "{self._parent.label}" is not a storage component')
@@ -270,12 +246,42 @@ class NodeStatisticsAccessor:
         # Get charge state
         charge_state = self._parent.charge_state
 
-        # Calculate metrics
-        metrics = xr.Dataset()
+        # Estimate cycles (count sign changes in delta)
+        delta = charge_state.diff('time')
+        sign_changes = (np.diff(np.sign(delta.values)) != 0).sum()
+        cycles = float(sign_changes / 2.0)  # Full cycle = charge + discharge
 
-        # Capacity utilization
+        result = xr.Dataset({'estimated_cycles': xr.DataArray(cycles)})
+        result.attrs['title'] = f'Storage Cycles - {self._parent.label}'
+        result.attrs['ylabel'] = 'Estimated Cycles'
+
+        return result
+
+    @MethodHandlerWrapper(handler_class=StatisticPlotter)
+    def storage_utilization(self) -> xr.Dataset:
+        """Calculate storage capacity utilization percentage.
+
+        Shows what percentage of maximum capacity is being used on average.
+        Only available for storage components.
+
+        Returns:
+            Dataset with mean utilization percentage (0-100%)
+
+        Raises:
+            ValueError: If node is not a storage
+
+        Examples:
+            >>> # Storage utilization percentage
+            >>> results['Battery'].statistics.storage_utilization().plot.bar()
+        """
+        if not self._parent.is_storage:
+            raise ValueError(f'Node "{self._parent.label}" is not a storage component')
+
+        # Get charge state
+        charge_state = self._parent.charge_state
+
+        # Calculate utilization
         max_capacity = float(charge_state.max())
-        min_capacity = float(charge_state.min())
         mean_capacity = float(charge_state.mean())
 
         if max_capacity > 0:
@@ -283,27 +289,47 @@ class NodeStatisticsAccessor:
         else:
             utilization = 0.0
 
-        # Estimate cycles (simplified: count sign changes in delta)
-        delta = charge_state.diff('time')
-        sign_changes = (np.diff(np.sign(delta.values)) != 0).sum()
-        cycles = sign_changes / 2.0  # Full cycle = charge + discharge
+        result = xr.Dataset({'utilization_percent': xr.DataArray(utilization)})
+        result.attrs['title'] = f'Storage Utilization - {self._parent.label}'
+        result.attrs['ylabel'] = 'Utilization (%)'
 
-        # Create metrics dataset
-        metrics['storage_metrics'] = xr.DataArray(
-            [max_capacity, min_capacity, mean_capacity, utilization, cycles],
-            dims=['metric'],
-            coords={
-                'metric': [
-                    'max_capacity',
-                    'min_capacity',
-                    'mean_capacity',
-                    'utilization_percent',
-                    'estimated_cycles',
-                ]
-            },
+        return result
+
+    @MethodHandlerWrapper(handler_class=StatisticPlotter)
+    def storage_capacity_stats(self) -> xr.Dataset:
+        """Calculate storage capacity statistics (max, min, mean).
+
+        Provides summary statistics of charge state over time.
+        Only available for storage components.
+
+        Returns:
+            Dataset with capacity statistics
+
+        Raises:
+            ValueError: If node is not a storage
+
+        Examples:
+            >>> # Capacity statistics
+            >>> results['Battery'].statistics.storage_capacity_stats().plot.bar()
+        """
+        if not self._parent.is_storage:
+            raise ValueError(f'Node "{self._parent.label}" is not a storage component')
+
+        # Get charge state
+        charge_state = self._parent.charge_state
+
+        # Calculate statistics
+        result = xr.Dataset(
+            {
+                'max_capacity': xr.DataArray(float(charge_state.max())),
+                'min_capacity': xr.DataArray(float(charge_state.min())),
+                'mean_capacity': xr.DataArray(float(charge_state.mean())),
+            }
         )
+        result.attrs['title'] = f'Storage Capacity Statistics - {self._parent.label}'
+        result.attrs['ylabel'] = 'Capacity'
 
-        return metrics
+        return result
 
     @MethodHandlerWrapper(handler_class=StatisticPlotter)
     def temporal_patterns(
@@ -346,53 +372,15 @@ class NodeStatisticsAccessor:
         else:
             raise ValueError(f'Invalid stat: {stat}. Use mean, sum, max, or min.')
 
-        return result
-
-    @MethodHandlerWrapper(handler_class=StatisticPlotter)
-    def flow_statistics(self, flow_names: str | list[str] | None = None) -> xr.Dataset:
-        """Get detailed statistics for specific flows.
-
-        Args:
-            flow_names: Flow name(s) to analyze. If None, analyzes all flows.
-
-        Returns:
-            Dataset with comprehensive statistics per flow
-
-        Examples:
-            >>> # Single flow analysis
-            >>> results['Boiler'].statistics.flow_statistics('Boiler(Q_th)').plot.bar()
-            >>>
-            >>> # Compare multiple flows
-            >>> results['Boiler'].statistics.flow_statistics(['Boiler(Q_th)', 'Boiler(Q_fu)']).plot.bar()
-        """
-        # Get node balance
-        ds = self._parent.node_balance(
-            with_last_timestep=False, unit_type='flow_rate', drop_suffix=True, negate_inputs=False
+        # Add better defaults for plotting
+        freq_labels = {'h': 'Hourly', 'D': 'Daily', 'W': 'Weekly', 'MS': 'Monthly'}
+        stat_labels = {'mean': 'Mean', 'sum': 'Sum', 'max': 'Max', 'min': 'Min'}
+        result.attrs['title'] = (
+            f'{freq_labels.get(freq, freq)} {stat_labels[stat]} Flow Patterns - {self._parent.label}'
         )
+        result.attrs['ylabel'] = f'{stat_labels[stat]} Flow Rate'
 
-        # Filter to specific flows if requested
-        if flow_names is not None:
-            if isinstance(flow_names, str):
-                flow_names = [flow_names]
-            ds = ds[[var for var in ds.data_vars if any(fn in var for fn in flow_names)]]
-
-        # Calculate comprehensive statistics
-        stats = xr.Dataset()
-        for var in ds.data_vars:
-            stats[var] = xr.DataArray(
-                [
-                    float(ds[var].sum('time')),
-                    float(ds[var].mean('time')),
-                    float(ds[var].max('time')),
-                    float(ds[var].min('time')),
-                    float(ds[var].std('time')),
-                    float(ds[var].median('time')),
-                ],
-                dims=['statistic'],
-                coords={'statistic': ['sum', 'mean', 'max', 'min', 'std', 'median']},
-            )
-
-        return stats
+        return result
 
     @MethodHandlerWrapper(handler_class=StatisticPlotter)
     def flow_duration_curve(self, flow_name: str | None = None) -> xr.Dataset:
@@ -431,6 +419,11 @@ class NodeStatisticsAccessor:
             result[var] = xr.DataArray(
                 sorted_values, dims=['duration_step'], coords={'duration_step': np.arange(len(sorted_values))}
             )
+
+        # Add better defaults for plotting
+        result.attrs['title'] = f'Flow Duration Curve - {self._parent.label}'
+        result.attrs['ylabel'] = 'Flow Rate'
+        result.attrs['xlabel'] = 'Duration Steps'
 
         return result
 
@@ -494,6 +487,10 @@ class NodeStatisticsAccessor:
                 # No effect data found, return empty dataset with message
                 contributions = xr.Dataset()
                 contributions.attrs['note'] = 'No effect contributions found for this node'
+            else:
+                # Add better defaults for plotting
+                contributions.attrs['title'] = f'Effect Contributions - {self._parent.label}'
+                contributions.attrs['ylabel'] = 'Contribution'
 
             return contributions
 
@@ -501,6 +498,7 @@ class NodeStatisticsAccessor:
             # Return empty dataset with error info
             result = xr.Dataset()
             result.attrs['error'] = str(e)
+            result.attrs['title'] = f'Effect Contributions - {self._parent.label} (Error)'
             return result
 
     @MethodHandlerWrapper(handler_class=StatisticPlotter)
@@ -553,16 +551,21 @@ class NodeStatisticsAccessor:
 
             if not result.data_vars:
                 result.attrs['note'] = 'No effects found for this node'
+            else:
+                # Add better defaults for plotting
+                result.attrs['title'] = f'Effect Summary - {self._parent.label}'
+                result.attrs['ylabel'] = 'Effect Value'
 
             return result
 
         except Exception as e:
             result = xr.Dataset()
             result.attrs['error'] = str(e)
+            result.attrs['title'] = f'Effect Summary - {self._parent.label} (Error)'
             return result
 
     @MethodHandlerWrapper(handler_class=StatisticPlotter)
-    def flow_comparison(self, metric: Literal['total', 'mean', 'max', 'peak'] = 'total') -> xr.Dataset:
+    def compare_flows(self, metric: Literal['total', 'mean', 'max', 'peak'] = 'total') -> xr.Dataset:
         """Compare all flows at this node using a specific metric.
 
         Args:
@@ -573,10 +576,10 @@ class NodeStatisticsAccessor:
 
         Examples:
             >>> # Compare total flow hours
-            >>> results['Bus'].statistics.flow_comparison(metric='total').plot.bar()
+            >>> results['Bus'].statistics.compare_flows(metric='total').plot.bar()
             >>>
             >>> # Compare peak loads
-            >>> results['Bus'].statistics.flow_comparison(metric='peak').plot.bar()
+            >>> results['Bus'].statistics.compare_flows(metric='peak').plot.bar()
         """
         # Get node balance
         ds = self._parent.node_balance(
@@ -607,6 +610,16 @@ class NodeStatisticsAccessor:
                 raise ValueError(f'Invalid metric: {metric}')
 
             result[var] = xr.DataArray(value)
+
+        # Add better defaults for plotting
+        metric_labels = {
+            'total': 'Total Flow Hours',
+            'mean': 'Mean Flow Rate',
+            'max': 'Maximum Flow Rate',
+            'peak': 'Average Peak Flow Rate',
+        }
+        result.attrs['title'] = f'Flow Comparison ({metric_labels[metric]}) - {self._parent.label}'
+        result.attrs['ylabel'] = metric_labels[metric]
 
         return result
 

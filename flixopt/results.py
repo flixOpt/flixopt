@@ -26,6 +26,13 @@ if TYPE_CHECKING:
 
     from .calculation import Calculation, SegmentedCalculation
     from .core import FlowSystemDimensions
+    from .plotting_accessor import (
+        BusPlotAccessor,
+        CalculationResultsPlotAccessor,
+        ComponentPlotAccessor,
+        SegmentedCalculationResultsPlotAccessor,
+    )
+    from .statistics import NodeStatisticsAccessor
 
 
 logger = logging.getLogger('flixopt')
@@ -293,7 +300,7 @@ class CalculationResults:
         self.colors: dict[str, str] = {}
 
         # Initialize statistics accessor for PyPSA-style API
-        self.statistics = StatisticsAccessor(self)
+        self.statistics: StatisticsAccessor = StatisticsAccessor(self)
 
     def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
         if key in self.components:
@@ -362,7 +369,7 @@ class CalculationResults:
         return self._flow_system
 
     @property
-    def plot(self):
+    def plot(self) -> CalculationResultsPlotAccessor:
         """Access plotting methods via .plot accessor.
 
         Returns a plot accessor that provides convenient methods for creating
@@ -1212,7 +1219,7 @@ class _NodeResults(_ElementResults):
         self.flows = flows
 
     @property
-    def statistics(self):
+    def statistics(self) -> NodeStatisticsAccessor:
         """Access statistics methods via .statistics accessor.
 
         Returns a statistics accessor that provides convenient methods for
@@ -1222,18 +1229,18 @@ class _NodeResults(_ElementResults):
             NodeStatisticsAccessor: Accessor with statistics methods
 
         Examples:
-            >>> # Flow summary statistics
-            >>> data = results['Boiler'].statistics.flow_summary()()
-            >>> fig = results['Boiler'].statistics.flow_summary().plot.bar()
-            >>>
             >>> # Flow hours
             >>> fig = results['Boiler'].statistics.flow_hours().plot.bar()
             >>>
             >>> # Capacity utilization
             >>> fig = results['CHP'].statistics.capacity_utilization().plot.bar()
             >>>
+            >>> # Peak flows
+            >>> fig = results['Boiler'].statistics.peak_flows().plot.bar()
+            >>>
             >>> # Storage metrics (for storages only)
-            >>> fig = results['Battery'].statistics.storage_metrics().plot.bar()
+            >>> fig = results['Battery'].statistics.storage_cycles()()
+            >>> fig = results['Battery'].statistics.storage_utilization().plot.bar()
             >>>
             >>> # Temporal patterns
             >>> fig = results['Boiler'].statistics.temporal_patterns(freq='D').plot.line()
@@ -1567,7 +1574,7 @@ class BusResults(_NodeResults):
     """Results container for energy/material balance nodes in the system."""
 
     @property
-    def plot(self):
+    def plot(self) -> BusPlotAccessor:
         """Access plotting methods via .plot accessor.
 
         Returns a plot accessor that provides convenient methods for creating
@@ -1610,7 +1617,7 @@ class ComponentResults(_NodeResults):
         return self.solution[self._charge_state]
 
     @property
-    def plot(self):
+    def plot(self) -> ComponentPlotAccessor:
         """Access plotting methods via .plot accessor.
 
         Returns a plot accessor that provides convenient methods for creating
@@ -2031,7 +2038,7 @@ class SegmentedCalculationResults:
             segment.colors = copy.deepcopy(colors)
 
     @property
-    def plot(self):
+    def plot(self) -> SegmentedCalculationResultsPlotAccessor:
         """Access plotting methods via .plot accessor.
 
         Returns a plot accessor that provides convenient methods for creating
