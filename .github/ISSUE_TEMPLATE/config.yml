@@ -3,12 +3,6 @@ contact_links:
   - name: 🤔 Modeling Questions
     url: https://github.com/flixOpt/flixopt/discussions/categories/q-a
     about: "How to model specific energy systems, components, and constraints"
-  - name: ⚡ Performance & Optimization
-    url: https://github.com/flixOpt/flixopt/discussions/categories/performance
-    about: "Solver performance, memory usage, and optimization speed issues"
-  - name: 💡 Ideas & Suggestions
-    url: https://github.com/flixOpt/flixopt/discussions/categories/ideas
-    about: "Share ideas and discuss potential improvements with the community"
   - name: 📖 Documentation
     url: https://flixopt.github.io/flixopt/latest/
-    about: "Browse guides, API reference, and examples"
+    about: "Guides, API reference, and examples"
