@@ -581,9 +581,10 @@ class EffectCollection(ElementContainer[Effect]):
             else:
                 raise KeyError(f'Effect {effect} not found!')
         try:
-            return super().__getitem__(effect)  # Use parent's __getitem__ for string keys
+            return super().__getitem__(effect)  # Leverage ContainerMixin suggestions
         except KeyError as e:
-            raise KeyError(f'Effect "{effect}" not found! Add it to the FlowSystem first!') from e
+            # Append context without discarding original message
+            raise KeyError(f'{e} Add the effect to the FlowSystem first.') from None
 
     def __iter__(self) -> Iterator[Effect]:
         return iter(self.values())  # Iterate over Effect objects, not keys
