@@ -530,15 +530,15 @@ class Storage(Component):
 
     def __repr__(self) -> str:
         """Return string representation with capacity."""
+        from .io import _extract_scalar
+
         info = ' | 2 flows (1 in, 1 out)'
         try:
             cap = self.capacity_in_flow_hours
             if isinstance(cap, InvestParameters):
-                info += ' | capacity: invest' if cap.fixed_size is None else ' | capacity: fixed'
-            elif isinstance(cap, xr.DataArray) and cap.size == 1:
-                info += f' | capacity: {float(cap.item()):.1f}'
-            elif not isinstance(cap, xr.DataArray):
-                info += f' | capacity: {float(cap):.1f}'
+                info += f' | capacity: {cap.format_for_repr()}'
+            else:
+                info += f' | capacity: {_extract_scalar(cap):.1f}'
         except Exception:
             pass
         return self._format_repr(info)

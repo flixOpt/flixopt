@@ -575,19 +575,25 @@ class Flow(Element):
         if self.bus is not None:
             parts.append(f'bus: {self.bus}')
 
-        # Simple size display
-        try:
-            if isinstance(self.size, InvestParameters):
-                parts.append('size: invest' if self.size.fixed_size is None else 'size: fixed')
-            elif isinstance(self.size, xr.DataArray) and self.size.size == 1:
-                parts.append(f'size: {float(self.size.item()):.1f}')
-            elif not isinstance(self.size, xr.DataArray):
-                parts.append(f'size: {float(self.size):.1f}')
-        except Exception:
-            pass
+        parts.append(self._format_size())
 
         info = ' | ' + ' | '.join(parts) if parts else ''
         return self._format_repr(info)
+
+    def _format_size(self) -> str:
+        """Format size for display."""
+        from .io import _extract_scalar
+
+        try:
+            if isinstance(self.size, InvestParameters):
+                return self._format_invest_params(self.size)
+            return f'size: {_extract_scalar(self.size):.1f}'
+        except Exception:
+            return '?'
+
+    def _format_invest_params(self, params: InvestParameters) -> str:
+        """Format InvestParameters for display."""
+        return f'size: {params.format_for_repr()}'
 
 
 class FlowModel(ElementModel):

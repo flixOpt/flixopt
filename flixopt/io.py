@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 import yaml
 
@@ -547,3 +548,20 @@ class CalculationResultsPaths:
                 raise FileNotFoundError(f'Folder {new_folder} does not exist or is not a directory.')
             self.folder = new_folder
         self._update_paths()
+
+
+def _extract_scalar(value) -> float:
+    """Extract scalar float from various data types."""
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return float(value)
+    if isinstance(value, xr.DataArray):
+        if value.size == 1:
+            return float(value.item())
+        return float(value.mean())  # Fallback: use mean for multi-value arrays
+    if isinstance(value, (np.ndarray, pd.Series)):
+        if value.size == 1:
+            return float(value.flat[0])
+        return float(value.mean())
+    if isinstance(value, pd.DataFrame):
+        return float(value.values.flat[0] if value.size == 1 else value.values.mean())
+    return float(value)
