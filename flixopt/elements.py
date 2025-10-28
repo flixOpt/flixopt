@@ -561,10 +561,14 @@ class Flow(Element):
                     ann = '' if size_val.mandatory else ' (optional)'
                     try:
                         if isinstance(size_val.fixed_size, xr.DataArray):
-                            display_val = float(size_val.fixed_size.values)
+                            if size_val.fixed_size.size == 1:
+                                display_val = float(size_val.fixed_size.item())
+                                parts.append(f'size: fixed {display_val:.1f}{ann}')
+                            else:
+                                parts.append(f'size: fixed ({size_val.min().item()} - {size_val.max().item()}) {ann}')
                         else:
                             display_val = float(size_val.fixed_size)
-                        parts.append(f'size: fixed {display_val:.1f}{ann}')
+                            parts.append(f'size: fixed {display_val:.1f}{ann}')
                     except Exception:
                         parts.append(f'size: fixed{ann}')
                     size_val = None
@@ -574,8 +578,13 @@ class Flow(Element):
 
             if size_val is not None:
                 if isinstance(size_val, xr.DataArray):
-                    size_val = float(size_val.values)
-                parts.append(f'size: {size_val:.1f}')
+                    if size_val.size == 1:
+                        size_val = float(size_val.item())
+                        parts.append(f'size: {size_val:.1f}')
+                    else:
+                        parts.append(f'size: fixed ({size_val.min().item()} - {size_val.max().item()})')
+                else:
+                    parts.append(f'size: {float(size_val):.1f}')
         except Exception:
             pass
 
