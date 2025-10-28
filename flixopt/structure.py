@@ -911,11 +911,13 @@ class Element(Interface):
         return label
 
 
+# Precompiled regex pattern for natural sorting
+_NATURAL_SPLIT = __import__('re').compile(r'(\d+)')
+
+
 def _natural_sort_key(text):
     """Sort key for natural ordering (e.g., bus1, bus2, bus10 instead of bus1, bus10, bus2)."""
-    import re
-
-    return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
+    return [int(c) if c.isdigit() else c.lower() for c in _NATURAL_SPLIT.split(text)]
 
 
 # Type variable for containers
