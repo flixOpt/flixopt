@@ -136,6 +136,15 @@ class Component(Element):
             flow.component = self.label_full
             flow.is_input_in_component = False
 
+    def __repr__(self) -> str:
+        """Return string representation with flow information."""
+        in_count = len(self.inputs) if hasattr(self, 'inputs') and self.inputs else 0
+        out_count = len(self.outputs) if hasattr(self, 'outputs') and self.outputs else 0
+        total_flows = in_count + out_count
+
+        info = f' | {total_flows} flows ({in_count} in, {out_count} out)'
+        return self._format_repr(info)
+
 
 @register_class_for_io
 class Bus(Element):
@@ -236,6 +245,10 @@ class Bus(Element):
     @property
     def with_excess(self) -> bool:
         return False if self.excess_penalty_per_flow_hour is None else True
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return self._format_repr()
 
 
 @register_class_for_io
@@ -513,6 +526,36 @@ class Flow(Element):
     def size_is_fixed(self) -> bool:
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
+
+    def __repr__(self) -> str:
+        """Return string representation with bus and size."""
+        import xarray as xr
+
+        parts = []
+
+        # Bus connection
+        if self.bus is not None:
+            parts.append(f'bus: {self.bus}')
+
+        try:
+            size_val = self.size
+            # Handle InvestParameters
+            if isinstance(size_val, InvestParameters):
+                if size_val.fixed_size is not None and size_val.mandatory:
+                    size_val = size_val.fixed_size
+                else:
+                    parts.append('size: investment decision')
+                    size_val = None
+
+            if size_val is not None:
+                if isinstance(size_val, xr.DataArray):
+                    size_val = float(size_val.values)
+                parts.append(f'size: {size_val:.1f}')
+        except Exception:
+            pass
+
+        info = ' | ' + ' | '.join(parts) if parts else ''
+        return self._format_repr(info)
 
 
 class FlowModel(ElementModel):

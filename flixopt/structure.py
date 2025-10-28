@@ -879,6 +879,19 @@ class Element(Interface):
     def label_full(self) -> str:
         return self.label
 
+    def _format_repr(self, info: str = '') -> str:
+        """Format repr with class name, label, and optional info.
+
+        Args:
+            info: Optional additional information (e.g., ' | 2 flows')
+        """
+        class_name = self.__class__.__name__
+        return f'{class_name}: "{self.label_full}"{info}'
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return self._format_repr()
+
     @staticmethod
     def _valid_label(label: str) -> str:
         """Checks if the label is valid. If not, it is replaced by the default label.

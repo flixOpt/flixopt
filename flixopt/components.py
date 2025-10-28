@@ -528,6 +528,32 @@ class Storage(Component):
                     f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
                 )
 
+    def __repr__(self) -> str:
+        """Return string representation with storage capacity."""
+        import xarray as xr
+
+        in_count = len(self.inputs) if hasattr(self, 'inputs') and self.inputs else 0
+        out_count = len(self.outputs) if hasattr(self, 'outputs') and self.outputs else 0
+        total_flows = in_count + out_count
+
+        # Try to get capacity value
+        capacity_info = ''
+        try:
+            cap = self.capacity_in_flow_hours
+            if isinstance(cap, InvestParameters) and cap.fixed_size is not None:
+                cap = cap.fixed_size
+                if isinstance(cap, xr.DataArray):
+                    cap = float(cap.values)
+            elif isinstance(cap, xr.DataArray):
+                cap = float(cap.values)
+
+            capacity_info = f' | capacity: {cap:.1f} flow-hours'
+        except Exception:
+            pass
+
+        info = f' | {total_flows} flows ({in_count} in, {out_count} out){capacity_info}'
+        return self._format_repr(info)
+
 
 @register_class_for_io
 class Transmission(Component):

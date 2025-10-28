@@ -386,6 +386,35 @@ class Effect(Element):
         # TODO: Check for plausibility
         pass
 
+    def __repr__(self) -> str:
+        """Return string representation with effect properties."""
+        parts = []
+
+        # Unit
+        if hasattr(self, 'unit') and self.unit:
+            parts.insert(0, f'({self.unit})')
+
+        # Objective
+        if hasattr(self, 'is_objective') and self.is_objective:
+            parts.append('objective')
+
+        # Constraint types
+        constraint_types = []
+        if hasattr(self, 'maximum_per_hour') and self.maximum_per_hour is not None:
+            constraint_types.append('per_hour')
+        if hasattr(self, 'maximum_temporal') and self.maximum_temporal is not None:
+            constraint_types.append('temporal')
+        if hasattr(self, 'maximum_periodic') and self.maximum_periodic is not None:
+            constraint_types.append('periodic')
+        if hasattr(self, 'maximum_total') and self.maximum_total is not None:
+            constraint_types.append('total')
+
+        if constraint_types:
+            parts.append('constraints: ' + '+'.join(constraint_types))
+
+        info = ' ' + ' | '.join(parts) if parts else ''
+        return self._format_repr(info.replace(' |', '', 1) if info else '')
+
 
 class EffectModel(ElementModel):
     element: Effect  # Type hint
