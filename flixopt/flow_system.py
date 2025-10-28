@@ -604,8 +604,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Args:
             element: new element to check
         """
-        if element in self.values():
-            raise ValueError(f'Element {element.label_full} already added to FlowSystem!')
         # check if name is already used:
         if element.label_full in self:
             raise ValueError(f'Label of Element {element.label_full} already used in another element!')
