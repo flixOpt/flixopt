@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import re
 from dataclasses import dataclass
 from difflib import get_close_matches
 from io import StringIO
@@ -912,7 +913,7 @@ class Element(Interface):
 
 
 # Precompiled regex pattern for natural sorting
-_NATURAL_SPLIT = __import__('re').compile(r'(\d+)')
+_NATURAL_SPLIT = re.compile(r'(\d+)')
 
 
 def _natural_sort_key(text):
