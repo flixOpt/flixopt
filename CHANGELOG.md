@@ -64,7 +64,13 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Results classes** (`ComponentResults`, `BusResults`, `FlowResults`, `EffectResults`) now show concise header with key metadata followed by xarray Dataset repr
 - **Element classes** (`Component`, `Bus`, `Flow`, `Effect`, `Storage`) now show one-line summaries with essential information (connections, sizes, capacities, constraints)
 
+**Container-based access:**
+- **FlowSystem** now provides dict-like access patterns for all elements
+- Use `flow_system['element_label']`, `flow_system.keys()`, `flow_system.values()`, and `flow_system.items()` for unified element access
+- Specialized containers (`components`, `buses`, `effects`, `flows`) offer type-specific access with helpful error messages
+
 ### 🗑️ Deprecated
+- **`FlowSystem.all_elements`** property is deprecated in favor of dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`). Will be removed in v4.0.0.
 
 ### 🔥 Removed
 
