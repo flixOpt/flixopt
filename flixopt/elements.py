@@ -572,44 +572,17 @@ class Flow(Element):
     def __repr__(self) -> str:
         """Return string representation with bus and size."""
         parts = []
-
-        # Bus connection
         if self.bus is not None:
             parts.append(f'bus: {self.bus}')
 
+        # Simple size display
         try:
-            size_val = self.size
-            # Handle InvestParameters
-            if isinstance(size_val, InvestParameters):
-                if size_val.fixed_size is not None:
-                    # Show fixed size; annotate optional if not mandatory
-                    ann = '' if size_val.mandatory else ' (optional)'
-                    try:
-                        if isinstance(size_val.fixed_size, xr.DataArray):
-                            if size_val.fixed_size.size == 1:
-                                display_val = float(size_val.fixed_size.item())
-                                parts.append(f'size: fixed {display_val:.1f}{ann}')
-                            else:
-                                parts.append(f'size: fixed ({size_val.min().item()} - {size_val.max().item()}) {ann}')
-                        else:
-                            display_val = float(size_val.fixed_size)
-                            parts.append(f'size: fixed {display_val:.1f}{ann}')
-                    except Exception:
-                        parts.append(f'size: fixed{ann}')
-                    size_val = None
-                else:
-                    parts.append('size: investment decision')
-                    size_val = None
-
-            if size_val is not None:
-                if isinstance(size_val, xr.DataArray):
-                    if size_val.size == 1:
-                        size_val = float(size_val.item())
-                        parts.append(f'size: {size_val:.1f}')
-                    else:
-                        parts.append(f'size: fixed ({size_val.min().item()} - {size_val.max().item()})')
-                else:
-                    parts.append(f'size: {float(size_val):.1f}')
+            if isinstance(self.size, InvestParameters):
+                parts.append('size: invest' if self.size.fixed_size is None else 'size: fixed')
+            elif isinstance(self.size, xr.DataArray) and self.size.size == 1:
+                parts.append(f'size: {float(self.size.item()):.1f}')
+            elif not isinstance(self.size, xr.DataArray):
+                parts.append(f'size: {float(self.size):.1f}')
         except Exception:
             pass
 

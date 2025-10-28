@@ -529,29 +529,18 @@ class Storage(Component):
                 )
 
     def __repr__(self) -> str:
-        """Return string representation with storage capacity."""
-        import xarray as xr
-
-        in_count = len(self.inputs) if hasattr(self, 'inputs') and self.inputs else 0
-        out_count = len(self.outputs) if hasattr(self, 'outputs') and self.outputs else 0
-        total_flows = in_count + out_count
-
-        # Try to get capacity value
-        capacity_info = ''
+        """Return string representation with capacity."""
+        info = ' | 2 flows (1 in, 1 out)'
         try:
             cap = self.capacity_in_flow_hours
-            if isinstance(cap, InvestParameters) and cap.fixed_size is not None:
-                cap = cap.fixed_size
-                if isinstance(cap, xr.DataArray):
-                    cap = float(cap.values)
-            elif isinstance(cap, xr.DataArray):
-                cap = float(cap.values)
-
-            capacity_info = f' | capacity: {cap:.1f} flow-hours'
+            if isinstance(cap, InvestParameters):
+                info += ' | capacity: invest' if cap.fixed_size is None else ' | capacity: fixed'
+            elif isinstance(cap, xr.DataArray) and cap.size == 1:
+                info += f' | capacity: {float(cap.item()):.1f}'
+            elif not isinstance(cap, xr.DataArray):
+                info += f' | capacity: {float(cap):.1f}'
         except Exception:
             pass
-
-        info = f' | {total_flows} flows ({in_count} in, {out_count} out){capacity_info}'
         return self._format_repr(info)
 
 
