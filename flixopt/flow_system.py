@@ -114,6 +114,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._used_in_calculation = False
 
         self._network_app = None
+        self._flows_cache: ElementContainer[Flow] | None = None
 
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
@@ -616,12 +617,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             logger.info(f'Registered new Component: {new_component.label_full}')
             self._check_if_element_is_unique(new_component)  # check if already exists:
             self.components.add(new_component)  # Add to existing components
+            self._flows_cache = None  # Invalidate flows cache
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
             logger.info(f'Registered new Bus: {new_bus.label_full}')
             self._check_if_element_is_unique(new_bus)  # check if already exists:
             self.buses.add(new_bus)  # Add to existing buses
+            self._flows_cache = None  # Invalidate flows cache
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -724,11 +727,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def flows(self) -> ElementContainer[Flow]:
-        # NOTE: Creates new container on each access. Consider caching with invalidation
-        # on component changes if this property is called frequently in hot loops.
-        set_of_flows = {flow for comp in self.components.values() for flow in comp.inputs + comp.outputs}
-        flows_dict = {flow.label_full: flow for flow in set_of_flows}
-        return ElementContainer(elements=flows_dict, element_type_name='flows')
+        if self._flows_cache is None:
+            flows_set = {f for c in self.components.values() for f in c.inputs + c.outputs}
+            self._flows_cache = ElementContainer({f.label_full: f for f in flows_set}, element_type_name='flows')
+        return self._flows_cache
 
     @property
     def all_elements(self) -> dict[str, Element]:
