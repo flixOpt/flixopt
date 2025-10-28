@@ -541,8 +541,6 @@ class Flow(Element):
 
     def __repr__(self) -> str:
         """Return string representation with bus and size."""
-        import xarray as xr
-
         parts = []
 
         # Bus connection
