@@ -60,6 +60,9 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+**Improved repr methods:**
+- **Results classes** (`ComponentResults`, `BusResults`, `FlowResults`, `EffectResults`) now show concise header with key metadata followed by xarray Dataset repr
+- **Element classes** (`Component`, `Bus`, `Flow`, `Effect`, `Storage`) now show one-line summaries with essential information (connections, sizes, capacities, constraints)
 
 ### 🗑️ Deprecated
 
