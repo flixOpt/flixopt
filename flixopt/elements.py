@@ -139,6 +139,11 @@ class Component(Element):
 
         # Validate prevent_simultaneous_flows: only allow local flows
         if self.prevent_simultaneous_flows:
+            # Deduplicate while preserving order
+            seen = set()
+            self.prevent_simultaneous_flows = [
+                f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
+            ]
             local = set(self.inputs + self.outputs)
             foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
             if foreign:
