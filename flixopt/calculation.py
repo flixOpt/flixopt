@@ -112,7 +112,7 @@ class Calculation:
                     'periodic': effect.submodel.periodic.total.solution.values,
                     'total': effect.submodel.total.solution.values,
                 }
-                for effect in self.flow_system.effects.values()
+                for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
             },
             'Invest-Decisions': {
                 'Invested': {
