@@ -1124,6 +1124,83 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
 
+    def __repr__(self) -> str:
+        """Return detailed string representation with data preview."""
+        class_name = self.__class__.__name__
+        title = f'{class_name}: {self.label}'
+        line = '-' * len(title)
+
+        lines = [title, line]
+
+        # Variables section
+        var_count = len(self._variable_names)
+        lines.append(f'Variables: {var_count}')
+        if var_count > 0:
+            # Show first few variable names
+            display_vars = self._variable_names[:5]
+            if var_count > 5:
+                lines.append(f'  • {", ".join(display_vars)}, ... ({var_count - 5} more)')
+            else:
+                lines.append(f'  • {", ".join(display_vars)}')
+
+        # Constraints section
+        const_count = len(self._constraint_names)
+        lines.append(f'Constraints: {const_count}')
+        if const_count > 0:
+            display_const = self._constraint_names[:3]
+            if const_count > 3:
+                lines.append(f'  • {", ".join(display_const)}, ... ({const_count - 3} more)')
+            else:
+                lines.append(f'  • {", ".join(display_const)}')
+
+        # Solution dimensions
+        if hasattr(self.solution, 'dims') and self.solution.dims:
+            dim_strs = [f'{dim}[{len(self.solution[dim])}]' for dim in self.solution.dims]
+            lines.append(f'Solution: {", ".join(dim_strs)}')
+        else:
+            lines.append('Solution: scalar')
+
+        # Data preview section
+        if var_count > 0:
+            lines.append('')
+            lines.append('Data Preview:')
+            preview_vars = list(self.solution.data_vars)[:3]  # Show first 3 variables
+
+            for var_name in preview_vars:
+                try:
+                    var_data = self.solution[var_name]
+
+                    # Get preview values
+                    if var_data.size == 1:
+                        # Scalar variable
+                        value = float(var_data.values)
+                        lines.append(f'  {var_name}: {value:.3f}')
+                    elif 'time' in var_data.dims:
+                        # Time-dependent variable - show first 5 timesteps
+                        preview_slice = var_data.isel(time=slice(0, min(5, len(var_data.time))))
+                        if 'scenario' in var_data.dims and len(var_data.scenario) > 0:
+                            # Show first scenario
+                            preview_slice = preview_slice.isel(scenario=0)
+                            scenario_label = str(var_data.scenario.values[0])
+                            values_str = ', '.join(f'{v:.3f}' for v in preview_slice.values[:5])
+                            lines.append(f'  {var_name} (scenario={scenario_label}): [{values_str}...]')
+                        else:
+                            values_str = ', '.join(f'{v:.3f}' for v in preview_slice.values[:5])
+                            lines.append(f'  {var_name}: [{values_str}...]')
+                    else:
+                        # Other dimensions
+                        flat_values = var_data.values.flatten()[:5]
+                        values_str = ', '.join(f'{v:.3f}' for v in flat_values)
+                        lines.append(f'  {var_name}: [{values_str}...]')
+                except Exception:
+                    # If preview fails for any reason, skip this variable
+                    lines.append(f'  {var_name}: <preview unavailable>')
+
+            if len(list(self.solution.data_vars)) > 3:
+                lines.append(f'  ... ({len(list(self.solution.data_vars)) - 3} more variables)')
+
+        return '\n'.join(lines)
+
     def filter_solution(
         self,
         variable_dims: Literal['scalar', 'time', 'scenario', 'timeonly', 'scenarioonly'] | None = None,
@@ -1615,9 +1692,111 @@ class _NodeResults(_ElementResults):
 
         return ds
 
+    def __repr__(self) -> str:
+        """Return detailed string representation with node information."""
+        # Get base representation from parent
+        base_repr = super().__repr__()
+
+        lines = base_repr.split('\n')
+
+        # Find where to insert node information (after Solution line, before Data Preview)
+        insert_idx = None
+        for i, line in enumerate(lines):
+            if line.startswith('Solution:'):
+                insert_idx = i + 1
+                break
+
+        if insert_idx is None:
+            insert_idx = len(lines)
+
+        # Prepare node information
+        node_info = []
+
+        # Inputs section
+        input_count = len(self.inputs)
+        if input_count > 0:
+            node_info.append(f'Inputs: {input_count}')
+            display_inputs = self.inputs[:5]
+            if input_count > 5:
+                node_info.append(f'  • {", ".join(display_inputs)}, ... ({input_count - 5} more)')
+            else:
+                node_info.append(f'  • {", ".join(display_inputs)}')
+        else:
+            node_info.append('Inputs: 0')
+
+        # Outputs section
+        output_count = len(self.outputs)
+        if output_count > 0:
+            node_info.append(f'Outputs: {output_count}')
+            display_outputs = self.outputs[:5]
+            if output_count > 5:
+                node_info.append(f'  • {", ".join(display_outputs)}, ... ({output_count - 5} more)')
+            else:
+                node_info.append(f'  • {", ".join(display_outputs)}')
+        else:
+            node_info.append('Outputs: 0')
+
+        # Flows total
+        node_info.append(f'Total Flows: {len(self.flows)}')
+
+        # Insert node information
+        lines[insert_idx:insert_idx] = node_info
+
+        return '\n'.join(lines)
+
 
 class BusResults(_NodeResults):
     """Results container for energy/material balance nodes in the system."""
+
+    def __repr__(self) -> str:
+        """Return detailed string representation for bus node."""
+        # Get base representation from parent (_NodeResults)
+        base_repr = super().__repr__()
+
+        lines = base_repr.split('\n')
+
+        # Find where to insert bus information (after Total Flows line, before Data Preview)
+        insert_idx = None
+        for i, line in enumerate(lines):
+            if line.startswith('Total Flows:'):
+                insert_idx = i + 1
+                break
+
+        if insert_idx is None:
+            # Fallback: insert before Data Preview
+            for i, line in enumerate(lines):
+                if line.startswith('Data Preview:'):
+                    insert_idx = i
+                    break
+
+        if insert_idx is None:
+            insert_idx = len(lines)
+
+        # Add bus-specific information
+        bus_info = ['Bus Type: Energy/Material Balance Node']
+
+        # Extract connected components from inputs and outputs
+        # Format is typically "Component(Flow)" or similar
+        connected_components = set()
+        for flow_label in self.inputs + self.outputs:
+            # Try to extract component name (before parenthesis if present)
+            if '(' in flow_label:
+                component = flow_label.split('(')[0]
+                connected_components.add(component)
+
+        if connected_components:
+            comp_count = len(connected_components)
+            bus_info.append(f'Connected Components: {comp_count}')
+            display_comps = sorted(list(connected_components))[:5]
+            if comp_count > 5:
+                bus_info.append(f'  • {", ".join(display_comps)}, ... ({comp_count - 5} more)')
+            else:
+                bus_info.append(f'  • {", ".join(display_comps)}')
+
+        # Insert bus information
+        lines[insert_idx:insert_idx] = bus_info
+
+        return '\n'.join(lines)
 
 
 class ComponentResults(_NodeResults):
@@ -1892,6 +2071,63 @@ class ComponentResults(_NodeResults):
             ),
         )
 
+    def __repr__(self) -> str:
+        """Return detailed string representation with storage information."""
+        # Get base representation from parent (_NodeResults)
+        base_repr = super().__repr__()
+
+        lines = base_repr.split('\n')
+
+        # Find where to insert component information (after Total Flows line, before Data Preview)
+        insert_idx = None
+        for i, line in enumerate(lines):
+            if line.startswith('Total Flows:'):
+                insert_idx = i + 1
+                break
+
+        if insert_idx is None:
+            # Fallback: insert before Data Preview
+            for i, line in enumerate(lines):
+                if line.startswith('Data Preview:'):
+                    insert_idx = i
+                    break
+
+        if insert_idx is None:
+            insert_idx = len(lines)
+
+        # Prepare component information
+        component_info = []
+
+        # Storage information
+        if self.is_storage:
+            component_info.append('Storage: Yes')
+            # Preview charge state
+            try:
+                charge_state = self.charge_state
+                if 'time' in charge_state.dims:
+                    preview_vals = charge_state.isel(time=slice(0, min(5, len(charge_state.time))))
+                    if 'scenario' in charge_state.dims and len(charge_state.scenario) > 0:
+                        preview_vals = preview_vals.isel(scenario=0)
+                        scenario_label = str(charge_state.scenario.values[0])
+                        values_str = ', '.join(f'{v:.3f}' for v in preview_vals.values[:5])
+                        component_info.append(f'  Charge State (scenario={scenario_label}): [{values_str}...]')
+                    else:
+                        values_str = ', '.join(f'{v:.3f}' for v in preview_vals.values[:5])
+                        component_info.append(f'  Charge State: [{values_str}...]')
+                else:
+                    value = float(charge_state.values)
+                    component_info.append(f'  Charge State: {value:.3f}')
+            except Exception:
+                component_info.append('  Charge State: <preview unavailable>')
+        else:
+            component_info.append('Storage: No')
+
+        # Insert component information
+        if component_info:
+            lines[insert_idx:insert_idx] = component_info
+
+        return '\n'.join(lines)
+
 
 class EffectResults(_ElementResults):
     """Results for an Effect"""
@@ -1906,6 +2142,76 @@ class EffectResults(_ElementResults):
             xr.Dataset: Element shares to this effect.
         """
         return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
+
+    def __repr__(self) -> str:
+        """Return detailed string representation with contribution information."""
+        # Get base representation from parent (_ElementResults)
+        base_repr = super().__repr__()
+
+        lines = base_repr.split('\n')
+
+        # Find where to insert effect information (after Solution line, before Data Preview)
+        insert_idx = None
+        for i, line in enumerate(lines):
+            if line.startswith('Solution:'):
+                insert_idx = i + 1
+                break
+
+        if insert_idx is None:
+            # Fallback: insert before Data Preview
+            for i, line in enumerate(lines):
+                if line.startswith('Data Preview:'):
+                    insert_idx = i
+                    break
+
+        if insert_idx is None:
+            insert_idx = len(lines)
+
+        # Prepare effect information
+        effect_info = []
+
+        # Extract contributing elements from variable names
+        # Variable names are typically in format "element->effect_label"
+        contributing_elements = set()
+        for var_name in self._variable_names:
+            if '->' in var_name:
+                element = var_name.split('->')[0]
+                contributing_elements.add(element)
+
+        if contributing_elements:
+            contrib_count = len(contributing_elements)
+            effect_info.append(f'Contributing Elements: {contrib_count}')
+            display_elements = sorted(list(contributing_elements))[:5]
+            if contrib_count > 5:
+                effect_info.append(f'  • {", ".join(display_elements)}, ... ({contrib_count - 5} more)')
+            else:
+                effect_info.append(f'  • {", ".join(display_elements)}')
+
+            # Show total effect value if possible
+            try:
+                # Try to sum all contribution variables to get total effect
+                total_effect = sum(self.solution[var] for var in self._variable_names)
+                if 'time' in total_effect.dims:
+                    preview_vals = total_effect.isel(time=slice(0, min(5, len(total_effect.time))))
+                    if 'scenario' in total_effect.dims and len(total_effect.scenario) > 0:
+                        preview_vals = preview_vals.isel(scenario=0)
+                        scenario_label = str(total_effect.scenario.values[0])
+                        values_str = ', '.join(f'{v:.3f}' for v in preview_vals.values[:5])
+                        effect_info.append(f'Total Effect (scenario={scenario_label}): [{values_str}...]')
+                    else:
+                        values_str = ', '.join(f'{v:.3f}' for v in preview_vals.values[:5])
+                        effect_info.append(f'Total Effect: [{values_str}...]')
+                else:
+                    value = float(total_effect.values)
+                    effect_info.append(f'Total Effect: {value:.3f}')
+            except Exception:
+                pass
+
+        # Insert effect information
+        if effect_info:
+            lines[insert_idx:insert_idx] = effect_info
+
+        return '\n'.join(lines)
 
 
 class FlowResults(_ElementResults):
@@ -1942,6 +2248,73 @@ class FlowResults(_ElementResults):
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
+
+    def __repr__(self) -> str:
+        """Return detailed string representation with flow connection details."""
+        # Get base representation from parent (_ElementResults)
+        base_repr = super().__repr__()
+
+        lines = base_repr.split('\n')
+
+        # Find where to insert flow information (after Solution line, before Data Preview)
+        insert_idx = None
+        for i, line in enumerate(lines):
+            if line.startswith('Solution:'):
+                insert_idx = i + 1
+                break
+
+        if insert_idx is None:
+            # Fallback: insert before Data Preview
+            for i, line in enumerate(lines):
+                if line.startswith('Data Preview:'):
+                    insert_idx = i
+                    break
+
+        if insert_idx is None:
+            insert_idx = len(lines)
+
+        # Prepare flow information
+        flow_info = []
+
+        # Connection details
+        flow_info.append(f'From: {self.start}')
+        flow_info.append(f'To: {self.end}')
+        if self.component:
+            flow_info.append(f'Component: {self.component}')
+
+        # Check if size is available and show it
+        try:
+            size_var = self.size
+            if size_var.size == 1:
+                size_value = float(size_var.values)
+                if not (isinstance(size_value, float) and (size_value != size_value)):  # Check for NaN
+                    flow_info.append(f'Size: {size_value:.3f}')
+        except Exception:
+            pass
+
+        # Flow rate preview
+        try:
+            flow_rate = self.flow_rate
+            if 'time' in flow_rate.dims:
+                preview_vals = flow_rate.isel(time=slice(0, min(5, len(flow_rate.time))))
+                if 'scenario' in flow_rate.dims and len(flow_rate.scenario) > 0:
+                    preview_vals = preview_vals.isel(scenario=0)
+                    scenario_label = str(flow_rate.scenario.values[0])
+                    values_str = ', '.join(f'{v:.3f}' for v in preview_vals.values[:5])
+                    flow_info.append(f'Flow Rate (scenario={scenario_label}): [{values_str}...]')
+                else:
+                    values_str = ', '.join(f'{v:.3f}' for v in preview_vals.values[:5])
+                    flow_info.append(f'Flow Rate: [{values_str}...]')
+            else:
+                value = float(flow_rate.values)
+                flow_info.append(f'Flow Rate: {value:.3f}')
+        except Exception:
+            flow_info.append('Flow Rate: <preview unavailable>')
+
+        # Insert flow information
+        lines[insert_idx:insert_idx] = flow_info
+
+        return '\n'.join(lines)
 
 
 class SegmentedCalculationResults:
