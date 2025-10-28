@@ -1127,8 +1127,10 @@ class _ElementResults:
     def __repr__(self) -> str:
         """Return string representation with element info and dataset preview."""
         class_name = self.__class__.__name__
-        header = f'{class_name}: {self.label}'
-        return f'{header}\n{repr(self.solution)}'
+        header = f'{class_name}: "{self.label}"'
+        sol = self.solution
+        sol.attrs = {}
+        return f'{header}\n{repr(sol)}'
 
     def filter_solution(
         self,
@@ -1624,8 +1626,12 @@ class _NodeResults(_ElementResults):
     def __repr__(self) -> str:
         """Return string representation with node information."""
         class_name = self.__class__.__name__
-        header = f'{class_name}: {self.label} | {len(self.inputs)} inputs, {len(self.outputs)} outputs, {len(self.flows)} flows'
-        return f'{header}\n{repr(self.solution)}'
+        header = (
+            f'{class_name}: "{self.label}" | {len(self.flows)} flows ({len(self.inputs)} in, {len(self.outputs)} out)'
+        )
+        sol = self.solution
+        sol.attrs = {}
+        return f'{header}\n{repr(sol)}'
 
 
 class BusResults(_NodeResults):
@@ -1908,8 +1914,10 @@ class ComponentResults(_NodeResults):
         """Return string representation with storage indication."""
         class_name = self.__class__.__name__
         storage_tag = ' (Storage)' if self.is_storage else ''
-        header = f'{class_name}: {self.label}{storage_tag} | {len(self.inputs)} inputs, {len(self.outputs)} outputs, {len(self.flows)} flows'
-        return f'{header}\n{repr(self.solution)}'
+        header = f'{class_name}: "{self.label}"{storage_tag} | {len(self.flows)} flows ({len(self.inputs)} in, {len(self.outputs)} out)'
+        sol = self.solution
+        sol.attrs = {}
+        return f'{header}\n{repr(sol)}'
 
 
 class EffectResults(_ElementResults):
@@ -1932,8 +1940,10 @@ class EffectResults(_ElementResults):
         # Extract contributing elements from variable names (format: "element->effect_label")
         contributing_elements = {var_name.split('->')[0] for var_name in self._variable_names if '->' in var_name}
         contrib_info = f' | {len(contributing_elements)} contributors'
-        header = f'{class_name}: {self.label}{contrib_info}'
-        return f'{header}\n{repr(self.solution)}'
+        header = f'{class_name}: "{self.label}"{contrib_info}'
+        sol = self.solution
+        sol.attrs = {}
+        return f'{header}\n{repr(sol)}'
 
 
 class FlowResults(_ElementResults):
@@ -1974,8 +1984,10 @@ class FlowResults(_ElementResults):
     def __repr__(self) -> str:
         """Return string representation with flow connection details."""
         class_name = self.__class__.__name__
-        header = f'{class_name}: {self.label} | {self.start} → {self.end}'
-        return f'{header}\n{repr(self.solution)}'
+        header = f'{class_name}: "{self.label}" | {self.start} → {self.end}'
+        sol = self.solution
+        sol.attrs = {}
+        return f'{header}\n{repr(sol)}'
 
 
 class SegmentedCalculationResults:
