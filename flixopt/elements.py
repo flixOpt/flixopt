@@ -265,7 +265,22 @@ class Bus(Element):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return self._format_repr()
+        info = ''
+        if self.excess_penalty_per_flow_hour is not None:
+            # Try to extract scalar value for display
+            try:
+                if isinstance(self.excess_penalty_per_flow_hour, xr.DataArray):
+                    if self.excess_penalty_per_flow_hour.size == 1:
+                        penalty_val = float(self.excess_penalty_per_flow_hour.item())
+                        info = f' | excess_penalty: {penalty_val:.0f}'
+                    else:
+                        info = ' | excess_penalty: variable'
+                else:
+                    penalty_val = float(self.excess_penalty_per_flow_hour)
+                    info = f' | excess_penalty: {penalty_val:.0f}'
+            except Exception:
+                info = ' | excess_penalty: set'
+        return self._format_repr(info)
 
 
 @register_class_for_io
