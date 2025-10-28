@@ -1124,13 +1124,21 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
 
-    def __repr__(self) -> str:
-        """Return string representation with element info and dataset preview."""
+    def _format_repr(self, info: str = '') -> str:
+        """Format repr with class name, label, optional info, and dataset.
+
+        Args:
+            info: Optional additional information to append to header (e.g., ' | 3 inputs')
+        """
         class_name = self.__class__.__name__
-        header = f'{class_name}: "{self.label}"'
+        header = f'{class_name}: "{self.label}"{info}'
         sol = self.solution
         sol.attrs = {}
         return f'{header}\n{repr(sol)}'
+
+    def __repr__(self) -> str:
+        """Return string representation with element info and dataset preview."""
+        return self._format_repr()
 
     def filter_solution(
         self,
@@ -1625,13 +1633,8 @@ class _NodeResults(_ElementResults):
 
     def __repr__(self) -> str:
         """Return string representation with node information."""
-        class_name = self.__class__.__name__
-        header = (
-            f'{class_name}: "{self.label}" | {len(self.flows)} flows ({len(self.inputs)} in, {len(self.outputs)} out)'
-        )
-        sol = self.solution
-        sol.attrs = {}
-        return f'{header}\n{repr(sol)}'
+        info = f' | {len(self.flows)} flows ({len(self.inputs)} in, {len(self.outputs)} out)'
+        return self._format_repr(info)
 
 
 class BusResults(_NodeResults):
@@ -1912,12 +1915,9 @@ class ComponentResults(_NodeResults):
 
     def __repr__(self) -> str:
         """Return string representation with storage indication."""
-        class_name = self.__class__.__name__
         storage_tag = ' (Storage)' if self.is_storage else ''
-        header = f'{class_name}: "{self.label}"{storage_tag} | {len(self.flows)} flows ({len(self.inputs)} in, {len(self.outputs)} out)'
-        sol = self.solution
-        sol.attrs = {}
-        return f'{header}\n{repr(sol)}'
+        info = f'{storage_tag} | {len(self.flows)} flows ({len(self.inputs)} in, {len(self.outputs)} out)'
+        return self._format_repr(info)
 
 
 class EffectResults(_ElementResults):
@@ -1936,14 +1936,10 @@ class EffectResults(_ElementResults):
 
     def __repr__(self) -> str:
         """Return string representation with contribution information."""
-        class_name = self.__class__.__name__
         # Extract contributing elements from variable names (format: "element->effect_label")
         contributing_elements = {var_name.split('->')[0] for var_name in self._variable_names if '->' in var_name}
-        contrib_info = f' | {len(contributing_elements)} contributors'
-        header = f'{class_name}: "{self.label}"{contrib_info}'
-        sol = self.solution
-        sol.attrs = {}
-        return f'{header}\n{repr(sol)}'
+        info = f' | {len(contributing_elements)} contributors'
+        return self._format_repr(info)
 
 
 class FlowResults(_ElementResults):
@@ -1983,11 +1979,8 @@ class FlowResults(_ElementResults):
 
     def __repr__(self) -> str:
         """Return string representation with flow connection details."""
-        class_name = self.__class__.__name__
-        header = f'{class_name}: "{self.label}" | {self.start} → {self.end}'
-        sol = self.solution
-        sol.attrs = {}
-        return f'{header}\n{repr(sol)}'
+        info = f' | {self.start} → {self.end}'
+        return self._format_repr(info)
 
 
 class SegmentedCalculationResults:
