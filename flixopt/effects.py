@@ -594,12 +594,7 @@ class EffectCollection(ElementContainer[Effect]):
         if isinstance(item, str):
             return super().__contains__(item)  # Check if the label exists
         elif isinstance(item, Effect):
-            # First check by label and object identity (O(1))
-            if item.label_full in self and self[item.label_full] is item:
-                return True
-            # Fallback to full object search (O(n)) for objects with unexpected labels
-            if item in self.values():
-                return True
+            return item.label_full in self and self[item.label_full] is item
         return False
 
     @property
