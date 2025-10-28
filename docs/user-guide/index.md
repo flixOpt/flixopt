@@ -105,9 +105,18 @@ FlixOpt offers different calculation modes:
 
 The results of a calculation are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object.
 This object contains the solutions of the optimization as well as all information about the [`Calculation`][flixopt.calculation.Calculation] and the [`FlowSystem`][flixopt.flow_system.FlowSystem] it was created from.
-The solutions is stored as an `xarray.Dataset`, but can be accessed through their assotiated Component, Bus or Effect.
+The solutions is stored as an `xarray.Dataset`, but can be accessed through their associated Component, Bus or Effect.
 
 This [`CalculationResults`][flixopt.results.CalculationResults] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
+
+#### Visualization and Analysis
+
+Results can be visualized and analyzed using the `.plot` and `.statistics` accessors:
+
+- **`.plot`** - Create interactive visualizations (heatmaps, node balances, charge states, pie charts)
+- **`.statistics`** - Calculate and plot statistics (flow summaries, energy balances, capacity utilization)
+
+See the [Plotting and Statistics Guide](./plotting-and-statistics.md) for detailed information on visualizing results.
 
 ## How These Concepts Work Together
 
@@ -136,6 +145,14 @@ The process of working with FlixOpt can be divided into 3 steps:
 ## Advanced Usage
 As flixopt is build on [linopy](https://github.com/PyPSA/linopy), any model created with FlixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
 This allows to adjust your model to very specific requirements without loosing the convenience of FlixOpt.
+
+## User Guides
+
+Detailed guides for specific topics:
+
+- **[Plotting and Statistics](./plotting-and-statistics.md)** - Visualize and analyze optimization results with `.plot` and `.statistics` accessors
+- **[DataTransformer Guide](./data-transformer.md)** - Transform xarray data for plotting and custom analysis
+- **[Recipes](./recipes/index.md)** - Common patterns and solutions
 
 <!--## Next Steps-->
 <!---->
