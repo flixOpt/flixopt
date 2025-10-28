@@ -86,10 +86,11 @@ class Component(Element):
         super().__init__(label, meta_data=meta_data)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
-        self._check_unique_flow_labels()
-        self._connect_flows()
         self.on_off_parameters = on_off_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
+
+        self._check_unique_flow_labels()
+        self._connect_flows()
 
         self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
@@ -135,6 +136,17 @@ class Component(Element):
                 )
             flow.component = self.label_full
             flow.is_input_in_component = False
+
+        # Validate prevent_simultaneous_flows: only allow local flows
+        if self.prevent_simultaneous_flows:
+            local = set(self.inputs + self.outputs)
+            foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
+            if foreign:
+                names = ', '.join(f.label_full for f in foreign)
+                raise ValueError(
+                    f'prevent_simultaneous_flows for "{self.label_full}" must reference its own flows. '
+                    f'Foreign flows detected: {names}'
+                )
 
     def __repr__(self) -> str:
         """Return string representation with flow information."""
