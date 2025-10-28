@@ -553,8 +553,18 @@ class Flow(Element):
             size_val = self.size
             # Handle InvestParameters
             if isinstance(size_val, InvestParameters):
-                if size_val.fixed_size is not None and size_val.mandatory:
-                    size_val = size_val.fixed_size
+                if size_val.fixed_size is not None:
+                    # Show fixed size; annotate optional if not mandatory
+                    ann = '' if size_val.mandatory else ' (optional)'
+                    try:
+                        if isinstance(size_val.fixed_size, xr.DataArray):
+                            display_val = float(size_val.fixed_size.values)
+                        else:
+                            display_val = float(size_val.fixed_size)
+                        parts.append(f'size: fixed {display_val:.1f}{ann}')
+                    except Exception:
+                        parts.append(f'size: fixed{ann}')
+                    size_val = None
                 else:
                     parts.append('size: investment decision')
                     size_val = None
