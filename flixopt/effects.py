@@ -412,8 +412,10 @@ class Effect(Element):
         if constraint_types:
             parts.append('constraints: ' + '+'.join(constraint_types))
 
-        info = ' ' + ' | '.join(parts) if parts else ''
-        return self._format_repr(info.replace(' |', '', 1) if info else '')
+        info = ' | '.join(parts)
+        if info:
+            info = ' | ' + info
+        return self._format_repr(info)
 
 
 class EffectModel(ElementModel):
