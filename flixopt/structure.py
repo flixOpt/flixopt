@@ -1022,7 +1022,7 @@ class ContainerMixin(dict[str, T]):
         for name in sorted(self.keys(), key=_natural_sort_key):
             r += f' * {name}\n'
 
-        if not len(list(self)):
+        if not self:
             r += '<empty>\n'
 
         return r
