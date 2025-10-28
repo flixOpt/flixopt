@@ -159,7 +159,17 @@ class Component(Element):
         out_count = len(self.outputs) if hasattr(self, 'outputs') and self.outputs else 0
         total_flows = in_count + out_count
 
-        info = f' | {total_flows} flows ({in_count} in, {out_count} out)'
+        parts = [f'{total_flows} flows ({in_count} in, {out_count} out)']
+
+        # Add on_off indicator
+        if self.on_off_parameters is not None:
+            parts.append('on_off')
+
+        # Add mutual exclusivity indicator
+        if self.prevent_simultaneous_flows:
+            parts.append(f'mutual_excl:{len(self.prevent_simultaneous_flows)}')
+
+        info = ' | ' + ' | '.join(parts)
         return self._format_repr(info)
 
 
