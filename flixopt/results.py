@@ -761,8 +761,6 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             temporal = temporal.sum('time')
             if periodic.isnull().all():
                 return temporal.rename(f'{element}->{effect}')
-            if 'time' in temporal.indexes:
-                temporal = temporal.sum('time')
             return periodic + temporal
 
         total = xr.DataArray(0)
