@@ -172,7 +172,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             },
             'Effects': {
                 effect.label_full: effect.submodel.results_structure()
-                for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
+                for effect in sorted(self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper())
             },
             'Flows': {
                 flow.label_full: flow.submodel.results_structure()

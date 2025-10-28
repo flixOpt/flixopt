@@ -588,8 +588,8 @@ class EffectCollection(ElementContainer[Effect]):
             # Append context without discarding original message
             raise KeyError(f'{e} Add the effect to the FlowSystem first.') from None
 
-    def __iter__(self) -> Iterator[Effect]:
-        return iter(self.values())  # Iterate over Effect objects, not keys
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.keys())  # Iterate over keys like a normal dict
 
     def __contains__(self, item: str | Effect) -> bool:
         """Check if the effect exists. Checks for label or object"""
@@ -692,7 +692,7 @@ class EffectCollectionModel(Submodel):
 
     def _do_modeling(self):
         super()._do_modeling()
-        for effect in self.effects:
+        for effect in self.effects.values():
             effect.create_model(self._model)
         self.penalty = self.add_submodels(
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
@@ -706,7 +706,7 @@ class EffectCollectionModel(Submodel):
         )
 
     def _add_share_between_effects(self):
-        for target_effect in self.effects:
+        for target_effect in self.effects.values():
             # 1. temporal: <- receiving temporal shares from other effects
             for source_effect, time_series in target_effect.share_from_temporal.items():
                 target_effect.submodel.temporal.add_share(

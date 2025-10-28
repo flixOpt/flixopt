@@ -234,7 +234,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Extract from effects
         effects_structure = {}
-        for effect in self.effects:
+        for effect in self.effects.values():
             effect_structure, effect_arrays = effect._create_reference_structure()
             all_extracted_arrays.update(effect_arrays)
             effects_structure[effect.label] = effect_structure
