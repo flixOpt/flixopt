@@ -8,8 +8,10 @@ Architecture:
 - Specialized plotters for domain-specific visualizations
 - Automatic plotter selection based on statistic method
 - Results accessors for ComponentResults, BusResults, and CalculationResults
+- Data transformation utilities for xarray → DataFrame conversions
 """
 
+from .data_transformer import DataTransformer
 from .plotly_charts import (
     InteractivePlotter,
     StorageStatePlotter,
@@ -34,6 +36,7 @@ from .wrapper import MethodHandlerWrapper
 __all__ = [
     'StatisticPlotter',
     'MethodHandlerWrapper',
+    'DataTransformer',
     'InteractivePlotter',
     'StorageStatePlotter',
     'get_plotter_class',

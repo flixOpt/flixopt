@@ -8,6 +8,7 @@ Architecture:
 - InteractivePlotter: Base class with common plotting logic
 - Specialized plotters: Inherit and add domain-specific methods
 - Automatic plotter selection based on statistic method name
+- DataTransformer integration for clean data handling
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import plotly.express as px
 
 from .. import plotting
+from .data_transformer import DataTransformer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -68,6 +70,7 @@ class InteractivePlotter:
         self._data_getter = data_getter
         self._method_name = method_name
         self._parent = parent
+        self._transformer = DataTransformer()
 
     def _get_dataset(self, data: xr.Dataset | None = None) -> xr.Dataset:
         """Get the dataset, fetching if necessary.
@@ -94,7 +97,7 @@ class InteractivePlotter:
     def _prepare_data(self, data: xr.Dataset | None = None) -> pd.DataFrame:
         """Convert xarray data to pandas DataFrame for Plotly.
 
-        Deprecated: Use _get_dataset() and plotting.with_plotly() instead.
+        Deprecated: Use _to_tidy() or _to_wide() instead, which leverage DataTransformer.
 
         Args:
             data: Data to convert. If None, fetches from data_getter.
@@ -108,16 +111,128 @@ class InteractivePlotter:
         if data is None:
             data = self._data_getter()
 
-        # Convert to DataFrame
-        if isinstance(data, xr.Dataset):
-            # If multiple data variables, stack them
-            df = data.to_dataframe().reset_index()
-        elif isinstance(data, xr.DataArray):
-            df = data.to_dataframe().reset_index()
-        else:
-            raise TypeError(f'Expected xarray Dataset or DataArray, got {type(data)}')
+        # Use DataTransformer for conversion
+        return self._transformer.to_tidy_dataframe(data)
 
-        return df
+    def _to_tidy(self, data: xr.Dataset | xr.DataArray | None = None, value_name: str = 'value') -> pd.DataFrame:
+        """Convert data to tidy/long format DataFrame.
+
+        This is the recommended format for Plotly Express. Each row represents
+        one observation, dimensions become columns.
+
+        Args:
+            data: Data to convert. If None, uses data_getter.
+            value_name: Name for value column (for DataArrays)
+
+        Returns:
+            Tidy DataFrame ready for Plotly Express
+
+        Examples:
+            >>> df = self._to_tidy(value_name='generation')
+            >>> fig = px.line(df, x='time', y='generation', color='generator')
+        """
+        if data is None:
+            data = self._get_dataset()
+        return self._transformer.to_tidy_dataframe(data, value_name=value_name)
+
+    def _to_wide(
+        self, data: xr.DataArray | None = None, index_dim: str | None = None, columns_dim: str | None = None
+    ) -> pd.DataFrame:
+        """Convert data to wide format DataFrame.
+
+        Wide format has one dimension as index and another as columns.
+        Useful for some chart types.
+
+        Args:
+            data: DataArray to convert. If None, uses data_getter (must return DataArray).
+            index_dim: Dimension for index (usually 'time')
+            columns_dim: Dimension for columns (usually category like 'generator')
+
+        Returns:
+            Wide DataFrame
+
+        Examples:
+            >>> df = self._to_wide(index_dim='time', columns_dim='generator')
+            >>> # time as index, generators as columns
+        """
+        import xarray as xr
+
+        if data is None:
+            fetched = self._get_dataset()
+            # If Dataset with single variable, extract it
+            if isinstance(fetched, xr.Dataset) and len(fetched.data_vars) == 1:
+                data = fetched[list(fetched.data_vars)[0]]
+            else:
+                data = fetched
+
+        return self._transformer.to_wide_dataframe(data, index_dim=index_dim, columns_dim=columns_dim)
+
+    def _aggregate(
+        self,
+        data: xr.DataArray | xr.Dataset | None = None,
+        dim: str = 'time',
+        method: Literal['sum', 'mean', 'max', 'min', 'std', 'median'] = 'sum',
+    ) -> xr.DataArray | xr.Dataset:
+        """Aggregate data along a dimension.
+
+        Args:
+            data: Data to aggregate. If None, uses data_getter.
+            dim: Dimension to aggregate along
+            method: Aggregation method
+
+        Returns:
+            Aggregated data
+
+        Examples:
+            >>> # Sum over time
+            >>> total = self._aggregate(dim='time', method='sum')
+        """
+        if data is None:
+            data = self._get_dataset()
+        return self._transformer.aggregate_dimension(data, dim=dim, method=method)
+
+    def _select(self, data: xr.DataArray | xr.Dataset | None = None, **selectors: Any) -> xr.DataArray | xr.Dataset:
+        """Select subset of data using dimension selectors.
+
+        Args:
+            data: Data to select from. If None, uses data_getter.
+            **selectors: Dimension selectors
+
+        Returns:
+            Selected subset
+
+        Examples:
+            >>> # Select specific generator
+            >>> subset = self._select(generator='solar')
+            >>> # Select time range
+            >>> subset = self._select(time=slice(0, 10))
+        """
+        if data is None:
+            data = self._get_dataset()
+        return self._transformer.select_subset(data, **selectors)
+
+    def _melt(
+        self, data: xr.Dataset | None = None, var_name: str = 'variable', value_name: str = 'value'
+    ) -> pd.DataFrame:
+        """Convert Dataset to ultra-tidy format with variable names as column.
+
+        Useful for plotting multiple variables together distinguished by color/facet.
+
+        Args:
+            data: Dataset to melt. If None, uses data_getter.
+            var_name: Name for variable column
+            value_name: Name for value column
+
+        Returns:
+            Melted DataFrame
+
+        Examples:
+            >>> df = self._melt()
+            >>> fig = px.line(df, x='time', y='value', color='variable')
+        """
+        if data is None:
+            data = self._get_dataset()
+        return self._transformer.melt_dataset(data, var_name=var_name, value_name=value_name)
 
     def _get_colors(self, color_by: str | None = None) -> dict[str, str] | None:
         """Get color mapping from parent configuration.
@@ -396,13 +511,8 @@ class InteractivePlotter:
                 'in the statistics method to preserve dimensions.'
             )
 
-        # Convert to DataFrame for scatter plot
-        import pandas as pd
-
-        if isinstance(data, pd.DataFrame):
-            df = data
-        else:
-            df = data.to_dataframe().reset_index()
+        # Convert to tidy DataFrame using DataTransformer
+        df = self._to_tidy(data)
 
         # Auto-detect axes if not provided
         if x is None:

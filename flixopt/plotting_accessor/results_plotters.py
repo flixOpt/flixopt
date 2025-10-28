@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import xarray as xr
 
 from .. import plotting
+from .data_transformer import DataTransformer
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -60,6 +61,7 @@ class ResultsPlotterBase:
         self.parent = parent
         self.name = name
         self.folder = folder or pathlib.Path('.')
+        self._transformer = DataTransformer()
 
     def _get_colors(self) -> dict[str, str] | None:
         """Get color mapping from parent results object."""
@@ -100,6 +102,86 @@ class ResultsPlotterBase:
             save=True if save else False,
             dpi=dpi,
         )
+
+    def _to_tidy(self, data: xr.Dataset | xr.DataArray | None = None, value_name: str = 'value'):
+        """Convert data to tidy/long format DataFrame.
+
+        This is the recommended format for Plotly Express.
+
+        Args:
+            data: Data to convert. If None, uses self.data.
+            value_name: Name for value column (for DataArrays)
+
+        Returns:
+            Tidy DataFrame ready for Plotly Express
+        """
+        if data is None:
+            data = self.data
+        return self._transformer.to_tidy_dataframe(data, value_name=value_name)
+
+    def _to_wide(self, data: xr.DataArray | None = None, index_dim: str | None = None, columns_dim: str | None = None):
+        """Convert data to wide format DataFrame.
+
+        Args:
+            data: DataArray to convert. If None, uses self.data.
+            index_dim: Dimension for index (usually 'time')
+            columns_dim: Dimension for columns (usually category)
+
+        Returns:
+            Wide DataFrame
+        """
+        if data is None:
+            data = self.data
+        return self._transformer.to_wide_dataframe(data, index_dim=index_dim, columns_dim=columns_dim)
+
+    def _aggregate(
+        self,
+        data: xr.DataArray | xr.Dataset | None = None,
+        dim: str = 'time',
+        method: Literal['sum', 'mean', 'max', 'min', 'std', 'median'] = 'sum',
+    ):
+        """Aggregate data along a dimension.
+
+        Args:
+            data: Data to aggregate. If None, uses self.data.
+            dim: Dimension to aggregate along
+            method: Aggregation method
+
+        Returns:
+            Aggregated data
+        """
+        if data is None:
+            data = self.data
+        return self._transformer.aggregate_dimension(data, dim=dim, method=method)
+
+    def _select(self, data: xr.DataArray | xr.Dataset | None = None, **selectors: Any):
+        """Select subset of data.
+
+        Args:
+            data: Data to select from. If None, uses self.data.
+            **selectors: Dimension selectors
+
+        Returns:
+            Selected subset
+        """
+        if data is None:
+            data = self.data
+        return self._transformer.select_subset(data, **selectors)
+
+    def _melt(self, data: xr.Dataset | None = None, var_name: str = 'variable', value_name: str = 'value'):
+        """Convert Dataset to ultra-tidy format.
+
+        Args:
+            data: Dataset to melt. If None, uses self.data.
+            var_name: Name for variable column
+            value_name: Name for value column
+
+        Returns:
+            Melted DataFrame
+        """
+        if data is None:
+            data = self.data
+        return self._transformer.melt_dataset(data, var_name=var_name, value_name=value_name)
 
 
 class NodeBalancePlotter(ResultsPlotterBase):
