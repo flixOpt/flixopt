@@ -726,6 +726,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def flows(self) -> ElementContainer[Flow]:
+        # NOTE: Creates new container on each access. Consider caching with invalidation
+        # on component changes if this property is called frequently in hot loops.
         set_of_flows = {flow for comp in self.components.values() for flow in comp.inputs + comp.outputs}
         flows_dict = {flow.label_full: flow for flow in set_of_flows}
         return ElementContainer(elements=flows_dict, element_type_name='flows')
