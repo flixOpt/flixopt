@@ -640,16 +640,27 @@ class Flow(Element):
         if self.bus is not None:
             parts.append(f'bus: {self.bus}')
 
-        parts.append(self._format_size())
+        size_str = self._format_size()
+        if size_str:  # Only add if not None/empty
+            parts.append(size_str)
 
         info = ' | ' + ' | '.join(parts) if parts else ''
         return self._format_repr(info)
 
-    def _format_size(self) -> str:
-        """Format size for display."""
+    def _format_size(self) -> str | None:
+        """Format size for display. Returns None if size is default CONFIG.big."""
+        import numpy as np
+
+        from .config import CONFIG
         from .io import numeric_to_str_for_repr
 
         try:
+            # Hide default CONFIG.big size
+            if not isinstance(self.size, InvestParameters):
+                if isinstance(self.size, (int, float, np.integer, np.floating)):
+                    if float(self.size) == CONFIG.Modeling.big:
+                        return None
+
             if isinstance(self.size, InvestParameters):
                 return self._format_invest_params(self.size)
             return f'size: {numeric_to_str_for_repr(self.size)}'
