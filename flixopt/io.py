@@ -626,6 +626,57 @@ def numeric_to_str_for_repr(
     return f'{min_str}-{max_str}'
 
 
+def _format_value_for_repr(value) -> str:
+    """Format a single value for display in repr.
+
+    Args:
+        value: The value to format
+
+    Returns:
+        Formatted string representation of the value
+    """
+    # Format numeric types using specialized formatter
+    if isinstance(value, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)):
+        try:
+            return numeric_to_str_for_repr(value)
+        except Exception:
+            value_repr = repr(value)
+            if len(value_repr) > 50:
+                value_repr = value_repr[:47] + '...'
+            return value_repr
+
+    # Format dicts with numeric/array values nicely
+    elif isinstance(value, dict):
+        try:
+            formatted_items = []
+            for k, v in value.items():
+                if isinstance(
+                    v, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
+                ):
+                    v_str = numeric_to_str_for_repr(v)
+                else:
+                    v_str = repr(v)
+                    if len(v_str) > 30:
+                        v_str = v_str[:27] + '...'
+                formatted_items.append(f'{repr(k)}: {v_str}')
+            value_repr = '{' + ', '.join(formatted_items) + '}'
+            if len(value_repr) > 50:
+                value_repr = value_repr[:47] + '...'
+            return value_repr
+        except Exception:
+            value_repr = repr(value)
+            if len(value_repr) > 50:
+                value_repr = value_repr[:47] + '...'
+            return value_repr
+
+    # Default repr with truncation
+    else:
+        value_repr = repr(value)
+        if len(value_repr) > 50:
+            value_repr = value_repr[:47] + '...'
+        return value_repr
+
+
 def build_repr_from_init(
     obj: object,
     excluded_params: set[str] | None = None,
@@ -741,44 +792,8 @@ def build_repr_from_init(
                 except Exception:
                     pass
 
-            # Format value - use numeric formatter for numbers
-            if isinstance(
-                value, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
-            ):
-                try:
-                    value_repr = numeric_to_str_for_repr(value)
-                except Exception:
-                    value_repr = repr(value)
-                    if len(value_repr) > 50:
-                        value_repr = value_repr[:47] + '...'
-
-            elif isinstance(value, dict):
-                # Format dicts with numeric/array values nicely
-                try:
-                    formatted_items = []
-                    for k, v in value.items():
-                        if isinstance(
-                            v, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
-                        ):
-                            v_str = numeric_to_str_for_repr(v)
-                        else:
-                            v_str = repr(v)
-                            if len(v_str) > 30:
-                                v_str = v_str[:27] + '...'
-                        formatted_items.append(f'{repr(k)}: {v_str}')
-                    value_repr = '{' + ', '.join(formatted_items) + '}'
-                    if len(value_repr) > 50:
-                        value_repr = value_repr[:47] + '...'
-                except Exception:
-                    value_repr = repr(value)
-                    if len(value_repr) > 50:
-                        value_repr = value_repr[:47] + '...'
-
-            else:
-                value_repr = repr(value)
-                if len(value_repr) > 50:
-                    value_repr = value_repr[:47] + '...'
-
+            # Format value using helper function
+            value_repr = _format_value_for_repr(value)
             kwargs_parts.append(f'{param_name}={value_repr}')
 
         # Build args string with label first as positional if present
