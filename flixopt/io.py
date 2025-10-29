@@ -659,16 +659,17 @@ def build_repr_from_init(
         label_value = None
 
         for param_name, param in init_params.items():
-            if param_name in excluded_params:
-                continue
-
             # Skip *args and **kwargs
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 continue
 
-            # Handle label separately if showing as positional
+            # Handle label separately if showing as positional (check BEFORE excluded_params)
             if param_name == 'label' and has_label:
                 label_value = getattr(obj, param_name, None)
+                continue
+
+            # Now check if parameter should be excluded
+            if param_name in excluded_params:
                 continue
 
             # Get current value

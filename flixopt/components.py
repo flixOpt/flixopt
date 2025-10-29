@@ -530,18 +530,44 @@ class Storage(Component):
 
     def __repr__(self) -> str:
         """Return string representation with capacity."""
-        from .io import numeric_to_str_for_repr
+        from . import io as fx_io
 
-        info = ' | 2 flows (1 in, 1 out)'
+        # Build info with capacity
+        parts = ['2 flows (1 in, 1 out)']
         try:
             cap = self.capacity_in_flow_hours
             if isinstance(cap, InvestParameters):
-                info += f' | capacity: {cap.format_for_repr()}'
+                parts.append(f'capacity: {cap.format_for_repr()}')
             else:
-                info += f' | capacity: {numeric_to_str_for_repr(cap)}'
+                parts.append(f'capacity: {fx_io.numeric_to_str_for_repr(cap)}')
         except Exception:
             pass
-        return self._format_repr(info)
+
+        info = ' | '.join(parts)
+
+        # Use build_repr_from_init directly to exclude charging and discharging
+        result = fx_io.build_repr_from_init(
+            self,
+            excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
+            info=info,
+            skip_default_size=True,
+        )
+
+        # Add multi-line flow details
+        flow_lines = []
+        if hasattr(self, 'inputs') and self.inputs:
+            flow_lines.append('  inputs:')
+            for flow in self.inputs:
+                flow_lines.append(f'    * {repr(flow)}')
+        if hasattr(self, 'outputs') and self.outputs:
+            flow_lines.append('  outputs:')
+            for flow in self.outputs:
+                flow_lines.append(f'    * {repr(flow)}')
+
+        if flow_lines:
+            result += '\n' + '\n'.join(flow_lines)
+
+        return result
 
 
 @register_class_for_io
