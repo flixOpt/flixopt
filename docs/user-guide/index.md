@@ -19,11 +19,11 @@ Every FlixOpt model starts with creating a FlowSystem. It:
 
 [`Flow`][flixopt.elements.Flow] objects represent the movement of energy or material between a [Bus](#buses) and a [Component](#components) in a predefined direction.
 
-- Have a `size` which, generally speaking, defines how fast energy or material can be moved. Usually measured in MW, kW, m³/h, etc.
-- Have a `flow_rate`, which is defines how fast energy or material is transported. Usually measured in MW, kW, m³/h, etc.
+- Have a `size` which, generally speaking, defines how much energy or material can be moved. Usually measured in MW, kW, m³/h, etc.
+- Have a `flow_rate`, which defines how fast energy or material is transported. Usually measured in MW, kW, m³/h, etc.
 - Have constraints to limit the flow-rate (min/max, total flow hours, on/off etc.)
 - Can have fixed profiles (for demands or renewable generation)
-- Can have [Effects](#effects) associated by their use (operation, investment, on/off, ...)
+- Can have [Effects](#effects) associated by their use (costs, emissions, labour, ...)
 
 #### Flow Hours
 While the **Flow Rate** defines the rate in which energy or material is transported, the **Flow Hours** define the amount of energy or material that is transported.
