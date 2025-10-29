@@ -542,26 +542,6 @@ class Flow(Element):
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
 
-    def _format_size(self) -> str | None:
-        """Format size for display. Returns None if size is default CONFIG.big."""
-        import numpy as np
-
-        from .config import CONFIG
-        from .io import numeric_to_str_for_repr
-
-        try:
-            # Hide default CONFIG.big size
-            if not isinstance(self.size, InvestParameters):
-                if isinstance(self.size, (int, float, np.integer, np.floating)):
-                    if float(self.size) == CONFIG.Modeling.big:
-                        return None
-
-            if isinstance(self.size, InvestParameters):
-                return self._format_invest_params(self.size)
-            return f'size: {numeric_to_str_for_repr(self.size)}'
-        except Exception:
-            return '?'
-
     def _format_invest_params(self, params: InvestParameters) -> str:
         """Format InvestParameters for display."""
         return f'size: {params.format_for_repr()}'
