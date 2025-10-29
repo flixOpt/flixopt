@@ -17,7 +17,7 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG
 from .flow_system import FlowSystem
-from .structure import CompositeContainerMixin
+from .structure import CompositeContainerMixin, ResultsContainer
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -241,8 +241,6 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
 
         # Create ResultsContainers for better access patterns
-        from .structure import ResultsContainer
-
         components_dict = {
             label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
