@@ -1075,12 +1075,12 @@ class CompositeContainerMixin(Generic[T_element]):
         interface while preserving their individual functionality.
     """
 
-    def _get_container_groups(self) -> dict[str, dict]:
+    def _get_container_groups(self) -> dict[str, Any]:
         """
         Return ordered dict of container groups to aggregate.
 
         Returns:
-            Dictionary mapping group names to container dicts.
+            Dictionary mapping group names to container objects (e.g., ElementContainer, ResultsContainer).
             Group names should be capitalized (e.g., 'Components', 'Buses').
             Order determines display order in __repr__.
 
@@ -1163,13 +1163,12 @@ class CompositeContainerMixin(Generic[T_element]):
             items.extend(container.items())
         return items
 
-    def _format_grouped_containers(self, title: str | None = None, group_underline_char: str = '-') -> str:
+    def _format_grouped_containers(self, title: str | None = None) -> str:
         """
-        Format containers as grouped string representation.
+        Format containers as grouped string representation using each container's repr.
 
         Args:
             title: Optional title for the representation. If None, no title is shown.
-            group_underline_char: Character to use for underlining group headers
 
         Returns:
             Formatted string with groups and their elements.
@@ -1177,40 +1176,29 @@ class CompositeContainerMixin(Generic[T_element]):
 
         Example output:
             ```
-            Components:
-            -----------
+            Components (1 item)
+            -------------------
              * Boiler
-             * CHP
 
-            Buses:
-            ------
-             * Bus("Heat", ...)
-             * Bus("Power", ...)
+            Buses (2 items)
+            ---------------
+             * Heat
+             * Power
             ```
         """
-        lines = []
+        parts = []
 
         if title:
-            lines.append(title)
-            lines.append('-' * len(title))
+            parts.append(fx_io.format_title_with_underline(title))
 
         container_groups = self._get_container_groups()
-        for group_name, container in container_groups.items():
+        for container in container_groups.values():
             if container:  # Only show non-empty groups
-                if lines and not title:  # Add spacing between groups (but not before first)
-                    lines.append('')
-                elif title and group_name == list(container_groups.keys())[0]:
-                    # No spacing before first group when there's a title
-                    pass
-                else:
-                    lines.append('')
+                if parts:  # Add spacing between sections
+                    parts.append('')
+                parts.append(repr(container).rstrip('\n'))
 
-                lines.append(f'{group_name}:')
-                lines.append(group_underline_char * len(group_name + ':'))
-                for name in sorted(container.keys(), key=_natural_sort_key):
-                    lines.append(f' * {name}')
-
-        return '\n'.join(lines)
+        return '\n'.join(parts)
 
 
 class Submodel(SubmodelsMixin):

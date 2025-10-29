@@ -295,7 +295,11 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
     def __repr__(self) -> str:
         """Return grouped representation of all results."""
-        return self._format_grouped_containers('Calculation Results')
+        r = fx_io.format_title_with_underline(self.__class__.__name__, '=')
+        r += f'Name: "{self.name}"\nFolder: {self.folder}\n'
+        # Add grouped container view
+        r += '\n' + self._format_grouped_containers()
+        return r
 
     @property
     def storages(self) -> list[ComponentResults]:

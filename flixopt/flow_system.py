@@ -715,13 +715,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return True
 
-    def _get_container_groups(self) -> dict[str, dict]:
+    def _get_container_groups(self) -> dict[str, ElementContainer]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
-            'Components': dict(self.components),
-            'Buses': dict(self.buses),
-            'Effects': dict(self.effects),
-            'Flows': dict(self.flows),
+            'Components': self.components,
+            'Buses': self.buses,
+            'Effects': self.effects,
+            'Flows': self.flows,
         }
 
     @property
