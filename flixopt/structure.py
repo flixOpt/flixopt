@@ -797,18 +797,6 @@ class Interface:
         """Return a detailed string representation for debugging."""
         return fx_io.build_repr_from_init(self, excluded_params={'self', 'label', 'kwargs'})
 
-    def __str__(self):
-        """Return a user-friendly string representation."""
-        try:
-            data = self.get_structure(clean=True, stats=True)
-            with StringIO() as output_buffer:
-                console = Console(file=output_buffer, width=1000)  # Adjust width as needed
-                console.print(Pretty(data, expand_all=True, indent_guides=True))
-                return output_buffer.getvalue()
-        except Exception:
-            # Fallback if structure generation fails
-            return f'{self.__class__.__name__} instance'
-
     def copy(self) -> Interface:
         """
         Create a copy of the Interface object.
