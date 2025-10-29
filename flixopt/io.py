@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import pathlib
@@ -8,6 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 import yaml
 
@@ -547,3 +549,348 @@ class CalculationResultsPaths:
                 raise FileNotFoundError(f'Folder {new_folder} does not exist or is not a directory.')
             self.folder = new_folder
         self._update_paths()
+
+
+def numeric_to_str_for_repr(
+    value: int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray,
+    precision: int = 1,
+    atol: float = 1e-10,
+) -> str:
+    """Format value for display in repr methods.
+
+    For single values or uniform arrays, returns the formatted value.
+    For arrays with variation, returns a range showing min-max.
+
+    Args:
+        value: Numeric value or container (DataArray, array, Series, DataFrame)
+        precision: Number of decimal places (default: 1)
+        atol: Absolute tolerance for considering values equal (default: 1e-10)
+
+    Returns:
+        Formatted string representation:
+        - Single/uniform values: "100.0"
+        - Nearly uniform values: "~100.0" (values differ slightly but display similarly)
+        - Varying values: "50.0-150.0" (shows range from min to max)
+
+    Raises:
+        TypeError: If value cannot be converted to numeric format
+    """
+    # Handle simple scalar types
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return f'{float(value):.{precision}f}'
+
+    # Extract array data for variation checking
+    arr = None
+    if isinstance(value, xr.DataArray):
+        arr = value.values.flatten()
+    elif isinstance(value, (np.ndarray, pd.Series)):
+        arr = np.asarray(value).flatten()
+    elif isinstance(value, pd.DataFrame):
+        arr = value.values.flatten()
+    else:
+        # Fallback for unknown types
+        try:
+            return f'{float(value):.{precision}f}'
+        except (TypeError, ValueError) as e:
+            raise TypeError(f'Cannot format value of type {type(value).__name__} for repr') from e
+
+    # Normalize dtype and handle empties
+    arr = arr.astype(float, copy=False)
+    if arr.size == 0:
+        return '?'
+
+    # Filter non-finite values
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return 'nan'
+
+    # Check for single value
+    if finite.size == 1:
+        return f'{float(finite[0]):.{precision}f}'
+
+    # Check if all values are the same or very close
+    min_val = float(np.nanmin(finite))
+    max_val = float(np.nanmax(finite))
+
+    # First check: values are essentially identical
+    if np.allclose(min_val, max_val, atol=atol):
+        return f'{float(np.mean(finite)):.{precision}f}'
+
+    # Second check: display values are the same but actual values differ slightly
+    min_str = f'{min_val:.{precision}f}'
+    max_str = f'{max_val:.{precision}f}'
+    if min_str == max_str:
+        return f'~{min_str}'
+
+    # Values vary significantly - show range
+    return f'{min_str}-{max_str}'
+
+
+def _format_value_for_repr(value) -> str:
+    """Format a single value for display in repr.
+
+    Args:
+        value: The value to format
+
+    Returns:
+        Formatted string representation of the value
+    """
+    # Format numeric types using specialized formatter
+    if isinstance(value, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)):
+        try:
+            return numeric_to_str_for_repr(value)
+        except Exception:
+            value_repr = repr(value)
+            if len(value_repr) > 50:
+                value_repr = value_repr[:47] + '...'
+            return value_repr
+
+    # Format dicts with numeric/array values nicely
+    elif isinstance(value, dict):
+        try:
+            formatted_items = []
+            for k, v in value.items():
+                if isinstance(
+                    v, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
+                ):
+                    v_str = numeric_to_str_for_repr(v)
+                else:
+                    v_str = repr(v)
+                    if len(v_str) > 30:
+                        v_str = v_str[:27] + '...'
+                formatted_items.append(f'{repr(k)}: {v_str}')
+            value_repr = '{' + ', '.join(formatted_items) + '}'
+            if len(value_repr) > 50:
+                value_repr = value_repr[:47] + '...'
+            return value_repr
+        except Exception:
+            value_repr = repr(value)
+            if len(value_repr) > 50:
+                value_repr = value_repr[:47] + '...'
+            return value_repr
+
+    # Default repr with truncation
+    else:
+        value_repr = repr(value)
+        if len(value_repr) > 50:
+            value_repr = value_repr[:47] + '...'
+        return value_repr
+
+
+def build_repr_from_init(
+    obj: object,
+    excluded_params: set[str] | None = None,
+    label_as_positional: bool = True,
+    skip_default_size: bool = False,
+) -> str:
+    """Build a repr string from __init__ signature, showing non-default parameter values.
+
+    This utility function extracts common repr logic used across flixopt classes.
+    It introspects the __init__ method to build a constructor-style repr showing
+    only parameters that differ from their defaults.
+
+    Args:
+        obj: The object to create repr for
+        excluded_params: Set of parameter names to exclude (e.g., {'self', 'inputs', 'outputs'})
+                        Default excludes 'self', 'label', and 'kwargs'
+        label_as_positional: If True and 'label' param exists, show it as first positional arg
+        skip_default_size: If True, skip 'size' parameter when it equals CONFIG.Modeling.big
+
+    Returns:
+        Formatted repr string like: ClassName("label", param=value)
+    """
+    if excluded_params is None:
+        excluded_params = {'self', 'label', 'kwargs'}
+    else:
+        # Always exclude 'self'
+        excluded_params = excluded_params | {'self'}
+
+    try:
+        # Get the constructor arguments and their current values
+        init_signature = inspect.signature(obj.__init__)
+        init_params = init_signature.parameters
+
+        # Check if this has a 'label' parameter - if so, show it first as positional
+        has_label = 'label' in init_params and label_as_positional
+
+        # Build kwargs for non-default parameters
+        kwargs_parts = []
+        label_value = None
+
+        for param_name, param in init_params.items():
+            # Skip *args and **kwargs
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                continue
+
+            # Handle label separately if showing as positional (check BEFORE excluded_params)
+            if param_name == 'label' and has_label:
+                label_value = getattr(obj, param_name, None)
+                continue
+
+            # Now check if parameter should be excluded
+            if param_name in excluded_params:
+                continue
+
+            # Get current value
+            value = getattr(obj, param_name, None)
+
+            # Skip if value matches default
+            if param.default != inspect.Parameter.empty:
+                # Special handling for empty containers (even if default was None)
+                if isinstance(value, (dict, list, tuple, set)) and len(value) == 0:
+                    if param.default is None or (
+                        isinstance(param.default, (dict, list, tuple, set)) and len(param.default) == 0
+                    ):
+                        continue
+
+                # Handle array comparisons (xarray, numpy)
+                elif isinstance(value, (xr.DataArray, np.ndarray)):
+                    try:
+                        if isinstance(param.default, (xr.DataArray, np.ndarray)):
+                            # Compare arrays element-wise
+                            if isinstance(value, xr.DataArray) and isinstance(param.default, xr.DataArray):
+                                if value.equals(param.default):
+                                    continue
+                            elif np.array_equal(value, param.default):
+                                continue
+                        elif isinstance(param.default, (int, float, np.integer, np.floating)):
+                            # Compare array to scalar (e.g., after transform_data converts scalar to DataArray)
+                            if isinstance(value, xr.DataArray):
+                                if np.all(value.values == float(param.default)):
+                                    continue
+                            elif isinstance(value, np.ndarray):
+                                if np.all(value == float(param.default)):
+                                    continue
+                    except Exception:
+                        pass  # If comparison fails, include in repr
+
+                # Handle numeric comparisons (deals with 0 vs 0.0, int vs float)
+                elif isinstance(value, (int, float, np.integer, np.floating)) and isinstance(
+                    param.default, (int, float, np.integer, np.floating)
+                ):
+                    try:
+                        if float(value) == float(param.default):
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                elif value == param.default:
+                    continue
+
+            # Skip None values if default is None
+            if value is None and param.default is None:
+                continue
+
+            # Special case: hide CONFIG.Modeling.big for size parameter
+            if skip_default_size and param_name == 'size':
+                from .config import CONFIG
+
+                try:
+                    if isinstance(value, (int, float, np.integer, np.floating)):
+                        if float(value) == CONFIG.Modeling.big:
+                            continue
+                except Exception:
+                    pass
+
+            # Format value using helper function
+            value_repr = _format_value_for_repr(value)
+            kwargs_parts.append(f'{param_name}={value_repr}')
+
+        # Build args string with label first as positional if present
+        if has_label and label_value is not None:
+            # Use label_full if available, otherwise label
+            if hasattr(obj, 'label_full'):
+                label_repr = repr(obj.label_full)
+            else:
+                label_repr = repr(label_value)
+
+            if len(label_repr) > 50:
+                label_repr = label_repr[:47] + '...'
+            args_str = label_repr
+            if kwargs_parts:
+                args_str += ', ' + ', '.join(kwargs_parts)
+        else:
+            args_str = ', '.join(kwargs_parts)
+
+        # Build final repr
+        class_name = obj.__class__.__name__
+
+        return f'{class_name}({args_str})'
+
+    except Exception:
+        # Fallback if introspection fails
+        return f'{obj.__class__.__name__}(<repr_failed>)'
+
+
+def format_flow_details(obj, has_inputs: bool = True, has_outputs: bool = True) -> str:
+    """Format inputs and outputs as indented bullet list.
+
+    Args:
+        obj: Object with 'inputs' and/or 'outputs' attributes
+        has_inputs: Whether to check for inputs
+        has_outputs: Whether to check for outputs
+
+    Returns:
+        Formatted string with flow details (including leading newline), or empty string if no flows
+    """
+    flow_lines = []
+
+    if has_inputs and hasattr(obj, 'inputs') and obj.inputs:
+        flow_lines.append('  inputs:')
+        for flow in obj.inputs:
+            flow_lines.append(f'    * {repr(flow)}')
+
+    if has_outputs and hasattr(obj, 'outputs') and obj.outputs:
+        flow_lines.append('  outputs:')
+        for flow in obj.outputs:
+            flow_lines.append(f'    * {repr(flow)}')
+
+    return '\n' + '\n'.join(flow_lines) if flow_lines else ''
+
+
+def format_title_with_underline(title: str, underline_char: str = '-') -> str:
+    """Format a title with underline of matching length.
+
+    Args:
+        title: The title text
+        underline_char: Character to use for underline (default: '-')
+
+    Returns:
+        Formatted string: "Title\\n-----\\n"
+    """
+    return f'{title}\n{underline_char * len(title)}\n'
+
+
+def format_sections_with_headers(sections: dict[str, str], underline_char: str = '-') -> list[str]:
+    """Format sections with underlined headers.
+
+    Args:
+        sections: Dict mapping section headers to content
+        underline_char: Character for underlining headers
+
+    Returns:
+        List of formatted section strings
+    """
+    formatted_sections = []
+    for section_header, section_content in sections.items():
+        underline = underline_char * len(section_header)
+        formatted_sections.append(f'{section_header}\n{underline}\n{section_content}')
+    return formatted_sections
+
+
+def build_metadata_info(parts: list[str], prefix: str = ' | ') -> str:
+    """Build metadata info string from parts.
+
+    Args:
+        parts: List of metadata strings (empty strings are filtered out)
+        prefix: Prefix to add if parts is non-empty
+
+    Returns:
+        Formatted info string or empty string
+    """
+    # Filter out empty strings
+    parts = [p for p in parts if p]
+    if not parts:
+        return ''
+    info = ' | '.join(parts)
+    return prefix + info if prefix else info

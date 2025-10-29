@@ -1051,6 +1051,27 @@ class InvestParameters(Interface):
     def maximum_or_fixed_size(self) -> PeriodicData:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
+    def format_for_repr(self) -> str:
+        """Format InvestParameters for display in repr methods.
+
+        Returns:
+            Formatted string showing size information
+        """
+        from .io import numeric_to_str_for_repr
+
+        if self.fixed_size is not None:
+            val = numeric_to_str_for_repr(self.fixed_size)
+            status = 'mandatory' if self.mandatory else 'optional'
+            return f'{val} ({status})'
+
+        # Show range if available
+        parts = []
+        if self.minimum_size is not None:
+            parts.append(f'min: {numeric_to_str_for_repr(self.minimum_size)}')
+        if self.maximum_size is not None:
+            parts.append(f'max: {numeric_to_str_for_repr(self.maximum_size)}')
+        return ', '.join(parts) if parts else 'invest'
+
     @staticmethod
     def compute_linked_periods(first_period: int, last_period: int, periods: pd.Index | list[int]) -> xr.DataArray:
         return xr.DataArray(
