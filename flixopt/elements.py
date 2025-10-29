@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .features import InvestmentModel, OnOffModel
@@ -155,8 +156,6 @@ class Component(Element):
 
     def __repr__(self) -> str:
         """Return string representation with flow information."""
-        from . import io as fx_io
-
         in_count = len(self.inputs) if hasattr(self, 'inputs') and self.inputs else 0
         out_count = len(self.outputs) if hasattr(self, 'outputs') and self.outputs else 0
         total_flows = in_count + out_count
@@ -299,7 +298,33 @@ class Bus(Element):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return self._format_repr()
+        # Build first line
+        result = self._format_repr()
+
+        # Add multi-line flow details
+        in_count = len(self.inputs) if self.inputs else 0
+        out_count = len(self.outputs) if self.outputs else 0
+        total_flows = in_count + out_count
+
+        if total_flows > 0:
+            flow_lines = []
+
+            # Add inputs section
+            if in_count > 0:
+                flow_lines.append('  inputs:')
+                for flow in self.inputs:
+                    flow_lines.append(f'    * {repr(flow)}')
+
+            # Add outputs section
+            if out_count > 0:
+                flow_lines.append('  outputs:')
+                for flow in self.outputs:
+                    flow_lines.append(f'    * {repr(flow)}')
+
+            if flow_lines:
+                result += '\n' + '\n'.join(flow_lines)
+
+        return result
 
 
 @register_class_for_io

@@ -797,8 +797,6 @@ class Interface:
 
     def __repr__(self):
         """Return a detailed string representation for debugging."""
-        from . import io as fx_io
-
         return fx_io.build_repr_from_init(self, excluded_params={'self', 'label', 'kwargs'})
 
     def __str__(self):
@@ -867,8 +865,6 @@ class Element(Interface):
         Args:
             info: Optional additional information (e.g., ' | 2 flows')
         """
-        from . import io as fx_io
-
         return fx_io.build_repr_from_init(
             self, excluded_params={'self', 'label', 'kwargs'}, info=info, skip_default_size=True
         )

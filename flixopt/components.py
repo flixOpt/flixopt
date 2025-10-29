@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
@@ -530,8 +531,6 @@ class Storage(Component):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        from . import io as fx_io
-
         # Use build_repr_from_init directly to exclude charging and discharging
         result = fx_io.build_repr_from_init(
             self,
