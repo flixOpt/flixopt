@@ -845,6 +845,15 @@ class Interface:
                                     continue
                         except Exception:
                             pass  # If comparison fails, include in repr
+                    # Handle numeric comparisons (deals with 0 vs 0.0, int vs float)
+                    elif isinstance(value, (int, float, np.integer, np.floating)) and isinstance(
+                        param.default, (int, float, np.integer, np.floating)
+                    ):
+                        try:
+                            if float(value) == float(param.default):
+                                continue
+                        except (ValueError, TypeError):
+                            pass
                     elif value == param.default:
                         continue
 
@@ -860,6 +869,37 @@ class Interface:
                 ):
                     try:
                         value_repr = fx_io.numeric_to_str_for_repr(value)
+                    except Exception:
+                        value_repr = repr(value)
+                        if len(value_repr) > 50:
+                            value_repr = value_repr[:47] + '...'
+                elif isinstance(value, dict):
+                    # Format dicts with numeric/array values nicely
+                    try:
+                        formatted_items = []
+                        for k, v in value.items():
+                            if isinstance(
+                                v,
+                                (
+                                    int,
+                                    float,
+                                    np.integer,
+                                    np.floating,
+                                    np.ndarray,
+                                    pd.Series,
+                                    pd.DataFrame,
+                                    xr.DataArray,
+                                ),
+                            ):
+                                v_str = fx_io.numeric_to_str_for_repr(v)
+                            else:
+                                v_str = repr(v)
+                                if len(v_str) > 30:
+                                    v_str = v_str[:27] + '...'
+                            formatted_items.append(f'{repr(k)}: {v_str}')
+                        value_repr = '{' + ', '.join(formatted_items) + '}'
+                        if len(value_repr) > 50:
+                            value_repr = value_repr[:47] + '...'
                     except Exception:
                         value_repr = repr(value)
                         if len(value_repr) > 50:
@@ -994,12 +1034,32 @@ class Element(Interface):
                                 continue
                     except Exception:
                         pass  # If comparison fails, include in repr
+                # Handle numeric comparisons (deals with 0 vs 0.0, int vs float)
+                elif isinstance(value, (int, float, np.integer, np.floating)) and isinstance(
+                    param.default, (int, float, np.integer, np.floating)
+                ):
+                    try:
+                        if float(value) == float(param.default):
+                            continue
+                    except (ValueError, TypeError):
+                        pass
                 elif value == param.default:
                     continue
 
             # Skip None values if default is None
             if value is None and param.default is None:
                 continue
+
+            # Special case: hide CONFIG.Modeling.big for size parameter
+            if param_name == 'size':
+                from .config import CONFIG
+
+                try:
+                    if isinstance(value, (int, float, np.integer, np.floating)):
+                        if float(value) == CONFIG.Modeling.big:
+                            continue
+                except Exception:
+                    pass
 
             # Format value - use numeric formatter for numbers
             from . import io as fx_io
@@ -1009,6 +1069,27 @@ class Element(Interface):
             ):
                 try:
                     value_repr = fx_io.numeric_to_str_for_repr(value)
+                except Exception:
+                    value_repr = repr(value)
+                    if len(value_repr) > 50:
+                        value_repr = value_repr[:47] + '...'
+            elif isinstance(value, dict):
+                # Format dicts with numeric/array values nicely
+                try:
+                    formatted_items = []
+                    for k, v in value.items():
+                        if isinstance(
+                            v, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
+                        ):
+                            v_str = fx_io.numeric_to_str_for_repr(v)
+                        else:
+                            v_str = repr(v)
+                            if len(v_str) > 30:
+                                v_str = v_str[:27] + '...'
+                        formatted_items.append(f'{repr(k)}: {v_str}')
+                    value_repr = '{' + ', '.join(formatted_items) + '}'
+                    if len(value_repr) > 50:
+                        value_repr = value_repr[:47] + '...'
                 except Exception:
                     value_repr = repr(value)
                     if len(value_repr) > 50:
