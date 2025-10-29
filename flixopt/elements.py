@@ -299,22 +299,7 @@ class Bus(Element):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        info = ''
-        if self.excess_penalty_per_flow_hour is not None:
-            # Try to extract scalar value for display
-            try:
-                if isinstance(self.excess_penalty_per_flow_hour, xr.DataArray):
-                    if self.excess_penalty_per_flow_hour.size == 1:
-                        penalty_val = float(self.excess_penalty_per_flow_hour.item())
-                        info = f' | excess_penalty: {penalty_val:.0f}'
-                    else:
-                        info = ' | excess_penalty: variable'
-                else:
-                    penalty_val = float(self.excess_penalty_per_flow_hour)
-                    info = f' | excess_penalty: {penalty_val:.0f}'
-            except Exception:
-                info = ' | excess_penalty: set'
-        return self._format_repr(info)
+        return self._format_repr()
 
 
 @register_class_for_io
@@ -594,17 +579,9 @@ class Flow(Element):
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
 
     def __repr__(self) -> str:
-        """Return string representation with bus and size."""
-        parts = []
-        if self.bus is not None:
-            parts.append(f'bus: {self.bus}')
-
-        size_str = self._format_size()
-        if size_str:  # Only add if not None/empty
-            parts.append(size_str)
-
-        info = ' | ' + ' | '.join(parts) if parts else ''
-        return self._format_repr(info)
+        """Return string representation."""
+        # No need for info comment since bus and size are already in constructor params
+        return self._format_repr()
 
     def _format_size(self) -> str | None:
         """Format size for display. Returns None if size is default CONFIG.big."""

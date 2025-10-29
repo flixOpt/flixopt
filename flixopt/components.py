@@ -529,27 +529,13 @@ class Storage(Component):
                 )
 
     def __repr__(self) -> str:
-        """Return string representation with capacity."""
+        """Return string representation."""
         from . import io as fx_io
-
-        # Build info with capacity
-        parts = ['2 flows (1 in, 1 out)']
-        try:
-            cap = self.capacity_in_flow_hours
-            if isinstance(cap, InvestParameters):
-                parts.append(f'capacity: {cap.format_for_repr()}')
-            else:
-                parts.append(f'capacity: {fx_io.numeric_to_str_for_repr(cap)}')
-        except Exception:
-            pass
-
-        info = ' | '.join(parts)
 
         # Use build_repr_from_init directly to exclude charging and discharging
         result = fx_io.build_repr_from_init(
             self,
             excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
-            info=info,
             skip_default_size=True,
         )
 
