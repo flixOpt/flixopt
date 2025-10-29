@@ -629,7 +629,6 @@ def numeric_to_str_for_repr(
 def build_repr_from_init(
     obj: object,
     excluded_params: set[str] | None = None,
-    info: str = '',
     label_as_positional: bool = True,
     skip_default_size: bool = False,
 ) -> str:
@@ -643,12 +642,11 @@ def build_repr_from_init(
         obj: The object to create repr for
         excluded_params: Set of parameter names to exclude (e.g., {'self', 'inputs', 'outputs'})
                         Default excludes 'self', 'label', and 'kwargs'
-        info: Optional comment to append (e.g., '2 flows (1 in, 1 out)')
         label_as_positional: If True and 'label' param exists, show it as first positional arg
         skip_default_size: If True, skip 'size' parameter when it equals CONFIG.Modeling.big
 
     Returns:
-        Formatted repr string like: ClassName("label", param=value)  # info
+        Formatted repr string like: ClassName("label", param=value)
     """
     if excluded_params is None:
         excluded_params = {'self', 'label', 'kwargs'}
@@ -793,10 +791,7 @@ def build_repr_from_init(
 
         # Build final repr
         class_name = obj.__class__.__name__
-        if info:
-            # Remove leading ' | ' if present (from old format) and format as comment
-            info_clean = info.lstrip(' |').strip()
-            return f'{class_name}({args_str})  # {info_clean}'
+
         return f'{class_name}({args_str})'
 
     except Exception:

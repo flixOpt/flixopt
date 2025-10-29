@@ -1126,21 +1126,13 @@ class _ElementResults:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
 
-    def _format_repr(self, info: str = '') -> str:
-        """Format repr with class name, label, optional info, and dataset.
-
-        Args:
-            info: Optional additional information to append to header (e.g., ' | 3 inputs')
-        """
-        class_name = self.__class__.__name__
-        header = f'{class_name}: "{self.label}"{info}'
-        sol = self.solution
-        sol.attrs = {}
-        return f'{header}\n{repr(sol)}'
-
     def __repr__(self) -> str:
         """Return string representation with element info and dataset preview."""
-        return self._format_repr()
+        class_name = self.__class__.__name__
+        header = f'{class_name}: "{self.label}"'
+        sol = self.solution
+        sol.attrs = {}
+        return f'{header}\n{"-" * len(header)}\n{repr(sol)}'
 
     def filter_solution(
         self,
@@ -1633,11 +1625,6 @@ class _NodeResults(_ElementResults):
 
         return ds
 
-    def __repr__(self) -> str:
-        """Return string representation with node information."""
-        info = f' | {len(self.flows)} flows ({len(self.inputs)} in, {len(self.outputs)} out)'
-        return self._format_repr(info)
-
 
 class BusResults(_NodeResults):
     """Results container for energy/material balance nodes in the system."""
@@ -1915,12 +1902,6 @@ class ComponentResults(_NodeResults):
             ),
         )
 
-    def __repr__(self) -> str:
-        """Return string representation with storage indication."""
-        storage_tag = ' (Storage)' if self.is_storage else ''
-        info = f'{storage_tag} | {len(self.flows)} flows ({len(self.inputs)} in, {len(self.outputs)} out)'
-        return self._format_repr(info)
-
 
 class EffectResults(_ElementResults):
     """Results for an Effect"""
@@ -1935,13 +1916,6 @@ class EffectResults(_ElementResults):
             xr.Dataset: Element shares to this effect.
         """
         return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
-
-    def __repr__(self) -> str:
-        """Return string representation with contribution information."""
-        # Extract contributing elements from variable names (format: "element->effect_label")
-        contributing_elements = {var_name.split('->')[0] for var_name in self._variable_names if '->' in var_name}
-        info = f' | {len(contributing_elements)} contributors'
-        return self._format_repr(info)
 
 
 class FlowResults(_ElementResults):
@@ -1978,11 +1952,6 @@ class FlowResults(_ElementResults):
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
-
-    def __repr__(self) -> str:
-        """Return string representation with flow connection details."""
-        info = f' | {self.start} → {self.end}'
-        return self._format_repr(info)
 
 
 class SegmentedCalculationResults:

@@ -387,35 +387,6 @@ class Effect(Element):
         # TODO: Check for plausibility
         pass
 
-    def __repr__(self) -> str:
-        """Return string representation with effect properties."""
-        parts = []
-
-        # Unit
-        if self.unit:
-            parts.append(f'({self.unit})')
-
-        # Objective
-        if self.is_objective:
-            parts.append('objective')
-
-        # Constraint types (flag if either min or max bound is set)
-        constraint_types = []
-        if any([self.minimum_per_hour is not None, self.minimum_per_hour is not None]):
-            constraint_types.append('per_hour')
-        if any([self.minimum_temporal is not None, self.maximum_temporal is not None]):
-            constraint_types.append('temporal')
-        if any([self.minimum_periodic is not None, self.maximum_periodic is not None]):
-            constraint_types.append('periodic')
-        if any([self.minimum_total is not None, self.maximum_total is not None]):
-            constraint_types.append('total')
-
-        if constraint_types:
-            parts.append('constraints: ' + '+'.join(constraint_types))
-
-        info = fx_io.build_metadata_info(parts)
-        return self._format_repr(info)
-
 
 class EffectModel(ElementModel):
     element: Effect  # Type hint
@@ -550,10 +521,13 @@ class EffectCollection(ElementContainer[Effect]):
         # Check circular loops in effects:
         temporal, periodic = self.calculate_effect_share_factors()
 
-        # Validate all referenced sources exist
-        unknown = {src for src, _ in list(temporal.keys()) + list(periodic.keys()) if src not in self}
+        # Validate all referenced effects (both sources and targets) exist
+        edges = list(temporal.keys()) + list(periodic.keys())
+        unknown_sources = {src for src, _ in edges if src not in self}
+        unknown_targets = {tgt for _, tgt in edges if tgt not in self}
+        unknown = unknown_sources | unknown_targets
         if unknown:
-            raise KeyError(f'Unknown effects used in in effect share mappings: {sorted(unknown)}')
+            raise KeyError(f'Unknown effects used in effect share mappings: {sorted(unknown)}')
 
         temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
         periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))

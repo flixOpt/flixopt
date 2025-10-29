@@ -532,13 +532,11 @@ class Storage(Component):
     def __repr__(self) -> str:
         """Return string representation."""
         # Use build_repr_from_init directly to exclude charging and discharging
-        result = fx_io.build_repr_from_init(
+        return fx_io.build_repr_from_init(
             self,
             excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
             skip_default_size=True,
-        )
-        result += fx_io.format_flow_details(self)
-        return result
+        ) + fx_io.format_flow_details(self)
 
 
 @register_class_for_io

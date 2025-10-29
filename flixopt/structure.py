@@ -845,19 +845,9 @@ class Element(Interface):
     def label_full(self) -> str:
         return self.label
 
-    def _format_repr(self, info: str = '') -> str:
-        """Format repr with class name, label, and optional info.
-
-        Args:
-            info: Optional additional information (e.g., ' | 2 flows')
-        """
-        return fx_io.build_repr_from_init(
-            self, excluded_params={'self', 'label', 'kwargs'}, info=info, skip_default_size=True
-        )
-
     def __repr__(self) -> str:
         """Return string representation."""
-        return self._format_repr()
+        return fx_io.build_repr_from_init(self, excluded_params={'self', 'label', 'kwargs'}, skip_default_size=True)
 
     @staticmethod
     def _valid_label(label: str) -> str:

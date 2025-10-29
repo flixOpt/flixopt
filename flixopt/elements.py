@@ -156,21 +156,9 @@ class Component(Element):
 
     def __repr__(self) -> str:
         """Return string representation with flow information."""
-        # Build metadata indicators (not flow count, since flows are shown below)
-        parts = []
-        if self.on_off_parameters is not None:
-            parts.append('on_off')
-        if self.prevent_simultaneous_flows:
-            parts.append(f'mutual_excl:{len(self.prevent_simultaneous_flows)}')
-
-        info = fx_io.build_metadata_info(parts)
-
-        # Build first line (excluding inputs/outputs which are shown below)
-        result = fx_io.build_repr_from_init(
-            self, excluded_params={'self', 'label', 'inputs', 'outputs', 'kwargs'}, info=info, skip_default_size=True
-        )
-        result += fx_io.format_flow_details(self)
-        return result
+        return fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'label', 'inputs', 'outputs', 'kwargs'}, skip_default_size=True
+        ) + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
@@ -275,9 +263,7 @@ class Bus(Element):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        result = self._format_repr()
-        result += fx_io.format_flow_details(self)
-        return result
+        return super().__repr__() + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
@@ -555,11 +541,6 @@ class Flow(Element):
     def size_is_fixed(self) -> bool:
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
-
-    def __repr__(self) -> str:
-        """Return string representation."""
-        # No need for info comment since bus and size are already in constructor params
-        return self._format_repr()
 
     def _format_size(self) -> str | None:
         """Format size for display. Returns None if size is default CONFIG.big."""
