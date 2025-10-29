@@ -815,6 +815,9 @@ class Interface:
                 # Skip *args and **kwargs
                 if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                     continue
+                # Skip 'kwargs' attribute explicitly (even if stored on object)
+                if name == 'kwargs':
+                    continue
                 if name == 'label' and has_label:
                     # Save label for later to show as positional arg
                     label_value = getattr(self, name, None)
@@ -849,10 +852,23 @@ class Interface:
                 if value is None and param.default is None:
                     continue
 
-                # Truncate long representations
-                value_repr = repr(value)
-                if len(value_repr) > 50:
-                    value_repr = value_repr[:47] + '...'
+                # Format value - use numeric formatter for numbers
+                from . import io as fx_io
+
+                if isinstance(
+                    value, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
+                ):
+                    try:
+                        value_repr = fx_io.numeric_to_str_for_repr(value)
+                    except Exception:
+                        value_repr = repr(value)
+                        if len(value_repr) > 50:
+                            value_repr = value_repr[:47] + '...'
+                else:
+                    value_repr = repr(value)
+                    if len(value_repr) > 50:
+                        value_repr = value_repr[:47] + '...'
+
                 args_parts.append(f'{name}={value_repr}')
 
             # Build args string with label first as positional if present
@@ -948,6 +964,12 @@ class Element(Interface):
         for param_name, param in init_params.items():
             if param_name in ('self', 'label'):
                 continue
+            # Skip *args and **kwargs
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                continue
+            # Skip 'kwargs' attribute explicitly (even if stored on object)
+            if param_name == 'kwargs':
+                continue
 
             # Get current value
             value = getattr(self, param_name, None)
@@ -979,10 +1001,22 @@ class Element(Interface):
             if value is None and param.default is None:
                 continue
 
-            # Format value
-            value_repr = repr(value)
-            if len(value_repr) > 50:
-                value_repr = value_repr[:47] + '...'
+            # Format value - use numeric formatter for numbers
+            from . import io as fx_io
+
+            if isinstance(
+                value, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
+            ):
+                try:
+                    value_repr = fx_io.numeric_to_str_for_repr(value)
+                except Exception:
+                    value_repr = repr(value)
+                    if len(value_repr) > 50:
+                        value_repr = value_repr[:47] + '...'
+            else:
+                value_repr = repr(value)
+                if len(value_repr) > 50:
+                    value_repr = value_repr[:47] + '...'
 
             kwargs_parts.append(f'{param_name}={value_repr}')
 
