@@ -1,4 +1,4 @@
-# FlixOpt Concepts
+# Core Concepts of flixopt
 
 FlixOpt is built around a set of core concepts that work together to represent and optimize **any system involving flows and conversions** - whether that's energy systems, material flows, supply chains, water networks, or production processes.
 
