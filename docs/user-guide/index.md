@@ -50,21 +50,21 @@ Examples:
 [`Component`][flixopt.elements.Component] objects usually represent physical entities in your system that interact with [`Flows`][flixopt.elements.Flow]. The generic component types work across all domains:
 
 - [`LinearConverters`][flixopt.components.LinearConverter] - Converts input flows to output flows with (piecewise) linear relationships
-  - *Energy: boilers, heat pumps, turbines*
-  - *Manufacturing: assembly lines, processing equipment*
-  - *Chemistry: reactors, separators*
+    - *Energy: boilers, heat pumps, turbines*
+    - *Manufacturing: assembly lines, processing equipment*
+    - *Chemistry: reactors, separators*
 - [`Storages`][flixopt.components.Storage] - Stores energy or material over time
-  - *Energy: batteries, thermal storage, gas storage*
-  - *Logistics: warehouses, buffer inventory*
-  - *Water: reservoirs, tanks*
+    - *Energy: batteries, thermal storage, gas storage*
+    - *Logistics: warehouses, buffer inventory*
+    - *Water: reservoirs, tanks*
 - [`Sources`][flixopt.components.Source] / [`Sinks`][flixopt.components.Sink] / [`SourceAndSinks`][flixopt.components.SourceAndSink] - Produce or consume flows
-  - *Energy: demands, renewable generation*
-  - *Manufacturing: raw material supply, product demand*
-  - *Supply chain: suppliers, customers*
+    - *Energy: demands, renewable generation*
+    - *Manufacturing: raw material supply, product demand*
+    - *Supply chain: suppliers, customers*
 - [`Transmissions`][flixopt.components.Transmission] - Moves flows between locations with possible losses
-  - *Energy: pipelines, power lines*
-  - *Logistics: transport routes*
-  - *Water: distribution networks*
+    - *Energy: pipelines, power lines*
+    - *Logistics: transport routes*
+    - *Water: distribution networks*
 
 **Pre-built specialized components** for energy systems include [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc. These can serve as blueprints for custom domain-specific components.
 
