@@ -16,6 +16,7 @@ import linopy
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .core import PeriodicDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
@@ -392,7 +393,7 @@ class Effect(Element):
 
         # Unit
         if hasattr(self, 'unit') and self.unit:
-            parts.insert(0, f'({self.unit})')
+            parts.append(f'({self.unit})')
 
         # Objective
         if hasattr(self, 'is_objective') and self.is_objective:
@@ -412,9 +413,7 @@ class Effect(Element):
         if constraint_types:
             parts.append('constraints: ' + '+'.join(constraint_types))
 
-        info = ' | '.join(parts)
-        if info:
-            info = ' | ' + info
+        info = fx_io.build_metadata_info(parts)
         return self._format_repr(info)
 
 

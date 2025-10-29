@@ -156,10 +156,6 @@ class Component(Element):
 
     def __repr__(self) -> str:
         """Return string representation with flow information."""
-        in_count = len(self.inputs) if hasattr(self, 'inputs') and self.inputs else 0
-        out_count = len(self.outputs) if hasattr(self, 'outputs') and self.outputs else 0
-        total_flows = in_count + out_count
-
         # Build metadata indicators (not flow count, since flows are shown below)
         parts = []
         if self.on_off_parameters is not None:
@@ -167,32 +163,13 @@ class Component(Element):
         if self.prevent_simultaneous_flows:
             parts.append(f'mutual_excl:{len(self.prevent_simultaneous_flows)}')
 
-        info = ' | '.join(parts) if parts else ''
+        info = fx_io.build_metadata_info(parts)
 
         # Build first line (excluding inputs/outputs which are shown below)
         result = fx_io.build_repr_from_init(
             self, excluded_params={'self', 'label', 'inputs', 'outputs', 'kwargs'}, info=info, skip_default_size=True
         )
-
-        # Add multi-line flow details if there are any flows
-        if total_flows > 0:
-            flow_lines = []
-
-            # Add inputs section
-            if in_count > 0:
-                flow_lines.append('  inputs:')
-                for flow in self.inputs:
-                    flow_lines.append(f'    * {repr(flow)}')
-
-            # Add outputs section
-            if out_count > 0:
-                flow_lines.append('  outputs:')
-                for flow in self.outputs:
-                    flow_lines.append(f'    * {repr(flow)}')
-
-            if flow_lines:
-                result += '\n' + '\n'.join(flow_lines)
-
+        result += fx_io.format_flow_details(self)
         return result
 
 
@@ -298,32 +275,8 @@ class Bus(Element):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        # Build first line
         result = self._format_repr()
-
-        # Add multi-line flow details
-        in_count = len(self.inputs) if self.inputs else 0
-        out_count = len(self.outputs) if self.outputs else 0
-        total_flows = in_count + out_count
-
-        if total_flows > 0:
-            flow_lines = []
-
-            # Add inputs section
-            if in_count > 0:
-                flow_lines.append('  inputs:')
-                for flow in self.inputs:
-                    flow_lines.append(f'    * {repr(flow)}')
-
-            # Add outputs section
-            if out_count > 0:
-                flow_lines.append('  outputs:')
-                for flow in self.outputs:
-                    flow_lines.append(f'    * {repr(flow)}')
-
-            if flow_lines:
-                result += '\n' + '\n'.join(flow_lines)
-
+        result += fx_io.format_flow_details(self)
         return result
 
 

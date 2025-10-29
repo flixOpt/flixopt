@@ -537,21 +537,7 @@ class Storage(Component):
             excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
             skip_default_size=True,
         )
-
-        # Add multi-line flow details
-        flow_lines = []
-        if hasattr(self, 'inputs') and self.inputs:
-            flow_lines.append('  inputs:')
-            for flow in self.inputs:
-                flow_lines.append(f'    * {repr(flow)}')
-        if hasattr(self, 'outputs') and self.outputs:
-            flow_lines.append('  outputs:')
-            for flow in self.outputs:
-                flow_lines.append(f'    * {repr(flow)}')
-
-        if flow_lines:
-            result += '\n' + '\n'.join(flow_lines)
-
+        result += fx_io.format_flow_details(self)
         return result
 
 

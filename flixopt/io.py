@@ -792,3 +792,77 @@ def build_repr_from_init(
     except Exception:
         # Fallback if introspection fails
         return f'{obj.__class__.__name__}(<repr_failed>)'
+
+
+def format_flow_details(obj, has_inputs: bool = True, has_outputs: bool = True) -> str:
+    """Format inputs and outputs as indented bullet list.
+
+    Args:
+        obj: Object with 'inputs' and/or 'outputs' attributes
+        has_inputs: Whether to check for inputs
+        has_outputs: Whether to check for outputs
+
+    Returns:
+        Formatted string with flow details (including leading newline), or empty string if no flows
+    """
+    flow_lines = []
+
+    if has_inputs and hasattr(obj, 'inputs') and obj.inputs:
+        flow_lines.append('  inputs:')
+        for flow in obj.inputs:
+            flow_lines.append(f'    * {repr(flow)}')
+
+    if has_outputs and hasattr(obj, 'outputs') and obj.outputs:
+        flow_lines.append('  outputs:')
+        for flow in obj.outputs:
+            flow_lines.append(f'    * {repr(flow)}')
+
+    return '\n' + '\n'.join(flow_lines) if flow_lines else ''
+
+
+def format_title_with_underline(title: str, underline_char: str = '-') -> str:
+    """Format a title with underline of matching length.
+
+    Args:
+        title: The title text
+        underline_char: Character to use for underline (default: '-')
+
+    Returns:
+        Formatted string: "Title\\n-----\\n"
+    """
+    return f'{title}\n{underline_char * len(title)}\n'
+
+
+def format_sections_with_headers(sections: dict[str, str], underline_char: str = '-') -> list[str]:
+    """Format sections with underlined headers.
+
+    Args:
+        sections: Dict mapping section headers to content
+        underline_char: Character for underlining headers
+
+    Returns:
+        List of formatted section strings
+    """
+    formatted_sections = []
+    for section_header, section_content in sections.items():
+        underline = underline_char * len(section_header)
+        formatted_sections.append(f'{section_header}\n{underline}\n{section_content}')
+    return formatted_sections
+
+
+def build_metadata_info(parts: list[str], prefix: str = ' | ') -> str:
+    """Build metadata info string from parts.
+
+    Args:
+        parts: List of metadata strings (empty strings are filtered out)
+        prefix: Prefix to add if parts is non-empty
+
+    Returns:
+        Formatted info string or empty string
+    """
+    # Filter out empty strings
+    parts = [p for p in parts if p]
+    if not parts:
+        return ''
+    info = ' | '.join(parts)
+    return prefix + info if prefix else info

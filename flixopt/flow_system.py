@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from . import io as fx_io
 from .config import CONFIG
 from .core import (
     ConversionError,
@@ -662,13 +663,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def __repr__(self) -> str:
         """Return a detailed string representation showing all containers."""
-        title = 'FlowSystem'
-        line = '-' * len(title)
+        r = fx_io.format_title_with_underline('FlowSystem')
 
         # Timestep info
         time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
         freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
-        r = f'{title}\n{line}\n'
         r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
 
         # Add periods if present

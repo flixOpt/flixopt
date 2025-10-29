@@ -246,9 +246,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         }
 
         # Format sections with headers and underlines
-        formatted_sections = []
-        for section_header, section_content in sections.items():
-            formatted_sections.append(f'{section_header}\n{"-" * len(section_header)}\n{section_content}')
+        formatted_sections = fx_io.format_sections_with_headers(sections)
 
         title = f'FlowSystemModel ({self.type})'
         all_sections = '\n'.join(formatted_sections)
@@ -998,16 +996,14 @@ class ContainerMixin(dict[str, T]):
         """Return a string representation similar to linopy.model.Variables."""
         count = len(self)
         title = f'{self._element_type_name.capitalize()} ({count} item{"s" if count != 1 else ""})'
-        line = '-' * len(title)
-        r = f'{title}\n{line}\n'
-
-        for name in sorted(self.keys(), key=_natural_sort_key):
-            r += f' * {name}\n'
 
         if not self:
-            title = f'{self._element_type_name.capitalize()} (0 items)'
-            line = '-' * len(title)
-            r = f'{title}\n{line}\n<empty>\n'
+            r = fx_io.format_title_with_underline(title)
+            r += '<empty>\n'
+        else:
+            r = fx_io.format_title_with_underline(title)
+            for name in sorted(self.keys(), key=_natural_sort_key):
+                r += f' * {name}\n'
 
         return r
 
@@ -1386,9 +1382,7 @@ class Submodel(SubmodelsMixin):
         }
 
         # Format sections with headers and underlines
-        formatted_sections = []
-        for section_header, section_content in sections.items():
-            formatted_sections.append(f'{section_header}\n{"-" * len(section_header)}\n{section_content}')
+        formatted_sections = fx_io.format_sections_with_headers(sections)
 
         model_string = f'Submodel "{self.label_of_model}":'
         all_sections = '\n'.join(formatted_sections)
@@ -1432,7 +1426,7 @@ class Submodels:
     def __repr__(self) -> str:
         """Simple representation of the submodels collection."""
         if not self.data:
-            return 'flixopt.structure.Submodels:\n----------------------------\n <empty>\n'
+            return fx_io.format_title_with_underline('flixopt.structure.Submodels') + ' <empty>\n'
 
         total_vars = sum(len(submodel.variables) for submodel in self.data.values())
         total_cons = sum(len(submodel.constraints) for submodel in self.data.values())
@@ -1440,18 +1434,15 @@ class Submodels:
         title = (
             f'flixopt.structure.Submodels ({total_vars} vars, {total_cons} constraints, {len(self.data)} submodels):'
         )
-        underline = '-' * len(title)
 
-        if not self.data:
-            return f'{title}\n{underline}\n <empty>\n'
-        sub_models_string = ''
+        result = fx_io.format_title_with_underline(title)
         for name, submodel in self.data.items():
             type_name = submodel.__class__.__name__
             var_count = len(submodel.variables)
             con_count = len(submodel.constraints)
-            sub_models_string += f'\n * {name} [{type_name}] ({var_count}v/{con_count}c)'
+            result += f' * {name} [{type_name}] ({var_count}v/{con_count}c)\n'
 
-        return f'{title}\n{underline}{sub_models_string}\n'
+        return result
 
     def items(self) -> ItemsView[str, Submodel]:
         return self.data.items()
