@@ -1057,19 +1057,19 @@ class InvestParameters(Interface):
         Returns:
             Formatted string showing size information
         """
-        from .io import _extract_scalar
+        from .io import numeric_to_str_for_repr
 
         if self.fixed_size is not None:
-            val = _extract_scalar(self.fixed_size)
+            val = numeric_to_str_for_repr(self.fixed_size)
             status = 'mandatory' if self.mandatory else 'optional'
-            return f'{val:.1f} ({status})'
+            return f'{val} ({status})'
 
         # Show range if available
         parts = []
         if self.minimum_size is not None:
-            parts.append(f'min: {_extract_scalar(self.minimum_size):.1f}')
+            parts.append(f'min: {numeric_to_str_for_repr(self.minimum_size)}')
         if self.maximum_size is not None:
-            parts.append(f'max: {_extract_scalar(self.maximum_size):.1f}')
+            parts.append(f'max: {numeric_to_str_for_repr(self.maximum_size)}')
         return ', '.join(parts) if parts else 'invest'
 
     @staticmethod

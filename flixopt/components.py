@@ -530,7 +530,7 @@ class Storage(Component):
 
     def __repr__(self) -> str:
         """Return string representation with capacity."""
-        from .io import _extract_scalar
+        from .io import numeric_to_str_for_repr
 
         info = ' | 2 flows (1 in, 1 out)'
         try:
@@ -538,7 +538,7 @@ class Storage(Component):
             if isinstance(cap, InvestParameters):
                 info += f' | capacity: {cap.format_for_repr()}'
             else:
-                info += f' | capacity: {_extract_scalar(cap):.1f}'
+                info += f' | capacity: {numeric_to_str_for_repr(cap)}'
         except Exception:
             pass
         return self._format_repr(info)

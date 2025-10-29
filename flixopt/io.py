@@ -550,18 +550,66 @@ class CalculationResultsPaths:
         self._update_paths()
 
 
-def _extract_scalar(value) -> float:
-    """Extract scalar float from various data types."""
+def numeric_to_str_for_repr(
+    value: int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray,
+    precision: int = 1,
+    atol: float = 1e-10,
+) -> str:
+    """Format value for display in repr methods.
+
+    For single values or uniform arrays, returns the formatted value.
+    For arrays with variation, returns a range showing min-max.
+
+    Args:
+        value: Numeric value or container (DataArray, array, Series, DataFrame)
+        precision: Number of decimal places (default: 1)
+        atol: Absolute tolerance for considering values equal (default: 1e-10)
+
+    Returns:
+        Formatted string representation:
+        - Single/uniform values: "100.0"
+        - Nearly uniform values: "~100.0" (values differ slightly but display similarly)
+        - Varying values: "50.0-150.0" (shows range from min to max)
+
+    Raises:
+        TypeError: If value cannot be converted to numeric format
+    """
+    # Handle simple scalar types
     if isinstance(value, (int, float, np.integer, np.floating)):
-        return float(value)
+        return f'{float(value):.{precision}f}'
+
+    # Extract array data for variation checking
+    arr = None
     if isinstance(value, xr.DataArray):
-        if value.size == 1:
-            return float(value.item())
-        return float(value.mean())  # Fallback: use mean for multi-value arrays
-    if isinstance(value, (np.ndarray, pd.Series)):
-        if value.size == 1:
-            return float(value.flat[0])
-        return float(value.mean())
-    if isinstance(value, pd.DataFrame):
-        return float(value.values.flat[0] if value.size == 1 else value.values.mean())
-    return float(value)
+        arr = value.values.flatten()
+    elif isinstance(value, (np.ndarray, pd.Series)):
+        arr = np.asarray(value).flatten()
+    elif isinstance(value, pd.DataFrame):
+        arr = value.values.flatten()
+    else:
+        # Fallback for unknown types
+        try:
+            return f'{float(value):.{precision}f}'
+        except (TypeError, ValueError) as e:
+            raise TypeError(f'Cannot format value of type {type(value).__name__} for repr') from e
+
+    # Check for single value
+    if arr.size == 1:
+        return f'{float(arr[0]):.{precision}f}'
+
+    # Check if all values are the same or very close
+    min_val = float(np.min(arr))
+    max_val = float(np.max(arr))
+
+    # First check: values are essentially identical
+    if np.allclose(min_val, max_val, atol=atol):
+        return f'{float(np.mean(arr)):.{precision}f}'
+
+    # Second check: display values are the same but actual values differ slightly
+    min_str = f'{min_val:.{precision}f}'
+    max_str = f'{max_val:.{precision}f}'
+    if min_str == max_str:
+        return f'~{min_str}'
+
+    # Values vary significantly - show range
+    return f'{min_str}-{max_str}'

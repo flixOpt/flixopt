@@ -582,12 +582,12 @@ class Flow(Element):
 
     def _format_size(self) -> str:
         """Format size for display."""
-        from .io import _extract_scalar
+        from .io import numeric_to_str_for_repr
 
         try:
             if isinstance(self.size, InvestParameters):
                 return self._format_invest_params(self.size)
-            return f'size: {_extract_scalar(self.size):.1f}'
+            return f'size: {numeric_to_str_for_repr(self.size)}'
         except Exception:
             return '?'
 
