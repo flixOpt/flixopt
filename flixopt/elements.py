@@ -155,22 +155,84 @@ class Component(Element):
 
     def __repr__(self) -> str:
         """Return string representation with flow information."""
+        import inspect
+
         in_count = len(self.inputs) if hasattr(self, 'inputs') and self.inputs else 0
         out_count = len(self.outputs) if hasattr(self, 'outputs') and self.outputs else 0
         total_flows = in_count + out_count
 
-        parts = [f'{total_flows} flows ({in_count} in, {out_count} out)']
+        # Build first line manually (excluding inputs/outputs which are shown below)
+        class_name = self.__class__.__name__
 
-        # Add on_off indicator
+        # Get constructor parameters (excluding 'self', 'label', 'inputs', 'outputs')
+        init_signature = inspect.signature(self.__init__)
+        init_params = init_signature.parameters
+
+        # Build kwargs for non-default parameters (excluding label, inputs, outputs)
+        kwargs_parts = []
+        for param_name, param in init_params.items():
+            if param_name in ('self', 'label', 'inputs', 'outputs'):
+                continue
+            # Skip *args and **kwargs
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                continue
+
+            value = getattr(self, param_name, None)
+
+            # Skip if value matches default or is empty
+            if param.default != inspect.Parameter.empty:
+                if isinstance(value, (dict, list, tuple, set)) and len(value) == 0:
+                    if param.default is None or (
+                        isinstance(param.default, (dict, list, tuple, set)) and len(param.default) == 0
+                    ):
+                        continue
+                elif value == param.default:
+                    continue
+
+            if value is None and param.default is None:
+                continue
+
+            # Format value
+            value_repr = repr(value)
+            if len(value_repr) > 50:
+                value_repr = value_repr[:47] + '...'
+            kwargs_parts.append(f'{param_name}={value_repr}')
+
+        # Build the first line
+        args_str = f'"{self.label_full}"'
+        if kwargs_parts:
+            args_str += ', ' + ', '.join(kwargs_parts)
+
+        # Add flow summary as comment
+        parts = [f'{total_flows} flows ({in_count} in, {out_count} out)']
         if self.on_off_parameters is not None:
             parts.append('on_off')
-
-        # Add mutual exclusivity indicator
         if self.prevent_simultaneous_flows:
             parts.append(f'mutual_excl:{len(self.prevent_simultaneous_flows)}')
 
-        info = ' | ' + ' | '.join(parts)
-        return self._format_repr(info)
+        info_clean = ' | '.join(parts)
+        result = f'{class_name}({args_str})  # {info_clean}'
+
+        # Add multi-line flow details if there are any flows
+        if total_flows > 0:
+            flow_lines = []
+
+            # Add inputs section
+            if in_count > 0:
+                flow_lines.append('  inputs:')
+                for flow in self.inputs:
+                    flow_lines.append(f'    * {repr(flow)}')
+
+            # Add outputs section
+            if out_count > 0:
+                flow_lines.append('  outputs:')
+                for flow in self.outputs:
+                    flow_lines.append(f'    * {repr(flow)}')
+
+            if flow_lines:
+                result += '\n' + '\n'.join(flow_lines)
+
+        return result
 
 
 @register_class_for_io
