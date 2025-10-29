@@ -282,7 +282,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
         self.colors: dict[str, str] = {}
 
-    def _get_container_groups(self) -> dict[str, ElementContainer]:
+    def _get_container_groups(self) -> dict[str, ResultsContainer]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
             'Components': self.components,
