@@ -17,7 +17,7 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG
 from .flow_system import FlowSystem
-from .structure import CompositeContainerMixin, ResultsContainer
+from .structure import CompositeContainerMixin, ElementContainer, ResultsContainer
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -282,7 +282,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
         self.colors: dict[str, str] = {}
 
-    def _get_container_groups(self) -> dict[str, dict]:
+    def _get_container_groups(self) -> dict[str, ElementContainer]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
             'Components': self.components,

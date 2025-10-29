@@ -1065,7 +1065,7 @@ class CompositeContainerMixin(Generic[T_element]):
         interface while preserving their individual functionality.
     """
 
-    def _get_container_groups(self) -> dict[str, Any]:
+    def _get_container_groups(self) -> dict[str, ElementContainer]:
         """
         Return ordered dict of container groups to aggregate.
 
