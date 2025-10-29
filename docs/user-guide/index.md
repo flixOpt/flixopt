@@ -15,6 +15,13 @@ Every FlixOpt model starts with creating a FlowSystem. It:
 - Contains and connects [components](#components), [buses](#buses), and [flows](#flows)
 - Manages the [effects](#effects) (objectives and constraints)
 
+FlowSystem provides two ways to access elements:
+
+- **Dict-like interface**: Access any element by label: `flow_system['Boiler']`, `'Boiler' in flow_system`, `flow_system.keys()`
+- **Direct containers**: Access type-specific containers: `flow_system.components`, `flow_system.buses`, `flow_system.effects`, `flow_system.flows`
+
+Element labels must be unique across all types. See the [`FlowSystem` API reference][flixopt.flow_system.FlowSystem] for detailed examples and usage patterns.
+
 ### Flows
 
 [`Flow`][flixopt.elements.Flow] objects represent the movement of energy or material between a [Bus](#buses) and a [Component](#components) in a predefined direction.
@@ -105,7 +112,7 @@ FlixOpt offers different calculation modes:
 
 The results of a calculation are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object.
 This object contains the solutions of the optimization as well as all information about the [`Calculation`][flixopt.calculation.Calculation] and the [`FlowSystem`][flixopt.flow_system.FlowSystem] it was created from.
-The solutions is stored as an `xarray.Dataset`, but can be accessed through their assotiated Component, Bus or Effect.
+The solution is stored as an `xarray.Dataset`, but can be accessed through their assotiated Component, Bus or Effect.
 
 This [`CalculationResults`][flixopt.results.CalculationResults] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
 

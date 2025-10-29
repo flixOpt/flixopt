@@ -47,9 +47,11 @@ logger = logging.getLogger('flixopt')
 
 class FlowSystem(Interface, CompositeContainerMixin[Element]):
     """
-    A FlowSystem organizes the high level Elements (Components, Buses & Effects).
+    A FlowSystem organizes the high level Elements (Components, Buses, Effects & Flows).
 
-    This is the main container class that users work with to build and manage their System.
+    This is the main container class that users work with to build and manage their energy or material flow system.
+    FlowSystem provides both direct container access (via .components, .buses, .effects, .flows) and a unified
+    dict-like interface for accessing any element by label across all container types.
 
     Args:
         timesteps: The timesteps of the model.
@@ -71,10 +73,74 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             - False: All flow rates are optimized separately per scenario
             - list[str]: Only specified flows (by label_full) are equalized across scenarios
 
+    Examples:
+        Creating a FlowSystem and accessing elements:
+
+        >>> import flixopt as fx
+        >>> import pandas as pd
+        >>> timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+        >>> flow_system = fx.FlowSystem(timesteps)
+        >>>
+        >>> # Add elements to the system
+        >>> boiler = fx.Component('Boiler', inputs=[heat_flow], on_off_parameters=...)
+        >>> heat_bus = fx.Bus('Heat', excess_penalty_per_flow_hour=1e4)
+        >>> costs = fx.Effect('costs', is_objective=True, is_standard=True)
+        >>> flow_system.add_elements(boiler, heat_bus, costs)
+
+        Unified dict-like access (recommended for most cases):
+
+        >>> # Access any element by label, regardless of type
+        >>> boiler = flow_system['Boiler']  # Returns Component
+        >>> heat_bus = flow_system['Heat']  # Returns Bus
+        >>> costs = flow_system['costs']  # Returns Effect
+        >>>
+        >>> # Check if element exists
+        >>> if 'Boiler' in flow_system:
+        ...     print('Boiler found in system')
+        >>>
+        >>> # Iterate over all elements
+        >>> for label in flow_system.keys():
+        ...     element = flow_system[label]
+        ...     print(f'{label}: {type(element).__name__}')
+        >>>
+        >>> # Get all element labels and objects
+        >>> all_labels = list(flow_system.keys())
+        >>> all_elements = list(flow_system.values())
+        >>> for label, element in flow_system.items():
+        ...     print(f'{label}: {element}')
+
+        Direct container access for type-specific operations:
+
+        >>> # Access specific container when you need type filtering
+        >>> for component in flow_system.components.values():
+        ...     print(f'{component.label}: {len(component.inputs)} inputs')
+        >>>
+        >>> # Access buses directly
+        >>> for bus in flow_system.buses.values():
+        ...     print(f'{bus.label}')
+        >>>
+        >>> # Flows are automatically collected from all components
+        >>> for flow in flow_system.flows.values():
+        ...     print(f'{flow.label_full}: {flow.size}')
+        >>>
+        >>> # Access effects
+        >>> for effect in flow_system.effects.values():
+        ...     print(f'{effect.label}')
+
     Notes:
+        - The dict-like interface (`flow_system['element']`) searches across all containers
+          (components, buses, effects, flows) to find the element with the matching label.
+        - Element labels must be unique across all container types. Attempting to add
+          elements with duplicate labels will raise an error, ensuring each label maps to exactly one element.
+        - The `.all_elements` property is deprecated. Use the dict-like interface instead:
+          `flow_system['element']`, `'element' in flow_system`, `flow_system.keys()`,
+          `flow_system.values()`, or `flow_system.items()`.
+        - Direct container access (`.components`, `.buses`, `.effects`, `.flows`) is useful
+          when you need type-specific filtering or operations.
+        - The `.flows` container is automatically populated from all component inputs and outputs.
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
         - The instance starts disconnected (self._connected_and_transformed == False) and will be
-        connected_and_transformed automatically when trying to solve a calculation.
+          connected_and_transformed automatically when trying to solve a calculation.
     """
 
     def __init__(
