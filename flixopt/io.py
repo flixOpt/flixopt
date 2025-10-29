@@ -702,6 +702,14 @@ def build_repr_from_init(
                                     continue
                             elif np.array_equal(value, param.default):
                                 continue
+                        elif isinstance(param.default, (int, float, np.integer, np.floating)):
+                            # Compare array to scalar (e.g., after transform_data converts scalar to DataArray)
+                            if isinstance(value, xr.DataArray):
+                                if np.all(value.values == float(param.default)):
+                                    continue
+                            elif isinstance(value, np.ndarray):
+                                if np.all(value == float(param.default)):
+                                    continue
                     except Exception:
                         pass  # If comparison fails, include in repr
 
