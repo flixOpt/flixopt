@@ -558,8 +558,9 @@ class EffectCollection(ElementContainer[Effect]):
         try:
             return super().__getitem__(effect)  # Leverage ContainerMixin suggestions
         except KeyError as e:
-            # Append context without discarding original message
-            raise KeyError(f'{e} Add the effect to the FlowSystem first.') from None
+            # Extract the original message and append context for cleaner output
+            original_msg = str(e).strip('\'"')
+            raise KeyError(f'{original_msg} Add the effect to the FlowSystem first.') from None
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.keys())  # Iterate over keys like a normal dict
