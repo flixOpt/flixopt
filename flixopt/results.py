@@ -1128,7 +1128,7 @@ class _ElementResults:
         """Return string representation with element info and dataset preview."""
         class_name = self.__class__.__name__
         header = f'{class_name}: "{self.label}"'
-        sol = self.solution
+        sol = self.solution.copy(deep=False)
         sol.attrs = {}
         return f'{header}\n{"-" * len(header)}\n{repr(sol)}'
 
