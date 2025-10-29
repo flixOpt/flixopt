@@ -15,15 +15,22 @@ Every FlixOpt model starts with creating a FlowSystem. It:
 - Contains and connects [components](#components), [buses](#buses), and [flows](#flows)
 - Manages the [effects](#effects) (objectives and constraints)
 
+FlowSystem provides two ways to access elements:
+
+- **Dict-like interface**: Access any element by label: `flow_system['Boiler']`, `'Boiler' in flow_system`, `flow_system.keys()`
+- **Direct containers**: Access type-specific containers: `flow_system.components`, `flow_system.buses`, `flow_system.effects`, `flow_system.flows`
+
+Element labels must be unique across all types. See the [`FlowSystem` API reference][flixopt.flow_system.FlowSystem] for detailed examples and usage patterns.
+
 ### Flows
 
 [`Flow`][flixopt.elements.Flow] objects represent the movement of energy or material between a [Bus](#buses) and a [Component](#components) in a predefined direction.
 
-- Have a `size` which, generally speaking, defines how fast energy or material can be moved. Usually measured in MW, kW, m³/h, etc.
-- Have a `flow_rate`, which is defines how fast energy or material is transported. Usually measured in MW, kW, m³/h, etc.
+- Have a `size` which, generally speaking, defines how much energy or material can be moved. Usually measured in MW, kW, m³/h, etc.
+- Have a `flow_rate`, which defines how fast energy or material is transported. Usually measured in MW, kW, m³/h, etc.
 - Have constraints to limit the flow-rate (min/max, total flow hours, on/off etc.)
 - Can have fixed profiles (for demands or renewable generation)
-- Can have [Effects](#effects) associated by their use (operation, investment, on/off, ...)
+- Can have [Effects](#effects) associated by their use (costs, emissions, labour, ...)
 
 #### Flow Hours
 While the **Flow Rate** defines the rate in which energy or material is transported, the **Flow Hours** define the amount of energy or material that is transported.
@@ -50,21 +57,21 @@ Examples:
 [`Component`][flixopt.elements.Component] objects usually represent physical entities in your system that interact with [`Flows`][flixopt.elements.Flow]. The generic component types work across all domains:
 
 - [`LinearConverters`][flixopt.components.LinearConverter] - Converts input flows to output flows with (piecewise) linear relationships
-  - *Energy: boilers, heat pumps, turbines*
-  - *Manufacturing: assembly lines, processing equipment*
-  - *Chemistry: reactors, separators*
+    - *Energy: boilers, heat pumps, turbines*
+    - *Manufacturing: assembly lines, processing equipment*
+    - *Chemistry: reactors, separators*
 - [`Storages`][flixopt.components.Storage] - Stores energy or material over time
-  - *Energy: batteries, thermal storage, gas storage*
-  - *Logistics: warehouses, buffer inventory*
-  - *Water: reservoirs, tanks*
+    - *Energy: batteries, thermal storage, gas storage*
+    - *Logistics: warehouses, buffer inventory*
+    - *Water: reservoirs, tanks*
 - [`Sources`][flixopt.components.Source] / [`Sinks`][flixopt.components.Sink] / [`SourceAndSinks`][flixopt.components.SourceAndSink] - Produce or consume flows
-  - *Energy: demands, renewable generation*
-  - *Manufacturing: raw material supply, product demand*
-  - *Supply chain: suppliers, customers*
+    - *Energy: demands, renewable generation*
+    - *Manufacturing: raw material supply, product demand*
+    - *Supply chain: suppliers, customers*
 - [`Transmissions`][flixopt.components.Transmission] - Moves flows between locations with possible losses
-  - *Energy: pipelines, power lines*
-  - *Logistics: transport routes*
-  - *Water: distribution networks*
+    - *Energy: pipelines, power lines*
+    - *Logistics: transport routes*
+    - *Water: distribution networks*
 
 **Pre-built specialized components** for energy systems include [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc. These can serve as blueprints for custom domain-specific components.
 
@@ -105,7 +112,7 @@ FlixOpt offers different calculation modes:
 
 The results of a calculation are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object.
 This object contains the solutions of the optimization as well as all information about the [`Calculation`][flixopt.calculation.Calculation] and the [`FlowSystem`][flixopt.flow_system.FlowSystem] it was created from.
-The solutions is stored as an `xarray.Dataset`, but can be accessed through their assotiated Component, Bus or Effect.
+The solution is stored as an `xarray.Dataset`, but can be accessed through their assotiated Component, Bus or Effect.
 
 This [`CalculationResults`][flixopt.results.CalculationResults] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
 

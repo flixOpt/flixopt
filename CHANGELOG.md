@@ -60,8 +60,17 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+**Improved repr methods:**
+- **Results classes** (`ComponentResults`, `BusResults`, `FlowResults`, `EffectResults`) now show concise header with key metadata followed by xarray Dataset repr
+- **Element classes** (`Component`, `Bus`, `Flow`, `Effect`, `Storage`) now show one-line summaries with essential information (connections, sizes, capacities, constraints)
+
+**Container-based access:**
+- **FlowSystem** now provides dict-like access patterns for all elements
+- Use `flow_system['element_label']`, `flow_system.keys()`, `flow_system.values()`, and `flow_system.items()` for unified element access
+- Specialized containers (`components`, `buses`, `effects`, `flows`) offer type-specific access with helpful error messages
 
 ### 🗑️ Deprecated
+- **`FlowSystem.all_elements`** property is deprecated in favor of dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`). Will be removed in v4.0.0.
 
 ### 🔥 Removed
 
@@ -105,21 +114,21 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 **Color management:**
 - **`setup_colors()` method** for `CalculationResults` and `SegmentedCalculationResults` to configure consistent colors across all plots
-  - Group components by colorscales: `results.setup_colors({'CHP': 'reds', 'Storage': 'blues', 'Greys': ['Grid', 'Demand']})`
-  - Automatically propagates to all segments in segmented calculations
-  - Colors persist across all plot calls unless explicitly overridden
+    - Group components by colorscales: `results.setup_colors({'CHP': 'reds', 'Storage': 'blues', 'Greys': ['Grid', 'Demand']})`
+    - Automatically propagates to all segments in segmented calculations
+    - Colors persist across all plot calls unless explicitly overridden
 - **Flexible color inputs**: Supports colorscale names (e.g., 'turbo', 'plasma'), color lists, or label-to-color dictionaries
 - **Cross-backend compatibility**: Seamless color handling for both Plotly and Matplotlib
 
 **Plotting customization:**
 - **Plotting kwargs support**: Pass additional arguments to plotting backends via `px_kwargs`, `plot_kwargs`, and `backend_kwargs` parameters
 - **New `CONFIG.Plotting` configuration section**:
-  - `default_show`: Control default plot visibility
-  - `default_engine`: Choose 'plotly' or 'matplotlib'
-  - `default_dpi`: Set resolution for saved plots
-  - `default_facet_cols`: Configure default faceting columns
-  - `default_sequential_colorscale`: Default for heatmaps (now 'turbo')
-  - `default_qualitative_colorscale`: Default for categorical plots (now 'plotly')
+    - `default_show`: Control default plot visibility
+    - `default_engine`: Choose 'plotly' or 'matplotlib'
+    - `default_dpi`: Set resolution for saved plots
+    - `default_facet_cols`: Configure default faceting columns
+    - `default_sequential_colorscale`: Default for heatmaps (now 'turbo')
+    - `default_qualitative_colorscale`: Default for categorical plots (now 'plotly')
 
 **I/O improvements:**
 - Centralized JSON/YAML I/O with auto-format detection
@@ -286,12 +295,12 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 **API and Behavior Changes:**
 
 - **Effect system redesigned** (no deprecation):
-  - **Terminology changes**: Effect domains renamed for clarity: `operation` → `temporal`, `invest`/`investment` → `periodic`
-  - **Sharing system**: The old `specific_share_to_other_effects_*` parameters were completely replaced with the new `share_from_temporal` and `share_from_periodic` syntax (see 🔥 Removed section)
+    - **Terminology changes**: Effect domains renamed for clarity: `operation` → `temporal`, `invest`/`investment` → `periodic`
+    - **Sharing system**: The old `specific_share_to_other_effects_*` parameters were completely replaced with the new `share_from_temporal` and `share_from_periodic` syntax (see 🔥 Removed section)
 - **FlowSystem independence**: FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent. Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
 - **Bus and Effect object assignment**: Direct assignment of Bus/Effect objects is no longer supported. Use labels (strings) instead:
-  - `Flow.bus` must receive a string label, not a Bus object
-  - Effect shares must use effect labels (strings) in dictionaries, not Effect objects
+    - `Flow.bus` must receive a string label, not a Bus object
+    - Effect shares must use effect labels (strings) in dictionaries, not Effect objects
 - **Logging defaults** (from v2.2.0): Console and file logging are now disabled by default. Enable explicitly with `CONFIG.Logging.console = True` and `CONFIG.apply()`
 
 **Class and Method Renaming:**
@@ -305,14 +314,14 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 - Investment binary variable: `is_invested` → `invested` in `InvestmentModel`
 - Switch tracking variables in `OnOffModel`:
-  - `switch_on` → `switch|on`
-  - `switch_off` → `switch|off`
-  - `switch_on_nr` → `switch|count`
+    - `switch_on` → `switch|on`
+    - `switch_off` → `switch|off`
+    - `switch_on_nr` → `switch|count`
 - Effect submodel variables (following terminology changes):
-  - `Effect(invest)|total` → `Effect(periodic)`
-  - `Effect(operation)|total` → `Effect(temporal)`
-  - `Effect(operation)|total_per_timestep` → `Effect(temporal)|per_timestep`
-  - `Effect|total` → `Effect`
+    - `Effect(invest)|total` → `Effect(periodic)`
+    - `Effect(operation)|total` → `Effect(temporal)`
+    - `Effect(operation)|total_per_timestep` → `Effect(temporal)|per_timestep`
+    - `Effect|total` → `Effect`
 
 **Data Structure Changes:**
 
@@ -533,7 +542,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### ✨ Added
 - **Network Visualization**: Added `FlowSystem.start_network_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive Dash web app
-  - *Note: This is still experimental and might change in the future*
+    - *Note: This is still experimental and might change in the future*
 
 ### ♻️ Changed
 - **Multi-Flow Support**: `Sink`, `Source`, and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables modeling more use cases with these classes
@@ -575,8 +584,8 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### 🐛 Fixed
 - Storage losses per hour were not calculated correctly, as mentioned by @brokenwings01. This might have led to issues when modeling large losses and long timesteps.
-  - Old implementation:     $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) \cdot \Delta \text{t}_{i}$
-  - Correct implementation: $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) ^{\Delta \text{t}_{i}}$
+    - Old implementation:     $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) \cdot \Delta \text{t}_{i}$
+    - Correct implementation: $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) ^{\Delta \text{t}_{i}}$
 
 ### 🚧 Known Issues
 - Just to mention: Plotly >= 6 may raise errors if "nbformat" is not installed. We pinned plotly to <6, but this may be fixed in the future.
@@ -601,10 +610,10 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### 💥 Breaking Changes
 - Restructured the modeling of the On/Off state of Flows or Components
-  - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
-  - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
-  - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
-  - Similar pattern for all consecutive on/off constraints
+    - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
+    - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
+    - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
+    - Similar pattern for all consecutive on/off constraints
 
 ### 🐛 Fixed
 - Fixed the lower bound of `flow_rate` when using optional investments without OnOffParameters
@@ -650,10 +659,10 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 **Variable Structure:**
 - Restructured the modeling of the On/Off state of Flows or Components
-  - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
-  - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
-  - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
-  - Similar pattern for all consecutive on/off constraints
+    - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
+    - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
+    - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
+    - Similar pattern for all consecutive on/off constraints
 
 ### 🔥 Removed
 - **Pyomo dependency** (replaced by linopy)

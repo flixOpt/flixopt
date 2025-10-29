@@ -17,6 +17,7 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG
 from .flow_system import FlowSystem
+from .structure import CompositeContainerMixin, ElementContainer, ResultsContainer
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -53,7 +54,7 @@ class _FlowSystemRestorationError(Exception):
     pass
 
 
-class CalculationResults:
+class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults | EffectResults | FlowResults']):
     """Comprehensive container for optimization calculation results and analysis tools.
 
     This class provides unified access to all optimization results including flow rates,
@@ -238,13 +239,18 @@ class CalculationResults:
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.components = {
+
+        # Create ResultsContainers for better access patterns
+        components_dict = {
             label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
+        self.components = ResultsContainer(elements=components_dict, element_type_name='component results')
 
-        self.buses = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results')
 
-        self.effects = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results')
 
         if 'Flows' not in self.solution.attrs:
             warnings.warn(
@@ -252,11 +258,14 @@ class CalculationResults:
                 'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
                 stacklevel=2,
             )
-            self.flows = {}
+            flows_dict = {}
+            self._has_flow_data = False
         else:
-            self.flows = {
+            flows_dict = {
                 label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
             }
+            self._has_flow_data = True
+        self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results')
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
@@ -273,16 +282,22 @@ class CalculationResults:
 
         self.colors: dict[str, str] = {}
 
-    def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
-        if key in self.components:
-            return self.components[key]
-        if key in self.buses:
-            return self.buses[key]
-        if key in self.effects:
-            return self.effects[key]
-        if key in self.flows:
-            return self.flows[key]
-        raise KeyError(f'No element with label {key} found.')
+    def _get_container_groups(self) -> dict[str, ResultsContainer]:
+        """Return ordered container groups for CompositeContainerMixin."""
+        return {
+            'Components': self.components,
+            'Buses': self.buses,
+            'Effects': self.effects,
+            'Flows': self.flows,
+        }
+
+    def __repr__(self) -> str:
+        """Return grouped representation of all results."""
+        r = fx_io.format_title_with_underline(self.__class__.__name__, '=')
+        r += f'Name: "{self.name}"\nFolder: {self.folder}\n'
+        # Add grouped container view
+        r += '\n' + self._format_grouped_containers()
+        return r
 
     @property
     def storages(self) -> list[ComponentResults]:
@@ -547,6 +562,8 @@ class CalculationResults:
             To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
             >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
         """
+        if not self._has_flow_data:
+            raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._flow_rates is None:
             self._flow_rates = self._assign_flow_coords(
                 xr.concat(
@@ -608,6 +625,8 @@ class CalculationResults:
             >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
 
         """
+        if not self._has_flow_data:
+            raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._sizes is None:
             self._sizes = self._assign_flow_coords(
                 xr.concat(
@@ -620,11 +639,12 @@ class CalculationResults:
 
     def _assign_flow_coords(self, da: xr.DataArray):
         # Add start and end coordinates
+        flows_list = list(self.flows.values())
         da = da.assign_coords(
             {
-                'start': ('flow', [flow.start for flow in self.flows.values()]),
-                'end': ('flow', [flow.end for flow in self.flows.values()]),
-                'component': ('flow', [flow.component for flow in self.flows.values()]),
+                'start': ('flow', [flow.start for flow in flows_list]),
+                'end': ('flow', [flow.end for flow in flows_list]),
+                'component': ('flow', [flow.component for flow in flows_list]),
             }
         )
 
@@ -743,8 +763,6 @@ class CalculationResults:
             temporal = temporal.sum('time')
             if periodic.isnull().all():
                 return temporal.rename(f'{element}->{effect}')
-            if 'time' in temporal.indexes:
-                temporal = temporal.sum('time')
             return periodic + temporal
 
         total = xr.DataArray(0)
@@ -1105,6 +1123,14 @@ class _ElementResults:
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
+
+    def __repr__(self) -> str:
+        """Return string representation with element info and dataset preview."""
+        class_name = self.__class__.__name__
+        header = f'{class_name}: "{self.label}"'
+        sol = self.solution.copy(deep=False)
+        sol.attrs = {}
+        return f'{header}\n{"-" * len(header)}\n{repr(sol)}'
 
     def filter_solution(
         self,

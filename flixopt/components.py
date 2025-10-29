@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
@@ -527,6 +528,15 @@ class Storage(Component):
                     f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
                     f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
                 )
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        # Use build_repr_from_init directly to exclude charging and discharging
+        return fx_io.build_repr_from_init(
+            self,
+            excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
+            skip_default_size=True,
+        ) + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
