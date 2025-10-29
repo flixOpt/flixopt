@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import xarray as xr
 import yaml
 
@@ -34,7 +34,235 @@ def remove_none_and_empty(obj):
         return obj
 
 
-def _save_to_yaml(data, output_file='formatted_output.yaml'):
+def round_nested_floats(obj: dict | list | float | int | Any, decimals: int = 2) -> dict | list | float | int | Any:
+    """Recursively round floating point numbers in nested data structures and convert it to python native types.
+
+    This function traverses nested data structures (dictionaries, lists) and rounds
+    any floating point numbers to the specified number of decimal places. It handles
+    various data types including NumPy arrays and xarray DataArrays by converting
+    them to lists with rounded values.
+
+    Args:
+        obj: The object to process. Can be a dict, list, float, int, numpy.ndarray,
+            xarray.DataArray, or any other type.
+        decimals (int, optional): Number of decimal places to round to. Defaults to 2.
+
+    Returns:
+        The processed object with the same structure as the input, but with all floating point numbers rounded to the specified precision. NumPy arrays and xarray DataArrays are converted to lists.
+
+    Examples:
+        >>> data = {'a': 3.14159, 'b': [1.234, 2.678]}
+        >>> round_nested_floats(data, decimals=2)
+        {'a': 3.14, 'b': [1.23, 2.68]}
+
+        >>> import numpy as np
+        >>> arr = np.array([1.234, 5.678])
+        >>> round_nested_floats(arr, decimals=1)
+        [1.2, 5.7]
+    """
+    if isinstance(obj, dict):
+        return {k: round_nested_floats(v, decimals) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [round_nested_floats(v, decimals) for v in obj]
+    elif isinstance(obj, np.floating):
+        return round(float(obj), decimals)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, float):
+        return round(obj, decimals)
+    elif isinstance(obj, int):
+        return obj
+    elif isinstance(obj, np.ndarray):
+        return np.round(obj, decimals).tolist()
+    elif isinstance(obj, xr.DataArray):
+        return obj.round(decimals).values.tolist()
+    return obj
+
+
+# ============================================================================
+# Centralized JSON and YAML I/O Functions
+# ============================================================================
+
+
+def load_json(path: str | pathlib.Path) -> dict | list:
+    """
+    Load data from a JSON file.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        Loaded data (typically dict or list).
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        json.JSONDecodeError: If the file is not valid JSON.
+    """
+    path = pathlib.Path(path)
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def save_json(
+    data: dict | list,
+    path: str | pathlib.Path,
+    indent: int = 4,
+    ensure_ascii: bool = False,
+    **kwargs,
+) -> None:
+    """
+    Save data to a JSON file with consistent formatting.
+
+    Args:
+        data: Data to save (dict or list).
+        path: Path to save the JSON file.
+        indent: Number of spaces for indentation (default: 4).
+        ensure_ascii: If False, allow Unicode characters (default: False).
+        **kwargs: Additional arguments to pass to json.dump().
+    """
+    path = pathlib.Path(path)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii, **kwargs)
+
+
+def load_yaml(path: str | pathlib.Path) -> dict | list:
+    """
+    Load data from a YAML file.
+
+    Args:
+        path: Path to the YAML file.
+
+    Returns:
+        Loaded data (typically dict or list), or empty dict if file is empty.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        yaml.YAMLError: If the file is not valid YAML.
+        Note: Returns {} for empty YAML files instead of None.
+    """
+    path = pathlib.Path(path)
+    with open(path, encoding='utf-8') as f:
+        return yaml.safe_load(f) or {}
+
+
+def _load_yaml_unsafe(path: str | pathlib.Path) -> dict | list:
+    """
+    INTERNAL: Load YAML allowing arbitrary tags. Do not use on untrusted input.
+
+    This function exists only for loading internally-generated files that may
+    contain custom YAML tags. Never use this on user-provided files.
+
+    Args:
+        path: Path to the YAML file.
+
+    Returns:
+        Loaded data (typically dict or list), or empty dict if file is empty.
+    """
+    path = pathlib.Path(path)
+    with open(path, encoding='utf-8') as f:
+        return yaml.unsafe_load(f) or {}
+
+
+def save_yaml(
+    data: dict | list,
+    path: str | pathlib.Path,
+    indent: int = 4,
+    width: int = 1000,
+    allow_unicode: bool = True,
+    sort_keys: bool = False,
+    **kwargs,
+) -> None:
+    """
+    Save data to a YAML file with consistent formatting.
+
+    Args:
+        data: Data to save (dict or list).
+        path: Path to save the YAML file.
+        indent: Number of spaces for indentation (default: 4).
+        width: Maximum line width (default: 1000).
+        allow_unicode: If True, allow Unicode characters (default: True).
+        sort_keys: If True, sort dictionary keys (default: False).
+        **kwargs: Additional arguments to pass to yaml.safe_dump().
+    """
+    path = pathlib.Path(path)
+    with open(path, 'w', encoding='utf-8') as f:
+        yaml.safe_dump(
+            data,
+            f,
+            indent=indent,
+            width=width,
+            allow_unicode=allow_unicode,
+            sort_keys=sort_keys,
+            default_flow_style=False,
+            **kwargs,
+        )
+
+
+def load_config_file(path: str | pathlib.Path) -> dict:
+    """
+    Load a configuration file, automatically detecting JSON or YAML format.
+
+    This function intelligently tries to load the file based on its extension,
+    with fallback support if the primary format fails.
+
+    Supported extensions:
+    - .json: Tries JSON first, falls back to YAML
+    - .yaml, .yml: Tries YAML first, falls back to JSON
+    - Others: Tries YAML, then JSON
+
+    Args:
+        path: Path to the configuration file.
+
+    Returns:
+        Loaded configuration as a dictionary.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If neither JSON nor YAML parsing succeeds.
+    """
+    path = pathlib.Path(path)
+
+    if not path.exists():
+        raise FileNotFoundError(f'Configuration file not found: {path}')
+
+    # Try based on file extension
+    # Normalize extension to lowercase for case-insensitive matching
+    suffix = path.suffix.lower()
+
+    if suffix == '.json':
+        try:
+            return load_json(path)
+        except json.JSONDecodeError:
+            logger.warning(f'Failed to parse {path} as JSON, trying YAML')
+            try:
+                return load_yaml(path)
+            except yaml.YAMLError as e:
+                raise ValueError(f'Failed to parse {path} as JSON or YAML') from e
+
+    elif suffix in ['.yaml', '.yml']:
+        try:
+            return load_yaml(path)
+        except yaml.YAMLError:
+            logger.warning(f'Failed to parse {path} as YAML, trying JSON')
+            try:
+                return load_json(path)
+            except json.JSONDecodeError as e:
+                raise ValueError(f'Failed to parse {path} as YAML or JSON') from e
+
+    else:
+        # Unknown extension, try YAML first (more common for config)
+        try:
+            return load_yaml(path)
+        except yaml.YAMLError:
+            try:
+                return load_json(path)
+            except json.JSONDecodeError as e:
+                raise ValueError(f'Failed to parse {path} as YAML or JSON') from e
+
+
+def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
     """
     Save dictionary data to YAML with proper multi-line string formatting.
     Handles complex string patterns including backticks, special characters,
@@ -62,13 +290,13 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
         # Use plain style for simple strings
         return dumper.represent_scalar('tag:yaml.org,2002:str', data)
 
-    # Add the string representer to SafeDumper
-    yaml.add_representer(str, represent_str, Dumper=yaml.SafeDumper)
-
     # Configure dumper options for better formatting
     class CustomDumper(yaml.SafeDumper):
         def increase_indent(self, flow=False, indentless=False):
             return super().increase_indent(flow, False)
+
+    # Bind representer locally to CustomDumper to avoid global side effects
+    CustomDumper.add_representer(str, represent_str)
 
     # Write to file with settings that ensure proper formatting
     with open(output_file, 'w', encoding='utf-8') as file:
@@ -80,7 +308,7 @@ def _save_to_yaml(data, output_file='formatted_output.yaml'):
             default_flow_style=False,  # Use block style for mappings
             width=1000,  # Set a reasonable line width
             allow_unicode=True,  # Support Unicode characters
-            indent=2,  # Set consistent indentation
+            indent=4,  # Set consistent indentation
         )
 
 
@@ -190,7 +418,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
     if path is not None:
         if path.suffix not in ['.yaml', '.yml']:
             raise ValueError(f'Invalid file extension for path {path}. Only .yaml and .yml are supported')
-        _save_to_yaml(documentation, str(path))
+        _save_yaml_multiline(documentation, str(path))
 
     return documentation
 
@@ -199,7 +427,6 @@ def save_dataset_to_netcdf(
     ds: xr.Dataset,
     path: str | pathlib.Path,
     compression: int = 0,
-    engine: Literal['netcdf4', 'scipy', 'h5netcdf'] = 'h5netcdf',
 ) -> None:
     """
     Save a dataset to a netcdf file. Store all attrs as JSON strings in 'attrs' attributes.
@@ -215,16 +442,6 @@ def save_dataset_to_netcdf(
     path = pathlib.Path(path)
     if path.suffix not in ['.nc', '.nc4']:
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
-
-    apply_encoding = False
-    if compression != 0:
-        if importlib.util.find_spec(engine) is not None:
-            apply_encoding = True
-        else:
-            logger.warning(
-                f'Dataset was exported without compression due to missing dependency "{engine}".'
-                f'Install {engine} via `pip install {engine}`.'
-            )
 
     ds = ds.copy(deep=True)
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
@@ -242,9 +459,9 @@ def save_dataset_to_netcdf(
     ds.to_netcdf(
         path,
         encoding=None
-        if not apply_encoding
+        if compression == 0
         else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
-        engine=engine,
+        engine='netcdf4',
     )
 
 
@@ -258,7 +475,7 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     Returns:
         Dataset: Loaded dataset with restored attrs.
     """
-    ds = xr.load_dataset(str(path), engine='h5netcdf')
+    ds = xr.load_dataset(str(path), engine='netcdf4')
 
     # Restore Dataset attrs
     if 'attrs' in ds.attrs:
