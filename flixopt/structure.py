@@ -802,19 +802,70 @@ class Interface:
             init_signature = inspect.signature(self.__init__)
             init_args = init_signature.parameters
 
+            # Check if this has a 'label' parameter - if so, show it first as positional
+            has_label = 'label' in init_args
+
             # Create a dictionary with argument names and their values, with better formatting
             args_parts = []
-            for name in init_args:
+            label_value = None
+
+            for name, param in init_args.items():
                 if name == 'self':
                     continue
+                # Skip *args and **kwargs
+                if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                    continue
+                if name == 'label' and has_label:
+                    # Save label for later to show as positional arg
+                    label_value = getattr(self, name, None)
+                    continue
+
                 value = getattr(self, name, None)
+
+                # Skip if value matches default or is an empty container with None default
+                if param.default != inspect.Parameter.empty:
+                    # Special handling for empty containers (even if default was None)
+                    if isinstance(value, (dict, list, tuple, set)) and len(value) == 0:
+                        if param.default is None or (
+                            isinstance(param.default, (dict, list, tuple, set)) and len(param.default) == 0
+                        ):
+                            continue
+                    # Handle array comparisons (xarray, numpy)
+                    elif isinstance(value, (xr.DataArray, np.ndarray)):
+                        try:
+                            if isinstance(param.default, (xr.DataArray, np.ndarray)):
+                                # Compare arrays element-wise
+                                if isinstance(value, xr.DataArray) and isinstance(param.default, xr.DataArray):
+                                    if value.equals(param.default):
+                                        continue
+                                elif np.array_equal(value, param.default):
+                                    continue
+                        except Exception:
+                            pass  # If comparison fails, include in repr
+                    elif value == param.default:
+                        continue
+
+                # Skip None values if default is None
+                if value is None and param.default is None:
+                    continue
+
                 # Truncate long representations
                 value_repr = repr(value)
                 if len(value_repr) > 50:
                     value_repr = value_repr[:47] + '...'
                 args_parts.append(f'{name}={value_repr}')
 
-            args_str = ', '.join(args_parts)
+            # Build args string with label first as positional if present
+            if has_label and label_value is not None:
+                label_repr = repr(label_value)
+                if len(label_repr) > 50:
+                    label_repr = label_repr[:47] + '...'
+                args_str = label_repr
+                if args_parts:
+                    args_str += ', ' + ', '.join(args_parts)
+            else:
+                args_str = ', '.join(args_parts)
+
             return f'{self.__class__.__name__}({args_str})'
         except Exception:
             # Fallback if introspection fails
@@ -887,7 +938,65 @@ class Element(Interface):
             info: Optional additional information (e.g., ' | 2 flows')
         """
         class_name = self.__class__.__name__
-        return f'{class_name}: "{self.label_full}"{info}'
+
+        # Get constructor parameters (excluding 'self' and 'label')
+        init_signature = inspect.signature(self.__init__)
+        init_params = init_signature.parameters
+
+        # Build kwargs for non-default parameters (excluding label which goes first)
+        kwargs_parts = []
+        for param_name, param in init_params.items():
+            if param_name in ('self', 'label'):
+                continue
+
+            # Get current value
+            value = getattr(self, param_name, None)
+
+            # Skip if value matches default
+            if param.default != inspect.Parameter.empty:
+                # Special handling for empty containers (even if default was None)
+                if isinstance(value, (dict, list, tuple, set)) and len(value) == 0:
+                    if param.default is None or (
+                        isinstance(param.default, (dict, list, tuple, set)) and len(param.default) == 0
+                    ):
+                        continue
+                # Handle array comparisons (xarray, numpy)
+                elif isinstance(value, (xr.DataArray, np.ndarray)):
+                    try:
+                        if isinstance(param.default, (xr.DataArray, np.ndarray)):
+                            # Compare arrays element-wise
+                            if isinstance(value, xr.DataArray) and isinstance(param.default, xr.DataArray):
+                                if value.equals(param.default):
+                                    continue
+                            elif np.array_equal(value, param.default):
+                                continue
+                    except Exception:
+                        pass  # If comparison fails, include in repr
+                elif value == param.default:
+                    continue
+
+            # Skip None values if default is None
+            if value is None and param.default is None:
+                continue
+
+            # Format value
+            value_repr = repr(value)
+            if len(value_repr) > 50:
+                value_repr = value_repr[:47] + '...'
+
+            kwargs_parts.append(f'{param_name}={value_repr}')
+
+        # Build the constructor-style representation
+        args_str = f'"{self.label_full}"'
+        if kwargs_parts:
+            args_str += ', ' + ', '.join(kwargs_parts)
+
+        # Add derived info as a comment if provided
+        if info:
+            # Remove leading ' | ' if present (from old format) and format as comment
+            info_clean = info.lstrip(' |').strip()
+            return f'{class_name}({args_str})  # {info_clean}'
+        return f'{class_name}({args_str})'
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -1016,7 +1125,8 @@ class ContainerMixin(dict[str, T]):
 
     def __repr__(self) -> str:
         """Return a string representation similar to linopy.model.Variables."""
-        title = self._element_type_name.capitalize()
+        count = len(self)
+        title = f'{self._element_type_name.capitalize()} ({count} item{"s" if count != 1 else ""})'
         line = '-' * len(title)
         r = f'{title}\n{line}\n'
 
@@ -1024,7 +1134,9 @@ class ContainerMixin(dict[str, T]):
             r += f' * {name}\n'
 
         if not self:
-            r += '<empty>\n'
+            title = f'{self._element_type_name.capitalize()} (0 items)'
+            line = '-' * len(title)
+            r = f'{title}\n{line}\n<empty>\n'
 
         return r
 
