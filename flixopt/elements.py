@@ -203,15 +203,18 @@ class Component(Element):
         if kwargs_parts:
             args_str += ', ' + ', '.join(kwargs_parts)
 
-        # Add flow summary as comment
-        parts = [f'{total_flows} flows ({in_count} in, {out_count} out)']
+        # Add metadata indicators (not flow count, since flows are shown below)
+        parts = []
         if self.on_off_parameters is not None:
             parts.append('on_off')
         if self.prevent_simultaneous_flows:
             parts.append(f'mutual_excl:{len(self.prevent_simultaneous_flows)}')
 
-        info_clean = ' | '.join(parts)
-        result = f'{class_name}({args_str})  # {info_clean}'
+        if parts:
+            info_clean = ' | '.join(parts)
+            result = f'{class_name}({args_str})  # {info_clean}'
+        else:
+            result = f'{class_name}({args_str})'
 
         # Add multi-line flow details if there are any flows
         if total_flows > 0:
