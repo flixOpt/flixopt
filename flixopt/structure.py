@@ -1163,12 +1163,13 @@ class CompositeContainerMixin(Generic[T_element]):
             items.extend(container.items())
         return items
 
-    def _format_grouped_containers(self, title: str | None = None) -> str:
+    def _format_grouped_containers(self, title: str | None = None, group_underline_char: str = '-') -> str:
         """
         Format containers as grouped string representation.
 
         Args:
             title: Optional title for the representation. If None, no title is shown.
+            group_underline_char: Character to use for underlining group headers
 
         Returns:
             Formatted string with groups and their elements.
@@ -1177,12 +1178,14 @@ class CompositeContainerMixin(Generic[T_element]):
         Example output:
             ```
             Components:
+            -----------
              * Boiler
              * CHP
 
             Buses:
-             * Heat
-             * Power
+            ------
+             * Bus("Heat", ...)
+             * Bus("Power", ...)
             ```
         """
         lines = []
@@ -1203,6 +1206,7 @@ class CompositeContainerMixin(Generic[T_element]):
                     lines.append('')
 
                 lines.append(f'{group_name}:')
+                lines.append(group_underline_char * len(group_name + ':'))
                 for name in sorted(container.keys(), key=_natural_sort_key):
                     lines.append(f' * {name}')
 

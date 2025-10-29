@@ -663,7 +663,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def __repr__(self) -> str:
         """Return a detailed string representation showing all containers."""
-        r = fx_io.format_title_with_underline('FlowSystem')
+        r = fx_io.format_title_with_underline('FlowSystem', '=')
 
         # Timestep info
         time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
