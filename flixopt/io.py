@@ -594,17 +594,27 @@ def numeric_to_str_for_repr(
         except (TypeError, ValueError) as e:
             raise TypeError(f'Cannot format value of type {type(value).__name__} for repr') from e
 
+    # Normalize dtype and handle empties
+    arr = arr.astype(float, copy=False)
+    if arr.size == 0:
+        return '?'
+
+    # Filter non-finite values
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return 'nan'
+
     # Check for single value
-    if arr.size == 1:
-        return f'{float(arr[0]):.{precision}f}'
+    if finite.size == 1:
+        return f'{float(finite[0]):.{precision}f}'
 
     # Check if all values are the same or very close
-    min_val = float(np.min(arr))
-    max_val = float(np.max(arr))
+    min_val = float(np.nanmin(finite))
+    max_val = float(np.nanmax(finite))
 
     # First check: values are essentially identical
     if np.allclose(min_val, max_val, atol=atol):
-        return f'{float(np.mean(arr)):.{precision}f}'
+        return f'{float(np.mean(finite)):.{precision}f}'
 
     # Second check: display values are the same but actual values differ slightly
     min_str = f'{min_val:.{precision}f}'
