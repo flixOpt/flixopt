@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import pathlib
@@ -613,3 +614,180 @@ def numeric_to_str_for_repr(
 
     # Values vary significantly - show range
     return f'{min_str}-{max_str}'
+
+
+def build_repr_from_init(
+    obj: object,
+    excluded_params: set[str] | None = None,
+    info: str = '',
+    label_as_positional: bool = True,
+    skip_default_size: bool = False,
+) -> str:
+    """Build a repr string from __init__ signature, showing non-default parameter values.
+
+    This utility function extracts common repr logic used across flixopt classes.
+    It introspects the __init__ method to build a constructor-style repr showing
+    only parameters that differ from their defaults.
+
+    Args:
+        obj: The object to create repr for
+        excluded_params: Set of parameter names to exclude (e.g., {'self', 'inputs', 'outputs'})
+                        Default excludes 'self', 'label', and 'kwargs'
+        info: Optional comment to append (e.g., '2 flows (1 in, 1 out)')
+        label_as_positional: If True and 'label' param exists, show it as first positional arg
+        skip_default_size: If True, skip 'size' parameter when it equals CONFIG.Modeling.big
+
+    Returns:
+        Formatted repr string like: ClassName("label", param=value)  # info
+    """
+    if excluded_params is None:
+        excluded_params = {'self', 'label', 'kwargs'}
+    else:
+        # Always exclude 'self'
+        excluded_params = excluded_params | {'self'}
+
+    try:
+        # Get the constructor arguments and their current values
+        init_signature = inspect.signature(obj.__init__)
+        init_params = init_signature.parameters
+
+        # Check if this has a 'label' parameter - if so, show it first as positional
+        has_label = 'label' in init_params and label_as_positional
+
+        # Build kwargs for non-default parameters
+        kwargs_parts = []
+        label_value = None
+
+        for param_name, param in init_params.items():
+            if param_name in excluded_params:
+                continue
+
+            # Skip *args and **kwargs
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                continue
+
+            # Handle label separately if showing as positional
+            if param_name == 'label' and has_label:
+                label_value = getattr(obj, param_name, None)
+                continue
+
+            # Get current value
+            value = getattr(obj, param_name, None)
+
+            # Skip if value matches default
+            if param.default != inspect.Parameter.empty:
+                # Special handling for empty containers (even if default was None)
+                if isinstance(value, (dict, list, tuple, set)) and len(value) == 0:
+                    if param.default is None or (
+                        isinstance(param.default, (dict, list, tuple, set)) and len(param.default) == 0
+                    ):
+                        continue
+
+                # Handle array comparisons (xarray, numpy)
+                elif isinstance(value, (xr.DataArray, np.ndarray)):
+                    try:
+                        if isinstance(param.default, (xr.DataArray, np.ndarray)):
+                            # Compare arrays element-wise
+                            if isinstance(value, xr.DataArray) and isinstance(param.default, xr.DataArray):
+                                if value.equals(param.default):
+                                    continue
+                            elif np.array_equal(value, param.default):
+                                continue
+                    except Exception:
+                        pass  # If comparison fails, include in repr
+
+                # Handle numeric comparisons (deals with 0 vs 0.0, int vs float)
+                elif isinstance(value, (int, float, np.integer, np.floating)) and isinstance(
+                    param.default, (int, float, np.integer, np.floating)
+                ):
+                    try:
+                        if float(value) == float(param.default):
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                elif value == param.default:
+                    continue
+
+            # Skip None values if default is None
+            if value is None and param.default is None:
+                continue
+
+            # Special case: hide CONFIG.Modeling.big for size parameter
+            if skip_default_size and param_name == 'size':
+                from .config import CONFIG
+
+                try:
+                    if isinstance(value, (int, float, np.integer, np.floating)):
+                        if float(value) == CONFIG.Modeling.big:
+                            continue
+                except Exception:
+                    pass
+
+            # Format value - use numeric formatter for numbers
+            if isinstance(
+                value, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
+            ):
+                try:
+                    value_repr = numeric_to_str_for_repr(value)
+                except Exception:
+                    value_repr = repr(value)
+                    if len(value_repr) > 50:
+                        value_repr = value_repr[:47] + '...'
+
+            elif isinstance(value, dict):
+                # Format dicts with numeric/array values nicely
+                try:
+                    formatted_items = []
+                    for k, v in value.items():
+                        if isinstance(
+                            v, (int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray)
+                        ):
+                            v_str = numeric_to_str_for_repr(v)
+                        else:
+                            v_str = repr(v)
+                            if len(v_str) > 30:
+                                v_str = v_str[:27] + '...'
+                        formatted_items.append(f'{repr(k)}: {v_str}')
+                    value_repr = '{' + ', '.join(formatted_items) + '}'
+                    if len(value_repr) > 50:
+                        value_repr = value_repr[:47] + '...'
+                except Exception:
+                    value_repr = repr(value)
+                    if len(value_repr) > 50:
+                        value_repr = value_repr[:47] + '...'
+
+            else:
+                value_repr = repr(value)
+                if len(value_repr) > 50:
+                    value_repr = value_repr[:47] + '...'
+
+            kwargs_parts.append(f'{param_name}={value_repr}')
+
+        # Build args string with label first as positional if present
+        if has_label and label_value is not None:
+            # Use label_full if available, otherwise label
+            if hasattr(obj, 'label_full'):
+                label_repr = repr(obj.label_full)
+            else:
+                label_repr = repr(label_value)
+
+            if len(label_repr) > 50:
+                label_repr = label_repr[:47] + '...'
+            args_str = label_repr
+            if kwargs_parts:
+                args_str += ', ' + ', '.join(kwargs_parts)
+        else:
+            args_str = ', '.join(kwargs_parts)
+
+        # Build final repr
+        class_name = obj.__class__.__name__
+        if info:
+            # Remove leading ' | ' if present (from old format) and format as comment
+            info_clean = info.lstrip(' |').strip()
+            return f'{class_name}({args_str})  # {info_clean}'
+        return f'{class_name}({args_str})'
+
+    except Exception:
+        # Fallback if introspection fails
+        return f'{obj.__class__.__name__}(<repr_failed>)'

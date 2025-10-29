@@ -155,66 +155,25 @@ class Component(Element):
 
     def __repr__(self) -> str:
         """Return string representation with flow information."""
-        import inspect
+        from . import io as fx_io
 
         in_count = len(self.inputs) if hasattr(self, 'inputs') and self.inputs else 0
         out_count = len(self.outputs) if hasattr(self, 'outputs') and self.outputs else 0
         total_flows = in_count + out_count
 
-        # Build first line manually (excluding inputs/outputs which are shown below)
-        class_name = self.__class__.__name__
-
-        # Get constructor parameters (excluding 'self', 'label', 'inputs', 'outputs')
-        init_signature = inspect.signature(self.__init__)
-        init_params = init_signature.parameters
-
-        # Build kwargs for non-default parameters (excluding label, inputs, outputs)
-        kwargs_parts = []
-        for param_name, param in init_params.items():
-            if param_name in ('self', 'label', 'inputs', 'outputs'):
-                continue
-            # Skip *args and **kwargs
-            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-                continue
-
-            value = getattr(self, param_name, None)
-
-            # Skip if value matches default or is empty
-            if param.default != inspect.Parameter.empty:
-                if isinstance(value, (dict, list, tuple, set)) and len(value) == 0:
-                    if param.default is None or (
-                        isinstance(param.default, (dict, list, tuple, set)) and len(param.default) == 0
-                    ):
-                        continue
-                elif value == param.default:
-                    continue
-
-            if value is None and param.default is None:
-                continue
-
-            # Format value
-            value_repr = repr(value)
-            if len(value_repr) > 50:
-                value_repr = value_repr[:47] + '...'
-            kwargs_parts.append(f'{param_name}={value_repr}')
-
-        # Build the first line
-        args_str = f'"{self.label_full}"'
-        if kwargs_parts:
-            args_str += ', ' + ', '.join(kwargs_parts)
-
-        # Add metadata indicators (not flow count, since flows are shown below)
+        # Build metadata indicators (not flow count, since flows are shown below)
         parts = []
         if self.on_off_parameters is not None:
             parts.append('on_off')
         if self.prevent_simultaneous_flows:
             parts.append(f'mutual_excl:{len(self.prevent_simultaneous_flows)}')
 
-        if parts:
-            info_clean = ' | '.join(parts)
-            result = f'{class_name}({args_str})  # {info_clean}'
-        else:
-            result = f'{class_name}({args_str})'
+        info = ' | '.join(parts) if parts else ''
+
+        # Build first line (excluding inputs/outputs which are shown below)
+        result = fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'label', 'inputs', 'outputs', 'kwargs'}, info=info, skip_default_size=True
+        )
 
         # Add multi-line flow details if there are any flows
         if total_flows > 0:
