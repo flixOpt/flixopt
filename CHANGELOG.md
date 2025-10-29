@@ -66,7 +66,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 🔥 Removed
 
 ### 🐛 Fixed
-- Fixed resampling of FlowSystem to reset `hours_of_last_timestep` and `hours_of_previous_timesteps` properly
 
 ### 🔒 Security
 
@@ -75,13 +74,26 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 📝 Docs
 
 ### 👷 Development
-- Improved issue templates
 
 ### 🚧 Known Issues
 
 ---
 
 Until here -->
+
+## [3.2.1] - 2025-10-29
+
+**Summary**:
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 🐛 Fixed
+- Fixed resampling of FlowSystem to reset `hours_of_last_timestep` and `hours_of_previous_timesteps` properly
+
+### 👷 Development
+- Improved issue templates
+
+---
 
 ## [3.2.0] - 2025-10-26
 
