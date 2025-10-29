@@ -4,7 +4,7 @@ We warmly welcome contributions from the community! This guide will help you get
 
 ## Development Setup
 1. Clone the repository `git clone https://github.com/flixOpt/flixopt.git`
-2. Install the development dependencies `pip install -e ".[dev]"`
+2. Install the development dependencies `pip install -e ".[full, dev]"`
 3. Install pre-commit hooks `pre-commit install` (one-time setup)
 4. Run `pytest` to ensure your code passes all tests
 
