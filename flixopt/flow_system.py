@@ -730,7 +730,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             flows = [f for c in self.components.values() for f in c.inputs + c.outputs]
             # Deduplicate by id and sort for reproducibility
             flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.label_full.lower())
-            self._flows_cache = ElementContainer({f.label_full: f for f in flows}, element_type_name='flows')
+            self._flows_cache = ElementContainer(flows, element_type_name='flows')
         return self._flows_cache
 
     @property
