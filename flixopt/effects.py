@@ -392,22 +392,22 @@ class Effect(Element):
         parts = []
 
         # Unit
-        if hasattr(self, 'unit') and self.unit:
+        if self.unit:
             parts.append(f'({self.unit})')
 
         # Objective
-        if hasattr(self, 'is_objective') and self.is_objective:
+        if self.is_objective:
             parts.append('objective')
 
-        # Constraint types
+        # Constraint types (flag if either min or max bound is set)
         constraint_types = []
-        if hasattr(self, 'maximum_per_hour') and self.maximum_per_hour is not None:
+        if any([self.minimum_per_hour is not None, self.minimum_per_hour is not None]):
             constraint_types.append('per_hour')
-        if hasattr(self, 'maximum_temporal') and self.maximum_temporal is not None:
+        if any([self.minimum_temporal is not None, self.maximum_temporal is not None]):
             constraint_types.append('temporal')
-        if hasattr(self, 'maximum_periodic') and self.maximum_periodic is not None:
+        if any([self.minimum_periodic is not None, self.maximum_periodic is not None]):
             constraint_types.append('periodic')
-        if hasattr(self, 'maximum_total') and self.maximum_total is not None:
+        if any([self.minimum_total is not None, self.maximum_total is not None]):
             constraint_types.append('total')
 
         if constraint_types:
