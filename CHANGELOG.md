@@ -4,6 +4,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Formatting is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Gitmoji](https://gitmoji.dev).
 For more details regarding the individual PRs and contributors, please refer to our [GitHub releases](https://github.com/flixOpt/flixopt/releases).
 
+!!! tip
+
+    If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
 ---
 
 <!-- This text won't be rendered
@@ -17,6 +21,10 @@ Please keep the format of the changelog consistent with the other releases, so t
 
 ## [Template] - ????-??-??
 
+**Summary**:
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
 ### ✨ Added
 
 ### 💥 Breaking Changes
@@ -40,10 +48,13 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 🚧 Known Issues
 
 ---
-
 
 ## [Unreleased] - ????-??-??
 
+**Summary**:
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
 ### ✨ Added
 
 ### 💥 Breaking Changes
@@ -67,12 +78,184 @@ Please keep the format of the changelog consistent with the other releases, so t
 ### 🚧 Known Issues
 
 ---
+
 Until here -->
+
+## [3.3.1] - 2025-10-30
+
+**Summary**: Small Bugfix and improving readability
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ♻️ Changed
+- Improved `summary.yaml` to use a compacted list representation for periods and scenarios
+
+### 🐛 Fixed
+- Using `switch_on_total_max` with periods or scenarios failed
+
+### 📝 Docs
+- Add more comprehensive `CONTRIBUTE.md`
+- Improve logical structure in User Guide
+
+---
+
+## [3.3.0] - 2025-10-30
+
+**Summary**: Better access to Elements stored in the FLowSystem and better representations (repr)
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ♻️ Changed
+**Improved repr methods:**
+- **Results classes** (`ComponentResults`, `BusResults`, `FlowResults`, `EffectResults`) now show concise header with key metadata followed by xarray Dataset repr
+- **Element classes** (`Component`, `Bus`, `Flow`, `Effect`, `Storage`) now show one-line summaries with essential information (connections, sizes, capacities, constraints)
+
+**Container-based access:**
+- **FlowSystem** now provides dict-like access patterns for all elements
+- Use `flow_system['element_label']`, `flow_system.keys()`, `flow_system.values()`, and `flow_system.items()` for unified element access
+- Specialized containers (`components`, `buses`, `effects`, `flows`) offer type-specific access with helpful error messages
+
+### 🗑️ Deprecated
+- **`FlowSystem.all_elements`** property is deprecated in favor of dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`). Will be removed in v4.0.0.
+
+---
+
+## [3.2.1] - 2025-10-29
+
+**Summary**:
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 🐛 Fixed
+- Fixed resampling of FlowSystem to reset `hours_of_last_timestep` and `hours_of_previous_timesteps` properly
+
+### 👷 Development
+- Improved issue templates
+
+---
+
+## [3.2.0] - 2025-10-26
+
+**Summary**: Enhanced plotting capabilities with consistent color management, custom plotting kwargs support, and centralized I/O handling.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+
+**Color management:**
+- **`setup_colors()` method** for `CalculationResults` and `SegmentedCalculationResults` to configure consistent colors across all plots
+    - Group components by colorscales: `results.setup_colors({'CHP': 'reds', 'Storage': 'blues', 'Greys': ['Grid', 'Demand']})`
+    - Automatically propagates to all segments in segmented calculations
+    - Colors persist across all plot calls unless explicitly overridden
+- **Flexible color inputs**: Supports colorscale names (e.g., 'turbo', 'plasma'), color lists, or label-to-color dictionaries
+- **Cross-backend compatibility**: Seamless color handling for both Plotly and Matplotlib
+
+**Plotting customization:**
+- **Plotting kwargs support**: Pass additional arguments to plotting backends via `px_kwargs`, `plot_kwargs`, and `backend_kwargs` parameters
+- **New `CONFIG.Plotting` configuration section**:
+    - `default_show`: Control default plot visibility
+    - `default_engine`: Choose 'plotly' or 'matplotlib'
+    - `default_dpi`: Set resolution for saved plots
+    - `default_facet_cols`: Configure default faceting columns
+    - `default_sequential_colorscale`: Default for heatmaps (now 'turbo')
+    - `default_qualitative_colorscale`: Default for categorical plots (now 'plotly')
+
+**I/O improvements:**
+- Centralized JSON/YAML I/O with auto-format detection
+- Enhanced NetCDF handling with consistent engine usage
+- Better numeric formatting in YAML exports
+
+### ♻️ Changed
+- **Default colorscale**: Changed from 'viridis' to 'turbo' for better perceptual uniformity
+- **Color terminology**: Standardized from "colormap" to "colorscale" throughout for Plotly consistency
+- **Plotting internals**: Now use `xr.Dataset` as primary data type (DataFrames automatically converted)
+- **NetCDF engine**: Switched back to netcdf4 engine following xarray updates and performance benchmarks
+
+### 🔥 Removed
+- Removed unused `plotting.pie_with_plotly()` method
+
+### 🐛 Fixed
+- Improved error messages when using `engine='matplotlib'` with multidimensional data
+- Better dimension validation in `results.plot_heatmap()`
+
+### 📝 Docs
+- Enhanced examples demonstrating `setup_colors()` usage
+- Updated terminology from "colormap" to "colorscale" in docstrings
+
+### 👷 Development
+- Fixed concurrency issue in CI
+- Centralized color processing logic into dedicated module
+- Refactored to function-based color handling for simpler API
+
+---
+
+## [3.1.1] - 2025-10-20
+**Summary**: Fixed a bug when acessing the `effects_per_component` dataset in results without periodic effects.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 🐛 Fixed
+- Fixed ValueError in effects_per_component when all periodic effects are scalars/NaN by explicitly creating mode-specific templates (via _create_template_for_mode) with correct dimensions
+
+### 👷 Development
+- Converted all remaining numpy style docstrings to google style
+
+---
+
+## [3.1.0] - 2025-10-19
+
+**Summary**: This release adds faceting and animation support for multidimensional plots and redesigns the documentation website. Plotting results across scenarios or periods is now significantly simpler (Plotly only).
+
+If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
+
+### ✨ Added
+- **Faceting and animation for multidimensional plots**: All plotting methods now support `facet_by` and `animate_by` parameters to create subplot grids and animations from multidimensional data (scenarios, periods, etc.). *Plotly only.*
+- **Flexible data selection with `select` parameter**: Select data using single values, lists, slices, or index arrays for precise control over what gets plotted
+- **Heatmap fill control**: New `fill` parameter in heatmap methods controls how missing values are filled after reshaping (`'ffill'` or `'bfill'`)
+- **Smart line styling for mixed variables**: Area plots now automatically style variables containing both positive and negative values with dashed lines, while stacking purely positive or negative variables
+
+### ♻️ Changed
+- **Breaking: Selection behavior**: Plotting methods no longer automatically select the first value for non-time dimensions. Use the `select` parameter for explicit selection of scenarios, periods, or other dimensions
+- **Better error messages**: Enhanced error messages when using Matplotlib with multidimensional data, with clearer guidance on dimension requirements and suggestions to use Plotly
+- **Improved examples**: Enhanced `scenario_example.py` with better demonstration of new features
+- **Robust validation**: Improved dimension validation in `plot_heatmap()` with clearer error messages
+
+### 🗑️ Deprecated
+- **`indexer` parameter**: Use the new `select` parameter instead. The `indexer` parameter will be removed in v4.0.0
+- **`heatmap_timeframes` and `heatmap_timesteps_per_frame` parameters**: Use the new `reshape_time=(timeframes, timesteps_per_frame)` parameter instead in heatmap plotting methods
+- **`color_map` parameter**: Use the new `colors` parameter instead in heatmap plotting methods
+
+### 🐛 Fixed
+- Fixed cryptic errors when working with empty buses by adding proper validation
+- Added early validation for non-existent periods when using linked periods with tuples
+
+### 📝 Documentation
+- **Redesigned documentation website** with custom css
+
+### 👷 Development
+- Renamed internal `_apply_indexer_to_data()` to `_apply_selection_to_data()` for consistency with new API naming
+
+---
+
+## [3.0.3] - 2025-10-16
+**Summary**: Hotfixing new plotting parameter `style`. Continue to use `mode`.
+
+**Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
+
+### 🐛 Fixed
+- Reverted breaking change from v3.0.0: continue to use `mode parameter in plotting instead of new `style`
+- Renamed new `mode` parameter in plotting methods to `unit_type`
+
+### 📝 Docs
+- Updated Migration Guide and added missing entries.
+- Improved Changelog of v3.0.0
+
+---
 
 ## [3.0.2] - 2025-10-15
 **Summary**: This is a follow-up release to **[v3.0.0](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0)**, improving the documentation.
 
-**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+**Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
 ### 📝 Docs
 - Update the Readme
@@ -85,7 +268,7 @@ Until here -->
 ## [3.0.1] - 2025-10-14
 **Summary**: This is a follow-up release to **[v3.0.0](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0)**, adding a Migration Guide and bugfixing the docs.
 
-**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+**Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
 ### 📝 Docs
 - Fixed deployed docs
@@ -99,7 +282,7 @@ Until here -->
 ## [3.0.0] - 2025-10-13
 **Summary**: This release introduces new model dimensions (periods and scenarios) for multi-period investments and stochastic modeling, along with a redesigned effect sharing system and enhanced I/O capabilities.
 
-**Note**: If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+**Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
 ### ✨ Added
 
@@ -139,17 +322,43 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### 💥 Breaking Changes
 
-- `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore.
+**API and Behavior Changes:**
+
+- **Effect system redesigned** (no deprecation):
+    - **Terminology changes**: Effect domains renamed for clarity: `operation` → `temporal`, `invest`/`investment` → `periodic`
+    - **Sharing system**: The old `specific_share_to_other_effects_*` parameters were completely replaced with the new `share_from_temporal` and `share_from_periodic` syntax (see 🔥 Removed section)
+- **FlowSystem independence**: FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent. Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
+- **Bus and Effect object assignment**: Direct assignment of Bus/Effect objects is no longer supported. Use labels (strings) instead:
+    - `Flow.bus` must receive a string label, not a Bus object
+    - Effect shares must use effect labels (strings) in dictionaries, not Effect objects
+- **Logging defaults** (from v2.2.0): Console and file logging are now disabled by default. Enable explicitly with `CONFIG.Logging.console = True` and `CONFIG.apply()`
+
+**Class and Method Renaming:**
+
 - Renamed class `SystemModel` to `FlowSystemModel`
 - Renamed class `Model` to `Submodel`
 - Renamed `mode` parameter in plotting methods to `style`
-- Renamed investment binary variable `is_invested` to `invested` in `InvestmentModel`
-- `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`.
+- `Calculation.do_modeling()` now returns the `Calculation` object instead of its `linopy.Model`. Callers that previously accessed the linopy model directly should now use `calculation.do_modeling().model` instead of `calculation.do_modeling()`
+
+**Variable Renaming in Results:**
+
+- Investment binary variable: `is_invested` → `invested` in `InvestmentModel`
+- Switch tracking variables in `OnOffModel`:
+    - `switch_on` → `switch|on`
+    - `switch_off` → `switch|off`
+    - `switch_on_nr` → `switch|count`
+- Effect submodel variables (following terminology changes):
+    - `Effect(invest)|total` → `Effect(periodic)`
+    - `Effect(operation)|total` → `Effect(temporal)`
+    - `Effect(operation)|total_per_timestep` → `Effect(temporal)|per_timestep`
+    - `Effect|total` → `Effect`
+
+**Data Structure Changes:**
+
+- `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. Use the new `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameters for final state control
 
 ### ♻️ Changed
 
-- FlowSystems cannot be shared across multiple Calculations anymore. A copy of the FlowSystem is created instead, making every Calculation independent
-- Each Subcalculation in `SegmentedCalculation` now has its own distinct `FlowSystem` object
 - Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
 - Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
 - Improved Model Structure - Views and organisation is now divided into:
@@ -164,8 +373,6 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 - The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
 - The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
-- The assignment of Bus Objects to Flow.bus is deprecated and will be removed in a future version. Use the label of the Bus instead.
-- The usage of Effects objects in Dicts to assign shares to Effects is deprecated and will be removed in a future version. Use the label of the Effect instead.
 - **InvestParameters** parameters renamed for improved clarity around investment and retirement effects:
     - `fix_effects` → `effects_of_investment`
     - `specific_effects` → `effects_of_investment_per_size`
@@ -365,7 +572,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### ✨ Added
 - **Network Visualization**: Added `FlowSystem.start_network_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive Dash web app
-  - *Note: This is still experimental and might change in the future*
+    - *Note: This is still experimental and might change in the future*
 
 ### ♻️ Changed
 - **Multi-Flow Support**: `Sink`, `Source`, and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables modeling more use cases with these classes
@@ -407,8 +614,8 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### 🐛 Fixed
 - Storage losses per hour were not calculated correctly, as mentioned by @brokenwings01. This might have led to issues when modeling large losses and long timesteps.
-  - Old implementation:     $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) \cdot \Delta \text{t}_{i}$
-  - Correct implementation: $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) ^{\Delta \text{t}_{i}}$
+    - Old implementation:     $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) \cdot \Delta \text{t}_{i}$
+    - Correct implementation: $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) ^{\Delta \text{t}_{i}}$
 
 ### 🚧 Known Issues
 - Just to mention: Plotly >= 6 may raise errors if "nbformat" is not installed. We pinned plotly to <6, but this may be fixed in the future.
@@ -433,10 +640,10 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### 💥 Breaking Changes
 - Restructured the modeling of the On/Off state of Flows or Components
-  - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
-  - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
-  - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
-  - Similar pattern for all consecutive on/off constraints
+    - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
+    - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
+    - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
+    - Similar pattern for all consecutive on/off constraints
 
 ### 🐛 Fixed
 - Fixed the lower bound of `flow_rate` when using optional investments without OnOffParameters
@@ -482,10 +689,10 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 **Variable Structure:**
 - Restructured the modeling of the On/Off state of Flows or Components
-  - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
-  - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
-  - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
-  - Similar pattern for all consecutive on/off constraints
+    - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
+    - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
+    - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
+    - Similar pattern for all consecutive on/off constraints
 
 ### 🔥 Removed
 - **Pyomo dependency** (replaced by linopy)
