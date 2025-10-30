@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
@@ -527,6 +528,15 @@ class Storage(Component):
                     f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
                     f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
                 )
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        # Use build_repr_from_init directly to exclude charging and discharging
+        return fx_io.build_repr_from_init(
+            self,
+            excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
+            skip_default_size=True,
+        ) + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
@@ -1304,16 +1314,18 @@ class Sink(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
-        """
-        Initialize a Sink (consumes flow from the system).
+        """Initialize a Sink (consumes flow from the system).
 
-        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided it is used as the single input flow and a DeprecationWarning is issued; specifying both `inputs` and `sink` raises ValueError.
+        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided
+        it is used as the single input flow and a DeprecationWarning is issued; specifying both
+        `inputs` and `sink` raises ValueError.
 
-        Parameters:
-            label (str): Unique element label.
-            inputs (list[Flow], optional): Input flows for the sink.
-            meta_data (dict, optional): Arbitrary metadata attached to the element.
-            prevent_simultaneous_flow_rates (bool, optional): If True, prevents simultaneous nonzero flow rates across the element's inputs by wiring that restriction into the base Component setup.
+        Args:
+            label: Unique element label.
+            inputs: Input flows for the sink.
+            meta_data: Arbitrary metadata attached to the element.
+            prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero flow rates
+                across the element's inputs by wiring that restriction into the base Component setup.
 
         Note:
             The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.

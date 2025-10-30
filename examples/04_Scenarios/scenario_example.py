@@ -8,20 +8,80 @@ import pandas as pd
 import flixopt as fx
 
 if __name__ == '__main__':
-    # Create datetime array starting from '2020-01-01' for the given time period
-    timesteps = pd.date_range('2020-01-01', periods=9, freq='h')
+    # Create datetime array starting from '2020-01-01' for one week
+    timesteps = pd.date_range('2020-01-01', periods=24 * 7, freq='h')
     scenarios = pd.Index(['Base Case', 'High Demand'])
     periods = pd.Index([2020, 2021, 2022])
 
     # --- Create Time Series Data ---
-    # Heat demand profile (e.g., kW) over time and corresponding power prices
-    heat_demand_per_h = pd.DataFrame(
-        {'Base Case': [30, 0, 90, 110, 110, 20, 20, 20, 20], 'High Demand': [30, 0, 100, 118, 125, 20, 20, 20, 20]},
-        index=timesteps,
-    )
-    power_prices = np.array([0.08, 0.09, 0.10])
+    # Realistic daily patterns: morning/evening peaks, night/midday lows
+    np.random.seed(42)
+    n_hours = len(timesteps)
 
-    flow_system = fx.FlowSystem(timesteps=timesteps, periods=periods, scenarios=scenarios, weights=np.array([0.5, 0.6]))
+    # Heat demand: 24-hour patterns (kW) for Base Case and High Demand scenarios
+    base_daily_pattern = np.array(
+        [22, 20, 18, 18, 20, 25, 40, 70, 95, 110, 85, 65, 60, 58, 62, 68, 75, 88, 105, 125, 130, 122, 95, 35]
+    )
+    high_daily_pattern = np.array(
+        [28, 25, 22, 22, 24, 30, 52, 88, 118, 135, 105, 80, 75, 72, 75, 82, 92, 108, 128, 148, 155, 145, 115, 48]
+    )
+
+    # Tile and add variation
+    base_demand = np.tile(base_daily_pattern, n_hours // 24 + 1)[:n_hours] * (
+        1 + np.random.uniform(-0.05, 0.05, n_hours)
+    )
+    high_demand = np.tile(high_daily_pattern, n_hours // 24 + 1)[:n_hours] * (
+        1 + np.random.uniform(-0.07, 0.07, n_hours)
+    )
+
+    heat_demand_per_h = pd.DataFrame({'Base Case': base_demand, 'High Demand': high_demand}, index=timesteps)
+
+    # Power prices: hourly factors (night low, peak high) and period escalation (2020-2022)
+    hourly_price_factors = np.array(
+        [
+            0.70,
+            0.65,
+            0.62,
+            0.60,
+            0.62,
+            0.70,
+            0.95,
+            1.15,
+            1.30,
+            1.25,
+            1.10,
+            1.00,
+            0.95,
+            0.90,
+            0.88,
+            0.92,
+            1.00,
+            1.10,
+            1.25,
+            1.40,
+            1.35,
+            1.20,
+            0.95,
+            0.80,
+        ]
+    )
+    period_base_prices = np.array([0.075, 0.095, 0.135])  # €/kWh for 2020, 2021, 2022
+
+    price_series = np.zeros((n_hours, 3))
+    for period_idx, base_price in enumerate(period_base_prices):
+        price_series[:, period_idx] = (
+            np.tile(hourly_price_factors, n_hours // 24 + 1)[:n_hours]
+            * base_price
+            * (1 + np.random.uniform(-0.03, 0.03, n_hours))
+        )
+
+    power_prices = price_series.mean(axis=0)
+
+    # Scenario weights: probability of each scenario occurring
+    # Base Case: 60% probability, High Demand: 40% probability
+    scenario_weights = np.array([0.6, 0.4])
+
+    flow_system = fx.FlowSystem(timesteps=timesteps, periods=periods, scenarios=scenarios, weights=scenario_weights)
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)
@@ -35,22 +95,24 @@ if __name__ == '__main__':
         description='Kosten',
         is_standard=True,  # standard effect: no explicit value needed for costs
         is_objective=True,  # Minimizing costs as the optimization objective
-        share_from_temporal={'CO2': 0.2},
+        share_from_temporal={'CO2': 0.2},  # Carbon price: 0.2 €/kg CO2 (e.g., carbon tax)
     )
 
-    # CO2 emissions effect with an associated cost impact
+    # CO2 emissions effect with constraint
+    # Maximum of 1000 kg CO2/hour represents a regulatory or voluntary emissions limit
     CO2 = fx.Effect(
         label='CO2',
         unit='kg',
         description='CO2_e-Emissionen',
-        maximum_per_hour=1000,  # Max CO2 emissions per hour
+        maximum_per_hour=1000,  # Regulatory emissions limit: 1000 kg CO2/hour
     )
 
     # --- Define Flow System Components ---
     # Boiler: Converts fuel (gas) into thermal energy (heat)
+    # Modern condensing gas boiler with realistic efficiency
     boiler = fx.linear_converters.Boiler(
         label='Boiler',
-        eta=0.5,
+        eta=0.92,  # Realistic efficiency for modern condensing gas boiler (92%)
         Q_th=fx.Flow(
             label='Q_th',
             bus='Fernwärme',
@@ -63,27 +125,28 @@ if __name__ == '__main__':
     )
 
     # Combined Heat and Power (CHP): Generates both electricity and heat from fuel
+    # Modern CHP unit with realistic efficiencies (total efficiency ~88%)
     chp = fx.linear_converters.CHP(
         label='CHP',
-        eta_th=0.5,
-        eta_el=0.4,
+        eta_th=0.48,  # Realistic thermal efficiency (48%)
+        eta_el=0.40,  # Realistic electrical efficiency (40%)
         P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()),
         Q_th=fx.Flow('Q_th', bus='Fernwärme'),
         Q_fu=fx.Flow('Q_fu', bus='Gas'),
     )
 
-    # Storage: Energy storage system with charging and discharging capabilities
+    # Storage: Thermal energy storage system with charging and discharging capabilities
+    # Realistic thermal storage parameters (e.g., insulated hot water tank)
     storage = fx.Storage(
         label='Storage',
         charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1000),
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1000),
         capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
         initial_charge_state=0,  # Initial storage state: empty
-        relative_maximum_charge_state=np.array([80, 70, 80, 80, 80, 80, 80, 80, 80]) * 0.01,
-        relative_maximum_final_charge_state=0.8,
-        eta_charge=0.9,
-        eta_discharge=1,  # Efficiency factors for charging/discharging
-        relative_loss_per_hour=0.08,  # 8% loss per hour. Absolute loss depends on current charge state
+        relative_maximum_final_charge_state=np.array([0.8, 0.5, 0.1]),
+        eta_charge=0.95,  # Realistic charging efficiency (~95%)
+        eta_discharge=0.98,  # Realistic discharging efficiency (~98%)
+        relative_loss_per_hour=np.array([0.008, 0.015]),  # Realistic thermal losses: 0.8-1.5% per hour
         prevent_simultaneous_charge_and_discharge=True,  # Prevent charging and discharging at the same time
     )
 
@@ -94,10 +157,22 @@ if __name__ == '__main__':
     )
 
     # Gas Source: Gas tariff source with associated costs and CO2 emissions
+    # Realistic gas prices varying by period (reflecting 2020-2022 energy crisis)
+    # 2020: 0.04 €/kWh, 2021: 0.06 €/kWh, 2022: 0.11 €/kWh
+    gas_prices_per_period = np.array([0.04, 0.06, 0.11])
+
+    # CO2 emissions factor for natural gas: ~0.202 kg CO2/kWh (realistic value)
+    gas_co2_emissions = 0.202
+
     gas_source = fx.Source(
         label='Gastarif',
         outputs=[
-            fx.Flow(label='Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: 0.04, CO2.label: 0.3})
+            fx.Flow(
+                label='Q_Gas',
+                bus='Gas',
+                size=1000,
+                effects_per_flow_hour={costs.label: gas_prices_per_period, CO2.label: gas_co2_emissions},
+            )
         ],
     )
 
@@ -121,24 +196,26 @@ if __name__ == '__main__':
     # --- Solve the Calculation and Save Results ---
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
+    calculation.results.setup_colors(
+        {
+            'CHP': 'red',
+            'Greys': ['Gastarif', 'Einspeisung', 'Heat Demand'],
+            'Storage': 'blue',
+            'Boiler': 'orange',
+        }
+    )
+
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # --- Analyze Results ---
-    calculation.results['Fernwärme'].plot_node_balance_pie()
-    calculation.results['Fernwärme'].plot_node_balance(style='stacked_bar')
-    calculation.results['Storage'].plot_node_balance()
+    calculation.results['Fernwärme'].plot_node_balance(mode='stacked_bar')
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
+    calculation.results['Storage'].plot_charge_state()
+    calculation.results['Fernwärme'].plot_node_balance_pie(select={'period': 2020, 'scenario': 'Base Case'})
 
     # Convert the results for the storage component to a dataframe and display
     df = calculation.results['Storage'].node_balance_with_charge_state()
     print(df)
-
-    # Plot charge state using matplotlib
-    fig, ax = calculation.results['Storage'].plot_charge_state(engine='matplotlib')
-    # Customize the plot further if needed
-    ax.set_title('Storage Charge State Over Time')
-    # Or save the figure
-    # fig.savefig('storage_charge_state.png')
 
     # Save results to file for later usage
     calculation.results.to_file()
