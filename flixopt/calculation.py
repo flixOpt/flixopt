@@ -589,6 +589,7 @@ class SegmentedCalculation(Calculation):
             desc='Solving segments',
             unit='segment',
             file=sys.stdout,  # Force tqdm to write to stdout instead of stderr
+            disable=not CONFIG.Solving.log_to_console,  # Respect silent configuration
         )
 
         for i, calculation in progress_bar:
