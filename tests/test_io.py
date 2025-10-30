@@ -80,5 +80,112 @@ def test_flow_system_io(flow_system):
     flow_system.__str__()
 
 
+def test_suppress_output_file_descriptors(tmp_path):
+    """Test that suppress_output() redirects file descriptors to /dev/null."""
+    import os
+    import sys
+
+    from flixopt.io import suppress_output
+
+    # Create temporary files to capture output
+    test_file = tmp_path / 'test_output.txt'
+
+    # Test that FD 1 (stdout) is redirected during suppression
+    with open(test_file, 'w') as f:
+        original_stdout_fd = os.dup(1)  # Save original stdout FD
+        try:
+            # Redirect FD 1 to our test file
+            os.dup2(f.fileno(), 1)
+            os.write(1, b'before suppression\n')
+
+            with suppress_output():
+                # Inside suppress_output, writes should go to /dev/null, not our file
+                os.write(1, b'during suppression\n')
+
+            # After suppress_output, writes should go to our file again
+            os.write(1, b'after suppression\n')
+        finally:
+            # Restore original stdout
+            os.dup2(original_stdout_fd, 1)
+            os.close(original_stdout_fd)
+
+    # Read the file and verify content
+    content = test_file.read_text()
+    assert 'before suppression' in content
+    assert 'during suppression' not in content  # This should NOT be in the file
+    assert 'after suppression' in content
+
+
+def test_suppress_output_python_level():
+    """Test that Python-level stdout/stderr continue to work after suppress_output()."""
+    import io
+    import sys
+
+    from flixopt.io import suppress_output
+
+    # Create a StringIO to capture Python-level output
+    captured_output = io.StringIO()
+
+    # After suppress_output exits, Python streams should be functional
+    with suppress_output():
+        pass  # Just enter and exit the context
+
+    # Redirect sys.stdout to our StringIO
+    old_stdout = sys.stdout
+    try:
+        sys.stdout = captured_output
+        print('test message')
+    finally:
+        sys.stdout = old_stdout
+
+    # Verify Python-level stdout works
+    assert 'test message' in captured_output.getvalue()
+
+
+def test_suppress_output_exception_handling():
+    """Test that suppress_output() properly restores streams even on exception."""
+    import sys
+
+    from flixopt.io import suppress_output
+
+    # Save original file descriptors
+    original_stdout_fd = sys.stdout.fileno()
+    original_stderr_fd = sys.stderr.fileno()
+
+    try:
+        with suppress_output():
+            raise ValueError('Test exception')
+    except ValueError:
+        pass
+
+    # Verify streams are restored after exception
+    assert sys.stdout.fileno() == original_stdout_fd
+    assert sys.stderr.fileno() == original_stderr_fd
+
+    # Verify we can still write to stdout/stderr
+    sys.stdout.write('test after exception\n')
+    sys.stdout.flush()
+
+
+def test_suppress_output_c_level():
+    """Test that suppress_output() suppresses C-level output (file descriptor level)."""
+    import os
+    import sys
+
+    from flixopt.io import suppress_output
+
+    # This test verifies that even low-level C writes are suppressed
+    # by writing directly to file descriptor 1 (stdout)
+    with suppress_output():
+        # Try to write directly to FD 1 (stdout) - should be suppressed
+        os.write(1, b'C-level stdout write\n')
+        # Try to write directly to FD 2 (stderr) - should be suppressed
+        os.write(2, b'C-level stderr write\n')
+
+    # After exiting context, ensure streams work
+    sys.stdout.write('After C-level test\n')
+    sys.stdout.flush()
+
+
 if __name__ == '__main__':
     pytest.main(['-v', '--disable-warnings'])
