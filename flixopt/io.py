@@ -3,8 +3,11 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import os
 import pathlib
 import re
+import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -931,3 +934,24 @@ def build_metadata_info(parts: list[str], prefix: str = ' | ') -> str:
         return ''
     info = ' | '.join(parts)
     return prefix + info if prefix else info
+
+
+@contextmanager
+def suppress_output():
+    """Suppress all console output including C-level output from Gurobi."""
+    old_stdout_fd = os.dup(1)
+    old_stderr_fd = os.dup(2)
+
+    try:
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+        yield
+    finally:
+        os.dup2(old_stdout_fd, 1)
+        os.dup2(old_stderr_fd, 2)
+        os.close(devnull_fd)
+        os.close(old_stdout_fd)
+        os.close(old_stderr_fd)

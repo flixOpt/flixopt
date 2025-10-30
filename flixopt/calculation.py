@@ -573,7 +573,10 @@ class SegmentedCalculation(Calculation):
             )
 
     def do_modeling_and_solve(
-        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = False
+        self,
+        solver: _Solver,
+        log_file: pathlib.Path | None = None,
+        log_main_results: bool = False,
     ) -> SegmentedCalculation:
         logger.info(f'{"":#^80}')
         logger.info(f'{" Segmented Solving ":#^80}')
@@ -613,14 +616,12 @@ class SegmentedCalculation(Calculation):
                         f'Following InvestmentModels were found: {invest_elements}'
                     )
 
-            solver_silent = copy.copy(solver)
-            solver_silent.log_to_console = False
-
-            calculation.solve(
-                solver_silent,
-                log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
-                log_main_results=log_main_results,
-            )
+            with fx_io.suppress_output():
+                calculation.solve(
+                    solver,
+                    log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
+                    log_main_results=log_main_results,
+                )
 
         progress_bar.close()
 
