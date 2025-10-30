@@ -7,6 +7,7 @@ A common use case is to optimize the investments of a model with a downsampled v
 While the final optimum might differ from the global optimum, the solving will be much faster.
 """
 
+import logging
 import pathlib
 import timeit
 
@@ -14,6 +15,8 @@ import pandas as pd
 import xarray as xr
 
 import flixopt as fx
+
+logger = logging.getLogger('flixopt')
 
 if __name__ == '__main__':
     fx.CONFIG.exploring()
@@ -135,7 +138,7 @@ if __name__ == '__main__':
     timer_dispatch = timeit.default_timer() - start
 
     if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all().item():
-        print('Sizes were correctly equalized')
+        logger.info('Sizes were correctly equalized')
     else:
         raise RuntimeError('Sizes were not correctly equalized')
 
