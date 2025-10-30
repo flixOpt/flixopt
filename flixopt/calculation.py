@@ -10,6 +10,7 @@ There are three different Calculation types:
 
 from __future__ import annotations
 
+import copy
 import logging
 import math
 import pathlib
@@ -612,13 +613,14 @@ class SegmentedCalculation(Calculation):
                         f'Following InvestmentModels were found: {invest_elements}'
                     )
 
-            # Redirect solver stdout to null to avoid cluttering the output
-            with fx_io.suppress_output():
-                calculation.solve(
-                    solver,
-                    log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
-                    log_main_results=log_main_results,
-                )
+            solver_silent = copy.copy(solver)
+            solver_silent.log_to_console = False
+
+            calculation.solve(
+                solver_silent,
+                log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
+                log_main_results=log_main_results,
+            )
 
         progress_bar.close()
 
