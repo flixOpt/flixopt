@@ -238,7 +238,7 @@ class FullCalculation(Calculation):
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
-        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]} seconds.')
+        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
         logger.info(f'Model status after solve: {self.model.status}')
 
         if self.model.status == 'warning':
@@ -628,7 +628,7 @@ class SegmentedCalculation(Calculation):
             for key, value in calc.durations.items():
                 self.durations[key] += value
 
-        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]} seconds.')
+        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
 
         self.results = SegmentedCalculationResults.from_calculation(self)
 
