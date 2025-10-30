@@ -66,6 +66,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 🔥 Removed
 
 ### 🐛 Fixed
+- Using `switch_on_total_max` with periods or scenarios failed
 
 ### 🔒 Security
 

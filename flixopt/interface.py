@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -1345,7 +1345,7 @@ class OnOffParameters(Interface):
             return True
 
         return any(
-            param is not None and param != {}
+            self._has_value(param)
             for param in [
                 self.effects_per_switch_on,
                 self.switch_on_total_max,
