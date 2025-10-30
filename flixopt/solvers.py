@@ -8,6 +8,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
+from flixopt.config import CONFIG
+
 logger = logging.getLogger('flixopt')
 
 
@@ -26,7 +28,7 @@ class _Solver:
     name: ClassVar[str]
     mip_gap: float
     time_limit_seconds: int
-    log_to_console: bool = True
+    log_to_console: bool = field(default_factory=lambda: CONFIG.Logging.solver_to_console)
     extra_options: dict[str, Any] = field(default_factory=dict)
 
     @property
