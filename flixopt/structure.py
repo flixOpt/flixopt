@@ -850,6 +850,8 @@ class Interface:
 class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
 
+    submodel: ElementModel | None
+
     def __init__(self, label: str, meta_data: dict | None = None):
         """
         Args:
@@ -858,7 +860,7 @@ class Element(Interface):
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
-        self.submodel: ElementModel | None = None
+        self.submodel = None
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.

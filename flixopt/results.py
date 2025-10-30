@@ -148,6 +148,8 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
     """
 
+    model: linopy.Model | None
+
     @classmethod
     def from_file(cls, folder: str | pathlib.Path, name: str) -> CalculationResults:
         """Load CalculationResults from saved files.

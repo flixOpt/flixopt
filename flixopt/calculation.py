@@ -53,6 +53,8 @@ class Calculation:
         active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
 
+    model: FlowSystemModel | None
+
     def __init__(
         self,
         name: str,
@@ -87,7 +89,7 @@ class Calculation:
         flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
-        self.model: FlowSystemModel | None = None
+        self.model = None
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)

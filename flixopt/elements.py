@@ -223,6 +223,8 @@ class Bus(Element):
         by the FlowSystem during system setup.
     """
 
+    submodel: BusModel | None
+
     def __init__(
         self,
         label: str,
@@ -410,6 +412,8 @@ class Flow(Element):
         Passing Bus objects to `bus` parameter. Use bus label strings instead.
 
     """
+
+    submodel: FlowModel | None
 
     def __init__(
         self,
