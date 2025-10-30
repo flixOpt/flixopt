@@ -139,6 +139,6 @@ Help improve FlixOpt by contributing code, docs, or examples
 
 {%
    include-markdown "../README.md"
-   start="## Installation"
-   end="## License"
+   start="## 🛠️ Installation"
+   end="## 📄 License"
 %}

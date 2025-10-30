@@ -1,10 +1,10 @@
-# FlixOpt Concepts
+# Core concepts of flixopt
 
 FlixOpt is built around a set of core concepts that work together to represent and optimize **any system involving flows and conversions** - whether that's energy systems, material flows, supply chains, water networks, or production processes.
 
 This page provides a high-level overview of these concepts and how they interact.
 
-## Core Concepts
+## Main building blocks
 
 ### FlowSystem
 
@@ -121,19 +121,20 @@ This [`CalculationResults`][flixopt.results.CalculationResults] object can be sa
 The process of working with FlixOpt can be divided into 3 steps:
 
 1. Create a [`FlowSystem`][flixopt.flow_system.FlowSystem], containing all the elements and data of your system
-     -  Define the time series of your system
-     -  Add [`Components`][flixopt.components] like [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc.
-     -  Add [`Buses`][flixopt.elements.Bus] as connection points in your system
+     -  Define the time horizon of your system (and optionally your periods and scenarios, see [Dimensions](mathematical-notation/dimensions.md)))
      -  Add [`Effects`][flixopt.effects.Effect] to represent costs, emissions, etc.
-     - *This [`FlowSystem`][flixopt.flow_system.FlowSystem] can also be loaded from a netCDF file*
+     -  Add [`Buses`][flixopt.elements.Bus] as connection points in your systeand [`Sinks`][flixopt.components.Sink] & [`Sources`][flixopt.components.Source] as connections to the outer world (markets, power grid, ...)
+     -  Add [`Components`][flixopt.components] like [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc.
+     -  Add
+     - [`FlowSystems`][flixopt.flow_system.FlowSystem] can also be loaded from a netCDF file*
 2. Translate the model to a mathematical optimization problem
      - Create a [`Calculation`][flixopt.calculation.Calculation] from your FlowSystem and choose a Solver
-     - ...The Calculation is translated internaly to a mathematical optimization problem...
+     - ...The Calculation is translated internally to a mathematical optimization problem...
      - ...and solved by the chosen solver.
 3. Analyze the results
      - The results are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object
      - This object can be saved to file and reloaded from file, retaining all information about the calculation
-     - As it contains the used [`FlowSystem`][flixopt.flow_system.FlowSystem], it can be used to start a new calculation
+     - As it contains the used [`FlowSystem`][flixopt.flow_system.FlowSystem], it fully documents all assumptions taken to create the results.
 
 <figure markdown>
   ![FlixOpt Conceptual Usage](../images/architecture_flixOpt.png)
