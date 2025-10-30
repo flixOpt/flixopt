@@ -28,6 +28,7 @@ _DEFAULTS = MappingProxyType(
                 'file': None,
                 'rich': False,
                 'console': False,
+                'solver_to_console': True,
                 'max_file_size': 10_485_760,  # 10MB
                 'backup_count': 5,
                 'date_format': '%Y-%m-%d %H:%M:%S',
@@ -104,6 +105,7 @@ class CONFIG:
             file: Log file path for file logging.
             console: Enable console output.
             rich: Use Rich library for enhanced output.
+            solver_to_console: Enable solver output to console.
             max_file_size: Max file size before rotation.
             backup_count: Number of backup files to keep.
             date_format: Date/time format string.
@@ -135,6 +137,7 @@ class CONFIG:
         file: str | None = _DEFAULTS['logging']['file']
         rich: bool = _DEFAULTS['logging']['rich']
         console: bool | Literal['stdout', 'stderr'] = _DEFAULTS['logging']['console']
+        solver_to_console: bool = _DEFAULTS['logging']['solver_to_console']
         max_file_size: int = _DEFAULTS['logging']['max_file_size']
         backup_count: int = _DEFAULTS['logging']['backup_count']
         date_format: str = _DEFAULTS['logging']['date_format']
@@ -346,6 +349,7 @@ class CONFIG:
                 'file': cls.Logging.file,
                 'rich': cls.Logging.rich,
                 'console': cls.Logging.console,
+                'solver_to_console': cls.Logging.solver_to_console,
                 'max_file_size': cls.Logging.max_file_size,
                 'backup_count': cls.Logging.backup_count,
                 'date_format': cls.Logging.date_format,
