@@ -60,22 +60,18 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
-- Improved `summary.yaml` to use a compacted list representation for periods and scenarios
 
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
 
 ### 🐛 Fixed
-- Using `switch_on_total_max` with periods or scenarios failed
 
 ### 🔒 Security
 
 ### 📦 Dependencies
 
 ### 📝 Docs
-- Add more comprehensive `CONTRIBUTE.md`
-- Improve logical structure in User Guide
 
 ### 👷 Development
 
@@ -84,6 +80,24 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ---
 
 Until here -->
+
+## [3.3.1] - 2025-10-30
+
+**Summary**: Small Bugfix and improving readability
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ♻️ Changed
+- Improved `summary.yaml` to use a compacted list representation for periods and scenarios
+
+### 🐛 Fixed
+- Using `switch_on_total_max` with periods or scenarios failed
+
+### 📝 Docs
+- Add more comprehensive `CONTRIBUTE.md`
+- Improve logical structure in User Guide
+
+---
 
 ## [3.3.0] - 2025-10-30
 
