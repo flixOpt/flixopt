@@ -174,6 +174,7 @@ def save_yaml(
     width: int = 1000,
     allow_unicode: bool = True,
     sort_keys: bool = False,
+    compact_numeric_lists: bool = False,
     **kwargs,
 ) -> None:
     """
@@ -186,20 +187,56 @@ def save_yaml(
         width: Maximum line width (default: 1000).
         allow_unicode: If True, allow Unicode characters (default: True).
         sort_keys: If True, sort dictionary keys (default: False).
-        **kwargs: Additional arguments to pass to yaml.safe_dump().
+        compact_numeric_lists: If True, format numeric lists inline for better readability (default: False).
+        **kwargs: Additional arguments to pass to yaml.dump().
     """
     path = pathlib.Path(path)
-    with open(path, 'w', encoding='utf-8') as f:
-        yaml.safe_dump(
-            data,
-            f,
-            indent=indent,
-            width=width,
-            allow_unicode=allow_unicode,
-            sort_keys=sort_keys,
-            default_flow_style=False,
-            **kwargs,
-        )
+
+    if compact_numeric_lists:
+        # Define custom representer for compact numeric lists
+        def represent_list(dumper, data):
+            """
+            Custom representer for lists to format them inline (flow style)
+            but only if they contain only numbers or nested numeric lists.
+            """
+            if data and all(
+                isinstance(item, (int, float, np.integer, np.floating))
+                or (isinstance(item, list) and all(isinstance(x, (int, float, np.integer, np.floating)) for x in item))
+                for item in data
+            ):
+                return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=True)
+            return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=False)
+
+        # Create custom dumper with the representer
+        class CompactDumper(yaml.SafeDumper):
+            pass
+
+        CompactDumper.add_representer(list, represent_list)
+
+        with open(path, 'w', encoding='utf-8') as f:
+            yaml.dump(
+                data,
+                f,
+                Dumper=CompactDumper,
+                indent=indent,
+                width=width,
+                allow_unicode=allow_unicode,
+                sort_keys=sort_keys,
+                default_flow_style=False,
+                **kwargs,
+            )
+    else:
+        with open(path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(
+                data,
+                f,
+                indent=indent,
+                width=width,
+                allow_unicode=allow_unicode,
+                sort_keys=sort_keys,
+                default_flow_style=False,
+                **kwargs,
+            )
 
 
 def load_config_file(path: str | pathlib.Path) -> dict:

@@ -1074,7 +1074,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system_data, paths.flow_system, compression=compression)
 
-        fx_io.save_yaml(self.summary, paths.summary)
+        fx_io.save_yaml(self.summary, paths.summary, compact_numeric_lists=True)
 
         if save_linopy_model:
             if self.model is None:
