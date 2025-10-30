@@ -431,6 +431,66 @@ class CONFIG:
             },
         }
 
+    @classmethod
+    def silent(cls) -> type[CONFIG]:
+        """Configure for silent operation.
+
+        Disables console logging, solver output, and result logging
+        for clean production runs. Does not show plots. Automatically calls apply().
+        """
+        cls.Logging.console = False
+        cls.Plotting.default_show = False
+        cls.Logging.file = None
+        cls.Solving.log_to_console = False
+        cls.Solving.log_main_results = False
+        cls.apply()
+        return cls
+
+    @classmethod
+    def debug(cls) -> type[CONFIG]:
+        """Configure for debug mode with verbose output.
+
+        Enables console logging at DEBUG level and all solver output for
+        troubleshooting. Automatically calls apply().
+        """
+        cls.Logging.console = True
+        cls.Logging.level = 'DEBUG'
+        cls.Solving.log_to_console = True
+        cls.Solving.log_main_results = True
+        cls.apply()
+        return cls
+
+    @classmethod
+    def exploring(cls) -> type[CONFIG]:
+        """Configure for exploring flixopt
+
+        Enables console logging at INFO level and all solver output.
+        Also enables browser plotting for plotly with showing plots per default
+        """
+        cls.Logging.console = True
+        cls.Logging.level = 'INFO'
+        cls.Solving.log_to_console = True
+        cls.Solving.log_main_results = True
+        cls.browser_plotting()
+        cls.apply()
+        return cls
+
+    @classmethod
+    def browser_plotting(cls) -> type[CONFIG]:
+        """Configure for interactive usage with plotly to open plots in browser.
+
+        Sets plotly.io.renderers.default = 'browser'. Useful for running examples
+        and viewing interactive plots. Does NOT modify CONFIG.Plotting settings.
+        """
+        cls.Plotting.default_show = True
+        cls.apply()
+
+        import plotly.io as pio
+
+        pio.renderers.default = 'browser'
+
+        return cls
+
 
 class MultilineFormatter(logging.Formatter):
     """Formatter that handles multi-line messages with consistent prefixes.
