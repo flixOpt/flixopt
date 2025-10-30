@@ -28,6 +28,7 @@ class TestConfigModule:
         assert CONFIG.Logging.file is None
         assert CONFIG.Logging.rich is False
         assert CONFIG.Logging.console is False
+        assert CONFIG.Logging.solver_to_console is True
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
         assert CONFIG.Modeling.big_binary_bound == 100_000
@@ -104,6 +105,7 @@ class TestConfigModule:
         assert config_dict['logging']['console'] is True
         assert config_dict['logging']['file'] is None
         assert config_dict['logging']['rich'] is False
+        assert config_dict['logging']['solver_to_console'] is True
         assert 'modeling' in config_dict
         assert config_dict['modeling']['big'] == 10_000_000
 
@@ -423,6 +425,7 @@ modeling:
         CONFIG.Logging.console = False
         CONFIG.Logging.rich = True
         CONFIG.Logging.file = '/tmp/test.log'
+        CONFIG.Logging.solver_to_console = False
         CONFIG.Modeling.big = 99999999
         CONFIG.Modeling.epsilon = 1e-8
         CONFIG.Modeling.big_binary_bound = 500000
@@ -436,6 +439,7 @@ modeling:
         assert CONFIG.Logging.console is False
         assert CONFIG.Logging.rich is False
         assert CONFIG.Logging.file is None
+        assert CONFIG.Logging.solver_to_console is True
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
         assert CONFIG.Modeling.big_binary_bound == 100_000
@@ -457,6 +461,7 @@ modeling:
         CONFIG.Logging.file = '/tmp/test.log'
         CONFIG.Logging.rich = True
         CONFIG.Logging.console = True
+        CONFIG.Logging.solver_to_console = False
         CONFIG.Modeling.big = 999999
         CONFIG.Modeling.epsilon = 1e-10
         CONFIG.Modeling.big_binary_bound = 999999
@@ -464,6 +469,7 @@ modeling:
 
         # Verify values are actually different from defaults
         assert CONFIG.Logging.level != _DEFAULTS['logging']['level']
+        assert CONFIG.Logging.solver_to_console != _DEFAULTS['logging']['solver_to_console']
         assert CONFIG.Modeling.big != _DEFAULTS['modeling']['big']
 
         # Now reset
@@ -474,6 +480,7 @@ modeling:
         assert CONFIG.Logging.file == _DEFAULTS['logging']['file']
         assert CONFIG.Logging.rich == _DEFAULTS['logging']['rich']
         assert CONFIG.Logging.console == _DEFAULTS['logging']['console']
+        assert CONFIG.Logging.solver_to_console == _DEFAULTS['logging']['solver_to_console']
         assert CONFIG.Modeling.big == _DEFAULTS['modeling']['big']
         assert CONFIG.Modeling.epsilon == _DEFAULTS['modeling']['epsilon']
         assert CONFIG.Modeling.big_binary_bound == _DEFAULTS['modeling']['big_binary_bound']
