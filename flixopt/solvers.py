@@ -19,16 +19,16 @@ class _Solver:
     Abstract base class for solvers.
 
     Args:
-        mip_gap: Acceptable relative optimality gap in [0.0, 1.0].
-        time_limit_seconds: Time limit in seconds.
-        log_to_console: If False, no output to console.
+        mip_gap: Acceptable relative optimality gap in [0.0, 1.0]. Defaults to CONFIG.Solving.mip_gap.
+        time_limit_seconds: Time limit in seconds. Defaults to CONFIG.Solving.time_limit_seconds.
+        log_to_console: If False, no output to console. Defaults to CONFIG.Solving.log_to_console.
         extra_options: Additional solver options merged into `options`.
     """
 
     name: ClassVar[str]
-    mip_gap: float
-    time_limit_seconds: int
-    log_to_console: bool = field(default_factory=lambda: CONFIG.Logging.solver_to_console)
+    mip_gap: float = field(default_factory=lambda: CONFIG.Solving.mip_gap)
+    time_limit_seconds: int = field(default_factory=lambda: CONFIG.Solving.time_limit_seconds)
+    log_to_console: bool = field(default_factory=lambda: CONFIG.Solving.log_to_console)
     extra_options: dict[str, Any] = field(default_factory=dict)
 
     @property

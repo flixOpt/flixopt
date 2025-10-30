@@ -228,7 +228,7 @@ class FullCalculation(Calculation):
         return self
 
     def solve(
-        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = True
+        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool | None = None
     ) -> FullCalculation:
         t_start = timeit.default_timer()
 
@@ -253,7 +253,7 @@ class FullCalculation(Calculation):
             )
 
         # Log the formatted output
-        if log_main_results:
+        if log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results:
             logger.info(
                 f'{" Main Results ":#^80}\n'
                 + yaml.dump(

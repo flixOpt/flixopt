@@ -28,7 +28,6 @@ _DEFAULTS = MappingProxyType(
                 'file': None,
                 'rich': False,
                 'console': False,
-                'solver_to_console': True,
                 'max_file_size': 10_485_760,  # 10MB
                 'backup_count': 5,
                 'date_format': '%Y-%m-%d %H:%M:%S',
@@ -64,6 +63,14 @@ _DEFAULTS = MappingProxyType(
                 'default_qualitative_colorscale': 'plotly',
             }
         ),
+        'solving': MappingProxyType(
+            {
+                'mip_gap': 0.01,
+                'time_limit_seconds': 300,
+                'log_to_console': True,
+                'log_main_results': True,
+            }
+        ),
     }
 )
 
@@ -76,6 +83,8 @@ class CONFIG:
     Attributes:
         Logging: Logging configuration.
         Modeling: Optimization modeling parameters.
+        Solving: Solver configuration and default parameters.
+        Plotting: Plotting configuration.
         config_name: Configuration name.
 
     Examples:
@@ -92,6 +101,9 @@ class CONFIG:
           level: DEBUG
           console: true
           file: app.log
+        solving:
+          mip_gap: 0.001
+          time_limit_seconds: 600
         ```
     """
 
@@ -105,7 +117,6 @@ class CONFIG:
             file: Log file path for file logging.
             console: Enable console output.
             rich: Use Rich library for enhanced output.
-            solver_to_console: Enable solver output to console.
             max_file_size: Max file size before rotation.
             backup_count: Number of backup files to keep.
             date_format: Date/time format string.
@@ -137,7 +148,6 @@ class CONFIG:
         file: str | None = _DEFAULTS['logging']['file']
         rich: bool = _DEFAULTS['logging']['rich']
         console: bool | Literal['stdout', 'stderr'] = _DEFAULTS['logging']['console']
-        solver_to_console: bool = _DEFAULTS['logging']['solver_to_console']
         max_file_size: int = _DEFAULTS['logging']['max_file_size']
         backup_count: int = _DEFAULTS['logging']['backup_count']
         date_format: str = _DEFAULTS['logging']['date_format']
@@ -197,6 +207,30 @@ class CONFIG:
         epsilon: float = _DEFAULTS['modeling']['epsilon']
         big_binary_bound: int = _DEFAULTS['modeling']['big_binary_bound']
 
+    class Solving:
+        """Solver configuration and default parameters.
+
+        Attributes:
+            mip_gap: Default MIP gap tolerance for solver convergence.
+            time_limit_seconds: Default time limit in seconds for solver runs.
+            log_to_console: Whether solver should output to console.
+            log_main_results: Whether to log main results after solving.
+
+        Examples:
+            ```python
+            # Set tighter convergence and longer timeout
+            CONFIG.Solving.mip_gap = 0.001
+            CONFIG.Solving.time_limit_seconds = 600
+            CONFIG.Solving.log_to_console = False
+            CONFIG.apply()
+            ```
+        """
+
+        mip_gap: float = _DEFAULTS['solving']['mip_gap']
+        time_limit_seconds: int = _DEFAULTS['solving']['time_limit_seconds']
+        log_to_console: bool = _DEFAULTS['solving']['log_to_console']
+        log_main_results: bool = _DEFAULTS['solving']['log_main_results']
+
     class Plotting:
         """Plotting configuration.
 
@@ -248,6 +282,12 @@ class CONFIG:
 
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
+
+        for key, value in _DEFAULTS['solving'].items():
+            setattr(cls.Solving, key, value)
+
+        for key, value in _DEFAULTS['plotting'].items():
+            setattr(cls.Plotting, key, value)
 
         cls.config_name = _DEFAULTS['config_name']
         cls.apply()
@@ -332,6 +372,12 @@ class CONFIG:
             elif key == 'modeling' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     setattr(cls.Modeling, nested_key, nested_value)
+            elif key == 'solving' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Solving, nested_key, nested_value)
+            elif key == 'plotting' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Plotting, nested_key, nested_value)
             elif hasattr(cls, key):
                 setattr(cls, key, value)
 
@@ -349,7 +395,6 @@ class CONFIG:
                 'file': cls.Logging.file,
                 'rich': cls.Logging.rich,
                 'console': cls.Logging.console,
-                'solver_to_console': cls.Logging.solver_to_console,
                 'max_file_size': cls.Logging.max_file_size,
                 'backup_count': cls.Logging.backup_count,
                 'date_format': cls.Logging.date_format,
@@ -369,6 +414,12 @@ class CONFIG:
                 'big': cls.Modeling.big,
                 'epsilon': cls.Modeling.epsilon,
                 'big_binary_bound': cls.Modeling.big_binary_bound,
+            },
+            'solving': {
+                'mip_gap': cls.Solving.mip_gap,
+                'time_limit_seconds': cls.Solving.time_limit_seconds,
+                'log_to_console': cls.Solving.log_to_console,
+                'log_main_results': cls.Solving.log_main_results,
             },
             'plotting': {
                 'default_show': cls.Plotting.default_show,
