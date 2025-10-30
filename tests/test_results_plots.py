@@ -28,7 +28,7 @@ def plotting_engine(request):
 
 @pytest.fixture(
     params=[
-        'viridis',  # Test string colormap
+        'turbo',  # Test string colormap
         ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'],  # Test color list
         {
             'Boiler(Q_th)|flow_rate': '#ff0000',
@@ -48,18 +48,29 @@ def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
 
     results['Boiler'].plot_node_balance(engine=plotting_engine, save=save, show=show, colors=color_spec)
 
-    results.plot_heatmap(
-        'Speicher(Q_th_load)|flow_rate',
-        heatmap_timeframes='D',
-        heatmap_timesteps_per_frame='h',
-        color_map='viridis',  # Note: heatmap only accepts string colormap
-        save=show,
-        show=save,
-        engine=plotting_engine,
-    )
+    # Matplotlib doesn't support faceting/animation, so disable them for matplotlib engine
+    heatmap_kwargs = {
+        'reshape_time': ('D', 'h'),
+        'colors': 'turbo',  # Note: heatmap only accepts string colormap
+        'save': save,
+        'show': show,
+        'engine': plotting_engine,
+    }
+    if plotting_engine == 'matplotlib':
+        heatmap_kwargs['facet_by'] = None
+        heatmap_kwargs['animate_by'] = None
+
+    results.plot_heatmap('Speicher(Q_th_load)|flow_rate', **heatmap_kwargs)
 
     results['Speicher'].plot_node_balance_pie(engine=plotting_engine, save=save, show=show, colors=color_spec)
-    results['Speicher'].plot_charge_state(engine=plotting_engine)
+
+    # Matplotlib doesn't support faceting/animation for plot_charge_state, and 'area' mode
+    charge_state_kwargs = {'engine': plotting_engine}
+    if plotting_engine == 'matplotlib':
+        charge_state_kwargs['facet_by'] = None
+        charge_state_kwargs['animate_by'] = None
+        charge_state_kwargs['mode'] = 'stacked_bar'  # 'area' not supported by matplotlib
+    results['Speicher'].plot_charge_state(**charge_state_kwargs)
 
     plt.close('all')
 

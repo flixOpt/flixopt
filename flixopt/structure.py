@@ -6,14 +6,17 @@ These classes are not directly used by the end user, but are used by other modul
 from __future__ import annotations
 
 import inspect
-import json
 import logging
+import re
 from dataclasses import dataclass
+from difflib import get_close_matches
 from io import StringIO
 from typing import (
     TYPE_CHECKING,
     Any,
+    Generic,
     Literal,
+    TypeVar,
 )
 
 import linopy
@@ -169,7 +172,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             },
             'Effects': {
                 effect.label_full: effect.submodel.results_structure()
-                for effect in sorted(self.flow_system.effects, key=lambda effect: effect.label_full.upper())
+                for effect in sorted(self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper())
             },
             'Flows': {
                 flow.label_full: flow.submodel.results_structure()
@@ -243,9 +246,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         }
 
         # Format sections with headers and underlines
-        formatted_sections = []
-        for section_header, section_content in sections.items():
-            formatted_sections.append(f'{section_header}\n{"-" * len(section_header)}\n{section_content}')
+        formatted_sections = fx_io.format_sections_with_headers(sections)
 
         title = f'FlowSystemModel ({self.type})'
         all_sections = '\n'.join(formatted_sections)
@@ -506,6 +507,33 @@ class Interface:
             class_name = class_name or self.__class__.__name__
             unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
             raise TypeError(f'{class_name}.__init__() got unexpected keyword argument(s): {unexpected_params}')
+
+    @staticmethod
+    def _has_value(param: Any) -> bool:
+        """Check if a parameter has a meaningful value.
+
+        Args:
+            param: The parameter to check.
+
+        Returns:
+            False for:
+                - None
+                - Empty collections (dict, list, tuple, set, frozenset)
+
+            True for all other values, including:
+                - Non-empty collections
+                - xarray DataArrays (even if they contain NaN/empty data)
+                - Scalar values (0, False, empty strings, etc.)
+                - NumPy arrays (even if empty - use .size to check those explicitly)
+        """
+        if param is None:
+            return False
+
+        # Check for empty collections (but not strings, arrays, or DataArrays)
+        if isinstance(param, (dict, list, tuple, set, frozenset)) and len(param) == 0:
+            return False
+
+        return True
 
     @classmethod
     def _resolve_dataarray_reference(
@@ -788,47 +816,13 @@ class Interface:
         try:
             # Use the stats mode for JSON export (cleaner output)
             data = self.get_structure(clean=True, stats=True)
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
+            fx_io.save_json(data, path)
         except Exception as e:
             raise OSError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
 
     def __repr__(self):
         """Return a detailed string representation for debugging."""
-        try:
-            # Get the constructor arguments and their current values
-            init_signature = inspect.signature(self.__init__)
-            init_args = init_signature.parameters
-
-            # Create a dictionary with argument names and their values, with better formatting
-            args_parts = []
-            for name in init_args:
-                if name == 'self':
-                    continue
-                value = getattr(self, name, None)
-                # Truncate long representations
-                value_repr = repr(value)
-                if len(value_repr) > 50:
-                    value_repr = value_repr[:47] + '...'
-                args_parts.append(f'{name}={value_repr}')
-
-            args_str = ', '.join(args_parts)
-            return f'{self.__class__.__name__}({args_str})'
-        except Exception:
-            # Fallback if introspection fails
-            return f'{self.__class__.__name__}(<repr_failed>)'
-
-    def __str__(self):
-        """Return a user-friendly string representation."""
-        try:
-            data = self.get_structure(clean=True, stats=True)
-            with StringIO() as output_buffer:
-                console = Console(file=output_buffer, width=1000)  # Adjust width as needed
-                console.print(Pretty(data, expand_all=True, indent_guides=True))
-                return output_buffer.getvalue()
-        except Exception:
-            # Fallback if structure generation fails
-            return f'{self.__class__.__name__} instance'
+        return fx_io.build_repr_from_init(self, excluded_params={'self', 'label', 'kwargs'})
 
     def copy(self) -> Interface:
         """
@@ -878,15 +872,16 @@ class Element(Interface):
     def label_full(self) -> str:
         return self.label
 
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return fx_io.build_repr_from_init(self, excluded_params={'self', 'label', 'kwargs'}, skip_default_size=True)
+
     @staticmethod
     def _valid_label(label: str) -> str:
-        """
-        Checks if the label is valid. If not, it is replaced by the default label
+        """Checks if the label is valid. If not, it is replaced by the default label.
 
-        Raises
-        ------
-        ValueError
-            If the label is not valid
+        Raises:
+            ValueError: If the label is not valid.
         """
         not_allowed = ['(', ')', '|', '->', '\\', '-slash-']  # \\ is needed to check for \
         if any([sign in label for sign in not_allowed]):
@@ -898,6 +893,329 @@ class Element(Interface):
             logger.error(f'Label "{label}" ends with a space. This will be removed.')
             return label.rstrip()
         return label
+
+
+# Precompiled regex pattern for natural sorting
+_NATURAL_SPLIT = re.compile(r'(\d+)')
+
+
+def _natural_sort_key(text):
+    """Sort key for natural ordering (e.g., bus1, bus2, bus10 instead of bus1, bus10, bus2)."""
+    return [int(c) if c.isdigit() else c.lower() for c in _NATURAL_SPLIT.split(text)]
+
+
+# Type variable for containers
+T = TypeVar('T')
+
+
+class ContainerMixin(dict[str, T]):
+    """
+    Mixin providing shared container functionality with nice repr and error messages.
+
+    Subclasses must implement _get_label() to extract the label from elements.
+    """
+
+    def __init__(
+        self,
+        elements: list[T] | dict[str, T] | None = None,
+        element_type_name: str = 'elements',
+    ):
+        """
+        Args:
+            elements: Initial elements to add (list or dict)
+            element_type_name: Name for display (e.g., 'components', 'buses')
+        """
+        super().__init__()
+        self._element_type_name = element_type_name
+
+        if elements is not None:
+            if isinstance(elements, dict):
+                for element in elements.values():
+                    self.add(element)
+            else:
+                for element in elements:
+                    self.add(element)
+
+    def _get_label(self, element: T) -> str:
+        """
+        Extract label from element. Must be implemented by subclasses.
+
+        Args:
+            element: Element to get label from
+
+        Returns:
+            Label string
+        """
+        raise NotImplementedError('Subclasses must implement _get_label()')
+
+    def add(self, element: T) -> None:
+        """Add an element to the container."""
+        label = self._get_label(element)
+        if label in self:
+            raise ValueError(
+                f'Element with label "{label}" already exists in {self._element_type_name}. '
+                f'Each element must have a unique label.'
+            )
+        self[label] = element
+
+    def __setitem__(self, label: str, element: T) -> None:
+        """Set element with validation."""
+        element_label = self._get_label(element)
+        if label != element_label:
+            raise ValueError(
+                f'Key "{label}" does not match element label "{element_label}". '
+                f'Use the correct label as key or use .add() method.'
+            )
+        super().__setitem__(label, element)
+
+    def __getitem__(self, label: str) -> T:
+        """
+        Get element by label with helpful error messages.
+
+        Args:
+            label: Label of the element to retrieve
+
+        Returns:
+            The element with the given label
+
+        Raises:
+            KeyError: If element is not found, with suggestions for similar labels
+        """
+        try:
+            return super().__getitem__(label)
+        except KeyError:
+            # Provide helpful error with close matches suggestions
+            suggestions = get_close_matches(label, self.keys(), n=3, cutoff=0.6)
+            error_msg = f'Element "{label}" not found in {self._element_type_name}.'
+            if suggestions:
+                error_msg += f' Did you mean: {", ".join(suggestions)}?'
+            else:
+                available = list(self.keys())
+                if len(available) <= 5:
+                    error_msg += f' Available: {", ".join(available)}'
+                else:
+                    error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
+            raise KeyError(error_msg) from None
+
+    def __repr__(self) -> str:
+        """Return a string representation similar to linopy.model.Variables."""
+        count = len(self)
+        title = f'{self._element_type_name.capitalize()} ({count} item{"s" if count != 1 else ""})'
+
+        if not self:
+            r = fx_io.format_title_with_underline(title)
+            r += '<empty>\n'
+        else:
+            r = fx_io.format_title_with_underline(title)
+            for name in sorted(self.keys(), key=_natural_sort_key):
+                r += f' * {name}\n'
+
+        return r
+
+
+class ElementContainer(ContainerMixin[T]):
+    """
+    Container for Element objects (Component, Bus, Flow, Effect).
+
+    Uses element.label_full for keying.
+    """
+
+    def _get_label(self, element: T) -> str:
+        """Extract label_full from Element."""
+        return element.label_full
+
+
+class ResultsContainer(ContainerMixin[T]):
+    """
+    Container for Results objects (ComponentResults, BusResults, etc).
+
+    Uses element.label for keying.
+    """
+
+    def _get_label(self, element: T) -> str:
+        """Extract label from Results object."""
+        return element.label
+
+
+T_element = TypeVar('T_element')
+
+
+class CompositeContainerMixin(Generic[T_element]):
+    """
+    Mixin providing unified dict-like access across multiple typed containers.
+
+    This mixin enables classes that manage multiple containers (e.g., components,
+    buses, effects, flows) to provide a unified interface for accessing elements
+    across all containers, as if they were a single collection.
+
+    Type Parameter:
+        T_element: The type of elements stored in the containers. Can be a union type
+            for containers holding multiple types (e.g., 'ComponentResults | BusResults').
+
+    Key Features:
+        - Dict-like access: `obj['element_name']` searches all containers
+        - Iteration: `for label in obj:` iterates over all elements
+        - Membership: `'element' in obj` checks across all containers
+        - Standard dict methods: keys(), values(), items()
+        - Grouped display: Formatted repr showing elements by type
+        - Type hints: Full IDE and type checker support
+
+    Subclasses must implement:
+        _get_container_groups() -> dict[str, dict]:
+            Returns a dictionary mapping group names (e.g., 'Components', 'Buses')
+            to container dictionaries. Containers are displayed in the order returned.
+
+    Example:
+        ```python
+        class MySystem(CompositeContainerMixin[Component | Bus]):
+            def __init__(self):
+                self.components = {'Boiler': Component(...), 'CHP': Component(...)}
+                self.buses = {'Heat': Bus(...), 'Power': Bus(...)}
+
+            def _get_container_groups(self):
+                return {
+                    'Components': self.components,
+                    'Buses': self.buses,
+                }
+
+
+        system = MySystem()
+        comp = system['Boiler']  # Type: Component | Bus (with proper IDE support)
+        'Heat' in system  # True
+        labels = system.keys()  # Type: list[str]
+        elements = system.values()  # Type: list[Component | Bus]
+        ```
+
+    Integration with ContainerMixin:
+        This mixin is designed to work alongside ContainerMixin-based containers
+        (ElementContainer, ResultsContainer) by aggregating them into a unified
+        interface while preserving their individual functionality.
+    """
+
+    def _get_container_groups(self) -> dict[str, ContainerMixin[Any]]:
+        """
+        Return ordered dict of container groups to aggregate.
+
+        Returns:
+            Dictionary mapping group names to container objects (e.g., ElementContainer, ResultsContainer).
+            Group names should be capitalized (e.g., 'Components', 'Buses').
+            Order determines display order in __repr__.
+
+        Example:
+            ```python
+            return {
+                'Components': self.components,
+                'Buses': self.buses,
+                'Effects': self.effects,
+            }
+            ```
+        """
+        raise NotImplementedError('Subclasses must implement _get_container_groups()')
+
+    def __getitem__(self, key: str) -> T_element:
+        """
+        Get element by label, searching all containers.
+
+        Args:
+            key: Element label to find
+
+        Returns:
+            The element with the given label
+
+        Raises:
+            KeyError: If element not found, with helpful suggestions
+        """
+        # Search all containers in order
+        for container in self._get_container_groups().values():
+            if key in container:
+                return container[key]
+
+        # Element not found - provide helpful error
+        all_elements = {}
+        for container in self._get_container_groups().values():
+            all_elements.update(container)
+
+        suggestions = get_close_matches(key, all_elements.keys(), n=3, cutoff=0.6)
+        error_msg = f'Element "{key}" not found.'
+
+        if suggestions:
+            error_msg += f' Did you mean: {", ".join(suggestions)}?'
+        else:
+            available = list(all_elements.keys())
+            if len(available) <= 5:
+                error_msg += f' Available: {", ".join(available)}'
+            else:
+                error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
+
+        raise KeyError(error_msg)
+
+    def __iter__(self):
+        """Iterate over all element labels across all containers."""
+        for container in self._get_container_groups().values():
+            yield from container.keys()
+
+    def __len__(self) -> int:
+        """Return total count of elements across all containers."""
+        return sum(len(container) for container in self._get_container_groups().values())
+
+    def __contains__(self, key: str) -> bool:
+        """Check if element exists in any container."""
+        return any(key in container for container in self._get_container_groups().values())
+
+    def keys(self) -> list[str]:
+        """Return all element labels across all containers."""
+        return list(self)
+
+    def values(self) -> list[T_element]:
+        """Return all element objects across all containers."""
+        vals = []
+        for container in self._get_container_groups().values():
+            vals.extend(container.values())
+        return vals
+
+    def items(self) -> list[tuple[str, T_element]]:
+        """Return (label, element) pairs for all elements."""
+        items = []
+        for container in self._get_container_groups().values():
+            items.extend(container.items())
+        return items
+
+    def _format_grouped_containers(self, title: str | None = None) -> str:
+        """
+        Format containers as grouped string representation using each container's repr.
+
+        Args:
+            title: Optional title for the representation. If None, no title is shown.
+
+        Returns:
+            Formatted string with groups and their elements.
+            Empty groups are automatically hidden.
+
+        Example output:
+            ```
+            Components (1 item)
+            -------------------
+             * Boiler
+
+            Buses (2 items)
+            ---------------
+             * Heat
+             * Power
+            ```
+        """
+        parts = []
+
+        if title:
+            parts.append(fx_io.format_title_with_underline(title))
+
+        container_groups = self._get_container_groups()
+        for container in container_groups.values():
+            if container:  # Only show non-empty groups
+                if parts:  # Add spacing between sections
+                    parts.append('')
+                parts.append(repr(container).rstrip('\n'))
+
+        return '\n'.join(parts)
 
 
 class Submodel(SubmodelsMixin):
@@ -1061,9 +1379,7 @@ class Submodel(SubmodelsMixin):
         }
 
         # Format sections with headers and underlines
-        formatted_sections = []
-        for section_header, section_content in sections.items():
-            formatted_sections.append(f'{section_header}\n{"-" * len(section_header)}\n{section_content}')
+        formatted_sections = fx_io.format_sections_with_headers(sections)
 
         model_string = f'Submodel "{self.label_of_model}":'
         all_sections = '\n'.join(formatted_sections)
@@ -1107,7 +1423,7 @@ class Submodels:
     def __repr__(self) -> str:
         """Simple representation of the submodels collection."""
         if not self.data:
-            return 'flixopt.structure.Submodels:\n----------------------------\n <empty>\n'
+            return fx_io.format_title_with_underline('flixopt.structure.Submodels') + ' <empty>\n'
 
         total_vars = sum(len(submodel.variables) for submodel in self.data.values())
         total_cons = sum(len(submodel.constraints) for submodel in self.data.values())
@@ -1115,18 +1431,15 @@ class Submodels:
         title = (
             f'flixopt.structure.Submodels ({total_vars} vars, {total_cons} constraints, {len(self.data)} submodels):'
         )
-        underline = '-' * len(title)
 
-        if not self.data:
-            return f'{title}\n{underline}\n <empty>\n'
-        sub_models_string = ''
+        result = fx_io.format_title_with_underline(title)
         for name, submodel in self.data.items():
             type_name = submodel.__class__.__name__
             var_count = len(submodel.variables)
             con_count = len(submodel.constraints)
-            sub_models_string += f'\n * {name} [{type_name}] ({var_count}v/{con_count}c)'
+            result += f' * {name} [{type_name}] ({var_count}v/{con_count}c)\n'
 
-        return f'{title}\n{underline}{sub_models_string}\n'
+        return result
 
     def items(self) -> ItemsView[str, Submodel]:
         return self.data.items()

@@ -1,4 +1,4 @@
-# Options:
+# flixOpt Documentation Configuration
 # https://mkdocstrings.github.io/python/usage/configuration/docstrings/
 # https://squidfunk.github.io/mkdocs-material/setup/
 
@@ -11,9 +11,9 @@ repo_name: flixOpt/flixopt
 nav:
   - Home: index.md
   - User Guide:
-    - user-guide/index.md
-    - Migration to v3.0.0: user-guide/migration-guide-v3.md
     - Getting Started: getting-started.md
+    - Core Concepts: user-guide/core-concepts.md
+    - Migration to v3.0.0: user-guide/migration-guide-v3.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
       - Dimensions: user-guide/mathematical-notation/dimensions.md
@@ -39,125 +39,281 @@ nav:
   - API Reference: api-reference/
   - Release Notes: changelog/
 
-
 theme:
   name: material
+  language: en
+
   palette:
-    # Light mode
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: teal
-      accent: blue
+      accent: cyan
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-    # Dark mode
+
+    # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: teal  # Can be different from light mode
-      accent: blue
+      primary: teal
+      accent: cyan
       toggle:
         icon: material/brightness-4
-        name: Switch to light mode
+        name: Switch to system preference
+
+  font:
+    text: Inter  # Modern, readable font
+    code: Fira Code  # Beautiful code font with ligatures
+
   logo: images/flixopt-icon.svg
   favicon: images/flixopt-icon.svg
+
   icon:
     repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+    annotation: material/plus-circle
+
   features:
+    # Navigation
     - navigation.instant
     - navigation.instant.progress
+    - navigation.instant.prefetch
     - navigation.tracking
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
+    - navigation.expand  # Expand navigation by default
+    - navigation.path  # Show breadcrumb path
+    - navigation.prune  # Only render visible navigation
+    - navigation.indexes
     - navigation.top
     - navigation.footer
+
+    # Table of contents
     - toc.follow
-    - navigation.indexes
+    - toc.integrate  # Integrate TOC into navigation (optional)
+
+    # Search
     - search.suggest
     - search.highlight
+    - search.share
+
+    # Content
     - content.action.edit
     - content.action.view
     - content.code.copy
+    - content.code.select
     - content.code.annotate
     - content.tooltips
-    - navigation.footer.version
+    - content.tabs.link  # Link content tabs across pages
+
+    # Header
+    - announce.dismiss  # Allow dismissing announcements
 
 markdown_extensions:
+  # Content formatting
+  - abbr
   - admonition
-  - markdown_include.include:
-      base_path: docs
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Anchor link to this section
+      toc_depth: 3
+
+  # Code blocks
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
+      auto_title: true
   - pymdownx.inlinehilite
-  - pymdownx.superfences
-  - attr_list
-  - abbr
-  - md_in_html
-  - footnotes
-  - tables
+  - pymdownx.snippets:
+      base_path: ..
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+  # Enhanced content
+  - pymdownx.details
   - pymdownx.tabbed:
       alternate_style: true
+      combine_header_slug: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+  # Typography
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.smartsymbols
+  - pymdownx.keys
+
+  # Math
   - pymdownx.arithmatex:
       generic: true
+
+  # Icons & emojis
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - pymdownx.snippets:
-      base_path: ..
+      options:
+        custom_icons:
+          - overrides/.icons
+
+  # Legacy support
+  - markdown_include.include:
+      base_path: docs
 
 plugins:
-  - search  # Enables the search functionality in the documentation
-  - table-reader  # Allows including tables from external files
+  - search:
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+
+  - table-reader
+
   - include-markdown
+
   - mike:
+      alias_type: symlink
+      redirect_template: null
+      deploy_prefix: ''
+      canonical_version: null
       version_selector: true
+      css_dir: css
+      javascript_dir: js
+
   - literate-nav:
       nav_file: SUMMARY.md
+      implicit_index: true
+
   - gen-files:
       scripts:
-      - scripts/gen_ref_pages.py
-  - mkdocstrings:  # Handles automatic API documentation generation
-     default_handler: python  # Sets Python as the default language
-     handlers:
-       python:  # Configuration for Python code documentation
-         options:
-           docstring_style: google  # Sets google as the docstring style
-           modernize_annotations: true  # Improves type annotations
-           merge_init_into_class: true  # Promotes constructor parameters to class-level documentation
-           docstring_section_style: table  # Renders parameter sections as a table (also: list, spacy)
+        - scripts/gen_ref_pages.py
 
-           members_order: source  # Orders members as they appear in the source code
-           inherited_members: false  # Include members inherited from parent classes
-           show_if_no_docstring: false  # Documents objects even if they don't have docstrings
+  - mkdocstrings:
+      enabled: !ENV [ENABLE_MKDOCSTRINGS, true]
+      default_handler: python
+      handlers:
+        python:
+          paths: [.]
+          import:
+            - https://docs.python.org/3/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://pandas.pydata.org/docs/objects.inv
+          options:
+            # Docstring parsing
+            docstring_style: google
+            docstring_section_style: table
 
-           group_by_category: true
-           heading_level: 1  # Sets the base heading level for documented objects
-           line_length: 80
-           filters: ["!^_", "^__init__$"]
-           show_root_heading: true  # whether the documented object's name should be displayed as a heading at the beginning of its documentation
-           show_source: false  # Shows the source code implementation from documentation
-           show_object_full_path: false  # Displays simple class names instead of full import paths
-           show_docstring_attributes: true  # Shows class attributes in the documentation
-           show_category_heading: true  # Displays category headings (Methods, Attributes, etc.) for organization
-           show_signature: true  # Shows method signatures with parameters
-           show_signature_annotations: true  # Includes type annotations in the signatures when available
-           show_root_toc_entry: false  # Whether to show a link to the root of the documentation in the sidebar
-           separate_signature: true  # Displays signatures separate from descriptions for cleaner layout
+            # Member ordering and filtering
+            members_order: source
+            inherited_members: false
+            show_if_no_docstring: false
+            filters: ["!^_", "^__init__$"]
+            group_by_category: true
 
-           extra:
-             infer_type_annotations: true  # Uses Python type hints to supplement docstring information
+            # Headings and structure
+            heading_level: 1
+            show_root_heading: true
+            show_root_toc_entry: false
+            show_category_heading: true
+
+            # Signatures
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+            line_length: 80
+
+            # Source and paths
+            show_source: false
+            show_object_full_path: false
+
+            # Attributes and annotations
+            show_docstring_attributes: true
+            modernize_annotations: true
+            merge_init_into_class: true
+
+            # Improved type hints
+            annotations_path: brief
+
+  # Optional: Add git info
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+      fallback_to_build_date: true
+
+  # Optional: Add better navigation
+  - tags:
+      tags_file: tags.md
+
+  # Optional: Minify HTML in production
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      htmlmin_opts:
+        remove_comments: true
 
 extra:
   version:
     provider: mike
     default: latest
+    alias: true
+
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/flixOpt/flixopt
+      name: flixOpt on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/flixopt/
+      name: flixOpt on PyPI
+
+  analytics:
+    provider: google
+    property: !ENV GOOGLE_ANALYTICS_KEY
+    feedback:
+      title: Was this page helpful?
+      ratings:
+        - icon: material/emoticon-happy-outline
+          name: This page was helpful
+          data: 1
+          note: >-
+            Thanks for your feedback!
+        - icon: material/emoticon-sad-outline
+          name: This page could be improved
+          data: 0
+          note: >-
+            Thanks for your feedback! Help us improve by
+            <a href="https://github.com/flixOpt/flixopt/issues/new" target="_blank" rel="noopener">opening an issue</a>.
+
+  status:
+    new: Recently added
+    deprecated: Deprecated
+
+extra_css:
+  - stylesheets/extra.css
 
 extra_javascript:
-  - javascripts/mathjax.js  # Custom MathJax 3 CDN Configuration
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js  #MathJax 3 CDN
-  - https://polyfill.io/v3/polyfill.min.js?features=es6  #Support for older browsers
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
 
 watch:
   - flixopt
+  - docs

@@ -24,7 +24,6 @@ import yaml
 from tqdm import tqdm
 
 from . import io as fx_io
-from . import utils as utils
 from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
@@ -115,7 +114,7 @@ class Calculation:
                     'periodic': effect.submodel.periodic.total.solution.values,
                     'total': effect.submodel.total.solution.values,
                 }
-                for effect in self.flow_system.effects
+                for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
             },
             'Invest-Decisions': {
                 'Invested': {
@@ -146,7 +145,7 @@ class Calculation:
             ],
         }
 
-        return utils.round_nested_floats(main_results)
+        return fx_io.round_nested_floats(main_results)
 
     @property
     def summary(self):
@@ -257,7 +256,7 @@ class FullCalculation(Calculation):
             logger.info(
                 f'{" Main Results ":#^80}\n'
                 + yaml.dump(
-                    utils.round_nested_floats(self.main_results),
+                    self.main_results,
                     default_flow_style=False,
                     sort_keys=False,
                     allow_unicode=True,
@@ -614,7 +613,7 @@ class SegmentedCalculation(Calculation):
                     )
 
             # Redirect solver stdout to null to avoid cluttering the output
-            with utils.suppress_output():
+            with fx_io.suppress_output():
                 calculation.solve(
                     solver,
                     log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',

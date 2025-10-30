@@ -112,9 +112,12 @@ if __name__ == '__main__':
     calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
     # --- Analyze Results ---
+    # Colors are automatically assigned using default colormap
+    # Optional: Configure custom colors with
+    calculation.results.setup_colors()
     calculation.results['Fernwärme'].plot_node_balance_pie()
     calculation.results['Fernwärme'].plot_node_balance()
-    calculation.results['Storage'].plot_node_balance()
+    calculation.results['Storage'].plot_charge_state()
     calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # Convert the results for the storage component to a dataframe and display

@@ -1,0 +1,35 @@
+name: 📋 Task
+description: Track work items, refactoring, cleanup, or general todos
+title: "[TASK] "
+labels: ["type: task"]
+body:
+- type: markdown
+  attributes:
+    value: |
+      **Quick guide**: Describe what needs to be done.
+      Use this for refactoring, cleanup, documentation, or general work items.
+
+- type: textarea
+  id: description
+  attributes:
+    label: What needs to be done?
+    description: Describe the task
+  validations:
+    required: true
+
+- type: textarea
+  id: details
+  attributes:
+    label: Details
+    description: Context, steps, requirements, or anything else relevant
+    placeholder: |
+      - Step 1
+      - Step 2
+      - Related to: #123
+
+- type: textarea
+  id: acceptance
+  attributes:
+    label: Done when...
+    description: What defines this task as complete?
+    placeholder: "Tests pass, code is clean, docs updated..."

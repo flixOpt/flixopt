@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -712,6 +712,8 @@ class InvestParameters(Interface):
             Combinable with effects_of_investment and effects_of_investment_per_size.
         effects_of_retirement: Costs incurred if NOT investing (demolition, penalties).
             Dict: {'effect_name': value}.
+        linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
+            For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
 
     Deprecated Args:
         fix_effects: **Deprecated**. Use `effects_of_investment` instead.
@@ -724,7 +726,6 @@ class InvestParameters(Interface):
             Will be removed in version 4.0.
         optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
             Will be removed in version 4.0.
-        linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -963,6 +964,11 @@ class InvestParameters(Interface):
                 raise TypeError(
                     f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
                 )
+            if flow_system.periods is None:
+                raise ValueError(
+                    f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
+                    f'Please define periods in FlowSystem or use linked_periods=None.'
+                )
             logger.debug(f'Computing linked_periods from {self.linked_periods}')
             start, end = self.linked_periods
             if start not in flow_system.periods.values:
@@ -1044,6 +1050,27 @@ class InvestParameters(Interface):
     @property
     def maximum_or_fixed_size(self) -> PeriodicData:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
+
+    def format_for_repr(self) -> str:
+        """Format InvestParameters for display in repr methods.
+
+        Returns:
+            Formatted string showing size information
+        """
+        from .io import numeric_to_str_for_repr
+
+        if self.fixed_size is not None:
+            val = numeric_to_str_for_repr(self.fixed_size)
+            status = 'mandatory' if self.mandatory else 'optional'
+            return f'{val} ({status})'
+
+        # Show range if available
+        parts = []
+        if self.minimum_size is not None:
+            parts.append(f'min: {numeric_to_str_for_repr(self.minimum_size)}')
+        if self.maximum_size is not None:
+            parts.append(f'max: {numeric_to_str_for_repr(self.maximum_size)}')
+        return ', '.join(parts) if parts else 'invest'
 
     @staticmethod
     def compute_linked_periods(first_period: int, last_period: int, periods: pd.Index | list[int]) -> xr.DataArray:
@@ -1318,7 +1345,7 @@ class OnOffParameters(Interface):
             return True
 
         return any(
-            param is not None and param != {}
+            self._has_value(param)
             for param in [
                 self.effects_per_switch_on,
                 self.switch_on_total_max,

@@ -36,7 +36,7 @@ if __name__ == '__main__':
     data_import = pd.read_csv(
         pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
     ).sort_index()
-    filtered_data = data_import['2020-01-01':'2020-01-02 23:45:00']
+    filtered_data = data_import['2020-01-01':'2020-01-07 23:45:00']
     # filtered_data = data_import[0:500]  # Alternatively filter by index
 
     filtered_data.index = pd.to_datetime(filtered_data.index)
@@ -202,36 +202,39 @@ if __name__ == '__main__':
 
     # --- Plotting for comparison ---
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'Speicher|charge_state').to_dataframe(),
-        style='line',
+        get_solutions(calculations, 'Speicher|charge_state'),
+        mode='line',
         title='Charge State Comparison',
         ylabel='Charge state',
+        xlabel='Time in h',
     ).write_html('results/Charge State.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'BHKW2(Q_th)|flow_rate').to_dataframe(),
-        style='line',
+        get_solutions(calculations, 'BHKW2(Q_th)|flow_rate'),
+        mode='line',
         title='BHKW2(Q_th) Flow Rate Comparison',
         ylabel='Flow rate',
+        xlabel='Time in h',
     ).write_html('results/BHKW2 Thermal Power.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'costs(temporal)|per_timestep').to_dataframe(),
-        style='line',
+        get_solutions(calculations, 'costs(temporal)|per_timestep'),
+        mode='line',
         title='Operation Cost Comparison',
         ylabel='Costs [€]',
+        xlabel='Time in h',
     ).write_html('results/Operation Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame(get_solutions(calculations, 'costs(temporal)|per_timestep').to_dataframe().sum()).T,
-        style='stacked_bar',
+        get_solutions(calculations, 'costs(temporal)|per_timestep').sum('time'),
+        mode='stacked_bar',
         title='Total Cost Comparison',
         ylabel='Costs [€]',
     ).update_layout(barmode='group').write_html('results/Total Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]),
-        'stacked_bar',
+        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]).to_xarray(),
+        mode='stacked_bar',
     ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
         'results/Speed Comparison.html'
     )

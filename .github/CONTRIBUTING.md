@@ -12,7 +12,7 @@ Thanks for your interest in contributing to FlixOpt! 🚀
 
 2. **Install for Development**
    ```bash
-   pip install -e ".[full]"
+   pip install -e ".[full, dev, docs]"
    ```
 
 3. **Make Changes & Submit PR**
