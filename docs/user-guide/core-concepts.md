@@ -123,7 +123,7 @@ The process of working with FlixOpt can be divided into 3 steps:
 1. Create a [`FlowSystem`][flixopt.flow_system.FlowSystem], containing all the elements and data of your system
      -  Define the time horizon of your system (and optionally your periods and scenarios, see [Dimensions](mathematical-notation/dimensions.md)))
      -  Add [`Effects`][flixopt.effects.Effect] to represent costs, emissions, etc.
-     -  Add [`Buses`][flixopt.elements.Bus] as connection points in your systeand [`Sinks`][flixopt.components.Sink] & [`Sources`][flixopt.components.Source] as connections to the outer world (markets, power grid, ...)
+     -  Add [`Buses`][flixopt.elements.Bus] as connection points in your system and [`Sinks`][flixopt.components.Sink] & [`Sources`][flixopt.components.Source] as connections to the outer world (markets, power grid, ...)
      -  Add [`Components`][flixopt.components] like [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc.
      -  Add
      - [`FlowSystems`][flixopt.flow_system.FlowSystem] can also be loaded from a netCDF file*

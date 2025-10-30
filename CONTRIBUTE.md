@@ -81,8 +81,41 @@ To run checks manually:
 - `pre-commit run --all-files` - Run all pre-commit checks
 
 ### Testing
-- `pytest` - Run the test suite
+All tests are located in the `tests/` directory with a flat structure:
+- `test_component.py` - Component tests
+- `test_flow.py` - Flow tests
+- `test_storage.py` - Storage tests
+- etc.
+
+#### Running Tests
+- `pytest` - Run the full test suite (excluding examples by default)
+- `pytest tests/test_component.py` - Run a specific test file
+- `pytest tests/test_component.py::TestClassName` - Run a specific test class
+- `pytest tests/test_component.py::TestClassName::test_method` - Run a specific test
+- `pytest -m slow` - Run only slow tests
+- `pytest -m examples` - Run example tests (normally skipped)
+- `pytest -k "keyword"` - Run tests matching a keyword
+
+#### Common Test Patterns
+The `tests/conftest.py` file provides shared fixtures:
+- `solver_fixture` - Parameterized solver fixture (HiGHS, Gurobi)
+- `highs_solver` - HiGHS solver instance
+- Coordinate configuration fixtures for timesteps, periods, scenarios
+
+Use these fixtures by adding them as function parameters:
+```python
+def test_my_feature(solver_fixture):
+    # solver_fixture is automatically provided by pytest
+    model = fx.FlowSystem(...)
+    model.solve(solver_fixture)
+```
+
+#### Testing Guidelines
+- Write tests for all new functionality
 - Ensure all tests pass before submitting a PR
+- Aim for 100% test coverage for new code
+- Use descriptive test names that explain what's being tested
+- Add the `@pytest.mark.slow` decorator for tests that take >5 seconds
 
 ### Coding Guidelines
 - Follow [PEP 8](https://pep8.org/) style guidelines
