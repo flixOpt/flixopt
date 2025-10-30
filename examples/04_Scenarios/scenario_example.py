@@ -8,6 +8,8 @@ import pandas as pd
 import flixopt as fx
 
 if __name__ == '__main__':
+    fx.CONFIG.exploring()
+
     # Create datetime array starting from '2020-01-01' for one week
     timesteps = pd.date_range('2020-01-01', periods=24 * 7, freq='h')
     scenarios = pd.Index(['Base Case', 'High Demand'])
@@ -186,7 +188,7 @@ if __name__ == '__main__':
     flow_system.add_elements(costs, CO2, boiler, storage, chp, heat_sink, gas_source, power_sink)
 
     # Visualize the flow system for validation purposes
-    flow_system.plot_network(show=True)
+    flow_system.plot_network()
 
     # --- Define and Run Calculation ---
     # Create a calculation object to model the Flow System
@@ -215,7 +217,6 @@ if __name__ == '__main__':
 
     # Convert the results for the storage component to a dataframe and display
     df = calculation.results['Storage'].node_balance_with_charge_state()
-    print(df)
 
     # Save results to file for later usage
     calculation.results.to_file()
