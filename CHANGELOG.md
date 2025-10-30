@@ -60,6 +60,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+- Improved `summary.yaml` to use a compacted list representation for periods and scenarios
 
 ### 🗑️ Deprecated
 
