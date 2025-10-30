@@ -1351,30 +1351,3 @@ class OnOffParameters(Interface):
                 self.switch_on_total_max,
             ]
         )
-
-    @staticmethod
-    def _has_value(param: Any) -> bool:
-        """Check if a parameter has a meaningful value.
-
-        Args:
-            param: The parameter to check.
-
-        Returns:
-            False for:
-                - None
-                - Empty collections (dict, list, tuple, set, frozenset)
-
-            True for all other values, including:
-                - Non-empty collections
-                - xarray DataArrays (even if they contain NaN/empty data)
-                - Scalar values (0, False, empty strings, etc.)
-                - NumPy arrays (even if empty - use .size to check those explicitly)
-        """
-        if param is None:
-            return False
-
-        # Check for empty collections (but not strings, arrays, or DataArrays)
-        if isinstance(param, (dict, list, tuple, set, frozenset)) and len(param) == 0:
-            return False
-
-        return True
