@@ -370,7 +370,7 @@ class AggregatedCalculation(FullCalculation):
         )
 
         self.aggregation.cluster()
-        self.aggregation.plot(show=True, save=self.folder / 'aggregation.html')
+        self.aggregation.plot(show=CONFIG.Plotting.default_show, save=self.folder / 'aggregation.html')
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
             ds = self.flow_system.to_dataset()
             for name, series in self.aggregation.aggregated_data.items():

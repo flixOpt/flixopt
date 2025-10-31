@@ -164,7 +164,7 @@ if __name__ == '__main__':
         a_kwk,
         a_speicher,
     )
-    flow_system.plot_network(controls=False, show=True)
+    flow_system.plot_network()
 
     # Calculations
     calculations: list[fx.FullCalculation | fx.AggregatedCalculation | fx.SegmentedCalculation] = []
