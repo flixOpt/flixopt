@@ -10,7 +10,6 @@ There are three different Calculation types:
 
 from __future__ import annotations
 
-import copy
 import logging
 import math
 import pathlib
