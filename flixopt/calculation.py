@@ -591,39 +591,40 @@ class SegmentedCalculation(Calculation):
             disable=not CONFIG.Solving.log_to_console,  # Respect silent configuration
         )
 
-        for i, calculation in progress_bar:
-            # Update progress bar description with current segment info
-            progress_bar.set_description(
-                f'Solving ({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]})'
-            )
-
-            if i > 0 and self.nr_of_previous_values > 0:
-                self._transfer_start_values(i)
-
-            calculation.do_modeling()
-
-            # Warn about Investments, but only in fist run
-            if i == 0:
-                invest_elements = [
-                    model.label_full
-                    for component in calculation.flow_system.components.values()
-                    for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel)
-                ]
-                if invest_elements:
-                    logger.critical(
-                        f'Investments are not supported in Segmented Calculation! '
-                        f'Following InvestmentModels were found: {invest_elements}'
-                    )
-
-            with fx_io.suppress_output():
-                calculation.solve(
-                    solver,
-                    log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
-                    log_main_results=log_main_results,
+        try:
+            for i, calculation in progress_bar:
+                # Update progress bar description with current segment info
+                progress_bar.set_description(
+                    f'Solving ({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]})'
                 )
 
-        progress_bar.close()
+                if i > 0 and self.nr_of_previous_values > 0:
+                    self._transfer_start_values(i)
+
+                calculation.do_modeling()
+
+                # Warn about Investments, but only in fist run
+                if i == 0:
+                    invest_elements = [
+                        model.label_full
+                        for component in calculation.flow_system.components.values()
+                        for model in component.submodel.all_submodels
+                        if isinstance(model, InvestmentModel)
+                    ]
+                    if invest_elements:
+                        logger.critical(
+                            f'Investments are not supported in Segmented Calculation! '
+                            f'Following InvestmentModels were found: {invest_elements}'
+                        )
+
+                with fx_io.suppress_output():
+                    calculation.solve(
+                        solver,
+                        log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
+                        log_main_results=log_main_results,
+                    )
+        finally:
+            progress_bar.close()
 
         for calc in self.sub_calculations:
             for key, value in calc.durations.items():
