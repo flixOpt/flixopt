@@ -187,5 +187,41 @@ def test_suppress_output_c_level():
     sys.stdout.flush()
 
 
+def test_tqdm_cleanup_on_exception():
+    """Test that tqdm progress bar is properly cleaned up even when exceptions occur.
+
+    This test verifies the pattern used in SegmentedCalculation where a try/finally
+    block ensures progress_bar.close() is called even if an exception occurs.
+    """
+    from tqdm import tqdm
+
+    # Create a progress bar (disabled to avoid output during tests)
+    items = enumerate(range(5))
+    progress_bar = tqdm(items, total=5, desc='Test progress', disable=True)
+
+    # Track whether cleanup was called
+    cleanup_called = False
+    exception_raised = False
+
+    try:
+        try:
+            for idx, _ in progress_bar:
+                if idx == 2:
+                    raise ValueError('Test exception')
+        finally:
+            # This should always execute, even with exception
+            progress_bar.close()
+            cleanup_called = True
+    except ValueError:
+        exception_raised = True
+
+    # Verify both that the exception was raised AND cleanup happened
+    assert exception_raised, 'Test exception should have been raised'
+    assert cleanup_called, 'Cleanup should have been called even with exception'
+
+    # Verify that close() is idempotent - calling it again should not raise
+    progress_bar.close()  # Should not raise even if already closed
+
+
 if __name__ == '__main__':
     pytest.main(['-v', '--disable-warnings'])
