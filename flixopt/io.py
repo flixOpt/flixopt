@@ -337,11 +337,6 @@ def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
     # Bind representer locally to CustomDumper to avoid global side effects
     CustomDumper.add_representer(str, represent_str)
 
-    # Configure dumper options for better formatting
-    class CustomDumper(yaml.SafeDumper):
-        def increase_indent(self, flow=False, indentless=False):
-            return super().increase_indent(flow, False)
-
     # Write to file with settings that ensure proper formatting
     with open(output_file, 'w', encoding='utf-8') as file:
         yaml.dump(

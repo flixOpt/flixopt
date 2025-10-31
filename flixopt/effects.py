@@ -436,9 +436,6 @@ class EffectModel(ElementModel):
         )
 
 
-NonTemporalEffectsUser = PeriodicDataUser | dict[str, PeriodicDataUser]  # User-specified Shares to Effects
-""" This datatype is used to define a scalar share to an effect by a certain attribute. """
-
 TemporalEffectsUser = TemporalDataUser | dict[str, TemporalDataUser]  # User-specified Shares to Effects
 """ This datatype is used to define a temporal share to an effect by a certain attribute. """
 

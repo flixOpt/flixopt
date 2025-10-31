@@ -519,8 +519,6 @@ class OnOffModel(Submodel):
 
     # Properties access variables from Submodel's tracking system
 
-    # Properties access variables from Submodel's tracking system
-
     @property
     def on_hours_total(self) -> linopy.Variable:
         """Total on hours variable"""
@@ -701,13 +699,6 @@ class PiecewiseModel(Submodel):
                 name=f'{self.label_full}|{variable.name}|single_segment',
                 short_name=f'{var_name}|single_segment',
             )
-
-        # Shares
-        self._model.effects.add_share_to_effects(
-            name=self.label_of_element,
-            expressions={effect: variable * 1 for effect, variable in self.shares.items()},
-            target='invest',
-        )
 
 
 class PiecewiseEffectsModel(Submodel):

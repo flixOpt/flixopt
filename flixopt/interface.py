@@ -14,14 +14,13 @@ import pandas as pd
 import xarray as xr
 
 from .config import CONFIG
-from .core import PeriodicDataUser, PeriodicDataUserUser
-from .effects import PeriodicEffectsUser
+from .core import PeriodicDataUser
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .core import PeriodicData, PeriodicDataUser, Scalar, TemporalDataUser
+    from .core import PeriodicData, Scalar, TemporalDataUser
     from .effects import PeriodicEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
 
@@ -1086,7 +1085,7 @@ class InvestParameters(Interface):
         ).rename('linked_periods')
 
 
-YearOfInvestmentData = PeriodicDataUserUser
+YearOfInvestmentData = PeriodicDataUser
 """This datatype is used to define things related to the year of investment."""
 YearOfInvestmentDataBool = bool | YearOfInvestmentData
 """This datatype is used to define things with boolean data related to the year of investment."""
