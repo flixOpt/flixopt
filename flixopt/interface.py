@@ -1085,6 +1085,417 @@ class InvestParameters(Interface):
         ).rename('linked_periods')
 
 
+@register_class_for_io
+class SizingParameters(Interface):
+    """Define capacity sizing parameters with flexible bounds and size-dependent effects.
+
+    This class models capacity sizing decisions, supporting both binary (invest/don't invest)
+    and continuous sizing choices with size-dependent effects. It focuses purely on capacity
+    constraints without investment timing considerations.
+
+    SizingParameters can be used standalone for simple capacity planning or combined with
+    InvestmentParameters for complex investment timing optimization.
+
+    Sizing Decision Types:
+        **Binary Sizing**: Fixed size installations creating yes/no decisions
+        (e.g., install a 100 kW generator or not)
+
+        **Continuous Sizing**: Variable size decisions with minimum/maximum bounds
+        (e.g., battery capacity from 10-1000 kWh, pipeline diameter optimization)
+
+    Cost Modeling:
+        - **Size-Dependent Effects**: Linear costs proportional to size (€/kW, €/m²)
+
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [SizingParameters](../user-guide/mathematical-notation/features/SizingParameters.md)
+
+    Args:
+        fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
+        minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
+            Ignored if fixed_size is specified.
+        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
+            Ignored if fixed_size is specified.
+        mandatory: Controls whether sizing is required. When True, forces capacity to be
+            non-zero (useful for mandatory capacity requirements). When False (default),
+            optimization can choose zero capacity.
+        specific_effects: Variable costs proportional to size (per-unit costs).
+            Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
+        linked_periods: Describes which periods have linked sizes. 1 means linked, 0 means size=0.
+            None means no linked periods. For convenience, pass a tuple containing the first and
+            last period (2025, 2039), linking them and those in between.
+
+    Examples:
+        Simple binary sizing (solar panels):
+
+        ```python
+        solar_sizing = SizingParameters(
+            fixed_size=100,  # 100 kW system (binary decision)
+            mandatory=False,  # Capacity is optional
+            specific_effects={
+                'cost': 1200,  # €1200/kW for panels (annualized)
+                'CO2': -800,  # kg CO2 avoided per kW annually
+            },
+        )
+        ```
+
+        Flexible continuous sizing:
+
+        ```python
+        battery_sizing = SizingParameters(
+            minimum_size=10,  # Minimum viable system size (kWh)
+            maximum_size=1000,  # Maximum installable capacity
+            mandatory=False,  # Capacity is optional
+            specific_effects={
+                'cost': 600,  # €600/kWh annualized cost
+                'space': 0.5,  # m² per kWh
+            },
+        )
+        ```
+
+        Mandatory capacity with linked periods:
+
+        ```python
+        turbine_sizing = SizingParameters(
+            minimum_size=50,
+            maximum_size=200,
+            mandatory=True,  # Must have capacity
+            linked_periods=(2025, 2030),  # Same size across these years
+            specific_effects={
+                'cost': 400,  # €400/kW capacity
+                'maintenance': 25,  # Annual maintenance per kW
+            },
+        )
+        ```
+
+    Common Use Cases:
+        - Power generation: Plant sizing, capacity planning
+        - Energy storage: Battery sizing, capacity optimization
+        - Infrastructure: Network capacity, facility sizing
+        - Industrial equipment: Capacity expansion, production sizing
+    """
+
+    def __init__(
+        self,
+        fixed_size: PeriodicDataUser | None = None,
+        minimum_size: PeriodicDataUser | None = None,
+        maximum_size: PeriodicDataUser | None = None,
+        mandatory: bool = False,
+        specific_effects: PeriodicEffectsUser | None = None,
+        linked_periods: PeriodicDataUser | tuple[int, int] | None = None,
+    ):
+        self.fixed_size = fixed_size
+        self.mandatory = mandatory
+        self.specific_effects: PeriodicEffectsUser = specific_effects if specific_effects is not None else {}
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big
+        self.linked_periods = linked_periods
+
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        self.specific_effects = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.specific_effects,
+            label_suffix='specific_effects',
+            dims=['period', 'scenario'],
+        )
+
+        self.minimum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
+        )
+        self.maximum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
+        )
+
+        # Convert tuple (first_period, last_period) to DataArray if needed
+        if isinstance(self.linked_periods, (tuple, list)):
+            if len(self.linked_periods) != 2:
+                raise TypeError(
+                    f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
+                )
+            if flow_system.periods is None:
+                raise ValueError(
+                    f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
+                    f'Please define periods in FlowSystem or use linked_periods=None.'
+                )
+            logger.debug(f'Computing linked_periods from {self.linked_periods}')
+            start, end = self.linked_periods
+            if start not in flow_system.periods.values:
+                logger.warning(
+                    f'Start of linked periods ({start} not found in periods directly: {flow_system.periods.values}'
+                )
+            if end not in flow_system.periods.values:
+                logger.warning(
+                    f'End of linked periods ({end} not found in periods directly: {flow_system.periods.values}'
+                )
+            self.linked_periods = InvestParameters.compute_linked_periods(start, end, flow_system.periods)
+            logger.debug(f'Computed {self.linked_periods=}')
+
+        self.linked_periods = flow_system.fit_to_model_coords(
+            f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
+        )
+        self.fixed_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
+        )
+
+    @property
+    def minimum_or_fixed_size(self) -> PeriodicData:
+        return self.fixed_size if self.fixed_size is not None else self.minimum_size
+
+    @property
+    def maximum_or_fixed_size(self) -> PeriodicData:
+        return self.fixed_size if self.fixed_size is not None else self.maximum_size
+
+    def format_for_repr(self) -> str:
+        """Format SizingParameters for display in repr methods.
+
+        Returns:
+            Formatted string showing size information
+        """
+        from .io import numeric_to_str_for_repr
+
+        if self.fixed_size is not None:
+            val = numeric_to_str_for_repr(self.fixed_size)
+            status = 'mandatory' if self.mandatory else 'optional'
+            return f'{val} ({status})'
+
+        # Show range if available
+        parts = []
+        if self.minimum_size is not None:
+            parts.append(f'min: {numeric_to_str_for_repr(self.minimum_size)}')
+        if self.maximum_size is not None:
+            parts.append(f'max: {numeric_to_str_for_repr(self.maximum_size)}')
+        return ', '.join(parts) if parts else 'sizing'
+
+
+InvestmentPeriodData = PeriodicDataUser
+"""This datatype is used to define things related to the period of investment."""
+InvestmentPeriodDataBool = bool | InvestmentPeriodData
+"""This datatype is used to define things with boolean data related to the period of investment."""
+
+
+@register_class_for_io
+class InvestmentParameters(Interface):
+    """Define investment timing parameters with lifetime tracking and timing-dependent effects.
+
+    This class models investment timing decisions, including when investments occur,
+    their lifetime duration, and effects that depend on the investment timing.
+    It must be combined with SizingParameters to fully model investment decisions.
+
+    InvestmentParameters focuses on the TIMING aspect (when to invest, for how long),
+    while SizingParameters handles the CAPACITY aspect (how much to install).
+
+    Investment Timing Features:
+        **Timing Control**: Control when investments and decommissioning can/must occur
+        **Lifetime Tracking**: Model investment lifetime with min/max bounds
+        **Timing-Dependent Effects**: Effects that vary based on when investment occurs
+            (e.g., technology learning curves, time-varying costs)
+
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [InvestmentParameters](../user-guide/mathematical-notation/features/InvestmentParameters.md)
+
+    Args:
+        allow_investment: Allow investment in specific periods. Default: True (all periods).
+        allow_decommissioning: Allow decommissioning in specific periods. Default: True (all periods).
+        force_investment: Force investment to occur in a specific period. Default: False.
+        force_decommissioning: Force decommissioning in a specific period. Default: False.
+        fixed_lifetime: Fix the investment lifetime (duration between investment and decommissioning).
+        minimum_lifetime: Minimum lifetime constraint (periods).
+        maximum_lifetime: Maximum lifetime constraint (periods).
+        previous_lifetime: Existing asset lifetime before first period (for continuation scenarios).
+        fixed_effects_by_investment_period: Effects that depend on when investment occurs.
+            These effects can vary by the investment period, enabling modeling of:
+            - Technology learning curves (costs decrease over time)
+            - Time-varying financing costs
+            - Period-specific subsidies or regulations
+            xr.DataArray with dimensions [period, scenario, investment_period].
+        specific_effects_by_investment_period: Size-dependent effects that also depend on investment period.
+            xr.DataArray with dimensions [period, scenario, investment_period].
+
+    Examples:
+        Basic timing constraints:
+
+        ```python
+        timing = InvestmentParameters(
+            minimum_lifetime=5,  # Must operate at least 5 periods
+            maximum_lifetime=20,  # Cannot exceed 20 periods
+            allow_investment=True,  # Allow in all periods
+            allow_decommissioning=True,
+        )
+        ```
+
+        Force investment in specific period:
+
+        ```python
+        timing = InvestmentParameters(
+            force_investment=xr.DataArray(
+                [0, 0, 1, 0, 0],  # Force in period 3
+                coords=[('period', [2020, 2025, 2030, 2035, 2040])],
+            ),
+            fixed_lifetime=10,  # Must operate for 10 periods
+        )
+        ```
+
+        Technology learning curve (costs decrease over time):
+
+        ```python
+        # Create investment-period-dependent effects
+        periods = [2020, 2025, 2030, 2035, 2040]
+        learning_costs = xr.DataArray(
+            [
+                [1200, 1100, 1000, 950, 900],  # Costs in 2020 if invested in [2020, 2025, ...]
+                [0, 1100, 1000, 950, 900],  # Costs in 2025 if invested in [2020, 2025, ...]
+                [0, 0, 1000, 950, 900],  # Costs in 2030 if invested in [2020, 2025, ...]
+                [0, 0, 0, 950, 900],  # Costs in 2035 if invested in [2020, 2025, ...]
+                [0, 0, 0, 0, 900],  # Costs in 2040 if invested in [2020, 2025, ...]
+            ],
+            coords=[('period', periods), ('investment_period', periods)],
+        )
+
+        timing = InvestmentParameters(
+            minimum_lifetime=5,
+            maximum_lifetime=15,
+            specific_effects_by_investment_period={
+                'cost': learning_costs  # Cost per kW depends on investment year
+            },
+        )
+        ```
+
+        Replacement scenario with existing asset:
+
+        ```python
+        timing = InvestmentParameters(
+            previous_lifetime=10,  # Existing asset has been operating for 10 years
+            force_investment=xr.DataArray([1, 0, 0], coords=[('period', [2025, 2030, 2035])]),
+            fixed_lifetime=15,  # New investment lasts 15 years
+        )
+        ```
+
+    Common Use Cases:
+        - Technology learning: Model cost reductions over time
+        - Lifecycle planning: Track investment lifetimes and replacement timing
+        - Retirement analysis: Model existing asset decommissioning
+        - Multi-period optimization: Optimize investment timing across periods
+        - Regulatory changes: Model period-specific incentives or constraints
+    """
+
+    def __init__(
+        self,
+        allow_investment: InvestmentPeriodDataBool = True,
+        allow_decommissioning: InvestmentPeriodDataBool = True,
+        force_investment: InvestmentPeriodDataBool = False,
+        force_decommissioning: InvestmentPeriodDataBool = False,
+        fixed_lifetime: Scalar | None = None,
+        minimum_lifetime: Scalar | None = None,
+        maximum_lifetime: Scalar | None = None,
+        previous_lifetime: Scalar | None = None,
+        fixed_effects_by_investment_period: dict[str, xr.DataArray] | None = None,
+        specific_effects_by_investment_period: dict[str, xr.DataArray] | None = None,
+    ):
+        self.allow_investment = allow_investment
+        self.allow_decommissioning = allow_decommissioning
+        self.force_investment = force_investment
+        self.force_decommissioning = force_decommissioning
+
+        self.fixed_lifetime = fixed_lifetime
+        self.minimum_lifetime = minimum_lifetime
+        self.maximum_lifetime = maximum_lifetime
+        self.previous_lifetime = previous_lifetime
+
+        self.fixed_effects_by_investment_period: dict[str, xr.DataArray] = (
+            fixed_effects_by_investment_period if fixed_effects_by_investment_period is not None else {}
+        )
+        self.specific_effects_by_investment_period: dict[str, xr.DataArray] = (
+            specific_effects_by_investment_period if specific_effects_by_investment_period is not None else {}
+        )
+
+    @property
+    def minimum_or_fixed_lifetime(self) -> Scalar | None:
+        return self.fixed_lifetime if self.fixed_lifetime is not None else self.minimum_lifetime
+
+    @property
+    def maximum_or_fixed_lifetime(self) -> Scalar | None:
+        return self.fixed_lifetime if self.fixed_lifetime is not None else self.maximum_lifetime
+
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        """Transform user data into internal model coordinates."""
+        # Transform boolean/data flags to DataArrays
+        self.allow_investment = flow_system.fit_to_model_coords(
+            f'{name_prefix}|allow_investment', self.allow_investment, dims=['period', 'scenario']
+        )
+        self.allow_decommissioning = flow_system.fit_to_model_coords(
+            f'{name_prefix}|allow_decommissioning', self.allow_decommissioning, dims=['period', 'scenario']
+        )
+        self.force_investment = flow_system.fit_to_model_coords(
+            f'{name_prefix}|force_investment', self.force_investment, dims=['period', 'scenario']
+        )
+        self.force_decommissioning = flow_system.fit_to_model_coords(
+            f'{name_prefix}|force_decommissioning', self.force_decommissioning, dims=['period', 'scenario']
+        )
+
+        # Investment-period-dependent effects are already xr.DataArray, so no transformation needed
+        # They should have dimensions [period, scenario, investment_period]
+
+    def _plausibility_checks(self, flow_system: FlowSystem) -> None:
+        """Validate parameter consistency."""
+        if flow_system.periods is None:
+            raise ValueError("InvestmentParameters requires the flow_system to have a 'periods' dimension.")
+
+        # Check force_investment uniqueness
+        if hasattr(self.force_investment, 'sum'):
+            if (self.force_investment.sum('period') > 1).any():
+                raise ValueError('force_investment can only be True for a single period.')
+
+        # Check force_decommissioning uniqueness
+        if hasattr(self.force_decommissioning, 'sum'):
+            if (self.force_decommissioning.sum('period') > 1).any():
+                raise ValueError('force_decommissioning can only be True for a single period.')
+
+        # Check investment before decommissioning
+        if hasattr(self.force_investment, 'sum') and hasattr(self.force_decommissioning, 'sum'):
+            if (self.force_investment.sum('period') == 1).any() and (
+                self.force_decommissioning.sum('period') == 1
+            ).any():
+                # Get period values for forced investment/decommissioning
+                # This is a simplified check - full check would need proper period value extraction
+                logger.debug('Checking forced investment occurs before forced decommissioning')
+
+        # Check previous_lifetime consistency
+        if self.previous_lifetime is not None:
+            if self.force_investment is False:
+                logger.warning(
+                    'previous_lifetime is specified but force_investment is False. '
+                    'This may lead to unexpected behavior.'
+                )
+
+        # Check lifetime feasibility
+        if self.minimum_or_fixed_lifetime is not None and self.maximum_or_fixed_lifetime is not None:
+            periods = flow_system.periods.values
+            if len(periods) > 1:
+                max_span = periods[-1] - periods[0]
+                if self.minimum_or_fixed_lifetime > max_span:
+                    logger.warning(
+                        f'Minimum lifetime ({self.minimum_or_fixed_lifetime}) exceeds model period span ({max_span}). '
+                        f'This may lead to infeasible investments in later periods.'
+                    )
+
+    def format_for_repr(self) -> str:
+        """Format InvestmentParameters for display in repr methods.
+
+        Returns:
+            Formatted string showing timing information
+        """
+        parts = []
+        if self.fixed_lifetime is not None:
+            parts.append(f'lifetime: {self.fixed_lifetime}')
+        elif self.minimum_lifetime is not None or self.maximum_lifetime is not None:
+            if self.minimum_lifetime is not None:
+                parts.append(f'min_life: {self.minimum_lifetime}')
+            if self.maximum_lifetime is not None:
+                parts.append(f'max_life: {self.maximum_lifetime}')
+        return ', '.join(parts) if parts else 'timing'
+
+
 YearOfInvestmentData = PeriodicDataUser
 """This datatype is used to define things related to the year of investment."""
 YearOfInvestmentDataBool = bool | YearOfInvestmentData
