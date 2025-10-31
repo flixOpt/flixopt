@@ -252,7 +252,8 @@ class FullCalculation(Calculation):
             )
 
         # Log the formatted output
-        if log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results:
+        should_log = log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results
+        if should_log:
             logger.info(
                 f'{" Main Results ":#^80}\n'
                 + yaml.dump(
