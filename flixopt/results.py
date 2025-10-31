@@ -1029,14 +1029,14 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             ]
         ) = True,
         path: pathlib.Path | None = None,
-        show: bool = False,
+        show: bool | None = None,
     ) -> pyvis.network.Network | None:
         """Plot interactive network visualization of the system.
 
         Args:
             controls: Enable/disable interactive controls.
             path: Save path for network HTML.
-            show: Whether to display the plot.
+            show: Whether to display the plot. If None, uses CONFIG.Plotting.default_show.
         """
         if path is None:
             path = self.folder / f'{self.name}--network.html'
