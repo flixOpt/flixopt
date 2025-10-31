@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import xarray as xr
 
-from .core import NonTemporalDataUser, PlausibilityError, TemporalData, TemporalDataUser
+from . import io as fx_io
+from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -39,6 +40,10 @@ class LinearConverter(Component):
     The component supports two modeling approaches: simple conversion factors for
     straightforward linear relationships, or piecewise conversion for complex non-linear
     behavior approximated through piecewise linear segments.
+
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [LinearConverter](../user-guide/mathematical-notation/elements/LinearConverter.md)
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
@@ -142,11 +147,11 @@ class LinearConverter(Component):
     Note:
         Conversion factors define linear relationships where the sum of (coefficient × flow_rate)
         equals zero for each equation: factor1×flow1 + factor2×flow2 + ... = 0
-        Conversion factors define linear relationships.
-        `{flow1: a1, flow2: a2, ...}` leads to `a1×flow_rate1 + a2×flow_rate2 + ... = 0`
-        Unfortunately the current input format doest read intuitively:
-        {"electricity": 1, "H2": 50} means that the electricity_in flow rate is multiplied by 1
-        and the hydrogen_out flow rate is multiplied by 50. THis leads to 50 electricity --> 1 H2.
+        Conversion factors define linear relationships:
+        `{flow1: a1, flow2: a2, ...}` yields `a1×flow_rate1 + a2×flow_rate2 + ... = 0`.
+        Note: The input format may be unintuitive. For example,
+        `{"electricity": 1, "H2": 50}` implies `1×electricity = 50×H2`,
+        i.e., 50 units of electricity produce 1 unit of H2.
 
         The system must have fewer conversion factors than total flows (degrees of freedom > 0)
         to avoid over-constraining the problem. For n total flows, use at most n-1 conversion factors.
@@ -155,6 +160,8 @@ class LinearConverter(Component):
         with binary variables determining which piece is active.
 
     """
+
+    submodel: LinearConverterModel | None
 
     def __init__(
         self,
@@ -200,17 +207,19 @@ class LinearConverter(Component):
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
                     logger.warning(
-                        f'Using a FLow with a fixed size ({flow.label_full}) AND a piecewise_conversion '
-                        f'(in {self.label_full}) and variable size is uncommon. Please check if this is intended!'
+                        f'Using a Flow with variable size (InvestParameters without fixed_size) '
+                        f'and a piecewise_conversion in {self.label_full} is uncommon. Please verify intent '
+                        f'({flow.label_full}).'
                     )
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system)
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        super().transform_data(flow_system, prefix)
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors(flow_system)
         if self.piecewise_conversion:
             self.piecewise_conversion.has_time_dim = True
-            self.piecewise_conversion.transform_data(flow_system, f'{self.label_full}|PiecewiseConversion')
+            self.piecewise_conversion.transform_data(flow_system, f'{prefix}|PiecewiseConversion')
 
     def _transform_conversion_factors(self, flow_system: FlowSystem) -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
@@ -245,37 +254,41 @@ class Storage(Component):
     final state constraints, and time-varying parameters. It supports both fixed-size
     and investment-optimized storage systems with comprehensive techno-economic modeling.
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Storage](../user-guide/mathematical-notation/elements/Storage.md)
+
+        - Equation (1): Charge state bounds
+        - Equation (3): Storage balance (charge state evolution)
+
+        Variable Mapping:
+            - ``capacity_in_flow_hours`` → C (storage capacity)
+            - ``charge_state`` → c(t_i) (state of charge at time t_i)
+            - ``relative_loss_per_hour`` → ċ_rel,loss (self-discharge rate)
+            - ``eta_charge`` → η_in (charging efficiency)
+            - ``eta_discharge`` → η_out (discharging efficiency)
+
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
-        charging: Incoming flow for loading the storage. Represents energy or material
-            flowing into the storage system.
-        discharging: Outgoing flow for unloading the storage. Represents energy or
-            material flowing out of the storage system.
-        capacity_in_flow_hours: Nominal capacity/size of the storage in flow-hours
-            (e.g., kWh for electrical storage, m³ or kg for material storage). Can be a scalar
-            for fixed capacity or InvestParameters for optimization.
-        relative_minimum_charge_state: Minimum relative charge state (0-1 range).
-            Prevents deep discharge that could damage equipment. Default is 0.
-        relative_maximum_charge_state: Maximum relative charge state (0-1 range).
-            Accounts for practical capacity limits, safety margins or temperature impacts. Default is 1.
-        initial_charge_state: Storage charge state at the beginning of the time horizon.
-            Can be numeric value or 'lastValueOfSim', which is recommended for if the initial start state is not known.
-            Default is 0.
-        minimal_final_charge_state: Minimum absolute charge state required at the end
-            of the time horizon. Useful for ensuring energy security or meeting contracts.
-        maximal_final_charge_state: Maximum absolute charge state allowed at the end
-            of the time horizon. Useful for preventing overcharge or managing inventory.
-        eta_charge: Charging efficiency factor (0-1 range). Accounts for conversion
-            losses during charging. Default is 1 (perfect efficiency).
-        eta_discharge: Discharging efficiency factor (0-1 range). Accounts for
-            conversion losses during discharging. Default is 1 (perfect efficiency).
-        relative_loss_per_hour: Self-discharge rate per hour (typically 0-0.1 range).
-            Represents standby losses, leakage, or degradation. Default is 0.
-        prevent_simultaneous_charge_and_discharge: If True, prevents charging and
-            discharging simultaneously. Increases binary variables but improves model
-            realism and solution interpretation. Default is True.
-        meta_data: Used to store additional information about the Element. Not used
-            internally, but saved in results. Only use Python native types.
+        label: Element identifier used in the FlowSystem.
+        charging: Incoming flow for loading the storage.
+        discharging: Outgoing flow for unloading the storage.
+        capacity_in_flow_hours: Storage capacity in flow-hours (kWh, m³, kg).
+            Scalar for fixed size or InvestParameters for optimization.
+        relative_minimum_charge_state: Minimum charge state (0-1). Default: 0.
+        relative_maximum_charge_state: Maximum charge state (0-1). Default: 1.
+        initial_charge_state: Charge at start. Numeric or 'lastValueOfSim'. Default: 0.
+        minimal_final_charge_state: Minimum absolute charge required at end (optional).
+        maximal_final_charge_state: Maximum absolute charge allowed at end (optional).
+        relative_minimum_final_charge_state: Minimum relative charge at end.
+            Defaults to last value of relative_minimum_charge_state.
+        relative_maximum_final_charge_state: Maximum relative charge at end.
+            Defaults to last value of relative_maximum_charge_state.
+        eta_charge: Charging efficiency (0-1). Default: 1.
+        eta_discharge: Discharging efficiency (0-1). Default: 1.
+        relative_loss_per_hour: Self-discharge per hour (0-0.1). Default: 0.
+        prevent_simultaneous_charge_and_discharge: Prevent charging and discharging
+            simultaneously. Adds binary variables. Default: True.
+        meta_data: Additional information stored in results. Python native types only.
 
     Examples:
         Battery energy storage system:
@@ -351,35 +364,36 @@ class Storage(Component):
         ```
 
     Note:
-        Charge state evolution follows the equation:
-        charge[t+1] = charge[t] × (1-loss_rate)^hours_per_step +
-                      charge_flow[t] × eta_charge × hours_per_step -
-                      discharge_flow[t] × hours_per_step / eta_discharge
+        **Mathematical formulation**: See [Storage](../user-guide/mathematical-notation/elements/Storage.md)
+        for charge state evolution equations and balance constraints.
 
-        All efficiency parameters (eta_charge, eta_discharge) are dimensionless (0-1 range).
-        The relative_loss_per_hour parameter represents exponential decay per hour.
+        **Efficiency parameters** (eta_charge, eta_discharge) are dimensionless (0-1 range).
+        The relative_loss_per_hour represents exponential decay per hour.
 
-        When prevent_simultaneous_charge_and_discharge is True, binary variables are
-        created to enforce mutual exclusivity, which increases solution time but
-        prevents unrealistic simultaneous charging and discharging.
+        **Binary variables**: When prevent_simultaneous_charge_and_discharge is True, binary
+        variables enforce mutual exclusivity, increasing solution time but preventing unrealistic
+        simultaneous charging and discharging.
 
-        Initial and final charge state constraints use absolute values (not relative),
-        matching the capacity_in_flow_hours units.
+        **Units**: Flow rates and charge states are related by the concept of 'flow hours' (=flow_rate * time).
+        With flow rates in kW, the charge state is therefore (usually) kWh.
+        With flow rates in m3/h, the charge state is therefore in m3.
     """
+
+    submodel: StorageModel | None
 
     def __init__(
         self,
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: NonTemporalDataUser | InvestParameters,
+        capacity_in_flow_hours: PeriodicDataUser | InvestParameters,
         relative_minimum_charge_state: TemporalDataUser = 0,
         relative_maximum_charge_state: TemporalDataUser = 1,
-        initial_charge_state: NonTemporalDataUser | Literal['lastValueOfSim'] = 0,
-        minimal_final_charge_state: NonTemporalDataUser | None = None,
-        maximal_final_charge_state: NonTemporalDataUser | None = None,
-        relative_minimum_final_charge_state: NonTemporalDataUser | None = None,
-        relative_maximum_final_charge_state: NonTemporalDataUser | None = None,
+        initial_charge_state: PeriodicDataUser | Literal['lastValueOfSim'] = 0,
+        minimal_final_charge_state: PeriodicDataUser | None = None,
+        maximal_final_charge_state: PeriodicDataUser | None = None,
+        relative_minimum_final_charge_state: PeriodicDataUser | None = None,
+        relative_maximum_final_charge_state: PeriodicDataUser | None = None,
         eta_charge: TemporalDataUser = 1,
         eta_discharge: TemporalDataUser = 1,
         relative_loss_per_hour: TemporalDataUser = 0,
@@ -421,19 +435,40 @@ class Storage(Component):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system)
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        super().transform_data(flow_system, prefix)
         self.relative_minimum_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_minimum_charge_state',
+            f'{prefix}|relative_minimum_charge_state',
             self.relative_minimum_charge_state,
         )
         self.relative_maximum_charge_state = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_maximum_charge_state',
+            f'{prefix}|relative_maximum_charge_state',
             self.relative_maximum_charge_state,
         )
-        self.eta_charge = flow_system.fit_to_model_coords(f'{self.label_full}|eta_charge', self.eta_charge)
-        self.eta_discharge = flow_system.fit_to_model_coords(f'{self.label_full}|eta_discharge', self.eta_discharge)
+        self.eta_charge = flow_system.fit_to_model_coords(f'{prefix}|eta_charge', self.eta_charge)
+        self.eta_discharge = flow_system.fit_to_model_coords(f'{prefix}|eta_discharge', self.eta_discharge)
         self.relative_loss_per_hour = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_loss_per_hour', self.relative_loss_per_hour
+            f'{prefix}|relative_loss_per_hour', self.relative_loss_per_hour
+        )
+        if not isinstance(self.initial_charge_state, str):
+            self.initial_charge_state = flow_system.fit_to_model_coords(
+                f'{prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
+            )
+        self.minimal_final_charge_state = flow_system.fit_to_model_coords(
+            f'{prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
+        )
+        self.maximal_final_charge_state = flow_system.fit_to_model_coords(
+            f'{prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
+        )
+        self.relative_minimum_final_charge_state = flow_system.fit_to_model_coords(
+            f'{prefix}|relative_minimum_final_charge_state',
+            self.relative_minimum_final_charge_state,
+            dims=['period', 'scenario'],
+        )
+        self.relative_maximum_final_charge_state = flow_system.fit_to_model_coords(
+            f'{prefix}|relative_maximum_final_charge_state',
+            self.relative_maximum_final_charge_state,
+            dims=['period', 'scenario'],
         )
         if not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = flow_system.fit_to_model_coords(
@@ -456,10 +491,10 @@ class Storage(Component):
             dims=['year', 'scenario'],
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(flow_system, f'{self.label_full}|InvestParameters')
+            self.capacity_in_flow_hours.transform_data(flow_system, f'{prefix}|InvestParameters')
         else:
             self.capacity_in_flow_hours = flow_system.fit_to_model_coords(
-                f'{self.label_full}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['year', 'scenario']
+                f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
             )
 
     def _plausibility_checks(self) -> None:
@@ -467,36 +502,39 @@ class Storage(Component):
         Check for infeasible or uncommon combinations of parameters
         """
         super()._plausibility_checks()
+
+        # Validate string values and set flag
+        initial_is_last = False
         if isinstance(self.initial_charge_state, str):
-            if self.initial_charge_state != 'lastValueOfSim':
-                raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
-            return
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            if self.capacity_in_flow_hours.fixed_size is None:
-                maximum_capacity = self.capacity_in_flow_hours.maximum_size
-                minimum_capacity = self.capacity_in_flow_hours.minimum_size
+            if self.initial_charge_state == 'lastValueOfSim':
+                initial_is_last = True
             else:
-                maximum_capacity = self.capacity_in_flow_hours.fixed_size
-                minimum_capacity = self.capacity_in_flow_hours.fixed_size
+                raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
+
+        # Use new InvestParameters methods to get capacity bounds
+        if isinstance(self.capacity_in_flow_hours, InvestParameters):
+            minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
+            maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
         else:
             maximum_capacity = self.capacity_in_flow_hours
             minimum_capacity = self.capacity_in_flow_hours
 
-        # initial capacity >= allowed min for maximum_size:
+        # Initial capacity should not constraint investment decision
         minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-        # initial capacity <= allowed max for minimum_size:
         maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
-        if (self.initial_charge_state > maximum_initial_capacity).any():
-            raise ValueError(
-                f'{self.label_full}: {self.initial_charge_state=} '
-                f'is above allowed maximum charge_state {maximum_initial_capacity}'
-            )
-        if (self.initial_charge_state < minimum_initial_capacity).any():
-            raise ValueError(
-                f'{self.label_full}: {self.initial_charge_state=} '
-                f'is below allowed minimum charge_state {minimum_initial_capacity}'
-            )
+        # Only perform numeric comparisons if not using 'lastValueOfSim'
+        if not initial_is_last:
+            if (self.initial_charge_state > maximum_initial_capacity).any():
+                raise PlausibilityError(
+                    f'{self.label_full}: {self.initial_charge_state=} '
+                    f'is constraining the investment decision. Chosse a value above {maximum_initial_capacity}'
+                )
+            if (self.initial_charge_state < minimum_initial_capacity).any():
+                raise PlausibilityError(
+                    f'{self.label_full}: {self.initial_charge_state=} '
+                    f'is constraining the investment decision. Chosse a value below {minimum_initial_capacity}'
+                )
 
         if self.balanced:
             if not isinstance(self.charging.size, InvestParameters) or not isinstance(
@@ -514,6 +552,15 @@ class Storage(Component):
                     f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
                     f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
                 )
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        # Use build_repr_from_init directly to exclude charging and discharging
+        return fx_io.build_repr_from_init(
+            self,
+            excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
+            skip_default_size=True,
+        ) + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
@@ -627,6 +674,8 @@ class Transmission(Component):
 
     """
 
+    submodel: TransmissionModel | None
+
     def __init__(
         self,
         label: str,
@@ -692,13 +741,10 @@ class Transmission(Component):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        super().transform_data(flow_system)
-        self.relative_losses = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_losses', self.relative_losses
-        )
-        self.absolute_losses = flow_system.fit_to_model_coords(
-            f'{self.label_full}|absolute_losses', self.absolute_losses
-        )
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        super().transform_data(flow_system, prefix)
+        self.relative_losses = flow_system.fit_to_model_coords(f'{prefix}|relative_losses', self.relative_losses)
+        self.absolute_losses = flow_system.fit_to_model_coords(f'{prefix}|absolute_losses', self.absolute_losses)
 
 
 class TransmissionModel(ComponentModel):
@@ -734,8 +780,9 @@ class TransmissionModel(ComponentModel):
     def create_transmission_equation(self, name: str, in_flow: Flow, out_flow: Flow) -> linopy.Constraint:
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
+        rel_losses = 0 if self.element.relative_losses is None else self.element.relative_losses
         con_transmission = self.add_constraints(
-            out_flow.submodel.flow_rate == -in_flow.submodel.flow_rate * (self.element.relative_losses - 1),
+            out_flow.submodel.flow_rate == in_flow.submodel.flow_rate * (1 - rel_losses),
             short_name=name,
         )
 
@@ -785,7 +832,7 @@ class LinearConverterModel(ComponentModel):
                     label_of_model=f'{self.label_of_element}',
                     piecewise_variables=piecewise_conversion,
                     zero_point=self.on_off.on if self.on_off is not None else False,
-                    as_time_series=True,
+                    dims=('time', 'period', 'scenario'),
                 ),
                 short_name='PiecewiseConversion',
             )
@@ -832,7 +879,7 @@ class StorageModel(ComponentModel):
             charge_state.isel(time=slice(1, None))
             == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** hours_per_step)
             + charge_rate * eff_charge * hours_per_step
-            - discharge_rate * eff_discharge * hours_per_step,
+            - discharge_rate * hours_per_step / eff_discharge,
             short_name='charge_state',
         )
 
@@ -1049,36 +1096,19 @@ class SourceAndSink(Component):
         meta_data: dict | None = None,
         **kwargs,
     ):
-        source = kwargs.pop('source', None)
-        sink = kwargs.pop('sink', None)
-        prevent_simultaneous_sink_and_source = kwargs.pop('prevent_simultaneous_sink_and_source', None)
-        if source is not None:
-            warnings.warn(
-                'The use of the source argument is deprecated. Use the outputs argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if outputs is not None:
-                raise ValueError('Either source or outputs can be specified, but not both.')
-            outputs = [source]
+        # Handle deprecated parameters using centralized helper
+        outputs = self._handle_deprecated_kwarg(kwargs, 'source', 'outputs', outputs, transform=lambda x: [x])
+        inputs = self._handle_deprecated_kwarg(kwargs, 'sink', 'inputs', inputs, transform=lambda x: [x])
+        prevent_simultaneous_flow_rates = self._handle_deprecated_kwarg(
+            kwargs,
+            'prevent_simultaneous_sink_and_source',
+            'prevent_simultaneous_flow_rates',
+            prevent_simultaneous_flow_rates,
+            check_conflict=False,
+        )
 
-        if sink is not None:
-            warnings.warn(
-                'The use of the sink argument is deprecated. Use the inputs argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if inputs is not None:
-                raise ValueError('Either sink or inputs can be specified, but not both.')
-            inputs = [sink]
-
-        if prevent_simultaneous_sink_and_source is not None:
-            warnings.warn(
-                'The use of the prevent_simultaneous_sink_and_source argument is deprecated. Use the prevent_simultaneous_flow_rates argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            prevent_simultaneous_flow_rates = prevent_simultaneous_sink_and_source
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
@@ -1201,16 +1231,11 @@ class Source(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
-        source = kwargs.pop('source', None)
-        if source is not None:
-            warnings.warn(
-                'The use of the source argument is deprecated. Use the outputs argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if outputs is not None:
-                raise ValueError('Either source or outputs can be specified, but not both.')
-            outputs = [source]
+        # Handle deprecated parameter using centralized helper
+        outputs = self._handle_deprecated_kwarg(kwargs, 'source', 'outputs', outputs, transform=lambda x: [x])
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
@@ -1315,30 +1340,27 @@ class Sink(Component):
         prevent_simultaneous_flow_rates: bool = False,
         **kwargs,
     ):
-        """
-        Initialize a Sink (consumes flow from the system).
+        """Initialize a Sink (consumes flow from the system).
 
-        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided it is used as the single input flow and a DeprecationWarning is issued; specifying both `inputs` and `sink` raises ValueError.
+        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided
+        it is used as the single input flow and a DeprecationWarning is issued; specifying both
+        `inputs` and `sink` raises ValueError.
 
-        Parameters:
-            label (str): Unique element label.
-            inputs (list[Flow], optional): Input flows for the sink.
-            meta_data (dict, optional): Arbitrary metadata attached to the element.
-            prevent_simultaneous_flow_rates (bool, optional): If True, prevents simultaneous nonzero flow rates across the element's inputs by wiring that restriction into the base Component setup.
+        Args:
+            label: Unique element label.
+            inputs: Input flows for the sink.
+            meta_data: Arbitrary metadata attached to the element.
+            prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero flow rates
+                across the element's inputs by wiring that restriction into the base Component setup.
 
         Note:
             The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
         """
-        sink = kwargs.pop('sink', None)
-        if sink is not None:
-            warnings.warn(
-                'The use of the sink argument is deprecated. Use the inputs argument instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if inputs is not None:
-                raise ValueError('Either sink or inputs can be specified, but not both.')
-            inputs = [sink]
+        # Handle deprecated parameter using centralized helper
+        inputs = self._handle_deprecated_kwarg(kwargs, 'sink', 'inputs', inputs, transform=lambda x: [x])
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(

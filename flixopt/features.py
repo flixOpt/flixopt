@@ -22,7 +22,19 @@ logger = logging.getLogger('flixopt')
 
 
 class InvestmentModel(Submodel):
-    """Investment model using factory patterns but keeping old interface"""
+    """
+    This feature model is used to model the investment of a variable.
+    It applies the corresponding bounds to the variable and the on/off state of the variable.
+
+    Args:
+        model: The optimization model instance
+        label_of_element: The label of the parent (Element). Used to construct the full label of the model.
+        parameters: The parameters of the feature model.
+        label_of_model: The label of the model. This is needed to construct the full label of the model.
+
+    """
+
+    parameters: InvestParameters
 
     def __init__(
         self,
@@ -31,17 +43,6 @@ class InvestmentModel(Submodel):
         parameters: InvestParameters,
         label_of_model: str | None = None,
     ):
-        """
-        This feature model is used to model the investment of a variable.
-        It applies the corresponding bounds to the variable and the on/off state of the variable.
-
-        Args:
-            model: The optimization model instance
-            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            parameters: The parameters of the feature model.
-            label_of_model: The label of the model. This is needed to construct the full label of the model.
-
-        """
         self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
@@ -53,65 +54,79 @@ class InvestmentModel(Submodel):
 
     def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
+        if self.parameters.linked_periods is not None:
+            # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
+            size_min = size_min * self.parameters.linked_periods
+            size_max = size_max * self.parameters.linked_periods
+
         self.add_variables(
             short_name='size',
-            lower=0 if self.parameters.optional else size_min,
+            lower=size_min if self.parameters.mandatory else 0,
             upper=size_max,
-            coords=self._model.get_coords(['year', 'scenario']),
+            coords=self._model.get_coords(['period', 'scenario']),
         )
 
-        if self.parameters.optional:
+        if not self.parameters.mandatory:
             self.add_variables(
                 binary=True,
-                coords=self._model.get_coords(['year', 'scenario']),
-                short_name='is_invested',
+                coords=self._model.get_coords(['period', 'scenario']),
+                short_name='invested',
             )
-
             BoundingPatterns.bounds_with_state(
                 self,
                 variable=self.size,
-                variable_state=self.is_invested,
+                variable_state=self._variables['invested'],
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+            )
+
+        if self.parameters.linked_periods is not None:
+            masked_size = self.size.where(self.parameters.linked_periods, drop=True)
+            self.add_constraints(
+                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
+                short_name='linked_periods',
             )
 
     def _add_effects(self):
         """Add investment effects"""
-        if self.parameters.fix_effects:
+        if self.parameters.effects_of_investment:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.is_invested * factor if self.is_invested is not None else factor
-                    for effect, factor in self.parameters.fix_effects.items()
+                    effect: self.invested * factor if self.invested is not None else factor
+                    for effect, factor in self.parameters.effects_of_investment.items()
                 },
-                target='invest',
+                target='periodic',
             )
 
-        if self.parameters.divest_effects and self.parameters.optional:
+        if self.parameters.effects_of_retirement and not self.parameters.mandatory:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: -self.is_invested * factor + factor
-                    for effect, factor in self.parameters.divest_effects.items()
+                    effect: -self.invested * factor + factor
+                    for effect, factor in self.parameters.effects_of_retirement.items()
                 },
-                target='invest',
+                target='periodic',
             )
 
-        if self.parameters.specific_effects:
+        if self.parameters.effects_of_investment_per_size:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={effect: self.size * factor for effect, factor in self.parameters.specific_effects.items()},
-                target='invest',
+                expressions={
+                    effect: self.size * factor
+                    for effect, factor in self.parameters.effects_of_investment_per_size.items()
+                },
+                target='periodic',
             )
 
-        if self.parameters.piecewise_effects:
+        if self.parameters.piecewise_effects_of_investment:
             self.piecewise_effects = self.add_submodels(
                 PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects.piecewise_shares,
-                    zero_point=self.is_invested,
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects_of_investment.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects_of_investment.piecewise_shares,
+                    zero_point=self.invested,
                 ),
                 short_name='segments',
             )
@@ -122,11 +137,11 @@ class InvestmentModel(Submodel):
         return self._variables['size']
 
     @property
-    def is_invested(self) -> linopy.Variable | None:
+    def invested(self) -> linopy.Variable | None:
         """Binary investment decision variable"""
-        if 'is_invested' not in self._variables:
+        if 'invested' not in self._variables:
             return None
-        return self._variables['is_invested']
+        return self._variables['invested']
 
 
 class InvestmentTimingModel(Submodel):
@@ -425,7 +440,7 @@ class OnOffModel(Submodel):
                 self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
             ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
             short_name='on_hours_total',
-            coords=['year', 'scenario'],
+            coords=['period', 'scenario'],
         )
 
         # 4. Switch tracking using existing pattern
@@ -447,7 +462,7 @@ class OnOffModel(Submodel):
                 count = self.add_variables(
                     lower=0,
                     upper=self.parameters.switch_on_total_max,
-                    coords=self._model.get_coords(('year', 'scenario')),
+                    coords=self._model.get_coords(('period', 'scenario')),
                     short_name='switch|count',
                 )
                 self.add_constraints(count == self.switch_on.sum('time'), short_name='switch|count')
@@ -490,7 +505,7 @@ class OnOffModel(Submodel):
                     effect: self.on * factor * self._model.hours_per_step
                     for effect, factor in self.parameters.effects_per_running_hour.items()
                 },
-                target='operation',
+                target='temporal',
             )
 
         if self.parameters.effects_per_switch_on:
@@ -499,15 +514,17 @@ class OnOffModel(Submodel):
                 expressions={
                     effect: self.switch_on * factor for effect, factor in self.parameters.effects_per_switch_on.items()
                 },
-                target='operation',
+                target='temporal',
             )
 
     # Properties access variables from Submodel's tracking system
 
+    # Properties access variables from Submodel's tracking system
+
     @property
-    def total_on_hours(self) -> linopy.Variable | None:
+    def on_hours_total(self) -> linopy.Variable:
         """Total on hours variable"""
-        return self['total_on_hours']
+        return self['on_hours_total']
 
     @property
     def off(self) -> linopy.Variable | None:
@@ -564,35 +581,34 @@ class PieceModel(Submodel):
         model: FlowSystemModel,
         label_of_element: str,
         label_of_model: str,
-        as_time_series: bool = True,
+        dims: FlowSystemDimensions | None,
     ):
         self.inside_piece: linopy.Variable | None = None
         self.lambda0: linopy.Variable | None = None
         self.lambda1: linopy.Variable | None = None
-        self._as_time_series = as_time_series
+        self.dims = dims
 
         super().__init__(model, label_of_element, label_of_model)
 
     def _do_modeling(self):
         super()._do_modeling()
-        dims = ('time', 'year', 'scenario') if self._as_time_series else ('year', 'scenario')
         self.inside_piece = self.add_variables(
             binary=True,
             short_name='inside_piece',
-            coords=self._model.get_coords(dims=dims),
+            coords=self._model.get_coords(dims=self.dims),
         )
         self.lambda0 = self.add_variables(
             lower=0,
             upper=1,
             short_name='lambda0',
-            coords=self._model.get_coords(dims=dims),
+            coords=self._model.get_coords(dims=self.dims),
         )
 
         self.lambda1 = self.add_variables(
             lower=0,
             upper=1,
             short_name='lambda1',
-            coords=self._model.get_coords(dims=dims),
+            coords=self._model.get_coords(dims=self.dims),
         )
 
         # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
@@ -607,7 +623,7 @@ class PiecewiseModel(Submodel):
         label_of_model: str,
         piecewise_variables: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
-        as_time_series: bool,
+        dims: FlowSystemDimensions | None,
     ):
         """
         Modeling a Piecewise relation between miultiple variables.
@@ -617,14 +633,14 @@ class PiecewiseModel(Submodel):
         Args:
             model: The FlowSystemModel that is used to create the model.
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            label: The label of the model. Used to construct the full label of the model.
+            label_of_model: The label of the model. Used to construct the full label of the model.
             piecewise_variables: The variables to which the Pieces are assigned.
             zero_point: A variable that can be used to define a zero point for the Piecewise relation. If None or False, no zero point is defined.
-            as_time_series: Whether the Piecewise relation is defined for a TimeSeries or a single variable.
+            dims: The dimensions used for variable creation. If None, all dimensions are used.
         """
         self._piecewise_variables = piecewise_variables
         self._zero_point = zero_point
-        self._as_time_series = as_time_series
+        self.dims = dims
 
         self.pieces: list[PieceModel] = []
         self.zero_point: linopy.Variable | None = None
@@ -632,13 +648,18 @@ class PiecewiseModel(Submodel):
 
     def _do_modeling(self):
         super()._do_modeling()
+        # Validate all piecewise variables have the same number of segments
+        segment_counts = [len(pw) for pw in self._piecewise_variables.values()]
+        if not all(count == segment_counts[0] for count in segment_counts):
+            raise ValueError(f'All piecewises must have the same number of pieces, got {segment_counts}')
+
         for i in range(len(list(self._piecewise_variables.values())[0])):
             new_piece = self.add_submodels(
                 PieceModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     label_of_model=f'{self.label_of_element}|Piece_{i}',
-                    as_time_series=self._as_time_series,
+                    dims=self.dims,
                 ),
                 short_name=f'Piece_{i}',
             )
@@ -667,7 +688,7 @@ class PiecewiseModel(Submodel):
                 rhs = self.zero_point
             elif self._zero_point is True:
                 self.zero_point = self.add_variables(
-                    coords=self._model.get_coords(('year', 'scenario') if self._as_time_series else None),
+                    coords=self._model.get_coords(self.dims),
                     binary=True,
                     short_name='zero_point',
                 )
@@ -681,6 +702,13 @@ class PiecewiseModel(Submodel):
                 short_name=f'{var_name}|single_segment',
             )
 
+        # Shares
+        self._model.effects.add_share_to_effects(
+            name=self.label_of_element,
+            expressions={effect: variable * 1 for effect, variable in self.shares.items()},
+            target='invest',
+        )
+
 
 class PiecewiseEffectsModel(Submodel):
     def __init__(
@@ -692,9 +720,13 @@ class PiecewiseEffectsModel(Submodel):
         piecewise_shares: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
     ):
-        assert len(piecewise_origin[1]) == len(list(piecewise_shares.values())[0]), (
-            'Piece length of variable_segments and share_segments must be equal'
-        )
+        origin_count = len(piecewise_origin[1])
+        share_counts = [len(pw) for pw in piecewise_shares.values()]
+        if not all(count == origin_count for count in share_counts):
+            raise ValueError(
+                f'Piece count mismatch: piecewise_origin has {origin_count} segments, '
+                f'but piecewise_shares have {share_counts}'
+            )
         self._zero_point = zero_point
         self._piecewise_origin = piecewise_origin
         self._piecewise_shares = piecewise_shares
@@ -706,7 +738,7 @@ class PiecewiseEffectsModel(Submodel):
 
     def _do_modeling(self):
         self.shares = {
-            effect: self.add_variables(coords=self._model.get_coords(['year', 'scenario']), short_name=effect)
+            effect: self.add_variables(coords=self._model.get_coords(['period', 'scenario']), short_name=effect)
             for effect in self._piecewise_shares
         }
 
@@ -724,7 +756,7 @@ class PiecewiseEffectsModel(Submodel):
                 label_of_element=self.label_of_element,
                 piecewise_variables=piecewise_variables,
                 zero_point=self._zero_point,
-                as_time_series=False,
+                dims=('period', 'scenario'),
                 label_of_model=f'{self.label_of_element}|PiecewiseEffects',
             ),
             short_name='PiecewiseEffects',
@@ -734,7 +766,7 @@ class PiecewiseEffectsModel(Submodel):
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
-            target='invest',
+            target='periodic',
         )
 
 
@@ -776,22 +808,21 @@ class ShareAllocationModel(Submodel):
             lower=self._total_min,
             upper=self._total_max,
             coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
+            name=self.label_full,
             short_name='total',
         )
         # eq: sum = sum(share_i) # skalar
-        self._eq_total = self.add_constraints(self.total == 0, short_name='total')
+        self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
 
         if 'time' in self._dims:
             self.total_per_timestep = self.add_variables(
                 lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.hours_per_step,
                 upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.hours_per_step,
                 coords=self._model.get_coords(self._dims),
-                short_name='total_per_timestep',
+                short_name='per_timestep',
             )
 
-            self._eq_total_per_timestep = self.add_constraints(
-                self.total_per_timestep == 0, short_name='total_per_timestep'
-            )
+            self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
             # Add it to the total
             self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')
@@ -818,8 +849,8 @@ class ShareAllocationModel(Submodel):
         else:
             if 'time' in dims and 'time' not in self._dims:
                 raise ValueError('Cannot add share with time-dim to a model without time-dim')
-            if 'year' in dims and 'year' not in self._dims:
-                raise ValueError('Cannot add share with year-dim to a model without year-dim')
+            if 'period' in dims and 'period' not in self._dims:
+                raise ValueError('Cannot add share with period-dim to a model without period-dim')
             if 'scenario' in dims and 'scenario' not in self._dims:
                 raise ValueError('Cannot add share with scenario-dim to a model without scenario-dim')
 

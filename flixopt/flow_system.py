@@ -4,21 +4,23 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
-import json
 import logging
 import warnings
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from . import io as fx_io
+from .config import CONFIG
 from .core import (
     ConversionError,
     DataConverter,
     FlowSystemDimensions,
-    NonTemporalData,
-    NonTemporalDataUser,
+    PeriodicData,
+    PeriodicDataUser,
     TemporalData,
     TemporalDataUser,
     TimeSeriesData,
@@ -26,13 +28,13 @@ from .core import (
 from .effects import (
     Effect,
     EffectCollection,
-    NonTemporalEffects,
-    NonTemporalEffectsUser,
+    PeriodicEffects,
+    PeriodicEffectsUser,
     TemporalEffects,
     TemporalEffectsUser,
 )
 from .elements import Bus, Component, Flow
-from .structure import Element, FlowSystemModel, Interface
+from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 
 if TYPE_CHECKING:
     import pathlib
@@ -43,52 +45,124 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
-class FlowSystem(Interface):
+class FlowSystem(Interface, CompositeContainerMixin[Element]):
     """
-    A FlowSystem organizes the high level Elements (Components, Buses & Effects).
+    A FlowSystem organizes the high level Elements (Components, Buses, Effects & Flows).
 
-    This is the main container class that users work with to build and manage their System.
+    This is the main container class that users work with to build and manage their energy or material flow system.
+    FlowSystem provides both direct container access (via .components, .buses, .effects, .flows) and a unified
+    dict-like interface for accessing any element by label across all container types.
 
     Args:
         timesteps: The timesteps of the model.
-        years: The years of the model.
+        periods: The periods of the model.
         scenarios: The scenarios of the model.
         hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
         hours_of_previous_timesteps: The duration of previous timesteps.
             If None, the first time increment of time_series is used.
             This is needed to calculate previous durations (for example consecutive_on_hours).
             If you use an array, take care that its long enough to cover all previous values!
-        years_of_last_year: The duration of the last year. Defaults to the duration of the last year interval.
-        weights: The weights of each year and scenario. If None, all scenarios have the same weight, while the years have the weight of their represented year (all normalized to 1). Its recommended to scale the weights to sum up to 1.
+        weights: The weights of each period and scenario. If None, all scenarios have the same weight (normalized to 1).
+            Its recommended to normalize the weights to sum up to 1.
+        scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
+            - True: All sizes are shared/equalized across scenarios
+            - False: All sizes are optimized separately per scenario
+            - list[str]: Only specified components (by label_full) are equalized across scenarios
+        scenario_independent_flow_rates: Controls whether flow rates are equalized across scenarios.
+            - True: All flow rates are shared/equalized across scenarios
+            - False: All flow rates are optimized separately per scenario
+            - list[str]: Only specified flows (by label_full) are equalized across scenarios
+
+    Examples:
+        Creating a FlowSystem and accessing elements:
+
+        >>> import flixopt as fx
+        >>> import pandas as pd
+        >>> timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+        >>> flow_system = fx.FlowSystem(timesteps)
+        >>>
+        >>> # Add elements to the system
+        >>> boiler = fx.Component('Boiler', inputs=[heat_flow], on_off_parameters=...)
+        >>> heat_bus = fx.Bus('Heat', excess_penalty_per_flow_hour=1e4)
+        >>> costs = fx.Effect('costs', is_objective=True, is_standard=True)
+        >>> flow_system.add_elements(boiler, heat_bus, costs)
+
+        Unified dict-like access (recommended for most cases):
+
+        >>> # Access any element by label, regardless of type
+        >>> boiler = flow_system['Boiler']  # Returns Component
+        >>> heat_bus = flow_system['Heat']  # Returns Bus
+        >>> costs = flow_system['costs']  # Returns Effect
+        >>>
+        >>> # Check if element exists
+        >>> if 'Boiler' in flow_system:
+        ...     print('Boiler found in system')
+        >>>
+        >>> # Iterate over all elements
+        >>> for label in flow_system.keys():
+        ...     element = flow_system[label]
+        ...     print(f'{label}: {type(element).__name__}')
+        >>>
+        >>> # Get all element labels and objects
+        >>> all_labels = list(flow_system.keys())
+        >>> all_elements = list(flow_system.values())
+        >>> for label, element in flow_system.items():
+        ...     print(f'{label}: {element}')
+
+        Direct container access for type-specific operations:
+
+        >>> # Access specific container when you need type filtering
+        >>> for component in flow_system.components.values():
+        ...     print(f'{component.label}: {len(component.inputs)} inputs')
+        >>>
+        >>> # Access buses directly
+        >>> for bus in flow_system.buses.values():
+        ...     print(f'{bus.label}')
+        >>>
+        >>> # Flows are automatically collected from all components
+        >>> for flow in flow_system.flows.values():
+        ...     print(f'{flow.label_full}: {flow.size}')
+        >>>
+        >>> # Access effects
+        >>> for effect in flow_system.effects.values():
+        ...     print(f'{effect.label}')
 
     Notes:
+        - The dict-like interface (`flow_system['element']`) searches across all containers
+          (components, buses, effects, flows) to find the element with the matching label.
+        - Element labels must be unique across all container types. Attempting to add
+          elements with duplicate labels will raise an error, ensuring each label maps to exactly one element.
+        - The `.all_elements` property is deprecated. Use the dict-like interface instead:
+          `flow_system['element']`, `'element' in flow_system`, `flow_system.keys()`,
+          `flow_system.values()`, or `flow_system.items()`.
+        - Direct container access (`.components`, `.buses`, `.effects`, `.flows`) is useful
+          when you need type-specific filtering or operations.
+        - The `.flows` container is automatically populated from all component inputs and outputs.
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
-        - The instance starts disconnected (self._connected == False) and will be connected automatically when trying to solve a calculation.
+        - The instance starts disconnected (self._connected_and_transformed == False) and will be
+          connected_and_transformed automatically when trying to solve a calculation.
     """
+
+    model: FlowSystemModel | None
 
     def __init__(
         self,
         timesteps: pd.DatetimeIndex,
-        years: pd.Index | None = None,
+        periods: pd.Index | None = None,
         scenarios: pd.Index | None = None,
-        hours_of_last_timestep: float | None = None,
+        hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        years_of_last_year: int | None = None,
-        weights: NonTemporalDataUser | None = None,
+        weights: PeriodicDataUser | None = None,
+        scenario_independent_sizes: bool | list[str] = True,
+        scenario_independent_flow_rates: bool | list[str] = False,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
-        self.timesteps_extra = self._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
+        self.timesteps_extra = self._create_timesteps_with_extra(self.timesteps, hours_of_last_timestep)
         self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
-            timesteps, hours_of_previous_timesteps
+            self.timesteps, hours_of_previous_timesteps
         )
 
-        if years is None:
-            self.years, self.years_per_year, self.years_of_investment = None, None, None
-        else:
-            self.years = self._validate_years(years)
-            self.years_per_year = self.calculate_years_per_year(self.years, years_of_last_year)
-            self.years_of_investment = self.years.rename('year_of_investment')
-
+        self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
         self.weights = weights
@@ -100,8 +174,8 @@ class FlowSystem(Interface):
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
         # Element collections
-        self.components: dict[str, Component] = {}
-        self.buses: dict[str, Bus] = {}
+        self.components: ElementContainer[Component] = ElementContainer(element_type_name='components')
+        self.buses: ElementContainer[Bus] = ElementContainer(element_type_name='buses')
         self.effects: EffectCollection = EffectCollection()
         self.model: FlowSystemModel | None = None
 
@@ -109,6 +183,11 @@ class FlowSystem(Interface):
         self._used_in_calculation = False
 
         self._network_app = None
+        self._flows_cache: ElementContainer[Flow] | None = None
+
+        # Use properties to validate and store scenario dimension settings
+        self.scenario_independent_sizes = scenario_independent_sizes
+        self.scenario_independent_flow_rates = scenario_independent_flow_rates
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -140,27 +219,27 @@ class FlowSystem(Interface):
         return scenarios
 
     @staticmethod
-    def _validate_years(years: pd.Index) -> pd.Index:
+    def _validate_periods(periods: pd.Index) -> pd.Index:
         """
-        Validate and prepare year index.
+        Validate and prepare period index.
 
         Args:
-            years: The year index to validate
+            periods: The period index to validate
         """
-        if not isinstance(years, pd.Index) or len(years) == 0:
-            raise ConversionError(f'Years must be a non-empty Index. Got {years}')
+        if not isinstance(periods, pd.Index) or len(periods) == 0:
+            raise ConversionError(f'Periods must be a non-empty Index. Got {periods}')
 
         if not (
-            years.dtype.kind == 'i'  # integer dtype
-            and years.is_monotonic_increasing  # rising
-            and years.is_unique
+            periods.dtype.kind == 'i'  # integer dtype
+            and periods.is_monotonic_increasing  # rising
+            and periods.is_unique
         ):
-            raise ConversionError(f'Years must be a monotonically increasing and unique Index. Got {years}')
+            raise ConversionError(f'Periods must be a monotonically increasing and unique Index. Got {periods}')
 
-        if years.name != 'year':
-            years = years.rename('year')
+        if periods.name != 'period':
+            periods = periods.rename('period')
 
-        return years
+        return periods
 
     @staticmethod
     def _create_timesteps_with_extra(
@@ -179,17 +258,6 @@ class FlowSystem(Interface):
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
             hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='hours_per_timestep'
-        )
-
-    @staticmethod
-    def calculate_years_per_year(years: pd.Index, years_of_last_year: int | None = None) -> xr.DataArray:
-        """Calculate duration of each timestep as a 1D DataArray."""
-        years_per_year = np.diff(years)
-        return xr.DataArray(
-            np.append(years_per_year, years_of_last_year or years_per_year[-1]),
-            coords={'year': years},
-            dims='year',
-            name='years_per_year',
         )
 
     @staticmethod
@@ -235,7 +303,7 @@ class FlowSystem(Interface):
 
         # Extract from effects
         effects_structure = {}
-        for effect in self.effects:
+        for effect in self.effects.values():
             effect_structure, effect_arrays = effect._create_reference_structure()
             all_extracted_arrays.update(effect_arrays)
             effects_structure[effect.label] = effect_structure
@@ -278,13 +346,15 @@ class FlowSystem(Interface):
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
             timesteps=ds.indexes['time'],
-            years=ds.indexes.get('year'),
+            periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
             weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
             if 'weights' in reference_structure
             else None,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
+            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
+            scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
         )
 
         # Restore components
@@ -363,10 +433,9 @@ class FlowSystem(Interface):
     def fit_to_model_coords(
         self,
         name: str,
-        data: TemporalDataUser | NonTemporalDataUser | None,
+        data: TemporalDataUser | PeriodicDataUser | None,
         dims: Collection[FlowSystemDimensions] | None = None,
-        with_year_of_investment: bool = False,
-    ) -> TemporalData | NonTemporalData | None:
+    ) -> TemporalData | PeriodicData | None:
         """
         Fit data to model coordinate system (currently time, but extensible).
 
@@ -374,7 +443,6 @@ class FlowSystem(Interface):
             name: Name of the data
             data: Data to fit to model coordinates
             dims: Collection of dimension names to use for fitting. If None, all dimensions are used.
-            with_year_of_investment: Wether to use the year_of_investment dimension or not. Only if "year" is in dims.
 
         Returns:
             xr.DataArray aligned to model coordinate system. If data is None, returns None.
@@ -386,9 +454,6 @@ class FlowSystem(Interface):
 
         if dims is not None:
             coords = {k: coords[k] for k in dims if k in coords}
-
-        if with_year_of_investment and 'year' in coords:
-            coords['year_of_investment'] = coords['year'].rename('year_of_investment')
 
         # Rest of your method stays the same, just pass coords
         if isinstance(data, TimeSeriesData):
@@ -408,11 +473,11 @@ class FlowSystem(Interface):
     def fit_effects_to_model_coords(
         self,
         label_prefix: str | None,
-        effect_values: TemporalEffectsUser | NonTemporalEffectsUser | None,
+        effect_values: TemporalEffectsUser | PeriodicEffectsUser | None,
         label_suffix: str | None = None,
         dims: Collection[FlowSystemDimensions] | None = None,
-        with_year_of_investment: bool = False,
-    ) -> TemporalEffects | NonTemporalEffects | None:
+        delimiter: str = '|',
+    ) -> TemporalEffects | PeriodicEffects | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """
@@ -423,10 +488,9 @@ class FlowSystem(Interface):
 
         return {
             effect: self.fit_to_model_coords(
-                '|'.join(filter(None, [label_prefix, effect, label_suffix])),
+                str(delimiter).join(filter(None, [label_prefix, effect, label_suffix])),
                 value,
                 dims=dims,
-                with_year_of_investment=with_year_of_investment,
             )
             for effect, value in effect_values_dict.items()
         }
@@ -437,15 +501,10 @@ class FlowSystem(Interface):
             logger.debug('FlowSystem already connected and transformed')
             return
 
-        self.weights = self.fit_to_model_coords('weights', self.weights, dims=['year', 'scenario'])
-        if self.weights is not None and self.weights.sum() != 1:
-            logger.warning(
-                f'Scenario weights are not normalized to 1. This is recomended for a better scaled model. '
-                f'Sum of weights={self.weights.sum().item()}'
-            )
+        self.weights = self.fit_to_model_coords('weights', self.weights, dims=['period', 'scenario'])
 
         self._connect_network()
-        for element in list(self.components.values()) + list(self.effects.effects.values()) + list(self.buses.values()):
+        for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data(self)
         self._connected_and_transformed = True
 
@@ -475,13 +534,19 @@ class FlowSystem(Interface):
                     f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
                 )
 
-    def create_model(self) -> FlowSystemModel:
+    def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
+        """
+        Create a linopy model from the FlowSystem.
+
+        Args:
+            normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        """
         if not self.connected_and_transformed:
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
             )
-        self.submodel = FlowSystemModel(self)
-        return self.submodel
+        self.model = FlowSystemModel(self, normalize_weights)
+        return self.model
 
     def plot_network(
         self,
@@ -490,7 +555,7 @@ class FlowSystem(Interface):
         | list[
             Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
         ] = True,
-        show: bool = False,
+        show: bool | None = None,
     ) -> pyvis.network.Network | None:
         """
         Visualizes the network structure of a FlowSystem using PyVis, saving it as an interactive HTML file.
@@ -520,7 +585,9 @@ class FlowSystem(Interface):
         from . import plotting
 
         node_infos, edge_infos = self.network_infos()
-        return plotting.plot_network(node_infos, edge_infos, path, controls, show)
+        return plotting.plot_network(
+            node_infos, edge_infos, path, controls, show if show is not None else CONFIG.Plotting.default_show
+        )
 
     def start_network_app(self):
         """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
@@ -564,7 +631,7 @@ class FlowSystem(Interface):
             )
 
         if self._network_app is None:
-            logger.warning('No network app is currently running. Cant stop it')
+            logger.warning("No network app is currently running. Can't stop it")
             return
 
         try:
@@ -585,7 +652,7 @@ class FlowSystem(Interface):
                 'class': 'Bus' if isinstance(node, Bus) else 'Component',
                 'infos': node.__str__(),
             }
-            for node in list(self.components.values()) + list(self.buses.values())
+            for node in chain(self.components.values(), self.buses.values())
         }
 
         edges = {
@@ -607,10 +674,8 @@ class FlowSystem(Interface):
         Args:
             element: new element to check
         """
-        if element in self.all_elements.values():
-            raise ValueError(f'Element {element.label_full} already added to FlowSystem!')
         # check if name is already used:
-        if element.label_full in self.all_elements:
+        if element.label_full in self:
             raise ValueError(f'Label of Element {element.label_full} already used in another element!')
 
     def _add_effects(self, *args: Effect) -> None:
@@ -620,13 +685,15 @@ class FlowSystem(Interface):
         for new_component in list(components):
             logger.info(f'Registered new Component: {new_component.label_full}')
             self._check_if_element_is_unique(new_component)  # check if already exists:
-            self.components[new_component.label_full] = new_component  # Add to existing components
+            self.components.add(new_component)  # Add to existing components
+            self._flows_cache = None  # Invalidate flows cache
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
             logger.info(f'Registered new Bus: {new_bus.label_full}')
             self._check_if_element_is_unique(new_bus)  # check if already exists:
-            self.buses[new_bus.label_full] = new_bus  # Add to existing components
+            self.buses.add(new_bus)  # Add to existing buses
+            self._flows_cache = None  # Invalidate flows cache
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -636,7 +703,7 @@ class FlowSystem(Interface):
                 flow.is_input_in_component = True if flow in component.inputs else False
 
                 # Add Bus if not already added (deprecated)
-                if flow._bus_object is not None and flow._bus_object not in self.buses.values():
+                if flow._bus_object is not None and flow._bus_object.label_full not in self.buses:
                     warnings.warn(
                         f'The Bus {flow._bus_object.label_full} was added to the FlowSystem from {flow.label_full}.'
                         f'This is deprecated and will be removed in the future. '
@@ -663,41 +730,40 @@ class FlowSystem(Interface):
         )
 
     def __repr__(self) -> str:
-        """Compact representation for debugging."""
-        status = '✓' if self.connected_and_transformed else '⚠'
-        return (
-            f'FlowSystem({len(self.timesteps)} timesteps '
-            f'[{self.timesteps[0].strftime("%Y-%m-%d")} to {self.timesteps[-1].strftime("%Y-%m-%d")}], '
-            f'{len(self.components)} Components,  {len(self.buses)} Buses, {len(self.effects)} Effects, {status})'
-        )
+        """Return a detailed string representation showing all containers."""
+        r = fx_io.format_title_with_underline('FlowSystem', '=')
 
-    def __str__(self) -> str:
-        """Structured summary for users."""
-
-        def format_elements(element_names: list, label: str, alignment: int = 12):
-            name_list = ', '.join(element_names[:3])
-            if len(element_names) > 3:
-                name_list += f' ... (+{len(element_names) - 3} more)'
-
-            suffix = f' ({name_list})' if element_names else ''
-            padding = alignment - len(label) - 1  # -1 for the colon
-            return f'{label}:{"":<{padding}} {len(element_names)}{suffix}'
-
-        time_period = f'Time period: {self.timesteps[0].date()} to {self.timesteps[-1].date()}'
+        # Timestep info
+        time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
         freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
+        r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
 
-        lines = [
-            'FlowSystem Overview:',
-            f'{"─" * 50}',
-            time_period,
-            f'Timesteps:   {len(self.timesteps)} ({freq_str})',
-            format_elements(list(self.components.keys()), 'Components'),
-            format_elements(list(self.buses.keys()), 'Buses'),
-            format_elements(list(self.effects.effects.keys()), 'Effects'),
-            f'Status:      {"Connected & Transformed" if self.connected_and_transformed else "Not connected"}',
-        ]
+        # Add periods if present
+        if self.periods is not None:
+            period_names = ', '.join(str(p) for p in self.periods[:3])
+            if len(self.periods) > 3:
+                period_names += f' ... (+{len(self.periods) - 3} more)'
+            r += f'Periods: {len(self.periods)} ({period_names})\n'
+        else:
+            r += 'Periods: None\n'
 
-        return '\n'.join(lines)
+        # Add scenarios if present
+        if self.scenarios is not None:
+            scenario_names = ', '.join(str(s) for s in self.scenarios[:3])
+            if len(self.scenarios) > 3:
+                scenario_names += f' ... (+{len(self.scenarios) - 3} more)'
+            r += f'Scenarios: {len(self.scenarios)} ({scenario_names})\n'
+        else:
+            r += 'Scenarios: None\n'
+
+        # Add status
+        status = '✓' if self.connected_and_transformed else '⚠'
+        r += f'Status: {status}\n'
+
+        # Add grouped container view
+        r += '\n' + self._format_grouped_containers()
+
+        return r
 
     def __eq__(self, other: FlowSystem):
         """Check if two FlowSystems are equal by comparing their dataset representations."""
@@ -717,44 +783,52 @@ class FlowSystem(Interface):
 
         return True
 
-    def __getitem__(self, item) -> Element:
-        """Get element by exact label with helpful error messages."""
-        if item in self.all_elements:
-            return self.all_elements[item]
-
-        # Provide helpful error with suggestions
-        from difflib import get_close_matches
-
-        suggestions = get_close_matches(item, self.all_elements.keys(), n=3, cutoff=0.6)
-
-        if suggestions:
-            suggestion_str = ', '.join(f"'{s}'" for s in suggestions)
-            raise KeyError(f"Element '{item}' not found. Did you mean: {suggestion_str}?")
-        else:
-            raise KeyError(f"Element '{item}' not found in FlowSystem")
-
-    def __contains__(self, item: str) -> bool:
-        """Check if element exists in the FlowSystem."""
-        return item in self.all_elements
-
-    def __iter__(self):
-        """Iterate over element labels."""
-        return iter(self.all_elements.keys())
+    def _get_container_groups(self) -> dict[str, ElementContainer]:
+        """Return ordered container groups for CompositeContainerMixin."""
+        return {
+            'Components': self.components,
+            'Buses': self.buses,
+            'Effects': self.effects,
+            'Flows': self.flows,
+        }
 
     @property
-    def flows(self) -> dict[str, Flow]:
-        set_of_flows = {flow for comp in self.components.values() for flow in comp.inputs + comp.outputs}
-        return {flow.label_full: flow for flow in set_of_flows}
+    def flows(self) -> ElementContainer[Flow]:
+        if self._flows_cache is None:
+            flows = [f for c in self.components.values() for f in c.inputs + c.outputs]
+            # Deduplicate by id and sort for reproducibility
+            flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.label_full.lower())
+            self._flows_cache = ElementContainer(flows, element_type_name='flows')
+        return self._flows_cache
 
     @property
     def all_elements(self) -> dict[str, Element]:
-        return {**self.components, **self.effects.effects, **self.flows, **self.buses}
+        """
+        Get all elements as a dictionary.
+
+        .. deprecated:: 3.2.0
+            Use dict-like interface instead: `flow_system['element']`, `'element' in flow_system`,
+            `flow_system.keys()`, `flow_system.values()`, or `flow_system.items()`.
+            This property will be removed in v4.0.0.
+
+        Returns:
+            Dictionary mapping element labels to element objects.
+        """
+        warnings.warn(
+            "The 'all_elements' property is deprecated. Use dict-like interface instead: "
+            "flow_system['element'], 'element' in flow_system, flow_system.keys(), "
+            'flow_system.values(), or flow_system.items(). '
+            'This property will be removed in v4.0.0.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return {**self.components, **self.effects, **self.flows, **self.buses}
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
         active_coords = {'time': self.timesteps}
-        if self.years is not None:
-            active_coords['year'] = self.years
+        if self.periods is not None:
+            active_coords['period'] = self.periods
         if self.scenarios is not None:
             active_coords['scenario'] = self.scenarios
         return active_coords
@@ -763,10 +837,81 @@ class FlowSystem(Interface):
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
 
+    def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
+        """
+        Validate scenario parameter value.
+
+        Args:
+            value: The value to validate
+            param_name: Name of the parameter (for error messages)
+            element_type: Type of elements expected in list (e.g., 'component label_full', 'flow label_full')
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        if isinstance(value, bool):
+            return  # Valid
+        elif isinstance(value, list):
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError(f'{param_name} list must contain only strings ({element_type} values)')
+        else:
+            raise TypeError(f'{param_name} must be bool or list[str], got {type(value).__name__}')
+
+    @property
+    def scenario_independent_sizes(self) -> bool | list[str]:
+        """
+        Controls whether investment sizes are equalized across scenarios.
+
+        Returns:
+            bool or list[str]: Configuration for scenario-independent sizing
+        """
+        return self._scenario_independent_sizes
+
+    @scenario_independent_sizes.setter
+    def scenario_independent_sizes(self, value: bool | list[str]) -> None:
+        """
+        Set whether investment sizes should be equalized across scenarios.
+
+        Args:
+            value: True (all equalized), False (all vary), or list of component label_full strings to equalize
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        self._validate_scenario_parameter(value, 'scenario_independent_sizes', 'Element.label_full')
+        self._scenario_independent_sizes = value
+
+    @property
+    def scenario_independent_flow_rates(self) -> bool | list[str]:
+        """
+        Controls whether flow rates are equalized across scenarios.
+
+        Returns:
+            bool or list[str]: Configuration for scenario-independent flow rates
+        """
+        return self._scenario_independent_flow_rates
+
+    @scenario_independent_flow_rates.setter
+    def scenario_independent_flow_rates(self, value: bool | list[str]) -> None:
+        """
+        Set whether flow rates should be equalized across scenarios.
+
+        Args:
+            value: True (all equalized), False (all vary), or list of flow label_full strings to equalize
+
+        Raises:
+            TypeError: If value is not bool or list[str]
+            ValueError: If list contains non-string elements
+        """
+        self._validate_scenario_parameter(value, 'scenario_independent_flow_rates', 'Flow.label_full')
+        self._scenario_independent_flow_rates = value
+
     def sel(
         self,
         time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
-        year: int | slice | list[int] | pd.Index | None = None,
+        period: int | slice | list[int] | pd.Index | None = None,
         scenario: str | slice | list[str] | pd.Index | None = None,
     ) -> FlowSystem:
         """
@@ -774,7 +919,7 @@ class FlowSystem(Interface):
 
         Args:
             time: Time selection (e.g., slice('2023-01-01', '2023-12-31'), '2023-06-15', or list of times)
-            year: Year selection (e.g., slice(2023, 2024), or list of years)
+            period: Period selection (e.g., slice(2023, 2024), or list of periods)
             scenario: Scenario selection (e.g., slice('scenario1', 'scenario2'), or list of scenarios)
 
         Returns:
@@ -789,10 +934,8 @@ class FlowSystem(Interface):
         indexers = {}
         if time is not None:
             indexers['time'] = time
-        if year is not None:
-            indexers['year'] = year
-            if 'year_of_investment' in ds.dims:
-                indexers['year_of_investment'] = year
+        if period is not None:
+            indexers['period'] = period
         if scenario is not None:
             indexers['scenario'] = scenario
 
@@ -800,18 +943,12 @@ class FlowSystem(Interface):
             return self.copy()  # Return a copy when no selection
 
         selected_dataset = ds.sel(**indexers)
-        if 'year_of_investment' in selected_dataset.coords and selected_dataset.coords['year_of_investment'].size == 1:
-            logger.critical(
-                'Selected a single year while using InvestmentTiming. This is not supported and will lead to Errors '
-                'when trying to create a Calculation from this FlowSystem. Please select multiple years instead, '
-                'or remove the InvestmentTimingParameters.'
-            )
         return self.__class__.from_dataset(selected_dataset)
 
     def isel(
         self,
         time: int | slice | list[int] | None = None,
-        year: int | slice | list[int] | None = None,
+        period: int | slice | list[int] | None = None,
         scenario: int | slice | list[int] | None = None,
     ) -> FlowSystem:
         """
@@ -819,7 +956,7 @@ class FlowSystem(Interface):
 
         Args:
             time: Time selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
-            year: Year selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
+            period: Period selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
             scenario: Scenario selection by integer index (e.g., slice(0, 3), 50, or [0, 5, 10])
 
         Returns:
@@ -834,10 +971,8 @@ class FlowSystem(Interface):
         indexers = {}
         if time is not None:
             indexers['time'] = time
-        if year is not None:
-            indexers['year'] = year
-            if 'year_of_investment' in ds.dims:
-                indexers['year_of_investment'] = year
+        if period is not None:
+            indexers['period'] = period
         if scenario is not None:
             indexers['scenario'] = scenario
 
@@ -845,18 +980,14 @@ class FlowSystem(Interface):
             return self.copy()  # Return a copy when no selection
 
         selected_dataset = ds.isel(**indexers)
-        if 'year_of_investment' in selected_dataset.coords and selected_dataset.coords['year_of_investment'].size == 1:
-            logger.critical(
-                'Selected a single year while using InvestmentTiming. This is not supported and will lead to Errors '
-                'when trying to create a Calculation from this FlowSystem. Please select multiple years instead, '
-                'or remove the InvestmentTimingParameters.'
-            )
         return self.__class__.from_dataset(selected_dataset)
 
     def resample(
         self,
         time: str,
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
+        hours_of_last_timestep: int | float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         **kwargs: Any,
     ) -> FlowSystem:
         """
@@ -866,10 +997,12 @@ class FlowSystem(Interface):
         Args:
             time: Resampling frequency (e.g., '3h', '2D', '1M')
             method: Resampling method. Recommended: 'mean', 'first', 'last', 'max', 'min'
+            hours_of_last_timestep: New duration of the last time step. Defaults to the last time interval of the new timesteps
+            hours_of_previous_timesteps: New duration of the previous timestep. Defaults to the first time increment of the new timesteps
             **kwargs: Additional arguments passed to xarray.resample()
 
         Returns:
-            FlowSystem: New FlowSystem with resampled data
+            FlowSystem: New resampled FlowSystem
         """
         if not self.connected_and_transformed:
             self.connect_and_transform()
@@ -902,6 +1035,10 @@ class FlowSystem(Interface):
             resampled_dataset = xr.merge([resampled_time_data, non_time_dataset])
         else:
             resampled_dataset = resampled_time_data
+
+        # Let FlowSystem recalculate or use explicitly set value
+        resampled_dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
+        resampled_dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
 
         return self.__class__.from_dataset(resampled_dataset)
 

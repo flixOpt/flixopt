@@ -25,7 +25,7 @@ class ModelingUtilitiesAbstract:
 
         Args:
             values: Input DataArray to convert to binary
-            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
+            epsilon: Tolerance for zero detection (uses CONFIG.Modeling.epsilon if None)
             dims: Dims to keep. Other dimensions are collapsed using .any() -> If any value is 1, all are 1.
 
         Returns:
@@ -35,7 +35,7 @@ class ModelingUtilitiesAbstract:
             values = xr.DataArray(values, dims=['time'], coords={'time': range(len(values))})
 
         if epsilon is None:
-            epsilon = CONFIG.modeling.EPSILON
+            epsilon = CONFIG.Modeling.epsilon
 
         if values.size == 0:
             return xr.DataArray(0) if values.item() < epsilon else xr.DataArray(1)
@@ -53,49 +53,67 @@ class ModelingUtilitiesAbstract:
 
     @staticmethod
     def count_consecutive_states(
-        binary_values: xr.DataArray,
+        binary_values: xr.DataArray | np.ndarray | list[int, float],
         dim: str = 'time',
-        epsilon: float = None,
+        epsilon: float | None = None,
     ) -> float:
-        """
-        Counts the number of consecutive states in a binary time series.
+        """Count consecutive steps in the final active state of a binary time series.
+
+        This function counts how many consecutive time steps the series remains "on"
+        (non-zero) at the end of the time series. If the final state is "off", returns 0.
 
         Args:
-            binary_values: Binary DataArray
-            dim: Dimension to count consecutive states over
-            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
+            binary_values: Binary DataArray with values close to 0 (off) or 1 (on).
+            dim: Dimension along which to count consecutive states.
+            epsilon: Tolerance for zero detection. Uses CONFIG.Modeling.epsilon if None.
 
         Returns:
-            The consecutive number of steps spent in the final state of the timeseries
+            Sum of values in the final consecutive "on" period. Returns 0.0 if the
+            final state is "off".
+
+        Examples:
+            >>> arr = xr.DataArray([0, 0, 1, 1, 1, 0, 1, 1], dims=['time'])
+            >>> ModelingUtilitiesAbstract.count_consecutive_states(arr)
+            2.0
+
+            >>> arr = [0, 0, 1, 0, 1, 1, 1, 1]
+            >>> ModelingUtilitiesAbstract.count_consecutive_states(arr)
+            4.0
         """
-        if epsilon is None:
-            epsilon = CONFIG.modeling.EPSILON
+        epsilon = epsilon or CONFIG.Modeling.epsilon
 
-        binary_values = binary_values.any(dim=[d for d in binary_values.dims if d != dim])
+        if isinstance(binary_values, xr.DataArray):
+            # xarray path
+            other_dims = [d for d in binary_values.dims if d != dim]
+            if other_dims:
+                binary_values = binary_values.any(dim=other_dims)
+            arr = binary_values.values
+        else:
+            # numpy/array-like path
+            arr = np.asarray(binary_values)
 
-        # Handle scalar case
-        if binary_values.ndim == 0:
-            return float(binary_values.item())
+        # Flatten to 1D if needed
+        arr = arr.ravel() if arr.ndim > 1 else arr
 
-        # Check if final state is off
-        if np.isclose(binary_values.isel({dim: -1}).item(), 0, atol=epsilon).all():
+        # Handle edge cases
+        if arr.size == 0:
+            return 0.0
+        if arr.size == 1:
+            return float(arr[0]) if not np.isclose(arr[0], 0, atol=epsilon) else 0.0
+
+        # Return 0 if final state is off
+        if np.isclose(arr[-1], 0, atol=epsilon):
             return 0.0
 
-        # Find consecutive 'on' period from the end
-        is_zero = np.isclose(binary_values, 0, atol=epsilon)
-
-        # Find the last zero, then sum everything after it
+        # Find the last zero position (treat NaNs as off)
+        arr = np.nan_to_num(arr, nan=0.0)
+        is_zero = np.isclose(arr, 0, atol=epsilon)
         zero_indices = np.where(is_zero)[0]
-        if len(zero_indices) == 0:
-            # All 'on' - sum everything
-            start_idx = 0
-        else:
-            # Start after last zero
-            start_idx = zero_indices[-1] + 1
 
-        consecutive_values = binary_values.isel({dim: slice(start_idx, None)})
+        # Calculate sum from last zero to end
+        start_idx = zero_indices[-1] + 1 if zero_indices.size > 0 else 0
 
-        return float(consecutive_values.sum().item())  # TODO: Som only over one dim?
+        return float(np.sum(arr[start_idx:]))
 
 
 class ModelingUtilities:
@@ -111,7 +129,7 @@ class ModelingUtilities:
         Args:
             binary_values: Binary DataArray with 'time' dim, or scalar/array
             hours_per_timestep: Duration of each timestep in hours
-            epsilon: Tolerance for zero detection (uses CONFIG.modeling.EPSILON if None)
+            epsilon: Tolerance for zero detection (uses CONFIG.Modeling.epsilon if None)
 
         Returns:
             The duration of the final consecutive 'on' period in hours
@@ -254,7 +272,7 @@ class ModelingPrimitives:
             constraints: {'ub': constraint, 'forward': constraint, 'backward': constraint, ...}
         """
         if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
+            raise ValueError('ModelingPrimitives.consecutive_duration_tracking() can only be used with a Submodel')
 
         mega = duration_per_step.sum(duration_dim) + previous_duration  # Big-M value
 
@@ -308,7 +326,13 @@ class ModelingPrimitives:
             )
 
             # Handle initial condition for minimum duration
-            if previous_duration > 0 and previous_duration < minimum_duration.isel({duration_dim: 0}).max():
+            prev = (
+                float(previous_duration)
+                if not isinstance(previous_duration, xr.DataArray)
+                else float(previous_duration.max().item())
+            )
+            min0 = float(minimum_duration.isel({duration_dim: 0}).max().item())
+            if prev > 0 and prev < min0:
                 constraints['initial_lb'] = model.add_constraints(
                     state_variable.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
                 )
@@ -346,7 +370,7 @@ class ModelingPrimitives:
             AssertionError: If fewer than 2 variables provided or variables aren't binary
         """
         if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.sum_up_variable() can only be used with a Submodel')
+            raise ValueError('ModelingPrimitives.mutual_exclusivity_constraint() can only be used with a Submodel')
 
         assert len(binary_variables) >= 2, (
             f'Mutual exclusivity requires at least 2 variables, got {len(binary_variables)}'
@@ -372,7 +396,7 @@ class BoundingPatterns:
         variable: linopy.Variable,
         bounds: tuple[TemporalData, TemporalData],
         name: str = None,
-    ):
+    ) -> list[linopy.constraints.Constraint]:
         """Create simple bounds.
         variable ∈ [lower_bound, upper_bound]
 
@@ -385,9 +409,7 @@ class BoundingPatterns:
             bounds: Tuple of (lower_bound, upper_bound) absolute bounds
 
         Returns:
-            Tuple containing:
-                - variables (Dict): Empty dict
-                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
+            List containing lower_bound and upper_bound constraints
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.basic_bounds() can only be used with a Submodel')
@@ -435,11 +457,11 @@ class BoundingPatterns:
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
-        if np.all(lower_bound - upper_bound) < 1e-10:
+        if np.allclose(lower_bound, upper_bound, atol=1e-10, equal_nan=True):
             fix_constraint = model.add_constraints(variable == variable_state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
-        epsilon = np.maximum(CONFIG.modeling.EPSILON, lower_bound)
+        epsilon = np.maximum(CONFIG.Modeling.epsilon, lower_bound)
 
         upper_constraint = model.add_constraints(variable <= variable_state * upper_bound, name=f'{name}|ub')
         lower_constraint = model.add_constraints(variable >= variable_state * epsilon, name=f'{name}|lb')
@@ -481,7 +503,7 @@ class BoundingPatterns:
         rel_lower, rel_upper = relative_bounds
         name = name or f'{variable.name}'
 
-        if np.abs(rel_lower - rel_upper).all() < 10e-10:
+        if np.allclose(rel_lower, rel_upper, atol=1e-10, equal_nan=True):
             return [model.add_constraints(variable == scaling_variable * rel_lower, name=f'{name}|fixed')]
 
         upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub')
@@ -525,7 +547,7 @@ class BoundingPatterns:
             List[linopy.Constraint]: List of constraint objects
         """
         if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.active_bounds_with_state() can only be used with a Submodel')
+            raise ValueError('BoundingPatterns.scaled_bounds_with_state() can only be used with a Submodel')
 
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
@@ -539,7 +561,7 @@ class BoundingPatterns:
         scaling_upper = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub2')
 
         big_m_upper = rel_upper * scaling_max
-        big_m_lower = np.maximum(CONFIG.modeling.EPSILON, rel_lower * scaling_min)
+        big_m_lower = np.maximum(CONFIG.Modeling.epsilon, rel_lower * scaling_min)
 
         binary_upper = model.add_constraints(variable_state * big_m_upper >= variable, name=f'{name}|ub1')
         binary_lower = model.add_constraints(variable_state * big_m_lower <= variable, name=f'{name}|lb1')
@@ -570,7 +592,7 @@ class BoundingPatterns:
             constraints: {'transition': constraint, 'initial': constraint, 'mutex': constraint}
         """
         if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.state_transition_variables() can only be used with a Submodel')
+            raise ValueError('ModelingPrimitives.state_transition_bounds() can only be used with a Submodel')
 
         # State transition constraints for t > 0
         transition = model.add_constraints(
@@ -627,7 +649,7 @@ class BoundingPatterns:
             Tuple of constraints: (transition_upper, transition_lower, initial_upper, initial_lower)
         """
         if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.continuous_transition_bounds() can only be used with a Submodel')
+            raise ValueError('ModelingPrimitives.continuous_transition_bounds() can only be used with a Submodel')
 
         # Transition constraints for t > 0: continuous variable can only change when switches are active
         transition_upper = model.add_constraints(
@@ -637,7 +659,7 @@ class BoundingPatterns:
         )
 
         transition_lower = model.add_constraints(
-            continuous_variable.isel({coord: slice(None, -1)}) - continuous_variable.isel({coord: slice(1, None)})
+            -(continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)}))
             <= max_change * (switch_on.isel({coord: slice(1, None)}) + switch_off.isel({coord: slice(1, None)})),
             name=f'{name}|transition_lb',
         )
@@ -668,7 +690,7 @@ class BoundingPatterns:
         name: str,
         max_change: float | xr.DataArray,
         initial_level: float | xr.DataArray = 0.0,
-        coord: str = 'year',
+        coord: str = 'period',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
         Link changes to level evolution with binary control and mutual exclusivity.

@@ -22,8 +22,7 @@ import numpy as np
 import yaml
 
 from . import io as fx_io
-from . import utils as utils
-from .aggregation import AggregationModel, AggregationParameters
+from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
 from .core import DataConverter, Scalar, TimeSeriesData, drop_constant_arrays
@@ -45,7 +44,16 @@ logger = logging.getLogger('flixopt')
 class Calculation:
     """
     class for defined way of solving a flow_system optimization
+
+    Args:
+        name: name of calculation
+        flow_system: flow_system which should be calculated
+        folder: folder where results should be saved. If None, then the current working directory is used.
+        normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
+
+    model: FlowSystemModel | None
 
     def __init__(
         self,
@@ -56,14 +64,8 @@ class Calculation:
             'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
         ] = None,
         folder: pathlib.Path | None = None,
+        normalize_weights: bool = True,
     ):
-        """
-        Args:
-            name: name of calculation
-            flow_system: flow_system which should be calculated
-            folder: folder where results should be saved. If None, then the current working directory is used.
-            active_timesteps: Deprecated. Use FLowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
-        """
         self.name = name
         if flow_system.used_in_calculation:
             logger.warning(
@@ -82,11 +84,12 @@ class Calculation:
             )
             flow_system = flow_system.sel(time=active_timesteps)
         self._active_timesteps = active_timesteps  # deprecated
+        self.normalize_weights = normalize_weights
 
         flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
-        self.model: FlowSystemModel | None = None
+        self.model = None
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
@@ -107,11 +110,11 @@ class Calculation:
             'Penalty': self.model.effects.penalty.total.solution.values,
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
-                    'operation': effect.submodel.operation.total.solution.values,
-                    'invest': effect.submodel.invest.total.solution.values,
+                    'temporal': effect.submodel.temporal.total.solution.values,
+                    'periodic': effect.submodel.periodic.total.solution.values,
                     'total': effect.submodel.total.solution.values,
                 }
-                for effect in self.flow_system.effects
+                for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
             },
             'Invest-Decisions': {
                 'Invested': {
@@ -119,14 +122,14 @@ class Calculation:
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
                     if isinstance(model, (InvestmentModel, InvestmentTimingModel))
-                    and model.size.solution.max() >= CONFIG.modeling.EPSILON
+                    and model.size.solution.max() >= CONFIG.Modeling.epsilon
                 },
                 'Not invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
                     if isinstance(model, (InvestmentModel, InvestmentTimingModel))
-                    and model.size.solution.max() < CONFIG.modeling.EPSILON
+                    and model.size.solution.max() < CONFIG.Modeling.epsilon
                 },
             },
             'Buses with excess': [
@@ -144,7 +147,7 @@ class Calculation:
             ],
         }
 
-        return utils.round_nested_floats(main_results)
+        return fx_io.round_nested_floats(main_results)
 
     @property
     def summary(self):
@@ -162,7 +165,7 @@ class Calculation:
     @property
     def active_timesteps(self) -> pd.DatetimeIndex:
         warnings.warn(
-            'active_timesteps is deprecated. Use active_timesteps instead.',
+            'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -179,13 +182,20 @@ class FullCalculation(Calculation):
 
     This is the most comprehensive calculation type that considers every time step
     in the optimization, providing the most accurate but computationally intensive solution.
+
+    Args:
+        name: name of calculation
+        flow_system: flow_system which should be calculated
+        folder: folder where results should be saved. If None, then the current working directory is used.
+        normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
 
     def do_modeling(self) -> FullCalculation:
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
-        self.model = self.flow_system.create_model()
+        self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
@@ -243,11 +253,10 @@ class FullCalculation(Calculation):
 
         # Log the formatted output
         if log_main_results:
-            logger.info(f'{" Main Results ":#^80}')
             logger.info(
-                '\n'
+                f'{" Main Results ":#^80}\n'
                 + yaml.dump(
-                    utils.round_nested_floats(self.main_results),
+                    self.main_results,
                     default_flow_style=False,
                     sort_keys=False,
                     allow_unicode=True,
@@ -280,7 +289,10 @@ class AggregatedCalculation(FullCalculation):
             This equalizes variables in the components according to the typical periods computed in the aggregation
         active_timesteps: DatetimeIndex of timesteps to use for calculation. If None, all timesteps are used
         folder: Folder where results should be saved. If None, current working directory is used
-        aggregation: contains the aggregation model
+
+    Attributes:
+        aggregation (Aggregation | None): Contains the clustered time series data
+        aggregation_model (AggregationModel | None): Contains Variables and Constraints that equalize clusters of the time series data
     """
 
     def __init__(
@@ -300,7 +312,8 @@ class AggregatedCalculation(FullCalculation):
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize
-        self.aggregation = None
+        self.aggregation: Aggregation | None = None
+        self.aggregation_model: AggregationModel | None = None
 
     def do_modeling(self) -> AggregatedCalculation:
         t_start = timeit.default_timer()
@@ -308,13 +321,13 @@ class AggregatedCalculation(FullCalculation):
         self._perform_aggregation()
 
         # Model the System
-        self.model = self.flow_system.create_model()
+        self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
         # Add Aggregation Submodel after modeling the rest
-        self.aggregation = AggregationModel(
+        self.aggregation_model = AggregationModel(
             self.model, self.aggregation_parameters, self.flow_system, self.aggregation, self.components_to_clusterize
         )
-        self.aggregation.do_modeling()
+        self.aggregation_model.do_modeling()
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self
 
@@ -324,23 +337,18 @@ class AggregatedCalculation(FullCalculation):
         t_start_agg = timeit.default_timer()
 
         # Validation
-        dt_min, dt_max = (
-            np.min(self.flow_system.hours_per_timestep),
-            np.max(self.flow_system.hours_per_timestep),
-        )
+        dt_min = float(self.flow_system.hours_per_timestep.min().item())
+        dt_max = float(self.flow_system.hours_per_timestep.max().item())
         if not dt_min == dt_max:
             raise ValueError(
                 f'Aggregation failed due to inconsistent time step sizes:'
                 f'delta_t varies from {dt_min} to {dt_max} hours.'
             )
-        steps_per_period = self.aggregation_parameters.hours_per_period / self.flow_system.hours_per_timestep.max()
-        is_integer = (
-            self.aggregation_parameters.hours_per_period % self.flow_system.hours_per_timestep.max()
-        ).item() == 0
-        if not (steps_per_period.size == 1 and is_integer):
+        ratio = self.aggregation_parameters.hours_per_period / dt_max
+        if not np.isclose(ratio, round(ratio), atol=1e-9):
             raise ValueError(
                 f'The selected {self.aggregation_parameters.hours_per_period=} does not match the time '
-                f'step size of {dt_min} hours). It must be a multiple of {dt_min} hours.'
+                f'step size of {dt_max} hours. It must be an integer multiple of {dt_max} hours.'
             )
 
         logger.info(f'{"":#^80}')
@@ -384,7 +392,7 @@ class AggregatedCalculation(FullCalculation):
     def calculate_aggregation_weights(cls, ds: xr.Dataset) -> dict[str, float]:
         """Calculate weights for all datavars in the dataset. Weights are pulled from the attrs of the datavars."""
 
-        groups = [da.attrs['aggregation_group'] for da in ds.values() if 'aggregation_group' in da.attrs]
+        groups = [da.attrs['aggregation_group'] for da in ds.data_vars.values() if 'aggregation_group' in da.attrs]
         group_counts = Counter(groups)
 
         # Calculate weight for each group (1/count)
@@ -554,7 +562,7 @@ class SegmentedCalculation(Calculation):
         for i, (segment_name, timesteps_of_segment) in enumerate(
             zip(self.segment_names, self._timesteps_per_segment, strict=True)
         ):
-            calc = FullCalculation(f'{self.name}-{segment_name}', self.flow_system.sel(timesteps_of_segment))
+            calc = FullCalculation(f'{self.name}-{segment_name}', self.flow_system.sel(time=timesteps_of_segment))
             calc.flow_system._connect_network()  # Connect to have Correct names of Flows!
 
             self.sub_calculations.append(calc)

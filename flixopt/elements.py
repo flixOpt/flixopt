@@ -11,11 +11,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
-from .features import InvestmentModel, InvestmentTimingModel, ModelingPrimitives, OnOffModel
+from .features import InvestmentModel, InvestmentTimingModel, OnOffModel
 from .interface import InvestParameters, InvestTimingParameters, OnOffParameters
-from .modeling import BoundingPatterns, ModelingUtilitiesAbstract
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
@@ -86,9 +87,11 @@ class Component(Element):
         super().__init__(label, meta_data=meta_data)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
-        self._check_unique_flow_labels()
         self.on_off_parameters = on_off_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
+
+        self._check_unique_flow_labels()
+        self._connect_flows()
 
         self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
@@ -98,11 +101,12 @@ class Component(Element):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
         if self.on_off_parameters is not None:
-            self.on_off_parameters.transform_data(flow_system, self.label_full)
+            self.on_off_parameters.transform_data(flow_system, prefix)
 
         for flow in self.inputs + self.outputs:
-            flow.transform_data(flow_system)
+            flow.transform_data(flow_system)  # Flow doesnt need the name_prefix
 
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
@@ -114,6 +118,48 @@ class Component(Element):
     def _plausibility_checks(self) -> None:
         self._check_unique_flow_labels()
 
+    def _connect_flows(self):
+        # Inputs
+        for flow in self.inputs:
+            if flow.component not in ('UnknownComponent', self.label_full):
+                raise ValueError(
+                    f'Flow "{flow.label}" already assigned to component "{flow.component}". '
+                    f'Cannot attach to "{self.label_full}".'
+                )
+            flow.component = self.label_full
+            flow.is_input_in_component = True
+        # Outputs
+        for flow in self.outputs:
+            if flow.component not in ('UnknownComponent', self.label_full):
+                raise ValueError(
+                    f'Flow "{flow.label}" already assigned to component "{flow.component}". '
+                    f'Cannot attach to "{self.label_full}".'
+                )
+            flow.component = self.label_full
+            flow.is_input_in_component = False
+
+        # Validate prevent_simultaneous_flows: only allow local flows
+        if self.prevent_simultaneous_flows:
+            # Deduplicate while preserving order
+            seen = set()
+            self.prevent_simultaneous_flows = [
+                f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
+            ]
+            local = set(self.inputs + self.outputs)
+            foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
+            if foreign:
+                names = ', '.join(f.label_full for f in foreign)
+                raise ValueError(
+                    f'prevent_simultaneous_flows for "{self.label_full}" must reference its own flows. '
+                    f'Foreign flows detected: {names}'
+                )
+
+    def __repr__(self) -> str:
+        """Return string representation with flow information."""
+        return fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'label', 'inputs', 'outputs', 'kwargs'}, skip_default_size=True
+        ) + fx_io.format_flow_details(self)
+
 
 @register_class_for_io
 class Bus(Element):
@@ -124,6 +170,10 @@ class Bus(Element):
     flows must equal the sum of all outgoing flows at each time step. Buses represent
     physical or logical connection points for energy carriers (electricity, heat, gas)
     or material flows between different Components.
+
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Bus](../user-guide/mathematical-notation/elements/Bus.md)
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
@@ -173,6 +223,8 @@ class Bus(Element):
         by the FlowSystem during system setup.
     """
 
+    submodel: BusModel | None
+
     def __init__(
         self,
         label: str,
@@ -190,8 +242,9 @@ class Bus(Element):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
         self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
-            f'{self.label_full}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
+            f'{prefix}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
@@ -201,10 +254,18 @@ class Bus(Element):
                 logger.warning(
                     f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
                 )
+        if len(self.inputs) == 0 and len(self.outputs) == 0:
+            raise ValueError(
+                f'Bus "{self.label_full}" has no Flows connected to it. Please remove it from the FlowSystem'
+            )
 
     @property
     def with_excess(self) -> bool:
         return False if self.excess_penalty_per_flow_hour is None else True
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return super().__repr__() + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
@@ -240,39 +301,27 @@ class Flow(Element):
         - **InvestParameters**: Used for `size` when flow Size is an investment decision
         - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
 
+    Mathematical Formulation:
+        See the complete mathematical model in the documentation:
+        [Flow](../user-guide/mathematical-notation/elements/Flow.md)
+
     Args:
-        label: Unique identifier for the flow within its component.
-            The full label combines component and flow labels.
-        bus: Label of the bus this flow connects to. Must match a bus in the FlowSystem.
-        size: Flow capacity or nominal rating. Can be:
-            - Scalar value for fixed capacity
-            - InvestParameters for investment-based sizing decisions
-            - None to use large default value (CONFIG.modeling.BIG)
-        relative_minimum: Minimum flow rate as fraction of size.
-            Example: 0.2 means flow cannot go below 20% of rated capacity.
-        relative_maximum: Maximum flow rate as fraction of size (typically 1.0).
-            Values >1.0 allow temporary overload operation.
-        load_factor_min: Minimum average utilization over the time horizon (0-1).
-            Calculated as total flow hours divided by (size × total time).
-        load_factor_max: Maximum average utilization over the time horizon (0-1).
-            Useful for equipment duty cycle limits or maintenance scheduling.
-        effects_per_flow_hour: Operational costs and impacts per unit of flow-time.
-            Dictionary mapping effect names to unit costs (e.g., fuel costs, emissions).
-        on_off_parameters: Binary operation constraints using OnOffParameters.
-            Enables modeling of startup costs, minimum run times, cycling limits.
-            Only relevant when relative_minimum > 0 or discrete operation is required.
-        flow_hours_total_max: Maximum cumulative flow-hours over time horizon.
-            Alternative to load_factor_max for absolute energy/material limits.
-        flow_hours_total_min: Minimum cumulative flow-hours over time horizon.
-            Alternative to load_factor_min for contractual or operational requirements.
-        fixed_relative_profile: Predetermined flow pattern as fraction of size.
-            When specified, flow rate becomes: size × fixed_relative_profile(t).
-            Used for: demand profiles, renewable generation, fixed schedules.
-        previous_flow_rate: Initial flow state for startup/shutdown dynamics.
-            Used with on_off_parameters to determine initial on/off status.
-            If None, assumes flow was off in previous time period.
-        meta_data: Additional information stored with results but not used in optimization.
-            Must contain only Python native types (dict, list, str, int, float, bool).
+        label: Unique flow identifier within its component.
+        bus: Bus label this flow connects to.
+        size: Flow capacity. Scalar, InvestParameters, or None (uses CONFIG.Modeling.big).
+        relative_minimum: Minimum flow rate as fraction of size (0-1). Default: 0.
+        relative_maximum: Maximum flow rate as fraction of size. Default: 1.
+        load_factor_min: Minimum average utilization (0-1). Default: 0.
+        load_factor_max: Maximum average utilization (0-1). Default: 1.
+        effects_per_flow_hour: Operational costs/impacts per flow-hour.
+            Dict mapping effect names to values (e.g., {'cost': 45, 'CO2': 0.8}).
+        on_off_parameters: Binary operation constraints (OnOffParameters). Default: None.
+        flow_hours_total_max: Maximum cumulative flow-hours. Alternative to load_factor_max.
+        flow_hours_total_min: Minimum cumulative flow-hours. Alternative to load_factor_min.
+        fixed_relative_profile: Predetermined pattern as fraction of size.
+            Flow rate = size × fixed_relative_profile(t).
+        previous_flow_rate: Initial flow state for on/off dynamics. Default: None (off).
+        meta_data: Additional info stored in results. Python native types only.
 
     Examples:
         Basic power flow with fixed capacity:
@@ -314,7 +363,7 @@ class Flow(Element):
                 effects_per_switch_on={'startup_cost': 100, 'wear': 0.1},
                 consecutive_on_hours_min=2,  # Must run at least 2 hours
                 consecutive_off_hours_min=1,  # Must stay off at least 1 hour
-                switch_on_total_max=200,  # Maximum 200 starts per year
+                switch_on_total_max=200,  # Maximum 200 starts per period
             ),
         )
         ```
@@ -355,7 +404,7 @@ class Flow(Element):
         `relative_maximum` for upper bounds on optimization variables.
 
     Notes:
-        - Default size (CONFIG.modeling.BIG) is used when size=None
+        - Default size (CONFIG.Modeling.big) is used when size=None
         - list inputs for previous_flow_rate are converted to NumPy arrays
         - Flow direction is determined by component input/output designation
 
@@ -363,6 +412,8 @@ class Flow(Element):
         Passing Bus objects to `bus` parameter. Use bus label strings instead.
 
     """
+
+    submodel: FlowModel | None
 
     def __init__(
         self,
@@ -382,7 +433,7 @@ class Flow(Element):
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.size = CONFIG.modeling.BIG if size is None else size
+        self.size = CONFIG.Modeling.big if size is None else size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
@@ -418,49 +469,46 @@ class Flow(Element):
         return self.submodel
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.relative_minimum = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_minimum', self.relative_minimum
-        )
-        self.relative_maximum = flow_system.fit_to_model_coords(
-            f'{self.label_full}|relative_maximum', self.relative_maximum
-        )
+        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        self.relative_minimum = flow_system.fit_to_model_coords(f'{prefix}|relative_minimum', self.relative_minimum)
+        self.relative_maximum = flow_system.fit_to_model_coords(f'{prefix}|relative_maximum', self.relative_maximum)
         self.fixed_relative_profile = flow_system.fit_to_model_coords(
-            f'{self.label_full}|fixed_relative_profile', self.fixed_relative_profile
+            f'{prefix}|fixed_relative_profile', self.fixed_relative_profile
         )
         self.effects_per_flow_hour = flow_system.fit_effects_to_model_coords(
-            self.label_full, self.effects_per_flow_hour, 'per_flow_hour'
+            prefix, self.effects_per_flow_hour, 'per_flow_hour'
         )
         self.flow_hours_total_max = flow_system.fit_to_model_coords(
-            f'{self.label_full}|flow_hours_total_max', self.flow_hours_total_max, dims=['year', 'scenario']
+            f'{prefix}|flow_hours_total_max', self.flow_hours_total_max, dims=['period', 'scenario']
         )
         self.flow_hours_total_min = flow_system.fit_to_model_coords(
-            f'{self.label_full}|flow_hours_total_min', self.flow_hours_total_min, dims=['year', 'scenario']
+            f'{prefix}|flow_hours_total_min', self.flow_hours_total_min, dims=['period', 'scenario']
         )
         self.load_factor_max = flow_system.fit_to_model_coords(
-            f'{self.label_full}|load_factor_max', self.load_factor_max, dims=['year', 'scenario']
+            f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
         )
         self.load_factor_min = flow_system.fit_to_model_coords(
-            f'{self.label_full}|load_factor_min', self.load_factor_min, dims=['year', 'scenario']
+            f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
         if self.on_off_parameters is not None:
-            self.on_off_parameters.transform_data(flow_system, self.label_full)
+            self.on_off_parameters.transform_data(flow_system, prefix)
         if isinstance(self.size, (InvestParameters, InvestTimingParameters)):
-            self.size.transform_data(flow_system, self.label_full)
+            self.size.transform_data(flow_system, prefix)
         else:
-            self.size = flow_system.fit_to_model_coords(f'{self.label_full}|size', self.size, dims=['year', 'scenario'])
+            self.size = flow_system.fit_to_model_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
-        if np.any(self.relative_minimum > self.relative_maximum):
+        if (self.relative_minimum > self.relative_maximum).any():
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         if not isinstance(self.size, (InvestParameters, InvestTimingParameters)) and (
-            np.any(self.size == CONFIG.modeling.BIG) and self.fixed_relative_profile is not None
+            np.any(self.size == CONFIG.Modeling.big) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
                 f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
-                f'The default size is {CONFIG.modeling.BIG}. As "flow_rate = size * fixed_relative_profile", '
+                f'The default size is {CONFIG.Modeling.big}. As "flow_rate = size * fixed_relative_profile", '
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
             )
 
@@ -470,7 +518,7 @@ class Flow(Element):
                 f'This will allow the flow to be switched on and off, effectively differing from the fixed_flow_rate.'
             )
 
-        if (self.relative_minimum > 0).any() and self.on_off_parameters is None:
+        if np.any(self.relative_minimum > 0) and self.on_off_parameters is None:
             logger.warning(
                 f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no on_off_parameters. '
                 f'This prevents the flow_rate from switching off (flow_rate = 0). '
@@ -485,8 +533,8 @@ class Flow(Element):
                 ]
             ):
                 raise TypeError(
-                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}.'
-                    f'Different values in different years or scenarios are not yetsupported.'
+                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}. '
+                    f'Different values in different periods or scenarios are not yet supported.'
                 )
 
     @property
@@ -498,10 +546,9 @@ class Flow(Element):
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
 
-    @property
-    def invest_is_optional(self) -> bool:
-        # Wenn kein InvestParameters existiert: # Investment ist nicht optional -> Keine Variable --> False
-        return False if (isinstance(self.size, InvestParameters) and not self.size.optional) else True
+    def _format_invest_params(self, params: InvestParameters) -> str:
+        """Format InvestParameters for display."""
+        return f'size: {params.format_for_repr()}'
 
 
 class FlowModel(ElementModel):
@@ -531,7 +578,7 @@ class FlowModel(ElementModel):
                 self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else 0,
                 self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else None,
             ),
-            coords=['year', 'scenario'],
+            coords=['period', 'scenario'],
             short_name='total_flow_hours',
         )
 
@@ -657,7 +704,7 @@ class FlowModel(ElementModel):
                     effect: self.flow_rate * self._model.hours_per_step * factor
                     for effect, factor in self.element.effects_per_flow_hour.items()
                 },
-                target='operation',
+                target='temporal',
             )
 
     def _create_bounds_for_load_factor(self):
@@ -700,8 +747,8 @@ class FlowModel(ElementModel):
             if not self.with_investment:
                 # Basic case without investment and without OnOff
                 lb = lb_relative * self.element.size
-            elif isinstance(self.element.size, InvestParameters) and not self.element.size.optional:
-                # With non-optional Investment
+            elif self.with_investment and self.element.size.mandatory:
+                # With mandatory Investment
                 lb = lb_relative * self.element.size.minimum_or_fixed_size
 
         if self.with_investment:
@@ -742,7 +789,7 @@ class FlowModel(ElementModel):
             values=xr.DataArray(
                 [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
             ),
-            epsilon=CONFIG.modeling.EPSILON,
+            epsilon=CONFIG.Modeling.epsilon,
             dims='time',
         )
 
@@ -825,9 +872,9 @@ class ComponentModel(ElementModel):
             else:
                 flow_ons = [flow.submodel.on_off.on for flow in all_flows]
                 # TODO: Is the EPSILON even necessary?
-                self.add_constraints(on <= sum(flow_ons) + CONFIG.modeling.EPSILON, short_name='on|ub')
+                self.add_constraints(on <= sum(flow_ons) + CONFIG.Modeling.epsilon, short_name='on|ub')
                 self.add_constraints(
-                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.modeling.EPSILON), short_name='on|lb'
+                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.Modeling.epsilon), short_name='on|lb'
                 )
 
             self.on_off = self.add_submodels(
