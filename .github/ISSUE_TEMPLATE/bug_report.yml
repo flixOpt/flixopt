@@ -6,106 +6,70 @@ body:
 - type: markdown
   attributes:
     value: |
-      Thanks for taking the time to fill out this bug report!
-
-      **Before submitting**: Please search [existing issues](https://github.com/flixOpt/flixopt/issues) to avoid duplicates.
-
-- type: checkboxes
-  id: checks
-  attributes:
-    label: Version Confirmation
-    description: Please confirm you can reproduce this on a supported version
-    options:
-    - label: I have confirmed this bug exists on the latest [release](https://github.com/flixOpt/flixopt/releases) of FlixOpt
-      required: true
+      **Quick guide**: Describe what's broken, provide code to reproduce if possible.
+      For simple bugs, just fill the first field.
 
 - type: textarea
   id: problem
   attributes:
-    label: Bug Description
-    description: Clearly describe what went wrong
-    placeholder: |
-      What happened? What did you expect to happen instead?
-
-      Include any error messages or unexpected outputs.
+    label: What's broken?
+    description: Describe the bug - what happened vs. what you expected
   validations:
     required: true
 
 - type: textarea
   id: example
   attributes:
-    label: Minimal Reproducible Example
+    label: Code to reproduce
     description: |
       Provide the smallest possible code example that reproduces the bug.
       See [how to create minimal bug reports](https://matthewrocklin.com/minimal-bug-reports).
-    placeholder: |
-      import flixopt as fx
+    value: |
       import pandas as pd
+      import numpy as np
+      import flixopt as fx
 
-      # Minimal example that reproduces the bug
-      timesteps = pd.date_range('2024-01-01', periods=24, freq='h')
-      flow_system = fx.FlowSystem(timesteps)
+      fx.CONFIG.Logging.console = True
+      fx.CONFIG.Logging.level = 'DEBUG'
+      fx.CONFIG.apply()
+      flow_system = fx.FlowSystem(pd.date_range('2020-01-01', periods=3, freq='h'))
 
-      # Add components that trigger the bug...
+      flow_system.add_elements(
+          fx.Bus('Heat'),
+          fx.Bus('Gas'),
+          fx.Effect('Costs', '€', 'Cost', is_standard=True, is_objective=True),
+          fx.linear_converters.Boiler(
+              'Boiler',
+              eta=0.5,
+              Q_th=fx.Flow(label='Heat', bus='Heat', size=50),
+              Q_fu=fx.Flow(label='Gas', bus='Gas'),
+          ),
+          fx.Sink(
+              'Sink',
+              inputs=[
+                  fx.Flow(label='Demand', bus='Heat', size=1, fixed_relative_profile=np.array([30, 0, 20]))
+              ],
+          ),
+          fx.Source(
+              'Source',
+              outputs=[fx.Flow(label='Gas', bus='Gas', size=1000, effects_per_flow_hour=0.04)],
+          ),
+      )
 
-      # Show the problematic operation
-      result = flow_system.solve()  # This should fail/behave unexpectedly
+      calculation = fx.FullCalculation('Simulation1', flow_system).do_modeling().solve(fx.solvers.HighsSolver(0.01, 60))
+
     render: python
-  validations:
-    required: true
 
 - type: textarea
   id: error-output
   attributes:
-    label: Error Output
-    description: If there's an error message, paste the full traceback here
+    label: Error message
+    description: Paste the full traceback if there is one
     render: shell
-
-- type: dropdown
-  id: solver
-  attributes:
-    label: Solver Used
-    description: Which solver were you using?
-    options:
-      - HiGHS (default)
-      - Gurobi
-      - CPLEX
-      - GLPK
-      - CBC
-      - Other (specify below)
-  validations:
-    required: true
-
-- type: input
-  id: os
-  attributes:
-    label: Operating System
-    placeholder: "e.g., Windows 11, macOS 14.2, Ubuntu 22.04"
-  validations:
-    required: true
-
-- type: input
-  id: python-version
-  attributes:
-    label: Python Version
-    placeholder: "e.g., 3.11.5"
-  validations:
-    required: true
 
 - type: textarea
-  id: environment
+  id: context
   attributes:
-    label: Environment Info
-    description: |
-      Run one of these commands and paste the output:
-      - `pip freeze`
-      - `conda env export`
-    render: shell
-    value: >
-      <details>
-
-      ```
-      Replace this with your environment info
-      ```
-
-      </details>
+    label: Additional context
+    description: Solver, Python/OS version, environment details, or anything else relevant
+    placeholder: "HiGHS solver, Python 3.11, macOS 14"

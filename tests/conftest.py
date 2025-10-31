@@ -28,10 +28,11 @@ def highs_solver():
 
 @pytest.fixture()
 def gurobi_solver():
+    pytest.importorskip('gurobipy', reason='Gurobi not available in this environment')
     return fx.solvers.GurobiSolver(mip_gap=0, time_limit_seconds=300)
 
 
-@pytest.fixture(params=[highs_solver, gurobi_solver])
+@pytest.fixture(params=[highs_solver, gurobi_solver], ids=['highs', 'gurobi'])
 def solver_fixture(request):
     return request.getfixturevalue(request.param.__name__)
 
@@ -43,19 +44,28 @@ def solver_fixture(request):
 
 @pytest.fixture(
     params=[
-        {'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'), 'years': None, 'scenarios': None},
         {
             'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'),
-            'years': pd.Index([2020, 2030, 2040], name='year'),
+            'periods': None,
             'scenarios': None,
         },
         {
             'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'),
-            'years': pd.Index([2020, 2030, 2040], name='year'),
+            'periods': None,
+            'scenarios': pd.Index(['A', 'B'], name='scenario'),
+        },
+        {
+            'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'),
+            'periods': pd.Index([2020, 2030, 2040], name='period'),
+            'scenarios': None,
+        },
+        {
+            'timesteps': pd.date_range('2020-01-01', periods=10, freq='h', name='time'),
+            'periods': pd.Index([2020, 2030, 2040], name='period'),
             'scenarios': pd.Index(['A', 'B'], name='scenario'),
         },
     ],
-    ids=['time_only', 'time+years', 'time+years+scenarios'],
+    ids=['time_only', 'time+scenarios', 'time+periods', 'time+periods+scenarios'],
 )
 def coords_config(request):
     """Coordinate configurations for parametrized testing."""
@@ -100,17 +110,12 @@ class Effects:
         return fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True)
 
     @staticmethod
-    def co2():
-        return fx.Effect('CO2', 'kg', 'CO2_e-Emissionen')
+    def costs_with_co2_share():
+        return fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True, share_from_temporal={'CO2': 0.2})
 
     @staticmethod
-    def co2_with_costs_share():
-        return fx.Effect(
-            'CO2',
-            'kg',
-            'CO2_e-Emissionen',
-            specific_share_to_other_effects_operation={'costs': 0.2},
-        )
+    def co2():
+        return fx.Effect('CO2', 'kg', 'CO2_e-Emissionen')
 
     @staticmethod
     def primary_energy():
@@ -154,7 +159,10 @@ class Converters:
                     relative_maximum=1,
                     previous_flow_rate=50,
                     size=fx.InvestParameters(
-                        fix_effects=1000, fixed_size=50, optional=False, specific_effects={'costs': 10, 'PE': 2}
+                        effects_of_investment=1000,
+                        fixed_size=50,
+                        mandatory=True,
+                        effects_of_investment_per_size={'costs': 10, 'PE': 2},
                     ),
                     on_off_parameters=fx.OnOffParameters(
                         on_hours_total_min=0,
@@ -249,15 +257,19 @@ class Storage:
     """Energy storage components"""
 
     @staticmethod
-    def simple():
+    def simple(timesteps_length=9):
         """Simple storage from simple_flow_system"""
+        # Create pattern [80.0, 70.0, 80.0] and repeat/slice to match timesteps_length
+        pattern = [80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80]
+        charge_state_values = (pattern * ((timesteps_length // len(pattern)) + 1))[:timesteps_length]
+
         return fx.Storage(
             'Speicher',
             charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
             discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
-            capacity_in_flow_hours=fx.InvestParameters(fix_effects=20, fixed_size=30, optional=False),
+            capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
             initial_charge_state=0,
-            relative_maximum_charge_state=1 / 100 * np.array([80.0, 70.0, 80.0, 80, 80, 80, 80, 80, 80]),
+            relative_maximum_charge_state=1 / 100 * np.array(charge_state_values),
             relative_maximum_final_charge_state=0.8,
             eta_charge=0.9,
             eta_discharge=1,
@@ -269,16 +281,16 @@ class Storage:
     def complex():
         """Complex storage with piecewise investment from flow_system_complex"""
         invest_speicher = fx.InvestParameters(
-            fix_effects=0,
-            piecewise_effects=fx.PiecewiseEffects(
+            effects_of_investment=0,
+            piecewise_effects_of_investment=fx.PiecewiseEffects(
                 piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
                 piecewise_shares={
                     'costs': fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),
                     'PE': fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
                 },
             ),
-            optional=False,
-            specific_effects={'costs': 0.01, 'CO2': 0.01},
+            mandatory=True,
+            effects_of_investment_per_size={'costs': 0.01, 'CO2': 0.01},
             minimum_size=0,
             maximum_size=1000,
         )
@@ -300,24 +312,29 @@ class LoadProfiles:
     """Standard load and price profiles"""
 
     @staticmethod
-    def thermal_simple():
-        return np.array([30.0, 0.0, 90.0, 110, 110, 20, 20, 20, 20])
+    def thermal_simple(timesteps_length=9):
+        # Create pattern and repeat/slice to match timesteps_length
+        pattern = [30.0, 0.0, 90.0, 110, 110, 20, 20, 20, 20]
+        values = (pattern * ((timesteps_length // len(pattern)) + 1))[:timesteps_length]
+        return np.array(values)
 
     @staticmethod
     def thermal_complex():
         return np.array([30, 0, 90, 110, 110, 20, 20, 20, 20])
 
     @staticmethod
-    def electrical_simple():
-        return 1 / 1000 * np.array([80.0, 80.0, 80.0, 80, 80, 80, 80, 80, 80])
+    def electrical_simple(timesteps_length=9):
+        # Create array of 80.0 repeated to match timesteps_length
+        return np.array([80.0 / 1000] * timesteps_length)
 
     @staticmethod
     def electrical_scenario():
         return np.array([0.08, 0.1, 0.15])
 
     @staticmethod
-    def electrical_complex():
-        return np.array([40, 40, 40, 40, 40, 40, 40, 40, 40])
+    def electrical_complex(timesteps_length=9):
+        # Create array of 40 repeated to match timesteps_length
+        return np.array([40] * timesteps_length)
 
     @staticmethod
     def random_thermal(length=10, seed=42):
@@ -337,21 +354,21 @@ class Sinks:
     def heat_load(thermal_profile):
         """Create thermal heat load sink"""
         return fx.Sink(
-            'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_profile)
+            'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_profile)]
         )
 
     @staticmethod
     def electricity_feed_in(electrical_price_profile):
         """Create electricity feed-in sink"""
         return fx.Sink(
-            'Einspeisung', sink=fx.Flow('P_el', bus='Strom', effects_per_flow_hour=-1 * electrical_price_profile)
+            'Einspeisung', inputs=[fx.Flow('P_el', bus='Strom', effects_per_flow_hour=-1 * electrical_price_profile)]
         )
 
     @staticmethod
     def electricity_load(electrical_profile):
         """Create electrical load sink (for flow_system_long)"""
         return fx.Sink(
-            'Stromlast', sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_profile)
+            'Stromlast', inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_profile)]
         )
 
 
@@ -362,14 +379,14 @@ class Sources:
     def gas_with_costs_and_co2():
         """Standard gas tariff with CO2 emissions"""
         source = Sources.gas_with_costs()
-        source.source.effects_per_flow_hour = {'costs': 0.04, 'CO2': 0.3}
+        source.outputs[0].effects_per_flow_hour = {'costs': 0.04, 'CO2': 0.3}
         return source
 
     @staticmethod
     def gas_with_costs():
         """Simple gas tariff without CO2"""
         return fx.Source(
-            'Gastarif', source=fx.Flow(label='Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': 0.04})
+            'Gastarif', outputs=[fx.Flow(label='Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': 0.04})]
         )
 
 
@@ -383,19 +400,20 @@ def simple_flow_system() -> fx.FlowSystem:
     """
     Create a simple energy system for testing
     """
-    base_thermal_load = LoadProfiles.thermal_simple()
-    base_electrical_price = LoadProfiles.electrical_simple()
     base_timesteps = pd.date_range('2020-01-01', periods=9, freq='h', name='time')
+    timesteps_length = len(base_timesteps)
+    base_thermal_load = LoadProfiles.thermal_simple(timesteps_length)
+    base_electrical_price = LoadProfiles.electrical_simple(timesteps_length)
 
     # Define effects
-    costs = Effects.costs()
-    co2 = Effects.co2_with_costs_share()
-    co2.maximum_operation_per_hour = 1000
+    costs = Effects.costs_with_co2_share()
+    co2 = Effects.co2()
+    co2.maximum_per_hour = 1000
 
     # Create components
     boiler = Converters.Boilers.simple()
     chp = Converters.CHPs.simple()
-    storage = Storage.simple()
+    storage = Storage.simple(timesteps_length)
     heat_load = Sinks.heat_load(base_thermal_load)
     gas_tariff = Sources.gas_with_costs_and_co2()
     electricity_feed_in = Sinks.electricity_feed_in(base_electrical_price)
@@ -413,19 +431,20 @@ def simple_flow_system_scenarios() -> fx.FlowSystem:
     """
     Create a simple energy system for testing
     """
-    base_thermal_load = LoadProfiles.thermal_simple()
-    base_electrical_price = LoadProfiles.electrical_scenario()
     base_timesteps = pd.date_range('2020-01-01', periods=9, freq='h', name='time')
+    timesteps_length = len(base_timesteps)
+    base_thermal_load = LoadProfiles.thermal_simple(timesteps_length)
+    base_electrical_price = LoadProfiles.electrical_scenario()
 
     # Define effects
-    costs = Effects.costs()
-    co2 = Effects.co2_with_costs_share()
-    co2.maximum_operation_per_hour = 1000
+    costs = Effects.costs_with_co2_share()
+    co2 = Effects.co2()
+    co2.maximum_per_hour = 1000
 
     # Create components
     boiler = Converters.Boilers.simple()
     chp = Converters.CHPs.simple()
-    storage = Storage.simple()
+    storage = Storage.simple(timesteps_length)
     heat_load = Sinks.heat_load(base_thermal_load)
     gas_tariff = Sources.gas_with_costs_and_co2()
     electricity_feed_in = Sinks.electricity_feed_in(base_electrical_price)
@@ -471,7 +490,7 @@ def flow_system_complex() -> fx.FlowSystem:
     # Define the components and flow_system
     costs = Effects.costs()
     co2 = Effects.co2()
-    co2.specific_share_to_other_effects_operation = {'costs': 0.2}
+    costs.share_from_temporal = {'CO2': 0.2}
     pe = Effects.primary_energy()
     pe.maximum_total = 3.5e3
 
@@ -554,21 +573,23 @@ def flow_system_long():
         Effects.co2(),
         Effects.primary_energy(),
         fx.Sink(
-            'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_load_ts)
+            'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=thermal_load_ts)]
         ),
-        fx.Sink('Stromlast', sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_load_ts)),
+        fx.Sink(
+            'Stromlast', inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electrical_load_ts)]
+        ),
         fx.Source(
             'Kohletarif',
-            source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
         ),
         fx.Source(
             'Gastarif',
-            source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
         ),
-        fx.Sink('Einspeisung', sink=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=p_feed_in)),
+        fx.Sink('Einspeisung', inputs=[fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=p_feed_in)]),
         fx.Source(
             'Stromtarif',
-            source=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3}),
+            outputs=[fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3})],
         ),
     )
 
@@ -617,7 +638,7 @@ def flow_system_long():
     }
 
 
-@pytest.fixture(params=['h', '3h'])
+@pytest.fixture(params=['h', '3h'], ids=['hourly', '3-hourly'])
 def timesteps_linopy(request):
     return pd.date_range('2020-01-01', periods=10, freq=request.param, name='time')
 
@@ -627,8 +648,9 @@ def basic_flow_system_linopy(timesteps_linopy) -> fx.FlowSystem:
     """Create basic elements for component testing"""
     flow_system = fx.FlowSystem(timesteps_linopy)
 
-    thermal_load = LoadProfiles.random_thermal(10)
-    p_el = LoadProfiles.random_electrical(10)
+    n = len(flow_system.timesteps)
+    thermal_load = LoadProfiles.random_thermal(n)
+    p_el = LoadProfiles.random_electrical(n)
 
     costs = Effects.costs()
     heat_load = Sinks.heat_load(thermal_load)
@@ -697,6 +719,15 @@ def create_calculation_and_solve(
 
 
 def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
+    """
+    Create a FlowSystemModel from a FlowSystem by performing the modeling phase.
+
+    Args:
+        flow_system: The FlowSystem to build the model from.
+
+    Returns:
+        FlowSystemModel: The built model from FullCalculation.do_modeling().
+    """
     calculation = fx.FullCalculation('GenericName', flow_system)
     calculation.do_modeling()
     return calculation.model
@@ -768,12 +799,55 @@ def assert_sets_equal(set1: Iterable, set2: Iterable, msg=''):
     if extra or missing:
         parts = []
         if extra:
-            parts.append(f'Extra: {sorted(extra)}')
+            parts.append(f'Extra: {sorted(extra, key=repr)}')
         if missing:
-            parts.append(f'Missing: {sorted(missing)}')
+            parts.append(f'Missing: {sorted(missing, key=repr)}')
 
         error_msg = ', '.join(parts)
         if msg:
             error_msg = f'{msg}: {error_msg}'
 
         raise AssertionError(error_msg)
+
+
+# ============================================================================
+# PLOTTING CLEANUP FIXTURES
+# ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def cleanup_figures():
+    """
+    Cleanup matplotlib figures after each test.
+
+    This fixture runs automatically after every test to:
+    - Close all matplotlib figures to prevent memory leaks
+    """
+    yield
+    # Close all matplotlib figures
+    import matplotlib.pyplot as plt
+
+    plt.close('all')
+
+
+@pytest.fixture(scope='session', autouse=True)
+def set_test_environment():
+    """
+    Configure plotting for test environment.
+
+    This fixture runs once per test session to:
+    - Set matplotlib to use non-interactive 'Agg' backend
+    - Set plotly to use non-interactive 'json' renderer
+    - Prevent GUI windows from opening during tests
+    """
+    import matplotlib
+
+    matplotlib.use('Agg')  # Use non-interactive backend
+
+    import plotly.io as pio
+
+    pio.renderers.default = 'json'  # Use non-interactive renderer
+
+    fx.CONFIG.Plotting.default_show = False
+
+    yield

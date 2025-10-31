@@ -63,11 +63,11 @@ class TestFlowSystem:
 
         # Verify key variables from loaded results
         assert_almost_equal_numeric(
-            results.solution['costs|total'].values,
+            results.solution['costs'].values,
             81.88394666666667,
             'costs doesnt match expected value',
         )
-        assert_almost_equal_numeric(results.solution['CO2|total'].values, 255.09184, 'CO2 doesnt match expected value')
+        assert_almost_equal_numeric(results.solution['CO2'].values, 255.09184, 'CO2 doesnt match expected value')
 
 
 class TestComplex:
@@ -76,13 +76,13 @@ class TestComplex:
 
         # Assertions
         assert_almost_equal_numeric(
-            calculation.results.model['costs|total'].solution.item(),
+            calculation.results.model['costs'].solution.item(),
             -11597.873624489237,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['costs(operation)|total_per_timestep'].solution.values,
+            calculation.results.model['costs(temporal)|per_timestep'].solution.values,
             [
                 -2.38500000e03,
                 -2.21681333e03,
@@ -98,55 +98,55 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            sum(calculation.results.model['CO2(operation)->costs(operation)'].solution.values),
+            sum(calculation.results.model['CO2(temporal)->costs(temporal)'].solution.values),
             258.63729669618675,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['Kessel(Q_th)->costs(operation)'].solution.values),
+            sum(calculation.results.model['Kessel(Q_th)->costs(temporal)'].solution.values),
             0.01,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['Kessel->costs(operation)'].solution.values),
+            sum(calculation.results.model['Kessel->costs(temporal)'].solution.values),
             -0.0,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['Gastarif(Q_Gas)->costs(operation)'].solution.values),
+            sum(calculation.results.model['Gastarif(Q_Gas)->costs(temporal)'].solution.values),
             39.09153113079115,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['Einspeisung(P_el)->costs(operation)'].solution.values),
+            sum(calculation.results.model['Einspeisung(P_el)->costs(temporal)'].solution.values),
             -14196.61245231646,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['KWK->costs(operation)'].solution.values),
+            sum(calculation.results.model['KWK->costs(temporal)'].solution.values),
             0.0,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Kessel(Q_th)->costs(invest)'].solution.values,
+            calculation.results.model['Kessel(Q_th)->costs(periodic)'].solution.values,
             1000 + 500,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Speicher->costs(invest)'].solution.values,
+            calculation.results.model['Speicher->costs(periodic)'].solution.values,
             800 + 1,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['CO2(operation)|total'].solution.values,
+            calculation.results.model['CO2(temporal)'].solution.values,
             1293.1864834809337,
             'CO2 doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            calculation.results.model['CO2(invest)|total'].solution.values,
+            calculation.results.model['CO2(periodic)'].solution.values,
             0.9999999999999994,
             'CO2 doesnt match expected value',
         )
@@ -304,13 +304,13 @@ class TestModelingTypes:
 
         if modeling_type in ['full', 'aggregated']:
             assert_almost_equal_numeric(
-                calc.results.model['costs|total'].solution.item(),
+                calc.results.model['costs'].solution.item(),
                 expected_costs[modeling_type],
                 f'costs do not match for {modeling_type} modeling type',
             )
         else:
             assert_almost_equal_numeric(
-                calc.results.solution_without_overlap('costs(operation)|total_per_timestep').sum(),
+                calc.results.solution_without_overlap('costs(temporal)|per_timestep').sum(),
                 expected_costs[modeling_type],
                 f'costs do not match for {modeling_type} modeling type',
             )

@@ -56,7 +56,7 @@ def test_system():
 
     # Create a demand sink with scenario-dependent profiles
     demand = Flow(label='Demand', bus=electricity_bus.label_full, fixed_relative_profile=demand_profiles)
-    demand_sink = Sink('Demand', sink=demand)
+    demand_sink = Sink('Demand', inputs=[demand])
 
     # Create a power source with investment option
     power_gen = Flow(
@@ -65,11 +65,11 @@ def test_system():
         size=InvestParameters(
             minimum_size=0,
             maximum_size=20,
-            specific_effects={'costs': 100},  # €/kW
+            effects_of_investment_per_size={'costs': 100},  # €/kW
         ),
         effects_per_flow_hour={'costs': 20},  # €/MWh
     )
-    generator = Source('Generator', source=power_gen)
+    generator = Source('Generator', outputs=[power_gen])
 
     # Create a storage for electricity
     storage_charge = Flow(label='Charge', bus=electricity_bus.label_full, size=10)
@@ -81,7 +81,7 @@ def test_system():
         capacity_in_flow_hours=InvestParameters(
             minimum_size=0,
             maximum_size=50,
-            specific_effects={'costs': 50},  # €/kWh
+            effects_of_investment_per_size={'costs': 50},  # €/kWh
         ),
         eta_charge=0.95,
         eta_discharge=0.95,
@@ -124,17 +124,17 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     )
     # Define the components and flow_system
     flow_system.add_elements(
-        fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True),
-        fx.Effect('CO2', 'kg', 'CO2_e-Emissionen', specific_share_to_other_effects_operation={'costs': 0.2}),
+        fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True, share_from_temporal={'CO2': 0.2}),
+        fx.Effect('CO2', 'kg', 'CO2_e-Emissionen'),
         fx.Effect('PE', 'kWh_PE', 'Primärenergie', maximum_total=3.5e3),
         fx.Bus('Strom'),
         fx.Bus('Fernwärme'),
         fx.Bus('Gas'),
-        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)),
+        fx.Sink('Wärmelast', inputs=[fx.Flow('Q_th_Last', 'Fernwärme', size=1, fixed_relative_profile=thermal_load)]),
         fx.Source(
-            'Gastarif', source=fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})
+            'Gastarif', outputs=[fx.Flow('Q_Gas', 'Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})]
         ),
-        fx.Sink('Einspeisung', sink=fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)),
+        fx.Sink('Einspeisung', inputs=[fx.Flow('P_el', 'Strom', effects_per_flow_hour=-1 * electrical_load)]),
     )
 
     boiler = fx.linear_converters.Boiler(
@@ -150,7 +150,10 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
             relative_maximum=1,
             previous_flow_rate=50,
             size=fx.InvestParameters(
-                fix_effects=1000, fixed_size=50, optional=False, specific_effects={'costs': 10, 'PE': 2}
+                effects_of_investment=1000,
+                fixed_size=50,
+                mandatory=True,
+                effects_of_investment_per_size={'costs': 10, 'PE': 2},
             ),
             on_off_parameters=fx.OnOffParameters(
                 on_hours_total_min=0,
@@ -167,16 +170,16 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     )
 
     invest_speicher = fx.InvestParameters(
-        fix_effects=0,
-        piecewise_effects=fx.PiecewiseEffects(
+        effects_of_investment=0,
+        piecewise_effects_of_investment=fx.PiecewiseEffects(
             piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
             piecewise_shares={
                 'costs': fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),
                 'PE': fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
             },
         ),
-        optional=False,
-        specific_effects={'costs': 0.01, 'CO2': 0.01},
+        mandatory=True,
+        effects_of_investment_per_size={'costs': 0.01, 'CO2': 0.01},
         minimum_size=0,
         maximum_size=1000,
     )
@@ -238,11 +241,14 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
     weights = np.linspace(0.5, 1, len(scenarios))
     flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    np.testing.assert_allclose(model.weights.values, weights)
-    assert_linequal(
-        model.objective.expression, (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total']
+    normalized_weights = (
+        flow_system_piecewise_conversion_scenarios.weights / flow_system_piecewise_conversion_scenarios.weights.sum()
     )
-    assert np.isclose(model.weights.sum().item(), 2.25)
+    np.testing.assert_allclose(model.weights.values, normalized_weights)
+    assert_linequal(
+        model.objective.expression, (model.variables['costs'] * normalized_weights).sum() + model.variables['Penalty']
+    )
+    assert np.isclose(model.weights.sum().item(), 1)
 
 
 def test_weights_io(flow_system_piecewise_conversion_scenarios):
@@ -252,9 +258,7 @@ def test_weights_io(flow_system_piecewise_conversion_scenarios):
     flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     np.testing.assert_allclose(model.weights.values, weights)
-    assert_linequal(
-        model.objective.expression, (model.variables['costs|total'] * weights).sum() + model.variables['Penalty|total']
-    )
+    assert_linequal(model.objective.expression, (model.variables['costs'] * weights).sum() + model.variables['Penalty'])
     assert np.isclose(model.weights.sum().item(), 1.0)
 
 
@@ -321,7 +325,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     np.testing.assert_allclose(flow_system.weights.values, flow_system_full.weights[0:2])
 
-    calc = fx.FullCalculation(flow_system=flow_system, name='test_full_scenario')
+    calc = fx.FullCalculation(flow_system=flow_system, name='test_full_scenario', normalize_weights=False)
     calc.do_modeling()
     calc.solve(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
 
@@ -329,9 +333,360 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     np.testing.assert_allclose(
         calc.results.objective,
-        (
-            (calc.results.solution['costs|total'] * flow_system.weights).sum() + calc.results.solution['Penalty|total']
-        ).item(),
-    )  ## Acount for rounding errors
+        ((calc.results.solution['costs'] * flow_system.weights).sum() + calc.results.solution['Penalty']).item(),
+    )  ## Account for rounding errors
 
     assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])
+
+
+def test_sizes_per_scenario_default():
+    """Test that scenario_independent_sizes defaults to True (sizes equalized) and flow_rates to False (vary)."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+
+    assert fs.scenario_independent_sizes is True
+    assert fs.scenario_independent_flow_rates is False
+
+
+def test_sizes_per_scenario_bool():
+    """Test scenario_independent_sizes with boolean values."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    # Test False (vary per scenario)
+    fs1 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_independent_sizes=False)
+    assert fs1.scenario_independent_sizes is False
+
+    # Test True (equalized across scenarios)
+    fs2 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_independent_sizes=True)
+    assert fs2.scenario_independent_sizes is True
+
+
+def test_sizes_per_scenario_list():
+    """Test scenario_independent_sizes with list of element labels."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        scenario_independent_sizes=['solar->grid', 'battery->grid'],
+    )
+
+    assert fs.scenario_independent_sizes == ['solar->grid', 'battery->grid']
+
+
+def test_flow_rates_per_scenario_default():
+    """Test that scenario_independent_flow_rates defaults to False (flow rates vary by scenario)."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+
+    assert fs.scenario_independent_flow_rates is False
+
+
+def test_flow_rates_per_scenario_bool():
+    """Test scenario_independent_flow_rates with boolean values."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    # Test False (vary per scenario)
+    fs1 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_independent_flow_rates=False)
+    assert fs1.scenario_independent_flow_rates is False
+
+    # Test True (equalized across scenarios)
+    fs2 = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios, scenario_independent_flow_rates=True)
+    assert fs2.scenario_independent_flow_rates is True
+
+
+def test_scenario_parameters_property_setters():
+    """Test that scenario parameters can be changed via property setters."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+
+    # Change scenario_independent_sizes
+    fs.scenario_independent_sizes = True
+    assert fs.scenario_independent_sizes is True
+
+    fs.scenario_independent_sizes = ['component1', 'component2']
+    assert fs.scenario_independent_sizes == ['component1', 'component2']
+
+    # Change scenario_independent_flow_rates
+    fs.scenario_independent_flow_rates = True
+    assert fs.scenario_independent_flow_rates is True
+
+    fs.scenario_independent_flow_rates = ['flow1', 'flow2']
+    assert fs.scenario_independent_flow_rates == ['flow1', 'flow2']
+
+
+def test_scenario_parameters_validation():
+    """Test that scenario parameters are validated correctly."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+
+    # Test invalid type
+    with pytest.raises(TypeError, match='must be bool or list'):
+        fs.scenario_independent_sizes = 'invalid'
+
+    # Test invalid list content
+    with pytest.raises(ValueError, match='must contain only strings'):
+        fs.scenario_independent_sizes = [1, 2, 3]
+
+
+def test_size_equality_constraints():
+    """Test that size equality constraints are created when scenario_independent_sizes=True."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        scenario_independent_sizes=True,  # Sizes should be equalized
+        scenario_independent_flow_rates=False,  # Flow rates can vary
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10,
+                    maximum_size=100,
+                    effects_of_investment_per_size={'cost': 100},
+                ),
+            )
+        ],
+    )
+
+    fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    calc = fx.FullCalculation('test', fs)
+    calc.do_modeling()
+
+    # Check that size equality constraint exists
+    constraint_names = [str(c) for c in calc.model.constraints]
+    size_constraints = [c for c in constraint_names if 'scenario_independent' in c and 'size' in c]
+
+    assert len(size_constraints) > 0, 'Size equality constraint should exist'
+
+
+def test_flow_rate_equality_constraints():
+    """Test that flow_rate equality constraints are created when scenario_independent_flow_rates=True."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        scenario_independent_sizes=False,  # Sizes can vary
+        scenario_independent_flow_rates=True,  # Flow rates should be equalized
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10,
+                    maximum_size=100,
+                    effects_of_investment_per_size={'cost': 100},
+                ),
+            )
+        ],
+    )
+
+    fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    calc = fx.FullCalculation('test', fs)
+    calc.do_modeling()
+
+    # Check that flow_rate equality constraint exists
+    constraint_names = [str(c) for c in calc.model.constraints]
+    flow_rate_constraints = [c for c in constraint_names if 'scenario_independent' in c and 'flow_rate' in c]
+
+    assert len(flow_rate_constraints) > 0, 'Flow rate equality constraint should exist'
+
+
+def test_selective_scenario_independence():
+    """Test selective scenario independence with specific element lists."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        scenario_independent_sizes=['solar(out)'],  # Only solar size is equalized
+        scenario_independent_flow_rates=['demand(in)'],  # Only demand flow_rate is equalized
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
+                ),
+            )
+        ],
+    )
+    sink = fx.Sink(
+        label='demand',
+        inputs=[fx.Flow(label='in', bus='grid', size=50)],
+    )
+
+    fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    calc = fx.FullCalculation('test', fs)
+    calc.do_modeling()
+
+    constraint_names = [str(c) for c in calc.model.constraints]
+
+    # Solar SHOULD have size constraints (it's in the list, so equalized)
+    solar_size_constraints = [c for c in constraint_names if 'solar(out)|size' in c and 'scenario_independent' in c]
+    assert len(solar_size_constraints) > 0
+
+    # Solar should NOT have flow_rate constraints (not in the list, so varies per scenario)
+    solar_flow_constraints = [
+        c for c in constraint_names if 'solar(out)|flow_rate' in c and 'scenario_independent' in c
+    ]
+    assert len(solar_flow_constraints) == 0
+
+    # Demand should NOT have size constraints (no InvestParameters, size is fixed)
+    demand_size_constraints = [c for c in constraint_names if 'demand(in)|size' in c and 'scenario_independent' in c]
+    assert len(demand_size_constraints) == 0
+
+    # Demand SHOULD have flow_rate constraints (it's in the list, so equalized)
+    demand_flow_constraints = [
+        c for c in constraint_names if 'demand(in)|flow_rate' in c and 'scenario_independent' in c
+    ]
+    assert len(demand_flow_constraints) > 0
+
+
+def test_scenario_parameters_io_persistence():
+    """Test that scenario_independent_sizes and scenario_independent_flow_rates persist through IO operations."""
+    import shutil
+    import tempfile
+
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    # Create FlowSystem with custom scenario parameters
+    fs_original = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        scenario_independent_sizes=['solar(out)'],
+        scenario_independent_flow_rates=True,
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
+                ),
+            )
+        ],
+    )
+
+    fs_original.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    # Save to dataset
+    fs_original.connect_and_transform()
+    ds = fs_original.to_dataset()
+
+    # Load from dataset
+    fs_loaded = fx.FlowSystem.from_dataset(ds)
+
+    # Verify parameters persisted
+    assert fs_loaded.scenario_independent_sizes == fs_original.scenario_independent_sizes
+    assert fs_loaded.scenario_independent_flow_rates == fs_original.scenario_independent_flow_rates
+
+
+def test_scenario_parameters_io_with_calculation():
+    """Test that scenario parameters persist through full calculation IO."""
+    import shutil
+    import tempfile
+
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'high'], name='scenario')
+
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        scenario_independent_sizes=True,
+        scenario_independent_flow_rates=['demand(in)'],
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
+                ),
+            )
+        ],
+    )
+    sink = fx.Sink(
+        label='demand',
+        inputs=[fx.Flow(label='in', bus='grid', size=50)],
+    )
+
+    fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    # Create temp directory for results
+    temp_dir = tempfile.mkdtemp()
+
+    try:
+        # Solve and save
+        calc = fx.FullCalculation('test_io', fs, folder=temp_dir)
+        calc.do_modeling()
+        calc.solve(fx.solvers.HighsSolver(mip_gap=0.01, time_limit_seconds=60))
+        calc.results.to_file()
+
+        # Load results
+        results = fx.results.CalculationResults.from_file(temp_dir, 'test_io')
+        fs_loaded = fx.FlowSystem.from_dataset(results.flow_system_data)
+
+        # Verify parameters persisted
+        assert fs_loaded.scenario_independent_sizes == fs.scenario_independent_sizes
+        assert fs_loaded.scenario_independent_flow_rates == fs.scenario_independent_flow_rates
+
+        # Verify constraints are recreated correctly
+        calc2 = fx.FullCalculation('test_io_2', fs_loaded, folder=temp_dir)
+        calc2.do_modeling()
+
+        constraint_names1 = [str(c) for c in calc.model.constraints]
+        constraint_names2 = [str(c) for c in calc2.model.constraints]
+
+        size_constraints1 = [c for c in constraint_names1 if 'scenario_independent' in c and 'size' in c]
+        size_constraints2 = [c for c in constraint_names2 if 'scenario_independent' in c and 'size' in c]
+
+        assert len(size_constraints1) == len(size_constraints2)
+
+    finally:
+        # Clean up
+        shutil.rmtree(temp_dir)

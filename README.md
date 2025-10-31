@@ -3,89 +3,190 @@
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://flixopt.github.io/flixopt/latest/)
 [![Build Status](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
 [![PyPI version](https://img.shields.io/pypi/v/flixopt)](https://pypi.org/project/flixopt/)
+[![PyPI status](https://img.shields.io/pypi/status/flixopt.svg)](https://pypi.org/project/flixopt/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/flixopt.svg)](https://pypi.org/project/flixopt/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI downloads](https://img.shields.io/pypi/dm/flixopt)](https://pypi.org/project/flixopt/)
+[![GitHub last commit](https://img.shields.io/github/last-commit/flixOpt/flixopt)](https://github.com/flixOpt/flixopt/commits/main)
+[![GitHub issues](https://img.shields.io/github/issues/flixOpt/flixopt)](https://github.com/flixOpt/flixopt/issues)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/flixOpt/flixopt/main.svg)](https://results.pre-commit.ci/latest/github/flixOpt/flixopt/main)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Powered by linopy](https://img.shields.io/badge/powered%20by-linopy-blue)](https://github.com/PyPSA/linopy/)
+[![Powered by xarray](https://img.shields.io/badge/powered%20by-xarray-blue)](https://xarray.dev/)
+[![DOI](https://img.shields.io/badge/DOI-10.18086%2Feurosun.2022.04.07-blue)](https://doi.org/10.18086/eurosun.2022.04.07)
+[![GitHub stars](https://img.shields.io/github/stars/flixOpt/flixopt?style=social)](https://github.com/flixOpt/flixopt/stargazers)
 
 ---
 
-## 🚀 Purpose
+**FlixOpt is a Python framework for optimizing energy and material flow systems** - from district heating networks to industrial production lines, from renewable energy portfolios to supply chain logistics.
 
-**flixopt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
-
-**flixopt** bridges the gap between high-level energy systems models like [FINE](https://github.com/FZJ-IEK3-VSA/FINE) used for design and (multi-period) investment decisions and low-level dispatch optimization tools used for operation decisions.
-
-**flixopt** leverages the fast and efficient [linopy](https://github.com/PyPSA/linopy/) for the mathematical modeling and [xarray](https://github.com/pydata/xarray) for data handling.
-
-**flixopt** provides a user-friendly interface with options for advanced users.
-
-It was originally developed by [TU Dresden](https://github.com/gewv-tu-dresden) as part of the SMARTBIOGRID project, funded by the German Federal Ministry for Economic Affairs and Energy (FKZ: 03KB159B). Building on the Matlab-based flixOptMat framework (developed in the FAKS project), FlixOpt also incorporates concepts from [oemof/solph](https://github.com/oemof/oemof-solph).
+**Start simple, scale complex:** Build a working optimization model in minutes, then progressively add detail - multi-period investments, stochastic scenarios, custom constraints - without rewriting your code.
 
 ---
 
-## 🌟 Key Features
+## 🚀 Quick Start
 
-- **High-level Interface** with low-level control
-    - User-friendly interface for defining flow systems
-    - Pre-defined components like CHP, Heat Pump, Cooling Tower, etc.
-    - Fine-grained control for advanced configurations
+```bash
+pip install flixopt
+```
 
-- **Investment Optimization**
-    - Combined dispatch and investment optimization
-    - Size optimization and discrete investment decisions
-    - Combined with On/Off variables and constraints
+That's it! FlixOpt comes with the [HiGHS](https://highs.dev/) solver included. You're ready to optimize.
 
-- **Effects, not only Costs --> Multi-criteria Optimization**
-    - flixopt abstracts costs as so called 'Effects'. This allows to model costs, CO2-emissions, primary-energy-demand or area-demand at the same time.
-    - Effects can interact with each other(e.g., specific CO2 costs)
-    - Any of these `Effects` can be used as the optimization objective.
-    - A **Weigted Sum** of Effects can be used as the optimization objective.
-    - Every Effect can be constrained ($\epsilon$-constraint method).
+**The basic workflow:**
 
-- **Calculation Modes**
-    - **Full** - Solve the model with highest accuracy and computational requirements.
-    - **Segmented** - Speed up solving by using a rolling horizon.
-    - **Aggregated** - Speed up solving by identifying typical periods using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam). Suitable for large models.
+```python
+import flixopt as fx
 
----
+# 1. Define your system structure
+flow_system = fx.FlowSystem(timesteps)
+flow_system.add_elements(buses, components, effects)
 
-## 📦 Installation
+# 2. Create and solve
+calculation = fx.FullCalculation("MyModel", flow_system)
+calculation.solve()
 
-Install FlixOpt via pip.
-`pip install flixopt`
-With [HiGHS](https://github.com/ERGO-Code/HiGHS?tab=readme-ov-file) included out of the box, flixopt is ready to use..
+# 3. Analyze results
+calculation.results.solution
+```
 
-We recommend installing FlixOpt with all dependencies, which enables additional features like interactive network visualizations ([pyvis](https://github.com/WestHealth/pyvis)) and time series aggregation ([tsam](https://github.com/FZJ-IEK3-VSA/tsam)).
-`pip install "flixopt[full]"`
+**Get started with real examples:**
+- 📚 [Full Documentation](https://flixopt.github.io/flixopt/latest/)
+- 💡 [Examples Gallery](https://flixopt.github.io/flixopt/latest/examples/) - Complete working examples from simple to complex
+- 🔧 [API Reference](https://flixopt.github.io/flixopt/latest/api-reference/)
 
 ---
 
-## 📚 Documentation
+## 🌟 Why FlixOpt?
 
-The documentation is available at [https://flixopt.github.io/flixopt/latest/](https://flixopt.github.io/flixopt/latest/)
+### Progressive Enhancement - Your Model Grows With You
+
+**Start simple:**
+```python
+# Basic single-period model
+flow_system = fx.FlowSystem(timesteps)
+boiler = fx.Boiler("Boiler", eta=0.9, ...)
+```
+
+**Add complexity incrementally:**
+- **Investment decisions** → Add `InvestParameters` to components
+- **Multi-period planning** → Add `periods` dimension to FlowSystem
+- **Uncertainty modeling** → Add `scenarios` dimension with probabilities
+- **Custom constraints** → Extend with native linopy syntax
+
+**No refactoring required.** Your component definitions stay the same - periods, scenarios, and features are added as dimensions and parameters.
+
+→ [Learn more about multi-period and stochastic modeling](https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/dimensions/)
+
+### For Everyone
+
+- **Beginners:** High-level components that "just work"
+- **Experts:** Full access to modify models with linopy
+- **Researchers:** Quick prototyping with customization options
+- **Engineers:** Reliable, tested components without black boxes
+- **Students:** Clear, Pythonic interfaces for learning optimization
+
+### Key Features
+
+**Multi-criteria optimization:** Model costs, emissions, resource use - any custom metric. Optimize single objectives or use weighted combinations and ε-constraints.
+→ [Effects documentation](https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-penalty-objective/)
+
+**Performance at any scale:** Choose calculation modes without changing your model - Full, Segmented, or Aggregated (using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam)).
+→ [Calculation modes](https://flixopt.github.io/flixopt/latest/api-reference/calculation/)
+
+**Built for reproducibility:** Self-contained NetCDF result files with complete model information. Load results months later - everything is preserved.
+→ [Results documentation](https://flixopt.github.io/flixopt/latest/api-reference/results/)
+
+**Flexible data operations:** Transform FlowSystems with xarray-style operations (`sel()`, `resample()`) for multi-stage optimization.
 
 ---
 
-## 🎯️ Solver Integration
+## 🎯 What is FlixOpt?
 
-By default, FlixOpt uses the open-source solver [HiGHS](https://highs.dev/) which is installed by default. However, it is compatible with additional solvers such as:
+### A General-Purpose Flow Optimization Framework
 
-- [Gurobi](https://www.gurobi.com/)
-- [CBC](https://github.com/coin-or/Cbc)
-- [GLPK](https://www.gnu.org/software/glpk/)
-- [CPLEX](https://www.ibm.com/analytics/cplex-optimizer)
+FlixOpt models **any system involving flows and conversions:**
 
-For detailed licensing and installation instructions, refer to the respective solver documentation.
+- **Energy systems:** District heating/cooling, microgrids, renewable portfolios, sector coupling
+- **Material flows:** Supply chains, production lines, chemical processes
+- **Integrated systems:** Water-energy nexus, industrial symbiosis
+
+While energy systems are our primary focus, the same foundation applies universally. This enables coupling different system types within integrated models.
+
+### Modern Foundations
+
+Built on [linopy](https://github.com/PyPSA/linopy/) and [xarray](https://github.com/pydata/xarray), FlixOpt delivers **performance** and **transparency**. Full access to variables, constraints, and model structure. Extend anything with native linopy syntax.
+
+### Our Position
+
+We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) and low-level dispatch tools - similar to [PyPSA](https://docs.pypsa.org/latest/). FlixOpt is the sweet spot for detailed operational planning and long-term investment analysis in the **same framework**.
+
+### Academic Roots
+
+Originally developed at [TU Dresden](https://github.com/gewv-tu-dresden) for the SMARTBIOGRID project (funded by the German Federal Ministry for Economic Affairs and Energy, FKZ: 03KB159B). FlixOpt evolved from the MATLAB-based flixOptMat framework while incorporating best practices from [oemof/solph](https://github.com/oemof/oemof-solph).
 
 ---
 
-## 🛠 Development Setup
-Look into our docs for [development setup](https://flixopt.github.io/flixopt/latest/contribute/)
+## 🛣️ Roadmap
+
+**FlixOpt aims to be the most accessible, flexible, and universal Python framework for energy and material flow optimization.** We believe optimization modeling should be approachable for beginners yet powerful for experts, minimizing context switching between different planning horizons.
+
+**Current focus:**
+- Enhanced component library (sector coupling, hydrogen, thermal networks)
+- Examples showcasing multi-period and stochastic modeling
+- Advanced result analysis and visualization
+
+**Future vision:**
+- Modeling to generate alternatives (MGA) for robust decision-making
+- Advanced stochastic optimization (two-stage, CVaR)
+- Community ecosystem of user-contributed components
+
+→ [Full roadmap and vision](https://flixopt.github.io/flixopt/latest/roadmap/)
+
+---
+
+## 🛠️ Installation
+
+### Basic Installation
+
+```bash
+pip install flixopt
+```
+
+Includes the [HiGHS](https://highs.dev/) solver - you're ready to optimize immediately.
+
+### Full Installation
+
+For additional features (interactive network visualization, time series aggregation):
+
+```bash
+pip install "flixopt[full]"
+```
+
+### Solver Support
+
+FlixOpt supports many solvers via linopy: **HiGHS** (included), **Gurobi**, **CPLEX**, **CBC**, **GLPK**, and more.
+
+→ [Installation guide](https://flixopt.github.io/flixopt/latest/getting-started/)
+
+---
+
+## 🤝 Contributing
+
+FlixOpt thrives on community input. Whether you're fixing bugs, adding components, improving docs, or sharing use cases - **we welcome your contributions.**
+
+→ [Contribution guide](https://flixopt.github.io/flixopt/latest/contribute/)
 
 ---
 
 ## 📖 Citation
 
-If you use FlixOpt in your research or project, please cite the following:
+If FlixOpt supports your research or project, please cite:
 
 - **Main Citation:** [DOI:10.18086/eurosun.2022.04.07](https://doi.org/10.18086/eurosun.2022.04.07)
 - **Short Overview:** [DOI:10.13140/RG.2.2.14948.24969](https://doi.org/10.13140/RG.2.2.14948.24969)
+
+---
+
+## 📄 License
+
+MIT License - See [LICENSE](https://github.com/flixopt/flixopt/blob/main/LICENSE) for details.

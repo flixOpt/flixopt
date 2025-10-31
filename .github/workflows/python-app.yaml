@@ -5,7 +5,7 @@ on:
     branches: [main]        # Only main branch
     tags: ['v*.*.*']
   pull_request:
-    branches: [main, dev]
+    branches: [main, 'dev*', 'dev/**', 'feature/**']
     types: [opened, synchronize, reopened]
     paths-ignore:
       - 'docs/**'
@@ -35,7 +35,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.19"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -75,7 +75,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.19"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -85,10 +85,39 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system .[dev] "pytest-xdist==3.*"
+          uv pip install --system .[dev]
 
       - name: Run tests
-        run: pytest -v -p no:warnings --numprocesses=auto
+        run: pytest -v --numprocesses=auto
+
+  test-examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs: lint
+    # Only run examples on releases (tags)
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.5"
+          enable-cache: true
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system .[dev]
+
+      - name: Run example tests
+        run: pytest -v -m examples --numprocesses=auto
 
   security:
     name: Security Scan
@@ -101,7 +130,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.19"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -129,7 +158,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    needs: [lint, test, security]
+    needs: [lint, test, test-examples, security]
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
@@ -141,7 +170,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.19"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -168,7 +197,7 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     runs-on: ubuntu-24.04
-    needs: [test, create-release]  # Run after tests and release creation
+    needs: [test, test-examples, create-release]  # Run after tests and release creation
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
     environment:
       name: testpypi
@@ -183,7 +212,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.19"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -269,7 +298,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.19"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -313,25 +342,20 @@ jobs:
 
           # Wait and retry while PyPI indexes the package
           INSTALL_SUCCESS=false
-          for d in 10 20 40 80 120; do
+          for d in 10 20 40 60 90 120 180 300 480 600; do  # Total: up to ~30 minutes
             sleep "$d"
             echo "Attempting to install $PACKAGE_NAME==$VERSION from PyPI (retry after ${d}s)..."
-
-            # Install specific version and verify it matches
-            if uv pip install "$PACKAGE_NAME==$VERSION" && \
+            # Install directly from pypi, potentially mitigatiing caches
+            if uv pip install --index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
                python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
               INSTALL_SUCCESS=true
               break
             fi
           done
 
-          # Check if installation succeeded
           if [ "$INSTALL_SUCCESS" = "false" ]; then
             echo "ERROR: Failed to install $PACKAGE_NAME==$VERSION from PyPI after all retries"
-            echo "This could indicate:"
-            echo "  - PyPI indexing issues"
-            echo "  - Package upload problems"
-            echo "  - Version mismatch between tag and package"
+            echo "Check: https://pypi.org/project/$PACKAGE_NAME/$VERSION/"
             exit 1
           fi
 
@@ -355,7 +379,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.19"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -363,10 +387,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Sync changelog to docs
+      - name: Extract changelog to docs
         run: |
-          cp CHANGELOG.md docs/changelog.md
-          echo "✅ Synced changelog to docs"
+          # Install packaging dependency for changelog extraction
+          uv pip install --system packaging
+
+          # Extract individual release files
+          python scripts/extract_changelog.py
+
+          echo "✅ Extracted changelog to docs/changelog/"
 
       - name: Install documentation dependencies
         run: |

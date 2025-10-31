@@ -1,47 +1,144 @@
-# FlixOpt
+---
+title: Home
+hide:
+  - navigation
+  - toc
+---
 
-**FlixOpt** is a Python-based optimization framework designed to tackle energy and material flow problems using mixed-integer linear programming (MILP).
+<div class="hero-section">
 
-It borrows concepts from both [FINE](https://github.com/FZJ-IEK3-VSA/FINE) and [oemof.solph](https://github.com/oemof/oemof-solph).
+<h1>flixOpt</h1>
 
-## Why FlixOpt?
+<p class="tagline">Energy and Material Flow Optimization Framework</p>
 
-FlixOpt is designed as a general-purpose optimization framework to get your model running quickly, without sacrificing flexibility down the road:
+<p>Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.</p>
 
-- **Easy to Use API**: FlixOpt provides a Pythonic, object-oriented interface that makes mathematical optimization more accessible to Python developers.
+<p class="hero-buttons">
+  <a href="getting-started/" class="md-button md-button--primary">🚀 Get Started</a>
+  <a href="examples/" class="md-button">💡 View Examples</a>
+  <a href="https://github.com/flixOpt/flixopt" class="md-button" target="_blank" rel="noopener noreferrer">⭐ GitHub</a>
+</p>
 
-- **Approachable Learning Curve**: Designed to be accessible from the start, with options for more detailed models down the road.
+</div>
 
-- **Domain Independence**: While frameworks like oemof and FINE excel at energy system modeling with domain-specific components, FlixOpt offers a more general mathematical approach that can be applied across different fields.
+## :material-map-marker-path: Quick Navigation
 
-- **Extensibility**: Easily add custom constraints or variables to any FlixOpt Model using [linopy](https://github.com/PyPSA/linopy). Tailor any FlixOpt model to your specific needs without loosing the convenience of the framework.
+<div class="quick-links">
+  <a href="getting-started/" class="quick-link-card">
+    <h3>🚀 Getting Started</h3>
+    <p>New to FlixOpt? Start here with installation and your first model</p>
+  </a>
 
-- **Solver Agnostic**: Work with different solvers through a consistent interface.
+  <a href="examples/" class="quick-link-card">
+    <h3>💡 Examples Gallery</h3>
+    <p>Explore real-world examples from simple to complex systems</p>
+  </a>
 
-- **Results File I/O**: Built to analyze results independent of running the optimization.
+  <a href="api-reference/" class="quick-link-card">
+    <h3>📚 API Reference</h3>
+    <p>Detailed documentation of all classes, methods, and parameters</p>
+  </a>
+
+  <a href="user-guide/recipes/" class="quick-link-card">
+    <h3>📖 Recipes</h3>
+    <p>Common patterns and best practices for modeling energy systems</p>
+  </a>
+
+  <a href="user-guide/mathematical-notation/" class="quick-link-card">
+    <h3>∫ Mathematical Notation</h3>
+    <p>Understand the mathematical formulations behind the framework</p>
+  </a>
+
+  <a href="roadmap/" class="quick-link-card">
+    <h3>🛣️ Roadmap</h3>
+    <p>See what's coming next and contribute to the future of FlixOpt</p>
+  </a>
+</div>
+
+## 🏗️ Framework Architecture
+
+<div class="architecture-section" markdown="1">
 
 <figure markdown>
   ![FlixOpt Conceptual Usage](./images/architecture_flixOpt.png)
   <figcaption>Conceptual Usage and IO operations of FlixOpt</figcaption>
 </figure>
 
-## Installation
+**FlixOpt** provides a complete workflow for energy system optimization:
 
-```bash
-pip install flixopt
-```
+- **:material-file-code: Define** your system using Python components
+- **:material-cog: Optimize** with powerful solvers (HiGHS, Gurobi, CPLEX)
+- **:material-chart-box: Analyze** results with built-in visualization tools
+- **:material-export: Export** to various formats for further analysis
 
-For more detailed installation options, see the [Getting Started](getting-started.md) guide.
+</div>
 
-## License
+## :material-account-group: Community & Support
 
-FlixOpt is released under the MIT License. See [LICENSE](https://github.com/flixopt/flixopt/blob/main/LICENSE) for details.
+<div class="feature-grid" markdown="1">
 
-## Citation
+<div class="feature-card" markdown="1">
 
-If you use FlixOpt in your research or project, please cite:
+:fontawesome-brands-github:{ .feature-icon }
 
-- **Main Citation:** [DOI:10.18086/eurosun.2022.04.07](https://doi.org/10.18086/eurosun.2022.04.07)
-- **Short Overview:** [DOI:10.13140/RG.2.2.14948.24969](https://doi.org/10.13140/RG.2.2.14948.24969)
+### GitHub
 
-*A more sophisticated paper is in progress*
+Report issues, request features, and contribute to the codebase
+
+[Visit Repository →](https://github.com/flixOpt/flixopt){target="_blank" rel="noopener noreferrer"}
+
+</div>
+
+<div class="feature-card" markdown="1">
+
+:material-forum:{ .feature-icon }
+
+### Discussions
+
+Ask questions and share your projects with the community
+
+[Join Discussion →](https://github.com/flixOpt/flixopt/discussions){target="_blank" rel="noopener noreferrer"}
+
+</div>
+
+<div class="feature-card" markdown="1">
+
+:material-book-open-page-variant:{ .feature-icon }
+
+### Contributing
+
+Help improve FlixOpt by contributing code, docs, or examples
+
+[Learn How →](contribute/){target="_blank" rel="noopener noreferrer"}
+
+</div>
+
+</div>
+
+
+## :material-file-document-edit: Recent Updates
+
+!!! tip "What's New in v3.0.0"
+    Major improvements and breaking changes. Check the [Migration Guide](user-guide/migration-guide-v3.md) for upgrading from v2.x.
+
+📋 See the full [Release Notes](changelog/) for detailed version history.
+
+---
+
+<div style="text-align: center; margin: 3rem 0; padding: 2rem; background: var(--md-code-bg-color); border-radius: 0.75rem;">
+
+<h3>Ready to optimize your energy system?</h3>
+
+<p>
+  <a href="getting-started/" class="md-button md-button--primary md-button--lg">▶️ Start Building</a>
+</p>
+
+</div>
+
+---
+
+{%
+   include-markdown "../README.md"
+   start="## 🛠️ Installation"
+   end="## 📄 License"
+%}

@@ -20,7 +20,9 @@ try:
 except ImportError:
     TSAM_AVAILABLE = False
 
+from .color_processing import process_colors
 from .components import Storage
+from .config import CONFIG
 from .structure import (
     FlowSystemModel,
     Submodel,
@@ -141,7 +143,7 @@ class Aggregation:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str = 'viridis', show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
+    def plot(self, colormap: str | None = None, show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
         from . import plotting
 
         df_org = self.original_data.copy().rename(
@@ -150,13 +152,20 @@ class Aggregation:
         df_agg = self.aggregated_data.copy().rename(
             columns={col: f'Aggregated - {col}' for col in self.aggregated_data.columns}
         )
-        fig = plotting.with_plotly(df_org, 'line', colors=colormap)
+        colors = list(
+            process_colors(colormap or CONFIG.Plotting.default_qualitative_colorscale, list(df_org.columns)).values()
+        )
+        fig = plotting.with_plotly(df_org.to_xarray(), 'line', colors=colors, xlabel='Time in h')
         for trace in fig.data:
             trace.update(dict(line=dict(dash='dash')))
-        fig = plotting.with_plotly(df_agg, 'line', colors=colormap, fig=fig)
+        fig2 = plotting.with_plotly(df_agg.to_xarray(), 'line', colors=colors, xlabel='Time in h')
+        for trace in fig2.data:
+            fig.add_trace(trace)
 
         fig.update_layout(
-            title='Original vs Aggregated Data (original = ---)', xaxis_title='Index', yaxis_title='Value'
+            title='Original vs Aggregated Data (original = ---)',
+            xaxis_title='Time in h',
+            yaxis_title='Value',
         )
 
         plotting.export_figure(
@@ -286,7 +295,7 @@ class AggregationParameters:
 
 
 class AggregationModel(Submodel):
-    """The AggregationModel holds equations and variables related to the Aggregation of a FLowSystem.
+    """The AggregationModel holds equations and variables related to the Aggregation of a FlowSystem.
     It creates Equations that equates indices of variables, and introduces penalties related to binary variables, that
     escape the equation to their related binaries in other periods"""
 
@@ -315,8 +324,10 @@ class AggregationModel(Submodel):
 
         indices = self.aggregation_data.get_equation_indices(skip_first_index_of_period=True)
 
-        time_variables: set[str] = {k for k, v in self._model.variables.data.items() if 'time' in v.indexes}
-        binary_variables: set[str] = {k for k, v in self._model.variables.data.items() if k in self._model.binaries}
+        time_variables: set[str] = {
+            name for name in self._model.variables if 'time' in self._model.variables[name].dims
+        }
+        binary_variables: set[str] = set(self._model.variables.binaries)
         binary_time_variables: set[str] = time_variables & binary_variables
 
         for component in components:
@@ -353,17 +364,11 @@ class AggregationModel(Submodel):
             variable.name in self._model.variables.binaries
             and self.aggregation_parameters.percentage_of_period_freedom > 0
         ):
-            var_k1 = self.add_variables(
-                binary=True,
-                coords={'time': variable.isel(time=indices[0]).indexes['time']},
-                short_name=f'correction1|{variable.name}',
-            )
+            sel = variable.isel(time=indices[0])
+            coords = {d: sel.indexes[d] for d in sel.dims}
+            var_k1 = self.add_variables(binary=True, coords=coords, short_name=f'correction1|{variable.name}')
 
-            var_k0 = self.add_variables(
-                binary=True,
-                coords={'time': variable.isel(time=indices[0]).indexes['time']},
-                short_name=f'correction0|{variable.name}',
-            )
+            var_k0 = self.add_variables(binary=True, coords=coords, short_name=f'correction0|{variable.name}')
 
             # equation extends ...
             # --> On(p3) can be 0/1 independent of On(p1,t)!
@@ -374,13 +379,13 @@ class AggregationModel(Submodel):
             con.lhs += 1 * var_k1 - 1 * var_k0
 
             # interlock var_k1 and var_K2:
-            # eq: var_k0(t)+var_k1(t) <= 1.1
-            self.add_constraints(var_k0 + var_k1 <= 1.1, short_name=f'lock_k0_and_k1|{variable.name}')
+            # eq: var_k0(t)+var_k1(t) <= 1
+            self.add_constraints(var_k0 + var_k1 <= 1, short_name=f'lock_k0_and_k1|{variable.name}')
 
             # Begrenzung der Korrektur-Anzahl:
             # eq: sum(K) <= n_Corr_max
+            limit = int(np.floor(self.aggregation_parameters.percentage_of_period_freedom / 100 * length))
             self.add_constraints(
-                sum(var_k0) + sum(var_k1)
-                <= round(self.aggregation_parameters.percentage_of_period_freedom / 100 * length),
+                var_k0.sum(dim='time') + var_k1.sum(dim='time') <= limit,
                 short_name=f'limit_corrections|{variable.name}',
             )

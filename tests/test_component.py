@@ -423,7 +423,9 @@ class TestTransmissionModel:
             'Rohr',
             relative_losses=0.2,
             absolute_losses=20,
-            in1=fx.Flow('Rohr1', 'Wärme lokal', size=fx.InvestParameters(specific_effects=5, maximum_size=1e6)),
+            in1=fx.Flow(
+                'Rohr1', 'Wärme lokal', size=fx.InvestParameters(effects_of_investment_per_size=5, maximum_size=1e6)
+            ),
             out1=fx.Flow('Rohr2', 'Fernwärme', size=1000),
         )
 
@@ -462,20 +464,26 @@ class TestTransmissionModel:
 
         last2 = fx.Sink(
             'Wärmelast2',
-            sink=fx.Flow(
-                'Q_th_Last',
-                bus='Wärme lokal',
-                size=1,
-                fixed_relative_profile=flow_system.components['Wärmelast'].sink.fixed_relative_profile
-                * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
-            ),
+            inputs=[
+                fx.Flow(
+                    'Q_th_Last',
+                    bus='Wärme lokal',
+                    size=1,
+                    fixed_relative_profile=flow_system.components['Wärmelast'].inputs[0].fixed_relative_profile
+                    * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
+                )
+            ],
         )
 
         transmission = fx.Transmission(
             'Rohr',
             relative_losses=0.2,
             absolute_losses=20,
-            in1=fx.Flow('Rohr1a', bus='Wärme lokal', size=fx.InvestParameters(specific_effects=5, maximum_size=1000)),
+            in1=fx.Flow(
+                'Rohr1a',
+                bus='Wärme lokal',
+                size=fx.InvestParameters(effects_of_investment_per_size=5, maximum_size=1000),
+            ),
             out1=fx.Flow('Rohr1b', 'Fernwärme', size=1000),
             in2=fx.Flow('Rohr2a', 'Fernwärme', size=fx.InvestParameters()),
             out2=fx.Flow('Rohr2b', bus='Wärme lokal', size=1000),
@@ -530,23 +538,31 @@ class TestTransmissionModel:
 
         last2 = fx.Sink(
             'Wärmelast2',
-            sink=fx.Flow(
-                'Q_th_Last',
-                bus='Wärme lokal',
-                size=1,
-                fixed_relative_profile=flow_system.components['Wärmelast'].sink.fixed_relative_profile
-                * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
-            ),
+            inputs=[
+                fx.Flow(
+                    'Q_th_Last',
+                    bus='Wärme lokal',
+                    size=1,
+                    fixed_relative_profile=flow_system.components['Wärmelast'].inputs[0].fixed_relative_profile
+                    * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
+                )
+            ],
         )
 
         transmission = fx.Transmission(
             'Rohr',
             relative_losses=0.2,
             absolute_losses=20,
-            in1=fx.Flow('Rohr1a', bus='Wärme lokal', size=fx.InvestParameters(specific_effects=50, maximum_size=1000)),
+            in1=fx.Flow(
+                'Rohr1a',
+                bus='Wärme lokal',
+                size=fx.InvestParameters(effects_of_investment_per_size=50, maximum_size=1000),
+            ),
             out1=fx.Flow('Rohr1b', 'Fernwärme', size=1000),
             in2=fx.Flow(
-                'Rohr2a', 'Fernwärme', size=fx.InvestParameters(specific_effects=100, minimum_size=10, optional=False)
+                'Rohr2a',
+                'Fernwärme',
+                size=fx.InvestParameters(effects_of_investment_per_size=100, minimum_size=10, mandatory=True),
             ),
             out2=fx.Flow('Rohr2b', bus='Wärme lokal', size=1000),
             balanced=False,

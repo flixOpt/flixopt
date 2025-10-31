@@ -157,7 +157,7 @@ class TestStorageModel:
             charge_state.isel(time=slice(1, None))
             == charge_state.isel(time=slice(None, -1)) * (1 - rel_loss) ** hours_per_step
             + charge_rate * eff_charge * hours_per_step
-            - discharge_rate * eff_discharge * hours_per_step,
+            - discharge_rate / eff_discharge * hours_per_step,
         )
 
         # Check initial charge state constraint
@@ -261,7 +261,11 @@ class TestStorageModel:
             charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
             discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
             capacity_in_flow_hours=fx.InvestParameters(
-                fix_effects=100, specific_effects=10, minimum_size=20, maximum_size=100, optional=True
+                effects_of_investment=100,
+                effects_of_investment_per_size=10,
+                minimum_size=20,
+                maximum_size=100,
+                mandatory=False,
             ),
             initial_charge_state=0,
             eta_charge=0.9,
@@ -277,7 +281,7 @@ class TestStorageModel:
         for var_name in {
             'InvestStorage|charge_state',
             'InvestStorage|size',
-            'InvestStorage|is_invested',
+            'InvestStorage|invested',
         }:
             assert var_name in model.variables, f'Missing investment variable: {var_name}'
 
@@ -288,19 +292,19 @@ class TestStorageModel:
         # Check variable properties
         assert_var_equal(
             model['InvestStorage|size'],
-            model.add_variables(lower=0, upper=100, coords=model.get_coords(['year', 'scenario'])),
+            model.add_variables(lower=0, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_var_equal(
-            model['InvestStorage|is_invested'],
-            model.add_variables(binary=True, coords=model.get_coords(['year', 'scenario'])),
+            model['InvestStorage|invested'],
+            model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_conequal(
             model.constraints['InvestStorage|size|ub'],
-            model.variables['InvestStorage|size'] <= model.variables['InvestStorage|is_invested'] * 100,
+            model.variables['InvestStorage|size'] <= model.variables['InvestStorage|invested'] * 100,
         )
         assert_conequal(
             model.constraints['InvestStorage|size|lb'],
-            model.variables['InvestStorage|size'] >= model.variables['InvestStorage|is_invested'] * 20,
+            model.variables['InvestStorage|size'] >= model.variables['InvestStorage|invested'] * 20,
         )
 
     def test_storage_with_final_state_constraints(self, basic_flow_system_linopy_coords, coords_config):
@@ -421,19 +425,19 @@ class TestStorageModel:
             )
 
     @pytest.mark.parametrize(
-        'optional,minimum_size,expected_vars,expected_constraints',
+        'mandatory,minimum_size,expected_vars,expected_constraints',
         [
-            (True, None, {'InvestStorage|is_invested'}, {'InvestStorage|size|lb'}),
-            (True, 20, {'InvestStorage|is_invested'}, {'InvestStorage|size|lb'}),
-            (False, None, set(), set()),
-            (False, 20, set(), set()),
+            (False, None, {'InvestStorage|invested'}, {'InvestStorage|size|lb'}),
+            (False, 20, {'InvestStorage|invested'}, {'InvestStorage|size|lb'}),
+            (True, None, set(), set()),
+            (True, 20, set(), set()),
         ],
     )
     def test_investment_parameters(
         self,
         basic_flow_system_linopy_coords,
         coords_config,
-        optional,
+        mandatory,
         minimum_size,
         expected_vars,
         expected_constraints,
@@ -443,9 +447,9 @@ class TestStorageModel:
 
         # Create investment parameters
         invest_params = {
-            'fix_effects': 100,
-            'specific_effects': 10,
-            'optional': optional,
+            'effects_of_investment': 100,
+            'effects_of_investment_per_size': 10,
+            'mandatory': mandatory,
         }
         if minimum_size is not None:
             invest_params['minimum_size'] = minimum_size
@@ -467,20 +471,18 @@ class TestStorageModel:
 
         # Check that expected variables exist
         for var_name in expected_vars:
-            if optional:
+            if not mandatory:  # Optional investment (mandatory=False)
                 assert var_name in model.variables, f'Expected variable {var_name} not found'
 
         # Check that expected constraints exist
         for constraint_name in expected_constraints:
-            if optional:
+            if not mandatory:  # Optional investment (mandatory=False)
                 assert constraint_name in model.constraints, f'Expected constraint {constraint_name} not found'
 
-        # If optional is False, is_invested should be fixed to 1
-        if not optional:
-            # Check that the is_invested variable exists and is fixed to 1
-            if 'InvestStorage|is_invested' in model.variables:
-                var = model.variables['InvestStorage|is_invested']
+        # If mandatory is True, invested should be fixed to 1
+        if mandatory:
+            # Check that the invested variable exists and is fixed to 1
+            if 'InvestStorage|invested' in model.variables:
+                var = model.variables['InvestStorage|invested']
                 # Check if the lower and upper bounds are both 1
-                assert var.upper == 1 and var.lower == 1, (
-                    'is_invested variable should be fixed to 1 when optional=False'
-                )
+                assert var.upper == 1 and var.lower == 1, 'invested variable should be fixed to 1 when mandatory=True'

@@ -1,0 +1,26 @@
+# Include essential files from source distribution
+include LICENSE
+include README.md
+include CHANGELOG.md
+include pyproject.toml
+
+# Include package source and data
+recursive-include flixopt *.py
+
+# Exclude everything else
+global-exclude *.pyc *.pyo __pycache__
+prune .github
+prune docs
+prune examples
+prune tests
+prune pics
+prune scripts
+prune build
+prune dist
+prune .venv
+prune venv
+exclude .gitignore
+exclude .pre-commit-config.yaml
+exclude renovate.json
+exclude mkdocs.yml
+exclude test_package.sh

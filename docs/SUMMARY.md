@@ -1,7 +1,0 @@
-- [Home](index.md)
-- [Getting Started](getting-started.md)
-- [User Guide](user-guide/)
-- [Examples](examples/)
-- [Contribute](contribute.md)
-- [API Reference](api-reference/)
-- [Release Notes](changelog.md)

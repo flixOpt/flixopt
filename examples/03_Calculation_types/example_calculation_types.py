@@ -11,6 +11,9 @@ import xarray as xr
 import flixopt as fx
 
 if __name__ == '__main__':
+    # Enable console logging
+    fx.CONFIG.Logging.console = True
+    fx.CONFIG.apply()
     # Calculation Types
     full, segmented, aggregated = True, True, True
 
@@ -30,8 +33,10 @@ if __name__ == '__main__':
     excess_penalty = 1e5  # or set to None if not needed
 
     # Data Import
-    data_import = pd.read_csv(pathlib.Path('Zeitreihen2020.csv'), index_col=0).sort_index()
-    filtered_data = data_import['2020-01-01':'2020-01-02 23:45:00']
+    data_import = pd.read_csv(
+        pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
+    ).sort_index()
+    filtered_data = data_import['2020-01-01':'2020-01-07 23:45:00']
     # filtered_data = data_import[0:500]  # Alternatively filter by index
 
     filtered_data.index = pd.to_datetime(filtered_data.index)
@@ -46,7 +51,7 @@ if __name__ == '__main__':
     # TimeSeriesData objects
     TS_heat_demand = fx.TimeSeriesData(heat_demand)
     TS_electricity_demand = fx.TimeSeriesData(electricity_demand, aggregation_weight=0.7)
-    TS_electricity_price_sell = fx.TimeSeriesData(-(electricity_demand - 0.5), aggregation_group='p_el')
+    TS_electricity_price_sell = fx.TimeSeriesData(-(electricity_price - 0.5), aggregation_group='p_el')
     TS_electricity_price_buy = fx.TimeSeriesData(electricity_price + 0.5, aggregation_group='p_el')
 
     flow_system = fx.FlowSystem(timesteps)
@@ -108,36 +113,43 @@ if __name__ == '__main__':
     # 4. Sinks and Sources
     # Heat Load Profile
     a_waermelast = fx.Sink(
-        'Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=TS_heat_demand)
+        'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=TS_heat_demand)]
     )
 
     # Electricity Feed-in
     a_strom_last = fx.Sink(
-        'Stromlast', sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=TS_electricity_demand)
+        'Stromlast', inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=TS_electricity_demand)]
     )
 
     # Gas Tariff
     a_gas_tarif = fx.Source(
         'Gastarif',
-        source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: gas_price, CO2.label: 0.3}),
+        outputs=[
+            fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={costs.label: gas_price, CO2.label: 0.3})
+        ],
     )
 
     # Coal Tariff
     a_kohle_tarif = fx.Source(
         'Kohletarif',
-        source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={costs.label: 4.6, CO2.label: 0.3}),
+        outputs=[fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={costs.label: 4.6, CO2.label: 0.3})],
     )
 
     # Electricity Tariff and Feed-in
     a_strom_einspeisung = fx.Sink(
-        'Einspeisung', sink=fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=TS_electricity_price_sell)
+        'Einspeisung', inputs=[fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour=TS_electricity_price_sell)]
     )
 
     a_strom_tarif = fx.Source(
         'Stromtarif',
-        source=fx.Flow(
-            'P_el', bus='Strom', size=1000, effects_per_flow_hour={costs.label: TS_electricity_price_buy, CO2: 0.3}
-        ),
+        outputs=[
+            fx.Flow(
+                'P_el',
+                bus='Strom',
+                size=1000,
+                effects_per_flow_hour={costs.label: TS_electricity_price_buy, CO2.label: 0.3},
+            )
+        ],
     )
 
     # Flow System Setup
@@ -190,36 +202,39 @@ if __name__ == '__main__':
 
     # --- Plotting for comparison ---
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'Speicher|charge_state').to_dataframe(),
-        style='line',
+        get_solutions(calculations, 'Speicher|charge_state'),
+        mode='line',
         title='Charge State Comparison',
         ylabel='Charge state',
+        xlabel='Time in h',
     ).write_html('results/Charge State.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'BHKW2(Q_th)|flow_rate').to_dataframe(),
-        style='line',
+        get_solutions(calculations, 'BHKW2(Q_th)|flow_rate'),
+        mode='line',
         title='BHKW2(Q_th) Flow Rate Comparison',
         ylabel='Flow rate',
+        xlabel='Time in h',
     ).write_html('results/BHKW2 Thermal Power.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'costs(operation)|total_per_timestep').to_dataframe(),
-        style='line',
+        get_solutions(calculations, 'costs(temporal)|per_timestep'),
+        mode='line',
         title='Operation Cost Comparison',
         ylabel='Costs [€]',
+        xlabel='Time in h',
     ).write_html('results/Operation Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame(get_solutions(calculations, 'costs(operation)|total_per_timestep').to_dataframe().sum()).T,
-        style='stacked_bar',
+        get_solutions(calculations, 'costs(temporal)|per_timestep').sum('time'),
+        mode='stacked_bar',
         title='Total Cost Comparison',
         ylabel='Costs [€]',
     ).update_layout(barmode='group').write_html('results/Total Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]),
-        'stacked_bar',
+        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]).to_xarray(),
+        mode='stacked_bar',
     ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
         'results/Speed Comparison.html'
     )

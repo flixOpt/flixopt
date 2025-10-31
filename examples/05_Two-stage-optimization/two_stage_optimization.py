@@ -1,9 +1,9 @@
 """
 This script demonstrates how to use downsampling of a FlowSystem to effectively reduce the size of a model.
-This can be very useful when working with large models or during developement state,
+This can be very useful when working with large models or during development,
 as it can drastically reduce the computational time.
 This leads to faster results and easier debugging.
-A common use case is to do optimize the investments of a model with a downsampled version of the original model, and than fix the computed sizes when calculating th actual dispatch.
+A common use case is to optimize the investments of a model with a downsampled version of the original model, and then fix the computed sizes when calculating the actual dispatch.
 While the final optimum might differ from the global optimum, the solving will be much faster.
 """
 
@@ -20,7 +20,9 @@ logger = logging.getLogger('flixopt')
 
 if __name__ == '__main__':
     # Data Import
-    data_import = pd.read_csv(pathlib.Path('Zeitreihen2020.csv'), index_col=0).sort_index()
+    data_import = pd.read_csv(
+        pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
+    ).sort_index()
     filtered_data = data_import[:500]
 
     filtered_data.index = pd.to_datetime(filtered_data.index)
@@ -48,7 +50,9 @@ if __name__ == '__main__':
             Q_fu=fx.Flow(
                 label='Q_fu',
                 bus='Gas',
-                size=fx.InvestParameters(specific_effects={'costs': 1_000}, minimum_size=10, maximum_size=500),
+                size=fx.InvestParameters(
+                    effects_of_investment_per_size={'costs': 1_000}, minimum_size=10, maximum_size=500
+                ),
                 relative_minimum=0.2,
                 previous_flow_rate=20,
                 on_off_parameters=fx.OnOffParameters(effects_per_switch_on=300),
@@ -66,7 +70,9 @@ if __name__ == '__main__':
             Q_fu=fx.Flow(
                 'Q_fu',
                 bus='Kohle',
-                size=fx.InvestParameters(specific_effects={'costs': 3_000}, minimum_size=10, maximum_size=500),
+                size=fx.InvestParameters(
+                    effects_of_investment_per_size={'costs': 3_000}, minimum_size=10, maximum_size=500
+                ),
                 relative_minimum=0.3,
                 previous_flow_rate=100,
             ),
@@ -74,7 +80,7 @@ if __name__ == '__main__':
         fx.Storage(
             'Speicher',
             capacity_in_flow_hours=fx.InvestParameters(
-                minimum_size=10, maximum_size=1000, specific_effects={'costs': 60}
+                minimum_size=10, maximum_size=1000, effects_of_investment_per_size={'costs': 60}
             ),
             initial_charge_state='lastValueOfSim',
             eta_charge=1,
@@ -84,54 +90,59 @@ if __name__ == '__main__':
             charging=fx.Flow('Q_th_load', size=137, bus='Fernwärme'),
             discharging=fx.Flow('Q_th_unload', size=158, bus='Fernwärme'),
         ),
-        fx.Sink('Wärmelast', sink=fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)),
+        fx.Sink(
+            'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)]
+        ),
         fx.Source(
             'Gastarif',
-            source=fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
         ),
         fx.Source(
             'Kohletarif',
-            source=fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3}),
+            outputs=[fx.Flow('Q_Kohle', bus='Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
         ),
         fx.Source(
             'Einspeisung',
-            source=fx.Flow(
-                'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3}
-            ),
+            outputs=[
+                fx.Flow(
+                    'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3}
+                )
+            ],
         ),
         fx.Sink(
             'Stromlast',
-            sink=fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electricity_demand),
+            inputs=[fx.Flow('P_el_Last', bus='Strom', size=1, fixed_relative_profile=electricity_demand)],
         ),
         fx.Source(
             'Stromtarif',
-            source=fx.Flow(
-                'P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price, 'CO2': 0.3}
-            ),
+            outputs=[
+                fx.Flow('P_el', bus='Strom', size=1000, effects_per_flow_hour={'costs': electricity_price, 'CO2': 0.3})
+            ],
         ),
     )
 
     # Separate optimization of flow sizes and dispatch
     start = timeit.default_timer()
-    calculation_sizing = fx.FullCalculation('Sizing', flow_system.resample('4h'))
+    calculation_sizing = fx.FullCalculation('Sizing', flow_system.resample('2h'))
     calculation_sizing.do_modeling()
-    calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
+    calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_sizing = timeit.default_timer() - start
 
-    calculation_dispatch = fx.FullCalculation('Sizing', flow_system)
+    start = timeit.default_timer()
+    calculation_dispatch = fx.FullCalculation('Dispatch', flow_system)
     calculation_dispatch.do_modeling()
     calculation_dispatch.fix_sizes(calculation_sizing.results.solution)
-    calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
+    calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_dispatch = timeit.default_timer() - start
 
-    if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all():
-        logger.info('Sizes where correctly equalized')
+    if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all().item():
+        logger.info('Sizes were correctly equalized')
     else:
-        raise RuntimeError('Sizes where not correctly equalized')
+        raise RuntimeError('Sizes were not correctly equalized')
 
     # Optimization of both flow sizes and dispatch together
     start = timeit.default_timer()
-    calculation_combined = fx.FullCalculation('Sizing', flow_system)
+    calculation_combined = fx.FullCalculation('Combined', flow_system)
     calculation_combined.do_modeling()
     calculation_combined.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_combined = timeit.default_timer() - start
@@ -145,9 +156,9 @@ if __name__ == '__main__':
     comparison_main = comparison[
         [
             'Duration [s]',
-            'costs|total',
-            'costs(invest)|total',
-            'costs(operation)|total',
+            'costs',
+            'costs(periodic)',
+            'costs(temporal)',
             'BHKW2(Q_fu)|size',
             'Kessel(Q_fu)|size',
             'Speicher|size',
