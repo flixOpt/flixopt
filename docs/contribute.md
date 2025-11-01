@@ -1,1 +1,1 @@
-{! ../CONTRIBUTE.md !}
+{! ../.github/CONTRIBUTING.md !}

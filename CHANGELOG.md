@@ -72,6 +72,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Unified contributing guides in docs and on github
 
 ### 👷 Development
 - Added type hints for submodel in all Interface classes
