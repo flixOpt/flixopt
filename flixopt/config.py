@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import warnings
 from logging.handlers import RotatingFileHandler
@@ -481,13 +482,17 @@ class CONFIG:
 
         Sets plotly.io.renderers.default = 'browser'. Useful for running examples
         and viewing interactive plots. Does NOT modify CONFIG.Plotting settings.
+
+        Respects FLIXOPT_CI environment variable if set.
         """
         cls.Plotting.default_show = True
         cls.apply()
 
-        import plotly.io as pio
+        # Only set to True if environment variable hasn't overridden it
+        if 'FLIXOPT_CI' not in os.environ:
+            import plotly.io as pio
 
-        pio.renderers.default = 'browser'
+            pio.renderers.default = 'browser'
 
         return cls
 

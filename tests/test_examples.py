@@ -46,12 +46,16 @@ def test_independent_examples(example_script):
     """
     with working_directory(example_script.parent):
         timeout = 800
+        # Set environment variable to disable interactive plotting
+        env = os.environ.copy()
+        env['FLIXOPT_CI'] = 'true'
         try:
             result = subprocess.run(
                 [sys.executable, example_script.name],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             pytest.fail(f'Script {example_script} timed out after {timeout} seconds')
@@ -69,12 +73,16 @@ def test_dependent_examples():
 
         with working_directory(script_full_path.parent):
             timeout = 600
+            # Set environment variable to disable interactive plotting
+            env = os.environ.copy()
+            env['FLIXOPT_CI'] = 'true'
             try:
                 result = subprocess.run(
                     [sys.executable, script_full_path.name],
                     capture_output=True,
                     text=True,
                     timeout=timeout,
+                    env=env,
                 )
             except subprocess.TimeoutExpired:
                 pytest.fail(f'Script {script_path} timed out after {timeout} seconds')
