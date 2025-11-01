@@ -709,7 +709,7 @@ class SizingParameters(Interface):
             Dict: {'effect_name': value} (e.g., {'cost': 10000}).
         effects_per_size: Variable costs proportional to size (per-unit costs).
             Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
-        piecewise_effects_of_investment: Non-linear costs using PiecewiseEffects.
+        piecewise_effects_per_size: Non-linear costs using PiecewiseEffects.
             Combinable with effects_of_size and effects_per_size.
         linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
             For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
@@ -719,7 +719,7 @@ class SizingParameters(Interface):
             Will be removed in version 4.0.
         specific_effects: **Deprecated**. Use `effects_per_size` instead.
             Will be removed in version 4.0.
-        piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
+        piecewise_effects: **Deprecated**. Use `piecewise_effects_per_size` instead.
             Will be removed in version 4.0.
         optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
             Will be removed in version 4.0.
@@ -763,7 +763,7 @@ class SizingParameters(Interface):
                 'cost': 5000,  # Grid connection and control system
                 'installation_time': 2,  # Days for fixed components
             },
-            piecewise_effects_of_investment=PiecewiseEffects(
+            piecewise_effects_per_size=PiecewiseEffects(
                 piecewise_origin=Piecewise(
                     [
                         Piece(0, 100),  # Small systems
@@ -827,7 +827,7 @@ class SizingParameters(Interface):
         hydrogen_electrolyzer = SizingParameters(
             minimum_size=1,
             maximum_size=50,  # MW
-            piecewise_effects_of_investment=PiecewiseEffects(
+            piecewise_effects_per_size=PiecewiseEffects(
                 piecewise_origin=Piecewise(
                     [
                         Piece(0, 5),  # Small scale: early adoption
@@ -873,7 +873,7 @@ class SizingParameters(Interface):
         mandatory: bool = False,
         effects_of_size: PeriodicEffectsUser | None = None,
         effects_per_size: PeriodicEffectsUser | None = None,
-        piecewise_effects_of_investment: PiecewiseEffects | None = None,
+        piecewise_effects_per_size: PiecewiseEffects | None = None,
         linked_periods: PeriodicDataUser | tuple[int, int] | None = None,
         **kwargs,
     ):
@@ -882,8 +882,8 @@ class SizingParameters(Interface):
         effects_per_size = self._handle_deprecated_kwarg(
             kwargs, 'specific_effects', 'effects_per_size', effects_per_size
         )
-        piecewise_effects_of_investment = self._handle_deprecated_kwarg(
-            kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
+        piecewise_effects_per_size = self._handle_deprecated_kwarg(
+            kwargs, 'piecewise_effects', 'piecewise_effects_per_size', piecewise_effects_per_size
         )
         # For mandatory parameter with non-None default, disable conflict checking
         if 'optional' in kwargs:
@@ -903,7 +903,7 @@ class SizingParameters(Interface):
         self.fixed_size = fixed_size
         self.mandatory = mandatory
         self.effects_per_size: PeriodicEffectsUser = effects_per_size if effects_per_size is not None else {}
-        self.piecewise_effects_of_investment = piecewise_effects_of_investment
+        self.piecewise_effects_per_size = piecewise_effects_per_size
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
         self.linked_periods = linked_periods
@@ -922,9 +922,9 @@ class SizingParameters(Interface):
             dims=['period', 'scenario'],
         )
 
-        if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment.has_time_dim = False
-            self.piecewise_effects_of_investment.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
+        if self.piecewise_effects_per_size is not None:
+            self.piecewise_effects_per_size.has_time_dim = False
+            self.piecewise_effects_per_size.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
 
         self.minimum_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
@@ -999,13 +999,13 @@ class SizingParameters(Interface):
 
     @property
     def piecewise_effects(self) -> PiecewiseEffects | None:
-        """Deprecated property. Use piecewise_effects_of_investment instead."""
+        """Deprecated property. Use piecewise_effects_per_size instead."""
         warnings.warn(
-            'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead.',
+            'The piecewise_effects property is deprecated. Use piecewise_effects_per_size instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.piecewise_effects_of_investment
+        return self.piecewise_effects_per_size
 
     @property
     def minimum_or_fixed_size(self) -> PeriodicData:

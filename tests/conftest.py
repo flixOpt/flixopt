@@ -282,7 +282,7 @@ class Storage:
         """Complex storage with piecewise investment from flow_system_complex"""
         invest_speicher = fx.SizingParameters(
             effects_of_size=0,
-            piecewise_effects_of_investment=fx.PiecewiseEffects(
+            piecewise_effects_per_size=fx.PiecewiseEffects(
                 piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
                 piecewise_shares={
                     'costs': fx.Piecewise([fx.Piece(50, 250), fx.Piece(250, 800)]),

@@ -3,7 +3,7 @@ Test backward compatibility and deprecation warnings for SizingParameters.
 
 This test verifies that:
 1. Old parameter names (fix_effects, specific_effects, divest_effects, piecewise_effects) still work with warnings
-2. New parameter names (effects_of_size, effects_per_size, effects_of_retirement, piecewise_effects_of_investment) work correctly
+2. New parameter names (effects_of_size, effects_per_size, effects_of_retirement, piecewise_effects_per_size) work correctly
 3. Both old and new approaches produce equivalent results
 """
 
@@ -73,13 +73,13 @@ class TestInvestParametersDeprecation:
             piecewise_origin=Piecewise([Piece(0, 100)]),
             piecewise_shares={'cost': Piecewise([Piece(800, 600)])},
         )
-        with pytest.warns(DeprecationWarning, match='piecewise_effects.*deprecated.*piecewise_effects_of_investment'):
+        with pytest.warns(DeprecationWarning, match='piecewise_effects.*deprecated.*piecewise_effects_per_size'):
             params = SizingParameters(piecewise_effects=test_piecewise)
             # Verify backward compatibility
-            assert params.piecewise_effects_of_investment is test_piecewise
+            assert params.piecewise_effects_per_size is test_piecewise
 
         # Accessing the property also triggers warning
-        with pytest.warns(DeprecationWarning, match='piecewise_effects.*deprecated.*piecewise_effects_of_investment'):
+        with pytest.warns(DeprecationWarning, match='piecewise_effects.*deprecated.*piecewise_effects_per_size'):
             assert params.piecewise_effects is test_piecewise
 
     def test_all_old_parameters_together(self):
@@ -107,7 +107,7 @@ class TestInvestParametersDeprecation:
             assert params.effects_of_size == {'cost': 25000}
             assert params.effects_per_size == {'cost': 1200}
             assert params.effects_of_retirement == {'cost': 5000}
-            assert params.piecewise_effects_of_investment is test_piecewise
+            assert params.piecewise_effects_per_size is test_piecewise
 
         # Verify old attributes still work (accessing deprecated properties - triggers warnings)
         with pytest.warns(DeprecationWarning):
@@ -147,7 +147,7 @@ class TestInvestParametersDeprecation:
                 effects_of_retirement={'cost': 6000},
             )
 
-        # piecewise_effects + piecewise_effects_of_investment
+        # piecewise_effects + piecewise_effects_per_size
         from flixopt.interface import Piece, Piecewise, PiecewiseEffects
 
         test_piecewise1 = PiecewiseEffects(
@@ -160,15 +160,15 @@ class TestInvestParametersDeprecation:
         )
         with pytest.raises(
             ValueError,
-            match='Either piecewise_effects or piecewise_effects_of_investment can be specified, but not both',
+            match='Either piecewise_effects or piecewise_effects_per_size can be specified, but not both',
         ):
             SizingParameters(
                 piecewise_effects=test_piecewise1,
-                piecewise_effects_of_investment=test_piecewise2,
+                piecewise_effects_per_size=test_piecewise2,
             )
 
     def test_piecewise_effects_of_investment_new_parameter(self):
-        """Test that piecewise_effects_of_investment works correctly."""
+        """Test that piecewise_effects_per_size works correctly."""
         from flixopt.interface import Piece, Piecewise, PiecewiseEffects
 
         test_piecewise = PiecewiseEffects(
@@ -179,8 +179,8 @@ class TestInvestParametersDeprecation:
         with warnings.catch_warnings():
             warnings.simplefilter('error', DeprecationWarning)
             # Should not raise DeprecationWarning when using new parameter
-            params = SizingParameters(piecewise_effects_of_investment=test_piecewise)
-            assert params.piecewise_effects_of_investment is test_piecewise
+            params = SizingParameters(piecewise_effects_per_size=test_piecewise)
+            assert params.piecewise_effects_per_size is test_piecewise
 
         # Accessing deprecated property triggers warning
         with pytest.warns(DeprecationWarning):
@@ -199,7 +199,7 @@ class TestInvestParametersDeprecation:
             effects_of_size={'cost': 25000},
             effects_per_size={'cost': 1200},
             effects_of_retirement={'cost': 5000},
-            piecewise_effects_of_investment=test_piecewise,
+            piecewise_effects_per_size=test_piecewise,
         )
 
         # Old properties should still be accessible (for features.py) but with warnings
@@ -220,7 +220,7 @@ class TestInvestParametersDeprecation:
         with pytest.warns(DeprecationWarning):
             assert params.divest_effects is params.effects_of_retirement
         with pytest.warns(DeprecationWarning):
-            assert params.piecewise_effects is params.piecewise_effects_of_investment
+            assert params.piecewise_effects is params.piecewise_effects_per_size
 
     def test_empty_parameters(self):
         """Test that empty/None parameters work correctly."""
@@ -229,7 +229,7 @@ class TestInvestParametersDeprecation:
         assert params.effects_of_size == {}
         assert params.effects_per_size == {}
         assert params.effects_of_retirement == {}
-        assert params.piecewise_effects_of_investment is None
+        assert params.piecewise_effects_per_size is None
 
         # Old properties should also be empty (but with warnings)
         with pytest.warns(DeprecationWarning):

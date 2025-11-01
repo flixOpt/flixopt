@@ -132,7 +132,7 @@ if __name__ == '__main__':
         charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
         capacity_in_flow_hours=fx.SizingParameters(
-            piecewise_effects_of_investment=segmented_investment_effects,  # Investment effects
+            piecewise_effects_per_size=segmented_investment_effects,  # Investment effects
             mandatory=True,  # Forced investment
             minimum_size=0,
             maximum_size=1000,  # Optimizing between 0 and 1000 kWh

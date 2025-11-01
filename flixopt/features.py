@@ -206,14 +206,14 @@ class InvestmentModel(Submodel):
                 target='periodic',
             )
 
-        if self.parameters.piecewise_effects_of_investment:
+        if self.parameters.piecewise_effects_per_size:
             self.piecewise_effects = self.add_submodels(
                 PiecewiseEffectsModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects_of_investment.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects_of_investment.piecewise_shares,
+                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects_per_size.piecewise_origin),
+                    piecewise_shares=self.parameters.piecewise_effects_per_size.piecewise_shares,
                     zero_point=self.invested,
                 ),
                 short_name='segments',
