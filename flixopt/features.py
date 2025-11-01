@@ -173,12 +173,12 @@ class InvestmentModel(Submodel):
 
     def _add_effects(self):
         """Add investment effects"""
-        if self.parameters.effects_of_investment:
+        if self.parameters.effects_of_size:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
                     effect: self.invested * factor if self.invested is not None else factor
-                    for effect, factor in self.parameters.effects_of_investment.items()
+                    for effect, factor in self.parameters.effects_of_size.items()
                 },
                 target='periodic',
             )
