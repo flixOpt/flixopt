@@ -493,7 +493,7 @@ class Flow(Element):
 
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, prefix)
-        if isinstance(self.size, _SizeModel):
+        if isinstance(self.size, _SizeParameters):
             self.size.transform_data(flow_system, prefix)
         else:
             self.size = flow_system.fit_to_model_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
