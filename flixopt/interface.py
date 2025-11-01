@@ -913,7 +913,7 @@ class SizingParameters(_SizeParameters):
             f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
         )
         self.mandatory = flow_system.fit_to_model_coords(
-            f'{name_prefix}|mandatory', self.fixed_size, dims=['period', 'scenario']
+            f'{name_prefix}|mandatory', self.mandatory, dims=['period', 'scenario']
         )
 
     @property
