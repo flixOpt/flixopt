@@ -174,7 +174,6 @@ class InvestmentModel(_SizeModel):
         """Create timing variables and constraints."""
         # Regular sizing ===============================================================================================
         self._create_sizing_variables_and_constraints(
-            submodel=self,
             size_min=self.parameters.minimum_or_fixed_size,
             size_max=self.parameters.maximum_or_fixed_size,
             mandatory=self.parameters.mandatory,
@@ -266,7 +265,10 @@ class InvestmentModel(_SizeModel):
 
     def _add_effects(self):
         """Add investment effects to the model."""
-        self._add_sizing_effects()
+        self._add_sizing_effects(
+            self.parameters.effects_per_size,
+            self.parameters.effects_of_size,
+        )
 
         # New kind of effects ==========================================================================================
 
