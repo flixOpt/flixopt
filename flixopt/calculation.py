@@ -27,7 +27,7 @@ from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
 from .core import DataConverter, Scalar, TimeSeriesData, drop_constant_arrays
-from .features import InvestmentModel
+from .features import InvestmentModel, SizingModel, _SizeModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
 
@@ -122,13 +122,13 @@ class Calculation:
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max() >= CONFIG.Modeling.epsilon
+                    if isinstance(model, _SizeModel) and model.size.solution.max() >= CONFIG.Modeling.epsilon
                 },
                 'Not invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max() < CONFIG.Modeling.epsilon
+                    if isinstance(model, _SizeModel) and model.size.solution.max() < CONFIG.Modeling.epsilon
                 },
             },
             'Buses with excess': [
@@ -426,7 +426,7 @@ class SegmentedCalculation(Calculation):
         **Sequential Solving**: Each segment solved independently but with coupling
 
     Limitations and Constraints:
-        **Investment Parameters**: InvestParameters are not supported in segmented calculations
+        **Investment Parameters**: SizingParameters are not supported in segmented calculations
         as investment decisions must be made for the entire time horizon, not per segment.
 
         **Global Constraints**: Time-horizon-wide constraints (flow_hours_total_min/max,

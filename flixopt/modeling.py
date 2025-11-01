@@ -689,14 +689,14 @@ class BoundingPatterns:
         decrease_binary: linopy.Variable,
         name: str,
         max_change: float | xr.DataArray,
-        initial_level: float | xr.DataArray = 0.0,
+        previous_level: float | xr.DataArray = 0.0,
         coord: str = 'period',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
         Link changes to level evolution with binary control and mutual exclusivity.
 
         Creates the complete constraint system for ALL time periods:
-        1. level[0] = initial_level + increase[0] - decrease[0]
+        1. level[0] = previous_level + increase[0] - decrease[0]
         2. level[t] = level[t-1] + increase[t] - decrease[t]  ∀t > 0
         3. increase[t] <= max_change * increase_binary[t]  ∀t
         4. decrease[t] <= max_change * decrease_binary[t]  ∀t
@@ -711,7 +711,7 @@ class BoundingPatterns:
             level_variable: Level variable for ALL periods
             name: Base name for constraints
             max_change: Maximum change per period
-            initial_level: Starting level before first period
+            previous_level: Level before first period
             coord: Time coordinate name
 
         Returns:
@@ -720,9 +720,9 @@ class BoundingPatterns:
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.link_changes_to_level_with_binaries() can only be used with a Submodel')
 
-        # 1. Initial period: level[0] - initial_level =  increase[0] - decrease[0]
+        # 1. Initial period: level[0] - previous_level =  increase[0] - decrease[0]
         initial_constraint = model.add_constraints(
-            level_variable.isel({coord: 0}) - initial_level
+            level_variable.isel({coord: 0}) - previous_level
             == increase_variable.isel({coord: 0}) - decrease_variable.isel({coord: 0}),
             name=f'{name}|initial_level',
         )

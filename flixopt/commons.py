@@ -18,7 +18,16 @@ from .core import TimeSeriesData
 from .effects import Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
-from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
+from .interface import (
+    InvestmentParameters,
+    InvestParameters,
+    OnOffParameters,
+    Piece,
+    Piecewise,
+    PiecewiseConversion,
+    PiecewiseEffects,
+    SizingParameters,
+)
 
 __all__ = [
     'TimeSeriesData',
@@ -37,15 +46,19 @@ __all__ = [
     'FullCalculation',
     'SegmentedCalculation',
     'AggregatedCalculation',
-    'InvestParameters',
+    'InvestmentParameters',
+    'SizingParameters',
     'OnOffParameters',
     'Piece',
     'Piecewise',
     'PiecewiseConversion',
     'PiecewiseEffects',
+    'SizingParameters',
     'AggregationParameters',
     'plotting',
     'results',
     'linear_converters',
     'solvers',
+    'SizingParameters',
+    'InvestParameters',
 ]
